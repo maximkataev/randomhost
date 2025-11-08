@@ -1,0 +1,35 @@
+name: Deploy static site to server
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rsync to server
+        uses: easingthemes/ssh-deploy@v5.0.3
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.SERVER_HOST }}
+          REMOTE_USER: ${{ secrets.SERVER_USER }}
+          REMOTE_PORT: ${{ secrets.SERVER_PORT }}
+          SOURCE: "./"
+          TARGET: "/srv/www/randomhostwebsite/"
+          ARGS: "-az --delete"
+          EXCLUDE: >
+            .git*
+            .github*
+            .vscode*
+            node_modules*
+            *.md
+            LICENSE
+            package*.json
+            pnpm-lock.yaml
+            yarn.lock
+            .DS_Store
