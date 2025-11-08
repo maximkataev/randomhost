@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <title>Плинко Жеребьёвка</title>
+  <meta name="description" content="🎯 Наблюдай, как шар падает через гвоздики и выбирает победителя по честным вероятностям. Физика в реальном времени!" />
+  <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1">
+  <link rel="canonical" href="https://randomhost.online/plinko.html">
+
+  <!-- Open Graph -->
+  <meta property="og:locale" content="ru_RU">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Плинко Жеребьёвка — честная физика случайности">
+  <meta property="og:description" content="Шар падает сквозь гвоздики и попадает к победителю. Настоящая физика, честные вероятности.">
+  <meta property="og:url" content="https://randomhost.online/plinko.html">
+  <meta property="og:site_name" content="Рандомайзер-игры">
+
+  <!-- Icons -->
+  <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f3af.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#764ba2">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;800&display=swap" rel="stylesheet">
+  
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body{
+      display:flex; align-items:center; justify-content:center;
+      min-height:100vh; padding:20px;
+      background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+      font-family:'Montserrat',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+    }
+    .main-container{ display:flex; gap:40px; align-items:center; max-width:1200px; width:100%; }
+    .game-container{ flex:1; text-align:center; perspective:1000px; }
+    
+    /* Панель настроек - идентична Колесу Фортуны */
+    .settings-panel{
+      width: 450px;
+      padding: 30px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .settings-title{ color:#fff; font-size:24px; margin-bottom:15px; text-shadow:2px 2px 4px rgba(0,0,0,0.3); }
+    .equalize-btn{
+      padding: 8px 18px;
+      background: linear-gradient(135deg, rgba(102,126,234,0.8), rgba(118,75,162,0.8));
+      color: #fff;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 700;
+      transition: all .3s ease;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      letter-spacing: 0.5px;
+    }
+    .equalize-btn:hover{
+      background: linear-gradient(135deg, rgba(118,75,162,1), rgba(102,126,234,1));
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+      border-color: rgba(255,255,255,0.5);
+    }
+    .equalize-btn:active{
+      transform: translateY(0px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .names-list{ 
+      display: flex; 
+      flex-direction: column; 
+      gap: 10px; 
+      margin-bottom: 20px; 
+      max-height: 500px;
+      overflow-y: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      padding-right: 5px;
+    }
+    .name-item{ 
+      display: flex; 
+      gap: 8px;
+      align-items: center; 
+    }
+    .name-input{
+      flex:1; padding:10px 15px; border:2px solid rgba(255,255,255,0.2);
+      border-radius:10px; background:rgba(255,255,255,0.1); color:#fff; font-size:16px; transition:.3s;
+    }
+    .name-input:focus{ outline:none; border-color:rgba(255,255,255,0.5); background:rgba(255,255,255,0.2); }
+    .name-input::placeholder{ color:rgba(255,255,255,0.5); }
+    .remove-btn{
+      padding:8px 13px; background:rgba(239,68,68,.7); color:#fff; border:none; border-radius:8px;
+      cursor:pointer; font-size:18px; transition:.3s;
+    }
+    .remove-btn:hover{ background:rgba(239,68,68,.9); transform:scale(1.1); }
+    .add-name-container{ display:flex; gap:10px; margin-top:15px; }
+    .add-btn-small{
+      padding:10px 15px; background:rgba(34,197,94,.7); color:#fff; border:none; border-radius:10px;
+      cursor:pointer; font-size:20px; transition:.3s;
+    }
+    .add-btn-small:hover{ background:rgba(34,197,94,.9); transform:scale(1.1); }
+
+    .headers-row {
+      display: flex;
+      align-items: center;
+      gap: 0px;
+      margin-bottom: 10px;
+      padding: 0 5px;
+    }
+    .header-name {
+      flex: 1;
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      font-weight: 600;
+      text-align: left;
+    }
+    .header-probability {
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      font-weight: 600;
+      text-align: center;
+      width: 120px;
+      flex-shrink: 0;
+    }
+    .header-remove {
+      width: 44px;
+    }
+    .probability-display {
+      color: #ffd43b;
+      font-weight: 800;
+      font-size: 16px;
+      min-width: 55px;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+.probability-input {
+  width: 55px;
+  padding: 4px;
+  background: rgba(255,255,255,0.1);
+  color: #ffd43b;
+  border: 2px solid rgba(255,212,59,0.3);
+  border-radius: 5px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 14px;
+  transition: .2s;
+}
+
+.probability-input:focus {
+  outline: none;
+  border-color: rgba(255,212,59,0.6);
+  background: rgba(255,255,255,0.15);
+}
+
+.probability-input.error {
+  border-color: rgba(239,68,68,0.8);
+  background: rgba(239,68,68,0.2);
+}
+
+/* Визуальная индикация ручного ввода */
+.probability-input.manual {
+  background: rgba(255,244,204,0.25);
+  border-color: #F59E0B;
+  box-shadow: 0 0 0 3px rgba(245,158,11,.25);
+}
+    .probability-controls {
+      display: flex;
+      gap: 5px;
+      width: 120px;
+      flex-shrink: 0;
+    }
+    .prob-btn {
+      padding: 5px 10px;
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: .2s;
+    }
+    .prob-btn:hover {
+      background: rgba(255,255,255,0.3);
+      transform: scale(1.05);
+    }
+    .prob-btn:active {
+      transform: scale(0.95);
+    }
+
+    /* Заголовок */
+    h1{
+      color:#fff; font-size:48px; margin-bottom:30px; text-shadow:2px 2px 4px rgba(0,0,0,0.3);
+      animation:glow 2s ease-in-out infinite alternate;
+    }
+    @keyframes glow{
+      from{ text-shadow:2px 2px 4px rgba(0,0,0,0.3),0 0 10px rgba(255,255,255,.3); }
+      to  { text-shadow:2px 2px 4px rgba(0,0,0,0.3),0 0 20px rgba(255,255,255,.5); }
+    }
+
+    /* Топ-кнопки навигации */
+    .top-buttons {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      display: flex;
+      gap: 12px;
+      z-index: 1000;
+    }
+    .top-btn {
+      background: linear-gradient(135deg, rgba(102,126,234,0.95), rgba(118,75,162,0.95));
+      color: #fff;
+      text-decoration: none;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      transition: 0.25s;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .top-btn:hover {
+      background: linear-gradient(135deg, rgba(118,75,162,1), rgba(102,126,234,1));
+      transform: translateY(-2px);
+    }
+
+
+    /* Плинко-поле */
+    .plinko-container{ 
+      position:relative; 
+      width:min(92vw, 600px);
+      height:min(70vh, 620px);
+      margin:0 auto 20px; 
+      border-radius:24px;
+      background: rgba(0,0,0,0.15);
+      box-shadow: 0 0 0 8px rgba(255,255,255,0.15),
+                  0 0 0 12px rgba(255,255,255,0.08),
+                  0 12px 40px rgba(0,0,0,0.35);
+      overflow:hidden;
+    }
+    canvas#plinkoCanvas{ 
+      width:100%; 
+      height:100%; 
+      display:block; 
+      border-radius:24px;
+    }
+
+    /* Кнопки управления */
+    .controls{ display:flex; gap:20px; justify-content:center; margin-top:30px; }
+    button{
+      padding:15px 30px; font-size:18px; font-weight:800; border:none; border-radius:50px;
+      background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:#fff; cursor:pointer;
+      box-shadow:0 4px 15px rgba(0,0,0,.2); transition:.3s; position:relative; overflow:hidden;
+    }
+    button:before{
+      content:''; position:absolute; top:50%; left:50%; width:0; height:0; border-radius:50%;
+      background:rgba(255,255,255,.3); transform:translate(-50%,-50%); transition:width .6s,height .6s;
+    }
+    button:hover:before{ width:300px; height:300px; }
+    button:hover{ transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,.3); }
+    button:active{ transform:translateY(0); }
+    button:disabled{ opacity:.5; cursor:not-allowed; }
+
+    /* Конфетти */
+    .confetti {
+      position: fixed; width: 10px; height: 10px;
+      z-index: 0; pointer-events: none;
+      animation: confetti-fall 3s ease-out forwards;
+    }
+    @keyframes confetti-fall{
+      0%{ transform: translateY(0) rotate(300deg); opacity:1;}
+      100%{ transform: translateY(100vh) rotate(720deg); opacity:0;}
+    }
+
+    /* Объявление победителя */
+    .winner-announcement {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: linear-gradient(135deg, rgba(102,126,234,0.95), rgba(118,75,162,0.95));
+      padding: 40px 60px;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      z-index: 1001;
+      display: none;
+    }
+    .winner-announcement.show {
+      display: block;
+      animation: winnerAppear 1s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    }
+    @keyframes winnerAppear {
+      0% {
+        transform: translate(-50%, -50%) scale(0) rotate(-180deg);
+        opacity: 0;
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(1) rotate(0deg);
+        opacity: 1;
+      }
+    }
+    .winner-announcement h2 {
+      color: #fff;
+      font-size: 36px;
+      margin: 0;
+      text-align: center;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+
+    .celebration-emoji {
+      position: fixed;
+      font-size: 60px;
+      z-index: 998;
+      pointer-events: none;
+      animation: emojiCelebrate 3s ease-out forwards;
+    }
+    .celebration-word {
+      position: fixed;
+      font-size: 40px;
+      font-weight: 800;
+      color: #fff;
+      text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
+      z-index: 998;
+      pointer-events: none;
+      opacity: 0.7;
+      animation: wordFloat 4s ease-out forwards;
+    }
+    @keyframes wordFloat {
+      0% {
+        transform: scale(0) translateY(0) rotate(-15deg);
+        opacity: 0;
+      }
+      15% {
+        transform: scale(1.2) translateY(-20px) rotate(5deg);
+        opacity: 0.9;
+      }
+      50% {
+        opacity: 0.8;
+      }
+      100% {
+        transform: scale(0.8) translateY(-150px) rotate(15deg);
+        opacity: 0;
+      }
+    }
+    @keyframes emojiCelebrate {
+      0% {
+        transform: scale(0) rotate(0deg);
+        opacity: 0;
+      }
+      20% {
+        transform: scale(1.5) rotate(180deg);
+        opacity: 1;
+      }
+      80% {
+        opacity: 1;
+      }
+      100% {
+        transform: scale(0.5) rotate(360deg);
+        opacity: 0;
+      }
+    }
+
+    /* Мобильная адаптация */
+    @media (max-width: 900px) {
+      body { padding-top: clamp(56px, 10vh, 88px); padding-left: 12px; padding-right: 12px; }
+      
+      .main-container {
+        flex-direction: column;
+        gap: 18px;
+        max-width: 100%;
+        align-items: stretch;
+      }
+
+      .top-buttons {
+        top: calc(env(safe-area-inset-top, 0px) + 8px);
+        left: calc(env(safe-area-inset-left, 0px) + 8px);
+        right: calc(env(safe-area-inset-right, 0px) + 8px);
+        gap: 8px;
+        padding-right: 8px;
+        overflow-x: auto;
+        max-width: 100%;
+        -webkit-overflow-scrolling: touch;
+      }
+      .top-btn {
+        padding: 8px 12px;
+        font-size: 14px;
+        border-radius: 9px;
+        flex: 0 0 auto;
+      }
+
+      .game-container { order: -1; }
+
+      .plinko-container {
+        width: min(92vw, 520px);
+        height: min(68vh, 580px);
+        margin: 8px auto 22px;
+      }
+
+    h1{
+      color:#fff; font-size:48px; 
+      margin-bottom:20px;  /* было 30px */
+      text-shadow:2px 2px 4px rgba(0,0,0,0.3);
+      animation:glow 2s ease-in-out infinite alternate;
+    }
+
+      .settings-panel {
+        width: 100%;
+        max-width: 680px;
+        padding: 16px;
+        border-radius: 16px;
+      }
+
+      .headers-row { padding: 0; }
+      .header-name { font-size: 13px; }
+      .header-probability { width: 98px; font-size: 13px; }
+      .header-remove { width: 40px; }
+
+      .names-list {
+        max-height: 38vh;
+        padding-right: 2px;
+      }
+
+      .name-item { gap: 6px; }
+      .name-input { padding: 10px 12px; font-size: 15px; }
+
+      .probability-controls { width: 98px; gap: 4px; }
+      .probability-input { width: 56px; font-size: 13px; padding: 6px 4px; }
+      .prob-btn { padding: 6px 8px; font-size: 13px; }
+
+      .remove-btn { padding: 8px 12px; font-size: 16px; }
+
+      .add-name-container { gap: 8px; margin-top: 12px; }
+      .add-btn-small { padding: 10px 14px; font-size: 18px; }
+
+      .equalize-btn { padding: 8px 12px; font-size: 13px; }
+
+      .controls {
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 0 6px;
+        margin-top: 16px;
+      }
+      .controls button {
+        flex: 1 1 220px;
+        min-height: 48px;
+        font-size: 16px;
+        border-radius: 40px;
+      }
+
+      .winner-announcement {
+        padding: 22px 28px;
+        border-radius: 16px;
+      }
+      .winner-announcement h2 {
+        font-size: clamp(20px, 5.8vw, 28px);
+      }
+
+      .celebration-word { font-size: clamp(18px, 5.4vw, 28px); }
+      .celebration-emoji { font-size: clamp(36px, 10vw, 48px); }
+    }
+
+    @media (hover: none) {
+      .top-btn:hover,
+      .prob-btn:hover,
+      .add-btn-small:hover,
+      .remove-btn:hover,
+      button:hover {
+        transform: none !important;
+      }
+      button:before { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="main-container">
+    <div class="top-buttons">
+      <a href="lottery-drum.html" class="top-btn">🎱 Лототрон</a>
+      <a href="wheel-of-fortune.html" class="top-btn">🎡 Колесо</a>
+      <a href="crystal-ball.html" class="top-btn">🔮 Шар</a>
+      <a href="plinko.html" class="top-btn">🎯 Плинко</a>
+      <a href="racing.html" class="top-btn">🏁 Гонки</a>
+      <a href="trading.html" class="top-btn">📈 Трейдинг</a>
+    </div>
+
+    <div class="settings-panel">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+        <h2 style="color: #fff; font-size: 24px; margin: 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">Участники</h2>
+        <button class="equalize-btn" id="equalizeBtn">⚖️ Уравнять</button>
+      </div>
+      <div class="headers-row">
+        <div class="header-name">Имя</div>
+        <div class="header-probability">📊 Вероятность</div>
+        <div class="header-remove"></div>
+      </div>
+      <div class="names-list" id="namesList"></div>
+      <div class="add-name-container">
+        <input type="text" class="name-input" id="newNameInput" placeholder="Новый участник">
+        <button class="add-btn-small" id="addNameBtn">➕</button>
+      </div>
+    </div>
+
+    <div class="game-container">
+      <h1>🎯 ПЛИНКО</h1>
+      <div class="plinko-container">
+        <canvas id="plinkoCanvas"></canvas>
+      </div>
+      <div class="controls">
+        <button id="dropBtn">🎱 Запустить шар</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="winner-announcement" id="winnerAnnouncement">
+    <h2 id="winnerText"></h2>
+  </div>
+
+<script>
+// ===== Определение мобильного устройства =====
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+
+// ===== Константы =====
+const colors = [
+  '#ff6b6b','#ffd43b','#51cf66','#339af0','#da77f2','#66d9e8',
+  '#fb923c','#ec4899','#8b5cf6','#14b8a6','#f97316','#06b6d4'
+];
+
+let names = [];
+
+const NAMES_KEY = 'shared_names_v1';
+const PROB_KEY = 'shared_probabilities_v2';
+const LOCKED_KEY = 'shared_locked_v1';
+
+let probabilities          = {};
+let lockedParticipants     = {};
+let hasCustomProbabilities = false;
+
+// ===== DOM элементы =====
+const namesList = document.getElementById('namesList');
+const addNameBtn = document.getElementById('addNameBtn');
+const newNameInput = document.getElementById('newNameInput');
+const equalizeBtn = document.getElementById('equalizeBtn');
+const dropBtn = document.getElementById('dropBtn');
+const winnerAnnouncement = document.getElementById('winnerAnnouncement');
+const winnerText = document.getElementById('winnerText');
+const canvas = document.getElementById('plinkoCanvas');
+const ctx = canvas.getContext('2d');
+
+// ====== Звук ======
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playSound(f, d, v){ 
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain(); 
+  o.type='sine'; o.frequency.value=f; g.gain.value=v||0.1; 
+  o.connect(g); g.connect(audioCtx.destination); 
+  const t=audioCtx.currentTime; o.start(t); o.stop(t+(d||0.1)); 
+}
+const playTickSound = ()=>playSound(800,0.04,0.12);
+const playWinSound = ()=>playSound(1200,0.3,0.25);
+function playFanfare(){ 
+  [523,659,784,1046,784,1046,1319,1568].forEach((f,i)=>
+    setTimeout(()=>playSound(f,0.18,0.15),i*150)
+  ); 
+}
+
+const DEFAULT_NAMES = ['Дима','Саша','Никита','Максим','Кирилл','Семён'];
+
+// ====== Загрузка имен ======
+try {
+  const saved = JSON.parse(localStorage.getItem(NAMES_KEY) || '[]');
+  if (Array.isArray(saved) && saved.length > 0) {
+    names = saved;
+  } else {
+    names = DEFAULT_NAMES;
+    localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+  }
+} catch(e){
+  names = DEFAULT_NAMES;
+}
+
+const saveNames = ()=>{ 
+  try{ 
+    localStorage.setItem(NAMES_KEY, JSON.stringify(names)); 
+  }catch(e){} 
+};
+
+// ===== Управление вероятностями =====
+function initProbabilities() {
+  try {
+    const saved       = JSON.parse(localStorage.getItem(PROB_KEY)   || '{}');
+    const savedLocked = JSON.parse(localStorage.getItem(LOCKED_KEY) || '{}');
+
+    if (saved?.hasCustomProbabilities && saved?.probabilities && Object.keys(saved.probabilities).length) {
+      probabilities          = { ...saved.probabilities };
+      lockedParticipants     = { ...savedLocked };
+      hasCustomProbabilities = true;
+
+      names.forEach((n) => { if (!(n in probabilities)) probabilities[n] = 1 / names.length; });
+      Object.keys(probabilities).forEach((n) => { if (!names.includes(n)) delete probabilities[n]; });
+      Object.keys(lockedParticipants).forEach((n) => { if (!names.includes(n)) delete lockedParticipants[n]; });
+
+      saveProbabilities();
+    } else {
+      setEqualProbabilities();
+    }
+  } catch (_) {
+    setEqualProbabilities();
+  }
+}
+
+function setEqualProbabilities() {
+  const p = 1 / (names.length || 1);
+  probabilities = {};
+  names.forEach((nm) => probabilities[nm] = p);
+  lockedParticipants     = {};
+  hasCustomProbabilities = false;
+  saveProbabilities();
+}
+
+function clampProbabilitiesMin(min = 0.001) {
+  names.forEach((nm) => { if ((probabilities[nm] ?? 0) < min) probabilities[nm] = min; });
+}
+
+function normalizeProbabilities() {
+  const vals = names.map((n) => probabilities[n] ?? 0);
+  const uniq = [...new Set(vals.map((v) => +v.toFixed(6)))];
+  if (uniq.length === 1 && !hasCustomProbabilities) {
+    const exact = 1 / (names.length || 1);
+    names.forEach((nm) => probabilities[nm] = exact);
+    return;
+  }
+
+  clampProbabilitiesMin(0.001);
+
+  const sum = names.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
+  if (sum > 0 && Math.abs(sum - 1) > 1e-4) {
+    const k = 1 / sum;
+    names.forEach((nm) => probabilities[nm] = (probabilities[nm] || 0) * k);
+  }
+
+  clampProbabilitiesMin(0.001);
+}
+
+function saveProbabilities() {
+  try {
+    const cleanP = {};
+    names.forEach((nm) => cleanP[nm] = probabilities[nm] ?? 0);
+
+    const cleanLocked = {};
+    names.forEach((nm) => { if (lockedParticipants[nm]) cleanLocked[nm] = true; });
+
+    localStorage.setItem(PROB_KEY, JSON.stringify({
+      probabilities: cleanP,
+      hasCustomProbabilities
+    }));
+    localStorage.setItem(LOCKED_KEY, JSON.stringify(cleanLocked));
+  } catch (_) {}
+}
+
+function getProbabilityPercent(name) {
+  if (!hasCustomProbabilities && names.length) return (100 / names.length).toFixed(1);
+  return (((probabilities[name] || 0) * 100).toFixed(1));
+}
+
+function adjustProbability(name, delta) {
+  const cur         = parseFloat(getProbabilityPercent(name)) || 0;
+  const maxPossible = 100 - (names.length - 1) * 0.1;
+  const next        = Math.max(0.1, Math.min(maxPossible, cur + delta));
+  setProbabilityManually(name, next);
+  createNameInputs();
+}
+
+function setProbabilityManually(name, percentValue) {
+  if (isNaN(percentValue) || percentValue < 0.1 || percentValue > 99.9) return false;
+
+  hasCustomProbabilities = true;
+  const newProb          = percentValue / 100;
+
+  const otherLocked      = names.filter((n) => n !== name && lockedParticipants[n]);
+  const lockedTotal      = otherLocked.reduce((s, n) => s + (probabilities[n] || 0), 0);
+  const minOthers        = (names.length - 1) * 0.001;
+
+  if (newProb + lockedTotal + minOthers > 1) {
+    lockedParticipants = {};
+    probabilities[name] = newProb;
+    lockedParticipants[name] = true;
+
+    const others  = names.filter((n) => n !== name);
+    const remain  = 1 - newProb;
+    const share   = remain / (others.length || 1);
+    others.forEach((n) => probabilities[n] = share);
+
+    normalizeProbabilities();
+    saveProbabilities();
+    return true;
+  }
+
+  lockedParticipants[name] = true;
+
+  const free   = names.filter((n) => n !== name && !lockedParticipants[n]);
+  const locked = names.filter((n) => n !== name && lockedParticipants[n]);
+
+  if (free.length) {
+    probabilities[name] = newProb;
+    const lockedSum = locked.reduce((s, n) => s + (probabilities[n] || 0), 0) + newProb;
+    let remain       = Math.max(0, 1 - lockedSum);
+
+    const freeSum = free.reduce((s, n) => s + (probabilities[n] || 0), 0);
+    if (freeSum > 0) {
+      const k = remain / freeSum;
+      free.forEach((n) => probabilities[n] = (probabilities[n] || 0) * k);
+    } else {
+      free.forEach((n) => probabilities[n] = remain / free.length);
+    }
+
+    free.forEach((n) => { if (probabilities[n] < 0.001) probabilities[n] = 0.001; });
+  } else {
+    const others = names.filter((n) => n !== name).sort((a, b) => (probabilities[a] || 0) - (probabilities[b] || 0));
+    const victim = others[0];
+    delete lockedParticipants[victim];
+
+    probabilities[name] = newProb;
+    const stillLocked   = names.filter((n) => n !== name && lockedParticipants[n]);
+    const lockedSum     = stillLocked.reduce((s, n) => s + (probabilities[n] || 0), 0) + newProb;
+    const remain        = 1 - lockedSum;
+
+    probabilities[victim] = Math.max(0.001, remain);
+  }
+
+  normalizeProbabilities();
+  saveProbabilities();
+  return true;
+}
+
+function equalizeProbabilities() {
+  setEqualProbabilities();
+  createNameInputs();
+  buildBins();
+  drawBoard();
+}
+
+// ====== UI списка участников ======
+function createNameInputs(){
+  namesList.innerHTML='';
+  names.forEach((name,idx)=>{
+    const row=document.createElement('div'); 
+    row.className='name-item';
+    
+    const input=document.createElement('input'); 
+    input.type='text'; 
+    input.className='name-input'; 
+    input.value=name; 
+    input.placeholder='Введите имя';
+    
+    input.addEventListener('input', ()=>{ 
+      const v=input.value.trim(); 
+      if(!v) return;
+
+      const dup = names.some((n, i) => i !== idx && n.toLowerCase() === v.toLowerCase());
+      if(dup){
+        input.style.borderColor = '#ef4444';
+        input.style.background  = 'rgba(239,68,68,0.1)';
+        return;
+      }
+
+      input.style.borderColor = 'rgba(255,255,255,0.2)';
+      input.style.background  = 'rgba(255,255,255,0.1)';
+
+      const oldName = names[idx];
+
+      if (oldName in probabilities) {
+        probabilities[v] = probabilities[oldName];
+        delete probabilities[oldName];
+      }
+      if (oldName in lockedParticipants) {
+        lockedParticipants[v] = true;
+        delete lockedParticipants[oldName];
+      }
+      saveProbabilities();
+
+      names[idx] = v;
+      saveNames();
+      buildBins();
+      drawBoard();
+      createNameInputs();
+    });
+    
+    const probControls = document.createElement('div');
+    probControls.className = 'probability-controls';
+    
+    const decreaseBtn = document.createElement('button');
+    decreaseBtn.className = 'prob-btn';
+    decreaseBtn.textContent = '−';
+    decreaseBtn.onclick = () => {
+      adjustProbability(name, -1);
+      buildBins();
+      drawBoard();
+    };
+
+    const probInput = document.createElement('input');
+    probInput.type = 'text';
+    probInput.inputMode = 'decimal';
+    probInput.className = 'probability-input';
+    probInput.value = getProbabilityPercent(name);
+    if (lockedParticipants[name]) {
+      probInput.classList.add('manual');
+    }
+    let lastValid = probInput.value;
+
+    probInput.addEventListener('focus', () => {
+      probInput.value = probInput.value.replace('%', '');
+      lastValid = probInput.value;
+    });
+
+    probInput.addEventListener('input', () => {
+      const val = probInput.value.replace('%', '').trim();
+      const num = parseFloat(val);
+      if (val === '' || (num >= 0.1 && num <= 99.9)) {
+        probInput.classList.remove('error');
+      } else {
+        probInput.classList.add('error');
+      }
+    });
+
+    probInput.addEventListener('blur', () => {
+      const val = probInput.value.replace('%', '').trim();
+      const num = parseFloat(val);
+
+      if (val === '' || isNaN(num) || num < 0.1 || num > 99.9) {
+        probInput.value = lastValid;
+        probInput.classList.remove('error');
+        playSound(300, 0.1, 0.2);
+      } else {
+        if (setProbabilityManually(name, num)) {
+          lastValid = getProbabilityPercent(name);
+          createNameInputs();
+          buildBins();
+          drawBoard();
+        } else {
+          probInput.value = lastValid;
+          probInput.classList.remove('error');
+        }
+      }
+    });
+
+    probInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); probInput.blur(); }
+      if (!/[\d.]/.test(e.key) && e.key !== 'Enter') e.preventDefault();
+    });
+
+    const increaseBtn = document.createElement('button');
+    increaseBtn.className = 'prob-btn';
+    increaseBtn.textContent = '+';
+    increaseBtn.onclick = () => {
+      adjustProbability(name, 1);
+      buildBins();
+      drawBoard();
+    };
+    
+    probControls.appendChild(decreaseBtn);
+    probControls.appendChild(probInput);
+    probControls.appendChild(increaseBtn);
+    
+    const btn=document.createElement('button'); 
+    btn.className='remove-btn'; 
+    btn.textContent='✕';
+    btn.onclick=()=>{ 
+      if (names.length <= 2) {
+        alert('Должно быть минимум 2 участника!');
+        return;
+      }
+      const removedName = names[idx];
+      names.splice(idx,1);
+      delete probabilities[removedName];
+      delete lockedParticipants[removedName];
+
+      saveNames();
+      normalizeProbabilities();
+      saveProbabilities();
+      
+      createNameInputs(); 
+      buildBins();
+      drawBoard();
+    };
+    
+    row.appendChild(input);
+    row.appendChild(probControls);
+    row.appendChild(btn); 
+    namesList.appendChild(row);
+  });
+}
+
+function addNewParticipant(){
+  const v = newNameInput.value.trim(); 
+  if(!v) return;
+  
+  const dup = names.some((n) => n.toLowerCase() === v.toLowerCase());
+  if(dup){
+    newNameInput.style.borderColor = '#ef4444';
+    newNameInput.style.background  = 'rgba(239,68,68,0.1)';
+    setTimeout(() => {
+      newNameInput.style.borderColor = 'rgba(255,255,255,0.2)';
+      newNameInput.style.background  = 'rgba(255,255,255,0.1)';
+    }, 1500);
+    return;
+  }
+  
+  newNameInput.value = '';
+  newNameInput.style.borderColor = 'rgba(255,255,255,0.2)';
+  newNameInput.style.background  = 'rgba(255,255,255,0.1)';
+
+  names.push(v);
+  saveNames();
+
+  probabilities[v] = 1 / names.length;
+  normalizeProbabilities();
+  saveProbabilities();
+
+  createNameInputs();
+  buildBins();
+  drawBoard();
+}
+
+addNameBtn.addEventListener('click', addNewParticipant);
+newNameInput.addEventListener('keypress', e=>{ 
+  if(e.key==='Enter') addNewParticipant(); 
+});
+equalizeBtn.addEventListener('click', equalizeProbabilities);
+
+// ===== Празднования =====
+function createCelebrationEmojis(){
+  const emojis = ['🎉', '🎊', '🏆', '⭐', '✨', '🎯', '🔥', '💫', '🌟', '👏', '🙌', '🎈', '🎆', '💥'];
+  const count = isMobile ? 12 : 20;
+  
+  for (let i=0; i<count; i++){
+    setTimeout(()=>{
+      const emoji = document.createElement('div');
+      emoji.className = 'celebration-emoji';
+      emoji.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+      emoji.style.left = (Math.random() * 100) + '%';
+      emoji.style.top = (Math.random() * 100) + '%';
+      emoji.style.animationDelay = (Math.random() * 0.5) + 's';
+      document.body.appendChild(emoji);
+      setTimeout(() => emoji.remove(), 3500);
+    }, i * 100);
+  }
+}
+
+function createCelebrationWords(){
+  const words = [
+    'ВАУ', 'ЧЕМПИОН', 'МОЛОДЕЦ', 'КРАСАВА', 'ЛЕГЕНДА', 'ВПЕРЁД', 'ТОПЧИК', 'ПОБЕДА',
+    'ОГОНЬ', 'ТЫ ЛУЧШИЙ', 'ДАВАЙ ЕЩЁ', 'НЕВЕРОЯТНО', 'СУПЕР',
+    'КРАСАВЧИК', 'МАСТЕР', 'ГЕНИЙ', 'БОСС',
+    'ЭПИЧНО', 'БРАВО', 'ГГ', 'РЕСПЕКТ', 'ШИКАРНО', 'КРУТЯК', 'МОЩНО',
+    'КРУТО', 'ФАЙЕР', 'БОМБА', 'ТОП-1', 'ПРО', 'МАГИЯ', 'ЧУДО', 'ФАНТАСТИКА',
+    'ПОПАЛ В ТОЧКУ', 'ФИЗИКА ПОСЛУШНА', 'ТРАЕКТОРИЯ ИДЕАЛЬНА', 'ПРОСЧИТАНО',
+    'ГРАВИТАЦИЯ С ТОБОЙ', 'В ЯБЛОЧКО', 'ШАР ПОВИНУЕТСЯ', 'ТОЧНЫЙ БРОСОК',
+    'LUCKY SHOT', 'JACKPOT', 'НЕРЕАЛЬНОЕ ПОПАДАНИЕ', 'PLINKO МАСТЕР'
+  ];
+  
+  const gridCols = isMobile ? 4 : 6;
+  const gridRows = isMobile ? 3 : 3;
+  const positions = [];
+
+  const marginPercent = 5;
+  const usableWidth = 100 - (2 * marginPercent);
+  const usableHeight = 100 - (2 * marginPercent);
+
+  for (let row = 0; row < gridRows; row++) {
+    for (let col = 0; col < gridCols; col++) {
+      positions.push({
+        left: marginPercent + (col * usableWidth / (gridCols - 1)),
+        top: marginPercent + (row * usableHeight / (gridRows - 1))
+      });
+    }
+  }
+
+  positions.sort(() => Math.random() - 0.5);
+  
+  const wordsToShow = isMobile ? 8 : 12;
+  
+  for (let i = 0; i < wordsToShow; i++){
+    setTimeout(() => {
+      const word = document.createElement('div');
+      word.className = 'celebration-word';
+      word.textContent = words[Math.floor(Math.random() * words.length)];
+      
+      const pos = positions[i % positions.length];
+      const randomOffsetX = (Math.random() - 0.5) * 8;
+      const randomOffsetY = (Math.random() - 0.5) * 8;
+      
+      const finalLeft = Math.max(2, Math.min(98, pos.left + randomOffsetX));
+      const finalTop = Math.max(2, Math.min(98, pos.top + randomOffsetY));
+      
+      word.style.left = finalLeft + '%';
+      word.style.top = finalTop + '%';
+      word.style.animationDelay = (Math.random() * 0.3) + 's';
+      
+      document.body.appendChild(word);
+      setTimeout(() => word.remove(), 4500);
+    }, i * 120);
+  }
+}
+
+function createConfetti(){
+  const cs = ['#ff6b6b','#ffd43b','#51cf66','#339af0','#da77f2','#66d9e8','#fb923c','#ec4899'];
+  const count = isMobile ? 50 : 100;
+  
+  for (let i=0;i<count;i++){
+    setTimeout(()=>{
+      const d=document.createElement('div');
+      d.className='confetti';
+      d.style.left=(Math.random()*100)+'%';
+      d.style.top='0';
+      d.style.background=cs[Math.floor(Math.random()*cs.length)];
+      d.style.width=(5+Math.random()*10)+'px';
+      d.style.height=(5+Math.random()*10)+'px';
+      d.style.animationDelay=(Math.random()*0.5)+'s';
+      d.style.animationDuration=(2+Math.random()*2)+'s';
+      document.body.appendChild(d);
+      setTimeout(()=>d.remove(),4000);
+    }, i*25);
+  }
+}
+
+// ===== Плинко: геометрия =====
+let DPR = Math.max(1, Math.min(3, window.devicePixelRatio||1));
+let W=0, H=0;
+
+const rows = 12;
+let pegs = [];
+let bins = [];
+
+function resize(){
+  const parent = canvas.parentElement;
+  const cssW = parent.clientWidth;
+  const cssH = parent.clientHeight;
+  DPR = Math.max(1, Math.min(3, window.devicePixelRatio||1));
+  canvas.style.width  = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  canvas.width  = Math.round(cssW * DPR);
+  canvas.height = Math.round(cssH * DPR);
+  ctx.setTransform(1,0,0,1,0,0); 
+  ctx.scale(DPR, DPR);
+  W = cssW; 
+  H = cssH;
+  layoutPegs(); 
+  buildBins(); 
+  drawBoard();
+}
+
+function layoutPegs(){
+  pegs = [];
+  const topPad = 40;
+  const bottomPad = 80;
+  const sidePad = 25;
+  const usableH = H - topPad - bottomPad;
+  const rowGap = usableH / rows;
+  
+  for(let r=0; r<rows; r++){
+    const cols = 16;
+    const usableW = W - sidePad * 2;
+    const step = usableW / (cols - 1);
+    const y = topPad + r * rowGap;
+    
+    if (r % 2 === 0) {
+      for(let c=0; c<cols; c++){
+        const x = sidePad + step * c;
+        pegs.push({x, y});
+      }
+    } else {
+      pegs.push({x: sidePad - step * 0.5, y: y});
+      
+      for(let c=0; c<cols-1; c++){
+        const x = sidePad + step * (c + 0.5);
+        pegs.push({x, y});
+      }
+      
+      pegs.push({x: sidePad + usableW + step * 0.5, y: y});
+    }
+  }
+}
+
+function buildBins(){
+  bins = [];
+  const xStart = 20, xEnd = W - 20, span = xEnd - xStart;
+  const y0 = H - 85, y1 = H - 20;
+  let acc = 0;
+  
+  names.forEach((n, i) => {
+    const w = Math.max(2, (probabilities[n] || 0) * span);
+    const x0 = xStart + acc;
+    const x1 = Math.min(xStart + span, x0 + w);
+    acc += w;
+    bins.push({
+      name: n,
+      x0, x1, y0, y1,
+      color: colors[i % colors.length]
+    });
+  });
+}
+
+function drawBoard(){
+  ctx.clearRect(0, 0, W, H);
+  
+  const gradient = ctx.createLinearGradient(0, 0, 0, H);
+  gradient.addColorStop(0, 'rgba(102,126,234,0.08)');
+  gradient.addColorStop(1, 'rgba(118,75,162,0.12)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, W, H);
+  
+  ctx.shadowColor = 'rgba(0,0,0,0.3)';
+  ctx.shadowBlur = 4;
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  pegs.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.shadowBlur = 0;
+  
+  bins.forEach((b, idx) => {
+    const binGrad = ctx.createLinearGradient(b.x0, b.y0, b.x0, b.y1);
+    binGrad.addColorStop(0, b.color + '40');
+    binGrad.addColorStop(1, b.color + '60');
+    ctx.fillStyle = binGrad;
+    ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+    
+    if (idx < bins.length - 1) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(b.x1, b.y0);
+      ctx.lineTo(b.x1, b.y1);
+      ctx.stroke();
+    }
+    
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 13px Montserrat, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 3;
+    const binWidth = b.x1 - b.x0;
+    const text = binWidth > 60 ? `${b.name}` : b.name;
+    ctx.fillText(text, (b.x0 + b.x1) / 2, b.y1 - 10);
+    ctx.shadowBlur = 0;
+  });
+}
+
+// ===== Физика =====
+let animId = null;
+let ball = null;
+let winnerLocked = null;
+const GRAV = 0.14;
+const PEG_R = 3.5;
+const BALL_R = 10;
+const REST = 0.58;
+const WALL_REST = 0.48;
+const FRICTION = 0.9985;
+
+function dropBall(){
+  if(animId) return;
+  winnerAnnouncement.classList.remove('show');
+
+  winnerLocked = null;
+  
+  const centerX = W / 2;
+  
+  ball = {
+    x: centerX,
+    y: -BALL_R - 80,
+    vx: (Math.random() - 0.5) * 0.8,
+    vy: 2.5 + Math.random() * 0.5
+  };
+  
+  playTickSound();
+  dropBtn.disabled = true;
+  winnerLocked = null;
+  frame();
+}
+
+function collideWithPeg(p){
+  const dx = ball.x - p.x;
+  const dy = ball.y - p.y;
+  const dist = Math.hypot(dx, dy);
+  const minDist = PEG_R + BALL_R;
+  
+  if(dist < minDist){
+    const nx = dx / (dist || 1);
+    const ny = dy / (dist || 1);
+    const overlap = minDist - dist;
+    
+    ball.x += nx * overlap;
+    ball.y += ny * overlap;
+    
+    const vDotN = ball.vx * nx + ball.vy * ny;
+    const vnX = vDotN * nx;
+    const vnY = vDotN * ny;
+    const vtX = ball.vx - vnX;
+    const vtY = ball.vy - vnY;
+    
+    ball.vx = vtX - vnX * REST;
+    ball.vy = vtY - vnY * REST;
+    ball.vx *= 0.99;
+    ball.vy *= 0.99;
+    
+    playTickSound();
+  }
+}
+
+function collideInsideBins(){
+  if(!bins.length) return;
+  
+  const topY = bins[0].y0;
+  const bottomY = bins[0].y1;
+  
+  if(ball.y + BALL_R < topY) return;
+  
+  for(let i = 0; i < bins.length - 1; i++){
+    const sepX = bins[i].x1;
+    if(ball.y - BALL_R < bottomY && Math.abs(ball.x - sepX) < BALL_R){
+      ball.x = sepX + Math.sign(ball.x - sepX) * BALL_R;
+      ball.vx = -Math.sign(ball.x - sepX) * Math.abs(ball.vx) * WALL_REST;
+    }
+  }
+  
+  const b = bins.find(bin => ball.x >= bin.x0 && ball.x <= bin.x1);
+  if(!b) return;
+  
+  const left = b.x0 + BALL_R;
+  const right = b.x1 - BALL_R;
+  const floor = bottomY - BALL_R;
+  
+  if(ball.x < left){
+    ball.x = left;
+    ball.vx = Math.abs(ball.vx) * WALL_REST;
+  }
+  if(ball.x > right){
+    ball.x = right;
+    ball.vx = -Math.abs(ball.vx) * WALL_REST;
+  }
+  if(ball.y > floor){
+    if (!winnerLocked) {
+      winnerLocked = b.name;
+      revealWinner(b.name);
+    }
+
+    ball.y = floor;
+    ball.vy = -Math.abs(ball.vy) * WALL_REST;
+  }
+}
+
+function physicsStep(){
+  ball.vy += GRAV;
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+  ball.vx *= FRICTION;
+  ball.vy *= FRICTION;
+  
+  if(ball.x < BALL_R + 20){
+    ball.x = BALL_R + 20;
+    ball.vx = Math.abs(ball.vx) * WALL_REST;
+  }
+  if(ball.x > W - BALL_R - 20){
+    ball.x = W - BALL_R - 20;
+    ball.vx = -Math.abs(ball.vx) * WALL_REST;
+  }
+  
+  for(const peg of pegs) collideWithPeg(peg);
+  
+  collideInsideBins();
+  
+  const topY = bins[0]?.y0 || H - 85;
+  if(ball.y > topY - BALL_R && Math.abs(ball.vx) < 0.02){
+    ball.vx += (Math.random() - 0.5) * 0.08;
+  }
+}
+
+function isBallStopped(){
+  const bottomY = bins[0]?.y1 || (H - 20);
+  return (Math.abs(ball.vx) < 0.08 && Math.abs(ball.vy) < 0.1 && ball.y >= bottomY - BALL_R - 0.8);
+}
+
+function frame(){
+  animId = requestAnimationFrame(frame);
+  physicsStep();
+  
+  drawBoard();
+  
+  const ballGrad = ctx.createRadialGradient(ball.x - 3, ball.y - 3, 1, ball.x, ball.y, BALL_R);
+  ballGrad.addColorStop(0, '#ffffff');
+  ballGrad.addColorStop(0.7, '#f0f0f0');
+  ballGrad.addColorStop(1, '#d0d0d0');
+  
+  ctx.shadowColor = 'rgba(0,0,0,0.4)';
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = ballGrad;
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2);
+  ctx.fill();
+  
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  
+  if(isBallStopped()){
+    cancelAnimationFrame(animId);
+    animId = null;
+    finalizeWinner();
+  }
+}
+
+function finalizeWinner(){
+  if (winnerLocked) return;
+  const x = ball.x;
+  const winner = bins.find(b => x >= b.x0 && x <= b.x1) || bins[bins.length - 1] || bins[0];
+  revealWinner(winner.name);
+}
+
+function revealWinner(name){
+  playFanfare();
+  createConfetti();
+  createCelebrationEmojis();
+  createCelebrationWords();
+  
+  winnerText.textContent = '🎉 Победитель: ' + name + ' 🎉';
+  winnerAnnouncement.classList.add('show');
+  
+  setTimeout(() => {
+    winnerAnnouncement.classList.remove('show');
+    dropBtn.disabled = false;
+  }, 3500);
+}
+
+dropBtn.addEventListener('click', dropBall);
+
+let resizeTimeout;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(() => {
+    resize();
+  }, 250);
+});
+
+(function () {
+  var unlocked = false;
+  function unlock() {
+    try {
+      if (typeof audioCtx !== 'undefined' && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    } catch(e) {}
+    if (!unlocked) {
+      unlocked = true;
+      window.removeEventListener('touchstart', unlock, {passive:true});
+      window.removeEventListener('pointerdown', unlock, {passive:true});
+      window.removeEventListener('click', unlock, {passive:true});
+    }
+  }
+  window.addEventListener('touchstart', unlock, {passive:true});
+  window.addEventListener('pointerdown', unlock, {passive:true});
+  window.addEventListener('click', unlock, {passive:true});
+})();
+
+// ===== Инициализация =====
+function init(){
+  initProbabilities();
+  createNameInputs();
+  resize();
+}
+
+init();
+</script>
+<!-- Yandex.Metrika counter --> <script type="text/javascript"> (function(m,e,t,r,i,k,a){ m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)}; m[i].l=1*new Date(); for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }} k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a) })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=104849796', 'ym'); ym(104849796, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true}); </script> <noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript> <!-- /Yandex.Metrika counter -->
+</body>
+</html>

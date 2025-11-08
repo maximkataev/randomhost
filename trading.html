@@ -1,0 +1,1570 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <title>Трейдинг Розыгрыш — рандомайзер на графике</title>
+  <meta name="description" content="Живой мини-график: свечи, тики, зоны-участники. Победителя определяет уровень закрытия. Вероятности соответствуют высоте зон." />
+  <meta name="theme-color" content="#764ba2">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f4c8.svg">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg1:#667eea; --bg2:#764ba2;
+      --glass: rgba(255,255,255,0.1);
+      --glass-2: rgba(255,255,255,0.06);
+      --text:#fff;
+      --accent:#ffd43b;
+    }
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      display:flex;align-items:center;justify-content:center;
+      min-height:100vh;padding:20px;
+      background:linear-gradient(135deg,var(--bg1) 0%,var(--bg2) 100%);
+      font-family:'Montserrat',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+      color:var(--text);
+    }
+
+    /* ===== Верхнее меню ===== */
+    .top-buttons {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      display: flex;
+      gap: 12px;
+      z-index: 1000;
+    }
+    .top-btn {
+      background: linear-gradient(135deg, rgba(102,126,234,0.95), rgba(118,75,162,0.95));
+      color: #fff;
+      text-decoration: none;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      transition: 0.25s;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .top-btn:hover {
+      background: linear-gradient(135deg, rgba(118,75,162,1), rgba(102,126,234,1));
+      transform: translateY(-2px);
+    }
+
+    /* ===== Лэйаут - ИСПРАВЛЕНО: контейнер участников на 15% больше, центрирован ===== */
+    .layout{
+      display:grid;
+      grid-template-columns: 414px minmax(520px,1fr);
+      gap:48px;
+      width:min(1400px,100%);
+      align-items:center;
+      max-height: calc(100vh - 40px);
+    }
+
+    /* ===== Карточки ===== */
+    .card{
+      border-radius:22px;
+      background: linear-gradient(145deg, var(--glass), var(--glass-2));
+      backdrop-filter: blur(10px);
+      box-shadow:
+        0 0 0 10px rgba(255,255,255,0.08),
+        0 0 0 15px rgba(255,255,255,0.05),
+        0 18px 48px rgba(0,0,0,0.35);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+    }
+
+    /* ===== Левая панель - ИСПРАВЛЕНО: адаптивная высота ===== */
+    .card.participants-panel {
+      height: fit-content;
+      max-height: calc(100vh - 40px);
+    }
+
+    .panel-header{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:20px 24px;
+      flex-shrink: 0;
+    }
+    .panel-title{
+      font-size:28px;font-weight:800;text-shadow:2px 2px 4px rgba(0,0,0,0.25);
+    }
+    .equalize-btn{
+      padding:8px 18px;border-radius:12px;border:2px solid rgba(255,255,255,0.35);
+      background:linear-gradient(135deg, rgba(102,126,234,0.9), rgba(118,75,162,0.9));
+      color:#fff;font-weight:800;cursor:pointer;transition:.25s;
+      box-shadow:0 6px 18px rgba(0,0,0,0.25);white-space:nowrap
+    }
+    .equalize-btn:hover{ transform:translateY(-2px); border-color:rgba(255,255,255,0.6)}
+    .panel-body{ 
+      padding:0 20px 20px 20px; 
+      display:flex; 
+      flex-direction:column; 
+      gap:12px;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* Заголовки */
+    .headers-row {
+      display: flex;
+      align-items: center;
+      gap: 0px;
+      margin-bottom: 10px;
+      padding: 0 5px;
+      color: rgba(255,255,255,0.75);
+      font-size: 14px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .header-name { flex: 1; text-align: left; }
+    .header-probability { width: 120px; text-align: center; flex-shrink: 0; }
+    .header-remove { width: 44px; }
+
+    /* ИСПРАВЛЕНО: Гибкий список с автоматической высотой */
+    .names-list{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      overflow-y:auto;
+      overflow-x:hidden;
+      padding-right:6px;
+      scrollbar-width:thin;
+      scrollbar-color: rgba(255,255,255,0.3) transparent;
+      flex: 1;
+      min-height: 0;
+    }
+    .names-list::-webkit-scrollbar{width:6px;}
+    .names-list::-webkit-scrollbar-track{background:transparent;}
+    .names-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.3);border-radius:3px;}
+    .names-list::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.5);}
+
+    .name-item{
+      display:flex;gap:8px;align-items:center;
+      flex-shrink: 0;
+    }
+    .name-input{
+      flex:1; padding:10px 15px; border:2px solid rgba(255,255,255,0.2);
+      border-radius:10px; background:rgba(255,255,255,0.1); color:#fff; font-size:16px; transition:.3s;
+    }
+    .name-input:focus{ outline:none; border-color:rgba(255,255,255,0.5); background:rgba(255,255,255,0.2); }
+    .name-input::placeholder{ color:rgba(255,255,255,0.5); }
+
+    /* Блок вероятностей */
+    .probability-controls {
+      display: flex;
+      gap: 5px;
+      width: 120px;
+      flex-shrink: 0;
+      justify-content: center;
+      align-items: center;
+    }
+    .prob-btn {
+      padding: 5px 10px;
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: .2s;
+    }
+    .prob-btn:hover {
+      background: rgba(255,255,255,0.3);
+      transform: scale(1.05);
+    }
+    .prob-btn:active { transform: scale(0.95); }
+
+    .probability-input {
+      width: 55px;
+      padding: 4px;
+      background: rgba(255,255,255,0.1);
+      color: #ffd43b;
+      border: 2px solid rgba(255,212,59,0.3);
+      border-radius: 5px;
+      text-align: center;
+      font-weight: 800;
+      font-size: 14px;
+      transition: .2s;
+    }
+    .probability-input:focus {
+      outline: none;
+      border-color: rgba(255,212,59,0.6);
+      background: rgba(255,255,255,0.15);
+    }
+    .probability-input.error {
+      border-color: rgba(239,68,68,0.8);
+      background: rgba(239,68,68,0.2);
+    }
+
+    .remove-btn{
+      padding:8px 11px; background:rgba(239,68,68,.7); color:#fff; border:none; border-radius:8px;
+      cursor:pointer; font-size:18px; transition:.3s; width:44px; text-align:center;
+    }
+    .remove-btn:hover{ background:rgba(239,68,68,.9); transform:scale(1.05); }
+
+    .probability-input.manual {
+      border-color: #FBBF24;           /* amber-400 */
+      box-shadow: 0 0 0 3px rgba(251,191,36,.25);
+    }
+
+    .add-name-container{
+      display:flex; 
+      gap:10px; 
+      margin-top:6px;
+      flex-shrink: 0;
+    }
+    #newNameInput{ flex:1 }
+    .add-btn-small{
+      padding:10px 15px; background:rgba(34,197,94,.85); color:#fff; border:none; border-radius:10px;
+      cursor:pointer; font-size:20px; transition:.2s;
+    }
+    .add-btn-small:hover{ transform:translateY(-1px) }
+
+    @media (max-width:980px){
+      body { 
+        padding: clamp(60px, 12vh, 90px) 12px 12px 12px;
+      }
+      
+      .layout {
+        gap: 20px;
+        grid-template-columns: 1fr;
+      }
+      
+      .top-buttons {
+        top: calc(env(safe-area-inset-top, 0px) + 8px);
+        left: calc(env(safe-area-inset-left, 0px) + 8px);
+        right: calc(env(safe-area-inset-right, 0px) + 8px);
+        gap: 8px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+      .top-buttons::-webkit-scrollbar { display: none; }
+      .top-btn { 
+        padding: 8px 14px; 
+        font-size: 14px; 
+        border-radius: 9px; 
+        flex: 0 0 auto;
+        white-space: nowrap;
+      }
+      
+      .card.participants-panel {
+        max-height: 45vh;
+        order: 2;
+      }
+      
+      .board {
+        padding: 16px;
+        gap: 12px;
+        order: 1;
+      }
+      
+      .title {
+        font-size: clamp(32px, 8vw, 44px);
+        margin-top: 0;
+        margin-bottom: 8px;
+      }
+      
+      .chart-wrap {
+        min-height: 280px;
+        aspect-ratio: 4/3;
+      }
+      
+      .panel-header {
+        padding: 16px 20px;
+      }
+      
+      .panel-title {
+        font-size: 24px;
+      }
+      
+      .equalize-btn {
+        padding: 7px 14px;
+        font-size: 13px;
+      }
+      
+      .panel-body {
+        padding: 0 16px 16px 16px;
+        gap: 10px;
+      }
+      
+      .headers-row {
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+      
+      .names-list {
+        gap: 8px;
+        max-height: calc(45vh - 200px);
+      }
+      
+      .name-item {
+        gap: 6px;
+      }
+      
+      .name-input {
+        padding: 10px 12px;
+        font-size: 15px;
+        border-radius: 8px;
+      }
+      
+      .probability-controls { 
+        width: 100px; 
+        gap: 3px; 
+      }
+      
+      .prob-btn {
+        padding: 6px 9px;
+        font-size: 13px;
+        border-radius: 4px;
+      }
+      
+      .probability-input { 
+        width: 52px; 
+        font-size: 13px; 
+        padding: 6px 3px;
+      }
+      
+      .remove-btn { 
+        padding: 8px 10px; 
+        font-size: 16px; 
+        width: 38px;
+      }
+      
+      .add-name-container {
+        margin-top: 8px;
+        gap: 8px;
+      }
+      
+      .add-btn-small {
+        padding: 10px 13px;
+        font-size: 18px;
+      }
+      
+      .btn {
+        padding: 14px 24px;
+        font-size: 16px;
+        border-radius: 40px;
+        width: 100%;
+        max-width: 320px;
+      }
+      
+      .winner-announcement {
+        padding: 24px 32px;
+        border-radius: 16px;
+        max-width: calc(100vw - 32px);
+      }
+      
+      .winner-announcement h2 {
+        font-size: clamp(18px, 5.5vw, 28px);
+        line-height: 1.3;
+      }
+      
+      .celebration-emoji {
+        font-size: clamp(40px, 10vw, 50px);
+      }
+      
+      .celebration-word {
+        font-size: clamp(24px, 6vw, 32px);
+      }
+    }
+    
+    @media (max-width: 480px) {
+      body {
+        padding: clamp(60px, 12vh, 90px) 8px 8px 8px;
+      }
+      
+      .card {
+        border-radius: 18px;
+      }
+      
+      .title {
+        font-size: clamp(28px, 7vw, 36px);
+      }
+      
+      .chart-wrap {
+        min-height: 240px;
+        border-radius: 16px;
+      }
+      
+      .panel-header {
+        padding: 14px 16px;
+      }
+      
+      .panel-title {
+        font-size: 22px;
+      }
+      
+      .equalize-btn {
+        padding: 6px 12px;
+        font-size: 12px;
+      }
+      
+      .panel-body {
+        padding: 0 12px 12px 12px;
+      }
+      
+      .name-input {
+        padding: 9px 10px;
+        font-size: 14px;
+      }
+      
+      .probability-controls {
+        width: 90px;
+        gap: 2px;
+      }
+      
+      .prob-btn {
+        padding: 5px 7px;
+        font-size: 12px;
+      }
+      
+      .probability-input {
+        width: 48px;
+        font-size: 12px;
+        padding: 5px 2px;
+      }
+      
+      .remove-btn {
+        padding: 7px 9px;
+        font-size: 15px;
+        width: 36px;
+      }
+      
+      .winner-announcement {
+        padding: 20px 24px;
+        max-width: calc(100vw - 24px);
+      }
+      
+      .winner-announcement h2 {
+        font-size: clamp(16px, 5vw, 24px);
+      }
+    }
+    
+    /* Оптимизация для тач-устройств */
+    @media (hover: none) and (pointer: coarse) {
+      .top-btn:hover,
+      .prob-btn:hover,
+      .equalize-btn:hover,
+      .add-btn-small:hover,
+      .remove-btn:hover,
+      .btn:hover {
+        transform: none !important;
+      }
+      
+      .top-btn:active,
+      .prob-btn:active,
+      .equalize-btn:active,
+      .add-btn-small:active,
+      .remove-btn:active,
+      .btn:active {
+        transform: scale(0.96) !important;
+      }
+      
+      /* Увеличиваем области касания */
+      .prob-btn,
+      .remove-btn,
+      .add-btn-small {
+        min-height: 44px;
+      }
+      
+      .probability-input {
+        min-height: 40px;
+      }
+    }
+    
+    /* Ландшафтная ориентация на мобильных */
+    @media (max-width: 980px) and (orientation: landscape) {
+      body {
+        padding: 56px 12px 12px 12px;
+      }
+      
+      .layout {
+        grid-template-columns: 380px 1fr;
+        gap: 24px;
+        align-items: start;
+      }
+      
+      .board {
+        order: 2;
+      }
+      
+      .card.participants-panel {
+        order: 1;
+        max-height: calc(100vh - 80px);
+      }
+      
+      .chart-wrap {
+        aspect-ratio: 16/9;
+        min-height: 200px;
+      }
+      
+      .names-list {
+        max-height: calc(100vh - 300px);
+      }
+    }
+
+    /* ===== Правая панель (игровое поле) ===== */
+    .board{
+      padding:18px;
+      display:flex;
+      flex-direction:column;
+      gap:16px;
+      height: fit-content;
+    }
+    .title{
+      text-align:center;font-size:44px;font-weight:800;margin-top:4px;
+      text-shadow:2px 2px 6px rgba(0,0,0,0.35);animation:glow 2s ease-in-out infinite alternate
+    }
+    @keyframes glow{
+      from{ text-shadow:2px 2px 6px rgba(0,0,0,0.35),0 0 10px rgba(255,255,255,.25)}
+      to  { text-shadow:2px 2px 6px rgba(0,0,0,0.35),0 0 24px rgba(255,255,255,.45)}
+    }
+
+    .chart-wrap{
+      position:relative; width:100%; aspect-ratio:16/9; margin:0 auto;
+      border-radius:20px; background:linear-gradient(145deg, rgba(0,0,0,0.20), rgba(0,0,0,0.10));
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+      overflow:hidden; flex:1;
+      min-height:320px;
+    }
+    canvas#chart{width:100%;height:100%;display:block}
+
+    .controls{ display:flex; justify-content:center; }
+    .btn{
+      padding:16px 28px;border-radius:50px;border:none;cursor:pointer;color:#fff;font-weight:800;font-size:18px;
+      background:linear-gradient(135deg,var(--bg1),var(--bg2)); box-shadow:0 10px 30px rgba(0,0,0,0.35);
+      transition:.25s; position:relative; overflow:hidden
+    }
+    .btn:hover{ transform:translateY(-2px) }
+    .btn:disabled{ opacity:.55; cursor:not-allowed }
+
+    .winner-announcement{
+      position:fixed;
+      top:50%;
+      left:50%;
+      transform:translate(-50%,-50%);
+      background:linear-gradient(135deg, rgba(102,126,234,0.95), rgba(118,75,162,0.95));
+      padding:40px 60px;
+      border-radius:20px;
+      box-shadow:0 20px 60px rgba(0,0,0,0.5);
+      display:none;
+      z-index:1001;
+    }
+    .winner-announcement.show{ 
+      display:block; 
+      animation:winnerAppear 1s cubic-bezier(.68,-0.55,.265,1.55), winnerPulse 1s ease-in-out 1s infinite;
+    }
+    .winner-announcement h2{
+      color:#fff;
+      font-size:36px;
+      margin:0;
+      text-align:center;
+      text-shadow:2px 2px 4px rgba(0,0,0,0.3);
+      animation: textGlow 1.5s ease-in-out infinite;
+    }
+    @keyframes winnerAppear{ 
+      0%{ transform:translate(-50%,-50%) scale(0) rotate(-180deg); opacity:0; } 
+      100%{ transform:translate(-50%,-50%) scale(1) rotate(0deg); opacity:1; } 
+    }
+    @keyframes winnerPulse{
+      0%, 100% { 
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 0 rgba(255,212,59,0.7);
+      }
+      50% { 
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 20px rgba(255,212,59,0);
+      }
+    }
+    @keyframes textGlow{
+      0%, 100% {
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3), 0 0 10px rgba(255,212,59,0.5);
+      }
+      50% {
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3), 0 0 30px rgba(255,212,59,0.9);
+      }
+    }
+    
+    /* Вспышка экрана */
+    .screen-flash {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle, rgba(255,212,59,0.4) 0%, transparent 70%);
+      z-index: 997;
+      pointer-events: none;
+      animation: flashScreen 0.5s ease-out;
+    }
+    @keyframes flashScreen {
+      0% {
+        opacity: 0;
+      }
+      50% {
+        opacity: 1;
+      }
+      100% {
+        opacity: 0;
+      }
+    }
+    
+    /* Фейерверки */
+    .firework {
+      position: fixed;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      z-index: 996;
+      pointer-events: none;
+    }
+    @keyframes firework-burst {
+      0% {
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+      }
+      100% {
+        opacity: 0;
+      }
+    }
+    
+    /* Конфетти */
+    .confetti {
+      position: fixed;
+      width: 10px;
+      height: 10px;
+      z-index: 999;
+      pointer-events: none;
+      animation: confetti-fall 3s ease-out forwards;
+    }
+    @keyframes confetti-fall {
+      0% {
+        transform: translateY(0) rotate(0deg);
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(100vh) rotate(720deg);
+        opacity: 0;
+      }
+    }
+    
+    /* Смайлики празднования */
+    .celebration-emoji {
+      position: fixed;
+      font-size: 60px;
+      z-index: 998;
+      pointer-events: none;
+      animation: emojiCelebrate 3s ease-out forwards;
+    }
+    @keyframes emojiCelebrate {
+      0% {
+        transform: scale(0) rotate(0deg);
+        opacity: 0;
+      }
+      20% {
+        transform: scale(1.5) rotate(180deg);
+        opacity: 1;
+      }
+      80% {
+        opacity: 1;
+      }
+      100% {
+        transform: scale(0.5) rotate(360deg);
+        opacity: 0;
+      }
+    }
+    
+    /* Крутые слова */
+    .celebration-word {
+      position: fixed;
+      font-size: 40px;
+      font-weight: 800;
+      color: #fff;
+      text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
+      z-index: 998;
+      pointer-events: none;
+      opacity: 0.7;
+      animation: wordFloat 4s ease-out forwards;
+    }
+    @keyframes wordFloat {
+      0% {
+        transform: scale(0) translateY(0) rotate(-15deg);
+        opacity: 0;
+      }
+      15% {
+        transform: scale(1.2) translateY(-20px) rotate(5deg);
+        opacity: 0.9;
+      }
+      50% {
+        opacity: 0.8;
+      }
+      100% {
+        transform: scale(0.8) translateY(-150px) rotate(15deg);
+        opacity: 0;
+      }
+    }
+    
+    @media (max-width:980px){
+      .winner-announcement{
+        padding:22px 28px;
+        border-radius:16px;
+      }
+      .winner-announcement h2{
+        font-size:clamp(20px, 5.8vw, 28px);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      *{animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important;}
+      .confetti, .celebration-emoji, .celebration-word, .firework, .screen-flash {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Меню -->
+  <div class="top-buttons">
+    <a href="lottery-drum.html" class="top-btn">🎱 Лототрон</a>
+    <a href="wheel-of-fortune.html" class="top-btn">🎡 Колесо</a>
+    <a href="crystal-ball.html" class="top-btn">🔮 Шар</a>
+    <a href="plinko.html" class="top-btn">🎯 Плинко</a>
+    <a href="racing.html" class="top-btn">🏁 Гонки</a>
+    <a href="trading.html" class="top-btn">📈 Трейдинг</a>
+  </div>
+
+  <div class="layout">
+    <!-- Панель участников -->
+    <section class="card participants-panel">
+      <div class="panel-header">
+        <div class="panel-title">Участники</div>
+        <button class="equalize-btn" id="equalizeBtn">⚖️ Уравнять</button>
+      </div>
+
+      <div class="panel-body">
+        <div class="headers-row">
+          <div class="header-name">Имя</div>
+          <div class="header-probability">📊 Вероятность</div>
+          <div class="header-remove"></div>
+        </div>
+
+        <div class="names-list" id="namesList"></div>
+
+        <div class="add-name-container">
+          <input id="newNameInput" class="name-input" type="text" placeholder="Новый участник" />
+          <button class="add-btn-small" id="addNameBtn" title="Добавить">➕</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Игровое поле -->
+    <section class="card board">
+      <h1 class="title">📈 ТРЕЙДИНГ</h1>
+      <div class="chart-wrap"><canvas id="chart"></canvas></div>
+      <div class="controls"><button class="btn" id="runBtn">🚀 Запустить сессию</button></div>
+    </section>
+  </div>
+
+  <div class="winner-announcement" id="winnerAnnouncement">
+    <h2 id="winnerText"></h2>
+  </div>
+
+<script>
+/* ============================== Константы ============================== */
+const colors = ['#ff6b6b','#ffd43b','#51cf66','#339af0','#da77f2','#66d9e8','#fb923c','#ec4899','#8b5cf6','#14b8a6','#f97316','#06b6d4'];
+const NAMES_KEY = 'shared_names_v1';
+const PROB_KEY = 'shared_probabilities_v2';
+const LOCKED_KEY = 'shared_locked_v1';
+
+/* ============================== Состояние ============================== */
+let names = ['Дима','Саша','Никита','Максим','Кирилл'];
+let probabilities          = {};
+let lockedParticipants     = {};
+let hasCustomProbabilities = false;
+
+/* ============================== Звуковые эффекты ============================== */
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSound(freq, duration, volume = 0.1) {
+  try {
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    oscillator.type = 'sine';
+    oscillator.frequency.value = freq;
+    gainNode.gain.value = volume;
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    const currentTime = audioCtx.currentTime;
+    oscillator.start(currentTime);
+    oscillator.stop(currentTime + duration);
+  } catch(e) {}
+}
+
+function playWinFanfare() {
+  const notes = [523, 659, 784, 1046, 784, 1046, 1319, 1568];
+  notes.forEach((freq, i) => {
+    setTimeout(() => playSound(freq, 0.2, 0.15), i * 150);
+  });
+}
+
+function unlockAudio() {
+  if(audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+document.addEventListener('touchstart', unlockAudio, {once: true});
+document.addEventListener('click', unlockAudio, {once: true});
+
+/* ============================== DOM ============================== */
+const chart = document.getElementById('chart');
+const ctx   = chart.getContext('2d');
+const namesList = document.getElementById('namesList');
+const addNameBtn = document.getElementById('addNameBtn');
+const newNameInput = document.getElementById('newNameInput');
+const equalizeBtn = document.getElementById('equalizeBtn');
+const runBtn = document.getElementById('runBtn');
+const winnerAnnouncement = document.getElementById('winnerAnnouncement');
+const winnerText = document.getElementById('winnerText');
+
+/* ============================== LocalStorage имен ============================== */
+try{
+  const saved = JSON.parse(localStorage.getItem(NAMES_KEY) || '[]');
+  if (Array.isArray(saved) && saved.length) names = saved;
+  else localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+}catch(e){}
+const saveNames = ()=>{ try{ localStorage.setItem(NAMES_KEY, JSON.stringify(names)); }catch(e){} };
+
+/* ============================== Управление вероятностями ============================== */
+function initProbabilities() {
+  try {
+    const saved       = JSON.parse(localStorage.getItem(PROB_KEY)   || '{}');
+    const savedLocked = JSON.parse(localStorage.getItem(LOCKED_KEY) || '{}');
+
+    if (saved?.hasCustomProbabilities && saved?.probabilities && Object.keys(saved.probabilities).length) {
+      probabilities          = { ...saved.probabilities };
+      lockedParticipants     = { ...savedLocked };
+      hasCustomProbabilities = true;
+
+      names.forEach((n) => { if (!(n in probabilities)) probabilities[n] = 1 / names.length; });
+      Object.keys(probabilities).forEach((n) => { if (!names.includes(n)) delete probabilities[n]; });
+      Object.keys(lockedParticipants).forEach((n) => { if (!names.includes(n)) delete lockedParticipants[n]; });
+
+      saveProbabilities();
+    } else {
+      setEqualProbabilities();
+    }
+  } catch (_) {
+    setEqualProbabilities();
+  }
+}
+
+function setEqualProbabilities() {
+  const p = 1 / (names.length || 1);
+  probabilities = {};
+  names.forEach((nm) => probabilities[nm] = p);
+  lockedParticipants     = {};
+  hasCustomProbabilities = false;
+  saveProbabilities();
+}
+
+function clampProbabilitiesMin(min = 0.001) {
+  names.forEach((nm) => { if ((probabilities[nm] ?? 0) < min) probabilities[nm] = min; });
+}
+
+function normalizeProbabilities() {
+  const vals = names.map((n) => probabilities[n] ?? 0);
+  const uniq = [...new Set(vals.map((v) => +v.toFixed(6)))];
+  if (uniq.length === 1 && !hasCustomProbabilities) {
+    const exact = 1 / (names.length || 1);
+    names.forEach((nm) => probabilities[nm] = exact);
+    return;
+  }
+
+  clampProbabilitiesMin(0.001);
+
+  const sum = names.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
+  if (sum > 0 && Math.abs(sum - 1) > 1e-4) {
+    const k = 1 / sum;
+    names.forEach((nm) => probabilities[nm] = (probabilities[nm] || 0) * k);
+  }
+
+  clampProbabilitiesMin(0.001);
+}
+
+function saveProbabilities() {
+  try {
+    const cleanP = {};
+    names.forEach((nm) => cleanP[nm] = probabilities[nm] ?? 0);
+
+    const cleanLocked = {};
+    names.forEach((nm) => { if (lockedParticipants[nm]) cleanLocked[nm] = true; });
+
+    localStorage.setItem(PROB_KEY, JSON.stringify({
+      probabilities: cleanP,
+      hasCustomProbabilities
+    }));
+    localStorage.setItem(LOCKED_KEY, JSON.stringify(cleanLocked));
+  } catch (_) {}
+}
+
+function getProbabilityPercent(name) {
+  if (!hasCustomProbabilities && names.length) return (100 / names.length).toFixed(1);
+  return (((probabilities[name] || 0) * 100).toFixed(1));
+}
+
+function adjustProbability(name, delta) {
+  const cur         = parseFloat(getProbabilityPercent(name)) || 0;
+  const maxPossible = 100 - (names.length - 1) * 0.1;
+  const next        = Math.max(0.1, Math.min(maxPossible, cur + delta));
+  setProbabilityManually(name, next);
+  renderNames();
+}
+
+function setProbabilityManually(name, percentValue) {
+  if (isNaN(percentValue) || percentValue < 0.1 || percentValue > 99.9) return false;
+
+  hasCustomProbabilities = true;
+  const newProb          = percentValue / 100;
+
+  const otherLocked      = names.filter((n) => n !== name && lockedParticipants[n]);
+  const lockedTotal      = otherLocked.reduce((s, n) => s + (probabilities[n] || 0), 0);
+  const minOthers        = (names.length - 1) * 0.001;
+
+  if (newProb + lockedTotal + minOthers > 1) {
+    lockedParticipants = {};
+    probabilities[name] = newProb;
+    lockedParticipants[name] = true;
+
+    const others  = names.filter((n) => n !== name);
+    const remain  = 1 - newProb;
+    const share   = remain / (others.length || 1);
+    others.forEach((n) => probabilities[n] = share);
+
+    normalizeProbabilities();
+    saveProbabilities();
+    return true;
+  }
+
+  lockedParticipants[name] = true;
+
+  const free   = names.filter((n) => n !== name && !lockedParticipants[n]);
+  const locked = names.filter((n) => n !== name && lockedParticipants[n]);
+
+  if (free.length) {
+    probabilities[name] = newProb;
+    const lockedSum = locked.reduce((s, n) => s + (probabilities[n] || 0), 0) + newProb;
+    let remain       = Math.max(0, 1 - lockedSum);
+
+    const freeSum = free.reduce((s, n) => s + (probabilities[n] || 0), 0);
+    if (freeSum > 0) {
+      const k = remain / freeSum;
+      free.forEach((n) => probabilities[n] = (probabilities[n] || 0) * k);
+    } else {
+      free.forEach((n) => probabilities[n] = remain / free.length);
+    }
+
+    free.forEach((n) => { if (probabilities[n] < 0.001) probabilities[n] = 0.001; });
+  } else {
+    const others = names.filter((n) => n !== name).sort((a, b) => (probabilities[a] || 0) - (probabilities[b] || 0));
+    const victim = others[0];
+    delete lockedParticipants[victim];
+
+    probabilities[name] = newProb;
+    const stillLocked   = names.filter((n) => n !== name && lockedParticipants[n]);
+    const lockedSum     = stillLocked.reduce((s, n) => s + (probabilities[n] || 0), 0) + newProb;
+    const remain        = 1 - lockedSum;
+
+    probabilities[victim] = Math.max(0.001, remain);
+  }
+
+  normalizeProbabilities();
+  saveProbabilities();
+  return true;
+}
+
+function equalizeProbabilities() {
+  setEqualProbabilities();
+  renderNames();
+  rebuildZones();
+  drawChart();
+}
+
+/* ============================== UI имён ============================== */
+function renderNames(){
+  namesList.innerHTML='';
+  names.forEach((name, idx)=>{
+    const row = document.createElement('div'); 
+    row.className='name-item';
+
+    const input = document.createElement('input');
+    input.className='name-input'; 
+    input.type='text'; 
+    input.value=name; 
+    input.placeholder='Введите имя';
+    
+    input.addEventListener('input', ()=>{
+      const v=input.value.trim(); 
+      if(!v) return;
+
+      const dup = names.some((n,i)=>i!==idx && n.toLowerCase()===v.toLowerCase());
+      if (dup){ 
+        input.style.borderColor='#ef4444'; 
+        input.style.background='rgba(239,68,68,0.1)'; 
+        return; 
+      }
+
+      input.style.borderColor='rgba(255,255,255,0.2)'; 
+      input.style.background='rgba(255,255,255,0.1)';
+
+      const oldName = names[idx];
+
+      if (oldName in probabilities) {
+        probabilities[v] = probabilities[oldName];
+        delete probabilities[oldName];
+      }
+      if (oldName in lockedParticipants) {
+        lockedParticipants[v] = true;
+        delete lockedParticipants[oldName];
+      }
+      saveProbabilities();
+
+      names[idx]=v; 
+      saveNames(); 
+      rebuildZones(); 
+      drawChart();
+      renderNames();
+    });
+
+    const controls = document.createElement('div'); 
+    controls.className='probability-controls';
+
+    const minus = document.createElement('button'); 
+    minus.className='prob-btn'; 
+    minus.textContent='−';
+    minus.onclick=()=>{ 
+      adjustProbability(name,-1); 
+      rebuildZones(); 
+      drawChart(); 
+    };
+
+    const prob = document.createElement('input');
+    prob.className='probability-input'; 
+    prob.type='text'; 
+    prob.inputMode='decimal';
+    prob.value = getProbabilityPercent(name);
+    if (lockedParticipants[name]) {
+      prob.classList.add('manual');
+    }
+
+    let lastValid = prob.value;
+
+    prob.addEventListener('focus', ()=>{ 
+      prob.value = prob.value.replace('%', '');
+      lastValid = prob.value; 
+    });
+
+    prob.addEventListener('input', ()=>{
+      const val = prob.value.replace('%', '').trim();
+      const num = parseFloat(val);
+      if (val === '' || (num >= 0.1 && num <= 99.9)){
+        prob.classList.remove('error');
+      } else {
+        prob.classList.add('error');
+      }
+    });
+
+    prob.addEventListener('blur', ()=>{
+      const val = prob.value.replace('%', '').trim();
+      const num = parseFloat(val);
+
+      if (val === '' || isNaN(num) || num < 0.1 || num > 99.9){ 
+        prob.value = lastValid; 
+        prob.classList.remove('error'); 
+        playSound(300, 0.1, 0.2);
+        return; 
+      }
+
+      if (setProbabilityManually(name, num)){ 
+        lastValid = getProbabilityPercent(name); 
+        renderNames(); 
+        rebuildZones(); 
+        drawChart(); 
+      } else {
+        prob.value = lastValid;
+        prob.classList.remove('error');
+      }
+    });
+
+    prob.addEventListener('keypress', e=>{
+      if (e.key==='Enter') { e.preventDefault(); prob.blur(); }
+      if (!/[\d.]/.test(e.key) && e.key!=='Enter') e.preventDefault();
+    });
+
+    const plus = document.createElement('button'); 
+    plus.className='prob-btn'; 
+    plus.textContent='+';
+    plus.onclick=()=>{ 
+      adjustProbability(name,1); 
+      rebuildZones(); 
+      drawChart(); 
+    };
+
+    controls.append(minus, prob, plus);
+
+    const del = document.createElement('button'); 
+    del.className='remove-btn'; 
+    del.textContent='✕';
+    del.onclick=()=>{
+      if (names.length<=2) return alert('Должно быть минимум 2 участника!');
+      const removedName = names[idx]; 
+      names.splice(idx,1); 
+      delete probabilities[removedName];
+      delete lockedParticipants[removedName];
+
+      saveNames();
+      normalizeProbabilities();
+      saveProbabilities();
+      
+      renderNames(); 
+      rebuildZones(); 
+      drawChart();
+    };
+
+    row.append(input, controls, del);
+    namesList.appendChild(row);
+  });
+}
+
+function addNew(){
+  const v=newNameInput.value.trim(); 
+  if(!v) return;
+
+  if (names.some(n=>n.toLowerCase()===v.toLowerCase())){
+    newNameInput.style.borderColor='#ef4444'; 
+    newNameInput.style.background='rgba(239,68,68,0.1)';
+    setTimeout(()=>{ 
+      newNameInput.style.borderColor='rgba(255,255,255,0.2)'; 
+      newNameInput.style.background='rgba(255,255,255,0.1)'; 
+    },900);
+    return;
+  }
+
+  newNameInput.value=''; 
+  newNameInput.style.borderColor='rgba(255,255,255,0.2)';
+  newNameInput.style.background='rgba(255,255,255,0.1)';
+
+  names.push(v);
+  saveNames();
+
+  probabilities[v] = 1 / names.length;
+  normalizeProbabilities();
+  saveProbabilities();
+
+  renderNames(); 
+  rebuildZones(); 
+  drawChart();
+}
+
+addNameBtn.addEventListener('click', addNew);
+newNameInput.addEventListener('keypress', e=>{ if(e.key==='Enter') addNew(); });
+equalizeBtn.addEventListener('click', equalizeProbabilities);
+
+/* ============================== График ============================== */
+let DPR = Math.max(1, Math.min(3, window.devicePixelRatio||1));
+let W=0, H=0, PADDING_LEFT=80, PADDING_RIGHT=50, PADDING_TOP=50, PADDING_BOTTOM=50;
+const MAX_CANDLES=48;
+const isMobile = window.innerWidth <= 980;
+
+function resize(){
+  const wrap = document.querySelector('.chart-wrap');
+  const cssW = wrap.clientWidth, cssH=wrap.clientHeight;
+  DPR = Math.max(1, Math.min(3, window.devicePixelRatio||1));
+  chart.style.width = cssW+'px'; chart.style.height = cssH+'px';
+  chart.width = Math.round(cssW*DPR); chart.height = Math.round(cssH*DPR);
+  ctx.setTransform(1,0,0,1,0,0); ctx.scale(DPR,DPR);
+  W=cssW; H=cssH;
+  
+  if(window.innerWidth <= 480) {
+    PADDING_LEFT = 60;
+    PADDING_RIGHT = 35;
+    PADDING_TOP = 40;
+    PADDING_BOTTOM = 40;
+  } else if(window.innerWidth <= 980) {
+    PADDING_LEFT = 70;
+    PADDING_RIGHT = 40;
+    PADDING_TOP = 45;
+    PADDING_BOTTOM = 45;
+  } else {
+    PADDING_LEFT = 80;
+    PADDING_RIGHT = 50;
+    PADDING_TOP = 50;
+    PADDING_BOTTOM = 50;
+  }
+  
+  rebuildZones(); drawChart();
+}
+window.addEventListener('resize', ()=>{ clearTimeout(window.__rs); window.__rs=setTimeout(resize,120); });
+
+let zones=[];
+function rebuildZones(){
+  zones=[];
+  const top=PADDING_TOP, bottom=H-PADDING_BOTTOM;
+  let acc=top;
+  names.forEach((n,i)=>{
+    const h = Math.max(8,(probabilities[n]||0)*(bottom-top));
+    const y0 = acc, y1 = Math.min(bottom, acc+h); acc=y1;
+    zones.push({name:n,y0,y1,color:colors[i%colors.length]});
+  });
+}
+
+let candles=[];
+function seedCandles(){
+  candles=[];
+  const top=PADDING_TOP, bottom=H-PADDING_BOTTOM;
+  let price = top + Math.random()*(bottom-top);
+  const BASE = Math.max(8, (bottom-top)*0.035);
+  const WICK = Math.max(6, (bottom-top)*0.025);
+  const hist=17;
+  for(let i=0;i<hist;i++){
+    const drift=(Math.random()-0.5)*BASE*2;
+    const o=price, c=price+drift;
+    const hi=Math.min(o,c)-(Math.random()*WICK+2);
+    const lo=Math.max(o,c)+(Math.random()*WICK+2);
+    candles.push({o, h:Math.min(hi,o,c), l:Math.max(lo,o,c), c});
+    price=c;
+    if(price<top+8) price=top+8+Math.random()*12;
+    if(price>bottom-8) price=bottom-8-Math.random()*12;
+  }
+}
+
+function drawChart(priceY=null, elapsed=0, total=1){
+  ctx.clearRect(0,0,W,H);
+
+  const grad = ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'rgba(102,126,234,.08)'); grad.addColorStop(1,'rgba(118,75,162,.08)');
+  ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+
+  const nameSize = window.innerWidth <= 480 ? 11 : window.innerWidth <= 980 ? 12 : 14;
+  const timerSize = window.innerWidth <= 480 ? 13 : window.innerWidth <= 980 ? 14 : 16;
+  const finishSize = window.innerWidth <= 480 ? 11 : window.innerWidth <= 980 ? 12 : 14;
+  const candleWidth = window.innerWidth <= 480 ? 5 : window.innerWidth <= 980 ? 6 : 6;
+  const lineThickness = window.innerWidth <= 480 ? 3 : 4;
+
+  zones.forEach(z=>{
+    ctx.fillStyle = z.color + '1a';
+    ctx.fillRect(PADDING_LEFT,z.y0,W-PADDING_LEFT-PADDING_RIGHT,z.y1-z.y0);
+    ctx.strokeStyle='rgba(255,255,255,0.15)';
+    ctx.beginPath(); ctx.moveTo(PADDING_LEFT,z.y1); ctx.lineTo(W-PADDING_RIGHT,z.y1); ctx.stroke();
+    
+    const zoneHeight = z.y1 - z.y0;
+    if(zoneHeight > 20) {
+      ctx.fillStyle='rgba(255,255,255,0.85)'; 
+      ctx.font=`700 ${nameSize}px Montserrat, sans-serif`; 
+      ctx.textAlign='left';
+      const maxWidth = PADDING_LEFT - 12;
+      let displayName = z.name;
+      if(ctx.measureText(displayName).width > maxWidth) {
+        displayName = z.name.substring(0, 3) + '..';
+      }
+      ctx.fillText(displayName, 6, (z.y0+z.y1)/2+4);
+    }
+  });
+
+  ctx.strokeStyle='rgba(255,255,255,0.08)';
+  const gridLines = window.innerWidth <= 480 ? 4 : 6;
+  for(let i=0;i<gridLines;i++){
+    const x=PADDING_LEFT+(W-PADDING_LEFT-PADDING_RIGHT)*(i/(gridLines-1));
+    ctx.beginPath(); ctx.moveTo(x,PADDING_TOP); ctx.lineTo(x,H-PADDING_BOTTOM); ctx.stroke();
+  }
+
+  ctx.setLineDash([8,8]); 
+  ctx.strokeStyle='rgba(255,212,59,0.95)'; 
+  ctx.lineWidth=lineThickness;
+  ctx.shadowColor='rgba(255,212,59,0.8)'; 
+  ctx.shadowBlur=12;
+  ctx.beginPath(); 
+  ctx.moveTo(W-PADDING_RIGHT,PADDING_TOP); 
+  ctx.lineTo(W-PADDING_RIGHT,H-PADDING_BOTTOM); 
+  ctx.stroke();
+  ctx.shadowBlur=0;
+  ctx.setLineDash([]);
+  
+  ctx.fillStyle='#ffd43b'; 
+  ctx.font=`800 ${finishSize}px Montserrat, sans-serif`; 
+  ctx.textAlign='center';
+  ctx.fillText('🏁 ФИНИШ', W-PADDING_RIGHT, PADDING_TOP-12);
+
+  const leftMs = Math.max(0,total-elapsed);
+  ctx.fillStyle='#ffd43b'; ctx.font=`800 ${timerSize}px Montserrat, sans-serif`; ctx.textAlign='left';
+  ctx.shadowColor='rgba(0,0,0,0.3)'; ctx.shadowBlur=4;
+  ctx.fillText(`⏱ ${(leftMs/1000).toFixed(1)}s`, PADDING_LEFT+4, PADDING_TOP-12); ctx.shadowBlur=0;
+
+  const p=Math.max(0,Math.min(1,elapsed/total));
+  const progressHeight = window.innerWidth <= 480 ? 6 : 8;
+  ctx.fillStyle='rgba(255,255,255,0.15)'; 
+  ctx.fillRect(PADDING_LEFT, H-PADDING_BOTTOM+8, W-PADDING_LEFT-PADDING_RIGHT, progressHeight);
+  const pg = ctx.createLinearGradient(PADDING_LEFT,0,W-PADDING_RIGHT,0);
+  pg.addColorStop(0,'#667eea'); pg.addColorStop(1,'#764ba2');
+  ctx.fillStyle=pg; 
+  ctx.fillRect(PADDING_LEFT, H-PADDING_BOTTOM+8, (W-PADDING_LEFT-PADDING_RIGHT)*p, progressHeight);
+
+  const plotW=W-PADDING_LEFT-PADDING_RIGHT; 
+  const step=plotW/(MAX_CANDLES-1);
+  for(let i=0;i<candles.length;i++){
+    const x=PADDING_LEFT+i*step, c=candles[i];
+    
+    ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=window.innerWidth <= 480 ? 1.5 : 2;
+    ctx.beginPath(); ctx.moveTo(x,c.h); ctx.lineTo(x,c.l); ctx.stroke();
+    
+    const up=c.c<=c.o; 
+    ctx.fillStyle=up?'#51cf66':'#ff6b6b';
+    const y=Math.min(c.o,c.c);
+    const h=Math.max(4,Math.abs(c.o-c.c));
+    ctx.fillRect(x-candleWidth,y,candleWidth*2,h);
+    ctx.strokeStyle=up?'#40c057':'#fa5252'; 
+    ctx.lineWidth=window.innerWidth <= 480 ? 1 : 1.5;
+    ctx.strokeRect(x-candleWidth,y,candleWidth*2,h);
+  }
+
+  if(priceY!=null){
+    const priceLineWidth = window.innerWidth <= 480 ? 2.5 : 3;
+    const priceCircleR = window.innerWidth <= 480 ? 5 : 6;
+    ctx.strokeStyle='#ffd43b'; ctx.lineWidth=priceLineWidth; ctx.shadowColor='rgba(255,212,59,0.5)'; ctx.shadowBlur=8;
+    ctx.beginPath(); ctx.moveTo(PADDING_LEFT,priceY); ctx.lineTo(W-PADDING_RIGHT,priceY); ctx.stroke(); ctx.shadowBlur=0;
+    ctx.fillStyle='#ffd43b'; ctx.beginPath(); ctx.arc(W-PADDING_RIGHT,priceY,priceCircleR,0,Math.PI*2); ctx.fill();
+  }
+}
+
+/* ============================== Симуляция ============================== */
+let animId=null, running=false, startTime=0, duration=6000;
+let lastCandleTime=0, candlePeriod=190;
+let priceY=null, vel=0;
+
+function announce(name){
+  winnerText.textContent = '🎉 Победитель: ' + name + ' 🎉';
+  winnerAnnouncement.classList.add('show');
+  
+  createScreenFlash();
+  playWinFanfare();
+  
+  setTimeout(() => createConfetti(), 100);
+  setTimeout(() => createFireworks(), 200);
+  setTimeout(() => createCelebrationEmojis(), 300);
+  setTimeout(() => createCelebrationWords(), 500);
+  
+  setTimeout(()=>winnerAnnouncement.classList.remove('show'), 3500);
+}
+
+/* ============================== Празднование ============================== */
+function createScreenFlash(){
+  const flash = document.createElement('div');
+  flash.className = 'screen-flash';
+  document.body.appendChild(flash);
+  setTimeout(() => flash.remove(), 600);
+}
+
+function createConfetti(){
+  const colors = ['#ff6b6b','#ffd43b','#51cf66','#339af0','#da77f2','#66d9e8','#fb923c','#ec4899','#8b5cf6','#14b8a6'];
+  const isMobile = window.innerWidth <= 980;
+  const count = isMobile ? 60 : 120;
+  
+  for(let i=0; i<count; i++){
+    setTimeout(()=>{
+      const confetti = document.createElement('div');
+      confetti.className = 'confetti';
+      confetti.style.left = (Math.random() * 100) + '%';
+      confetti.style.top = '-20px';
+      confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
+      confetti.style.width = (5 + Math.random() * 10) + 'px';
+      confetti.style.height = (5 + Math.random() * 10) + 'px';
+      confetti.style.animationDelay = (Math.random() * 0.5) + 's';
+      confetti.style.animationDuration = (2 + Math.random() * 2) + 's';
+      document.body.appendChild(confetti);
+      setTimeout(() => confetti.remove(), 4000);
+    }, i * 25);
+  }
+}
+
+function createCelebrationEmojis(){
+  const emojis = ['🎉', '🎊', '🏆', '⭐', '✨', '🎯', '🔥', '💫', '🌟', '👏', '🙌', '🎈', '🎆', '💥', '🥳', '🎁', '🍾', '🥇', '💎'];
+  const isMobile = window.innerWidth <= 980;
+  const count = isMobile ? 15 : 25;
+  
+  for(let i=0; i<count; i++){
+    setTimeout(()=>{
+      const emoji = document.createElement('div');
+      emoji.className = 'celebration-emoji';
+      emoji.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+      emoji.style.left = (Math.random() * 100) + '%';
+      emoji.style.top = (Math.random() * 100) + '%';
+      emoji.style.animationDelay = (Math.random() * 0.5) + 's';
+      document.body.appendChild(emoji);
+      setTimeout(() => emoji.remove(), 3500);
+    }, i * 120);
+  }
+}
+
+function createCelebrationWords(){
+  const words = [
+    'ВАУ', 'ЧЕМПИОН', 'МОЛОДЕЦ', 'КРАСАВА', 'ЛЕГЕНДА', 'ВПЕРЁД', 'ТОПЧИК', 'ПОБЕДА',
+    'ОГОНЬ', 'ТЫ ЛУЧШИЙ', 'ДАВАЙ ЕЩЁ', 'НЕВЕРОЯТНО', 'СУПЕР', 'КРАСАВЧИК', 'МАСТЕР',
+    'ГЕНИЙ', 'БОСС', 'ЭПИЧНО', 'БРАВО', 'ГГ', 'РЕСПЕКТ', 'ШИКАРНО', 'КРУТЯК', 'МОЩНО',
+    'КРУТО', 'ФАЙЕР', 'БОМБА', 'ТОП-1', 'ПРО', 'МАГИЯ', 'ЧУДО', 'ФАНТАСТИКА', 'ИМБА',
+    'БЕЗ LEVERAGE', 'БЕЗ СТОП-АУТОВ', 'ТЭЙК ПРОФИТ!', 'КОРОЛЬ',
+    'TO THE MOON', 'DIAMOND HANDS', 'КУПИ ЛАМБУ', 'BULL RUN', 'ШОРТ ЗАКРЫТ',
+    'ДЕРЖИ ДО ЛУНЫ', 'НЕ СЛИВАЙ', 'ПАМП ИДЁТ', 'WHALE MODE', 'КРИПТОБОГ'
+  ];
+  
+  const isMobile = window.innerWidth <= 980;
+  const gridCols = isMobile ? 3 : 5;
+  const gridRows = isMobile ? 4 : 3;
+  const positions = [];
+  
+  for(let row = 0; row < gridRows; row++){
+    for(let col = 0; col < gridCols; col++){
+      positions.push({
+        left: (col * (100 / gridCols)) + (100 / gridCols / 2),
+        top: (row * (100 / gridRows)) + (100 / gridRows / 2)
+      });
+    }
+  }
+  
+  positions.sort(() => Math.random() - 0.5);
+  
+  const wordsToShow = isMobile ? 8 : 12;
+  
+  for(let i = 0; i < wordsToShow; i++){
+    setTimeout(() => {
+      const word = document.createElement('div');
+      word.className = 'celebration-word';
+      word.textContent = words[Math.floor(Math.random() * words.length)];
+      
+      const pos = positions[i % positions.length];
+      word.style.left = (pos.left + (Math.random() - 0.5) * 15) + '%';
+      word.style.top = (pos.top + (Math.random() - 0.5) * 15) + '%';
+      word.style.animationDelay = (Math.random() * 0.3) + 's';
+      word.style.color = '#fff';
+      
+      document.body.appendChild(word);
+      setTimeout(() => word.remove(), 4500);
+    }, i * 150);
+  }
+}
+
+function createFireworks(){
+  const isMobile = window.innerWidth <= 980;
+  const fireworkCount = isMobile ? 3 : 5;
+  
+  for(let f = 0; f < fireworkCount; f++){
+    setTimeout(() => {
+      const x = 20 + Math.random() * 60;
+      const y = 20 + Math.random() * 40;
+      const particleCount = isMobile ? 30 : 50;
+      const colors = ['#ff6b6b','#ffd43b','#51cf66','#339af0','#da77f2','#66d9e8'];
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      
+      for(let i = 0; i < particleCount; i++){
+        const particle = document.createElement('div');
+        particle.className = 'firework';
+        particle.style.left = x + '%';
+        particle.style.top = y + '%';
+        particle.style.background = color;
+        
+        const angle = (Math.PI * 2 * i) / particleCount;
+        const velocity = 100 + Math.random() * 100;
+        const tx = Math.cos(angle) * velocity;
+        const ty = Math.sin(angle) * velocity;
+        
+        particle.style.animation = `firework-burst ${0.8 + Math.random() * 0.4}s ease-out forwards`;
+        particle.style.transform = `translate(${tx}px, ${ty}px) scale(0)`;
+        
+        document.body.appendChild(particle);
+        setTimeout(() => particle.remove(), 1500);
+      }
+    }, f * 600);
+  }
+}
+
+function startSession(){
+  if(running) return;
+  running=true; runBtn.disabled=true; winnerAnnouncement.classList.remove('show');
+
+  rebuildZones(); seedCandles(); drawChart();
+  priceY = candles[candles.length-1]?.c ?? (PADDING_TOP + (H-PADDING_TOP-PADDING_BOTTOM)/2);
+  vel = (Math.random()-0.5)*10; startTime=performance.now(); lastCandleTime=startTime;
+
+  const bucket=[];
+  names.forEach(n=>{ const w=Math.max(1,Math.round((probabilities[n]||0)*1000)); for(let i=0;i<w;i++) bucket.push(n); });
+  const winner=bucket[Math.floor(Math.random()*bucket.length)];
+  const z=zones.find(zz=>zz.name===winner) || zones[0];
+  const targetY=(z.y0+z.y1)/2;
+
+  function frame(t){
+    animId=requestAnimationFrame(frame);
+    const elapsed=t-startTime;
+
+    const noise=(Math.random()-0.5)*4.5; 
+    vel=vel*0.92+noise; 
+    priceY+=vel;
+    
+    if(priceY<PADDING_TOP+8){ priceY=PADDING_TOP+8; vel=Math.abs(vel)*0.8 }
+    if(priceY>H-PADDING_BOTTOM-8){ priceY=H-PADDING_BOTTOM-8; vel=-Math.abs(vel)*0.8 }
+
+    if(t-lastCandleTime>=candlePeriod){
+      const prev=candles[candles.length-1] || {o:priceY,h:priceY,l:priceY,c:priceY};
+      const drift=(Math.random()-0.5)*16;
+      const o=prev.c, c=priceY+drift;
+      const BASE_WICK = 8;
+      const h=Math.min(o,c) - (BASE_WICK+Math.random()*12);
+      const l=Math.max(o,c) + (BASE_WICK+Math.random()*12);
+      candles.push({o,h:Math.min(h,o,c), l:Math.max(l,o,c), c});
+      if(candles.length>MAX_CANDLES) candles.shift();
+      lastCandleTime=t;
+    }else{
+      const last=candles[candles.length-1];
+      if(last){ 
+        last.c=priceY; 
+        last.h=Math.min(last.h,priceY); 
+        last.l=Math.max(last.l,priceY); 
+      }
+    }
+
+    const left=duration-elapsed;
+    if(left<=850){
+      const k=1-Math.max(0,left)/850, ease= p=>1-Math.pow(1-p,3);
+      const b=ease(k); priceY=priceY*(1-b)+targetY*b; vel*=0.6;
+    }
+
+    drawChart(priceY, elapsed, duration);
+
+    if(elapsed>=duration){
+      cancelAnimationFrame(animId); running=false; runBtn.disabled=false;
+      const winZone = zones.find(zz=>priceY>=zz.y0 && priceY<=zz.y1) || z;
+      announce(winZone.name);
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ============================== INIT ============================== */
+function init(){
+  initProbabilities();
+  renderNames();
+  resize();
+  drawChart();
+}
+runBtn.addEventListener('click', startSession);
+init();
+</script>
+</body>
+</html>
