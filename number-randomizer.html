@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+  <title>Рандомайзер чисел — случайное число онлайн</title>
+  <meta name="description" content="✏️ Генератор случайных чисел с карандашным дизайном. Выбери диапазон и получи случайное число!">
+  <meta name="robots" content="index,follow">
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Bangers&family=Permanent+Marker&display=swap" rel="stylesheet">
+
+  <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/3524/3524335.png" type="image/png">
+  <meta name="theme-color" content="#ffffff">
+
+  <style>
+    * { 
+      margin: 0; 
+      padding: 0; 
+      box-sizing: border-box; 
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      
+      --white: #fcfcfc;
+      --black: #232323; /* не глухой, ближе к карандашу */
+      --gray-light: #f3f3f3;
+      --gray-medium: #c7c7c7;
+      --gray-dark: #777777;
+    }
+
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 0 0, rgba(0,0,0,0.04), transparent 55%),
+        radial-gradient(circle at 100% 100%, rgba(0,0,0,0.04), transparent 55%),
+        var(--white);
+      font-family: 'Permanent Marker', 'Bangers', cursive;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: calc(80px + var(--safe-top)) var(--safe-right) calc(20px + var(--safe-bottom)) var(--safe-left);
+      position: relative;
+      overflow-x: hidden;
+      color: var(--black);
+    }
+
+    /* Кнопка домой, тоже чуть карандашная */
+    .home-button {
+      position: fixed;
+      top: calc(20px + var(--safe-top));
+      left: calc(20px + var(--safe-left));
+      z-index: 1000;
+      padding: 10px 22px;
+      background: var(--white);
+      color: var(--black);
+      text-decoration: none;
+      font-family: 'Bangers', cursive;
+      font-size: 20px;
+      border-radius: 12px;
+      border: 2px solid var(--black);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.5),
+        3px 3px 0 rgba(0,0,0,0.5);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      transform: rotate(-2deg);
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.08) 0 1px,
+          transparent 1px 3px
+        );
+    }
+
+    .home-button:hover {
+      transform: rotate(-2deg) translate(-2px, -2px);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.6),
+        5px 5px 0 rgba(0,0,0,0.6);
+    }
+
+    .home-button:active {
+      transform: rotate(-2deg) translate(2px, 2px);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.6),
+        1px 1px 0 rgba(0,0,0,0.6);
+    }
+
+    /* Лист в клетку/линейку легким карандашом */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: 
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 27px,
+          rgba(0,0,0,0.04) 27px,
+          rgba(0,0,0,0.04) 28px
+        ),
+        repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent 27px,
+          rgba(0,0,0,0.025) 27px,
+          rgba(0,0,0,0.025) 28px
+        );
+      mix-blend-mode: multiply;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .container {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      max-width: 1100px;
+      background: var(--white);
+      padding: 40px 30px;
+      border-radius: 20px;
+      border: 2px solid var(--black);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.7),
+        6px 6px 0 rgba(0,0,0,0.7);
+      transform: rotate(-0.8deg);
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.03) 0 2px,
+          transparent 2px 4px
+        );
+      overflow: hidden;
+    }
+
+    /* "Кривой" контур, как от руки */
+    .container::before {
+      content: '';
+      position: absolute;
+      inset: 6px;
+      border-radius: 16px;
+      border: 2px dashed rgba(0,0,0,0.3);
+      transform: rotate(0.8deg);
+      pointer-events: none;
+    }
+
+    .main-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      align-items: start;
+    }
+
+    .settings-column {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .generator-column {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 400px;
+    }
+
+    h1 {
+      font-family: 'Bangers', cursive;
+      font-size: clamp(32px, 8vw, 52px);
+      color: var(--black);
+      text-align: center;
+      margin-bottom: 30px;
+      font-weight: 400;
+      letter-spacing: 2px;
+      position: relative;
+      text-shadow:
+        0 0 1px rgba(0,0,0,0.8),
+        -1px 1px 0 rgba(255,255,255,0.5);
+      transform: rotate(-3deg);
+      grid-column: 1 / -1;
+    }
+
+    .subtitle {
+      display: none;
+    }
+
+    .input-group {
+      background: var(--gray-light);
+      padding: 20px;
+      border-radius: 15px;
+      position: relative;
+      border: 2px solid var(--black);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.4),
+        4px 4px 0 rgba(0,0,0,0.4);
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.02) 0 2px,
+          transparent 2px 4px
+        );
+    }
+
+    .input-group::after {
+      content: '';
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid var(--black);
+      background:
+        radial-gradient(circle at 30% 30%, rgba(0,0,0,0.15), transparent 60%),
+        var(--white);
+    }
+
+    .input-label {
+      display: block;
+      font-size: clamp(18px, 4.5vw, 22px);
+      color: var(--black);
+      margin-bottom: 15px;
+      font-family: 'Bangers', cursive;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .range-inputs {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    .range-input-wrapper {
+      flex: 1;
+      max-width: 130px;
+    }
+
+    .range-input-wrapper label {
+      display: block;
+      font-size: 16px;
+      color: var(--gray-dark);
+      margin-bottom: 8px;
+      text-align: center;
+      font-family: 'Permanent Marker', cursive;
+      text-transform: uppercase;
+    }
+
+    input[type="number"] {
+      width: 100%;
+      padding: 14px 10px;
+      font-family: 'Bangers', cursive;
+      font-size: clamp(22px, 5.5vw, 32px);
+      font-weight: 400;
+      text-align: center;
+      border-radius: 10px;
+      background: var(--white);
+      color: var(--black);
+      border: 2px solid var(--black);
+      box-shadow:
+        inset 0 0 0 1px rgba(0,0,0,0.3),
+        3px 3px 0 rgba(0,0,0,0.4);
+      transition: all 0.3s ease;
+      -moz-appearance: textfield;
+      letter-spacing: 1px;
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.02) 0 2px,
+          transparent 2px 4px
+        );
+    }
+
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    input[type="number"]:focus {
+      outline: none;
+      transform: translateY(-2px) rotate(-1deg);
+      box-shadow:
+        inset 0 0 0 1px rgba(0,0,0,0.35),
+        4px 4px 0 rgba(0,0,0,0.55);
+    }
+
+    input[type="number"].error {
+      background:
+        repeating-linear-gradient(
+          45deg,
+          #ffffff 0 6px,
+          #f0f0f0 6px 12px
+        );
+      animation: shake 0.5s ease;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0) rotate(0deg); }
+      25% { transform: translateX(-4px) rotate(-1.5deg); }
+      75% { transform: translateX(4px) rotate(1.5deg); }
+    }
+
+    .range-separator {
+      font-size: clamp(28px, 7vw, 40px);
+      color: var(--black);
+      font-family: 'Bangers', cursive;
+      margin-top: 25px;
+      font-weight: 400;
+    }
+
+    .slider-container {
+      position: relative;
+      margin: 25px 0 15px;
+    }
+
+    .dual-slider {
+      position: relative;
+      height: 50px;
+      display: flex;
+      align-items: center;
+    }
+
+    .slider-track {
+      position: absolute;
+      width: 100%;
+      height: 12px;
+      background: var(--white);
+      border-radius: 6px;
+      border: 2px solid var(--black);
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.35);
+    }
+
+    .slider-range {
+      position: absolute;
+      height: 10px;
+      border-radius: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      background-image:
+        repeating-linear-gradient(
+          90deg,
+          rgba(0,0,0,0.65) 0 3px,
+          rgba(0,0,0,0.35) 3px 6px
+        );
+      box-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    }
+
+    input[type="range"] {
+      position: absolute;
+      width: 100%;
+      height: 12px;
+      background: transparent;
+      pointer-events: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--white);
+      border: 2px solid var(--black);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.6),
+        3px 3px 0 rgba(0,0,0,0.6);
+      cursor: pointer;
+      pointer-events: auto;
+      transition: all 0.2s ease;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--white);
+      border: 2px solid var(--black);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.6),
+        3px 3px 0 rgba(0,0,0,0.6);
+      cursor: pointer;
+      pointer-events: auto;
+      transition: all 0.2s ease;
+    }
+
+    input[type="range"]:active::-webkit-slider-thumb {
+      transform: scale(1.07) rotate(7deg);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.7),
+        4px 4px 0 rgba(0,0,0,0.7);
+    }
+
+    input[type="range"]:active::-moz-range-thumb {
+      transform: scale(1.07) rotate(7deg);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.7),
+        4px 4px 0 rgba(0,0,0,0.7);
+    }
+
+    .slider-values {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 12px;
+      font-size: 18px;
+      color: var(--gray-dark);
+      font-family: 'Permanent Marker', cursive;
+    }
+
+    /* Кнопка генерации: карандашная, ниже результата */
+    .generate-btn {
+      padding: 18px 34px;
+      font-family: 'Bangers', cursive;
+      font-size: clamp(24px, 6vw, 34px);
+      font-weight: 400;
+      color: var(--black);
+      background: var(--gray-light);
+      border-radius: 14px;
+      cursor: pointer;
+      border: 2px solid var(--black);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.6),
+        4px 4px 0 rgba(0,0,0,0.7);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
+      overflow: hidden;
+      touch-action: manipulation;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      transform: rotate(-1deg);
+      margin-top: 26px; /* было margin-bottom, теперь кнопка ниже */
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.08) 0 2px,
+          transparent 2px 5px
+        );
+    }
+
+    .generate-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(
+          90deg,
+          transparent 0 15px,
+          rgba(0,0,0,0.08) 15px 17px
+        );
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      pointer-events: none;
+    }
+
+    .generate-btn:hover:not(:disabled)::before {
+      opacity: 1;
+    }
+
+    .generate-btn:hover:not(:disabled) {
+      transform: rotate(-1deg) translate(-2px, -2px);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.75),
+        6px 6px 0 rgba(0,0,0,0.8);
+    }
+
+    .generate-btn:active:not(:disabled) {
+      transform: rotate(-1deg) translate(2px, 2px);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.75),
+        2px 2px 0 rgba(0,0,0,0.8);
+    }
+
+    .generate-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: rotate(-1deg);
+    }
+
+    .result-container {
+      text-align: center;
+      min-height: 200px;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--white);
+      border-radius: 15px;
+      padding: 25px;
+      position: relative;
+      border: 2px dashed var(--black);
+      box-shadow:
+        inset 0 0 0 1px rgba(0,0,0,0.25);
+      transform: rotate(1deg);
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.02) 0 3px,
+          transparent 3px 6px
+        );
+    }
+
+    .result-container::before {
+      content: '?';
+      position: absolute;
+      font-size: 110px;
+      color: rgba(0,0,0,0.04);
+      font-weight: 700;
+      pointer-events: none;
+      font-family: 'Bangers', cursive;
+    }
+
+    .result-number {
+      font-family: 'Bangers', cursive;
+      font-size: clamp(64px, 18vw, 110px);
+      font-weight: 400;
+      color: var(--black);
+      text-shadow:
+        0 0 1px rgba(0,0,0,0.6),
+        -1px 1px 0 rgba(255,255,255,0.6);
+      opacity: 0;
+      transform: scale(0) rotate(-10deg);
+      position: relative;
+      z-index: 2;
+      letter-spacing: 3px;
+    }
+
+    .result-number.show {
+      animation: popIn 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+    }
+
+    @keyframes popIn {
+      0% { 
+        opacity: 0; 
+        transform: scale(0) rotate(-10deg); 
+      }
+      50% { 
+        transform: scale(1.1) rotate(4deg); 
+      }
+      100% { 
+        opacity: 1; 
+        transform: scale(1) rotate(-2deg); 
+      }
+    }
+
+    .loading {
+      font-size: clamp(22px, 5.5vw, 30px);
+      color: var(--gray-dark);
+      font-family: 'Permanent Marker', cursive;
+      animation: pulse 1s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.03); }
+    }
+
+    .pencil-decoration {
+      position: fixed;
+      pointer-events: none;
+      opacity: 0.16;
+      z-index: 0;
+      font-size: 72px;
+      filter: grayscale(1);
+      color: var(--black);
+    }
+
+    .pencil-decoration.top-left {
+      top: 35px;
+      right: 30px;
+      transform: rotate(-20deg);
+    }
+
+    .pencil-decoration.bottom-right {
+      bottom: 30px;
+      left: 30px;
+      transform: rotate(160deg);
+    }
+
+    .error-message {
+      color: var(--black);
+      background: var(--white);
+      border-radius: 8px;
+      font-size: 15px;
+      margin-top: 15px;
+      text-align: center;
+      font-family: 'Permanent Marker', cursive;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      border: 2px solid var(--black);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.4),
+        3px 3px 0 rgba(0,0,0,0.5);
+      transform: rotate(-1deg);
+      padding: 8px 12px;
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.02) 0 2px,
+          transparent 2px 4px
+        );
+    }
+
+    .error-message.show {
+      opacity: 1;
+      animation: wiggle 0.5s ease;
+    }
+
+    @keyframes wiggle {
+      0%, 100% { transform: rotate(-1deg); }
+      25% { transform: rotate(-3deg); }
+      75% { transform: rotate(1deg); }
+    }
+
+    /* Декоративные штуки — звездочки/крестики, черно-белые */
+    .star-decoration {
+      position: absolute;
+      font-size: 22px;
+      opacity: 0.22;
+      pointer-events: none;
+      font-family: 'Bangers', cursive;
+      color: var(--black);
+    }
+
+    .star-decoration:nth-child(1) { top: 10px; right: 16px; transform: rotate(9deg); }
+    .star-decoration:nth-child(2) { top: 50%; left: -6px; transform: rotate(-18deg); }
+    .star-decoration:nth-child(3) { bottom: 15px; right: -4px; transform: rotate(27deg); }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: calc(80px + var(--safe-top)) 12px calc(20px + var(--safe-bottom)) 12px;
+      }
+
+      .home-button {
+        font-size: 18px;
+        padding: 8px 18px;
+      }
+
+      .container {
+        padding: 28px 18px;
+        transform: rotate(-0.4deg);
+      }
+
+      .main-layout {
+        grid-template-columns: 1fr;
+        gap: 25px;
+      }
+
+      .generator-column {
+        min-height: auto;
+      }
+
+      .generate-btn {
+        width: 100%;
+        margin-top: 20px;
+        padding: 16px 24px;
+      }
+
+      .result-container {
+        min-height: 160px;
+      }
+
+      .range-inputs {
+        gap: 10px;
+      }
+
+      .slider-values {
+        font-size: 16px;
+      }
+
+      .pencil-decoration {
+        font-size: 56px;
+      }
+    }
+
+    @media (max-width: 360px) {
+      .range-input-wrapper {
+        max-width: 110px;
+      }
+
+      input[type="number"] {
+        padding: 12px 8px;
+      }
+
+      .input-group {
+        padding: 15px;
+      }
+    }
+
+    @media (hover: none) {
+      .generate-btn:hover {
+        transform: rotate(-1deg) !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a href="index.html" class="home-button">Главная</a>
+
+  <div class="pencil-decoration top-left">✎</div>
+  <div class="pencil-decoration bottom-right">✎</div>
+
+  <div class="container">
+    <div class="star-decoration">✶</div>
+    <div class="star-decoration">✶</div>
+    <div class="star-decoration">✶</div>
+
+    <h1>РАНДОМАЙЗЕР</h1>
+
+    <div class="main-layout">
+      <!-- Левая колонка: настройки -->
+      <div class="settings-column">
+        <div class="input-group">
+          <label class="input-label">Диапазон чисел</label>
+          
+          <div class="range-inputs">
+            <div class="range-input-wrapper">
+              <label>От</label>
+              <input type="number" id="minInput" value="0" min="0" max="999999999">
+            </div>
+            <div class="range-separator">—</div>
+            <div class="range-input-wrapper">
+              <label>До</label>
+              <input type="number" id="maxInput" value="100" min="1" max="999999999">
+            </div>
+          </div>
+
+          <div class="error-message" id="errorMessage">Минимум должен быть меньше максимума!</div>
+
+          <div class="slider-container">
+            <div class="dual-slider">
+              <div class="slider-track"></div>
+              <div class="slider-range" id="sliderRange"></div>
+              <input type="range" id="minSlider" min="0" max="1000" value="0" step="1">
+              <input type="range" id="maxSlider" min="0" max="1000" value="100" step="1">
+            </div>
+            <div class="slider-values">
+              <span id="minValue">0</span>
+              <span id="maxValue">100</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Правая колонка: сначала вывод числа, потом кнопка -->
+      <div class="generator-column">
+        <div class="result-container">
+          <div class="result-number" id="resultNumber"></div>
+        </div>
+
+        <button class="generate-btn" id="generateBtn">
+          ПОЛУЧИТЬ ЧИСЛО
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const minInput = document.getElementById('minInput');
+    const maxInput = document.getElementById('maxInput');
+    const minSlider = document.getElementById('minSlider');
+    const maxSlider = document.getElementById('maxSlider');
+    const minValue = document.getElementById('minValue');
+    const maxValue = document.getElementById('maxValue');
+    const sliderRange = document.getElementById('sliderRange');
+    const generateBtn = document.getElementById('generateBtn');
+    const resultNumber = document.getElementById('resultNumber');
+    const errorMessage = document.getElementById('errorMessage');
+
+    const SLIDER_MIN = 0;
+    const SLIDER_MAX = 1000;
+    const STORAGE_KEY = 'randomizer_range';
+
+    let isGenerating = false;
+
+    function loadSavedRange() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const { min, max } = JSON.parse(saved);
+          if (typeof min === 'number' && typeof max === 'number' && min >= 0 && min < max) {
+            minInput.value = min;
+            maxInput.value = max;
+            updateSliders();
+          }
+        }
+      } catch (e) {}
+    }
+
+    function saveRange() {
+      try {
+        const min = parseInt(minInput.value);
+        const max = parseInt(maxInput.value);
+        if (min >= 0 && min < max) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ min, max }));
+        }
+      } catch (e) {}
+    }
+
+    minSlider.min = SLIDER_MIN;
+    minSlider.max = SLIDER_MAX;
+    maxSlider.min = SLIDER_MIN;
+    maxSlider.max = SLIDER_MAX;
+
+    function updateSliders() {
+      const min = parseInt(minInput.value) || 0;
+      const max = parseInt(maxInput.value) || 0;
+
+      if (min >= SLIDER_MIN && min <= SLIDER_MAX) {
+        minSlider.value = min;
+      } else if (min > SLIDER_MAX) {
+        minSlider.value = SLIDER_MAX;
+      } else {
+        minSlider.value = SLIDER_MIN;
+      }
+
+      if (max >= SLIDER_MIN && max <= SLIDER_MAX) {
+        maxSlider.value = max;
+      } else if (max > SLIDER_MAX) {
+        maxSlider.value = SLIDER_MAX;
+      } else {
+        maxSlider.value = SLIDER_MIN;
+      }
+
+      updateSliderRange();
+    }
+
+    function updateSliderRange() {
+      const min = parseInt(minSlider.value);
+      const max = parseInt(maxSlider.value);
+      const range = SLIDER_MAX - SLIDER_MIN;
+
+      const minPercent = ((min - SLIDER_MIN) / range) * 100;
+      const maxPercent = ((max - SLIDER_MIN) / range) * 100;
+
+      sliderRange.style.left = minPercent + '%';
+      sliderRange.style.width = (maxPercent - minPercent) + '%';
+
+      minValue.textContent = min;
+      maxValue.textContent = max;
+    }
+
+    function validateRange() {
+      const min = parseInt(minInput.value);
+      const max = parseInt(maxInput.value);
+
+      if (isNaN(min) || min < 0) {
+        minInput.value = 0;
+        updateSliders();
+        saveRange();
+        return validateRange();
+      }
+
+      if (isNaN(max) || min >= max) {
+        errorMessage.classList.add('show');
+        minInput.classList.add('error');
+        maxInput.classList.add('error');
+        generateBtn.disabled = true;
+        return false;
+      }
+
+      errorMessage.classList.remove('show');
+      minInput.classList.remove('error');
+      maxInput.classList.remove('error');
+      generateBtn.disabled = false;
+      return true;
+    }
+
+    minInput.addEventListener('input', () => {
+      let val = parseInt(minInput.value);
+      if (!isNaN(val) && val < 0) {
+        minInput.value = 0;
+      }
+      updateSliders();
+      validateRange();
+      saveRange();
+    });
+
+    maxInput.addEventListener('input', () => {
+      updateSliders();
+      validateRange();
+      saveRange();
+    });
+
+    minSlider.addEventListener('input', () => {
+      let min = parseInt(minSlider.value);
+      let max = parseInt(maxSlider.value);
+
+      if (min >= max) {
+        min = max - 1;
+        if (min < SLIDER_MIN) min = SLIDER_MIN;
+        minSlider.value = min;
+      }
+
+      minInput.value = min;
+      updateSliderRange();
+      validateRange();
+      saveRange();
+    });
+
+    maxSlider.addEventListener('input', () => {
+      let min = parseInt(minSlider.value);
+      let max = parseInt(maxSlider.value);
+
+      if (max <= min) {
+        max = min + 1;
+        if (max > SLIDER_MAX) max = SLIDER_MAX;
+        maxSlider.value = max;
+      }
+
+      maxInput.value = max;
+      updateSliderRange();
+      validateRange();
+      saveRange();
+    });
+
+    function generateRandomNumber() {
+      if (isGenerating || !validateRange()) return;
+
+      isGenerating = true;
+      generateBtn.disabled = true;
+      resultNumber.classList.remove('show');
+      resultNumber.textContent = '';
+
+      const loadingText = document.createElement('div');
+      loadingText.className = 'loading';
+      loadingText.textContent = 'Думаю...';
+      resultNumber.parentElement.appendChild(loadingText);
+
+      playSound(600, 0.2);
+
+      setTimeout(() => {
+        const min = parseInt(minInput.value);
+        const max = parseInt(maxInput.value);
+        const random = Math.floor(Math.random() * (max - min + 1)) + min;
+
+        loadingText.remove();
+        resultNumber.textContent = random;
+        resultNumber.classList.add('show');
+
+        playSound(900, 0.4);
+        vibrate(80);
+
+        setTimeout(() => {
+          isGenerating = false;
+          generateBtn.disabled = false;
+        }, 600);
+      }, 1000);
+    }
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    function playSound(frequency, duration) {
+      try {
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        oscillator.type = 'triangle';
+        oscillator.frequency.value = frequency;
+        gainNode.gain.value = 0.12;
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        const now = audioCtx.currentTime;
+        oscillator.start(now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + duration);
+        oscillator.stop(now + duration);
+      } catch (e) {}
+    }
+
+    function vibrate(duration) {
+      if ('vibrate' in navigator) {
+        try {
+          navigator.vibrate(duration);
+        } catch (e) {}
+      }
+    }
+
+    function unlockAudio() {
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      document.removeEventListener('touchstart', unlockAudio);
+      document.removeEventListener('click', unlockAudio);
+    }
+
+    document.addEventListener('touchstart', unlockAudio, { passive: true });
+    document.addEventListener('click', unlockAudio, { passive: true });
+
+    generateBtn.addEventListener('click', generateRandomNumber);
+
+    minInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') generateRandomNumber();
+    });
+
+    maxInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') generateRandomNumber();
+    });
+
+    loadSavedRange();
+    updateSliders();
+    validateRange();
+  </script>
+</body>
+</html>
