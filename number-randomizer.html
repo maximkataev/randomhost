@@ -785,26 +785,26 @@
           <div class="range-inputs">
             <div class="range-input-wrapper">
               <label>От</label>
-              <input type="number" id="minInput" value="0" min="0" max="999999999">
+              <input type="number" id="minInput" value="1" min="1" max="999999999">
             </div>
             <div class="range-separator">—</div>
             <div class="range-input-wrapper">
               <label>До</label>
-              <input type="number" id="maxInput" value="100" min="1" max="999999999">
+              <input type="number" id="maxInput" value="100" min="2" max="999999999">
             </div>
           </div>
 
-          <div class="error-message" id="errorMessage">Минимум должен быть меньше максимума!</div>
+          <div class="error-message" id="errorMessage">Минимум должен быть меньше максимума</div>
 
           <div class="slider-container">
             <div class="dual-slider">
               <div class="slider-track"></div>
               <div class="slider-range" id="sliderRange"></div>
-              <input type="range" id="minSlider" min="0" max="1000" value="0" step="1">
+              <input type="range" id="minSlider" min="0" max="1000" value="1" step="1">
               <input type="range" id="maxSlider" min="0" max="1000" value="100" step="1">
             </div>
             <div class="slider-values">
-              <span id="minValue">0</span>
+              <span id="minValue">1</span>
               <span id="maxValue">100</span>
             </div>
           </div>
@@ -825,251 +825,404 @@
   </div>
 
   <script>
-    const minInput = document.getElementById('minInput');
-    const maxInput = document.getElementById('maxInput');
-    const minSlider = document.getElementById('minSlider');
-    const maxSlider = document.getElementById('maxSlider');
-    const minValue = document.getElementById('minValue');
-    const maxValue = document.getElementById('maxValue');
-    const sliderRange = document.getElementById('sliderRange');
-    const generateBtn = document.getElementById('generateBtn');
-    const resultNumber = document.getElementById('resultNumber');
-    const errorMessage = document.getElementById('errorMessage');
+const minInput = document.getElementById('minInput');
+const maxInput = document.getElementById('maxInput');
+const minSlider = document.getElementById('minSlider');
+const maxSlider = document.getElementById('maxSlider');
+const minValue = document.getElementById('minValue');
+const maxValue = document.getElementById('maxValue');
+const sliderRange = document.getElementById('sliderRange');
+const generateBtn = document.getElementById('generateBtn');
+const resultNumber = document.getElementById('resultNumber');
+const errorMessage = document.getElementById('errorMessage');
 
-    const SLIDER_MIN = 0;
-    const SLIDER_MAX = 1000;
-    const STORAGE_KEY = 'randomizer_range';
+const MIN_ALLOWED = -999999;
+const MAX_ALLOWED = 999999;
+const SLIDER_MIN = 0;
+const SLIDER_MAX = 10000;
+const STORAGE_KEY = 'randomizer_range';
+const MAX_CHARS = 6; // Максимальное количество символов (включая минус)
 
-    let isGenerating = false;
+let isGenerating = false;
 
-    function loadSavedRange() {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const { min, max } = JSON.parse(saved);
-          if (typeof min === 'number' && typeof max === 'number' && min >= 0 && min < max) {
-            minInput.value = min;
-            maxInput.value = max;
-            updateSliders();
-          }
-        }
-      } catch (e) {}
-    }
-
-    function saveRange() {
-      try {
-        const min = parseInt(minInput.value);
-        const max = parseInt(maxInput.value);
-        if (min >= 0 && min < max) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify({ min, max }));
-        }
-      } catch (e) {}
-    }
-
-    minSlider.min = SLIDER_MIN;
-    minSlider.max = SLIDER_MAX;
-    maxSlider.min = SLIDER_MIN;
-    maxSlider.max = SLIDER_MAX;
-
-    function updateSliders() {
-      const min = parseInt(minInput.value) || 0;
-      const max = parseInt(maxInput.value) || 0;
-
-      if (min >= SLIDER_MIN && min <= SLIDER_MAX) {
-        minSlider.value = min;
-      } else if (min > SLIDER_MAX) {
-        minSlider.value = SLIDER_MAX;
-      } else {
-        minSlider.value = SLIDER_MIN;
-      }
-
-      if (max >= SLIDER_MIN && max <= SLIDER_MAX) {
-        maxSlider.value = max;
-      } else if (max > SLIDER_MAX) {
-        maxSlider.value = SLIDER_MAX;
-      } else {
-        maxSlider.value = SLIDER_MIN;
-      }
-
-      updateSliderRange();
-    }
-
-    function updateSliderRange() {
-      const min = parseInt(minSlider.value);
-      const max = parseInt(maxSlider.value);
-      const range = SLIDER_MAX - SLIDER_MIN;
-
-      const minPercent = ((min - SLIDER_MIN) / range) * 100;
-      const maxPercent = ((max - SLIDER_MIN) / range) * 100;
-
-      sliderRange.style.left = minPercent + '%';
-      sliderRange.style.width = (maxPercent - minPercent) + '%';
-
-      minValue.textContent = min;
-      maxValue.textContent = max;
-    }
-
-    function validateRange() {
-      const min = parseInt(minInput.value);
-      const max = parseInt(maxInput.value);
-
-      if (isNaN(min) || min < 0) {
-        minInput.value = 0;
+function loadSavedRange() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const { min, max } = JSON.parse(saved);
+      if (typeof min === 'number' && typeof max === 'number' && min < max) {
+        minInput.value = min;
+        maxInput.value = max;
         updateSliders();
-        saveRange();
-        return validateRange();
       }
-
-      if (isNaN(max) || min >= max) {
-        errorMessage.classList.add('show');
-        minInput.classList.add('error');
-        maxInput.classList.add('error');
-        generateBtn.disabled = true;
-        return false;
-      }
-
-      errorMessage.classList.remove('show');
-      minInput.classList.remove('error');
-      maxInput.classList.remove('error');
-      generateBtn.disabled = false;
-      return true;
     }
+  } catch (e) {}
+}
 
-    minInput.addEventListener('input', () => {
-      let val = parseInt(minInput.value);
-      if (!isNaN(val) && val < 0) {
-        minInput.value = 0;
-      }
-      updateSliders();
-      validateRange();
-      saveRange();
-    });
+function saveRange() {
+  try {
+    const min = parseInt(minInput.value);
+    const max = parseInt(maxInput.value);
+    if (!isNaN(min) && !isNaN(max) && min < max) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ min, max }));
+    }
+  } catch (e) {}
+}
 
-    maxInput.addEventListener('input', () => {
-      updateSliders();
-      validateRange();
-      saveRange();
-    });
+minSlider.min = SLIDER_MIN;
+minSlider.max = SLIDER_MAX;
+maxSlider.min = SLIDER_MIN;
+maxSlider.max = SLIDER_MAX;
 
-    minSlider.addEventListener('input', () => {
-      let min = parseInt(minSlider.value);
-      let max = parseInt(maxSlider.value);
+function updateSliders() {
+  const min = parseInt(minInput.value);
+  const max = parseInt(maxInput.value);
 
-      if (min >= max) {
-        min = max - 1;
-        if (min < SLIDER_MIN) min = SLIDER_MIN;
-        minSlider.value = min;
-      }
+  // Обновляем слайдеры только если значения в их диапазоне
+  if (!isNaN(min) && min >= SLIDER_MIN && min <= SLIDER_MAX) {
+    minSlider.value = min;
+  } else if (!isNaN(min) && min < SLIDER_MIN) {
+    minSlider.value = SLIDER_MIN;
+  } else if (!isNaN(min) && min > SLIDER_MAX) {
+    minSlider.value = SLIDER_MAX;
+  }
 
-      minInput.value = min;
-      updateSliderRange();
-      validateRange();
-      saveRange();
-    });
+  if (!isNaN(max) && max >= SLIDER_MIN && max <= SLIDER_MAX) {
+    maxSlider.value = max;
+  } else if (!isNaN(max) && max < SLIDER_MIN) {
+    maxSlider.value = SLIDER_MIN;
+  } else if (!isNaN(max) && max > SLIDER_MAX) {
+    maxSlider.value = SLIDER_MAX;
+  }
 
-    maxSlider.addEventListener('input', () => {
-      let min = parseInt(minSlider.value);
-      let max = parseInt(maxSlider.value);
+  updateSliderRange();
+}
 
-      if (max <= min) {
-        max = min + 1;
-        if (max > SLIDER_MAX) max = SLIDER_MAX;
-        maxSlider.value = max;
-      }
+function updateSliderRange() {
+  const min = parseInt(minSlider.value);
+  const max = parseInt(maxSlider.value);
+  const range = SLIDER_MAX - SLIDER_MIN;
 
-      maxInput.value = max;
-      updateSliderRange();
-      validateRange();
-      saveRange();
-    });
+  const minPercent = ((min - SLIDER_MIN) / range) * 100;
+  const maxPercent = ((max - SLIDER_MIN) / range) * 100;
 
-    function generateRandomNumber() {
-      if (isGenerating || !validateRange()) return;
+  sliderRange.style.left = minPercent + '%';
+  sliderRange.style.width = (maxPercent - minPercent) + '%';
 
-      isGenerating = true;
+  minValue.textContent = min;
+  maxValue.textContent = max;
+}
+
+function validateRange() {
+  const min = parseInt(minInput.value);
+  const max = parseInt(maxInput.value);
+
+  // Проверяем только если оба поля заполнены
+  if (!isNaN(min) && !isNaN(max)) {
+    if (min >= max) {
+      errorMessage.classList.add('show');
+      minInput.classList.add('error');
+      maxInput.classList.add('error');
       generateBtn.disabled = true;
-      resultNumber.classList.remove('show');
-      resultNumber.textContent = '';
-
-      const loadingText = document.createElement('div');
-      loadingText.className = 'loading';
-      loadingText.textContent = 'Думаю...';
-      resultNumber.parentElement.appendChild(loadingText);
-
-      playSound(600, 0.2);
-
-      setTimeout(() => {
-        const min = parseInt(minInput.value);
-        const max = parseInt(maxInput.value);
-        const random = Math.floor(Math.random() * (max - min + 1)) + min;
-
-        loadingText.remove();
-        resultNumber.textContent = random;
-        resultNumber.classList.add('show');
-
-        playSound(900, 0.4);
-        vibrate(80);
-
-        setTimeout(() => {
-          isGenerating = false;
-          generateBtn.disabled = false;
-        }, 600);
-      }, 1000);
+      return false;
     }
+  } else {
+    // Если хотя бы одно поле пустое - отключаем кнопку, но без ошибки
+    generateBtn.disabled = true;
+    errorMessage.classList.remove('show');
+    minInput.classList.remove('error');
+    maxInput.classList.remove('error');
+    return false;
+  }
 
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
-    function playSound(frequency, duration) {
-      try {
-        const oscillator = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
-        
-        oscillator.type = 'triangle';
-        oscillator.frequency.value = frequency;
-        gainNode.gain.value = 0.12;
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-        
-        const now = audioCtx.currentTime;
-        oscillator.start(now);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, now + duration);
-        oscillator.stop(now + duration);
-      } catch (e) {}
+  errorMessage.classList.remove('show');
+  minInput.classList.remove('error');
+  maxInput.classList.remove('error');
+  generateBtn.disabled = false;
+  return true;
+}
+
+// Функция для ограничения длины строки до MAX_CHARS символов
+function limitInputLength(value) {
+  if (value.length > MAX_CHARS) {
+    return value.slice(0, MAX_CHARS);
+  }
+  return value;
+}
+
+// Обработчик для minInput
+minInput.addEventListener('input', (e) => {
+  let value = minInput.value;
+  
+  // Ограничиваем длину до MAX_CHARS символов
+  value = limitInputLength(value);
+  
+  // Разрешаем только цифры и минус
+  let filtered = '';
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i];
+    // Минус только в начале
+    if (char === '-' && i === 0 && filtered.length === 0) {
+      filtered += char;
+    } else if (char >= '0' && char <= '9') {
+      filtered += char;
     }
-
-    function vibrate(duration) {
-      if ('vibrate' in navigator) {
-        try {
-          navigator.vibrate(duration);
-        } catch (e) {}
+  }
+  
+  // Проверяем диапазон
+  if (filtered !== '' && filtered !== '-') {
+    const num = parseInt(filtered);
+    if (!isNaN(num)) {
+      if (num < MIN_ALLOWED || num > MAX_ALLOWED) {
+        return; // Не даем вводить число вне диапазона
       }
     }
+  }
+  
+  minInput.value = filtered;
+  
+  updateSliders();
+  validateRange();
+  saveRange();
+});
 
-    function unlockAudio() {
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
-      document.removeEventListener('touchstart', unlockAudio);
-      document.removeEventListener('click', unlockAudio);
+// Обработчик для maxInput
+maxInput.addEventListener('input', (e) => {
+  let value = maxInput.value;
+  
+  // Ограничиваем длину до MAX_CHARS символов
+  value = limitInputLength(value);
+  
+  // Разрешаем только цифры и минус
+  let filtered = '';
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i];
+    // Минус только в начале
+    if (char === '-' && i === 0 && filtered.length === 0) {
+      filtered += char;
+    } else if (char >= '0' && char <= '9') {
+      filtered += char;
     }
+  }
+  
+  // Проверяем диапазон
+  if (filtered !== '' && filtered !== '-') {
+    const num = parseInt(filtered);
+    if (!isNaN(num)) {
+      if (num < MIN_ALLOWED || num > MAX_ALLOWED) {
+        return; // Не даем вводить число вне диапазона
+      }
+    }
+  }
+  
+  maxInput.value = filtered;
+  
+  updateSliders();
+  validateRange();
+  saveRange();
+});
 
-    document.addEventListener('touchstart', unlockAudio, { passive: true });
-    document.addEventListener('click', unlockAudio, { passive: true });
+// Убираем ведущие нули при потере фокуса
+minInput.addEventListener('blur', () => {
+  if (minInput.value !== '' && minInput.value !== '-') {
+    const num = parseInt(minInput.value);
+    if (!isNaN(num)) {
+      minInput.value = num.toString();
+      updateSliders();
+      validateRange();
+      saveRange();
+    }
+  }
+});
 
-    generateBtn.addEventListener('click', generateRandomNumber);
+maxInput.addEventListener('blur', () => {
+  if (maxInput.value !== '' && maxInput.value !== '-') {
+    const num = parseInt(maxInput.value);
+    if (!isNaN(num)) {
+      maxInput.value = num.toString();
+      updateSliders();
+      validateRange();
+      saveRange();
+    }
+  }
+});
 
-    minInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') generateRandomNumber();
-    });
-
-    maxInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') generateRandomNumber();
-    });
-
-    loadSavedRange();
+// Обработка вставки из буфера обмена
+minInput.addEventListener('paste', (e) => {
+  e.preventDefault();
+  const paste = (e.clipboardData || window.clipboardData).getData('text');
+  
+  // Ограничиваем длину вставляемого текста
+  let limitedPaste = limitInputLength(paste);
+  
+  let filtered = '';
+  
+  for (let i = 0; i < limitedPaste.length; i++) {
+    const char = limitedPaste[i];
+    if (char === '-' && i === 0 && filtered.length === 0) {
+      filtered += char;
+    } else if (char >= '0' && char <= '9') {
+      filtered += char;
+    }
+  }
+  
+  const num = parseInt(filtered);
+  
+  if (!isNaN(num) && num >= MIN_ALLOWED && num <= MAX_ALLOWED) {
+    minInput.value = num.toString();
     updateSliders();
     validateRange();
+    saveRange();
+  }
+});
+
+maxInput.addEventListener('paste', (e) => {
+  e.preventDefault();
+  const paste = (e.clipboardData || window.clipboardData).getData('text');
+  
+  // Ограничиваем длину вставляемого текста
+  let limitedPaste = limitInputLength(paste);
+  
+  let filtered = '';
+  
+  for (let i = 0; i < limitedPaste.length; i++) {
+    const char = limitedPaste[i];
+    if (char === '-' && i === 0 && filtered.length === 0) {
+      filtered += char;
+    } else if (char >= '0' && char <= '9') {
+      filtered += char;
+    }
+  }
+  
+  const num = parseInt(filtered);
+  
+  if (!isNaN(num) && num >= MIN_ALLOWED && num <= MAX_ALLOWED) {
+    maxInput.value = num.toString();
+    updateSliders();
+    validateRange();
+    saveRange();
+  }
+});
+
+minSlider.addEventListener('input', () => {
+  let min = parseInt(minSlider.value);
+  let max = parseInt(maxSlider.value);
+
+  if (min >= max) {
+    min = max - 1;
+    if (min < SLIDER_MIN) min = SLIDER_MIN;
+    minSlider.value = min;
+  }
+
+  minInput.value = min;
+  updateSliderRange();
+  validateRange();
+  saveRange();
+});
+
+maxSlider.addEventListener('input', () => {
+  let min = parseInt(minSlider.value);
+  let max = parseInt(maxSlider.value);
+
+  if (max <= min) {
+    max = min + 1;
+    if (max > SLIDER_MAX) max = SLIDER_MAX;
+    maxSlider.value = max;
+  }
+
+  maxInput.value = max;
+  updateSliderRange();
+  validateRange();
+  saveRange();
+});
+
+function generateRandomNumber() {
+  if (isGenerating || !validateRange()) return;
+
+  isGenerating = true;
+  generateBtn.disabled = true;
+  resultNumber.classList.remove('show');
+  resultNumber.textContent = '';
+
+  const loadingText = document.createElement('div');
+  loadingText.className = 'loading';
+  loadingText.textContent = 'Думаю...';
+  resultNumber.parentElement.appendChild(loadingText);
+
+  playSound(600, 0.2);
+
+  setTimeout(() => {
+    const min = parseInt(minInput.value);
+    const max = parseInt(maxInput.value);
+    const random = Math.floor(Math.random() * (max - min + 1)) + min;
+
+    loadingText.remove();
+    resultNumber.textContent = random;
+    resultNumber.classList.add('show');
+
+    playSound(900, 0.4);
+    vibrate(80);
+
+    setTimeout(() => {
+      isGenerating = false;
+      generateBtn.disabled = false;
+    }, 600);
+  }, 1000);
+}
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSound(frequency, duration) {
+  try {
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    oscillator.type = 'triangle';
+    oscillator.frequency.value = frequency;
+    gainNode.gain.value = 0.12;
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    const now = audioCtx.currentTime;
+    oscillator.start(now);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    oscillator.stop(now + duration);
+  } catch (e) {}
+}
+
+function vibrate(duration) {
+  if ('vibrate' in navigator) {
+    try {
+      navigator.vibrate(duration);
+    } catch (e) {}
+  }
+}
+
+function unlockAudio() {
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  document.removeEventListener('touchstart', unlockAudio);
+  document.removeEventListener('click', unlockAudio);
+}
+
+document.addEventListener('touchstart', unlockAudio, { passive: true });
+document.addEventListener('click', unlockAudio, { passive: true });
+
+generateBtn.addEventListener('click', generateRandomNumber);
+
+minInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') generateRandomNumber();
+});
+
+maxInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') generateRandomNumber();
+});
+
+loadSavedRange();
+updateSliders();
+validateRange();
   </script>
 </body>
 </html>
