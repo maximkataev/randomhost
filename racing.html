@@ -514,6 +514,26 @@
       cursor: pointer;
     }
 
+    .car-name-label {
+      display: none;
+      position: absolute;
+      left: 30px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.95);
+      padding: 2px 5px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 3;
+      transition: left .05s linear;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-top: -25px;
+    }
+
     .car.pick {
       animation: pickPulse .25s ease;
     }
@@ -807,6 +827,12 @@
     }
 
     @media (max-width: 918px) {
+      * {
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+        filter: none !important;
+      }
+      
       html, body {
         max-width: 100%;
         overflow-x: hidden;
@@ -814,11 +840,17 @@
 
       body {
         align-items: flex-start;
-        padding: calc(20px + var(--safe-top)) var(--safe-right) calc(0px ) var(--safe-left);
+        padding: calc(20px + var(--safe-top)) var(--safe-right) calc(17px + var(--safe-bottom)) var(--safe-left);
+        background:
+      linear-gradient(145deg, var(--primary-100) 0%, #EEF2FF 60%, #F8FAFC 100%) !important;
       }
 
       .top-buttons {
         display: none;
+      }
+
+      .race-container.shake {
+        animation: none !important;
       }
 
       .menu-container {
@@ -917,6 +949,11 @@
         border-bottom: 1px solid rgba(255,255,255,0.1);
         transition: background 0.2s ease;
         min-height: 56px;
+      }
+
+      .car {
+        font-size: clamp(20px, 5vw, 24px);
+        left: 20px;
       }
 
       .menu-dropdown a:last-child {
@@ -1069,13 +1106,12 @@
         margin: 0 auto;
       }
 
+      .car-name-label {
+        display: block;
+      }
+
       .racers-names {
-        flex-direction: row;
-        gap: 10px;
-        padding: 8px 12px 0;
-        overflow-x: auto;
-        overscroll-behavior: contain;
-        -webkit-overflow-scrolling: touch;
+        display: none;
       }
 
       .racer-name-label {
@@ -1098,16 +1134,26 @@
 
       h1 {
         font-size: clamp(24px, 6vw, 48px);
-        margin-bottom: 30px;
+        margin-bottom: 10px;
         margin-top: 18px !important;
       }
 
       .lane {
-        height: clamp(38px, 8.5vw, 44px);
+        height: clamp(60px, 12vw, 70px);
       }
 
       .car {
-        font-size: clamp(24px, 6.5vw, 28px);
+        font-size: 28px;
+        transition: left .05s linear;
+      }
+
+      .car.pick {
+        animation: none;
+      }
+
+      .car.winner {
+        font-size: 28px !important;
+        animation: none;
       }
 
       .start-line {
@@ -1122,6 +1168,7 @@
         gap: 16px;
         flex-wrap: wrap;
         margin-top: 24px;
+        margin-bottom: 35px;
       }
 
       .controls button {
@@ -1133,6 +1180,12 @@
       .result {
         min-height: 52px;
         padding: 14px;
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 0;
+        width: calc(100% - 32px);
+        margin-top: 0;
       }
 
       .result-text {
@@ -1140,10 +1193,7 @@
       }
 
       .winner-announcement {
-        max-width: 92%;
-        width: 92%;
-        padding: 20px 18px;
-        border-radius: 16px;
+        animation: winnerSlideInMobile .4s ease-out forwards;
       }
 
       .winner-announcement-name {
@@ -1157,6 +1207,11 @@
       .celebration-word {
         font-size: clamp(22px, 5.5vw, 40px);
       }
+
+      @keyframes winnerSlideInMobile {
+    0% { opacity: 0; transform: translate(-50%, -40%) scale(.9); }
+    100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  }
 
       .celebration-emoji {
         font-size: clamp(40px, 10vw, 60px);
@@ -2016,7 +2071,12 @@
           car.classList.add('pick');
         });
 
+        const carNameLabel = document.createElement('div');
+        carNameLabel.className = 'car-name-label';
+        carNameLabel.textContent = name;
+
         lane.appendChild(car);
+        lane.appendChild(carNameLabel);
         raceTrack.appendChild(lane);
 
         const traits = {
@@ -2032,6 +2092,7 @@
           car,
           lane,
           nameLabel,
+          carNameLabel,
           position: 30,
           speed: 0,
           finished: false,
@@ -2190,7 +2251,8 @@
 
       setTimeout(() => {
         winner.car.classList.remove('winner');
-        winner.car.style.fontSize = '35px';
+        const isMobile = window.innerWidth <= 918;
+        winner.car.style.fontSize = isMobile ? '28px' : '35px';
         isRacing = false;
         setUILocked(false);
       }, 7000);
@@ -2220,13 +2282,18 @@
         r.scenario = null;
         r.car.classList.remove('winner');
         r.car.style.left = '30px';
-        r.car.style.fontSize = '35px';
+        const isMobile = window.innerWidth <= 918;
+        r.car.style.fontSize = isMobile ? '28px' : '35px';
+        if (r.carNameLabel) {
+          r.carNameLabel.style.left = '30px';
+        }
       });
 
       await showTrafficLight();
 
       const trackWidth = raceTrack.offsetWidth;
-      const finishPosition = trackWidth - 100;
+      const isMobile = window.innerWidth <= 918;
+      const finishPosition = trackWidth - (isMobile ? 50 : 100);
       const halfwayPoint = (finishPosition - 30) / 2 + 30;
 
       const rnd = Math.random();
@@ -2334,6 +2401,9 @@
 
           r.position += v;
           r.car.style.left = r.position + 'px';
+          if (r.carNameLabel) {
+            r.carNameLabel.style.left = r.position + 'px';
+          }
 
           let smokeChance = 0.08;
           if (r.isWinner && halfwayReached) {
@@ -2341,7 +2411,9 @@
           }
           if (Math.random() < smokeChance) createSmoke(r.car, r.lane);
 
-          if (r.position >= finishPosition && !r.finished) {
+          // На мобилках проверяем правый край машинки, на десктопе - левый
+          const carWidth = isMobile ? 19 : 0; // Ширина машинки на мобилке примерно равна font-size
+          if ((r.position + carWidth) >= finishPosition && !r.finished) {
             r.finished = true;
             r.finishTime = elapsed;
             r.position = finishPosition + 10;
