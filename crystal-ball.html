@@ -1485,25 +1485,52 @@
         'ПРЕДСКАЗАНО', 'СУДЬБА РЕШЕНА', 'ТАК ВЕЛИТ МАГИЯ', 'ПРЕДНАЧЕРТАНО',
         'ЗВЁЗДЫ УКАЗАЛИ', 'СУДЬБОНОСНО', 'МИСТИЧЕСКИ', 'ВОЛШЕБНО',
         'ОРАКУЛ ВЫБРАЛ', 'ПРОВИДЕНИЕ', 'МАГИЧЕСКИЙ ВЫБОР', 'ПРЕДВЕСТИЕ',
-        'ТЫ ИЗБРАННЫЙ', 'БАБА ВАНГА ШЕПНУЛА'
+        'ТЫ ИЗБРАННЫЙ', 'БАБА ВАНГА ШЕПНУЛА', 'БЫВАЕТ ЖЕ!'
       ];
 
-      const gridCols = isMobile ? 3 : 4;
-      const gridRows = isMobile ? 4 : 3;
-      const positions = [];
+      const wordsToShow = isMobile ? 6 : 10;
 
-      for (let row = 0; row < gridRows; row++) {
-        for (let col = 0; col < gridCols; col++) {
-          positions.push({
-            left: (col * (100 / gridCols)) + (100 / gridCols / 2),
-            top: (row * (100 / gridRows)) + (100 / gridRows / 2)
-          });
-        }
+      // Диапазоны появления
+      const topMin = isMobile ? 20 : 10;  // чтобы не лезть под бургер и совсем верх
+      const topMax = 80;
+      const leftMin = 4;
+      const leftMax = 96;
+
+      function rnd(min, max) {
+        return min + Math.random() * (max - min);
       }
 
-      positions.sort(() => Math.random() - 0.5);
+      const positions = [];
 
-      const wordsToShow = isMobile ? 6 : 10;
+      // Гарантируем хотя бы одно слово прямо у левого края
+      if (wordsToShow >= 1) {
+        positions.push({
+          left: rnd(1, 12),
+          top: rnd(topMin, topMax),
+        });
+      }
+
+      // И хотя бы одно у правого края
+      if (wordsToShow >= 2) {
+        positions.push({
+          left: rnd(88, 99),
+          top: rnd(topMin, topMax),
+        });
+      }
+
+      // Остальные — равномерно раскидываем по экрану
+      while (positions.length < wordsToShow) {
+        positions.push({
+          left: rnd(leftMin, leftMax),
+          top: rnd(topMin, topMax),
+        });
+      }
+
+      // Перемешаем, чтобы порядок появления не был "сначала левый, потом правый"
+      for (let i = positions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [positions[i], positions[j]] = [positions[j], positions[i]];
+      }
 
       for (let i = 0; i < wordsToShow; i++) {
         setTimeout(() => {
@@ -1511,9 +1538,9 @@
           word.className = 'celebration-word';
           word.textContent = words[Math.floor(Math.random() * words.length)];
 
-          const pos = positions[i % positions.length];
-          word.style.left = (pos.left + (Math.random() - 0.5) * 10) + '%';
-          word.style.top = (pos.top + (Math.random() - 0.5) * 10) + '%';
+          const pos = positions[i];
+          word.style.left = pos.left + '%';
+          word.style.top = pos.top + '%';
           word.style.animationDelay = (Math.random() * 0.3) + 's';
 
           document.body.appendChild(word);
@@ -1521,6 +1548,8 @@
         }, i * 150);
       }
     }
+
+
 
     function createConfetti() {
       const cs = ['#8a2be2','#9370db','#ba55d3','#da70d6','#dda0dd','#ee82ee'];
