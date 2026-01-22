@@ -483,12 +483,13 @@
       width: 100%;
       min-width: 0;
       height: 80px;
-      overflow-x: hidden;
+      overflow-x: auto;
       scrollbar-width: thin;
       scrollbar-color: rgba(255,255,255,0.3) transparent;
       padding: 6px 10px;
       box-sizing: border-box;
       position: relative;
+      scroll-behavior: smooth;
     }
 
     .bingo-numbers-display::-webkit-scrollbar {
@@ -516,7 +517,7 @@
       text-align: center;
       flex-shrink: 0;
       opacity: 0.6;
-      transition: all 0.3s ease;
+      transition: transform 0.6s ease-in-out, opacity 0.4s ease;
     }
 
     .bingo-drawn-number.current {
@@ -601,11 +602,7 @@
     }
 
     .bingo-card.survived {
-      border-color: #ffd43b;
-      box-shadow: 0 0 40px rgba(255,212,59,0.7);
-      background: linear-gradient(135deg, rgba(255,212,59,0.15), rgba(255,165,0,0.15));
-      transform: scale(1.05);
-      z-index: 10;
+      /* отключено жёлтое состояние */
     }
 
     @keyframes cardAppear {
@@ -616,10 +613,10 @@
     }
 
     .bingo-card.winner {
-      border-color: #ffd43b;
-      box-shadow: 0 0 40px rgba(255,212,59,0.6);
+      border-color: #22c55e;
+      box-shadow: 0 0 40px rgba(34,197,94,0.6);
       animation: cardWin 0.6s ease-out, cardGlow 2s ease-in-out infinite 0.6s;
-      background: linear-gradient(135deg, rgba(255,212,59,0.2), rgba(255,165,0,0.2));
+      background: linear-gradient(135deg, rgba(34,197,94,0.2), rgba(34,197,94,0.1));
       opacity: 1 !important;
       transform: translateY(0) scale(1) !important;
     }
@@ -631,8 +628,8 @@
     }
 
     @keyframes cardGlow {
-      0%, 100% { box-shadow: 0 0 40px rgba(255,212,59,0.6); }
-      50% { box-shadow: 0 0 60px rgba(255,212,59,0.9); }
+      0%, 100% { box-shadow: 0 0 40px rgba(34,197,94,0.6); }
+      50% { box-shadow: 0 0 60px rgba(34,197,94,0.85); }
     }
 
     .bingo-card-header {
@@ -1000,7 +997,8 @@
       font-size: 14px;
       font-weight: 600;
       text-align: center;
-      width: 120px;
+      width: 135px;
+      padding-left: 0px;
       flex-shrink: 0;
     }
 
@@ -1634,6 +1632,21 @@
     '🍀','💰','💵','🤑','🏆','👑',
     '🎯','🎟️','🎁','✨','🔥','⚡️'
   ];
+  const AVATAR_EMOJIS = ['🙂','😃','😎','🤖','🧠','👽','🧸','🐱','🐶','🐧','🐼','🐯'];
+
+  function shuffledAvatars(count) {
+    const pool = [...AVATAR_EMOJIS];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    if (count <= pool.length) return pool.slice(0, count);
+    const result = [];
+    while (result.length < count) {
+      result.push(...pool);
+    }
+    return result.slice(0, count);
+  }
 
   // Функция для получения плана выбывания участников
   // Возвращает массив: сколько участников должно ОСТАТЬСЯ после каждого хода
@@ -2610,7 +2623,9 @@
     `;
 
     const cardsGrid = document.getElementById('bingoCardsGrid');
+    const avatarOrder = shuffledAvatars(state.participants.length);
     state.participants.forEach((participant, index) => {
+      const avatarEmoji = avatarOrder[index % avatarOrder.length];
       const card = document.createElement('div');
       card.className = 'bingo-card';
       card.id = `card-${participant.id}`;
@@ -2618,7 +2633,7 @@
 
       card.innerHTML = `
         <div class="bingo-card-header">
-          <div class="bingo-card-icon">👤</div>
+          <div class="bingo-card-icon">${avatarEmoji}</div>
           <div class="bingo-card-name">${participant.name}</div>
         </div>
         <div class="bingo-card-numbers">
@@ -2641,109 +2656,109 @@
     if (state.currentTurn > 0 && numbersDisplay) {
       const lastEmoji = state.drawnSequence[state.currentTurn - 1];
 
-      // Убираем класс current у всех предыдущих смайликов
-      const allEmojis = numbersDisplay.querySelectorAll('.bingo-drawn-number');
+      // Снимаем выделение со старых
+      const allEmojis = Array.from(numbersDisplay.querySelectorAll('.bingo-drawn-number'));
       allEmojis.forEach(emoji => emoji.classList.remove('current'));
 
       // Добавляем новый смайлик
       const emojiEl = document.createElement('div');
       emojiEl.className = 'bingo-drawn-number current new';
       emojiEl.textContent = lastEmoji;
+      const prevPositions = new Map();
+      allEmojis.forEach(el => prevPositions.set(el, el.getBoundingClientRect()));
+
       numbersDisplay.appendChild(emojiEl);
 
-      // Убираем класс new после анимации
-      setTimeout(() => {
-        emojiEl.classList.remove('new');
-      }, 500);
+      requestAnimationFrame(() => {
+        const containerWidth = numbersDisplay.clientWidth || 320;
+        const newShift = Math.min(80, containerWidth * 0.25);
+        const newItems = Array.from(numbersDisplay.querySelectorAll('.bingo-drawn-number'));
+        newItems.forEach(el => {
+          const prev = prevPositions.get(el);
+          const next = el.getBoundingClientRect();
+          const dx = prev ? prev.left - next.left : newShift;
+          const dy = prev ? prev.top - next.top : 0;
+          el.style.transform = `translate(${dx}px, ${dy}px)`;
+          el.style.opacity = prev ? (el.style.opacity || 1) : 0;
+        });
 
-      // Скроллим к последнему смайлику
-      setTimeout(() => {
-        numbersDisplay.scrollLeft = numbersDisplay.scrollWidth;
-      }, 100);
-
-      // Проверяем, кто остается в игре
-      const remaining = getRemainingParticipants(lastEmoji, state.participants);
-
-      state.participants.forEach(participant => {
-        const cardEl = document.getElementById(`card-${participant.id}`);
-        if (!cardEl) return;
-
-        // Проверяем выбывание
-        if (!participant.eliminated) {
-          if (!participant.card.includes(lastEmoji)) {
-            // Участник выбывает
-            participant.eliminated = true;
-            setTimeout(() => {
-              cardEl.classList.add('eliminated');
-              cardEl.classList.remove('active');
-            }, 1000);
-          } else {
-            // Участник остается - подсвечиваем смайлик
-            const emojiEl = cardEl.querySelector(`[data-emoji="${lastEmoji}"]`);
-            if (emojiEl) {
-              emojiEl.classList.add('matched');
-            }
-
-            cardEl.classList.add('active');
-            setTimeout(() => {
-              cardEl.classList.remove('active');
-            }, 1500);
-          }
-        }
-      });
-
-      // Проверка победителя и драматичная пауза
-      setTimeout(() => {
-        const stillInGame = state.participants.filter(p => !p.eliminated);
-
-        // ДРАМА: Подсвечиваем оставшихся участников на 2 секунды
-        if (stillInGame.length > 1) {
-          stillInGame.forEach(p => {
-            const cardEl = document.getElementById(`card-${p.id}`);
-            if (cardEl) {
-              cardEl.classList.add('survived');
-            }
+        requestAnimationFrame(() => {
+          newItems.forEach(el => {
+            el.style.transform = 'translate(0,0)';
+            el.style.opacity = 1;
           });
 
-          // Убираем подсветку через 2 секунды
           setTimeout(() => {
-            stillInGame.forEach(p => {
-              const cardEl = document.getElementById(`card-${p.id}`);
-              if (cardEl) {
-                cardEl.classList.remove('survived');
+            emojiEl.classList.remove('new');
+          }, 700);
+        });
+      });
+
+      // Проверяем, кто остается в игре чуть позже, когда смайлик уже занял центр
+      setTimeout(() => {
+        const remaining = getRemainingParticipants(lastEmoji, state.participants);
+
+        state.participants.forEach(participant => {
+          const cardEl = document.getElementById(`card-${participant.id}`);
+          if (!cardEl) return;
+
+          // Проверяем выбывание
+          if (!participant.eliminated) {
+            if (!participant.card.includes(lastEmoji)) {
+              // Участник выбывает
+              participant.eliminated = true;
+              setTimeout(() => {
+                cardEl.classList.add('eliminated');
+                cardEl.classList.remove('active');
+              }, 1000);
+            } else {
+              // Участник остается - подсвечиваем смайлик
+              const emojiEl = cardEl.querySelector(`[data-emoji="${lastEmoji}"]`);
+              if (emojiEl) {
+                emojiEl.classList.add('matched');
               }
-            });
-          }, 2000);
-        }
 
-        if (stillInGame.length === 1) {
-          state.winner = stillInGame[0];
-          state.isGameOver = true;
-
-          const winnerCard = document.getElementById(`card-${state.winner.id}`);
-          if (winnerCard) {
-            winnerCard.classList.add('winner');
-            winnerCard.classList.remove('active');
+              cardEl.classList.add('active');
+              setTimeout(() => {
+                cardEl.classList.remove('active');
+              }, 1500);
+            }
           }
+        });
 
-          // Убираем класс current с последнего смайлика
-          if (numbersDisplay) {
-            const allEmojis = numbersDisplay.querySelectorAll('.bingo-drawn-number');
-            allEmojis.forEach(emoji => emoji.classList.remove('current'));
+        // Проверка победителя и драматичная пауза
+        setTimeout(() => {
+          const stillInGame = state.participants.filter(p => !p.eliminated);
+
+          if (stillInGame.length === 1) {
+            state.winner = stillInGame[0];
+            state.isGameOver = true;
+
+            const winnerCard = document.getElementById(`card-${state.winner.id}`);
+            if (winnerCard) {
+              winnerCard.classList.add('winner');
+              winnerCard.classList.remove('active');
+            }
+
+            // Убираем класс current с последнего смайлика
+            if (numbersDisplay) {
+              const allEmojis = numbersDisplay.querySelectorAll('.bingo-drawn-number');
+              allEmojis.forEach(emoji => emoji.classList.remove('current'));
+            }
+
+            if (gameInterval) {
+              clearInterval(gameInterval);
+              gameInterval = null;
+            }
+
+            // Показываем победителя сразу
+            showWinnerAnnouncement(state.winner.name);
+            startBtn.disabled = false;
+            startBtn.textContent = 'Запустить заново';
+            setEditingEnabled(true);
           }
-
-          if (gameInterval) {
-            clearInterval(gameInterval);
-            gameInterval = null;
-          }
-
-          // Показываем победителя сразу
-          showWinnerAnnouncement(state.winner.name);
-          startBtn.disabled = false;
-          startBtn.textContent = 'Запустить заново';
-          setEditingEnabled(true);
-        }
-      }, 1500);
+        }, 1500);
+      }, 450);
     }
   }
 
