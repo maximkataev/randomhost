@@ -346,12 +346,13 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
   /* Запрещаем скролл страницы и pull-to-refresh */
   html,body{overflow:hidden;overscroll-behavior:none}
   .app-wrap{padding-top:calc(var(--safe-pad)*2 + 36px);padding-bottom:0}
-  .app{grid-template-columns:1fr;grid-template-rows:1fr auto;gap:0;align-items:stretch}
-  /* Панель снизу: ФИКСИРОВАННАЯ высота — грид-ряд не меняется при появлении контента */
+  /* ЯВНЫЕ ряды грида — не меняются ни при каком состоянии панели */
+  .app{grid-template-columns:1fr;grid-template-rows:1fr 40vh;gap:0;align-items:stretch}
+  /* В idle-режиме панель скрыта — второй ряд обнуляем */
+  .app:has(.stage[data-phase="idle"]){grid-template-rows:1fr}
   .panel{
     height:40vh;align-self:auto;order:2;
     border-radius:12px 12px 0 0;border-bottom:none;
-    /* Safe area для home indicator на iPhone */
     padding-bottom:env(safe-area-inset-bottom,0px);
   }
   /* Плавный скролл интерпретации на iOS */
@@ -360,13 +361,19 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
   /* Уменьшаем отступ сверху в зоне карт — было 52px, слишком много */
   .stage[data-phase="select"] .s-center,
   .stage[data-phase="done"] .s-center{padding-top:12px}
-  /* s-foot: высота по контенту, минимум для touch-target */
-  .s-foot{height:auto;min-height:44px}
+  /* s-foot: высота по контенту, минимум для touch-target + отступ от шторки */
+  .s-foot{height:auto;min-height:44px;margin-bottom:40px}
+  .topbar-home{display:none}
+  /* Скрываем заголовок «Карты Таро» в select/done — оставляем только вопрос */
+  .stage:not([data-phase="idle"]) .s-title,
+  .stage:not([data-phase="idle"]) .s-sub{display:none}
+  .stage:not([data-phase="idle"]) .s-head{padding:2px 0 4px}
   .s-head{padding:0 0 6px}
   .s-title{font-size:22px}
   .s-sub{font-size:13px}
   .s-question{font-size:15px}
   .cards{max-width:calc(3 * var(--card-w) + 2 * 10px)}
+  .s-status{margin-top:10px}
   /* Touch: без задержки, без выделения текста */
   .card,.deck,.btn,.chip,.panel-tab,.ov-q-item{
     touch-action:manipulation;
@@ -411,17 +418,11 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
     from{transform:translateY(28%);opacity:.7}
     to{transform:none;opacity:1}
   }
-  .panel.collapsing{
-    animation:sheetDown .22s ease-in forwards!important;
-  }
-  @keyframes sheetDown{
-    to{transform:translateY(32%);opacity:.3}
-  }
 }
 @media(max-width:600px){
   :root{--card-w:72px;--safe-pad:12px}
   .app-wrap{padding-top:calc(var(--safe-pad)*2 + 32px)}
-  /* Фиксированная высота панели на небольших телефонах */
+  .app{grid-template-rows:1fr 38vh}
   .panel{height:38vh}
   .ov-box{padding:20px 16px;padding-bottom:max(20px,env(safe-area-inset-bottom,0px))}
   .panel-head{padding:8px 14px}
@@ -447,7 +448,7 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
   .cards{gap:6px}
   .panel-body{padding:12px 12px 14px}
   .i-name{font-size:18px}
-  /* Минимальная панель на совсем маленьких экранах */
+  .app{grid-template-rows:1fr 36vh}
   .panel{height:36vh}
   .stage[data-phase="select"] .s-center,
   .stage[data-phase="done"] .s-center{padding-top:6px}
@@ -1371,12 +1372,9 @@ $('#qInput').addEventListener('keydown',e=>{if(e.key==='Enter')submitQuestion()}
   head.addEventListener('click',()=>{
     if(!isMob()) return;
     if(panel.classList.contains('expanded')){
-      panel.classList.add('collapsing');
-      panel.addEventListener('animationend',()=>{
-        panel.classList.remove('expanded','collapsing');
-      },{once:true});
+      // Мгновенный коллапс — грид-ряды явные, фон не прыгает
+      panel.classList.remove('expanded');
     } else {
-      panel.classList.remove('collapsing');
       panel.classList.add('expanded');
       $('#pBody').scrollTop=0;
     }
@@ -1384,7 +1382,7 @@ $('#qInput').addEventListener('keydown',e=>{if(e.key==='Enter')submitQuestion()}
 
   // Сворачиваем если расширили экран до десктопа
   window.addEventListener('resize',()=>{
-    if(!isMob()) panel.classList.remove('expanded','collapsing');
+    if(!isMob()) panel.classList.remove('expanded');
   });
 })();
 </script>
