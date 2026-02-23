@@ -102,7 +102,8 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
   height:77%;
 }
 
-.panel-head{padding:10px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
+.panel-head{padding:10px 20px;border-bottom:1px solid var(--border);flex-shrink:0;position:relative}
+.panel-chev{display:none;pointer-events:none;flex-shrink:0}
 .panel-eyebrow{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--text-m);font-family:'Playfair Display',serif;margin-bottom:3px}
 .panel-title{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--gold);letter-spacing:.3px;line-height:1.3}
 .panel-q{font-size:16px;color:var(--text-s);font-style:italic;margin-top:3px;line-height:1.4;max-height:2.8em;overflow:hidden}
@@ -346,10 +347,9 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
   html,body{overflow:hidden;overscroll-behavior:none}
   .app-wrap{padding-top:calc(var(--safe-pad)*2 + 36px);padding-bottom:0}
   .app{grid-template-columns:1fr;grid-template-rows:1fr auto;gap:0;align-items:stretch}
-  /* Панель снизу: уменьшаем max-height чтобы stage вмещал карты */
+  /* Панель снизу: ФИКСИРОВАННАЯ высота — грид-ряд не меняется при появлении контента */
   .panel{
-    height:auto;align-self:auto;order:2;
-    max-height:40vh;
+    height:40vh;align-self:auto;order:2;
     border-radius:12px 12px 0 0;border-bottom:none;
     /* Safe area для home indicator на iPhone */
     padding-bottom:env(safe-area-inset-bottom,0px);
@@ -379,12 +379,50 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
   .ov-q-item{min-height:44px;display:flex;align-items:center;justify-content:center}
   /* Overlay: полная ширина + safe area снизу */
   .ov-box{width:100%;padding-bottom:max(24px,env(safe-area-inset-bottom,0px))}
+
+  /* ---- Panel expand (bottom sheet) ---- */
+  /* Полоска-ручка сверху */
+  .panel-head::before{
+    content:'';display:block;
+    width:36px;height:4px;
+    background:rgba(255,255,255,.13);
+    border-radius:2px;margin:0 auto 8px;
+  }
+  .panel-head{cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+  .panel-head:active{background:rgba(255,255,255,.03)}
+  /* Шеврон */
+  .panel-chev{
+    display:block;position:absolute;
+    right:14px;top:14px;
+    width:18px;height:18px;
+    color:var(--text-m);
+    transition:transform .3s var(--ease);
+  }
+  .panel.expanded .panel-chev{transform:rotate(180deg)}
+  /* Развёрнутое состояние — полный экран */
+  .panel.expanded{
+    position:fixed!important;inset:0!important;
+    z-index:800;
+    height:100dvh!important;height:100vh!important;
+    border-radius:0!important;
+    animation:sheetUp .28s cubic-bezier(.17,.67,.35,1);
+  }
+  @keyframes sheetUp{
+    from{transform:translateY(28%);opacity:.7}
+    to{transform:none;opacity:1}
+  }
+  .panel.collapsing{
+    animation:sheetDown .22s ease-in forwards!important;
+  }
+  @keyframes sheetDown{
+    to{transform:translateY(32%);opacity:.3}
+  }
 }
 @media(max-width:600px){
   :root{--card-w:72px;--safe-pad:12px}
   .app-wrap{padding-top:calc(var(--safe-pad)*2 + 32px)}
-  /* Ещё меньше панель на небольших телефонах */
-  .panel{max-height:38vh}
+  /* Фиксированная высота панели на небольших телефонах */
+  .panel{height:38vh}
   .ov-box{padding:20px 16px;padding-bottom:max(20px,env(safe-area-inset-bottom,0px))}
   .panel-head{padding:8px 14px}
   .panel-body{padding:14px 16px 16px}
@@ -410,7 +448,7 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
   .panel-body{padding:12px 12px 14px}
   .i-name{font-size:18px}
   /* Минимальная панель на совсем маленьких экранах */
-  .panel{max-height:36vh}
+  .panel{height:36vh}
   .stage[data-phase="select"] .s-center,
   .stage[data-phase="done"] .s-center{padding-top:6px}
 }
@@ -428,10 +466,11 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
 <div class="app">
   <!-- ===== LEFT PANEL ===== -->
   <aside class="panel">
-    <div class="panel-head">
+    <div class="panel-head" id="panelHead">
       <div class="panel-eyebrow">Толкование</div>
       <div class="panel-title" id="pTitle">Расклад на три карты</div>
       <div class="panel-q" id="pQ"></div>
+      <svg class="panel-chev" viewBox="0 0 20 20" fill="none"><path d="M5 12.5L10 7.5L15 12.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
     <div class="panel-tabs" id="pTabs">
       <button class="panel-tab" data-i="0" disabled>Прошлое</button>
@@ -1320,6 +1359,34 @@ function newReading(){
    KEYBOARD
    ============================================================ */
 $('#qInput').addEventListener('keydown',e=>{if(e.key==='Enter')submitQuestion()});
+
+/* ============================================================
+   PANEL EXPAND / COLLAPSE — mobile bottom sheet
+   ============================================================ */
+(function(){
+  const panel=document.querySelector('.panel');
+  const head=document.getElementById('panelHead');
+  const isMob=()=>window.matchMedia('(max-width:900px)').matches;
+
+  head.addEventListener('click',()=>{
+    if(!isMob()) return;
+    if(panel.classList.contains('expanded')){
+      panel.classList.add('collapsing');
+      panel.addEventListener('animationend',()=>{
+        panel.classList.remove('expanded','collapsing');
+      },{once:true});
+    } else {
+      panel.classList.remove('collapsing');
+      panel.classList.add('expanded');
+      $('#pBody').scrollTop=0;
+    }
+  });
+
+  // Сворачиваем если расширили экран до десктопа
+  window.addEventListener('resize',()=>{
+    if(!isMob()) panel.classList.remove('expanded','collapsing');
+  });
+})();
 </script>
  <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
