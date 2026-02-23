@@ -345,7 +345,8 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
   :root{--card-w:88px;--safe-pad:16px}
   /* Запрещаем скролл страницы и pull-to-refresh */
   html,body{overflow:hidden;overscroll-behavior:none}
-  .app-wrap{padding-top:calc(var(--safe-pad)*2 + 36px);padding-bottom:0}
+  /* topbar скрыт → резервируем только safe-area-inset-top (Dynamic Island / notch) */
+  .app-wrap{padding-top:max(var(--safe-pad),env(safe-area-inset-top,0px));padding-bottom:0}
   /* ЯВНЫЕ ряды грида — не меняются ни при каком состоянии панели */
   .app{grid-template-columns:1fr;grid-template-rows:1fr 40vh;gap:0;align-items:stretch}
   /* В idle-режиме панель скрыта — второй ряд обнуляем */
@@ -358,22 +359,28 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
   /* Плавный скролл интерпретации на iOS */
   .panel-body{-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
   .stage{height:auto;align-self:auto;order:1}
-  /* Уменьшаем отступ сверху в зоне карт — было 52px, слишком много */
-  .stage[data-phase="select"] .s-center,
-  .stage[data-phase="done"] .s-center{padding-top:12px}
   /* s-foot: высота по контенту, минимум для touch-target + отступ от шторки */
   .s-foot{height:auto;min-height:44px;margin-bottom:40px}
   .topbar-home{display:none}
   /* Скрываем заголовок «Карты Таро» в select/done — оставляем только вопрос */
   .stage:not([data-phase="idle"]) .s-title,
   .stage:not([data-phase="idle"]) .s-sub{display:none}
-  .stage:not([data-phase="idle"]) .s-head{padding:2px 0 4px}
+  /* Явный min-height чтобы вопрос всегда занимал место и не перекрывался картами */
+  .stage:not([data-phase="idle"]) .s-head{
+    padding:4px 8px 8px;
+    min-height:36px;
+    display:flex;align-items:center;justify-content:center;
+  }
   .s-head{padding:0 0 6px}
   .s-title{font-size:22px}
   .s-sub{font-size:13px}
   .s-question{font-size:15px}
   .cards{max-width:calc(3 * var(--card-w) + 2 * 10px)}
+  /* Отступ между картами и статусом */
   .s-status{margin-top:10px}
+  /* Карточный ряд начинается с явным отступом от вопроса */
+  .stage[data-phase="select"] .s-center,
+  .stage[data-phase="done"] .s-center{padding-top:8px}
   /* Touch: без задержки, без выделения текста */
   .card,.deck,.btn,.chip,.panel-tab,.ov-q-item{
     touch-action:manipulation;
@@ -421,7 +428,7 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
 }
 @media(max-width:600px){
   :root{--card-w:72px;--safe-pad:12px}
-  .app-wrap{padding-top:calc(var(--safe-pad)*2 + 32px)}
+  .app-wrap{padding-top:max(var(--safe-pad),env(safe-area-inset-top,0px))}
   .app{grid-template-rows:1fr 38vh}
   .panel{height:38vh}
   .ov-box{padding:20px 16px;padding-bottom:max(20px,env(safe-area-inset-bottom,0px))}
@@ -620,7 +627,7 @@ const INTENTS={
     'Как улучшить мои доходы?',
     'Стоит ли рисковать?',
     'Когда придёт достаток?',
-    'Куда вложить деньги?',
+    'Скоро ли закрою ипотеку?',
     'Стоит ли брать кредит?',
     'Скоро ли я создам накопления?',
     'Правильно ли я трачу?',
