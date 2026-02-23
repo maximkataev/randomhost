@@ -338,26 +338,54 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
 .stage[data-phase="idle"] .s-foot{height:auto}
 
 /* ============================================================
-   RESPONSIVE
+   RESPONSIVE — MOBILE ONLY
    ============================================================ */
 @media(max-width:900px){
   :root{--card-w:88px;--safe-pad:16px}
-  html,body{overflow:hidden}
-  .app-wrap{padding-top:calc(var(--safe-pad) * 2 + 36px);padding-bottom:0}
+  /* Запрещаем скролл страницы и pull-to-refresh */
+  html,body{overflow:hidden;overscroll-behavior:none}
+  .app-wrap{padding-top:calc(var(--safe-pad)*2 + 36px);padding-bottom:0}
   .app{grid-template-columns:1fr;grid-template-rows:1fr auto;gap:0;align-items:stretch}
-  .panel{height:auto;align-self:auto;max-height:44vh;order:2;border-radius:12px 12px 0 0;border-bottom:none}
+  /* Панель снизу: уменьшаем max-height чтобы stage вмещал карты */
+  .panel{
+    height:auto;align-self:auto;order:2;
+    max-height:40vh;
+    border-radius:12px 12px 0 0;border-bottom:none;
+    /* Safe area для home indicator на iPhone */
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  /* Плавный скролл интерпретации на iOS */
+  .panel-body{-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
   .stage{height:auto;align-self:auto;order:1}
-  .s-head{padding:0 0 8px}
+  /* Уменьшаем отступ сверху в зоне карт — было 52px, слишком много */
+  .stage[data-phase="select"] .s-center,
+  .stage[data-phase="done"] .s-center{padding-top:12px}
+  /* s-foot: высота по контенту, минимум для touch-target */
+  .s-foot{height:auto;min-height:44px}
+  .s-head{padding:0 0 6px}
   .s-title{font-size:22px}
   .s-sub{font-size:13px}
   .s-question{font-size:15px}
   .cards{max-width:calc(3 * var(--card-w) + 2 * 10px)}
+  /* Touch: без задержки, без выделения текста */
+  .card,.deck,.btn,.chip,.panel-tab,.ov-q-item{
+    touch-action:manipulation;
+    -webkit-user-select:none;user-select:none;
+  }
+  /* Минимальные touch-target по Apple HIG (44×44pt) */
+  .panel-tab{min-height:40px}
+  .btn{min-height:44px}
+  .chip{min-height:40px;display:inline-flex;align-items:center;justify-content:center}
+  .ov-q-item{min-height:44px;display:flex;align-items:center;justify-content:center}
+  /* Overlay: полная ширина + safe area снизу */
+  .ov-box{width:100%;padding-bottom:max(24px,env(safe-area-inset-bottom,0px))}
 }
 @media(max-width:600px){
   :root{--card-w:72px;--safe-pad:12px}
-  .app-wrap{padding-top:calc(var(--safe-pad) * 2 + 32px)}
-  .panel{max-height:46vh}
-  .ov-box{padding:20px 16px}
+  .app-wrap{padding-top:calc(var(--safe-pad)*2 + 32px)}
+  /* Ещё меньше панель на небольших телефонах */
+  .panel{max-height:38vh}
+  .ov-box{padding:20px 16px;padding-bottom:max(20px,env(safe-area-inset-bottom,0px))}
   .panel-head{padding:8px 14px}
   .panel-body{padding:14px 16px 16px}
   .panel-title{font-size:16px}
@@ -368,6 +396,8 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
   .s-title{font-size:20px}
   .s-sub{font-size:12px}
   .btn{padding:10px 20px;font-size:13px}
+  /* font-size >= 16px — предотвращает авто-зум на iOS при фокусе */
+  .ov-input{font-size:16px}
   .chip{padding:6px 14px;font-size:14px}
   .sum-q{font-size:16px}
   .sum-energy{font-size:15px}
@@ -379,6 +409,10 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
   .cards{gap:6px}
   .panel-body{padding:12px 12px 14px}
   .i-name{font-size:18px}
+  /* Минимальная панель на совсем маленьких экранах */
+  .panel{max-height:36vh}
+  .stage[data-phase="select"] .s-center,
+  .stage[data-phase="done"] .s-center{padding-top:6px}
 }
 </style>
 </head>
