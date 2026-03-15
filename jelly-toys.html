@@ -63,11 +63,14 @@ body {
 /* ── Toy base ────────────────────────────────────────────────────── */
 .toy {
   position:absolute; cursor:pointer;
+  left:0; top:0;
   transform-origin:center;
-  will-change:transform,left,top;
+  will-change:translate,transform;
   z-index:2;
+  -webkit-backface-visibility:hidden;
+  backface-visibility:hidden;
 }
-.toy svg { display:block; }
+.toy svg { display:block; filter:drop-shadow(0 2px 5px rgba(0,0,0,0.22)); }
 
 @keyframes wobble {
   0%,100%{ transform:rotate(-1.8deg) scaleX(1.04) scaleY(0.96) }
@@ -78,10 +81,10 @@ body {
 }
 .toy.idle { animation: wobble var(--wd,3s) ease-in-out infinite; animation-delay:var(--wdl,0s); }
 
-/* Highlight ring in pop-mode — box-shadow on ::after (cheap, GPU composited) */
+/* Highlight ring in pop-mode — opacity-only animation is cheapest on GPU */
 @keyframes pop-ring {
-  0%,100%{ opacity:0.65; transform:scale(1); }
-  50%    { opacity:1;    transform:scale(1.08); }
+  0%,100%{ opacity:0.5; }
+  50%    { opacity:1; }
 }
 .toy.poppable { animation: wobble var(--wd,3s) ease-in-out infinite; }
 .toy.poppable::after {
@@ -89,7 +92,7 @@ body {
   box-shadow: 0 0 0 3px rgba(255,220,60,0.9), 0 0 18px 4px rgba(255,180,0,0.45);
   pointer-events:none;
   animation: pop-ring 1.3s ease-in-out infinite;
-  will-change:opacity,transform;
+  will-change:opacity;
 }
 
 @keyframes spawn-in {
@@ -493,7 +496,7 @@ function makeFace(rng, d, sid){
 let uid=0;
 function makeSVG(type,color,size,seed){
   const id=uid++,rng=mkrng(seed*9999|0),bp=blobPath(rng);
-  const gid='g'+id,fid='f'+id,sid='s'+id;
+  const gid='g'+id,sid='s'+id;
   const face=makeFace(rng,color.d,sid); // seeded rng → same face each render
   const defs=`<defs>
     <radialGradient id="${gid}" cx="38%" cy="30%" r="65%">
@@ -502,18 +505,15 @@ function makeSVG(type,color,size,seed){
       <stop offset="100%" stop-color="${color.d}" stop-opacity="0.8"/>
     </radialGradient>
     <clipPath id="${sid}"><path d="${bp}"/></clipPath>
-    <filter id="${fid}" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="${color.d}" flood-opacity="0.3"/>
-    </filter>
   </defs>`;
-  const base=`<path d="${bp}" fill="url(#${gid})" filter="url(#${fid})"/>`;
+  const base=`<path d="${bp}" fill="url(#${gid})"/>`;
   const g1=`<ellipse cx="40" cy="34" rx="13" ry="8" fill="white" opacity="0.38" clip-path="url(#${sid})" transform="rotate(-20,40,34)"/>`;
   const g2=`<circle cx="58" cy="30" r="4" fill="white" opacity="0.22" clip-path="url(#${sid})"/>`;
   let body='',redraw=false;
   if(type==='bear'){redraw=true;body=`
     <circle cx="24" cy="20" r="13" fill="${color.b}" opacity="0.65"/>
     <circle cx="76" cy="20" r="13" fill="${color.b}" opacity="0.65"/>
-    <path d="${bp}" fill="url(#${gid})" filter="url(#${fid})"/>
+    <path d="${bp}" fill="url(#${gid})"/>
     <circle cx="24" cy="20" r="8" fill="${color.l}" opacity="0.5"/>
     <circle cx="76" cy="20" r="8" fill="${color.l}" opacity="0.5"/>
     ${face}
@@ -521,7 +521,7 @@ function makeSVG(type,color,size,seed){
   }else if(type==='cat'){redraw=true;body=`
     <polygon points="20,22 30,8 40,22" fill="${color.b}" opacity="0.7"/>
     <polygon points="60,22 70,8 80,22" fill="${color.b}" opacity="0.7"/>
-    <path d="${bp}" fill="url(#${gid})" filter="url(#${fid})"/>
+    <path d="${bp}" fill="url(#${gid})"/>
     <polygon points="22,22 30,11 38,22" fill="${color.l}" opacity="0.5"/>
     <polygon points="62,22 70,11 78,22" fill="${color.l}" opacity="0.5"/>
     ${face}
@@ -532,7 +532,7 @@ function makeSVG(type,color,size,seed){
   }else if(type==='bunny'){redraw=true;body=`
     <ellipse cx="30" cy="14" rx="9" ry="18" fill="${color.b}" opacity="0.65"/>
     <ellipse cx="70" cy="14" rx="9" ry="18" fill="${color.b}" opacity="0.65"/>
-    <path d="${bp}" fill="url(#${gid})" filter="url(#${fid})"/>
+    <path d="${bp}" fill="url(#${gid})"/>
     <ellipse cx="30" cy="14" rx="5" ry="12" fill="${color.l}" opacity="0.5"/>
     <ellipse cx="70" cy="14" rx="5" ry="12" fill="${color.l}" opacity="0.5"/>
     ${face}`;
@@ -698,7 +698,7 @@ function createToy(opts={}){
 
   const el=document.createElement('div');
   el.className='toy spawning';
-  el.style.cssText=`left:${x}px;top:${y}px;width:${s}px;height:${s}px;--wd:${rand(2.4,4.2).toFixed(2)}s;--wdl:${rand(0,2.5).toFixed(2)}s`;
+  el.style.cssText=`width:${s}px;height:${s}px;translate:${x}px ${y}px;--wd:${rand(2.4,4.2).toFixed(2)}s;--wdl:${rand(0,2.5).toFixed(2)}s`;
   el.innerHTML=makeSVG(type,color,s,seed);
   $canvas.appendChild(el);
 
@@ -990,11 +990,10 @@ function physicsStep(ts){
     }
   }
 
-  // ── 4. Write positions to DOM in one batch ────────────────────
+  // ── 4. Write positions to DOM in one batch (translate = GPU-composited, no layout) ──
   for(const t of toys){
     if(!t.alive) continue;
-    t.el.style.left = t.x+'px';
-    t.el.style.top  = t.y+'px';
+    t.el.style.translate = Math.round(t.x)+'px '+Math.round(t.y)+'px';
   }
 
   requestAnimationFrame(physicsStep);
