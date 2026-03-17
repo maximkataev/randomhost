@@ -65,8 +65,8 @@
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    min-height: 100vh;
-    height: 100vh;
+    min-height: 100dvh;
+    height: auto;
     padding: 40px 52px 52px 52px;
       background:
         radial-gradient(1200px 600px at 15% 10%, rgba(99,102,241,.18), transparent 60%),
@@ -77,7 +77,7 @@
       color: var(--ink);
       -webkit-font-smoothing: antialiased;
       text-rendering: optimizeLegibility;
-      overflow: hidden;
+      overflow-x: hidden;
       touch-action: manipulation;
     }
 
@@ -807,7 +807,6 @@
       display: none;
       align-items: center;
       justify-content: center;
-      visibility: hidden;
       position: relative;
       z-index: 1;
     }
@@ -910,13 +909,15 @@
       left: 50%;
       transform: translate(-50%, -50%);
       background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #A855F7 100%);
-      padding: 40px 100px;
+      padding: clamp(20px, 4vw, 40px) clamp(24px, 8vw, 100px);
       border-radius: 28px;
       box-shadow: 0 20px 60px rgba(79,70,229,0.4);
       z-index: 1001;
       pointer-events: none;
       opacity: 0;
       animation: winnerSlideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      max-width: 92vw;
+      box-sizing: border-box;
     }
 
     @keyframes winnerSlideIn {
@@ -929,6 +930,7 @@
       align-items: center;
       justify-content: center;
       gap: 20px;
+      flex-wrap: wrap;
     }
 
     .winner-announcement-emoji {
@@ -943,13 +945,15 @@
     }
 
     .winner-announcement-name {
-      font-size: 68px;
+      font-size: clamp(28px, 10vw, 68px);
       font-weight: 900;
       color: #fff;
       text-align: center;
       letter-spacing: 4px;
       text-shadow: 0 4px 20px rgba(0,0,0,0.3);
       font-family: 'Montserrat';
+      overflow-wrap: anywhere;
+      max-width: 80vw;
     }
 
     .smoke {
@@ -1567,7 +1571,7 @@
     </div>
 
     <div class="result">
-      <div class="result-text" id="resultText"></div>
+      <div id="resultText"></div>
     </div>
   </div>
 
@@ -1752,17 +1756,22 @@
 
     function validateAllNames() {
       let allValid = true;
-      
+
       const nameInputs = namesList.querySelectorAll('.name-input');
-      nameInputs.forEach(input => {
+      const values = Array.from(nameInputs).map(i => i.value.trim().toLowerCase());
+
+      nameInputs.forEach((input, idx) => {
         const value = input.value.trim();
         if (!value || value.length === 0 || input.value.length > 15) {
           allValid = false;
+        } else {
+          const isDup = values.some((v, i) => i !== idx && v === value.toLowerCase());
+          if (isDup) allValid = false;
         }
       });
-      
+
       startRaceBtn.disabled = !allValid || isRacing;
-      
+
       return allValid;
     }
 
@@ -2006,26 +2015,6 @@
             input.classList.add('error-state');
             input.style.borderColor = '#ef4444';
             input.style.background = 'rgba(239,68,68,0.1)';
-            
-            const oldName = names[idx];
-            if (oldName in probabilities) {
-              probabilities[''] = probabilities[oldName];
-              delete probabilities[oldName];
-            }
-            if (oldName in lockedParticipants) {
-              lockedParticipants[''] = true;
-              delete lockedParticipants[oldName];
-            }
-            if (oldName in carChoice) {
-              carChoice[''] = carChoice[oldName];
-              delete carChoice[oldName];
-            }
-            names[idx] = '';
-            saveNames();
-            saveProbabilities();
-            saveCarChoice();
-            createRaceTrack();
-            
             validateAllNames();
             return;
           }
