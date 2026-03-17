@@ -221,9 +221,10 @@ body {
   background:rgba(6,3,18,0.92); backdrop-filter:blur(20px);
   opacity:0; pointer-events:none;
   transition:opacity 0.4s ease;
-  overflow:hidden;
+  overflow-y:auto; -webkit-overflow-scrolling:touch;
+  padding: max(20px, env(safe-area-inset-top, 20px)) 20px max(20px, env(safe-area-inset-bottom, 20px));
 }
-#victory.on { opacity:1; pointer-events:all; }
+#victory.on { opacity:1; pointer-events:all; touch-action:pan-y; }
 #victory-inner {
   text-align:center; color:#fff; position:relative; z-index:2;
   display:flex; flex-direction:column; align-items:center;
@@ -336,6 +337,16 @@ body { touch-action: none; } /* prevent pull-to-refresh / scroll on canvas */
   #vsc               { font-size: 38px; }
   #victory-btn       { padding: 13px 32px; font-size: 15px; }
 }
+
+/* Accessibility: reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .star              { animation: none; opacity: var(--op, 0.4); }
+  .orb               { animation: none; }
+  .toy.idle          { animation: none; }
+  .toy.poppable      { animation: none; }
+  #victory-emoji     { animation: none; }
+  #victory-praise    { animation: none; background-position: 0%; }
+}
 </style>
 </head>
 <body>
@@ -351,6 +362,9 @@ body { touch-action: none; } /* prevent pull-to-refresh / scroll on canvas */
   <div id="phase-label" class="split">✂️ Дели!</div>
   <div id="score-el">0</div>
 </div>
+
+<!-- Safe-area bottom obstacle (height = env(safe-area-inset-bottom), 0 on non-notch devices) -->
+<div id="safe-bottom" style="position:fixed;bottom:0;left:0;right:0;height:env(safe-area-inset-bottom,0px);pointer-events:none;z-index:0;"></div>
 
 <!-- Difficulty -->
 <div id="diff-panel">
@@ -594,11 +608,13 @@ function lockDiff(){
   if(gameStarted) return;
   gameStarted=true;
   $diffPanel.classList.add('locked');
+  updateObstacles();
 }
 
 function unlockDiff(){
   gameStarted=false;
   $diffPanel.classList.remove('locked');
+  updateObstacles();
 }
 
 // ─── Phase management ────────────────────────────────────────────
@@ -620,13 +636,14 @@ function updatePhase(){
     sndMergeAlert();
     alive.forEach(t=>t.el.classList.remove('poppable'));
   }
+  updateObstacles();
 }
 
 // ─── UI obstacle zones (toys bounce off HUD and diff panel) ──────
 let obstacles = [];
 function updateObstacles(){
   obstacles = [];
-  for(const id of ['hud','diff-panel']){
+  for(const id of ['hud','diff-panel','safe-bottom']){
     const el=document.getElementById(id);
     if(!el) continue;
     const r=el.getBoundingClientRect();
@@ -680,10 +697,17 @@ function findSpawnPos(s, hintCx, hintCy){
     }
     if(ok) return {x, y};
   }
-  return {
-    x: clamp(hintCx!==undefined?hintCx-r:rand(2,W-s-2), 2, W-s-2),
-    y: clamp(hintCy!==undefined?hintCy-r:rand(2,H-s-2), 2, H-s-2),
-  };
+  // Fallback: try a few predefined safe positions instead of spawning blind under UI
+  const candidates = [
+    {x: clamp(hintCx!==undefined?hintCx-r:W/2-r, 2, W-s-2), y: clamp(hintCy!==undefined?hintCy-r:H/2-r, 2, H-s-2)},
+    {x: W/2-r, y: H/2-r},
+    {x: W*0.25-r, y: H/2-r},
+    {x: W*0.75-r, y: H/2-r},
+  ];
+  for(const c of candidates){
+    if(!circleHitsObstacle(c.x+r, c.y+r, r+4)) return c;
+  }
+  return candidates[1]; // absolute last resort: center
 }
 
 // ─── Create toy ───────────────────────────────────────────────────
@@ -768,8 +792,6 @@ function squish(toy,axis,now){
 // ─── Click ────────────────────────────────────────────────────────
 function handleClick(toy){
   if(!toy.alive) return;
-  // In pop mode allow clicking even while spawning animation plays
-  if(toy.spawning && phase!=='pop') return;
   resume();
   lockDiff();
   const cx=toy.x+toy.s/2,cy=toy.y+toy.s/2;
@@ -839,6 +861,8 @@ function startNewRound(){
   phase='split';
   $phase.className='split';
   $phase.textContent='✂️ Дели!';
+  scoreN=0;
+  $score.textContent=0;
   const n=randi(START_COUNT,START_COUNT+1);
   for(let i=0;i<n;i++) setTimeout(()=>createToy({lv:1}),i*300+80);
 }
@@ -1001,7 +1025,24 @@ function physicsStep(ts){
 
 // ─── Init ────────────────────────────────────────────────────────
 updateObstacles();
-window.addEventListener('resize', updateObstacles);
+let _resizeTimer;
+window.addEventListener('resize', ()=>{
+  updateObstacles();
+  if($victory.classList.contains('on')) return;
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(()=>{
+    for(const t of toys.slice()) if(t.alive) removeToy(t,'pop');
+    toys=[];
+    phase='split';
+    $phase.className='split';
+    $phase.textContent='✂️ Дели!';
+    scoreN=0;
+    $score.textContent=0;
+    unlockDiff();
+    const n=randi(START_COUNT,START_COUNT+1);
+    for(let i=0;i<n;i++) setTimeout(()=>createToy({lv:1}),i*350+200);
+  },350);
+});
 for(let i=0;i<START_COUNT;i++) setTimeout(()=>createToy({lv:1}),i*350+200);
 requestAnimationFrame(ts=>{ _lastTs=ts; requestAnimationFrame(physicsStep); });
 document.addEventListener('pointerdown',resume,{once:true});
