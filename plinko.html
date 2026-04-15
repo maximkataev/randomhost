@@ -516,6 +516,18 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.2);
     }
 
+    .carousel-btn.off {
+      opacity: 0.4;
+      background: rgba(255,255,255,0.08);
+      border-color: rgba(255,255,255,0.15);
+    }
+
+    .carousel-btn.off:hover {
+      opacity: 0.55;
+      transform: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
     .prob-btn:hover,
     .remove-btn:hover,
     .add-btn-small:hover,
@@ -625,8 +637,11 @@
       display: flex;
       gap: 20px;
       justify-content: center;
+      align-items: center;
       margin-top: 30px;
+      flex-wrap: wrap;
     }
+
 
     button:not(.icon-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):not(.desktop-menu-toggle) {
       padding: 15px 30px;
@@ -1353,6 +1368,11 @@
       <div class="settings-header">
         <h2 class="settings-title">Участники</h2>
         <div class="settings-actions">
+          <button class="icon-btn carousel-btn" id="carouselBtn" title="Карусель участников">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M2 12C2 7.03 6.03 3 11 3h1M22 12c0 4.97-4.03 9-9 9h-1M15 3l3 3-3 3M9 21l-3-3 3-3" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
           <button class="icon-btn equalize-btn" id="equalizeBtn" title="Уравнять вероятности">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect x="4" y="8" width="16" height="3" rx="1.5" fill="white"/>
@@ -1408,6 +1428,17 @@
     let isLoadingFromStorage = false; // Флаг загрузки из localStorage
 
     let animId = null;
+    let revealTimeoutId = null;
+    let lastFrameTime = 0;
+
+    // ===== СКРОЛЛИНГ БИНОВ =====
+    let binScrollOffset = 0;
+    let binScrollSpeed = 4;
+    let binScrolling = false;
+    let binScrollEnabled = true;
+
+    // кеш scrolled bins на один кадр
+    let _frameScrolledBins = [];
 
     // ===== DOM ЭЛЕМЕНТЫ =====
     const namesList = document.getElementById('namesList');
@@ -1485,6 +1516,7 @@
       newNameInput.disabled = locked;
       equalizeBtn.disabled = locked;
       shuffleBtn.disabled = locked;
+      carouselBtn.disabled = locked;
 
       const allInputs = namesList.querySelectorAll('.name-input, .probability-input');
       const allButtons = namesList.querySelectorAll('.prob-btn, .remove-btn');
@@ -1885,6 +1917,7 @@
       setEqualProbabilities();
       createNameInputs();
       buildBins();
+      binScrollOffset = 0;
       drawBoard();
     }
 
@@ -1901,6 +1934,7 @@
       // Обновляем UI и игровое поле
       createNameInputs();
       buildBins();
+      binScrollOffset = 0;
       drawBoard();
     }
 
@@ -2476,7 +2510,38 @@
       });
     }
 
+    function computeScrolledBins() {
+      if (!bins.length) return [];
+      const xStart = isMobile ? 12 : 20;
+      const xEnd = W - (isMobile ? 12 : 20);
+      const totalWidth = xEnd - xStart;
+      if (totalWidth <= 0) return bins;
+
+      const result = [];
+      bins.forEach((b) => {
+        const bw = b.x1 - b.x0;
+        let pos = ((b.x0 - xStart + binScrollOffset) % totalWidth + totalWidth) % totalWidth;
+        const sx0 = xStart + pos;
+        const sx1 = sx0 + bw;
+
+        if (sx1 <= xEnd) {
+          result.push({ ...b, x0: sx0, x1: sx1 });
+        } else {
+          // бин разрезается: правая часть и левая часть (wrap)
+          if (sx0 < xEnd) {
+            result.push({ ...b, x0: sx0, x1: xEnd });
+          }
+          const leftWidth = sx1 - xEnd;
+          if (leftWidth > 0) {
+            result.push({ ...b, x0: xStart, x1: xStart + leftWidth });
+          }
+        }
+      });
+      return result;
+    }
+
     function drawBoard() {
+      _frameScrolledBins = computeScrolledBins().sort((a, b) => a.x0 - b.x0);
       ctx.clearRect(0, 0, W, H);
       
       const gradient = ctx.createLinearGradient(0, 0, 0, H);
@@ -2497,51 +2562,65 @@
       });
       ctx.shadowBlur = 0;
       
-      bins.forEach((b, idx) => {
-        const binGrad = ctx.createLinearGradient(b.x0, b.y0, b.x0, b.y1);
-        binGrad.addColorStop(0, b.color + '40');
-        binGrad.addColorStop(1, b.color + '60');
-        ctx.fillStyle = binGrad;
-        ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
-        
-        if (idx < bins.length - 1) {
-          ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.moveTo(b.x1, b.y0);
-          ctx.lineTo(b.x1, b.y1);
-          ctx.stroke();
-        }
-        
-        const fontSize = isMobile ? 11 : 13;
-        
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold ' + fontSize + 'px Montserrat, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.shadowColor = 'rgba(0,0,0,0.5)';
-        ctx.shadowBlur = 3;
+      if (bins.length) {
+        const xStart = isMobile ? 12 : 20;
+        const xEnd = W - (isMobile ? 12 : 20);
+        const sb = _frameScrolledBins;
 
-        const text = b.name;
-        ctx.fillText(text, (b.x0 + b.x1) / 2, b.y1 - (isMobile ? 8 : 10));
-        ctx.shadowBlur = 0;
-      });
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(xStart, bins[0].y0 - 1, xEnd - xStart, bins[0].y1 - bins[0].y0 + 2);
+        ctx.clip();
+
+        sb.forEach((b) => {
+          const binGrad = ctx.createLinearGradient(b.x0, b.y0, b.x0, b.y1);
+          binGrad.addColorStop(0, b.color + '40');
+          binGrad.addColorStop(1, b.color + '60');
+          ctx.fillStyle = binGrad;
+          ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+
+          // разделитель справа (кроме крайнего правого)
+          if (b.x1 < xEnd - 1) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(b.x1, b.y0);
+            ctx.lineTo(b.x1, b.y1);
+            ctx.stroke();
+          }
+
+          const fontSize = isMobile ? 11 : 13;
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold ' + fontSize + 'px Montserrat, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.shadowColor = 'rgba(0,0,0,0.5)';
+          ctx.shadowBlur = 3;
+          ctx.fillText(b.name, (b.x0 + b.x1) / 2, b.y1 - (isMobile ? 8 : 10));
+          ctx.shadowBlur = 0;
+        });
+
+        ctx.restore();
+      }
     }
 
     // ===== ФИЗИКА =====
     let ball = null;
     let winnerLocked = null;
+    let ballInBinZone = false;
 
-    const GRAV = isMobile ? 0.03 : 0.1;
-    const PEG_R = isMobile ? 3 : 3.5;
-    const BALL_R = isMobile ? 7 : 10;
-    const REST = isMobile ? 0.6 : 0.5;
-    const WALL_REST = isMobile ? 0.5 : 0.48;
-    const FRICTION = isMobile ? 0.998 : 0.9985;
+    const GRAV      = isMobile ? 0.076 : 0.156;
+    const PEG_R     = isMobile ? 3 : 3.5;
+    const BALL_R    = isMobile ? 7 : 10;
+    const REST      = isMobile ? 0.45 : 0.42;
+    const WALL_REST = isMobile ? 0.45 : 0.42;
+    const FRICTION  = isMobile ? 0.998 : 0.997;
 
     function dropBall() {
-      if (animId) return;
+      if (animId) { cancelAnimationFrame(animId); animId = null; }
+      if (revealTimeoutId) { clearTimeout(revealTimeoutId); revealTimeoutId = null; }
       winnerAnnouncement.classList.remove('show');
       winnerLocked = null;
+      ballInBinZone = false;
       
       const centerX = W / 2;
       
@@ -2549,13 +2628,15 @@
         x: centerX,
         y: -BALL_R - (isMobile ? 60 : 80),
         vx: (Math.random() - 0.5) * (isMobile ? 1 : 0.8),
-        vy: (isMobile ? 3 : 2.5) + Math.random() * 0.5
+        vy: (isMobile ? 1.2 : 1.3) + Math.random() * 0.7
       };
       
       playTickSound();
-      
+
+      binScrolling = binScrollEnabled;
       setUILocked(true);
-      
+
+      lastFrameTime = performance.now();
       frame();
     }
 
@@ -2590,25 +2671,27 @@
 
     function collideInsideBins() {
       if (!bins.length) return;
-      
+
       const topY = bins[0].y0;
       const bottomY = bins[0].y1;
-      
+
       if (ball.y + BALL_R < topY) return;
-      
-      for (let i = 0; i < bins.length - 1; i++) {
-        const sepX = bins[i].x1;
+
+      const sb = _frameScrolledBins;
+
+      for (let i = 0; i < sb.length - 1; i++) {
+        const sepX = sb[i].x1;
         if (ball.y - BALL_R < bottomY && Math.abs(ball.x - sepX) < BALL_R) {
           const sign = ball.x - sepX >= 0 ? 1 : -1;
           ball.x = sepX + sign * BALL_R;
           ball.vx = -sign * Math.abs(ball.vx) * WALL_REST;
         }
       }
-      
+
       let b = null;
-      for (let j = 0; j < bins.length; j++) {
-        if (ball.x >= bins[j].x0 && ball.x <= bins[j].x1) {
-          b = bins[j];
+      for (let j = 0; j < sb.length; j++) {
+        if (ball.x >= sb[j].x0 && ball.x <= sb[j].x1) {
+          b = sb[j];
           break;
         }
       }
@@ -2627,6 +2710,7 @@
         ball.vx = -Math.abs(ball.vx) * WALL_REST;
       }
       if (ball.y > floor) {
+        ballInBinZone = true;
         if (!winnerLocked) {
           winnerLocked = b.name;
           revealWinner(b.name);
@@ -2637,27 +2721,27 @@
       }
     }
 
-    function physicsStep() {
-      ball.vy += GRAV;
-      ball.x += ball.vx;
-      ball.y += ball.vy;
-      ball.vx *= FRICTION;
-      ball.vy *= FRICTION;
-      
+    function physicsStep(dt) {
+      ball.vy += GRAV * dt;
+      ball.x  += ball.vx * dt;
+      ball.y  += ball.vy * dt;
+      ball.vx *= Math.pow(FRICTION, dt);
+      ball.vy *= Math.pow(FRICTION, dt);
+
       const sideMargin = isMobile ? 12 : 20;
-      
+
       if (ball.x < BALL_R + sideMargin) {
-        ball.x = BALL_R + sideMargin;
+        ball.x  = BALL_R + sideMargin;
         ball.vx = Math.abs(ball.vx) * WALL_REST;
       }
       if (ball.x > W - BALL_R - sideMargin) {
-        ball.x = W - BALL_R - sideMargin;
+        ball.x  = W - BALL_R - sideMargin;
         ball.vx = -Math.abs(ball.vx) * WALL_REST;
       }
-      
+
       pegs.forEach(collideWithPeg);
       collideInsideBins();
-      
+
       const topY = bins.length ? bins[0].y0 : (H - 85);
       if (ball.y > topY - BALL_R && Math.abs(ball.vx) < 0.02) {
         ball.vx += (Math.random() - 0.5) * 0.08;
@@ -2665,17 +2749,28 @@
     }
 
     function isBallStopped() {
+      if (!ballInBinZone) return false;
       const bottomY = bins.length ? bins[0].y1 : (H - 20);
       return (
-        Math.abs(ball.vx) < 0.08 &&
-        Math.abs(ball.vy) < 0.1 &&
-        ball.y >= bottomY - BALL_R - 0.8
+        Math.abs(ball.vx) < 0.15 &&
+        Math.abs(ball.vy) < GRAV * 2.5 &&
+        ball.y >= bottomY - BALL_R - 1
       );
     }
 
-    function frame() {
+    function frame(now = performance.now()) {
       animId = requestAnimationFrame(frame);
-      physicsStep();
+
+      const dt = Math.min((now - lastFrameTime) / (1000 / 60), 2);
+      lastFrameTime = now;
+
+      if (binScrolling && binScrollSpeed > 0) {
+        const xStart = isMobile ? 12 : 20;
+        const xEnd = W - (isMobile ? 12 : 20);
+        const totalWidth = xEnd - xStart;
+        binScrollOffset = (binScrollOffset + binScrollSpeed * dt) % totalWidth;
+      }
+      physicsStep(dt);
       
       drawBoard();
       
@@ -2723,6 +2818,7 @@
     }
 
     function revealWinner(name) {
+      binScrolling = false;
       playFanfare();
       createConfetti();
       createCelebrationEmojis();
@@ -2735,13 +2831,23 @@
       `;
       winnerAnnouncement.classList.add('show');
       
-      setTimeout(() => {
+      setUILocked(false);
+
+      if (revealTimeoutId) clearTimeout(revealTimeoutId);
+      revealTimeoutId = setTimeout(() => {
+        revealTimeoutId = null;
         winnerAnnouncement.classList.remove('show');
-        setUILocked(false);
       }, 3500);
     }
 
     dropBtn.addEventListener('click', dropBall);
+
+    const carouselBtn = document.getElementById('carouselBtn');
+    carouselBtn.addEventListener('click', () => {
+      binScrollEnabled = !binScrollEnabled;
+      carouselBtn.classList.toggle('off', !binScrollEnabled);
+    });
+
 
     // ===== RESIZE =====
     let resizeTimeout;
