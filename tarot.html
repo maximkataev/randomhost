@@ -222,7 +222,7 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
 .s-head{text-align:center;padding:0 0 8px;position:relative;z-index:1}
 .s-title{font-family:'Playfair Display',serif;font-size:clamp(20px,2.5vw,30px);font-weight:900;color:var(--gold);letter-spacing:1px;opacity:.85}
 .s-sub{font-size:16px;color:var(--text-m);font-style:italic;margin-top:2px;letter-spacing:.3px}
-.s-question{font-family:'Playfair Display',serif;font-style:italic;font-size:17px;color:var(--text-s);margin-top:4px;opacity:0;transition:opacity .5s;max-width:400px;display:inline-block}
+.s-question{font-family:'Playfair Display',serif;font-style:italic;font-size:17px;color:var(--text-s);margin:4px auto 0;opacity:0;transition:opacity .5s;max-width:400px;text-align:center;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .s-question.vis{opacity:1}
 .s-question::before{content:'\AB\A0'}
 .s-question::after{content:'\A0\BB'}
@@ -440,9 +440,14 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
   .stage:not([data-phase="idle"]) .s-sub{display:none}
   /* Явный min-height чтобы вопрос всегда занимал место и не перекрывался картами */
   .stage:not([data-phase="idle"]) .s-head{
-    padding:4px 8px 8px;
-    min-height:36px;
-    display:flex;align-items:center;justify-content:center;
+    padding:4px 16px 10px;
+    min-height:fit-content;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+  }
+  /* В фазе выбора карт — вопрос ниже */
+  .stage[data-phase="select"] .s-head,
+  .stage[data-phase="done"] .s-head{
+    padding-top:clamp(10px,5vh,36px);
   }
   .s-head{padding:0 0 6px}
   .s-title{font-size:22px}
@@ -455,9 +460,9 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
   .card.down .card-lbl{display:none}
   /* Пустой s-foot в фазе выбора карт схлопываем */
   .stage[data-phase="select"] .s-foot{min-height:0;height:0;margin-bottom:0;padding:0}
-  /* Минимальный отступ от вопроса до карт */
+  /* Отступ от вопроса до карт — 6vh (~5-10% экрана) */
   .stage[data-phase="select"] .s-center,
-  .stage[data-phase="done"] .s-center{padding-top:4px}
+  .stage[data-phase="done"] .s-center{padding-top:6vh}
   /* Touch: без задержки, без выделения текста */
   .card,.deck,.btn,.chip,.panel-tab,.ov-q-item{
     touch-action:manipulation;
@@ -498,10 +503,16 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
     border-radius:0!important;
     animation:sheetUp .28s cubic-bezier(.17,.67,.35,1);
   }
+  .panel.expanded.no-anim{animation:none!important;}
+  /* Safe area для notch/Dynamic Island при развёрнутой панели */
+  .panel.expanded .panel-head{
+    padding-top:max(14px,calc(env(safe-area-inset-top,0px) + 8px));
+  }
   @keyframes sheetUp{
     from{transform:translateY(28%);opacity:.7}
     to{transform:none;opacity:1}
   }
+  .ov-box{max-height:calc(100dvh - 40px)}
 }
 @media(max-width:600px){
   :root{--card-w:72px;--safe-pad:12px}
@@ -535,6 +546,23 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
   .app{grid-template-rows:1fr 36vh}
   .panel{height:36vh}
 }
+/* ---- Touch targets: all coarse-pointer devices (phones + tablets, any width) ---- */
+@media(pointer:coarse){
+  .card,.deck,.btn,.chip,.panel-tab,.ov-q-item{touch-action:manipulation;-webkit-user-select:none;user-select:none}
+  .btn{min-height:44px}
+  .chip{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  .ov-q-item{min-height:44px;display:flex;align-items:center;justify-content:center}
+  .panel-tab{min-height:44px}
+  /* Keyboard-safe overlay: allow scroll so focused input stays visible */
+  .ov-box{overflow-y:auto;-webkit-overflow-scrolling:touch}
+}
+/* ---- Reduced motion ---- */
+@media(prefers-reduced-motion:reduce){
+  .card,.card-in,.deck,.ov,.panel.expanded,.panel-tab,.btn{transition:none!important;animation:none!important}
+  .card.entering,.card.leaving,.panel.expanded{animation:none!important}
+  @keyframes interpIn{from{opacity:1;transform:none}to{opacity:1;transform:none}}
+  canvas#bg{display:none}
+}
 </style>
 </head>
 <body>
@@ -543,6 +571,13 @@ canvas#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
 
 <nav class="topbar">
   <a href="/" class="topbar-home">Главная</a>
+  <div class="progress">
+    <span class="progress-label" id="progLabel"></span>
+    <div class="progress-dot"></div>
+    <div class="progress-dot"></div>
+    <div class="progress-dot"></div>
+    <div class="progress-dot"></div>
+  </div>
 </nav>
 
 <div class="app-wrap">
@@ -653,6 +688,7 @@ function imgFallback(img,num,suit,alt){
     for(let i=0;i<40;i++)pts.push({x:Math.random()*w,y:Math.random()*h,r:Math.random()*1.2+.4,a:Math.random(),s:Math.random()*.0006+.0002,d:Math.random()>.5?1:-1});
   }
   resize();addEventListener('resize',resize);
+  if(window.matchMedia('(prefers-reduced-motion:reduce)').matches)return;
   (function draw(){
     x.clearRect(0,0,w,h);
     for(const p of pts){
@@ -930,6 +966,7 @@ function setProgress(step,label){
    RITUAL FLOW
    ============================================================ */
 function startRitual(){
+  document.querySelector('.panel').classList.remove('expanded');
   $('#ovDark').classList.add('on');
   $('#btnStart').style.display='none';
   $('.s-head').style.display='none';
@@ -938,8 +975,11 @@ function startRitual(){
   setTimeout(()=>$('#qInput').focus(),400);
 }
 
+let _flowing=false;
 function submitQuestion(){
-  const selItem=document.querySelector('#ovQList .ov-q-item.sel');
+  if(_flowing)return;
+  const qListVisible=document.getElementById('ovQList').style.display!=='none';
+  const selItem=qListVisible?document.querySelector('#ovQList .ov-q-item.sel'):null;
   const customVisible=document.getElementById('ovCustom').style.display!=='none';
   let q='';
   if(selItem){
@@ -953,6 +993,9 @@ function submitQuestion(){
     document.querySelectorAll('.chip').forEach(c=>{c.style.borderColor='#c06050';setTimeout(()=>c.style.borderColor='',800);});
     return;
   }
+  _flowing=true;
+  const _submitBtn=document.querySelector('#ovQ .btn-gold');
+  if(_submitBtn) _submitBtn.disabled=true;
   S.q=q;
   $('#ovQ').classList.remove('on');
   setProgress(2,'Энергия');
@@ -960,6 +1003,7 @@ function submitQuestion(){
 }
 
 function showHands(){
+  document.querySelector('.panel').classList.remove('expanded');
   const ov=$('#ovH'),bar=$('#eBar');
   ov.classList.add('on');bar.style.width='0';
   let p=0;
@@ -1030,12 +1074,15 @@ function pick(el,pi){
 
   tabOn(si,card);renderInterp(si);setActiveTab(si);applyCardStates(si);
 
-
   const n=S.slots.length;
   $('#status').textContent=n<3?`Выбрано ${n} из 3`:'';
   setProgress(n<3?3:4,n<3?'Выбор карт':'Толкование');
 
   if(n===3){
+    if(window.matchMedia('(max-width:900px)').matches){
+      const p=document.querySelector('.panel');
+      p.classList.add('expanded');
+    }
     S.phase='done';$('#stage').dataset.phase='done';
 
     // STEP 1 — невыбранные испаряются за 1 секунду
@@ -1390,6 +1437,8 @@ function generateSummary(){
   return{energy,advice,outlook,conclusion,cards};
 }
 
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
 function renderSummary(){
   const{energy,advice,outlook,conclusion,cards}=generateSummary();
   const cardsHtml=cards.map((c,i)=>
@@ -1398,7 +1447,7 @@ function renderSummary(){
 
   $('#pBody').innerHTML=`<div class="sum-block">
     <div class="sum-eyebrow">Итог расклада</div>
-    <div class="sum-q">${S.q}</div>
+    <div class="sum-q">${esc(S.q)}</div>
     <div class="sum-cards">${cardsHtml}</div>
     <div class="sum-sep"></div>
     <div class="sum-conc-block">
@@ -1416,6 +1465,10 @@ function renderSummary(){
    NEW READING
    ============================================================ */
 function newReading(){
+  _flowing=false;
+  const _submitBtn=document.querySelector('#ovQ .btn-gold');
+  if(_submitBtn) _submitBtn.disabled=false;
+  document.querySelector('.panel').classList.remove('expanded');
   $('#ovDark').classList.add('on');
   reset();
   $('#sFoot').innerHTML='';
@@ -1431,6 +1484,7 @@ function newReading(){
   });
   $('#qInput').value='';
   $$('.chip').forEach(c=>c.classList.remove('sel'));
+  $('#ovQList').querySelectorAll('.ov-q-item').forEach(i=>i.classList.remove('sel'));
   $('#ovQList').style.display='none';
   $('#ovCustom').style.display='none';
   setProgress(1,'Вопрос');
@@ -1442,6 +1496,10 @@ function newReading(){
    KEYBOARD
    ============================================================ */
 $('#qInput').addEventListener('keydown',e=>{if(e.key==='Enter')submitQuestion()});
+$('#qInput').addEventListener('focus',()=>{
+  if(window.matchMedia('(pointer:coarse)').matches)
+    setTimeout(()=>$('#qInput').scrollIntoView({behavior:'smooth',block:'center'}),350);
+});
 
 /* ============================================================
    PANEL EXPAND / COLLAPSE — mobile bottom sheet
@@ -1450,6 +1508,7 @@ $('#qInput').addEventListener('keydown',e=>{if(e.key==='Enter')submitQuestion()}
   const panel=document.querySelector('.panel');
   const head=document.getElementById('panelHead');
   const isMob=()=>window.matchMedia('(max-width:900px)').matches;
+
 
   head.addEventListener('click',()=>{
     if(!isMob()) return;
