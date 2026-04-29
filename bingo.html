@@ -2716,10 +2716,13 @@
       // Остальные: каждый имеет один из выпадающих + один уникальный
       const others = participants.filter(p => p !== chosenWinner);
 
+      // Randomly distribute which winning emoji each non-winner gets (balanced but shuffled)
+      const winningAssignments = shuffleArray(others.map((_, i) => i % 2));
+      const additionalPool2 = shuffleArray(allEmojis.slice(turnsCount));
+
       others.forEach((p, idx) => {
-        // Чередуем: кто-то имеет первый смайлик, кто-то второй
-        const winningEmoji = sequence[idx % 2];
-        const uniqueEmoji = allEmojis[turnsCount + idx];
+        const winningEmoji = sequence[winningAssignments[idx]];
+        const uniqueEmoji = additionalPool2[idx];
         p.card = shuffleArray([winningEmoji, uniqueEmoji]);
       });
     } else {
@@ -2729,23 +2732,21 @@
 
       const others = participants.filter(p => p !== chosenWinner);
 
+      // Randomly distribute which winning emoji each non-winner is missing (balanced but shuffled)
+      const skipAssignments = shuffleArray(others.map((_, i) => i % 3));
+      const additionalPool3 = shuffleArray(allEmojis.slice(turnsCount));
+
       others.forEach((p, idx) => {
-        // Каждый имеет 2 из 3 выпадающих смайликов + возможно уникальные
-        // Пропускаем разные смайлики для разных участников
-        const skipIndex = idx % 3;
+        const skipIndex = skipAssignments[idx];
         const card = [];
 
-        // Добавляем 2 выпадающих смайлика (пропуская один)
         for (let i = 0; i < 3; i++) {
           if (i !== skipIndex) {
             card.push(sequence[i]);
           }
         }
 
-        // Добавляем уникальный смайлик
-        card.push(allEmojis[turnsCount + idx]);
-
-        // Берем случайные 3 из этих 4
+        card.push(additionalPool3[idx]);
         p.card = shuffleArray(card).slice(0, 3);
       });
     }
@@ -3164,6 +3165,8 @@
         playBtn.textContent = 'Начать игру';
         startBtn.disabled = false;
         startBtn.style.display = 'block';
+        startBtn.style.visibility = 'visible';
+        startBtn.style.opacity = '1';
         setEditingEnabled(true);
 
         // Возвращаем плейсхолдер
