@@ -1803,6 +1803,20 @@
   const MIN_PARTICIPANTS = 2;
   const MIN_PROBABILITY = 0.05;
 
+  function secureRandomFloat() {
+    const arr = new Uint32Array(1);
+    crypto.getRandomValues(arr);
+    return arr[0] / 0x100000000;
+  }
+
+  function secureRandomInt(max) {
+    if (!Number.isFinite(max) || max <= 0) return 0;
+    const arr = new Uint32Array(1);
+    const limit = Math.floor(0x100000000 / max) * max;
+    do { crypto.getRandomValues(arr); } while (arr[0] >= limit);
+    return arr[0] % max;
+  }
+
   // Пул смайликов для игры - казиношные символы
   const EMOJI_POOL = [
     '🍒','🍋','🍊','🍉','🍇','🍓',
@@ -1816,7 +1830,7 @@
   function shuffledAvatars(count) {
     const pool = [...AVATAR_EMOJIS];
     for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = secureRandomInt(i + 1);
       [pool[i], pool[j]] = [pool[j], pool[i]];
     }
     if (count <= pool.length) return pool.slice(0, count);
@@ -2620,7 +2634,7 @@
     const pool = [...availableEmojis];
 
     while (emojis.length < count && pool.length > 0) {
-      const randomIndex = Math.floor(Math.random() * pool.length);
+      const randomIndex = secureRandomInt(pool.length);
       emojis.push(pool[randomIndex]);
       pool.splice(randomIndex, 1);
     }
@@ -2632,7 +2646,7 @@
   function shuffleArray(array) {
     const arr = [...array];
     for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = secureRandomInt(i + 1);
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
     return arr;
@@ -2646,7 +2660,7 @@
   // Генерация последовательности на выбывание с контролем количества выбывших
   function generateEliminationSequence(participants, eliminationPlan) {
     // Выбираем победителя по вероятностям
-    const rand = Math.random();
+    const rand = secureRandomFloat();
     let cumulative = 0;
     let chosenWinner = null;
 

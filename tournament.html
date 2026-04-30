@@ -1946,6 +1946,29 @@
   const MAX_PARTICIPANTS = 20;
   const MIN_PROBABILITY = 0.05; // 5%
 
+  function secureRandomFloat() {
+    const arr = new Uint32Array(1);
+    crypto.getRandomValues(arr);
+    return arr[0] / 0x100000000;
+  }
+
+  function secureRandomInt(max) {
+    if (!Number.isFinite(max) || max <= 0) return 0;
+    const arr = new Uint32Array(1);
+    const limit = Math.floor(0x100000000 / max) * max;
+    do { crypto.getRandomValues(arr); } while (arr[0] >= limit);
+    return arr[0] % max;
+  }
+
+  function shuffleArray(array) {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = secureRandomInt(i + 1);
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+
   let names = ['Дима','Саша','Никита','Максим','Кирилл','Семён'];
   let probabilities = {};
   let lockedParticipants = {};
@@ -2844,7 +2867,7 @@
 
   function selectWinnerByProbability(participants) {
     const totalProb = participants.reduce((sum, p) => sum + p.probability, 0);
-    let random = Math.random() * totalProb;
+    let random = secureRandomFloat() * totalProb;
 
     for (let p of participants) {
       random -= p.probability;
@@ -2854,7 +2877,7 @@
   }
 
   function divideIntoGroups(participants) {
-    const shuffled = [...participants].sort(() => Math.random() - 0.5);
+    const shuffled = shuffleArray(participants);
     const mid = Math.ceil(shuffled.length / 2);
     return [shuffled.slice(0, mid), shuffled.slice(mid)];
   }
@@ -2867,9 +2890,9 @@
 
     if (winnerInGroup0) {
       fighter1 = winner;
-      fighter2 = groups[1][Math.floor(Math.random() * groups[1].length)];
+      fighter2 = groups[1][secureRandomInt(groups[1].length)];
     } else {
-      fighter1 = groups[0][Math.floor(Math.random() * groups[0].length)];
+      fighter1 = groups[0][secureRandomInt(groups[0].length)];
       fighter2 = winner;
     }
 
@@ -3399,7 +3422,7 @@
       }
     }
 
-    positions.sort(() => Math.random() - 0.5);
+    for (let i = positions.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [positions[i], positions[j]] = [positions[j], positions[i]]; }
 
     const wordsToShow = 12;
 

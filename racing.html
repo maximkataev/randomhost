@@ -1587,6 +1587,20 @@
     const LOCKED_KEY = 'shared_locked_v1';
     const CAR_KEY = 'race_car_map_v1';
 
+    function secureRandomFloat() {
+      const arr = new Uint32Array(1);
+      crypto.getRandomValues(arr);
+      return arr[0] / 0x100000000;
+    }
+
+    function secureRandomInt(max) {
+      if (!Number.isFinite(max) || max <= 0) return 0;
+      const arr = new Uint32Array(1);
+      const limit = Math.floor(0x100000000 / max) * max;
+      do { crypto.getRandomValues(arr); } while (arr[0] >= limit);
+      return arr[0] % max;
+    }
+
     const raceTrack = document.getElementById('raceTrack');
     const racersNames = document.getElementById('racersNames');
     const startRaceBtn = document.getElementById('startRaceBtn');
@@ -2381,7 +2395,7 @@
         }
       }
 
-      positions.sort(() => Math.random() - 0.5);
+      for (let i = positions.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [positions[i], positions[j]] = [positions[j], positions[i]]; }
 
       const count = isMobile ? 8 : 12;
       for (let i = 0; i < count; i++) {
@@ -2544,7 +2558,7 @@
       const finishPosition = trackWidth - (isMobile ? 50 : 100);
       const halfwayPoint = (finishPosition - 30) / 2 + 30;
 
-      const rnd = Math.random();
+      const rnd = secureRandomFloat();
       let acc = 0;
       let winnerName = names[names.length - 1];
 
@@ -2564,7 +2578,7 @@
 
       let challengerRacer = null;
       if (others.length) {
-        challengerRacer = others[Math.floor(Math.random() * others.length)];
+        challengerRacer = others[secureRandomInt(others.length)];
         challengerRacer.isChallenger = true;
       }
 

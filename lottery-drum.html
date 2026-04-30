@@ -826,6 +826,32 @@ const NAMES_KEY = 'shared_names_v1';
 const PROB_KEY = 'shared_probabilities_v2';
 const LOCKED_KEY = 'shared_locked_v1';
 
+function secureRandomFloat() {
+  const arr = new Uint32Array(1);
+  crypto.getRandomValues(arr);
+  return arr[0] / 0x100000000;
+}
+
+function secureRandomInt(max) {
+  if (!Number.isFinite(max) || max <= 0) return 0;
+  const arr = new Uint32Array(1);
+  const limit = Math.floor(0x100000000 / max) * max;
+  do { crypto.getRandomValues(arr); } while (arr[0] >= limit);
+  return arr[0] % max;
+}
+
+function selectWeightedItem(items, getWeight) {
+  const total = items.reduce((sum, item) => sum + Math.max(0, getWeight(item) || 0), 0);
+  if (total <= 0) return items[secureRandomInt(items.length)];
+
+  let random = secureRandomFloat() * total;
+  for (const item of items) {
+    random -= Math.max(0, getWeight(item) || 0);
+    if (random < 0) return item;
+  }
+  return items[items.length - 1];
+}
+
 // ===== Состояние имён =====
 let names = ['Дима','Саша','Никита','Максим','Кирилл','Семён'];
 try {
@@ -1550,7 +1576,7 @@ function createCelebrationWords(){
   const words = ['ВАУ','ЧЕМПИОН','МОЛОДЕЦ','КРАСАВА','ЛЕГЕНДА','ВПЕРЁД','ТОПЧИК','ПОБЕДА','ОГОНЬ','ТЫ ЛУЧШИЙ','ДАВАЙ ЕЩЁ','НЕВЕРОЯТНО','СУПЕР','НАДО ЖЕ КТО ВЫПАЛ','КРАСАВЧИК','МАСТЕР','ГЕНИЙ','БОСС','КТО БЫ МОГ ПОДУМАТЬ','ЭПИЧНО','БРАВО','ГГ','РЕСПЕКТ','ШИКАРНО','ИМБА','КРУТЯК','МОЩНО','ЗА ПОБЕДУ','ВОТ ЭТО ДА','КРУТО','ФАЙЕР','БОМБА','ТОП-1','ПРО','ЛЕГЕНДА ВОЗВРАЩАЕТСЯ','БЕЗУПРЕЧНО','МАГИЯ','ЧУДО','ФАНТАСТИКА'];
   const cols=4, rows=3, pos=[];
   for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) pos.push({left:(c*(100/cols))+(100/cols/2), top:(r*(100/rows))+(100/rows/2)});
-  pos.sort(()=>Math.random()-0.5);
+  for(let i=pos.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pos[i],pos[j]]=[pos[j],pos[i]];}
   for(let i=0;i<12;i++){
     setTimeout(()=>{
       const w=document.createElement('div');
@@ -1843,13 +1869,10 @@ async function drawBall(){
   const available = ballData.filter(d=>d.element.style.display!=='none');
 
   // === ВЗВЕШЕННЫЙ ВЫБОР С ВЕРОЯТНОСТЯМИ ===
-  const weightedPool = [];
-  available.forEach(d => {
-    const weight = probabilities[d.name] || (1 / available.length);
-    const count = Math.max(1, Math.round(weight * 1000));
-    for (let i = 0; i < count; i++) weightedPool.push(d);
-  });
-  const winnerData = weightedPool[Math.floor(Math.random() * weightedPool.length)];
+  const winnerData = selectWeightedItem(
+    available,
+    d => probabilities[d.name] || (1 / available.length)
+  );
   const winner = winnerData.element;
 
   winner.classList.add('extracting');
