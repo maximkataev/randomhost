@@ -93,6 +93,12 @@
 
     .marble { position: absolute; border-radius: 50%; z-index: 5; will-change: transform; transition: none; }
 
+    .spinner { position: absolute; z-index: 4; }
+    .spinner-center { position: absolute; width: 12px; height: 12px; background: rgba(255,255,255,0.5);
+      border-radius: 50%; left: -6px; top: -6px; }
+    .spinner-arm { position: absolute; background: rgba(102,126,234,0.8); transform-origin: left center;
+      left: 0; top: -6px; border-radius: 3px; }
+
     .start-race-btn { position: relative; margin-top: 20px; padding: 12px 30px;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: 2px solid rgba(255,255,255,0.3);
       border-radius: 25px; font-size: 16px; font-weight: 700; cursor: pointer;
@@ -318,6 +324,7 @@ let raceInProgress = false;
 let selectedWinner = null;
 let rafId = null;
 let lastTime = 0;
+let matterSpinners = [];
 
 // ============================================================
 //  UTILITIES
@@ -754,6 +761,30 @@ function initializeObstacles() {
       );
       World.add(world, body);
     }
+    else if (layout.type === 'spinners') {
+      const spread = w * layout.spread;
+      const startX = (w - spread) / 2;
+      const spinnerRadius = 25;
+      const rotationSpeed = 8;
+
+      for (let i = 0; i < layout.count; i++) {
+        const spinnerX = startX + (spread / (layout.count + 1)) * (i + 1);
+        const spinnerY = currentY + sectionHeight / 2;
+
+        const direction = i % 2 === 0 ? 1 : -1;
+
+        matterSpinners.push({
+          x: spinnerX,
+          y: spinnerY,
+          radius: spinnerRadius,
+          rotationSpeed: rotationSpeed,
+          direction: direction,
+          angle: 0,
+          armLength: spinnerRadius * 1.5,
+          armWidth: 12
+        });
+      }
+    }
 
     currentY += sectionHeight;
   });
@@ -840,6 +871,34 @@ function createMatterMarbles() {
   });
 }
 
+function renderSpinners() {
+  const container = document.querySelector('.obstacle-course');
+  const existing = container.querySelectorAll('.spinner');
+  existing.forEach(el => el.remove());
+
+  matterSpinners.forEach(spinner => {
+    const spinnerEl = document.createElement('div');
+    spinnerEl.className = 'spinner';
+    spinnerEl.style.left = spinner.x + 'px';
+    spinnerEl.style.top = spinner.y + 'px';
+
+    const centerEl = document.createElement('div');
+    centerEl.className = 'spinner-center';
+    spinnerEl.appendChild(centerEl);
+
+    const armEl = document.createElement('div');
+    armEl.className = 'spinner-arm';
+    armEl.style.width = spinner.armLength + 'px';
+    armEl.style.height = spinner.armWidth + 'px';
+    spinnerEl.appendChild(armEl);
+
+    container.appendChild(spinnerEl);
+
+    spinner.el = spinnerEl;
+    spinner.armEl = armEl;
+  });
+}
+
 // ============================================================
 //  GAME LOOP
 // ============================================================
@@ -852,6 +911,69 @@ function gameLoop(now) {
   // Run Matter.js engine
   Engine.update(engine, Math.min(rawDt * 1000, 30));
 
+  // Update spinners
+  matterSpinners.forEach(spinner => {
+    spinner.angle += spinner.rotationSpeed * spinner.direction * rawDt;
+  });
+
+  // Spinner-marble collisions
+  for (const spinner of matterSpinners) {
+    for (const marble of matterMarbles) {
+      const armAngle = spinner.angle;
+      const armStartX = spinner.x;
+      const armStartY = spinner.y;
+      const armEndX = spinner.x + spinner.armLength * Math.cos(armAngle);
+      const armEndY = spinner.y + spinner.armLength * Math.sin(armAngle);
+
+      // Closest point on arm to marble
+      const mx = marble.body.position.x;
+      const my = marble.body.position.y;
+      const dx = armEndX - armStartX;
+      const dy = armEndY - armStartY;
+      const len2 = dx * dx + dy * dy;
+      let t = 0;
+      if (len2 > 0) t = Math.max(0, Math.min(1, ((mx - armStartX) * dx + (my - armStartY) * dy) / len2));
+
+      const closestX = armStartX + t * dx;
+      const closestY = armStartY + t * dy;
+      const distX = mx - closestX;
+      const distY = my - closestY;
+      const dist = Math.hypot(distX, distY);
+
+      const collisionDist = MARBLE_RADIUS + spinner.armWidth / 2;
+      if (dist < collisionDist && dist > 0) {
+        const nx = distX / dist;
+        const ny = distY / dist;
+
+        // Arm velocity at contact point
+        const radiusX = closestX - spinner.x;
+        const radiusY = closestY - spinner.y;
+        const omega = spinner.rotationSpeed * spinner.direction;
+        const armVx = -omega * radiusY;
+        const armVy = omega * radiusX;
+
+        // Relative velocity
+        const relVx = marble.body.velocity.x - armVx;
+        const relVy = marble.body.velocity.y - armVy;
+        const relVn = relVx * nx + relVy * ny;
+
+        if (relVn < 0) {
+          // Collision impulse
+          const j = -(1 + 0.6) * relVn;
+          Body.applyForce(marble.body, { x: marble.body.position.x, y: marble.body.position.y }, {
+            x: j * nx / marble.body.mass,
+            y: j * ny / marble.body.mass
+          });
+
+          // Position correction
+          const overlap = collisionDist - dist;
+          marble.body.position.x += overlap * nx * 0.5;
+          marble.body.position.y += overlap * ny * 0.5;
+        }
+      }
+    }
+  }
+
   // Clamp velocities
   matterMarbles.forEach(m => {
     const speed = Body.getSpeed(m.body);
@@ -861,6 +983,13 @@ function gameLoop(now) {
         x: m.body.velocity.x * scale,
         y: m.body.velocity.y * scale
       });
+    }
+  });
+
+  // Update spinner visual rotation
+  matterSpinners.forEach(spinner => {
+    if (spinner.armEl) {
+      spinner.armEl.style.transform = `rotate(${spinner.angle}rad)`;
     }
   });
 
@@ -884,6 +1013,9 @@ function startRace() {
 
   lastTime = performance.now();
 
+  // Reset spinner angles
+  matterSpinners.forEach(s => s.angle = 0);
+
   // Clear previous bodies
   if (world) {
     const bodies = Composite.allBodies(world);
@@ -897,6 +1029,7 @@ function startRace() {
   }
 
   createMatterMarbles();
+  renderSpinners();
   rafId = requestAnimationFrame(gameLoop);
 }
 
