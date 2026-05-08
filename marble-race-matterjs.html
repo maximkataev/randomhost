@@ -3,304 +3,297 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-
   <title>Гонка Мраморов — Рандомайзер</title>
-  <meta name="description" content="🏔️ Смотри, как мраморные шарики скатываются по препятствиям и крутящимся спиннерам! Честная физика и случайный победитель." />
-  <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1">
-  <link rel="canonical" href="https://randomhost.online/marble-race.html">
-
-  <!-- Open Graph -->
-  <meta property="og:locale" content="ru_RU">
-  <meta property="og:type" content="website">
-  <meta property="og:title" content="Плинко Жеребьёвка — честная физика случайности">
-  <meta property="og:description" content="Шар падает сквозь гвоздики и попадает к победителю. Настоящая физика, честные вероятности.">
-  <meta property="og:url" content="https://randomhost.online/plinko.html">
-  <meta property="og:site_name" content="Рандомайзер-игры">
-
-  <!-- Icons -->
-  <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f3af.svg" type="image/svg+xml">
-  <meta name="theme-color" content="#764ba2">
-
-  <!-- Fonts -->
+  <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f3f1.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;800&display=swap" rel="stylesheet">
-  
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/2.0.20/matter.min.js"></script>
   <style>
-    * { 
-      margin: 0; 
-      padding: 0; 
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
-    
+    * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
     :root {
       --safe-top: env(safe-area-inset-top, 0px);
       --safe-right: env(safe-area-inset-right, 0px);
       --safe-bottom: env(safe-area-inset-bottom, 0px);
       --safe-left: env(safe-area-inset-left, 0px);
     }
-
     body {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 20px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      touch-action: manipulation;
+      display:flex; align-items:center; justify-content:center;
+      min-height:100vh; padding:20px;
+      background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+      font-family:'Montserrat',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+      touch-action:manipulation;
+      scrollbar-gutter:stable;
+      overflow-y:scroll;
     }
 
-    .top-buttons {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      z-index: 1000;
-    }
-
+    .top-buttons { position:fixed; top:20px; left:20px; z-index:1000; }
     .desktop-menu-toggle {
-      position: relative;
-      background: #1e2a4d;
-      color: #fff;
-      border: 2px solid rgba(255,255,255,0.3);
-      padding: 0;
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
-      font-size: 24px;
-      cursor: pointer;
-      box-shadow:
-        0 4px 15px rgba(0,0,0,0.3),
-        0 0 0 0 rgba(255,255,255,0.4);
-      transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      user-select: none;
-      overflow: hidden;
-      backdrop-filter: none;
+      position:relative;
+      background:linear-gradient(135deg,rgba(30,35,60,.85),rgba(50,30,70,.85));
+      backdrop-filter:blur(12px);
+      color:#fff;
+      border:2px solid rgba(255,255,255,.3);
+      padding:0;
+      width:56px;
+      height:56px;
+      border-radius:50%;
+      font-size:24px;
+      cursor:pointer;
+      transition:all .4s cubic-bezier(.68,-.55,.265,1.55);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      user-select:none;
+      overflow:hidden;
     }
 
     .desktop-menu-toggle::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #667eea, #764ba2, #667eea);
-      background-size: 200% 200%;
-      animation: gradientSpin 3s ease infinite;
-      opacity: 1;
-      transition: opacity 0.3s ease;
-      z-index: -1;
+      content:'';
+      position:absolute;
+      inset:-2px;
+      border-radius:50%;
+      background:linear-gradient(135deg,#667eea,#764ba2,#667eea);
+      background-size:200% 200%;
+      animation:gradientSpin 3s ease infinite;
+      opacity:0;
+      transition:opacity .3s ease;
+      z-index:-1;
     }
 
     @keyframes gradientSpin {
-      0%, 100% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
+      0%,100% { background-position:0% 50%; }
+      50% { background-position:100% 50%; }
     }
 
     .desktop-menu-toggle:hover::before {
-      opacity: 1;
+      opacity:1;
     }
 
     .desktop-menu-toggle:hover {
-      transform: translateY(-3px) scale(1.05);
-      box-shadow:
-        0 8px 25px rgba(0,0,0,0.4),
-        0 0 0 8px rgba(255,255,255,0.1);
-      border-color: rgba(255,255,255,0.5);
+      transform:translateY(-3px) scale(1.05);
+      border-color:rgba(255,255,255,.5);
     }
 
     .desktop-menu-toggle:active {
-      transform: translateY(-1px) scale(0.98);
+      transform:translateY(-1px) scale(.98);
     }
 
     .menu-icon {
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      width: 24px;
-      height: 18px;
-      position: relative;
-      transition: transform 0.3s ease;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      width:24px;
+      height:18px;
+      position:relative;
+      transition:transform .3s ease;
     }
 
     .menu-icon span {
-      display: block;
-      width: 100%;
-      height: 3px;
-      background: #fff;
-      border-radius: 2px;
-      position: absolute;
-      left: 0;
-      transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      display:block;
+      width:100%;
+      height:3px;
+      background:#fff;
+      border-radius:2px;
+      position:absolute;
+      left:0;
+      transition:all .4s cubic-bezier(.68,-.55,.265,1.55);
     }
 
     .menu-icon span:nth-child(1) {
-      top: 0;
+      top:0;
     }
 
     .menu-icon span:nth-child(2) {
-      top: 50%;
-      margin-top: -1.5px;
+      top:50%;
+      margin-top:-1.5px;
     }
 
     .menu-icon span:nth-child(3) {
-      bottom: 0;
+      bottom:0;
     }
 
     .desktop-menu-toggle:hover .menu-icon {
-      transform: scale(1.1);
+      transform:scale(1.1);
     }
 
     .desktop-menu-toggle.active .menu-icon span:nth-child(1) {
-      top: 50%;
-      margin-top: -1.5px;
-      transform: rotate(45deg);
+      top:50%;
+      margin-top:-1.5px;
+      transform:rotate(45deg);
     }
 
     .desktop-menu-toggle.active .menu-icon span:nth-child(2) {
-      opacity: 0;
-      transform: rotate(180deg) scale(0);
+      opacity:0;
+      transform:rotate(180deg) scale(0);
     }
 
     .desktop-menu-toggle.active .menu-icon span:nth-child(3) {
-      bottom: auto;
-      top: 50%;
-      margin-top: -1.5px;
-      transform: rotate(-45deg);
+      bottom:auto;
+      top:50%;
+      margin-top:-1.5px;
+      transform:rotate(-45deg);
     }
-
     .desktop-dropdown {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      margin-top: 15px;
-      background: linear-gradient(135deg, rgba(20,25,45,0.92), rgba(40,20,55,0.92));
-      backdrop-filter: blur(20px);
-      border-radius: 16px;
-      box-shadow:
-        0 10px 40px rgba(0,0,0,0.5),
-        0 0 0 1px rgba(255,255,255,0.15) inset,
-        0 0 20px rgba(102,126,234,0.2);
-      overflow: hidden;
-      max-height: 0;
-      opacity: 0;
-      transform: translateY(-10px);
-      transition:
-        max-height 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55),
-        opacity 0.3s ease,
-        transform 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-      min-width: 240px;
+      position:absolute;
+      top:100%;
+      left:0;
+      margin-top:15px;
+      background:linear-gradient(135deg,rgba(20,25,45,.92),rgba(40,20,55,.92));
+      backdrop-filter:blur(20px);
+      border-radius:16px;
+      border: 1px solid rgba(255,255,255,.15);
+      overflow:hidden;
+      max-height:0;
+      opacity:0;
+      transform:translateY(-10px);
+      transition:max-height .4s,opacity .3s,transform .4s;
+      min-width:240px;
+    }
+    .desktop-dropdown.active { max-height:700px; opacity:1; transform:translateY(0); }
+    .desktop-dropdown a {
+      position:relative; display:flex; align-items:center; gap:14px; padding:16px 20px;
+      color:#fff; text-decoration:none; font-size:16px; font-weight:600;
+      border-bottom:1px solid rgba(255,255,255,.08); transition:all .3s; overflow:hidden;
+    }
+    .desktop-dropdown a:last-child { border-bottom:none; }
+    .desktop-dropdown a:hover { background:rgba(102,126,234,.25); padding-left:24px; color:#ffd43b; }
+    .desktop-dropdown a.current { color:#ffd43b; }
+
+    .menu-container { display:none; }
+    .menu-header { display:flex; align-items:center; justify-content:space-between; }
+    .menu-title { color:#fff; font-size:17px; font-weight:700; }
+    .burger-btn {
+      background:rgba(255,255,255,.2); border:2px solid rgba(255,255,255,.3);
+      border-radius:8px; padding:7px 11px; cursor:pointer;
+      display:flex; flex-direction:column; gap:4px; transition:all .3s;
+    }
+    .burger-btn span { display:block; width:22px; height:3px; background:#fff; border-radius:2px; transition:all .3s; }
+    .burger-btn.active span:nth-child(1) { transform:rotate(45deg) translateY(7px); }
+    .burger-btn.active span:nth-child(2) { opacity:0; }
+    .burger-btn.active span:nth-child(3) { transform:rotate(-45deg) translateY(-7px); }
+    .menu-dropdown {
+      position:absolute; top:100%; left:0; right:0;
+      background:linear-gradient(180deg,rgba(102,126,234,.98),rgba(118,75,162,.98));
+      backdrop-filter:blur(10px); max-height:0; overflow:hidden; transition:max-height .3s;
+    }
+    .menu-dropdown.active { max-height:600px; }
+    .menu-dropdown a {
+      display:flex; align-items:center; gap:10px; padding:14px 18px;
+      color:#fff; text-decoration:none; font-size:15px; font-weight:600;
+      border-bottom:1px solid rgba(255,255,255,.1);
+    }
+    .menu-dropdown a:last-child { border-bottom:none; }
+    .menu-dropdown a:hover { background:rgba(255,255,255,.15); }
+
+    .main-container {
+      display: flex;
+      gap: 40px;
+      align-items: center;
+      justify-content: center;
+      max-width: 100%;
+      width: 100%;
+      margin-top: 20px;
     }
 
-    .desktop-dropdown.active {
-      max-height: 600px;
-      opacity: 1;
+    .obstacle-course {
+      height: 84vh;
+      width: 35vw;
+      background: linear-gradient(135deg, rgba(20,25,45,0.95), rgba(40,20,60,0.95));
+      border: 3px solid rgba(255,255,255,0.2);
+      border-radius: 20px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 0 40px rgba(102,126,234,0.1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+
+    .marbles-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 5;
+    }
+
+    .marble {
+      position: absolute;
+      border-radius: 50%;
+      z-index: 5;
+      will-change: transform;
+      transition: none;
+    }
+
+    .start-race-btn {
+      position: relative;
+      margin-top: 20px;
+      padding: 12px 30px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 25px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+
+    .start-race-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+      border-color: rgba(255,255,255,0.5);
+    }
+
+    .start-race-btn:active:not(:disabled) {
       transform: translateY(0);
     }
 
-    .desktop-dropdown a {
-      position: relative;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding: 16px 20px;
+    .start-race-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .winner-tooltip {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: linear-gradient(135deg, rgba(255,215,0,0.95), rgba(255,150,0,0.95));
       color: #fff;
-      text-decoration: none;
-      font-size: 16px;
-      font-weight: 600;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
-      transition: all 0.3s ease;
-      overflow: hidden;
-    }
-
-    .desktop-dropdown a::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 4px;
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      transform: translateX(-4px);
-      transition: transform 0.3s ease;
-    }
-
-    .desktop-dropdown a::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, rgba(102,126,234,0.2), transparent);
+      padding: 30px 50px;
+      border-radius: 20px;
+      font-size: 28px;
+      font-weight: 800;
+      z-index: 100;
       opacity: 0;
+      pointer-events: none;
       transition: opacity 0.3s ease;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
     }
 
-    .desktop-dropdown a:last-child {
-      border-bottom: none;
-    }
-
-    .desktop-dropdown a:hover {
-      background: rgba(102,126,234,0.25);
-      padding-left: 24px;
-      color: #ffd43b;
-      text-shadow: 0 0 10px rgba(255,212,59,0.5);
-    }
-
-    .desktop-dropdown a:hover::before {
-      transform: translateX(0);
-    }
-
-    .desktop-dropdown a:hover::after {
+    .winner-tooltip.show {
       opacity: 1;
     }
 
-    .desktop-dropdown a:active {
-      background: rgba(118,75,162,0.3);
-      transform: scale(0.98);
-    }
-
-    .desktop-dropdown a span:first-child {
-      font-size: 20px;
-      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
-      transition: transform 0.3s ease;
-    }
-
-    .desktop-dropdown a:hover span:first-child {
-      transform: scale(1.2) rotate(10deg);
-    }
-
-    /* ===== MOBILE МЕНЮ (СКРЫТО ПО ДЕФОЛТУ НА DESKTOP) ===== */
-    .menu-container {
-      display: none;
-    }
-
-    /* ===== ОСНОВНОЙ КОНТЕЙНЕР ===== */
-    .main-container {
-      display: flex;
-      flex-direction: row-reverse;
-      gap: 40px;
-      align-items: center;
-      max-width: 1200px;
-      width: 100%;
-    }
-
-    .game-container {
-      flex: 1;
-      text-align: center;
-      perspective: 1000px;
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
 
     .settings-panel {
-      width: 450px;
+      width: 490px;
       padding: 30px;
       border-radius: 20px;
       background: rgba(255,255,255,0.1);
       backdrop-filter: blur(10px);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
       overflow: hidden;
     }
 
@@ -335,22 +328,20 @@
       cursor: pointer;
       font-size: 20px;
       transition: all 0.3s ease;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-shrink: 0;
     }
 
     .icon-btn:hover {
       background: rgba(255,255,255,0.25);
       transform: translateY(-2px);
-      box-shadow: 0 6px 16px rgba(0,0,0,0.3);
       border-color: rgba(255,255,255,0.5);
     }
 
     .icon-btn:active {
       transform: translateY(0px);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     }
 
     .icon-btn:disabled {
@@ -362,36 +353,12 @@
 
     .icon-btn:disabled:hover {
       transform: none;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
       background: rgba(255,255,255,0.08);
       border-color: rgba(255,255,255,0.15);
     }
 
-    .icon-btn svg {
-      width: 20px;
-      height: 20px;
-      transition: all 0.3s ease;
-    }
-
-    .icon-btn:hover svg {
-      filter: drop-shadow(0 0 4px rgba(255,255,255,0.5));
-    }
-
-    .icon-btn:disabled svg {
-      opacity: 0.5;
-    }
-
-    .collapse-btn {
-      display: none;
-    }
-
     .names-list-wrapper {
       transition: max-height 0.3s ease;
-    }
-
-    .names-list-wrapper.collapsed {
-      max-height: 0;
-      overflow: hidden;
     }
 
     .names-list {
@@ -403,7 +370,6 @@
       overflow-y: auto;
       scrollbar-width: none;
       -ms-overflow-style: none;
-      padding-right: 5px;
     }
     .names-list::-webkit-scrollbar {
       display: none;
@@ -412,9 +378,9 @@
     .headers-row {
       display: flex;
       align-items: center;
-      gap: 0px;
+      gap: 8px;
       margin-bottom: 10px;
-      padding: 0 5px;
+      width: 100%;
     }
 
     .header-name {
@@ -423,6 +389,7 @@
       font-size: 14px;
       font-weight: 600;
       text-align: left;
+      margin-left: 7px;
     }
 
     .header-probability {
@@ -430,7 +397,7 @@
       font-size: 14px;
       font-weight: 600;
       text-align: center;
-      width: 120px;
+      width: 140px;
       flex-shrink: 0;
     }
 
@@ -442,7 +409,19 @@
       display: flex;
       gap: 8px;
       align-items: center;
+      width: 100%;
     }
+
+    .color-box {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 3px solid rgba(255,255,255,0.4);
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+    }
+
 
     .name-input {
       flex: 1;
@@ -454,6 +433,12 @@
       font-size: 16px;
       transition: 0.3s;
     }
+
+    .add-name-container .name-input {
+      max-width: none;
+      margin-left: 0px;
+      height: 46px;
+    }
     .name-input:focus {
       outline: none;
       border-color: rgba(255,255,255,0.5);
@@ -461,6 +446,11 @@
     }
     .name-input::placeholder {
       color: rgba(255,255,255,0.5);
+    }
+
+    .name-input.error-state {
+      border-color: #ef4444 !important;
+      background: rgba(239,68,68,0.1) !important;
     }
 
     .probability-controls {
@@ -506,35 +496,6 @@
       flex-shrink: 0;
     }
 
-    .prob-btn,
-    .remove-btn,
-    .add-btn-small {
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    }
-
-    .equalize-btn {
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    }
-
-    .carousel-btn.off {
-      opacity: 0.4;
-      background: rgba(255,255,255,0.08);
-      border-color: rgba(255,255,255,0.15);
-    }
-
-    .carousel-btn.off:hover {
-      opacity: 0.55;
-      transform: none;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    }
-
-    .prob-btn:hover,
-    .remove-btn:hover,
-    .add-btn-small:hover,
-    .equalize-btn:hover {
-      box-shadow: 0 6px 16px rgba(0,0,0,0.3);
-    }
-
     .probability-input:focus {
       outline: none;
       border-color: rgba(255,212,59,0.6);
@@ -542,18 +503,18 @@
     }
 
     .probability-input.error {
-      border-color: rgba(239,68,68,0.8);
+      border-color: #ef4444;
       background: rgba(239,68,68,0.2);
     }
 
     .probability-input.manual {
       background: rgba(255,244,204,0.25);
       border-color: #F59E0B;
-      box-shadow: 0 0 0 3px rgba(245,158,11,0.25);
     }
 
     .remove-btn {
-      padding: 8px 13px;
+      width: 44px;
+      padding: 8px 0;
       background: rgba(239,68,68,0.7);
       color: #fff;
       border: none;
@@ -561,2379 +522,1482 @@
       cursor: pointer;
       font-size: 18px;
       transition: 0.3s;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .remove-btn:hover {
-      background: rgba(239,68,68,0.9);
-      transform: scale(1.1);
+      background: rgba(239,68,68,0.95);
     }
 
     .remove-btn:active {
-      transform: scale(0.95);
+      opacity: 0.8;
     }
 
     .add-name-container {
       display: flex;
-      gap: 10px;
+      gap: 5px;
       margin-top: 15px;
     }
 
     .add-btn-small {
-      padding: 10px 15px;
+      padding: 0px 14px;
       background: rgba(34,197,94,0.7);
       color: #fff;
       border: none;
       border-radius: 10px;
       cursor: pointer;
-      font-size: 20px;
+      font-size: 16px;
       transition: 0.3s;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .add-btn-small:hover {
-      background: rgba(34,197,94,0.9);
-      transform: scale(1.1);
+      background: rgba(34,197,94,0.95);
     }
 
     .add-btn-small:active {
-      transform: scale(0.95);
+      opacity: 0.85;
     }
 
-    /* ===== ЗАГОЛОВОК ===== */
-    h1 {
+    .error-message {
       color: #fff;
-      font-size: 48px;
-      margin-bottom: 30px;
-      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-      font-weight: 800;
-      animation: glow 2s ease-in-out infinite alternate;
+      font-size: 13px;
+      margin-top: 8px;
+      min-height: 16px;
     }
 
-    @keyframes glow {
-      from { text-shadow: 2px 2px 4px rgba(0,0,0,0.3), 0 0 10px rgba(255,255,255,0.3); }
-      to { text-shadow: 2px 2px 4px rgba(0,0,0,0.3), 0 0 20px rgba(255,255,255,0.5); }
+    .probability-error-tooltip {
+      position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+      background:linear-gradient(135deg,rgba(239,68,68,.95),rgba(220,38,38,.95));
+      color:#fff; padding:18px 28px; border-radius:14px;
+      z-index:1002; font-weight:700;
+      font-size:15px; text-align:center; backdrop-filter:blur(10px);
+      border:2px solid rgba(255,255,255,.3);
+      animation:tooltipAppear .3s cubic-bezier(.68,-.55,.265,1.55);
     }
-
-    /* ===== ПЛИНКО ПОЛЕ ===== */
-    .plinko-container {
-      position: relative;
-      width: min(92vw, 600px);
-      height: min(70vh, 620px);
-      margin: 0 auto 20px;
-      border-radius: 24px;
-      background: rgba(0,0,0,0.15);
-      box-shadow: 0 0 0 8px rgba(255,255,255,0.15),
-                  0 0 0 12px rgba(255,255,255,0.08),
-                  0 12px 40px rgba(0,0,0,0.35);
-      overflow: hidden;
-    }
-    canvas#plinkoCanvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-      border-radius: 24px;
-    }
-
-    /* ===== КНОПКИ УПРАВЛЕНИЯ ===== */
-    .controls {
-      display: flex;
-      gap: 20px;
-      justify-content: center;
-      align-items: center;
-      margin-top: 30px;
-      flex-wrap: wrap;
+    @keyframes tooltipAppear {
+      from { opacity:0; transform:translate(-50%,-50%) scale(.8); }
+      to   { opacity:1; transform:translate(-50%,-50%) scale(1); }
     }
 
 
-    button:not(.icon-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):not(.desktop-menu-toggle) {
-      padding: 15px 30px;
-      font-size: 18px;
-      font-weight: 800;
-      border: none;
-      border-radius: 50px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: #fff;
-      cursor: pointer;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-      transition: 0.3s;
-      position: relative;
-      overflow: hidden;
-      touch-action: manipulation;
+    @media (max-width:1100px) {
+      .main-container { flex-direction:column; align-items:center; gap:24px; }
+      .settings-panel { width:100%; max-width:510px; }
     }
-
-    button:not(.icon-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):not(.desktop-menu-toggle):before {
-      content: '';
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 0;
-      height: 0;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.3);
-      transform: translate(-50%, -50%);
-      transition: width 0.6s, height 0.6s;
+    @media (max-width:918px) {
+      html,body { max-width:100%; overflow-x:hidden; }
+      body { padding:calc(66px + var(--safe-top)) 12px calc(20px + var(--safe-bottom)) 12px; }
+      .top-buttons { display:none; }
+      .menu-container { display:block; position:fixed; top:var(--safe-top); left:var(--safe-left); right:var(--safe-right); z-index:1000; padding:10px 14px; background:linear-gradient(180deg,rgba(102,126,234,.95) 0%,rgba(118,75,162,.85) 100%); backdrop-filter:blur(10px);  }
+      .settings-panel { padding:16px 14px; width:100%; max-width:100%; }
     }
-
-    button:not(.icon-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):hover:before {
-      width: 300px;
-      height: 300px;
-    }
-
-    button:not(.icon-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
-    }
-
-    button:active {
-      transform: translateY(0);
-    }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .name-input.error-state {
-      border-color: #ef4444 !important;
-      background: rgba(239,68,68,0.1) !important;
-    }
-
-    .name-input.error-state::placeholder {
-      color: rgba(255, 255, 255, 0.7);
-    }
-
-    .name-input::placeholder {
-      color: rgba(255,255,255,0.5);
-      transition: color 0.3s ease;
-    }
-
-    .settings-panel {
-      transition: opacity 0.3s ease;
-    }
-
-    /* ===== ЭФФЕКТЫ ===== */
-    .confetti {
-      position: fixed;
-      width: 10px;
-      height: 10px;
-      z-index: 0;
-      pointer-events: none;
-      animation: confetti-fall 3s ease-out forwards;
-    }
-
-    @keyframes confetti-fall {
-      0% { transform: translateY(0) rotate(300deg); opacity: 1; }
-      100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
-    }
-
-    .celebration-emoji {
-      position: fixed;
-      font-size: 60px;
-      z-index: 998;
-      pointer-events: none;
-      animation: emojiCelebrate 3s ease-out forwards;
-    }
-
-    @keyframes emojiCelebrate {
-      0% { transform: scale(0) rotate(0deg); opacity: 0; }
-      20% { transform: scale(1.5) rotate(180deg); opacity: 1; }
-      80% { opacity: 1; }
-      100% { transform: scale(0.5) rotate(360deg); opacity: 0; }
-    }
-
-    .celebration-word {
-      position: fixed;
-      font-size: 40px;
-      font-weight: 800;
-      color: #fff;
-      text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
-      z-index: 998;
-      pointer-events: none;
-      opacity: 0.7;
-      animation: wordFloat 4s ease-out forwards;
-    }
-
-    @keyframes wordFloat {
-      0% { transform: scale(0) translateY(0) rotate(-15deg); opacity: 0; }
-      15% { transform: scale(1.2) translateY(-20px) rotate(5deg); opacity: 0.9; }
-      50% { opacity: 0.8; }
-      100% { transform: scale(0.8) translateY(-150px) rotate(15deg); opacity: 0; }
-    }
-
-    .winner-announcement {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: linear-gradient(135deg, rgba(102,126,234,0.95), rgba(118,75,162,0.95));
-      padding: 40px 60px;
-      border-radius: 20px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-      z-index: 1001;
-      display: none;
-      text-align: center;
-    }
-
-    .winner-announcement.show {
-      display: block;
-      animation: winnerAppear 1s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-    }
-
-    @keyframes winnerAppear {
-      0% { transform: translate(-50%, -50%) scale(0) rotate(-180deg); opacity: 0; }
-      100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 1; }
-    }
-
-    .winner-announcement h2 {
-      color: #fff;
-      font-size: 36px;
-      margin: 0;
-      text-align: center;
-      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-      line-height: 1.2;
-    }
-
-    .winner-name {
-      display: block;
-      margin: 8px 0 0;
-      font-size: 1.4em;
-      letter-spacing: 0.03em;
-    }
-
-    .winner-emoji {
-      font-size: 1.2em;
-    }
-
-    button:disabled,
-    input:disabled {
-      opacity: 0.5;
-      cursor: not-allowed !important;
-      pointer-events: none;
-    }
-
-    /* ===== PREFERS REDUCED MOTION ===== */
-    @media (prefers-reduced-motion: reduce) {
-      * {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-      }
-    }
-
-    /* ===== MOBILE АДАПТИВ ===== */
-    @media (max-width: 918px) {
-      html, body {
-        max-width: 100%;
-        overflow-x: hidden;
-      }
-      body {
-        padding: calc(66px + var(--safe-top)) var(--safe-right) calc(20px + var(--safe-bottom)) var(--safe-left);
-      }
-
-      /* Показываем бургер-меню, скрываем обычные кнопки */
-      .top-buttons {
-        display: none;
-      }
-
-      .menu-container {
-        display: block;
-        position: fixed;
-        top: var(--safe-top);
-        left: var(--safe-left);
-        right: var(--safe-right);
-        z-index: 1000;
-        padding: 12px 16px;
-        background: linear-gradient(180deg, rgba(102,126,234,0.95) 0%, rgba(118,75,162,0.85) 100%);
-        backdrop-filter: blur(10px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      }
-
-      .menu-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-
-      .menu-title {
-        color: #fff;
-        font-size: 18px;
-        font-weight: 700;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-      }
-
-      .burger-btn {
-        background: rgba(255,255,255,0.2);
-        border: 2px solid rgba(255,255,255,0.3);
-        border-radius: 8px;
-        padding: 8px 12px;
-        cursor: pointer;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        transition: all 0.3s ease;
-        min-width: 44px;
-        min-height: 44px;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .burger-btn:hover {
-        background: rgba(255,255,255,0.3);
-      }
-
-      .burger-btn span {
-        display: block;
-        width: 24px;
-        height: 3px;
-        background: #fff;
-        border-radius: 2px;
-        transition: all 0.3s ease;
-      }
-
-      .burger-btn.active span:nth-child(1) {
-        transform: rotate(45deg) translateY(7px);
-      }
-
-      .burger-btn.active span:nth-child(2) {
-        opacity: 0;
-      }
-
-      .burger-btn.active span:nth-child(3) {
-        transform: rotate(-45deg) translateY(-7px);
-      }
-
-      .menu-dropdown {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
-        background: linear-gradient(180deg, rgba(102,126,234,0.98) 0%, rgba(118,75,162,0.98) 100%);
-        backdrop-filter: blur(10px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-        max-height: 0;
-        overflow: hidden;
-        transition: max-height 0.3s ease;
-      }
-
-      .menu-dropdown.active {
-        max-height: 500px;
-      }
-
-      .menu-dropdown a {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 16px 20px;
-        color: #fff;
-        text-decoration: none;
-        font-size: 16px;
-        font-weight: 600;
-        border-bottom: 1px solid rgba(255,255,255,0.1);
-        transition: background 0.2s ease;
-        min-height: 56px;
-      }
-
-      .menu-dropdown a:last-child {
-        border-bottom: none;
-      }
-
-      .menu-dropdown a:hover {
-        background: rgba(255,255,255,0.15);
-      }
-
-      .menu-dropdown a:active {
-        background: rgba(255,255,255,0.25);
-      }
-
-      /* Мобильная раскладка */
-      .main-container {
-        flex-direction: column;
-        gap: 24px;
-        align-items: stretch;
-      }
-
-      .game-container {
-        order: -1;
-        width: 100%;
-        max-width: 600px;
-        margin: 0 auto;
-      }
-
-      .add-name-container {
-        display: flex;
-        gap: 8px;
-        margin-top: 15px;
-      }
-
-      .add-name-container .name-input {
-        flex: 0 1 calc(100% - 60px);
-        max-width: calc(100% - 60px);
-      }
-
-      .settings-panel {
-        width: 100%;
-        max-width: 600px;
-        padding: 20px 16px;
-        margin: 0 auto;
-      }
-
-      .settings-header {
-        flex-direction: row;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 12px;
-      }
-
-      .settings-actions {
-        display: flex;
-        gap: 6px;
-      }
-
-      .icon-btn {
-        width: 36px;
-        height: 36px;
-        font-size: 18px;
-      }
-
-      .icon-btn svg {
-        width: 18px;
-        height: 18px;
-      }
-
-      .collapse-btn {
-        display: none !important;
-      }
-
-      .name-item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: nowrap;
-      }
-
-      .names-list-wrapper {
-        max-height: none;
-      }
-
-      .names-list {
-        max-height: none;
-        overflow-y: visible;
-        overflow: visible;
-        width: 100%;
-        max-width: 100%;
-        flex: 1 1 auto;
-      }
-
-      .name-input.invalid,
-      #newNameInput.invalid {
-        border-color: #ef4444 !important;
-        background: rgba(239,68,68,0.1) !important;
-      }
-
-      #newNameInput::placeholder {
-        transition: color 0.3s ease;
-      }
-
-      #newNameInput.invalid::placeholder {
-        color: #ef4444;
-      }
-
-      h1 {
-        font-size: clamp(24px, 6vw, 48px);
-        margin-bottom: 30px;
-        margin-top: 18px !important;
-      }
-
-      .plinko-container {
-        width: min(90vw, 400px);
-        height: min(62vh, 500px);
-        margin: 0 auto 32px;
-      }
-
-      .controls {
-        gap: 16px;
-        flex-wrap: wrap;
-        margin-top: 24px;
-      }
-
-      .controls button {
-        flex: 1 1 220px;
-        min-height: 56px;
-        max-width: 100%;
-      }
-
-      .winner-announcement {
-        padding: clamp(24px, 5vw, 40px) clamp(32px, 8vw, 60px);
-        max-width: 92%;
-        width: 92%;
-        padding: 20px 18px;
-        border-radius: 16px;
-      }
-
-      .winner-announcement h2 {
-        font-size: clamp(22px, 5.4vw, 30px);
-      }
-
-      .winner-name {
-        font-size: clamp(24px, 6vw, 34px);
-        margin-top: 6px;
-      }
-
-      .winner-emoji {
-        font-size: clamp(24px, 6vw, 32px);
-      }
-
-      .celebration-word {
-        font-size: clamp(22px, 5.5vw, 40px);
-      }
-
-      .celebration-emoji {
-        font-size: clamp(40px, 10vw, 60px);
-      }
-
-      .headers-row {
-        padding: 0 2px;
-      }
-
-      .header-probability {
-        flex: 0 0 170px;
-        max-width: 170px;
-        display: flex;
-        justify-content: center;
-        text-align: center;
-      }
-
-      .probability-controls {
-        flex: 0 0 130px;
-        max-width: 130px;
-        gap: 4px;
-        flex-shrink: 0;
-      }
-
-      .probability-input {
-        flex: 0 0 50px;
-        width: 50px;
-        min-width: 50px;
-        max-width: 50px;
-      }
-
-      .prob-btn {
-        flex: 0 0 44px;
-        width: 44px;
-        min-width: 44px;
-        max-width: 44px;
-        min-height: 44px;
-        padding: 6px 0;
-      }
-
-      .name-input {
-        min-width: 0;
-        padding: 12px 10px;
-        min-height: 48px;
-        flex: 1 1 auto;
-      }
-
-      .remove-btn {
-        flex: 0 0 48px;
-        width: 48px;
-        min-width: 48px;
-        max-width: 48px;
-        min-height: 48px;
-        margin-left: 14px;
-      }
-
-      .add-btn-small {
-        min-width: 52px;
-        min-height: 52px;
-        flex-shrink: 0;
-      }
-    }
-
-    /* Очень маленькие экраны */
-    @media (max-width: 360px) {
-      .plinko-container {
-        width: min(85vw, 300px);
-        height: min(55vh, 400px);
-      }
-
-      .probability-controls,
-      .header-probability {
-        width: auto;
-      }
-
-      .probability-input {
-        min-width: 46px;
-        font-size: 13px;
-        flex-shrink: 0;
-      }
-
-      .prob-btn {
-        min-width: 40px;
-        padding: 5px 7px;
-        flex-shrink: 0;
-      }
-    }
-
-    /* Отключение hover-эффектов на тач-устройствах */
-    /* Оптимизация для тач-устройств */
-    @media (hover: none) and (pointer: coarse) {
-      .prob-btn:hover,
-      .add-btn-small:hover,
-      .remove-btn:hover,
-      .icon-btn:hover,
-      button:not(.icon-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):hover {
-        transform: none !important;
-      }
-      button:not(.icon-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):before {
-        display: none;
-      }
-
-      /* Мобильное меню */
-      .menu-container {
-        display: block;
-        position: fixed;
-        top: env(safe-area-inset-top, 0px);
-        left: env(safe-area-inset-left, 0px);
-        right: env(safe-area-inset-right, 0px);
-        z-index: 1000;
-        padding: 12px 16px;
-        background: linear-gradient(180deg, rgba(102,126,234,0.95) 0%, rgba(118,75,162,0.85) 100%);
-        backdrop-filter: blur(10px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      }
-
-      .menu-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-
-      .menu-title {
-        color: #fff;
-        font-size: 18px;
-        font-weight: 700;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-      }
-
-      .burger-btn {
-        background: rgba(255,255,255,0.2);
-        border: 2px solid rgba(255,255,255,0.3);
-        border-radius: 8px;
-        padding: 8px 12px;
-        cursor: pointer;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        transition: all 0.3s ease;
-        min-width: 44px;
-        min-height: 44px;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .burger-btn:hover {
-        background: rgba(255,255,255,0.3);
-      }
-
-      .burger-btn span {
-        display: block;
-        width: 24px;
-        height: 3px;
-        background: #fff;
-        border-radius: 2px;
-        transition: all 0.3s ease;
-      }
-
-      .burger-btn.active span:nth-child(1) {
-        transform: rotate(45deg) translateY(7px);
-      }
-
-      .burger-btn.active span:nth-child(2) {
-        opacity: 0;
-      }
-
-      .burger-btn.active span:nth-child(3) {
-        transform: rotate(-45deg) translateY(-7px);
-      }
-
-      .menu-dropdown {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
-        background: linear-gradient(180deg, rgba(102,126,234,0.98) 0%, rgba(118,75,162,0.98) 100%);
-        backdrop-filter: blur(10px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-        max-height: 0;
-        overflow: hidden;
-        transition: max-height 0.3s ease;
-      }
-
-      .menu-dropdown.active {
-        max-height: 500px;
-      }
-
-      .menu-dropdown a {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 16px 20px;
-        color: #fff;
-        text-decoration: none;
-        font-size: 16px;
-        font-weight: 600;
-        border-bottom: 1px solid rgba(255,255,255,0.1);
-        transition: background 0.2s ease;
-        min-height: 56px;
-      }
-
-      .menu-dropdown a:last-child {
-        border-bottom: none;
-      }
-
-      .menu-dropdown a:hover {
-        background: rgba(255,255,255,0.15);
-      }
-
-      .menu-dropdown a:active {
-        background: rgba(255,255,255,0.25);
-      }
-
-      /* Скрываем десктопное меню на тач-устройствах */
-      .top-buttons {
-        display: none;
-      }
-    }
+    button:disabled { opacity:.5; cursor:not-allowed!important; }
   </style>
 </head>
 <body>
-  <!-- Desktop Menu -->
-  <div class="top-buttons">
+
+<!-- Desktop menu -->
+<div class="top-buttons">
   <button class="desktop-menu-toggle" id="desktopMenuToggle" aria-label="Меню">
-    <div class="menu-icon">
-      <span></span>
-      <span></span>
-      <span></span>
-    </div>
+    <div class="menu-icon"><span></span><span></span><span></span></div>
   </button>
-    <nav class="desktop-dropdown" id="desktopDropdown">
-      <a href="index.html">🏠 Главная</a>
-      <a href="bingo.html">🎲 Бинго</a>
-      <a href="el-credito.html">🇲🇽 Банк</a>
-      <a href="wheel-of-fortune.html">🎡 Колесо Фортуны</a>
-      <a href="lottery-drum.html">🎱 Лототрон</a>
-      <a href="crystal-ball.html">🔮 Магический Шар</a>
-      <a href="plinko.html">🎯 Плинко</a>
-      <a href="racing.html">🏁 Гонки</a>
-      <a href="marble-race.html">🏔️ Гонка Мраморов</a>
-      <a href="trading.html">📈 Трейдинг</a>
-      <a href="tournament.html">⚔️ Турнир</a>
-      <a href="minesweeper.html">💣 Сапёр</a>
-    </nav>
-  </div>
-  <!-- MOBILE МЕНЮ -->
-  <div class="menu-container">
-    <div class="menu-header">
-      <button class="burger-btn" id="burgerBtn" aria-label="Меню">
-        <span></span>
-        <span></span>
-        <span></span>
-      </button>
-    </div>
-  <nav class="menu-dropdown" id="menuDropdown">
-      <a href="index.html">🏠 Главная</a>
-      <a href="bingo.html">🎲 Бинго</a>
-      <a href="el-credito.html">🇲🇽 Банк</a>
-      <a href="wheel-of-fortune.html">🎡 Колесо Фортуны</a>
-      <a href="lottery-drum.html">🎱 Лототрон</a>
-      <a href="crystal-ball.html">🔮 Магический Шар</a>
-      <a href="plinko.html">🎯 Плинко</a>
-      <a href="racing.html">🏁 Гонки</a>
-      <a href="marble-race.html">🏔️ Гонка Мраморов</a>
-      <a href="trading.html">📈 Трейдинг</a>
-      <a href="tournament.html">⚔️ Турнир</a>
-      <a href="minesweeper.html">💣 Сапёр</a>
+  <nav class="desktop-dropdown" id="desktopDropdown">
+    <a href="index.html">🏠 Главная</a>
+    <a href="wheel-of-fortune.html">🎡 Колесо Фортуны</a>
+    <a href="lottery-drum.html">🎱 Лототрон</a>
+    <a href="crystal-ball.html">🔮 Магический Шар</a>
+    <a href="plinko.html">🎯 Плинко</a>
+    <a href="racing.html">🏁 Гонки</a>
+    <a href="marble-race.html" class="current">🏔️ Гонка Мраморов</a>
+    <a href="trading.html">📈 Трейдинг</a>
+    <a href="tournament.html">⚔️ Турнир</a>
+    <a href="minesweeper.html">💣 Сапёр</a>
   </nav>
+</div>
 
+<!-- Mobile menu -->
+<div class="menu-container">
+  <div class="menu-header">
+    <div class="menu-title">🏔️ ГОНКА МРАМОРОВ</div>
+    <button class="burger-btn" id="burgerBtn" aria-label="Меню">
+      <span></span><span></span><span></span>
+    </button>
   </div>
+  <nav class="menu-dropdown" id="menuDropdown">
+    <a href="index.html">🏠 Главная</a>
+    <a href="wheel-of-fortune.html">🎡 Колесо Фортуны</a>
+    <a href="lottery-drum.html">🎱 Лототрон</a>
+    <a href="crystal-ball.html">🔮 Магический Шар</a>
+    <a href="plinko.html">🎯 Плинко</a>
+    <a href="racing.html">🏁 Гонки</a>
+    <a href="marble-race.html">🏔️ Гонка Мраморов</a>
+    <a href="trading.html">📈 Трейдинг</a>
+    <a href="tournament.html">⚔️ Турнир</a>
+    <a href="minesweeper.html">💣 Сапёр</a>
+  </nav>
+</div>
 
-  <div class="main-container">
-    <!-- ИГРА -->
-    <div class="game-container">
-      <h1>🏔️ ГОНКА МРАМОРОВ</h1>
-      <div class="obstacle-course" id="obstacleC">
-        <div class="marbles-container" id="marblesContainer"></div>
-        <div class="winner-tooltip" id="winnerTooltip"></div>
-      </div>
-      <div class="controls">
-        <button id="startRaceBtn">Начать гонку</button>
+<div class="main-container">
+
+  <!-- Settings -->
+  <div class="settings-panel">
+    <div class="settings-header">
+      <h2 class="settings-title">Участники</h2>
+      <div class="settings-actions">
+        <button class="icon-btn" id="equalizeBtn" title="Уравнять">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="4" y="8" width="16" height="3" rx="1.5" fill="white"/>
+            <rect x="4" y="13" width="16" height="3" rx="1.5" fill="white"/>
+          </svg>
+        </button>
+        <button class="icon-btn" id="shuffleBtn" title="Перемешать">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 8h16M5 8L8 5M21 16H5M19 16L16 19" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
     </div>
-
-    <!-- НАСТРОЙКИ -->
-    <div class="settings-panel">
-      <div class="settings-header">
-        <h2 class="settings-title">Участники</h2>
-        <div class="settings-actions">
-          <button class="icon-btn carousel-btn" id="carouselBtn" title="Карусель участников">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M2 12C2 7.03 6.03 3 11 3h1M22 12c0 4.97-4.03 9-9 9h-1M15 3l3 3-3 3M9 21l-3-3 3-3" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-          <button class="icon-btn equalize-btn" id="equalizeBtn" title="Уравнять вероятности">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="4" y="8" width="16" height="3" rx="1.5" fill="white"/>
-              <rect x="4" y="13" width="16" height="3" rx="1.5" fill="white"/>
-            </svg>
-          </button>
-          <button class="icon-btn shuffle-btn" id="shuffleBtn" title="Перемешать участников">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-        </div>
+    <div class="names-list-wrapper" id="namesListWrapper">
+      <div class="headers-row">
+        <div class="header-name">Имя</div>
+        <div class="header-probability">📊 Шанс</div>
+        <div class="header-remove"></div>
       </div>
-
-      <div class="names-list-wrapper" id="namesListWrapper">
-        <div class="headers-row">
-          <div class="header-name">Имя</div>
-          <div class="header-probability">📊 Вероятность</div>
-          <div class="header-remove"></div>
-        </div>
-        <div class="names-list" id="namesList"></div>
-      </div>
-
-      <div class="add-name-container">
-        <input type="text" class="name-input" id="newNameInput" placeholder="Новый участник" maxlength="15">
-        <button class="add-btn-small" id="addNameBtn" title="Добавить участника">➕</button>
-      </div>
+      <div class="names-list" id="namesList"></div>
     </div>
+    <div class="add-name-container">
+      <input type="text" class="name-input" id="newNameInput" placeholder="Новый участник" maxlength="15">
+      <button class="add-btn-small" id="addNameBtn">➕</button>
+    </div>
+    <div id="errorMessage" class="error-message"></div>
   </div>
 
-  <div class="winner-announcement" id="winnerAnnouncement">
-    <h2 id="winnerText"></h2>
+  <!-- Marble race container -->
+  <div class="obstacle-course">
+    <div class="marbles-container" id="marblesContainer"></div>
+    <div class="winner-tooltip" id="winnerTooltip"></div>
   </div>
 
-  <script>
-    // ===== ОПРЕДЕЛЕНИЕ УСТРОЙСТВА =====
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
-    // ===== КОНСТАНТЫ =====
-    const colors = [
-      '#ff6b6b','#ffd43b','#51cf66','#339af0','#da77f2','#66d9e8',
-      '#fb923c','#ec4899','#8b5cf6','#14b8a6','#f97316','#06b6d4'
-    ];
+  <button class="start-race-btn" id="startRaceBtn">Начать гонку</button>
 
-    const NAMES_KEY = 'shared_names_v1';
-    const PROB_KEY = 'shared_probabilities_v2';
-    const LOCKED_KEY = 'shared_locked_v1';
+</div>
 
-    // ===== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =====
-    let names = ['Дима','Саша','Никита','Максим','Кирилл','Семён'];
-    let probabilities = {};
-    let lockedParticipants = {};
-    let hasCustomProbabilities = false;
-    let isLoadingFromStorage = false; // Флаг загрузки из localStorage
+<script>
+// ============================================================
+//  CONSTANTS & STATE
+// ============================================================
+const NAMES_KEY  = 'shared_names_v1';
+const PROB_KEY   = 'shared_probabilities_v2';
+const LOCKED_KEY = 'shared_locked_v1';
+const MAX_PARTICIPANTS = 20;
+const MIN_PROBABILITY = 0.05;
 
-    let animId = null;
-    let revealTimeoutId = null;
-    let lastFrameTime = 0;
+// ─── MATTER.JS PHYSICS SETUP ─────────────────────────────────────
+const Engine = Matter.Engine;
+const World = Matter.World;
+const Bodies = Matter.Bodies;
+const Body = Matter.Body;
+const Events = Matter.Events;
+const Composite = Matter.Composite;
 
-    // ===== СКРОЛЛИНГ БИНОВ =====
-    let binScrollOffset = 0;
-    let binScrollSpeed = 4;
-    let binScrolling = false;
-    let binScrollEnabled = true;
+let engine = null;
+let world = null;
+let matterMarbles = [];
+let matterBodies = [];
 
-    // кеш scrolled bins на один кадр
-    let _frameScrolledBins = [];
+// ─── MARBLE PHYSICS PARAMETERS ──────────────────────────────────
+const MARBLE_RADIUS = 11;
 
-    // ===== DOM ЭЛЕМЕНТЫ =====
-    const namesList = document.getElementById('namesList');
-    const addNameBtn = document.getElementById('addNameBtn');
-    const newNameInput = document.getElementById('newNameInput');
-    const equalizeBtn = document.getElementById('equalizeBtn');
-    const shuffleBtn = document.getElementById('shuffleBtn');
-    const dropBtn = document.getElementById('dropBtn');
-    const winnerAnnouncement = document.getElementById('winnerAnnouncement');
-    const winnerText = document.getElementById('winnerText');
-    const canvas = document.getElementById('plinkoCanvas');
-    const ctx = canvas.getContext('2d');
-    const namesListWrapper = document.getElementById('namesListWrapper');
+const marbleOptions = {
+  restitution: 0.20,        // low bounce: glass marble behavior
+  friction: 0.05,           // rolling friction
+  frictionAir: 0.008,       // air resistance
+  density: 0.006,           // weight
+  label: 'marble'
+};
 
-    const defaultNewNamePlaceholder = 'Новый участник';
+const obstacleOptions = {
+  restitution: 0.15,        // low bounce for obstacles
+  friction: 0.08,
+  isStatic: true,
+  label: 'obstacle'
+};
 
-    function resetNewNamePlaceholder() {
-      newNameInput.placeholder = defaultNewNamePlaceholder;
+const spinnerOptions = {
+  restitution: 0.20,
+  friction: 0.10,
+  isKinematic: true,
+  label: 'spinner'
+};
 
-      // Если поле пустое — вернуть нормальный вид
-      if (!newNameInput.value.trim()) {
-        newNameInput.style.borderColor = 'rgba(255,255,255,0.2)';
-        newNameInput.style.background = 'rgba(255,255,255,0.1)';
-      }
+const GRAVITY_SCALE = 1.0;  // Matter.js uses 9.81 by default
+const MAX_VELOCITY = 15;    // px/s clamp to prevent tunneling
+
+// Container geometry
+const CONTAINER_BORDER = 4;
+const CONTAINER_CORNER_RADIUS = 20;
+// ─────────────────────────────────────────────────────────────────
+
+let marbles = [];
+let spinners = [];
+let obstacles = [];
+let raceInProgress = false;
+let winnerFound = false;
+let selectedWinner = null;
+let rafId = null;
+
+// Timing state
+let lastTime = 0;
+
+// Course definition: sequence of obstacle sections from top to bottom
+const COURSE_LAYOUT = [
+  { type: 'spacing', height: 0.08 },
+  { type: 'funnel', width: 0.9, narrowWidth: 0.3 },
+  { type: 'spacing', height: 0.06 },
+  { type: 'chokePoint', width: 0.35, offset: 0.1 },
+  { type: 'spacing', height: 0.06 },
+  { type: 'deflectors', angles: [-15, 15], spread: 0.6 },
+  { type: 'spacing', height: 0.05 },
+  { type: 'pegs', count: 8, spread: 0.7 },
+  { type: 'spacing', height: 0.06 },
+  { type: 'halfPipe', width: 0.6, depth: 0.08 },
+  { type: 'spacing', height: 0.05 },
+  { type: 'splitPath', leftWidth: 0.35, rightWidth: 0.35 },
+  { type: 'spacing', height: 0.05 },
+  { type: 'spinners', count: 5, spread: 0.8 },
+  { type: 'spacing', height: 0.06 },
+  { type: 'gravityDrop', width: 0.5 },
+  { type: 'spacing', height: 0.08 }
+];
+
+function secureRandomFloat() {
+  const arr = new Uint32Array(1);
+  crypto.getRandomValues(arr);
+  return arr[0] / 0x100000000;
+}
+
+function selectWeightedItem(names, probabilities) {
+  const rand = secureRandomFloat();
+  let cumulative = 0;
+  for (const name of names) {
+    cumulative += probabilities[name] || 0;
+    if (rand <= cumulative) return name;
+  }
+  return names[names.length - 1];
+}
+
+function getContainerSize() {
+  const container = document.querySelector('.obstacle-course');
+  return { w: container.clientWidth, h: container.clientHeight };
+}
+
+let names = ['Участник 1','Участник 2'];
+let probabilities = {};
+let lockedParticipants = {};
+let hasCustomProbabilities = false;
+let participantColors = {};
+
+const PARTICIPANT_COLORS = [
+  '#FF0000', '#FF6600', '#FFFF00', '#00FF00', '#00FFCC',
+  '#00FFFF', '#0099FF', '#0000FF', '#0033FF', '#7700FF',
+  '#9900FF', '#FF00FF', '#FF0099', '#FF1493', '#CCFF00',
+  '#00FF99', '#00CCCC', '#6600FF', '#CC00FF', '#FF00CC',
+];
+
+// ============================================================
+//  STORAGE & STATE MANAGEMENT
+// ============================================================
+function saveState() {
+  try {
+    localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+    const cleanP = {};
+    names.forEach(n => cleanP[n] = probabilities[n] ?? 0);
+    const cleanL = {};
+    names.forEach(n => { if (lockedParticipants[n]) cleanL[n] = true; });
+    localStorage.setItem(PROB_KEY, JSON.stringify({probabilities: cleanP, hasCustomProbabilities}));
+    localStorage.setItem(LOCKED_KEY, JSON.stringify(cleanL));
+  } catch(e) {}
+}
+
+function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(NAMES_KEY) || '[]');
+    if (Array.isArray(saved) && saved.length) names = saved.slice(0, MAX_PARTICIPANTS);
+  } catch(e) {}
+
+  names.forEach((name, idx) => {
+    if (!(name in participantColors)) {
+      participantColors[name] = idx % PARTICIPANT_COLORS.length;
     }
+  });
 
-    newNameInput.addEventListener('focus', resetNewNamePlaceholder);
-    newNameInput.addEventListener('click', resetNewNamePlaceholder);
+  try {
+    const saved = JSON.parse(localStorage.getItem(PROB_KEY) || '{}');
+    const savedL = JSON.parse(localStorage.getItem(LOCKED_KEY) || '{}');
+    if (saved?.hasCustomProbabilities && saved?.probabilities) {
+      probabilities = {...saved.probabilities};
+      lockedParticipants = {...savedL};
+      hasCustomProbabilities = true;
+      Object.keys(probabilities).forEach(n => { if (!names.includes(n)) delete probabilities[n]; });
+      Object.keys(lockedParticipants).forEach(n => { if (!names.includes(n)) delete lockedParticipants[n]; });
+      names.forEach(n => { if (!(n in probabilities)) probabilities[n] = 0.05; });
+    } else { equalizeProbabilities(); }
+  } catch(e) { equalizeProbabilities(); }
+}
 
-    // ===== ФУНКЦИЯ ПОКАЗА ОШИБКИ =====
-    function showNewNameInputError(message) {
-      newNameInput.style.borderColor = '#ef4444';
-      newNameInput.style.background = 'rgba(239,68,68,0.1)';
-      const oldPlaceholder = newNameInput.placeholder;
-      newNameInput.placeholder = message;
-      
-      setTimeout(() => {
-        newNameInput.placeholder = oldPlaceholder;
-        if (!newNameInput.value.trim()) {
-          newNameInput.style.borderColor = 'rgba(255,255,255,0.2)';
-          newNameInput.style.background = 'rgba(255,255,255,0.1)';
-        }
-      }, 2500);
+function equalizeProbabilities() {
+  const p = 1 / Math.max(1, names.length);
+  probabilities = {}; lockedParticipants = {}; hasCustomProbabilities = false;
+  names.forEach(n => probabilities[n] = p);
+  saveState(); renderParticipants();
+}
+
+function normalizeProbabilities() {
+  if (!hasCustomProbabilities) {
+    const exact = 1 / (names.length || 1);
+    names.forEach(n => probabilities[n] = exact); return;
+  }
+  const locked = names.filter(n => lockedParticipants[n]);
+  const unlocked = names.filter(n => !lockedParticipants[n]);
+  if (unlocked.length === 0) {
+    const sum = names.reduce((s,n) => s + (probabilities[n]||0), 0);
+    if (sum > 0 && Math.abs(sum-1) > 1e-4) {
+      const k = 1/sum; names.forEach(n => probabilities[n] = (probabilities[n]||0)*k);
     }
+    if (names.some(n => (probabilities[n]??0) < 0.049)) { equalizeProbabilities(); } return;
+  }
+  const lockedSum = locked.reduce((s,n) => s+(probabilities[n]||0), 0);
+  const minU = unlocked.length * 0.05;
+  const remain = 1 - lockedSum;
+  if (locked.some(n=>(probabilities[n]??0)<0.049) || remain < minU-0.001 || lockedSum > 1.001) {
+    equalizeProbabilities(); return;
+  }
+  const share = remain / unlocked.length;
+  unlocked.forEach(n => probabilities[n] = share);
+  if (names.some(n=>(probabilities[n]??0)<0.049)) { equalizeProbabilities(); }
+}
 
-    // Валидация при вводе в новый участник
-    newNameInput.addEventListener('keydown', (e) => {
-      if (newNameInput.value.length >= 15 && 
-          !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key) &&
-          !e.ctrlKey && !e.metaKey) {
-        
-        newNameInput.style.borderColor = '#ef4444';
-        newNameInput.style.background = 'rgba(239,68,68,0.1)';
-        newNameInput.placeholder = 'Максимум 15 символов';
-        
-        setTimeout(() => {
-          newNameInput.placeholder = 'Новый участник';
-          if (newNameInput.value.trim()) {
-            const dup = names.some((n) => n.toLowerCase() === newNameInput.value.trim().toLowerCase());
-            if (!dup) {
-              newNameInput.style.borderColor = 'rgba(255,255,255,0.2)';
-              newNameInput.style.background = 'rgba(255,255,255,0.1)';
-            }
-          } else {
-            newNameInput.style.borderColor = 'rgba(255,255,255,0.2)';
-            newNameInput.style.background = 'rgba(255,255,255,0.1)';
-          }
-        }, 1500);
-      }
-    });
+function getPercent(name) {
+  return ((probabilities[name]||0)*100).toFixed(1);
+}
 
-    function setUILocked(locked) {
-      dropBtn.disabled = locked;
-      addNameBtn.disabled = locked;
-      newNameInput.disabled = locked;
-      equalizeBtn.disabled = locked;
-      shuffleBtn.disabled = locked;
-      carouselBtn.disabled = locked;
+function getRealisticMaxPercent(name) {
+  const otherLocked = names.filter(n=>lockedParticipants[n]&&n!==name);
+  const willUnlocked = names.filter(n=>!lockedParticipants[n]&&n!==name);
+  const lockedSum = otherLocked.reduce((s,n)=>s+(probabilities[n]||0),0);
+  const minU = willUnlocked.length * 0.05;
+  return Math.max(5, Math.min(100, Math.round((1-lockedSum-minU)*1000)/10));
+}
 
-      const allInputs = namesList.querySelectorAll('.name-input, .probability-input');
-      const allButtons = namesList.querySelectorAll('.prob-btn, .remove-btn');
+function setProbabilityManually(name, pct) {
+  const max = getRealisticMaxPercent(name);
+  if (isNaN(pct)||pct<5||pct>max+0.2) { showErrorTooltip(`Мин 5%, макс ${max.toFixed(1)}%`); return false; }
+  hasCustomProbabilities = true; lockedParticipants[name] = true;
+  probabilities[name] = pct/100; normalizeProbabilities(); saveState(); return true;
+}
 
-      allInputs.forEach(input => input.disabled = locked);
-      allButtons.forEach(button => button.disabled = locked);
+function changeProbability(name, delta) {
+  const cur = parseFloat(getPercent(name))||0;
+  const maxP = 100-(names.length-1)*5;
+  const next = Math.max(5, Math.min(maxP, cur+delta));
+  if (Math.abs(next-cur) < 0.01) { showErrorTooltip(delta>0 ? `Макс: ${getRealisticMaxPercent(name).toFixed(1)}%` : 'Мин: 5%'); return; }
+  const otherLocked = names.filter(n=>lockedParticipants[n]&&n!==name);
+  const willUnlocked = names.filter(n=>!lockedParticipants[n]&&n!==name);
+  const lockedSum = otherLocked.reduce((s,n)=>s+(probabilities[n]||0),0);
+  const remain = 1 - lockedSum - next/100;
+  if (remain < willUnlocked.length*0.05-0.001) { showErrorTooltip(`Макс: ${getRealisticMaxPercent(name).toFixed(1)}%`); return; }
+  setProbabilityManually(name, next); renderParticipants();
+}
 
-      if (locked) {
-        document.querySelector('.settings-panel').style.opacity = '0.5';
-        document.querySelector('.settings-panel').style.pointerEvents = 'none';
-      } else {
-        document.querySelector('.settings-panel').style.opacity = '1';
-        document.querySelector('.settings-panel').style.pointerEvents = 'auto';
-      }
-    }
+function validateAllNames() {
+  const inputs = document.querySelectorAll('.name-input');
+  let ok = true;
+  inputs.forEach(inp => { if (!inp.value.trim()||inp.value.length>15) ok = false; });
+  return ok;
+}
 
-    function validateAllNames() {
-      let allValid = true;
-      
-      const nameInputs = namesList.querySelectorAll('.name-input');
-      nameInputs.forEach(input => {
-        const value = input.value.trim();
-        if (!value || value.length === 0 || input.value.length > 15) {
-          allValid = false;
-        }
-      });
-      
-      dropBtn.disabled = !allValid || animId !== null;
-      
-      return allValid;
-    }
+function validateProbabilities() {
+  if (!names.length) return false;
+  let sum = 0;
+  for (const n of names) { const p = probabilities[n]||0; if (p < MIN_PROBABILITY-1e-6) { showErrorTooltip('Мин вероятность 5%'); return false; } sum += p; }
+  if (Math.abs(sum-1) > 0.001) { showErrorTooltip(`Сумма должна быть 100% (сейчас ${(sum*100).toFixed(1)}%)`); return false; }
+  clearErrorMessage(); return true;
+}
 
-  // ===== DESKTOP MENU =====
-  const desktopMenuToggle = document.getElementById('desktopMenuToggle');
-  const desktopDropdown = document.getElementById('desktopDropdown');
-  let desktopMenuOpen = false;
+function showErrorTooltip(msg) {
+  document.querySelectorAll('.probability-error-tooltip').forEach(e=>e.remove());
+  const t = document.createElement('div');
+  t.className='probability-error-tooltip'; t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.transition='opacity .3s,transform .3s'; t.style.opacity='0'; t.style.transform='translate(-50%,-50%) scale(.8)'; setTimeout(()=>t.remove(), 300); }, 2000);
+}
 
-  function toggleDesktopMenu() {
-    desktopMenuOpen = !desktopMenuOpen;
-    desktopDropdown.classList.toggle('active', desktopMenuOpen);
-    desktopMenuToggle.classList.toggle('active', desktopMenuOpen);
+function clearErrorMessage() {
+  const el = document.getElementById('errorMessage');
+  if (el) el.textContent='';
+}
+
+function removeParticipant(idx) {
+  if (names.length <= 2) { showErrorTooltip('Минимум 2 участника!'); return; }
+  const name = names[idx];
+  names.splice(idx,1); delete probabilities[name]; delete lockedParticipants[name]; delete participantColors[name];
+  equalizeProbabilities(); saveState(); renderParticipants();
+}
+
+function addNewParticipant() {
+  const inp = document.getElementById('newNameInput');
+  const v = inp.value.trim();
+
+  if (names.length >= MAX_PARTICIPANTS) {
+    inp.style.borderColor = '#ef4444';
+    inp.style.background = 'rgba(239,68,68,0.1)';
+    inp.placeholder = `Максимум ${MAX_PARTICIPANTS} участников`;
+    inp.value = '';
+
+    setTimeout(() => {
+      inp.placeholder = 'Новый участник';
+      inp.style.borderColor = 'rgba(255,255,255,0.2)';
+      inp.style.background = 'rgba(255,255,255,0.1)';
+    }, 2000);
+    return;
   }
 
-  if (desktopMenuToggle) {
-    desktopMenuToggle.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleDesktopMenu();
-    });
+  if (!v || v.length === 0) {
+    inp.style.borderColor = '#ef4444';
+    inp.style.background = 'rgba(239,68,68,0.1)';
+    inp.placeholder = 'Введите хотя бы один символ';
 
-    document.addEventListener('click', (e) => {
-      if (
-        desktopMenuOpen &&
-        !desktopDropdown.contains(e.target) &&
-        !desktopMenuToggle.contains(e.target)
-      ) {
-        toggleDesktopMenu();
+    setTimeout(() => {
+      inp.placeholder = 'Новый участник';
+      if (!inp.value.trim()) {
+        inp.style.borderColor = 'rgba(255,255,255,0.2)';
+        inp.style.background = 'rgba(255,255,255,0.1)';
       }
-    });
+    }, 2000);
+    return;
   }
 
-  // ===== BURGER MENU (MOBILE) =====
-  const burgerBtn = document.getElementById('burgerBtn');
-  const menuDropdown = document.getElementById('menuDropdown');
-  let menuOpen = false;
+  if (v.length > 15) {
+    inp.style.borderColor = '#ef4444';
+    inp.style.background = 'rgba(239,68,68,0.1)';
+    inp.placeholder = 'Максимум 15 символов';
+    inp.value = '';
 
-  function toggleMenu() {
-    menuOpen = !menuOpen;
-    menuDropdown.classList.toggle('active', menuOpen);
-    burgerBtn.classList.toggle('active', menuOpen);
+    setTimeout(() => {
+      inp.placeholder = 'Новый участник';
+      inp.style.borderColor = 'rgba(255,255,255,0.2)';
+      inp.style.background = 'rgba(255,255,255,0.1)';
+    }, 2000);
+    return;
   }
 
-  if (burgerBtn) {
-    burgerBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleMenu();
-    });
+  const dup = names.some((n) => n.toLowerCase() === v.toLowerCase());
+  if (dup) {
+    inp.style.borderColor = '#ef4444';
+    inp.style.background = 'rgba(239,68,68,0.1)';
+    inp.placeholder = 'Такой участник уже есть';
+    inp.value = '';
 
-    document.addEventListener('click', (e) => {
-      if (
-        menuOpen &&
-        !menuDropdown.contains(e.target) &&
-        !burgerBtn.contains(e.target)
-      ) {
-        toggleMenu();
-      }
-    });
+    setTimeout(() => {
+      inp.placeholder = 'Новый участник';
+      inp.style.borderColor = 'rgba(255,255,255,0.2)';
+      inp.style.background = 'rgba(255,255,255,0.1)';
+    }, 2000);
+    return;
   }
 
-    // ===== ЗВУК =====
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
-    function playSound(f, d, v) {
-      try {
-        const o = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
-        o.type = 'sine';
-        o.frequency.value = f;
-        g.gain.value = v || 0.1;
-        o.connect(g);
-        g.connect(audioCtx.destination);
-        const t = audioCtx.currentTime;
-        o.start(t);
-        o.stop(t + (d || 0.1));
-      } catch(e) {}
+  inp.value = '';
+  inp.placeholder = 'Новый участник';
+  inp.style.borderColor = 'rgba(255,255,255,0.2)';
+  inp.style.background = 'rgba(255,255,255,0.1)';
+
+  names.push(v);
+  probabilities[v] = 0.05;
+  equalizeProbabilities();
+  saveState();
+  renderParticipants();
+}
+
+function changeParticipantColor(name) {
+  const usedIndices = new Set();
+  names.forEach(n => {
+    if (n !== name) {
+      const idx = participantColors[n];
+      if (idx !== undefined) usedIndices.add(idx);
     }
+  });
 
-    const playTickSound = () => playSound(800, 0.04, 0.12);
-    const playWinSound = () => playSound(1200, 0.3, 0.25);
-    
-    function playFanfare() {
-      [523, 659, 784, 1046, 784, 1046, 1319, 1568].forEach((f, i) =>
-        setTimeout(() => playSound(f, 0.18, 0.105), i * 150)
-      );
+  const available = [];
+  for (let i = 0; i < PARTICIPANT_COLORS.length; i++) {
+    if (!usedIndices.has(i)) {
+      available.push(i);
     }
+  }
 
-    // ===== ЗАГРУЗКА ИМЕН =====
-    try {
-      const saved = JSON.parse(localStorage.getItem(NAMES_KEY) || '[]');
-      if (Array.isArray(saved) && saved.length) {
-        names = saved;
-        
-        // Валидация 1: Если 1 участник - добавляем второго
-        if (names.length === 1) {
-          names.push('Участник 2');
-          // НЕ сохраняем - просто валидируем
+  if (available.length === 0) return;
+
+  const currentIdx = participantColors[name];
+  let currentPos = available.indexOf(currentIdx);
+
+  if (currentPos === -1) currentPos = -1;
+
+  const nextPos = (currentPos + 1) % available.length;
+  participantColors[name] = available[nextPos];
+
+  saveState();
+  renderParticipants();
+}
+
+function initializeObstaclesAndSpinners() {
+  initializeObstacles();
+  renderObstacles();
+  initializeSpinners(); // Must be after initializeObstacles
+  renderSpinners();
+}
+
+function renderParticipants() {
+  const namesList = document.getElementById('namesList');
+  namesList.innerHTML = '';
+  names.forEach((name, idx) => {
+    const row = document.createElement('div');
+    row.className = 'name-item';
+
+    const colorBox = document.createElement('div');
+    colorBox.className = 'color-box';
+    const colorIdx = participantColors[name] !== undefined ? participantColors[name] : idx % PARTICIPANT_COLORS.length;
+    colorBox.style.backgroundColor = PARTICIPANT_COLORS[colorIdx];
+    colorBox.style.flexShrink = '0';
+    colorBox.addEventListener('click', () => changeParticipantColor(name));
+
+    const inp = document.createElement('input');
+    inp.type='text'; inp.className='name-input'; inp.value=name; inp.placeholder='Имя'; inp.maxLength=15;
+
+    inp.addEventListener('blur', () => {
+      const v = inp.value.trim();
+      if (!v) { inp.value=name; validateAllNames(); return; }
+      const dup = names.some((n,i)=>i!==idx&&n.toLowerCase()===v.toLowerCase());
+      if (dup||v.length>15) { inp.value=names[idx]; showErrorTooltip('Имя занято или слишком длинное'); validateAllNames(); return; }
+      const old=names[idx]; names[idx]=v;
+      if (probabilities[old]!==undefined) { probabilities[v]=probabilities[old]; delete probabilities[old]; }
+      if (lockedParticipants[old]) { lockedParticipants[v]=true; delete lockedParticipants[old]; }
+      if (participantColors[old]!==undefined) { participantColors[v]=participantColors[old]; delete participantColors[old]; }
+      inp.classList.remove('error-state'); inp.style.borderColor='rgba(255,255,255,.2)'; inp.style.background='rgba(255,255,255,.1)';
+      saveState(); validateAllNames();
+    });
+
+    inp.addEventListener('input', () => {
+      const v=inp.value.trim();
+      const dup=names.some((n,i)=>i!==idx&&n.toLowerCase()===v.toLowerCase());
+      if (!v||dup||v.length>15) { inp.classList.add('error-state'); } else { inp.classList.remove('error-state'); }
+      validateAllNames();
+    });
+
+    inp.addEventListener('focus', () => {
+      inp.classList.remove('error-state'); inp.style.borderColor='rgba(255,255,255,.5)'; inp.style.background='rgba(255,255,255,.2)';
+      clearErrorMessage();
+    });
+
+    const pc = document.createElement('div'); pc.className='probability-controls';
+    const minusBtn = document.createElement('button'); minusBtn.className='prob-btn'; minusBtn.textContent='−';
+    minusBtn.onclick = () => { if (lockedParticipants[name]) { delete lockedParticipants[name]; hasCustomProbabilities=Object.keys(lockedParticipants).length>0; } changeProbability(name,-1); };
+
+    const probInp = document.createElement('input'); probInp.type='text'; probInp.className='probability-input'; probInp.setAttribute('inputmode','decimal');
+    probInp.value=getPercent(name); if (lockedParticipants[name]) probInp.classList.add('manual');
+    let lastValid=probInp.value;
+
+    probInp.addEventListener('focus', () => { probInp.value=probInp.value.replace('%',''); lastValid=probInp.value; });
+    probInp.addEventListener('input', () => { probInp.value=probInp.value.replace(',','.'); const num=parseFloat(probInp.value); const max=getRealisticMaxPercent(name); if (isNaN(num)||num<5||num>max) { probInp.classList.add('error'); } else { probInp.classList.remove('error'); } });
+    probInp.addEventListener('blur', () => { const num=parseFloat(probInp.value); const max=getRealisticMaxPercent(name); if (isNaN(num)||num<5||num>max) { probInp.value=lastValid; probInp.classList.remove('error'); } else if (setProbabilityManually(name,num)) { lastValid=getPercent(name); renderParticipants(); } else { probInp.value=lastValid; probInp.classList.remove('error'); } });
+    probInp.addEventListener('keypress', e => { if(e.key==='Enter'){e.preventDefault();probInp.blur();} if(!/[\d.,]/.test(e.key)&&e.key!=='Enter')e.preventDefault(); });
+
+    const plusBtn = document.createElement('button'); plusBtn.className='prob-btn'; plusBtn.textContent='+';
+    plusBtn.onclick = () => { if (lockedParticipants[name]) { delete lockedParticipants[name]; hasCustomProbabilities=Object.keys(lockedParticipants).length>0; } changeProbability(name,1); };
+
+    pc.appendChild(minusBtn); pc.appendChild(probInp); pc.appendChild(plusBtn);
+
+    const removeBtn = document.createElement('button'); removeBtn.className='remove-btn'; removeBtn.textContent='✕';
+    removeBtn.onclick = () => removeParticipant(idx);
+
+    row.appendChild(colorBox); row.appendChild(inp); row.appendChild(pc); row.appendChild(removeBtn);
+    namesList.appendChild(row);
+  });
+  validateAllNames();
+  initializeMarbles();
+  initializeObstaclesAndSpinners();
+}
+
+
+function resolveWalls(m) {
+  const { w, h } = getContainerSize();
+  const cx = m.x + MARBLE_RADIUS;
+  const cy = m.y + MARBLE_RADIUS;
+  const minX = CONTAINER_BORDER + MARBLE_RADIUS;
+  const maxX = w - CONTAINER_BORDER - MARBLE_RADIUS;
+  const minY = CONTAINER_BORDER + MARBLE_RADIUS;
+  const maxY = h - CONTAINER_BORDER - MARBLE_RADIUS;
+
+  if (cx < minX) {
+    m.x = minX - MARBLE_RADIUS;
+    m.vx = Math.abs(m.vx) * restitutionMarbleFloor;
+    m.onSurface = true;
+  } else if (cx > maxX) {
+    m.x = maxX - MARBLE_RADIUS;
+    m.vx = -Math.abs(m.vx) * restitutionMarbleFloor;
+    m.onSurface = true;
+  }
+
+  if (cy < minY) {
+    m.y = minY - MARBLE_RADIUS;
+    m.vy = Math.abs(m.vy) * restitutionMarbleFloor;
+    m.onSurface = true;
+  } else if (cy > maxY) {
+    m.y = maxY - MARBLE_RADIUS;
+    m.vy = -Math.abs(m.vy) * restitutionMarbleFloor;
+    m.onSurface = true;
+  }
+}
+
+function resolveMarbleCollision(a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const distSq = dx * dx + dy * dy;
+  const minDist = MARBLE_RADIUS * 2;
+  const minDistSq = minDist * minDist;
+
+  // Fail-safe: only process if actually colliding
+  if (distSq >= minDistSq) return;
+  if (distSq < 1e-8) return; // too close, skip
+
+  const dist = Math.sqrt(distSq);
+  const nx = dx / dist;
+  const ny = dy / dist;
+
+  // Relative velocity along contact normal
+  const rvx = b.vx - a.vx;
+  const rvy = b.vy - a.vy;
+  const rvn = rvx * nx + rvy * ny;
+
+  // Only resolve if objects moving toward each other
+  if (rvn > 0) return;
+
+  // Impulse response (equal mass simplification for stability)
+  const j = -(1 + restitutionMarbleMarble) * rvn * 0.5; // divided by 2 for equal masses
+
+  a.vx -= j * nx;
+  a.vy -= j * ny;
+  b.vx += j * nx;
+  b.vy += j * ny;
+
+  // AGGRESSIVE positional correction to prevent overlap
+  const penetration = minDist - dist;
+  if (penetration > 0) {
+    const corrMag = (penetration - posCorrectSlop) * posCorrectPercent * 0.5; // half to each
+    a.x -= corrMag * nx;
+    a.y -= corrMag * ny;
+    b.x += corrMag * nx;
+    b.y += corrMag * ny;
+  }
+}
+
+function resolveMarbleBarCollisions() {
+  for (const marble of marbles) {
+    for (const obs of obstacles) {
+      if (obs.type === 'spinners' || obs.type === 'spacing') continue;
+
+      // Handle bars
+      if (obs.bars && obs.bars.length > 0) {
+        for (const bar of obs.bars) {
+          resolveMarbleBarCollision(marble, bar);
         }
-        
-        // Валидация 2: Если более 20 участников - берём первых 20
-        if (names.length > 20) {
-          names = names.slice(0, 20);
-          // НЕ сохраняем - просто валидируем
-        }
-      } else {
-        localStorage.setItem(NAMES_KEY, JSON.stringify(names));
       }
-    } catch(e) {}
 
-    const saveNames = () => {
-      try {
-        localStorage.setItem(NAMES_KEY, JSON.stringify(names));
-      } catch(e) {}
+      // Handle pegs
+      if (obs.pegs && obs.pegs.length > 0) {
+        for (const peg of obs.pegs) {
+          resolveMarblePegCollision(marble, peg);
+        }
+      }
+    }
+  }
+}
+
+function resolveMarblePegCollision(marble, peg) {
+  const marbleCx = marble.x + MARBLE_RADIUS;
+  const marbleCy = marble.y + MARBLE_RADIUS;
+
+  const dx = marbleCx - peg.x;
+  const dy = marbleCy - peg.y;
+  const dist = Math.hypot(dx, dy);
+
+  const collisionDist = MARBLE_RADIUS + peg.r;
+  if (dist > collisionDist || dist < 1e-6) return;
+
+  const nx = dx / dist;
+  const ny = dy / dist;
+
+  // Positional correction
+  const penetration = collisionDist - dist;
+  marble.x += nx * penetration * 0.6;
+  marble.y += ny * penetration * 0.6;
+  marble.onSurface = true;
+
+  // Impulse response (peg is static)
+  const rvx = marble.vx;
+  const rvy = marble.vy;
+  const rvn = rvx * nx + rvy * ny;
+
+  if (rvn >= 0) return;
+
+  const j = -(1 + restitutionMarbleFloor * 0.8) * rvn / (1 / marble.mass);
+  marble.vx += j * nx;
+  marble.vy += j * ny;
+}
+
+function resolveMarbleBarCollision(marble, bar) {
+  const marbleCx = marble.x + MARBLE_RADIUS;
+  const marbleCy = marble.y + MARBLE_RADIUS;
+
+  // Find closest point on bar segment to marble center
+  const dx = bar.x2 - bar.x1;
+  const dy = bar.y2 - bar.y1;
+  const lenSq = dx * dx + dy * dy;
+
+  let t = 0;
+  if (lenSq > 0) {
+    t = Math.max(0, Math.min(1, ((marbleCx - bar.x1) * dx + (marbleCy - bar.y1) * dy) / lenSq));
+  }
+
+  const closestX = bar.x1 + t * dx;
+  const closestY = bar.y1 + t * dy;
+
+  const dist_x = marbleCx - closestX;
+  const dist_y = marbleCy - closestY;
+  const dist = Math.hypot(dist_x, dist_y);
+
+  const barRadius = 8; // half of bar width
+  const collisionDistance = MARBLE_RADIUS + barRadius;
+  if (dist > collisionDistance || dist < 1e-6) return;
+
+  // Normal vector (from bar to marble)
+  const nx = dist_x / dist;
+  const ny = dist_y / dist;
+
+  // Positional correction
+  const penetration = collisionDistance - dist;
+  marble.x += nx * penetration;
+  marble.y += ny * penetration;
+  marble.onSurface = true;
+
+  // Impulse response
+  const relVx = marble.vx;
+  const relVy = marble.vy;
+  const relVn = relVx * nx + relVy * ny;
+
+  if (relVn >= 0) return; // moving away
+
+  const invMassMarble = 1 / marble.mass;
+  const j = -(1 + restitutionMarbleFloor) * relVn * invMassMarble;
+
+  marble.vx += j * nx;
+  marble.vy += j * ny;
+}
+
+function resolveMarbleSpinnerCollisions() {
+  for (const marble of marbles) {
+    for (const spinner of spinners) {
+      // Check each of the 4 arms
+      for (let armIdx = 0; armIdx < 4; armIdx++) {
+        const armAngle = spinner.angle + (armIdx * Math.PI / 2);
+        const armStartX = spinner.cx;
+        const armStartY = spinner.cy;
+        const armEndX = spinner.cx + spinner.armLength * Math.cos(armAngle);
+        const armEndY = spinner.cy + spinner.armLength * Math.sin(armAngle);
+
+        resolveMarbleArmCollision(marble, spinner, armStartX, armStartY, armEndX, armEndY, armAngle);
+      }
+    }
+  }
+}
+
+function resolveMarbleArmCollision(marble, spinner, armStartX, armStartY, armEndX, armEndY, armAngle) {
+  const marbleCx = marble.x + MARBLE_RADIUS;
+  const marbleCy = marble.y + MARBLE_RADIUS;
+
+  // Find closest point on arm segment to marble center
+  const dx = armEndX - armStartX;
+  const dy = armEndY - armStartY;
+  const lenSq = dx * dx + dy * dy;
+
+  let t = 0;
+  if (lenSq > 0) {
+    t = Math.max(0, Math.min(1, ((marbleCx - armStartX) * dx + (marbleCy - armStartY) * dy) / lenSq));
+  }
+
+  const closestX = armStartX + t * dx;
+  const closestY = armStartY + t * dy;
+
+  const dist_x = marbleCx - closestX;
+  const dist_y = marbleCy - closestY;
+  const dist = Math.hypot(dist_x, dist_y);
+
+  const collisionDistance = MARBLE_RADIUS + spinner.armWidth / 2;
+  if (dist > collisionDistance || dist < 1e-6) return;
+
+  // Normal vector (from arm to marble)
+  const nx = dist_x / dist;
+  const ny = dist_y / dist;
+
+  // Positional correction (only move marble, spinner is kinematic)
+  const penetration = collisionDistance - dist;
+  marble.x += nx * penetration;
+  marble.y += ny * penetration;
+
+  // Velocity of contact point on rotating arm: v_arm = omega × r
+  const radiusX = closestX - spinner.cx;
+  const radiusY = closestY - spinner.cy;
+  const distFromCenter = Math.hypot(radiusX, radiusY);
+
+  let armVx = 0, armVy = 0;
+  if (distFromCenter > 1e-6) {
+    // v_arm = omega × r in 2D: omega_z * r_perp = (-ry * omega, rx * omega)
+    const omega = spinner.rotationSpeed * spinner.direction;
+    armVx = -radiusY * omega;
+    armVy = radiusX * omega;
+  }
+
+  // Relative velocity of marble w.r.t. arm contact point
+  const relVx = marble.vx - armVx;
+  const relVy = marble.vy - armVy;
+  const relVn = relVx * nx + relVy * ny;
+
+  if (relVn >= 0) return; // marble moving away from arm
+
+  // Impulse (spinner is kinematic: invMass_spinner = 0)
+  const invMassMarble = 1 / marble.mass;
+  const j = -(1 + restitutionMarbleFloor) * relVn * invMassMarble;
+
+  marble.vx += j * nx;
+  marble.vy += j * ny;
+}
+
+function physicsSubstep(dt) {
+  // 1) Update spinner rotations
+  updateSpinners(dt);
+
+  // 2) Apply forces and integrate using semi-implicit Euler
+  for (const m of marbles) {
+    m.onSurface = false; // Reset each substep
+
+    // Air drag (exponential damping)
+    const dragFactor = Math.exp(-airDrag * dt);
+    m.vx *= dragFactor;
+    m.vy *= dragFactor;
+
+    // Gravity
+    m.vy += gravityPx * dt;
+
+    // Semi-implicit Euler integration
+    m.x += m.vx * dt;
+    m.y += m.vy * dt;
+  }
+
+  // 3) Resolve container walls
+  for (const m of marbles) {
+    resolveWalls(m);
+  }
+
+  // 4) Resolve marble-bar collisions
+  resolveMarbleBarCollisions();
+
+  // 5) Resolve marble-spinner collisions
+  resolveMarbleSpinnerCollisions();
+
+  // 6) Resolve marble-marble collisions (impulse-based with high iterations)
+  for (let iter = 0; iter < collisionIterations; iter++) {
+    for (let i = 0; i < marbles.length; i++) {
+      for (let j = i + 1; j < marbles.length; j++) {
+        resolveMarbleCollision(marbles[i], marbles[j]);
+      }
+    }
+  }
+
+  // 6b) HARD SEPARATION PASS: Force marbles apart if still overlapping (no slip)
+  for (let iter = 0; iter < separationIterations; iter++) {
+    for (let i = 0; i < marbles.length; i++) {
+      for (let j = i + 1; j < marbles.length; j++) {
+        const a = marbles[i];
+        const b = marbles[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy);
+        const minDist = MARBLE_RADIUS * 2;
+
+        if (dist < minDist && dist > 1e-6) {
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const overlap = minDist - dist;
+          const sep = overlap / 2 + 0.01; // small buffer to prevent re-overlap
+
+          // Push both marbles apart equally
+          a.x -= nx * sep;
+          a.y -= ny * sep;
+          b.x += nx * sep;
+          b.y += ny * sep;
+        }
+      }
+    }
+  }
+
+  // 7) Rolling friction (only on contact surfaces)
+  for (const m of marbles) {
+    if (m.onSurface) {
+      const rfFactor = Math.exp(-rollingFriction * dt);
+      m.vx *= rfFactor;
+    }
+  }
+}
+
+function raceLoop(now) {
+  if (!raceInProgress) return;
+
+  const rawDt = Math.min((now - lastTime) / 1000, dtMax);
+  lastTime = now;
+  physicsAccumulator += rawDt;
+
+  while (physicsAccumulator >= physicsDt) {
+    physicsSubstep(physicsDt);
+    physicsAccumulator -= physicsDt;
+  }
+
+  marbles.forEach(m => {
+    if (m.el) {
+      m.el.style.transform = `translate(${m.x}px, ${m.y}px)`;
+    }
+  });
+
+  if (raceInProgress) {
+    rafId = requestAnimationFrame(raceLoop);
+  }
+}
+
+function initializeObstacles() {
+  const { w, h } = getContainerSize();
+  obstacles = [];
+
+  let currentY = 0;
+  const courseHeightRatio = 0.95; // Leave some margin
+  const totalHeight = h * courseHeightRatio;
+
+  // Calculate total height units to scale sections
+  const totalUnits = COURSE_LAYOUT.reduce((sum, section) => {
+    if (section.type === 'spacing') return sum + section.height;
+    return sum + 0.08; // default section height
+  }, 0);
+
+  const pixelsPerUnit = totalHeight / totalUnits;
+
+  COURSE_LAYOUT.forEach((layout, idx) => {
+    let sectionHeight = layout.type === 'spacing' ? layout.height * pixelsPerUnit : 0.08 * pixelsPerUnit;
+
+    const obs = {
+      type: layout.type,
+      startY: currentY,
+      endY: currentY + sectionHeight,
+      centerY: currentY + sectionHeight / 2,
+      width: w,
+      height: sectionHeight,
+      x1: w * 0.05,
+      x2: w * 0.95,
+      bars: [],
+      pegs: [],
+      ...layout
     };
 
-    // ===== УПРАВЛЕНИЕ ВЕРОЯТНОСТЯМИ =====
-    function initProbabilities() {
-      isLoadingFromStorage = true; // Устанавливаем флаг загрузки
-      
-      try {
-        const saved = JSON.parse(localStorage.getItem(PROB_KEY) || '{}');
-        const savedLocked = JSON.parse(localStorage.getItem(LOCKED_KEY) || '{}');
-
-        if (saved?.hasCustomProbabilities && saved?.probabilities && Object.keys(saved.probabilities).length) {
-          probabilities = { ...saved.probabilities };
-          lockedParticipants = { ...savedLocked };
-          hasCustomProbabilities = true;
-
-          // Удаляем вероятности для участников, которых нет в names
-          Object.keys(probabilities).forEach((n) => { if (!names.includes(n)) delete probabilities[n]; });
-          Object.keys(lockedParticipants).forEach((n) => { if (!names.includes(n)) delete lockedParticipants[n]; });
-          
-          // Добавляем вероятности для новых участников (если были обрезаны до 20)
-          names.forEach((n) => { if (!(n in probabilities)) probabilities[n] = 0.05; });
-          
-          // Валидация 3: Проверка и исправление вероятностей менее 5%
-          validateAndFixProbabilities();
-          
-          // НЕ сохраняем - данные просто валидированы
-        } else {
-          setEqualProbabilities();
-        }
-      } catch(_) {
-        setEqualProbabilities();
-      }
-      
-      isLoadingFromStorage = false; // Сбрасываем флаг после загрузки
-    }
-    
-    function validateAndFixProbabilities() {
-      // Проверяем, есть ли вероятности менее 5%
-      const belowMin = names.filter(n => (probabilities[n] ?? 0) < 0.05);
-      
-      if (belowMin.length === 0) {
-        // Всё ок, просто нормализуем
-        const sum = names.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
-        if (Math.abs(sum - 1) > 1e-4) {
-          const k = 1 / sum;
-          names.forEach((nm) => probabilities[nm] = (probabilities[nm] || 0) * k);
-        }
-        return;
-      }
-      
-      // Есть участники с вероятностью < 5%
-      // Устанавливаем им 5%
-      belowMin.forEach(n => probabilities[n] = 0.05);
-      
-      // Считаем сумму зафиксированных на 5%
-      const fixedSum = belowMin.length * 0.05;
-      const others = names.filter(n => !belowMin.includes(n));
-      
-      if (others.length === 0) {
-        // Все были ниже 5% - делаем равномерное распределение
-        setEqualProbabilities();
-        return;
-      }
-      
-      // Считаем текущую сумму остальных
-      const othersSum = others.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
-      const remainForOthers = 1 - fixedSum;
-      
-      // Проверяем, можем ли мы сохранить пропорции
-      if (othersSum > 0) {
-        const scale = remainForOthers / othersSum;
-        others.forEach(nm => probabilities[nm] = (probabilities[nm] || 0) * scale);
-        
-        // Проверяем, не стал ли кто-то меньше 5% после масштабирования
-        const stillBelowMin = others.some(nm => (probabilities[nm] ?? 0) < 0.05);
-        
-        if (stillBelowMin) {
-          // Не удалось сохранить пропорции - равномерное распределение
-          setEqualProbabilities();
-        }
-      } else {
-        // Нет данных о пропорциях - равномерное распределение
-        setEqualProbabilities();
-      }
-    }
-
-    function setEqualProbabilities() {
-      const p = 1 / (names.length || 1);
-      probabilities = {};
-      names.forEach((nm) => probabilities[nm] = p);
-      lockedParticipants = {};
-      hasCustomProbabilities = false;
-      
-      // Сохраняем только если это НЕ загрузка из localStorage
-      if (!isLoadingFromStorage) {
-        saveProbabilities();
-      }
-    }
-
-    function clampProbabilitiesMin(min = 0.05) {
-      names.forEach((nm) => { if ((probabilities[nm] ?? 0) < min) probabilities[nm] = min; });
-    }
-
-    function normalizeProbabilities() {
-      // Если нет кастомных вероятностей - просто равномерное распределение
-      if (!hasCustomProbabilities) {
-        const exact = 1 / (names.length || 1);
-        names.forEach((nm) => probabilities[nm] = exact);
-        return;
-      }
-
-      // Разделяем участников на зафиксированных и незафиксированных
-      const locked = names.filter(n => lockedParticipants[n]);
-      const unlocked = names.filter(n => !lockedParticipants[n]);
-      
-      // Если все участники зафиксированы - просто нормализуем
-      if (unlocked.length === 0) {
-        const sum = names.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
-        if (sum > 0 && Math.abs(sum - 1) > 1e-4) {
-          const k = 1 / sum;
-          names.forEach((nm) => probabilities[nm] = (probabilities[nm] || 0) * k);
-        }
-        
-        // Проверяем минимум 5% с бОльшей погрешностью
-        const hasViolation = names.some(nm => (probabilities[nm] ?? 0) < 0.049);
-        if (hasViolation) {
-          // Сбрасываем всё
-          setEqualProbabilities();
-        }
-        return;
-      }
-      
-      // Считаем сумму зафиксированных
-      const lockedSum = locked.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
-      
-      // Проверяем, возможно ли распределение
-      const minUnlockedTotal = unlocked.length * 0.05; // минимум для незафиксированных
-      const remainForUnlocked = 1 - lockedSum;
-      
-      // Проверяем каждую зафиксированную вероятность с бОльшей погрешностью
-      const lockedViolation = locked.some(nm => (probabilities[nm] ?? 0) < 0.049);
-      
-      // Используем погрешность 0.001 (0.1%) вместо 1e-6
-      if (lockedViolation || remainForUnlocked < minUnlockedTotal - 0.001 || lockedSum > 1.001) {
-        // Невозможно соблюсти правило 5% - сбрасываем все фиксации
-        setEqualProbabilities();
-        return;
-      }
-      
-      // Распределяем оставшееся поровну между незафиксированными
-      const sharePerUnlocked = remainForUnlocked / unlocked.length;
-      unlocked.forEach(nm => probabilities[nm] = sharePerUnlocked);
-      
-      // Финальная проверка на минимум 5% с бОльшей погрешностью
-      const finalViolation = names.some(nm => (probabilities[nm] ?? 0) < 0.049);
-      if (finalViolation) {
-        setEqualProbabilities();
-      }
-    }
-
-    function saveProbabilities() {
-      try {
-        const cleanP = {};
-        names.forEach((nm) => cleanP[nm] = probabilities[nm] ?? 0);
-
-        const cleanLocked = {};
-        names.forEach((nm) => { if (lockedParticipants[nm]) cleanLocked[nm] = true; });
-
-        localStorage.setItem(PROB_KEY, JSON.stringify({
-          probabilities: cleanP,
-          hasCustomProbabilities
-        }));
-        localStorage.setItem(LOCKED_KEY, JSON.stringify(cleanLocked));
-      } catch(_) {}
-    }
-
-    function getRealisticMaxPercent(name) {
-        // Все другие зафиксированные, кроме текущего
-        const otherLocked = names.filter(n => lockedParticipants[n] && n !== name);
-        // Все остальные незафиксированные, кроме текущего (он будет зафиксирован при вводе)
-        const willBeUnlocked = names.filter(n => !lockedParticipants[n] && n !== name);
-
-        const otherLockedSum = otherLocked.reduce(
-          (s, nm) => s + (probabilities[nm] || 0),
-          0
-        );
-
-        // Минимум для остальных незафиксированных (по 5%)
-        const minUnlockedTotal = willBeUnlocked.length * 0.05;
-
-        // Сколько максимум можно отдать текущему, чтобы остальным хватило на их 5%
-        const rawMax = (1 - otherLockedSum - minUnlockedTotal) * 100;
-
-        // Обрезаем от 5 до 100, чтобы не уходить в бредовые значения
-        return Math.max(5, Math.min(100, rawMax));
-      }
-
-
-    function getProbabilityPercent(name) {
-      if (!hasCustomProbabilities && names.length) return (100 / names.length).toFixed(1);
-      return (((probabilities[name] || 0) * 100).toFixed(1));
-    }
-
-    function adjustProbability(name, delta) {
-      const cur = parseFloat(getProbabilityPercent(name)) || 0;
-      const maxPossible = 100 - (names.length - 1) * 5;
-      const next = Math.max(5, Math.min(maxPossible, cur + delta));
-      
-      // Если значение не изменилось (достигнут максимум/минимум), ничего не делаем
-      if (Math.abs(next - cur) < 0.01) {
-        return;
-      }
-      
-      // Проверяем, не приведёт ли это к нарушению правила 5%
-      // Текущий участник БУДЕТ зафиксирован после установки значения
-      const otherLocked = names.filter(n => lockedParticipants[n] && n !== name);
-      const willBeUnlocked = names.filter(n => !lockedParticipants[n] && n !== name);
-      const otherLockedSum = otherLocked.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
-      const newProbForThis = next / 100;
-      const remainForUnlocked = 1 - otherLockedSum - newProbForThis;
-      const minUnlockedTotal = willBeUnlocked.length * 0.05;
-      
-      // Используем погрешность 0.001 (0.1%) вместо 1e-6
-      if (remainForUnlocked < minUnlockedTotal - 0.001) {
-        const realisticMax = getRealisticMaxPercent(name);
-        showNewNameInputError(`Минимум 5.0%, максимум ${realisticMax.toFixed(1)}%`);
-        return;
-      }
-
-      
-      setProbabilityManually(name, next);
-      createNameInputs();
-      resetNewNamePlaceholder();
-    }
-
-    function setProbabilityManually(name, percentValue) {
-      const maxPossible = getRealisticMaxPercent(name);
-
-      if (isNaN(percentValue) || percentValue < 5 || percentValue > maxPossible) {
-        showNewNameInputError(`Минимум 5.0%, максимум ${maxPossible.toFixed(1)}%`);
-        return false;
-      }
-
-      hasCustomProbabilities = true;
-
-      lockedParticipants[name] = true;
-      probabilities[name] = percentValue / 100;
-
-      normalizeProbabilities();
-      saveProbabilities();
-      resetNewNamePlaceholder();
-
-      return true;
-    }
-
-    function equalizeProbabilities() {
-      setEqualProbabilities();
-      createNameInputs();
-      buildBins();
-      binScrollOffset = 0;
-      drawBoard();
-    }
-
-    function shuffleParticipants() {
-      // Перемешиваем массив участников методом Фишера-Йейтса
-      for (let i = names.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [names[i], names[j]] = [names[j], names[i]];
-      }
-
-      // Сохраняем изменения
-      saveNames();
-
-      // Обновляем UI и игровое поле
-      createNameInputs();
-      buildBins();
-      binScrollOffset = 0;
-      drawBoard();
-    }
-
-    // ===== UI ИМЁН =====
-    function createNameInputs() {
-      namesList.innerHTML = '';
-      names.forEach((name, idx) => {
-        const row = document.createElement('div');
-        row.className = 'name-item';
-
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'name-input';
-        input.value = name;
-        input.placeholder = 'Введите имя';
-        input.maxLength = 15;
-        
-        input.addEventListener('keydown', (e) => {
-          if (e.key === ' ') {
-            e.preventDefault();
-          }
-          if (input.value.length >= 15 && 
-              !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key) &&
-              !e.ctrlKey && !e.metaKey) {
-            
-            input.classList.add('error-state');
-            input.style.borderColor = '#ef4444';
-            input.style.background = 'rgba(239,68,68,0.1)';
-            const originalPlaceholder = input.placeholder;
-            input.placeholder = '⚠️ Максимум 15 символов';
-            
-            setTimeout(() => {
-              input.placeholder = originalPlaceholder;
-              if (input.value.trim()) {
-                input.classList.remove('error-state');
-                input.style.borderColor = 'rgba(255,255,255,0.2)';
-                input.style.background = 'rgba(255,255,255,0.1)';
-              }
-            }, 1500);
-          }
-        });
-
-        input.addEventListener('input', () => {
-          resetNewNamePlaceholder();
-          input.value = input.value.replace(/\s+/g, '');
-          const v = input.value.trim();
-          
-          if (!v || v.length === 0) {
-            input.classList.add('error-state');
-            input.style.borderColor = '#ef4444';
-            input.style.background = 'rgba(239,68,68,0.1)';
-            
-            const oldName = names[idx];
-            if (oldName in probabilities) {
-              probabilities[''] = probabilities[oldName];
-              delete probabilities[oldName];
-            }
-            if (oldName in lockedParticipants) {
-              lockedParticipants[''] = true;
-              delete lockedParticipants[oldName];
-            }
-            names[idx] = '';
-            saveNames();
-            saveProbabilities();
-            buildBins();
-            drawBoard();
-            
-            validateAllNames();
-            return;
-          }
-          
-          const dup = names.some((n, i) => i !== idx && n.toLowerCase() === v.toLowerCase());
-          if (dup) {
-            input.classList.add('error-state');
-            input.style.borderColor = '#ef4444';
-            input.style.background = 'rgba(239,68,68,0.1)';
-          } else {
-            input.classList.remove('error-state');
-            input.style.borderColor = 'rgba(255,255,255,0.2)';
-            input.style.background = 'rgba(255,255,255,0.1)';
-          }
-          
-          if (dup) {
-            validateAllNames();
-            return;
-          }
-
-          const oldName = names[idx];
-
-          if (v === oldName) {
-            validateAllNames();
-            return;
-          }
-
-          if (oldName in probabilities) {
-            probabilities[v] = probabilities[oldName];
-            delete probabilities[oldName];
-          }
-          if (oldName in lockedParticipants) {
-            lockedParticipants[v] = true;
-            delete lockedParticipants[oldName];
-          }
-
-          names[idx] = v;
-          saveNames();
-          saveProbabilities();
-          buildBins();
-          drawBoard();
-          validateAllNames();
-
-        });
-
-        input.addEventListener('blur', () => {
-          const v = input.value.trim();
-          
-          if (!v || v.length === 0) {
-            input.value = '';
-            input.classList.add('error-state');
-            input.style.borderColor = '#ef4444';
-            input.style.background = 'rgba(239,68,68,0.1)';
-            input.placeholder = 'Введите имя';
-            validateAllNames();
-            return;
-          }
-          
-          const dup = names.some((n, i) => i !== idx && n.toLowerCase() === v.toLowerCase());
-          if (dup) {
-            input.value = names[idx];
-            input.classList.remove('error-state');
-            input.style.borderColor = 'rgba(255,255,255,0.2)';
-            input.style.background = 'rgba(255,255,255,0.1)';
-            input.placeholder = 'Введите имя';
-          } else {
-            input.classList.remove('error-state');
-            input.placeholder = 'Введите имя';
-          }
-          validateAllNames();
-        });
-
-        input.addEventListener('focus', () => {
-          if (input.placeholder === 'Введите имя') {
-            input.placeholder = 'Введите имя';
-          }
-          if (input.value.trim()) {
-            input.classList.remove('error-state');
-          }
-        });
-
-        const probControls = document.createElement('div');
-        probControls.className = 'probability-controls';
-
-        const decreaseBtn = document.createElement('button');
-        decreaseBtn.className = 'prob-btn';
-        decreaseBtn.textContent = '−';
-        decreaseBtn.setAttribute('aria-label', 'Уменьшить вероятность');
-        decreaseBtn.onclick = () => {
-          adjustProbability(name, -1);
-          buildBins();
-          drawBoard();
-        };
-
-        const probInput = document.createElement('input');
-        probInput.type = 'text';
-        probInput.inputMode = 'decimal';
-        probInput.className = 'probability-input';
-        probInput.value = getProbabilityPercent(name);
-        probInput.setAttribute('aria-label', 'Вероятность в процентах');
-        if (lockedParticipants[name]) {
-          probInput.classList.add('manual');
-        }
-        let lastValid = probInput.value;
-
-        probInput.addEventListener('focus', () => {
-          probInput.value = probInput.value.replace('%', '');
-          lastValid = probInput.value;
-        });
-
-        probInput.addEventListener('input', () => {
-          const val = probInput.value.replace('%', '').trim();
-          const num = parseFloat(val);
-          const maxAllowed = getRealisticMaxPercent(name);
-
-          if (val === '' || (num >= 5 && num <= maxAllowed)) {
-            probInput.classList.remove('error');
-          } else {
-            probInput.classList.add('error');
-          }
-        });
-
-
-        probInput.addEventListener('blur', () => {
-          const val = probInput.value.replace('%', '').trim();
-          const num = parseFloat(val);
-          const maxAllowed = getRealisticMaxPercent(name);
-
-          if (val === '' || isNaN(num) || num < 5 || num > maxAllowed) {
-            probInput.value = lastValid;
-            probInput.classList.remove('error');
-            playSound(300, 0.1, 0.2);
-
-            if (!isNaN(num) && (num < 5 || num > maxAllowed)) {
-              showNewNameInputError(`Минимум 5.0%, максимум ${maxAllowed.toFixed(1)}%`);
-            }
-          } else {
-            const otherLocked = names.filter(n => lockedParticipants[n] && n !== name);
-            const willBeUnlocked = names.filter(n => !lockedParticipants[n] && n !== name);
-            const otherLockedSum = otherLocked.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
-            const newProbForThis = num / 100;
-            const remainForUnlocked = 1 - otherLockedSum - newProbForThis;
-            const minUnlockedTotal = willBeUnlocked.length * 0.05;
-
-            if (remainForUnlocked < minUnlockedTotal - 0.001) {
-              probInput.value = lastValid;
-              probInput.classList.remove('error');
-
-              const realisticMax = getRealisticMaxPercent(name);
-              showNewNameInputError(`Минимум 5.0%, максимум ${realisticMax.toFixed(1)}%`);
-            } else if (setProbabilityManually(name, num)) {
-              lastValid = getProbabilityPercent(name);
-              createNameInputs();
-              buildBins();
-              drawBoard();
-            } else {
-              probInput.value = lastValid;
-              probInput.classList.remove('error');
-            }
-          }
-        });
-
-
-        probInput.addEventListener('keypress', (e) => {
-          if (e.key === 'Enter') { 
-            e.preventDefault(); 
-            probInput.blur(); 
-          }
-          if (!/[\d.]/.test(e.key) && e.key !== 'Enter') e.preventDefault();
-        });
-
-        const increaseBtn = document.createElement('button');
-        increaseBtn.className = 'prob-btn';
-        increaseBtn.textContent = '+';
-        increaseBtn.setAttribute('aria-label', 'Увеличить вероятность');
-        increaseBtn.onclick = () => {
-          adjustProbability(name, 1);
-          buildBins();
-          drawBoard();
-        };
-
-        probControls.appendChild(decreaseBtn);
-        probControls.appendChild(probInput);
-        probControls.appendChild(increaseBtn);
-
-        const btn = document.createElement('button');
-        btn.className = 'remove-btn';
-        btn.textContent = '✕';
-        btn.setAttribute('aria-label', 'Удалить участника');
-        btn.onclick = () => {
-          if (names.length <= 2) {
-            newNameInput.style.borderColor = '#ef4444';
-            newNameInput.style.background = 'rgba(239,68,68,0.1)';
-            newNameInput.placeholder = 'Минимум 2 участника';
-            
-            setTimeout(() => {
-              newNameInput.placeholder = 'Новый участник';
-              if (!newNameInput.value.trim()) {
-                newNameInput.style.borderColor = 'rgba(255,255,255,0.2)';
-                newNameInput.style.background = 'rgba(255,255,255,0.1)';
-              }
-            }, 2000);
-            return;
-          }
-          const removedName = names[idx];
-          names.splice(idx, 1);
-          delete probabilities[removedName];
-          delete lockedParticipants[removedName];
-
-          saveNames();
-          normalizeProbabilities();
-          saveProbabilities();
-
-          createNameInputs();
-          buildBins();
-          drawBoard();
-        };
-
-        row.appendChild(input);
-        row.appendChild(probControls);
-        row.appendChild(btn);
-        namesList.appendChild(row);
-      });
-      
-      validateAllNames();
-    }
-
-    function addNewParticipant() {
-      const v = newNameInput.value.trim();
-      
-      if (names.length >= 20) {
-        newNameInput.style.borderColor = '#ef4444';
-        newNameInput.style.background = 'rgba(239,68,68,0.1)';
-        newNameInput.placeholder = 'Максимум 20 участников';
-        newNameInput.value = '';
-        
-        setTimeout(() => {
-          newNameInput.placeholder = 'Новый участник';
-          newNameInput.style.borderColor = 'rgba(255,255,255,0.2)';
-          newNameInput.style.background = 'rgba(255,255,255,0.1)';
-        }, 2000);
-        return;
-      }
-      
-      if (!v || v.length === 0) {
-        newNameInput.style.borderColor = '#ef4444';
-        newNameInput.style.background = 'rgba(239,68,68,0.1)';
-        newNameInput.placeholder = 'Введите хотя бы один символ';
-        
-        setTimeout(() => {
-          newNameInput.placeholder = 'Новый участник';
-          if (!newNameInput.value.trim()) {
-            newNameInput.style.borderColor = 'rgba(255,255,255,0.2)';
-            newNameInput.style.background = 'rgba(255,255,255,0.1)';
-          }
-        }, 2000);
-        return;
-      }
-
-      const dup = names.some((n) => n.toLowerCase() === v.toLowerCase());
-      if (dup) {
-        newNameInput.style.borderColor = '#ef4444';
-        newNameInput.style.background = 'rgba(239,68,68,0.1)';
-        newNameInput.placeholder = 'Такой участник уже есть';
-        newNameInput.value = '';
-        
-        setTimeout(() => {
-          newNameInput.placeholder = 'Новый участник';
-          newNameInput.style.borderColor = 'rgba(255,255,255,0.2)';
-          newNameInput.style.background = 'rgba(255,255,255,0.1)';
-        }, 2000);
-        return;
-      }
-
-      newNameInput.value = '';
-      newNameInput.placeholder = 'Новый участник';
-      newNameInput.style.borderColor = 'rgba(255,255,255,0.2)';
-      newNameInput.style.background = 'rgba(255,255,255,0.1)';
-
-      names.push(v);
-      saveNames();
-
-      // Новый участник всегда незафиксирован и получает долю от незафиксированных
-      if (!hasCustomProbabilities) {
-        // Равномерное распределение
-        const equal = 1 / names.length;
-        names.forEach(nm => probabilities[nm] = equal);
-      } else {
-        // Даём новому участнику временную вероятность (будет пересчитана в нормализации)
-        probabilities[v] = 0.05;
-      }
-      
-      normalizeProbabilities();
-      saveProbabilities();
-
-      createNameInputs();
-      buildBins();
-      drawBoard();
-      resetNewNamePlaceholder();
-    }
-
-    newNameInput.addEventListener('input', () => {
-      resetNewNamePlaceholder();
-      const v = newNameInput.value.trim();
-      
-      if (!v || v.length === 0) {
-        newNameInput.style.borderColor = 'rgba(255,255,255,0.2)';
-        newNameInput.style.background = 'rgba(255,255,255,0.1)';
-        return;
-      }
-      
-      const dup = names.some((n) => n.toLowerCase() === v.toLowerCase());
-      if (dup) {
-        newNameInput.style.borderColor = '#ef4444';
-        newNameInput.style.background = 'rgba(239,68,68,0.1)';
-      } else {
-        newNameInput.style.borderColor = 'rgba(255,255,255,0.2)';
-        newNameInput.style.background = 'rgba(255,255,255,0.1)';
-      }
-    });
-
-    addNameBtn.addEventListener('click', addNewParticipant);
-    newNameInput.addEventListener('keypress', e => {
-      if (e.key === 'Enter') addNewParticipant();
-    });
-    equalizeBtn.addEventListener('click', equalizeProbabilities);
-    shuffleBtn.addEventListener('click', shuffleParticipants);
-
-    // ===== ПРАЗДНОВАНИЯ =====
-    function createCelebrationEmojis() {
-      const emojis = ['🎉', '🎊', '🏆', '⭐', '✨', '🎯', '🔥', '💫', '🌟', '👏', '🙌', '🎈', '🎆', '💥'];
-      const count = isMobile ? 12 : 20;
-
-      for (let i = 0; i < count; i++) {
-        setTimeout(() => {
-          const emoji = document.createElement('div');
-          emoji.className = 'celebration-emoji';
-          emoji.textContent = emojis[Math.floor(Math.random() * emojis.length)];
-          emoji.style.left = (Math.random() * 100) + '%';
-          emoji.style.top = (Math.random() * 100) + '%';
-          emoji.style.animationDelay = (Math.random() * 0.5) + 's';
-          document.body.appendChild(emoji);
-          setTimeout(() => emoji.remove(), 3500);
-        }, i * 100);
-      }
-    }
-
-    function createCelebrationWords() {
-      const words = [
-        'ВАУ', 'ЧЕМПИОН', 'МОЛОДЕЦ', 'КРАСАВА', 'ЛЕГЕНДА', 'ВПЕРЁД', 'ТОПЧИК', 'ПОБЕДА',
-        'ОГОНЬ', 'ТЫ ЛУЧШИЙ', 'ДАВАЙ ЕЩЁ', 'НЕВЕРОЯТНО', 'СУПЕР',
-        'НАДО ЖЕ КТО ВЫПАЛ', 'КРАСАВЧИК', 'МАСТЕР', 'ГЕНИЙ', 'БОСС', 'КТО БЫ МОГ ПОДУМАТЬ',
-        'ЭПИЧНО', 'БРАВО', 'ГГ', 'РЕСПЕКТ', 'ШИКАРНО', 'ИМБА', 'КРУТЯК', 'МОЩНО'
+    // Define collision geometry based on type
+    if (layout.type === 'funnel') {
+      const funnelW = w * layout.width;
+      const narrowW = w * layout.narrowWidth;
+      const startX = (w - funnelW) / 2;
+      const endX = (w - narrowW) / 2;
+
+      obs.walls = [
+        { x1: startX, y1: currentY, x2: endX, y2: currentY + sectionHeight }, // left
+        { x1: startX + funnelW, y1: currentY, x2: endX + narrowW, y2: currentY + sectionHeight } // right
       ];
-
-      const gridCols = isMobile ? 3 : 4;
-      const gridRows = isMobile ? 4 : 3;
-      const positions = [];
-
-      for (let row = 0; row < gridRows; row++) {
-        for (let col = 0; col < gridCols; col++) {
-          positions.push({
-            left: (col * (100 / gridCols)) + (100 / gridCols / 2),
-            top: (row * (100 / gridRows)) + (100 / gridRows / 2)
-          });
-        }
-      }
-
-      for (let i = positions.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [positions[i], positions[j]] = [positions[j], positions[i]]; }
-
-      const wordsToShow = isMobile ? 8 : 12;
-
-      for (let i = 0; i < wordsToShow; i++) {
-        setTimeout(() => {
-          const word = document.createElement('div');
-          word.className = 'celebration-word';
-          word.textContent = words[Math.floor(Math.random() * words.length)];
-
-          const pos = positions[i % positions.length];
-          word.style.left = (pos.left + (Math.random() - 0.5) * 10) + '%';
-          word.style.top = (pos.top + (Math.random() - 0.5) * 10) + '%';
-          word.style.animationDelay = (Math.random() * 0.3) + 's';
-
-          document.body.appendChild(word);
-          setTimeout(() => word.remove(), 4500);
-        }, i * 120);
-      }
-    }
-
-    function createConfetti() {
-      const cs = ['#ff6b6b','#ffd43b','#51cf66','#339af0','#da77f2','#66d9e8','#fb923c','#ec4899'];
-      const count = isMobile ? 50 : 100;
-
-      for (let i = 0; i < count; i++) {
-        setTimeout(() => {
-          const d = document.createElement('div');
-          d.className = 'confetti';
-          d.style.left = (Math.random() * 100) + '%';
-          d.style.top = '0';
-          d.style.background = cs[Math.floor(Math.random() * cs.length)];
-          d.style.width = (5 + Math.random() * 10) + 'px';
-          d.style.height = (5 + Math.random() * 10) + 'px';
-          d.style.animationDelay = (Math.random() * 0.5) + 's';
-          d.style.animationDuration = (2 + Math.random() * 2) + 's';
-          document.body.appendChild(d);
-          setTimeout(() => d.remove(), 4000);
-        }, i * 25);
-      }
-    }
-
-    // ===== ПЛИНКО: ГЕОМЕТРИЯ =====
-    let DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-    let W = 0, H = 0;
-
-    let rows = isMobile ? 6 : 12;
-    let pegs = [];
-    let bins = [];
-
-    function resize() {
-      const parent = canvas.parentElement;
-      const cssW = parent.clientWidth;
-      const cssH = parent.clientHeight;
-      DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-
-      canvas.style.width = cssW + 'px';
-      canvas.style.height = cssH + 'px';
-      canvas.width = Math.round(cssW * DPR);
-      canvas.height = Math.round(cssH * DPR);
-
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.scale(DPR, DPR);
-
-      W = cssW;
-      H = cssH;
-      
-      if (isMobile && H < 450) {
-        rows = 6;
-      } else if (isMobile) {
-        rows = 8;
-      } else {
-        rows = 12;
-      }
-      
-      layoutPegs();
-      buildBins();
-      drawBoard();
-    }
-
-    function layoutPegs() {
-      pegs = [];
-      
-      const topPad = isMobile ? 30 : 40;
-      const bottomPad = isMobile ? 100 : 80;
-      const sidePad = isMobile ? 15 : 25;
-      
-      const usableH = H - topPad - bottomPad;
-      const rowGap = usableH / rows;
-      
-      for (let r = 0; r < rows; r++) {
-        const cols = isMobile ? 8 : 16;
-        const usableW = W - sidePad * 2;
-        const step = usableW / (cols - 1);
-        const y = topPad + r * rowGap;
-        
-        if (r % 2 === 0) {
-          for (let c = 0; c < cols; c++) {
-            const x = sidePad + step * c;
-            pegs.push({ x: x, y: y });
-          }
-        } else {
-          pegs.push({ x: sidePad - step * 0.5, y: y });
-          
-          for (let c2 = 0; c2 < cols - 1; c2++) {
-            const x2 = sidePad + step * (c2 + 0.5);
-            pegs.push({ x: x2, y: y });
-          }
-          
-          pegs.push({ x: sidePad + usableW + step * 0.5, y: y });
-        }
-      }
-    }
-
-    function buildBins() {
-      bins = [];
-      
-      const xStart = isMobile ? 12 : 20;
-      const xEnd = W - (isMobile ? 12 : 20);
-      const span = xEnd - xStart;
-      
-      const yHeight = isMobile ? 70 : 65;
-      const y0 = H - yHeight - (isMobile ? 10 : 20);
-      const y1 = H - (isMobile ? 10 : 20);
-      
-      let acc = 0;
-      
-      names.forEach((n, i) => {
-        const w = Math.max(2, (probabilities[n] || 0) * span);
-        const x0 = xStart + acc;
-        const x1 = Math.min(xStart + span, x0 + w);
-        acc += w;
-        bins.push({
-          name: n,
-          x0: x0, x1: x1, y0: y0, y1: y1,
-          color: colors[i % colors.length]
+      obs.bars = obs.walls;
+    } else if (layout.type === 'chokePoint') {
+      const chokeW = w * layout.width;
+      const offset = w * layout.offset;
+      obs.bars = [
+        { x1: offset, y1: currentY, x2: offset, y2: currentY + sectionHeight }
+      ];
+    } else if (layout.type === 'deflectors') {
+      const spread = w * layout.spread;
+      const startX = (w - spread) / 2;
+      layout.angles.forEach((angle, i) => {
+        const x = startX + (spread / (layout.angles.length + 1)) * (i + 1);
+        const len = sectionHeight * 0.6;
+        const rad = angle * Math.PI / 180;
+        obs.bars.push({
+          x1: x,
+          y1: currentY + sectionHeight * 0.2,
+          x2: x + Math.cos(rad) * len,
+          y2: currentY + sectionHeight * 0.2 + Math.sin(rad) * len
         });
       });
-    }
-
-    function computeScrolledBins() {
-      if (!bins.length) return [];
-      const xStart = isMobile ? 12 : 20;
-      const xEnd = W - (isMobile ? 12 : 20);
-      const totalWidth = xEnd - xStart;
-      if (totalWidth <= 0) return bins;
-
-      const result = [];
-      bins.forEach((b) => {
-        const bw = b.x1 - b.x0;
-        let pos = ((b.x0 - xStart + binScrollOffset) % totalWidth + totalWidth) % totalWidth;
-        const sx0 = xStart + pos;
-        const sx1 = sx0 + bw;
-
-        if (sx1 <= xEnd) {
-          result.push({ ...b, x0: sx0, x1: sx1 });
-        } else {
-          // бин разрезается: правая часть и левая часть (wrap)
-          if (sx0 < xEnd) {
-            result.push({ ...b, x0: sx0, x1: xEnd });
-          }
-          const leftWidth = sx1 - xEnd;
-          if (leftWidth > 0) {
-            result.push({ ...b, x0: xStart, x1: xStart + leftWidth });
-          }
-        }
-      });
-      return result;
-    }
-
-    function drawBoard() {
-      _frameScrolledBins = computeScrolledBins().sort((a, b) => a.x0 - b.x0);
-      ctx.clearRect(0, 0, W, H);
-      
-      const gradient = ctx.createLinearGradient(0, 0, 0, H);
-      gradient.addColorStop(0, 'rgba(102,126,234,0.08)');
-      gradient.addColorStop(1, 'rgba(118,75,162,0.12)');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, W, H);
-      
-      const pegRadius = isMobile ? 3 : 3.5;
-      
-      ctx.shadowColor = 'rgba(0,0,0,0.3)';
-      ctx.shadowBlur = 4;
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      pegs.forEach((p) => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, pegRadius, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      ctx.shadowBlur = 0;
-      
-      if (bins.length) {
-        const xStart = isMobile ? 12 : 20;
-        const xEnd = W - (isMobile ? 12 : 20);
-        const sb = _frameScrolledBins;
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(xStart, bins[0].y0 - 1, xEnd - xStart, bins[0].y1 - bins[0].y0 + 2);
-        ctx.clip();
-
-        sb.forEach((b) => {
-          const binGrad = ctx.createLinearGradient(b.x0, b.y0, b.x0, b.y1);
-          binGrad.addColorStop(0, b.color + '40');
-          binGrad.addColorStop(1, b.color + '60');
-          ctx.fillStyle = binGrad;
-          ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
-
-          // разделитель справа (кроме крайнего правого)
-          if (b.x1 < xEnd - 1) {
-            ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-            ctx.lineWidth = 2.5;
-            ctx.beginPath();
-            ctx.moveTo(b.x1, b.y0);
-            ctx.lineTo(b.x1, b.y1);
-            ctx.stroke();
-          }
-
-          const fontSize = isMobile ? 11 : 13;
-          ctx.fillStyle = '#fff';
-          ctx.font = 'bold ' + fontSize + 'px Montserrat, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.shadowColor = 'rgba(0,0,0,0.5)';
-          ctx.shadowBlur = 3;
-          ctx.fillText(b.name, (b.x0 + b.x1) / 2, b.y1 - (isMobile ? 8 : 10));
-          ctx.shadowBlur = 0;
+    } else if (layout.type === 'pegs') {
+      const spread = w * layout.spread;
+      const startX = (w - spread) / 2;
+      const pegRadius = 5;
+      for (let i = 0; i < layout.count; i++) {
+        const row = Math.floor(i / 4);
+        const col = i % 4;
+        obs.pegs.push({
+          x: startX + (spread / 4) * (col + 0.5),
+          y: currentY + (sectionHeight / (Math.ceil(layout.count / 4) + 1)) * (row + 1),
+          r: pegRadius
         });
-
-        ctx.restore();
       }
+    } else if (layout.type === 'halfPipe') {
+      const pipeW = w * layout.width;
+      const pipeStartX = (w - pipeW) / 2;
+      obs.walls = [
+        { x1: pipeStartX, y1: currentY, x2: pipeStartX, y2: currentY + sectionHeight },
+        { x1: pipeStartX + pipeW, y1: currentY, x2: pipeStartX + pipeW, y2: currentY + sectionHeight }
+      ];
+      obs.bars = obs.walls;
+      obs.curveType = 'halfPipe';
+    } else if (layout.type === 'splitPath') {
+      const leftW = w * layout.leftWidth;
+      const rightW = w * layout.rightWidth;
+      const gap = (w - leftW - rightW) / 2;
+      obs.bars = [
+        { x1: gap + leftW, y1: currentY, x2: gap + leftW, y2: currentY + sectionHeight }
+      ];
     }
 
-    // ===== ФИЗИКА =====
-    let ball = null;
-    let winnerLocked = null;
-    let ballInBinZone = false;
+    obstacles.push(obs);
+    currentY += sectionHeight;
+  });
+}
 
-    const GRAV      = isMobile ? 0.076 : 0.156;
-    const PEG_R     = isMobile ? 3 : 3.5;
-    const BALL_R    = isMobile ? 7 : 10;
-    const REST      = isMobile ? 0.45 : 0.42;
-    const WALL_REST = isMobile ? 0.45 : 0.42;
-    const FRICTION  = isMobile ? 0.998 : 0.997;
+function initializeSpinners() {
+  const { w, h } = getContainerSize();
 
-    function dropBall() {
-      if (animId) { cancelAnimationFrame(animId); animId = null; }
-      if (revealTimeoutId) { clearTimeout(revealTimeoutId); revealTimeoutId = null; }
-      winnerAnnouncement.classList.remove('show');
-      winnerLocked = null;
-      ballInBinZone = false;
-      
-      const centerX = W / 2;
-      
-      ball = {
-        x: centerX,
-        y: -BALL_R - (isMobile ? 60 : 80),
-        vx: (Math.random() - 0.5) * (isMobile ? 1 : 0.8),
-        vy: (isMobile ? 1.2 : 1.3) + Math.random() * 0.7
-      };
-      
-      playTickSound();
+  // Find all spinner sections
+  const spinnerSections = obstacles.filter(obs => obs.type === 'spinners');
+  spinners = [];
 
-      binScrolling = binScrollEnabled;
-      setUILocked(true);
+  spinnerSections.forEach(section => {
+    const sectionCenterY = section.centerY;
+    const count = section.count || 5;
+    const spread = section.spread || 0.8;
+    const startX = (w - w * spread) / 2;
+    const spacing = (w * spread) / count;
 
-      lastFrameTime = performance.now();
-      frame();
+    const speeds = [1.2, 1.6, 2.0, 1.6, 2.8];
+    const directions = [1, -1, 1, -1, 1];
+
+    for (let i = 0; i < count; i++) {
+      spinners.push({
+        cx: startX + spacing * (i + 0.5),
+        cy: sectionCenterY,
+        angle: 0,
+        rotationSpeed: speeds[i % speeds.length],
+        direction: directions[i % directions.length],
+        armLength: 60,
+        armWidth: 10,
+        element: null
+      });
+    }
+  });
+
+  renderSpinners();
+}
+
+function renderObstacles() {
+  const container = document.querySelector('.obstacle-course');
+  let obstaclesContainer = document.getElementById('obstaclesContainer');
+
+  if (!obstaclesContainer) {
+    obstaclesContainer = document.createElement('div');
+    obstaclesContainer.id = 'obstaclesContainer';
+    obstaclesContainer.style.position = 'absolute';
+    obstaclesContainer.style.top = '0';
+    obstaclesContainer.style.left = '0';
+    obstaclesContainer.style.width = '100%';
+    obstaclesContainer.style.height = '100%';
+    obstaclesContainer.style.pointerEvents = 'none';
+    container.appendChild(obstaclesContainer);
+  }
+
+  obstaclesContainer.innerHTML = '';
+
+  obstacles.forEach((obs) => {
+    if (obs.type === 'spacing') return;
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', obs.width);
+    svg.setAttribute('height', Math.max(obs.height, 20));
+    svg.style.position = 'absolute';
+    svg.style.left = '0';
+    svg.style.top = obs.startY + 'px';
+    svg.style.overflow = 'visible';
+
+    if (obs.type === 'funnel') {
+      const h = obs.height;
+      const walls = obs.walls;
+      walls.forEach(wall => {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', wall.x1);
+        line.setAttribute('y1', wall.y1 - obs.startY);
+        line.setAttribute('x2', wall.x2);
+        line.setAttribute('y2', wall.y2 - obs.startY);
+        line.setAttribute('stroke', 'rgba(100,200,255,0.6)');
+        line.setAttribute('stroke-width', '8');
+        line.setAttribute('stroke-linecap', 'round');
+        svg.appendChild(line);
+      });
+    } else if (obs.type === 'chokePoint' || obs.type === 'splitPath') {
+      obs.bars.forEach(bar => {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', bar.x1);
+        line.setAttribute('y1', bar.y1 - obs.startY);
+        line.setAttribute('x2', bar.x2);
+        line.setAttribute('y2', bar.y2 - obs.startY);
+        line.setAttribute('stroke', 'rgba(255,100,100,0.7)');
+        line.setAttribute('stroke-width', '6');
+        line.setAttribute('stroke-linecap', 'round');
+        svg.appendChild(line);
+      });
+    } else if (obs.type === 'deflectors') {
+      obs.bars.forEach(bar => {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', bar.x1);
+        line.setAttribute('y1', bar.y1 - obs.startY);
+        line.setAttribute('x2', bar.x2);
+        line.setAttribute('y2', bar.y2 - obs.startY);
+        line.setAttribute('stroke', 'rgba(255,200,100,0.7)');
+        line.setAttribute('stroke-width', '7');
+        line.setAttribute('stroke-linecap', 'round');
+        svg.appendChild(line);
+      });
+    } else if (obs.type === 'pegs') {
+      obs.pegs.forEach(peg => {
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', peg.x);
+        circle.setAttribute('cy', peg.y - obs.startY);
+        circle.setAttribute('r', peg.r);
+        circle.setAttribute('fill', 'rgba(150,150,150,0.5)');
+        circle.setAttribute('stroke', 'rgba(100,100,100,0.7)');
+        circle.setAttribute('stroke-width', '1');
+        svg.appendChild(circle);
+      });
+    } else if (obs.type === 'halfPipe') {
+      const walls = obs.walls;
+      walls.forEach(wall => {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', wall.x1);
+        line.setAttribute('y1', wall.y1 - obs.startY);
+        line.setAttribute('x2', wall.x2);
+        line.setAttribute('y2', wall.y2 - obs.startY);
+        line.setAttribute('stroke', 'rgba(100,255,200,0.6)');
+        line.setAttribute('stroke-width', '8');
+        line.setAttribute('stroke-linecap', 'round');
+        svg.appendChild(line);
+      });
+    } else if (obs.type === 'gravityDrop') {
+      const dropW = obs.width * obs.width;
+      const startX = (obs.width - dropW) / 2;
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', startX);
+      line.setAttribute('y1', obs.height * 0.3 - obs.startY);
+      line.setAttribute('x2', startX + dropW);
+      line.setAttribute('y2', obs.height * 0.3 - obs.startY);
+      line.setAttribute('stroke', 'rgba(200,100,255,0.7)');
+      line.setAttribute('stroke-width', '6');
+      svg.appendChild(line);
     }
 
-    function collideWithPeg(p) {
-      const dx = ball.x - p.x;
-      const dy = ball.y - p.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const minDist = PEG_R + BALL_R;
-      
-      if (dist < minDist) {
-        const nx = dx / (dist || 1);
-        const ny = dy / (dist || 1);
-        const overlap = minDist - dist;
-        
-        ball.x += nx * overlap;
-        ball.y += ny * overlap;
-        
-        const vDotN = ball.vx * nx + ball.vy * ny;
-        const vnX = vDotN * nx;
-        const vnY = vDotN * ny;
-        const vtX = ball.vx - vnX;
-        const vtY = ball.vy - vnY;
-        
-        ball.vx = vtX - vnX * REST;
-        ball.vy = vtY - vnY * REST;
-        ball.vx *= 0.99;
-        ball.vy *= 0.99;
-        
-        playTickSound();
-      }
+    obstaclesContainer.appendChild(svg);
+  });
+}
+
+function renderSpinners() {
+  const container = document.querySelector('.obstacle-course');
+  let spinnersContainer = document.getElementById('spinnersContainer');
+
+  if (!spinnersContainer) {
+    spinnersContainer = document.createElement('div');
+    spinnersContainer.id = 'spinnersContainer';
+    spinnersContainer.style.position = 'absolute';
+    spinnersContainer.style.top = '0';
+    spinnersContainer.style.left = '0';
+    spinnersContainer.style.width = '100%';
+    spinnersContainer.style.height = '100%';
+    spinnersContainer.style.pointerEvents = 'none';
+    container.appendChild(spinnersContainer);
+  }
+
+  spinnersContainer.innerHTML = '';
+
+  spinners.forEach((spinner, idx) => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '200');
+    svg.setAttribute('height', '200');
+    svg.style.position = 'absolute';
+    svg.style.left = (spinner.cx - 100) + 'px';
+    svg.style.top = (spinner.cy - 100) + 'px';
+    svg.style.overflow = 'visible';
+    svg.id = 'spinner-' + idx;
+
+    // Center circle
+    const centerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    centerCircle.setAttribute('cx', '100');
+    centerCircle.setAttribute('cy', '100');
+    centerCircle.setAttribute('r', '8');
+    centerCircle.setAttribute('fill', 'rgba(255,255,255,0.4)');
+    centerCircle.setAttribute('stroke', 'rgba(255,255,255,0.6)');
+    centerCircle.setAttribute('stroke-width', '2');
+    svg.appendChild(centerCircle);
+
+    // Four capsule arms
+    for (let armIdx = 0; armIdx < 4; armIdx++) {
+      const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+      // Capsule arm (line + rounded ends)
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', '100');
+      line.setAttribute('y1', '100');
+      line.setAttribute('x2', '100');
+      line.setAttribute('y2', '100');
+      line.setAttribute('stroke', 'rgba(255,255,255,0.5)');
+      line.setAttribute('stroke-width', spinner.armWidth);
+      line.setAttribute('stroke-linecap', 'round');
+      line.setAttribute('stroke-linejoin', 'round');
+      group.appendChild(line);
+
+      svg.appendChild(group);
     }
 
-    function collideInsideBins() {
-      if (!bins.length) return;
+    spinnersContainer.appendChild(svg);
+    spinner.element = svg;
+  });
+}
 
-      const topY = bins[0].y0;
-      const bottomY = bins[0].y1;
+function updateSpinners(dt) {
+  spinners.forEach((spinner, idx) => {
+    spinner.angle += spinner.rotationSpeed * spinner.direction * dt;
 
-      if (ball.y + BALL_R < topY) return;
+    const svg = spinner.element;
+    if (!svg) return;
 
-      const sb = _frameScrolledBins;
+    const lines = svg.querySelectorAll('line');
+    lines.forEach((line, armIdx) => {
+      const armAngle = spinner.angle + (armIdx * Math.PI / 2);
+      const endX = 100 + spinner.armLength * Math.cos(armAngle);
+      const endY = 100 + spinner.armLength * Math.sin(armAngle);
 
-      for (let i = 0; i < sb.length - 1; i++) {
-        const sepX = sb[i].x1;
-        if (ball.y - BALL_R < bottomY && Math.abs(ball.x - sepX) < BALL_R) {
-          const sign = ball.x - sepX >= 0 ? 1 : -1;
-          ball.x = sepX + sign * BALL_R;
-          ball.vx = -sign * Math.abs(ball.vx) * WALL_REST;
-        }
-      }
-
-      let b = null;
-      for (let j = 0; j < sb.length; j++) {
-        if (ball.x >= sb[j].x0 && ball.x <= sb[j].x1) {
-          b = sb[j];
-          break;
-        }
-      }
-      if (!b) return;
-      
-      const left = b.x0 + BALL_R;
-      const right = b.x1 - BALL_R;
-      const floor = bottomY - BALL_R;
-      
-      if (ball.x < left) {
-        ball.x = left;
-        ball.vx = Math.abs(ball.vx) * WALL_REST;
-      }
-      if (ball.x > right) {
-        ball.x = right;
-        ball.vx = -Math.abs(ball.vx) * WALL_REST;
-      }
-      if (ball.y > floor) {
-        ballInBinZone = true;
-        if (!winnerLocked) {
-          winnerLocked = b.name;
-          revealWinner(b.name);
-        }
-
-        ball.y = floor;
-        ball.vy = -Math.abs(ball.vy) * WALL_REST;
-      }
-    }
-
-    function physicsStep(dt) {
-      ball.vy += GRAV * dt;
-      ball.x  += ball.vx * dt;
-      ball.y  += ball.vy * dt;
-      ball.vx *= Math.pow(FRICTION, dt);
-      ball.vy *= Math.pow(FRICTION, dt);
-
-      const sideMargin = isMobile ? 12 : 20;
-
-      if (ball.x < BALL_R + sideMargin) {
-        ball.x  = BALL_R + sideMargin;
-        ball.vx = Math.abs(ball.vx) * WALL_REST;
-      }
-      if (ball.x > W - BALL_R - sideMargin) {
-        ball.x  = W - BALL_R - sideMargin;
-        ball.vx = -Math.abs(ball.vx) * WALL_REST;
-      }
-
-      pegs.forEach(collideWithPeg);
-      collideInsideBins();
-
-      const topY = bins.length ? bins[0].y0 : (H - 85);
-      if (ball.y > topY - BALL_R && Math.abs(ball.vx) < 0.02) {
-        ball.vx += (Math.random() - 0.5) * 0.08;
-      }
-    }
-
-    function isBallStopped() {
-      if (!ballInBinZone) return false;
-      const bottomY = bins.length ? bins[0].y1 : (H - 20);
-      return (
-        Math.abs(ball.vx) < 0.15 &&
-        Math.abs(ball.vy) < GRAV * 2.5 &&
-        ball.y >= bottomY - BALL_R - 1
-      );
-    }
-
-    function frame(now = performance.now()) {
-      animId = requestAnimationFrame(frame);
-
-      const dt = Math.min((now - lastFrameTime) / (1000 / 60), 2);
-      lastFrameTime = now;
-
-      if (binScrolling && binScrollSpeed > 0) {
-        const xStart = isMobile ? 12 : 20;
-        const xEnd = W - (isMobile ? 12 : 20);
-        const totalWidth = xEnd - xStart;
-        binScrollOffset = (binScrollOffset + binScrollSpeed * dt) % totalWidth;
-      }
-      physicsStep(dt);
-      
-      drawBoard();
-      
-      const ballGrad = ctx.createRadialGradient(
-        ball.x - 3, ball.y - 3, 1,
-        ball.x, ball.y, BALL_R
-      );
-      ballGrad.addColorStop(0, '#ffffff');
-      ballGrad.addColorStop(0.7, '#f0f0f0');
-      ballGrad.addColorStop(1, '#d0d0d0');
-      
-      ctx.shadowColor = 'rgba(0,0,0,0.4)';
-      ctx.shadowBlur = 8;
-      ctx.fillStyle = ballGrad;
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2);
-      ctx.fill();
-      
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      
-      if (isBallStopped()) {
-        cancelAnimationFrame(animId);
-        animId = null;
-        finalizeWinner();
-      }
-    }
-
-    function finalizeWinner() {
-      if (winnerLocked) return;
-      const x = ball.x;
-      let winner = null;
-      for (let i = 0; i < bins.length; i++) {
-        if (x >= bins[i].x0 && x <= bins[i].x1) {
-          winner = bins[i];
-          break;
-        }
-      }
-      if (!winner && bins.length) winner = bins[bins.length - 1];
-      if (!winner && bins.length) winner = bins[0];
-      if (!winner) return;
-      revealWinner(winner.name);
-    }
-
-    function revealWinner(name) {
-      binScrolling = false;
-      playFanfare();
-      createConfetti();
-      createCelebrationEmojis();
-      createCelebrationWords();
-      
-      winnerText.innerHTML = `
-        <span class="winner-emoji">🎉</span>
-        <span class="winner-name">${name}</span>
-        <span class="winner-emoji">🎉</span>
-      `;
-      winnerAnnouncement.classList.add('show');
-      
-      setUILocked(false);
-
-      if (revealTimeoutId) clearTimeout(revealTimeoutId);
-      revealTimeoutId = setTimeout(() => {
-        revealTimeoutId = null;
-        winnerAnnouncement.classList.remove('show');
-      }, 3500);
-    }
-
-    dropBtn.addEventListener('click', dropBall);
-
-    const carouselBtn = document.getElementById('carouselBtn');
-    carouselBtn.addEventListener('click', () => {
-      binScrollEnabled = !binScrollEnabled;
-      carouselBtn.classList.toggle('off', !binScrollEnabled);
+      line.setAttribute('x2', endX);
+      line.setAttribute('y2', endY);
     });
+  });
+}
 
+function initializeMarbles() {
+  const container = document.querySelector('.obstacle-course');
+  const marblesContainer = document.getElementById('marblesContainer');
+  marblesContainer.innerHTML = '';
 
-    // ===== RESIZE =====
-    let resizeTimeout;
-    window.addEventListener('resize', () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(resize, 250);
-    });
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  const topY = 25; // Reduced slightly for smaller marbles
 
-    // ===== РАЗБЛОКИРОВКА АУДИО =====
-    (function() {
-      let unlocked = false;
-      function unlock() {
-        try {
-          if (audioCtx.state === 'suspended') {
-            audioCtx.resume();
-          }
-        } catch(e) {}
-        if (!unlocked) {
-          unlocked = true;
-          window.removeEventListener('touchstart', unlock, {passive: true});
-          window.removeEventListener('pointerdown', unlock, {passive: true});
-          window.removeEventListener('click', unlock, {passive: true});
+  const minSpacing = MARBLE_RADIUS * 2.5; // Tighter spacing for smaller marbles
+  const maxWidth = w - minSpacing * 2 - CONTAINER_BORDER * 2;
+
+  marbles = names.map((name, idx) => {
+    const count = names.length;
+    const spacing = Math.max(minSpacing, maxWidth / Math.max(1, count - 1));
+    const startX = CONTAINER_BORDER + w / 2 - (spacing * (count - 1)) / 2 + spacing * idx;
+
+    const marble = {
+      x: startX,
+      y: topY,
+      vx: 0,
+      vy: 0,
+      mass: MARBLE_MASS,
+      onSurface: false,
+      color: PARTICIPANT_COLORS[participantColors[name] % PARTICIPANT_COLORS.length],
+      name,
+      finished: false,
+      el: null
+    };
+
+    const marbleEl = document.createElement('div');
+    marbleEl.className = 'marble';
+    marbleEl.style.backgroundColor = marble.color;
+    marbleEl.style.width = (MARBLE_RADIUS * 2) + 'px';
+    marbleEl.style.height = (MARBLE_RADIUS * 2) + 'px';
+    marbleEl.style.boxShadow = '0 4px 12px rgba(0,0,0,0.6)';
+    marblesContainer.appendChild(marbleEl);
+    marble.el = marbleEl;
+
+    marbleEl.style.transform = `translate(${marble.x}px, ${marble.y}px)`;
+
+    return marble;
+  });
+}
+
+function startRace() {
+  if (!validateProbabilities()) return;
+  if (raceInProgress) return;
+
+  selectedWinner = selectWeightedItem(names, probabilities);
+  raceInProgress = true;
+  winnerFound = false;
+  document.getElementById('startRaceBtn').disabled = true;
+
+  // Initialize physics timing
+  physicsAccumulator = 0;
+  lastTime = performance.now();
+
+  const container = document.querySelector('.obstacle-course');
+  const w = container.clientWidth;
+  const topY = 25;
+  const minSpacing = MARBLE_RADIUS * 2.5;
+  const maxWidth = w - minSpacing * 2 - CONTAINER_BORDER * 2;
+
+  marbles.forEach((m, idx) => {
+    const count = names.length;
+    const spacing = Math.max(minSpacing, maxWidth / Math.max(1, count - 1));
+    m.x = CONTAINER_BORDER + w / 2 - (spacing * (count - 1)) / 2 + spacing * idx;
+    m.y = topY;
+    m.vx = 0;
+    m.vy = 0;
+    m.onSurface = false;
+
+    if (m.el) {
+      m.el.style.transform = `translate(${m.x}px, ${m.y}px)`;
+    }
+  });
+
+  // Ensure no initial overlaps
+  for (let iter = 0; iter < 10; iter++) {
+    for (let i = 0; i < marbles.length; i++) {
+      for (let j = i + 1; j < marbles.length; j++) {
+        const a = marbles[i];
+        const b = marbles[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy);
+        const minDist = MARBLE_RADIUS * 2;
+
+        if (dist < minDist && dist > 1e-6) {
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const overlap = minDist - dist;
+          const sep = overlap / 2 + 0.5;
+
+          a.x -= nx * sep;
+          a.y -= ny * sep;
+          b.x += nx * sep;
+          b.y += ny * sep;
         }
       }
-      window.addEventListener('touchstart', unlock, {passive: true});
-      window.addEventListener('pointerdown', unlock, {passive: true});
-      window.addEventListener('click', unlock, {passive: true});
-    })();
-
-    // ===== ИНИЦИАЛИЗАЦИЯ =====
-    function init() {
-      initProbabilities();
-      createNameInputs();
-
-      // Ждём загрузки шрифта перед первой отрисовкой
-      if (document.fonts && document.fonts.ready) {
-        document.fonts.ready.then(() => {
-          resize();
-        });
-      } else {
-        // Запасной вариант для старых браузеров
-        setTimeout(() => {
-          resize();
-        }, 100);
-      }
-    }
-
-    init();
-  </script>
-
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "WebApplication",
-    "name": "Плинко Жеребьёвка",
-    "applicationCategory": "GameApplication",
-    "operatingSystem": "Web",
-    "url": "https://randomhost.online/plinko.html",
-    "description": "Интерактивная онлайн-игра с физикой для честного выбора победителя.",
-    "inLanguage": "ru",
-    "publisher": {
-      "@type": "Organization",
-      "name": "Рандомайзер-игры",
-      "url": "https://randomhost.online"
     }
   }
-  </script>
 
-  <!-- Yandex.Metrika counter -->
-  <script type="text/javascript">
-    (function(m,e,t,r,i,k,a){
-      m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
-      m[i].l=1*new Date();
-      for (var j = 0; j < document.scripts.length; j++) {
-        if (document.scripts[j].src === r) { return; }
-      }
-      k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
-    })(window, document,'script','https://mc.yandex.ru/metrika/tag.js','ym');
-    ym(104849796, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true});
-  </script>
-  <noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
-  <!-- /Yandex.Metrika counter -->
+  // Reinitialize obstacles in random order and reset spinner angles
+  initializeObstaclesAndSpinners();
+
+  rafId = requestAnimationFrame(raceLoop);
+}
+
+function showWinner(name) {
+  const tooltip = document.getElementById('winnerTooltip');
+  tooltip.innerHTML = `🏆 ${name}!`;
+  tooltip.classList.add('show');
+  setTimeout(() => {
+    tooltip.classList.remove('show');
+  }, 2000);
+}
+
+// ============================================================
+//  DOM & EVENTS
+// ============================================================
+const newNameInput = document.getElementById('newNameInput');
+const addNameBtn = document.getElementById('addNameBtn');
+const equalizeBtn = document.getElementById('equalizeBtn');
+const shuffleBtn = document.getElementById('shuffleBtn');
+
+newNameInput.addEventListener('click', () => {
+  newNameInput.style.borderColor='rgba(255,255,255,.5)'; newNameInput.style.background='rgba(255,255,255,.2)';
+  newNameInput.classList.remove('error-state'); clearErrorMessage();
+});
+newNameInput.addEventListener('focus', () => {
+  newNameInput.style.borderColor='rgba(255,255,255,.5)'; newNameInput.style.background='rgba(255,255,255,.2)';
+  newNameInput.classList.remove('error-state'); clearErrorMessage();
+});
+newNameInput.addEventListener('keypress', e => { if(e.key==='Enter') addNewParticipant(); });
+
+addNameBtn.addEventListener('click', addNewParticipant);
+equalizeBtn.addEventListener('click', equalizeProbabilities);
+shuffleBtn.addEventListener('click', () => {
+  for (let i = names.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [names[i], names[j]] = [names[j], names[i]];
+  }
+  saveState();
+  renderParticipants();
+});
+
+const dmt = document.getElementById('desktopMenuToggle');
+const dd = document.getElementById('desktopDropdown');
+let dmOpen = false;
+if (dmt) {
+  dmt.addEventListener('click', e => { e.stopPropagation(); dmOpen=!dmOpen; dd.classList.toggle('active',dmOpen); dmt.classList.toggle('active',dmOpen); });
+  document.addEventListener('click', e => { if(dmOpen&&!dd.contains(e.target)&&!dmt.contains(e.target)){dmOpen=false;dd.classList.remove('active');dmt.classList.remove('active');} });
+}
+
+const bb = document.getElementById('burgerBtn');
+const md = document.getElementById('menuDropdown');
+let mOpen = false;
+if (bb) {
+  bb.addEventListener('click', e => { e.stopPropagation(); mOpen=!mOpen; md.classList.toggle('active',mOpen); bb.classList.toggle('active',mOpen); });
+  document.addEventListener('click', e => { if(mOpen&&!md.contains(e.target)&&!bb.contains(e.target)){mOpen=false;md.classList.remove('active');bb.classList.remove('active');} });
+}
+
+loadState();
+renderParticipants();
+validateProbabilities();
+initializeMarbles();
+initializeObstaclesAndSpinners();
+
+const startRaceBtn = document.getElementById('startRaceBtn');
+startRaceBtn.addEventListener('click', startRace);
+</script>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document,'script','https://mc.yandex.ru/metrika/tag.js','ym');
+  ym(104849796, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true});
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+
 </body>
 </html>
