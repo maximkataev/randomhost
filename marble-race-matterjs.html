@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Гонка Мраморов — Рандомайзер</title>
+  <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f3f1.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/2.0.20/matter.min.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+    }
+    body {
+      display:flex; align-items:center; justify-content:center;
+      min-height:100vh; padding:20px;
+      background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+      font-family:'Montserrat',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+      touch-action:manipulation;
+      scrollbar-gutter:stable;
+      overflow-y:scroll;
+    }
+
+    .top-buttons { position:fixed; top:20px; left:20px; z-index:1000; }
+    .desktop-menu-toggle {
+      position:relative; background:linear-gradient(135deg,rgba(30,35,60,.85),rgba(50,30,70,.85));
+      backdrop-filter:blur(12px); color:#fff; border:2px solid rgba(255,255,255,.3);
+      padding:0; width:56px; height:56px; border-radius:50%; font-size:24px; cursor:pointer;
+      transition:all .4s cubic-bezier(.68,-.55,.265,1.55);
+      display:flex; align-items:center; justify-content:center; user-select:none; overflow:hidden;
+    }
+    .desktop-menu-toggle:hover { transform:translateY(-3px) scale(1.05); border-color:rgba(255,255,255,.5); }
+    .desktop-menu-toggle:active { transform:translateY(-1px) scale(.98); }
+    .menu-icon { display:flex; flex-direction:column; justify-content:center; align-items:center;
+      width:24px; height:18px; position:relative; transition:transform .3s ease; }
+    .menu-icon span { display:block; width:100%; height:3px; background:#fff; border-radius:2px;
+      position:absolute; left:0; transition:all .4s cubic-bezier(.68,-.55,.265,1.55); }
+    .menu-icon span:nth-child(1) { top:0; }
+    .menu-icon span:nth-child(2) { top:50%; margin-top:-1.5px; }
+    .menu-icon span:nth-child(3) { bottom:0; }
+    .desktop-menu-toggle:hover .menu-icon { transform:scale(1.1); }
+    .desktop-menu-toggle.active .menu-icon span:nth-child(1) { top:50%; margin-top:-1.5px; transform:rotate(45deg); }
+    .desktop-menu-toggle.active .menu-icon span:nth-child(2) { opacity:0; transform:rotate(180deg) scale(0); }
+    .desktop-menu-toggle.active .menu-icon span:nth-child(3) { bottom:auto; top:50%; margin-top:-1.5px; transform:rotate(-45deg); }
+    .desktop-dropdown { position:absolute; top:100%; left:0; margin-top:15px;
+      background:linear-gradient(135deg,rgba(20,25,45,.92),rgba(40,20,55,.92));
+      backdrop-filter:blur(20px); border-radius:16px; border: 1px solid rgba(255,255,255,.15);
+      overflow:hidden; max-height:0; opacity:0; transform:translateY(-10px);
+      transition:max-height .4s,opacity .3s,transform .4s; min-width:240px; }
+    .desktop-dropdown.active { max-height:700px; opacity:1; transform:translateY(0); }
+    .desktop-dropdown a { position:relative; display:flex; align-items:center; gap:14px; padding:16px 20px;
+      color:#fff; text-decoration:none; font-size:16px; font-weight:600;
+      border-bottom:1px solid rgba(255,255,255,.08); transition:all .3s; overflow:hidden; }
+    .desktop-dropdown a:last-child { border-bottom:none; }
+    .desktop-dropdown a:hover { background:rgba(102,126,234,.25); padding-left:24px; color:#ffd43b; }
+    .desktop-dropdown a.current { color:#ffd43b; }
+
+    .menu-container { display:none; }
+    .menu-header { display:flex; align-items:center; justify-content:space-between; }
+    .menu-title { color:#fff; font-size:17px; font-weight:700; }
+    .burger-btn { background:rgba(255,255,255,.2); border:2px solid rgba(255,255,255,.3);
+      border-radius:8px; padding:7px 11px; cursor:pointer; display:flex; flex-direction:column; gap:4px; transition:all .3s; }
+    .burger-btn span { display:block; width:22px; height:3px; background:#fff; border-radius:2px; transition:all .3s; }
+    .burger-btn.active span:nth-child(1) { transform:rotate(45deg) translateY(7px); }
+    .burger-btn.active span:nth-child(2) { opacity:0; }
+    .burger-btn.active span:nth-child(3) { transform:rotate(-45deg) translateY(-7px); }
+    .menu-dropdown { position:absolute; top:100%; left:0; right:0;
+      background:linear-gradient(180deg,rgba(102,126,234,.98),rgba(118,75,162,.98));
+      backdrop-filter:blur(10px); max-height:0; overflow:hidden; transition:max-height .3s; }
+    .menu-dropdown.active { max-height:600px; }
+    .menu-dropdown a { display:flex; align-items:center; gap:10px; padding:14px 18px;
+      color:#fff; text-decoration:none; font-size:15px; font-weight:600;
+      border-bottom:1px solid rgba(255,255,255,.1); }
+    .menu-dropdown a:last-child { border-bottom:none; }
+    .menu-dropdown a:hover { background:rgba(255,255,255,.15); }
+
+    .main-container { display: flex; gap: 40px; align-items: center; justify-content: center;
+      max-width: 100%; width: 100%; margin-top: 20px; }
+
+    .obstacle-course { height: 84vh; width: 35vw;
+      background: linear-gradient(135deg, rgba(20,25,45,0.95), rgba(40,20,60,0.95));
+      border: 3px solid rgba(255,255,255,0.2); border-radius: 20px; position: relative; overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 0 40px rgba(102,126,234,0.1);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+    .marbles-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; }
+
+    .marble { position: absolute; border-radius: 50%; z-index: 5; will-change: transform; transition: none; }
+
+    .start-race-btn { position: relative; margin-top: 20px; padding: 12px 30px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 25px; font-size: 16px; font-weight: 700; cursor: pointer;
+      transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+    .start-race-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+      border-color: rgba(255,255,255,0.5); }
+    .start-race-btn:active:not(:disabled) { transform: translateY(0); }
+    .start-race-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .winner-tooltip { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: linear-gradient(135deg, rgba(255,215,0,0.95), rgba(255,150,0,0.95)); color: #fff;
+      padding: 30px 50px; border-radius: 20px; font-size: 28px; font-weight: 800; z-index: 100;
+      opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.3); box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+    .winner-tooltip.show { opacity: 1; }
+
+    .settings-panel { width: 490px; padding: 30px; border-radius: 20px;
+      background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); overflow: hidden; }
+
+    .settings-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
+    .settings-title { color: #fff; font-size: 24px; font-weight: 700; margin: 0;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+
+    .names-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+    .name-item { display: flex; gap: 8px; align-items: center; width: 100%; }
+
+    .name-input { flex: 1; padding: 10px 15px; border: 2px solid rgba(255,255,255,0.2);
+      border-radius: 10px; background: rgba(255,255,255,0.1); color: #fff; font-size: 16px; transition: 0.3s; }
+    .name-input:focus { outline: none; border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.2); }
+    .name-input::placeholder { color: rgba(255,255,255,0.5); }
+    .name-input.error-state { border-color: #ef4444 !important; background: rgba(239,68,68,0.1) !important; }
+
+    .probability-controls { display: flex; gap: 5px; width: 120px; flex-shrink: 0; }
+    .prob-btn { padding: 5px 10px; background: rgba(255,255,255,0.2); color: #fff; border: none;
+      border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 600; transition: 0.2s; flex-shrink: 0; }
+    .prob-btn:hover { background: rgba(255,255,255,0.3); transform: scale(1.05); }
+    .prob-btn:active { transform: scale(0.95); }
+
+    .probability-input { width: 55px; padding: 4px; background: rgba(255,255,255,0.1); color: #ffd43b;
+      border: 2px solid rgba(255,212,59,0.3); border-radius: 5px; text-align: center; font-weight: 800;
+      font-size: 14px; transition: 0.2s; flex-shrink: 0; }
+    .probability-input:focus { outline: none; border-color: rgba(255,212,59,0.6); background: rgba(255,255,255,0.15); }
+    .probability-input.error { border-color: #ef4444; background: rgba(239,68,68,0.2); }
+
+    .remove-btn { width: 44px; padding: 8px 0; background: rgba(239,68,68,0.7); color: #fff; border: none;
+      border-radius: 8px; cursor: pointer; font-size: 18px; transition: 0.3s; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; }
+    .remove-btn:hover { background: rgba(239,68,68,0.95); }
+    .remove-btn:active { opacity: 0.8; }
+
+    .add-name-container { display: flex; gap: 5px; margin-top: 15px; }
+    .add-btn-small { padding: 0px 14px; background: rgba(34,197,94,0.7); color: #fff; border: none;
+      border-radius: 10px; cursor: pointer; font-size: 16px; transition: 0.3s; height: 46px;
+      display: flex; align-items: center; justify-content: center; }
+    .add-btn-small:hover { background: rgba(34,197,94,0.95); }
+    .add-btn-small:active { opacity: 0.85; }
+
+    .error-message { color: #fff; font-size: 13px; margin-top: 8px; min-height: 16px; }
+
+    .probability-error-tooltip { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+      background:linear-gradient(135deg,rgba(239,68,68,.95),rgba(220,38,38,.95));
+      color:#fff; padding:18px 28px; border-radius:14px; z-index:1002; font-weight:700;
+      font-size:15px; text-align:center; backdrop-filter:blur(10px);
+      border:2px solid rgba(255,255,255,.3);
+      animation:tooltipAppear .3s cubic-bezier(.68,-.55,.265,1.55); }
+    @keyframes tooltipAppear { from { opacity:0; transform:translate(-50%,-50%) scale(.8); }
+      to { opacity:1; transform:translate(-50%,-50%) scale(1); } }
+
+    @media (max-width:1100px) { .main-container { flex-direction:column; align-items:center; gap:24px; }
+      .settings-panel { width:100%; max-width:510px; } }
+    @media (max-width:918px) { html,body { max-width:100%; overflow-x:hidden; }
+      body { padding:calc(66px + var(--safe-top)) 12px calc(20px + var(--safe-bottom)) 12px; }
+      .top-buttons { display:none; }
+      .menu-container { display:block; position:fixed; top:var(--safe-top); left:var(--safe-left);
+        right:var(--safe-right); z-index:1000; padding:10px 14px;
+        background:linear-gradient(180deg,rgba(102,126,234,.95) 0%,rgba(118,75,162,.85) 100%);
+        backdrop-filter:blur(10px); }
+      .settings-panel { padding:16px 14px; width:100%; max-width:100%; } }
+    button:disabled { opacity:.5; cursor:not-allowed!important; }
+  </style>
+</head>
+<body>
+
+<div class="top-buttons">
+  <button class="desktop-menu-toggle" id="desktopMenuToggle" aria-label="Меню">
+    <div class="menu-icon"><span></span><span></span><span></span></div>
+  </button>
+  <nav class="desktop-dropdown" id="desktopDropdown">
+    <a href="index.html">🏠 Главная</a>
+    <a href="wheel-of-fortune.html">🎡 Колесо Фортуны</a>
+    <a href="lottery-drum.html">🎱 Лототрон</a>
+    <a href="crystal-ball.html">🔮 Магический Шар</a>
+    <a href="plinko.html">🎯 Плинко</a>
+    <a href="racing.html">🏁 Гонки</a>
+    <a href="marble-race.html" class="current">🏔️ Гонка Мраморов</a>
+    <a href="trading.html">📈 Трейдинг</a>
+    <a href="tournament.html">⚔️ Турнир</a>
+    <a href="minesweeper.html">💣 Сапёр</a>
+  </nav>
+</div>
+
+<div class="menu-container">
+  <div class="menu-header">
+    <div class="menu-title">🏔️ ГОНКА МРАМОРОВ</div>
+    <button class="burger-btn" id="burgerBtn" aria-label="Меню">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <nav class="menu-dropdown" id="menuDropdown">
+    <a href="index.html">🏠 Главная</a>
+    <a href="wheel-of-fortune.html">🎡 Колесо Фортуны</a>
+    <a href="lottery-drum.html">🎱 Лототрон</a>
+    <a href="crystal-ball.html">🔮 Магический Шар</a>
+    <a href="plinko.html">🎯 Плинко</a>
+    <a href="racing.html">🏁 Гонки</a>
+    <a href="marble-race.html">🏔️ Гонка Мраморов</a>
+    <a href="trading.html">📈 Трейдинг</a>
+    <a href="tournament.html">⚔️ Турнир</a>
+    <a href="minesweeper.html">💣 Сапёр</a>
+  </nav>
+</div>
+
+<div class="main-container">
+  <div class="settings-panel">
+    <div class="settings-header">
+      <h2 class="settings-title">Участники</h2>
+    </div>
+    <div class="names-list" id="namesList"></div>
+    <div class="add-name-container">
+      <input type="text" class="name-input" id="newNameInput" placeholder="Новый участник" maxlength="15">
+      <button class="add-btn-small" id="addNameBtn">➕</button>
+    </div>
+    <div id="errorMessage" class="error-message"></div>
+  </div>
+
+  <div class="obstacle-course">
+    <div class="marbles-container" id="marblesContainer"></div>
+    <div class="winner-tooltip" id="winnerTooltip"></div>
+  </div>
+
+  <button class="start-race-btn" id="startRaceBtn">Начать гонку</button>
+</div>
+
+<script>
+// Matter.js modules
+const Engine = Matter.Engine;
+const World = Matter.World;
+const Bodies = Matter.Bodies;
+const Body = Matter.Body;
+const Events = Matter.Events;
+const Composite = Matter.Composite;
+
+// ============================================================
+//  STORAGE & STATE
+// ============================================================
+const NAMES_KEY = 'shared_names_v1';
+const PROB_KEY = 'shared_probabilities_v2';
+const LOCKED_KEY = 'shared_locked_v1';
+const MAX_PARTICIPANTS = 20;
+const MIN_PROBABILITY = 0.05;
+
+let names = ['Участник 1', 'Участник 2'];
+let probabilities = {};
+let lockedParticipants = {};
+let hasCustomProbabilities = false;
+let participantColors = {};
+
+const PARTICIPANT_COLORS = [
+  '#FF0000', '#FF6600', '#FFFF00', '#00FF00', '#00FFCC',
+  '#00FFFF', '#0099FF', '#0000FF', '#0033FF', '#7700FF',
+  '#9900FF', '#FF00FF', '#FF0099', '#FF1493', '#CCFF00',
+  '#00FF99', '#00CCCC', '#6600FF', '#CC00FF', '#FF00CC',
+];
+
+// ============================================================
+//  PHYSICS STATE (Matter.js)
+// ============================================================
+let engine = null;
+let world = null;
+let matterMarbles = [];
+let matterBodies = [];
+
+const MARBLE_RADIUS = 11;
+
+const marbleOptions = {
+  restitution: 0.20,
+  friction: 0.05,
+  frictionAir: 0.008,
+  density: 0.006,
+  label: 'marble'
+};
+
+const obstacleOptions = {
+  restitution: 0.15,
+  friction: 0.08,
+  isStatic: true,
+  label: 'obstacle'
+};
+
+const MAX_VELOCITY = 15;
+
+const COURSE_LAYOUT = [
+  { type: 'spacing', height: 0.08 },
+  { type: 'funnel', width: 0.9, narrowWidth: 0.3 },
+  { type: 'spacing', height: 0.06 },
+  { type: 'chokePoint', width: 0.35, offset: 0.1 },
+  { type: 'spacing', height: 0.06 },
+  { type: 'deflectors', angles: [-15, 15], spread: 0.6 },
+  { type: 'spacing', height: 0.05 },
+  { type: 'pegs', count: 8, spread: 0.7 },
+  { type: 'spacing', height: 0.06 },
+  { type: 'halfPipe', width: 0.6, depth: 0.08 },
+  { type: 'spacing', height: 0.05 },
+  { type: 'splitPath', leftWidth: 0.35, rightWidth: 0.35 },
+  { type: 'spacing', height: 0.05 },
+  { type: 'spinners', count: 5, spread: 0.8 },
+  { type: 'spacing', height: 0.06 },
+  { type: 'gravityDrop', width: 0.5 },
+  { type: 'spacing', height: 0.08 }
+];
+
+let raceInProgress = false;
+let selectedWinner = null;
+let rafId = null;
+let lastTime = 0;
+
+// ============================================================
+//  UTILITIES
+// ============================================================
+function secureRandomFloat() {
+  const arr = new Uint32Array(1);
+  crypto.getRandomValues(arr);
+  return arr[0] / 0x100000000;
+}
+
+function selectWeightedItem(names, probabilities) {
+  const rand = secureRandomFloat();
+  let cumulative = 0;
+  for (const name of names) {
+    cumulative += probabilities[name] || 0;
+    if (rand <= cumulative) return name;
+  }
+  return names[names.length - 1];
+}
+
+function getContainerSize() {
+  const container = document.querySelector('.obstacle-course');
+  return { w: container.clientWidth, h: container.clientHeight };
+}
+
+// ============================================================
+//  STORAGE
+// ============================================================
+function saveState() {
+  try {
+    localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+    const cleanP = {};
+    names.forEach(n => cleanP[n] = probabilities[n] ?? 0);
+    const cleanL = {};
+    names.forEach(n => { if (lockedParticipants[n]) cleanL[n] = true; });
+    localStorage.setItem(PROB_KEY, JSON.stringify({probabilities: cleanP, hasCustomProbabilities}));
+    localStorage.setItem(LOCKED_KEY, JSON.stringify(cleanL));
+  } catch(e) {}
+}
+
+function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(NAMES_KEY) || '[]');
+    if (Array.isArray(saved) && saved.length) names = saved.slice(0, MAX_PARTICIPANTS);
+  } catch(e) {}
+
+  names.forEach((name, idx) => {
+    if (!(name in participantColors)) {
+      participantColors[name] = idx % PARTICIPANT_COLORS.length;
+    }
+  });
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(PROB_KEY) || '{}');
+    const savedL = JSON.parse(localStorage.getItem(LOCKED_KEY) || '{}');
+    if (saved?.hasCustomProbabilities && saved?.probabilities) {
+      probabilities = {...saved.probabilities};
+      lockedParticipants = {...savedL};
+      hasCustomProbabilities = true;
+      Object.keys(probabilities).forEach(n => { if (!names.includes(n)) delete probabilities[n]; });
+      Object.keys(lockedParticipants).forEach(n => { if (!names.includes(n)) delete lockedParticipants[n]; });
+      names.forEach(n => { if (!(n in probabilities)) probabilities[n] = 0.05; });
+    } else { equalizeProbabilities(); }
+  } catch(e) { equalizeProbabilities(); }
+}
+
+function equalizeProbabilities() {
+  const p = 1 / Math.max(1, names.length);
+  probabilities = {}; lockedParticipants = {}; hasCustomProbabilities = false;
+  names.forEach(n => probabilities[n] = p);
+  saveState(); renderParticipants();
+}
+
+function normalizeProbabilities() {
+  if (!hasCustomProbabilities) {
+    const exact = 1 / (names.length || 1);
+    names.forEach(n => probabilities[n] = exact); return;
+  }
+  const locked = names.filter(n => lockedParticipants[n]);
+  const unlocked = names.filter(n => !lockedParticipants[n]);
+  if (unlocked.length === 0) {
+    const sum = names.reduce((s,n) => s + (probabilities[n]||0), 0);
+    if (sum > 0 && Math.abs(sum-1) > 1e-4) {
+      const k = 1/sum; names.forEach(n => probabilities[n] = (probabilities[n]||0)*k);
+    }
+    if (names.some(n => (probabilities[n]??0) < 0.049)) { equalizeProbabilities(); } return;
+  }
+  const lockedSum = locked.reduce((s,n) => s+(probabilities[n]||0), 0);
+  const minU = unlocked.length * 0.05;
+  const remain = 1 - lockedSum;
+  if (locked.some(n=>(probabilities[n]??0)<0.049) || remain < minU-0.001 || lockedSum > 1.001) {
+    equalizeProbabilities(); return;
+  }
+  const share = remain / unlocked.length;
+  unlocked.forEach(n => probabilities[n] = share);
+  if (names.some(n=>(probabilities[n]??0)<0.049)) { equalizeProbabilities(); }
+}
+
+function getPercent(name) {
+  return ((probabilities[name]||0)*100).toFixed(1);
+}
+
+function getRealisticMaxPercent(name) {
+  const otherLocked = names.filter(n=>lockedParticipants[n]&&n!==name);
+  const willUnlocked = names.filter(n=>!lockedParticipants[n]&&n!==name);
+  const lockedSum = otherLocked.reduce((s,n)=>s+(probabilities[n]||0),0);
+  const minU = willUnlocked.length * 0.05;
+  return Math.max(5, Math.min(100, Math.round((1-lockedSum-minU)*1000)/10));
+}
+
+function setProbabilityManually(name, pct) {
+  const max = getRealisticMaxPercent(name);
+  if (isNaN(pct)||pct<5||pct>max+0.2) { showErrorTooltip(`Мин 5%, макс ${max.toFixed(1)}%`); return false; }
+  hasCustomProbabilities = true; lockedParticipants[name] = true;
+  probabilities[name] = pct/100; normalizeProbabilities(); saveState(); return true;
+}
+
+function changeProbability(name, delta) {
+  const cur = parseFloat(getPercent(name))||0;
+  const maxP = 100-(names.length-1)*5;
+  const next = Math.max(5, Math.min(maxP, cur+delta));
+  if (Math.abs(next-cur) < 0.01) { showErrorTooltip(delta>0 ? `Макс: ${getRealisticMaxPercent(name).toFixed(1)}%` : 'Мин: 5%'); return; }
+  const otherLocked = names.filter(n=>lockedParticipants[n]&&n!==name);
+  const willUnlocked = names.filter(n=>!lockedParticipants[n]&&n!==name);
+  const lockedSum = otherLocked.reduce((s,n)=>s+(probabilities[n]||0),0);
+  const remain = 1 - lockedSum - next/100;
+  if (remain < willUnlocked.length*0.05-0.001) { showErrorTooltip(`Макс: ${getRealisticMaxPercent(name).toFixed(1)}%`); return; }
+  setProbabilityManually(name, next); renderParticipants();
+}
+
+function validateAllNames() {
+  const inputs = document.querySelectorAll('.name-input');
+  let ok = true;
+  inputs.forEach(inp => { if (!inp.value.trim()||inp.value.length>15) ok = false; });
+  return ok;
+}
+
+function validateProbabilities() {
+  if (!names.length) return false;
+  let sum = 0;
+  for (const n of names) { const p = probabilities[n]||0; if (p < MIN_PROBABILITY-1e-6) { showErrorTooltip('Мин вероятность 5%'); return false; } sum += p; }
+  if (Math.abs(sum-1) > 0.001) { showErrorTooltip(`Сумма должна быть 100% (сейчас ${(sum*100).toFixed(1)}%)`); return false; }
+  clearErrorMessage(); return true;
+}
+
+function showErrorTooltip(msg) {
+  document.querySelectorAll('.probability-error-tooltip').forEach(e=>e.remove());
+  const t = document.createElement('div');
+  t.className='probability-error-tooltip'; t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.transition='opacity .3s,transform .3s'; t.style.opacity='0'; t.style.transform='translate(-50%,-50%) scale(.8)'; setTimeout(()=>t.remove(), 300); }, 2000);
+}
+
+function clearErrorMessage() {
+  const el = document.getElementById('errorMessage');
+  if (el) el.textContent='';
+}
+
+function removeParticipant(idx) {
+  if (names.length <= 2) { showErrorTooltip('Минимум 2 участника!'); return; }
+  const name = names[idx];
+  names.splice(idx,1); delete probabilities[name]; delete lockedParticipants[name]; delete participantColors[name];
+  equalizeProbabilities(); saveState(); renderParticipants();
+}
+
+function addNewParticipant() {
+  const inp = document.getElementById('newNameInput');
+  const v = inp.value.trim();
+  if (!v) { inp.classList.add('error-state'); inp.placeholder='Введите имя'; return; }
+  if (v.length > 15) { showErrorTooltip('Максимум 15 символов'); return; }
+  if (names.some(n=>n.toLowerCase()===v.toLowerCase())) { showErrorTooltip('Это имя уже есть!'); return; }
+  if (names.length >= MAX_PARTICIPANTS) { showErrorTooltip(`Максимум ${MAX_PARTICIPANTS} участников!`); return; }
+
+  const usedIndices = new Set(Object.values(participantColors));
+  let colorIdx = 0;
+  for (let i = 0; i < PARTICIPANT_COLORS.length; i++) {
+    if (!usedIndices.has(i)) {
+      colorIdx = i;
+      break;
+    }
+  }
+  participantColors[v] = colorIdx;
+
+  names.push(v); probabilities[v]=0.05; equalizeProbabilities();
+  saveState(); renderParticipants();
+  inp.value=''; inp.style.borderColor='rgba(255,255,255,.2)'; inp.style.background='rgba(255,255,255,.1)';
+  inp.classList.remove('error-state'); clearErrorMessage();
+}
+
+function changeParticipantColor(name) {
+  const usedIndices = new Set();
+  names.forEach(n => {
+    if (n !== name) {
+      const idx = participantColors[n];
+      if (idx !== undefined) usedIndices.add(idx);
+    }
+  });
+
+  const available = [];
+  for (let i = 0; i < PARTICIPANT_COLORS.length; i++) {
+    if (!usedIndices.has(i)) {
+      available.push(i);
+    }
+  }
+
+  if (available.length === 0) return;
+
+  const currentIdx = participantColors[name];
+  let currentPos = available.indexOf(currentIdx);
+
+  if (currentPos === -1) currentPos = -1;
+
+  const nextPos = (currentPos + 1) % available.length;
+  participantColors[name] = available[nextPos];
+
+  saveState();
+  renderParticipants();
+}
+
+function renderParticipants() {
+  const namesList = document.getElementById('namesList');
+  namesList.innerHTML = '';
+  names.forEach((name, idx) => {
+    const row = document.createElement('div');
+    row.className = 'name-item';
+
+    const colorBox = document.createElement('div');
+    colorBox.style.width = '28px';
+    colorBox.style.height = '28px';
+    colorBox.style.borderRadius = '8px';
+    colorBox.style.cursor = 'pointer';
+    colorBox.style.border = '3px solid rgba(255,255,255,0.4)';
+    colorBox.style.transition = 'all 0.2s ease';
+    colorBox.style.flexShrink = '0';
+    const colorIdx = participantColors[name] !== undefined ? participantColors[name] : idx % PARTICIPANT_COLORS.length;
+    colorBox.style.backgroundColor = PARTICIPANT_COLORS[colorIdx];
+    colorBox.addEventListener('click', () => changeParticipantColor(name));
+
+    const inp = document.createElement('input');
+    inp.type='text'; inp.className='name-input'; inp.value=name; inp.placeholder='Имя'; inp.maxLength=15;
+
+    inp.addEventListener('blur', () => {
+      const v = inp.value.trim();
+      if (!v) { inp.value=name; validateAllNames(); return; }
+      const dup = names.some((n,i)=>i!==idx&&n.toLowerCase()===v.toLowerCase());
+      if (dup||v.length>15) { inp.value=names[idx]; showErrorTooltip('Имя занято или слишком длинное'); validateAllNames(); return; }
+      const old=names[idx]; names[idx]=v;
+      if (probabilities[old]!==undefined) { probabilities[v]=probabilities[old]; delete probabilities[old]; }
+      if (lockedParticipants[old]) { lockedParticipants[v]=true; delete lockedParticipants[old]; }
+      if (participantColors[old]!==undefined) { participantColors[v]=participantColors[old]; delete participantColors[old]; }
+      inp.classList.remove('error-state'); inp.style.borderColor='rgba(255,255,255,.2)'; inp.style.background='rgba(255,255,255,.1)';
+      saveState(); validateAllNames();
+    });
+
+    inp.addEventListener('input', () => {
+      const v=inp.value.trim();
+      const dup=names.some((n,i)=>i!==idx&&n.toLowerCase()===v.toLowerCase());
+      if (!v||dup||v.length>15) { inp.classList.add('error-state'); } else { inp.classList.remove('error-state'); }
+      validateAllNames();
+    });
+
+    inp.addEventListener('focus', () => {
+      inp.classList.remove('error-state'); inp.style.borderColor='rgba(255,255,255,.5)'; inp.style.background='rgba(255,255,255,.2)';
+      clearErrorMessage();
+    });
+
+    const pc = document.createElement('div'); pc.className='probability-controls';
+    const minusBtn = document.createElement('button'); minusBtn.className='prob-btn'; minusBtn.textContent='−';
+    minusBtn.onclick = () => { if (lockedParticipants[name]) { delete lockedParticipants[name]; hasCustomProbabilities=Object.keys(lockedParticipants).length>0; } changeProbability(name,-1); };
+
+    const probInp = document.createElement('input'); probInp.type='text'; probInp.className='probability-input'; probInp.setAttribute('inputmode','decimal');
+    probInp.value=getPercent(name); if (lockedParticipants[name]) probInp.classList.add('manual');
+    let lastValid=probInp.value;
+
+    probInp.addEventListener('focus', () => { probInp.value=probInp.value.replace('%',''); lastValid=probInp.value; });
+    probInp.addEventListener('input', () => { probInp.value=probInp.value.replace(',','.'); const num=parseFloat(probInp.value); const max=getRealisticMaxPercent(name); if (isNaN(num)||num<5||num>max) { probInp.classList.add('error'); } else { probInp.classList.remove('error'); } });
+    probInp.addEventListener('blur', () => { const num=parseFloat(probInp.value); const max=getRealisticMaxPercent(name); if (isNaN(num)||num<5||num>max) { probInp.value=lastValid; probInp.classList.remove('error'); } else if (setProbabilityManually(name,num)) { lastValid=getPercent(name); renderParticipants(); } else { probInp.value=lastValid; probInp.classList.remove('error'); } });
+    probInp.addEventListener('keypress', e => { if(e.key==='Enter'){e.preventDefault();probInp.blur();} if(!/[\d.,]/.test(e.key)&&e.key!=='Enter')e.preventDefault(); });
+
+    const plusBtn = document.createElement('button'); plusBtn.className='prob-btn'; plusBtn.textContent='+';
+    plusBtn.onclick = () => { if (lockedParticipants[name]) { delete lockedParticipants[name]; hasCustomProbabilities=Object.keys(lockedParticipants).length>0; } changeProbability(name,1); };
+
+    pc.appendChild(minusBtn); pc.appendChild(probInp); pc.appendChild(plusBtn);
+
+    const removeBtn = document.createElement('button'); removeBtn.className='remove-btn'; removeBtn.textContent='✕';
+    removeBtn.onclick = () => removeParticipant(idx);
+
+    row.appendChild(colorBox); row.appendChild(inp); row.appendChild(pc); row.appendChild(removeBtn);
+    namesList.appendChild(row);
+  });
+  validateAllNames();
+}
+
+// ============================================================
+//  OBSTACLES (Matter.js bodies)
+// ============================================================
+function initializeObstacles() {
+  const { w, h } = getContainerSize();
+
+  let currentY = 0;
+  const courseHeightRatio = 0.95;
+  const totalHeight = h * courseHeightRatio;
+
+  const totalUnits = COURSE_LAYOUT.reduce((sum, section) => {
+    if (section.type === 'spacing') return sum + section.height;
+    return sum + 0.08;
+  }, 0);
+
+  const pixelsPerUnit = totalHeight / totalUnits;
+
+  COURSE_LAYOUT.forEach((layout) => {
+    if (layout.type === 'spacing') {
+      currentY += layout.height * pixelsPerUnit;
+      return;
+    }
+
+    let sectionHeight = 0.08 * pixelsPerUnit;
+
+    if (layout.type === 'funnel') {
+      const funnelW = w * layout.width;
+      const narrowW = w * layout.narrowWidth;
+      const startX = (w - funnelW) / 2;
+      const endX = (w - narrowW) / 2;
+
+      // Left angled wall
+      const leftDx = endX - startX;
+      const leftAngle = Math.atan2(sectionHeight, leftDx);
+      const leftMidX = (startX + endX) / 2;
+      const leftMidY = currentY + sectionHeight / 2;
+      const leftLen = Math.hypot(sectionHeight, leftDx);
+
+      const leftBody = Bodies.rectangle(
+        leftMidX, leftMidY,
+        leftLen, 8,
+        { ...obstacleOptions, angle: leftAngle }
+      );
+      World.add(world, leftBody);
+
+      // Right angled wall
+      const rightDx = (endX + narrowW) - (startX + funnelW);
+      const rightAngle = Math.atan2(sectionHeight, rightDx);
+      const rightMidX = ((startX + funnelW) + (endX + narrowW)) / 2;
+      const rightMidY = currentY + sectionHeight / 2;
+      const rightLen = Math.hypot(sectionHeight, rightDx);
+
+      const rightBody = Bodies.rectangle(
+        rightMidX, rightMidY,
+        rightLen, 8,
+        { ...obstacleOptions, angle: rightAngle }
+      );
+      World.add(world, rightBody);
+    }
+    else if (layout.type === 'chokePoint') {
+      const chokeW = w * layout.width;
+      const offset = w * layout.offset;
+
+      const body = Bodies.rectangle(
+        offset,
+        currentY + sectionHeight / 2,
+        8,
+        sectionHeight,
+        obstacleOptions
+      );
+      World.add(world, body);
+    }
+    else if (layout.type === 'deflectors') {
+      const spread = w * layout.spread;
+      const startX = (w - spread) / 2;
+
+      layout.angles.forEach((angle, i) => {
+        const x = startX + (spread / (layout.angles.length + 1)) * (i + 1);
+        const len = sectionHeight * 0.6;
+        const rad = angle * Math.PI / 180;
+        const x2 = x + Math.cos(rad) * len;
+        const y2 = currentY + sectionHeight * 0.2 + Math.sin(rad) * len;
+
+        const centerX = (x + x2) / 2;
+        const centerY = (currentY + sectionHeight * 0.2 + y2) / 2;
+        const distance = Math.hypot(x2 - x, y2 - (currentY + sectionHeight * 0.2));
+        const angle_rad = Math.atan2(y2 - (currentY + sectionHeight * 0.2), x2 - x);
+
+        const body = Bodies.rectangle(
+          centerX, centerY,
+          distance, 6,
+          { ...obstacleOptions, angle: angle_rad }
+        );
+        World.add(world, body);
+      });
+    }
+    else if (layout.type === 'pegs') {
+      const spread = w * layout.spread;
+      const startX = (w - spread) / 2;
+      const pegRadius = 5;
+
+      for (let i = 0; i < layout.count; i++) {
+        const row = Math.floor(i / 4);
+        const col = i % 4;
+        const pegX = startX + (spread / 4) * (col + 0.5);
+        const pegY = currentY + (sectionHeight / (Math.ceil(layout.count / 4) + 1)) * (row + 1);
+
+        const body = Bodies.circle(pegX, pegY, pegRadius, obstacleOptions);
+        World.add(world, body);
+      }
+    }
+    else if (layout.type === 'halfPipe') {
+      const pipeW = w * layout.width;
+      const pipeStartX = (w - pipeW) / 2;
+
+      // Left wall
+      const leftBody = Bodies.rectangle(
+        pipeStartX, currentY + sectionHeight / 2,
+        8, sectionHeight,
+        obstacleOptions
+      );
+      World.add(world, leftBody);
+
+      // Right wall
+      const rightBody = Bodies.rectangle(
+        pipeStartX + pipeW, currentY + sectionHeight / 2,
+        8, sectionHeight,
+        obstacleOptions
+      );
+      World.add(world, rightBody);
+    }
+    else if (layout.type === 'splitPath') {
+      const leftW = w * layout.leftWidth;
+      const rightW = w * layout.rightWidth;
+      const gap = (w - leftW - rightW) / 2;
+
+      const body = Bodies.rectangle(
+        gap + leftW, currentY + sectionHeight / 2,
+        8, sectionHeight,
+        obstacleOptions
+      );
+      World.add(world, body);
+    }
+
+    currentY += sectionHeight;
+  });
+}
+
+// ============================================================
+//  PHYSICS (Matter.js)
+// ============================================================
+function initPhysicsEngine() {
+  engine = Engine.create();
+  world = engine.world;
+  world.gravity.y = 1;
+  world.gravity.x = 0;
+
+  const { w, h } = getContainerSize();
+  const wallThickness = 50;
+
+  // Container walls
+  const wallOptions = { isStatic: true, restitution: 0.15, friction: 0.1 };
+
+  // Bottom
+  World.add(world, Bodies.rectangle(w / 2, h + wallThickness / 2, w, wallThickness, {
+    ...wallOptions,
+    label: 'wall'
+  }));
+
+  // Left
+  World.add(world, Bodies.rectangle(-wallThickness / 2, h / 2, wallThickness, h, {
+    ...wallOptions,
+    label: 'wall'
+  }));
+
+  // Right
+  World.add(world, Bodies.rectangle(w + wallThickness / 2, h / 2, wallThickness, h, {
+    ...wallOptions,
+    label: 'wall'
+  }));
+
+  // Top
+  World.add(world, Bodies.rectangle(w / 2, -wallThickness / 2, w, wallThickness, {
+    ...wallOptions,
+    label: 'wall'
+  }));
+
+  // Initialize obstacles
+  initializeObstacles();
+}
+
+function createMatterMarbles() {
+  const { w, h } = getContainerSize();
+  const container = document.querySelector('.obstacle-course');
+  const marblesContainer = document.getElementById('marblesContainer');
+  marblesContainer.innerHTML = '';
+
+  matterMarbles = [];
+
+  const topY = 40;
+  const minSpacing = MARBLE_RADIUS * 2.5;
+  const maxWidth = w - minSpacing * 2 - 8;
+
+  names.forEach((name, idx) => {
+    const count = names.length;
+    const spacing = Math.max(minSpacing, maxWidth / Math.max(1, count - 1));
+    const startX = 4 + w / 2 - (spacing * (count - 1)) / 2 + spacing * idx;
+
+    // Matter body
+    const body = Bodies.circle(startX, topY, MARBLE_RADIUS, marbleOptions);
+    World.add(world, body);
+
+    // DOM element
+    const marbleEl = document.createElement('div');
+    marbleEl.className = 'marble';
+    marbleEl.style.backgroundColor = PARTICIPANT_COLORS[participantColors[name] % PARTICIPANT_COLORS.length];
+    marbleEl.style.width = (MARBLE_RADIUS * 2) + 'px';
+    marbleEl.style.height = (MARBLE_RADIUS * 2) + 'px';
+    marbleEl.style.boxShadow = '0 4px 12px rgba(0,0,0,0.6)';
+    marblesContainer.appendChild(marbleEl);
+
+    matterMarbles.push({
+      body,
+      name,
+      el: marbleEl
+    });
+  });
+}
+
+// ============================================================
+//  GAME LOOP
+// ============================================================
+function gameLoop(now) {
+  if (!raceInProgress) return;
+
+  const rawDt = (now - lastTime) / 1000;
+  lastTime = now;
+
+  // Run Matter.js engine
+  Engine.update(engine, Math.min(rawDt * 1000, 30));
+
+  // Clamp velocities
+  matterMarbles.forEach(m => {
+    const speed = Body.getSpeed(m.body);
+    if (speed > MAX_VELOCITY) {
+      const scale = MAX_VELOCITY / speed;
+      Body.setVelocity(m.body, {
+        x: m.body.velocity.x * scale,
+        y: m.body.velocity.y * scale
+      });
+    }
+  });
+
+  // Sync DOM positions
+  matterMarbles.forEach(m => {
+    const x = m.body.position.x - MARBLE_RADIUS;
+    const y = m.body.position.y - MARBLE_RADIUS;
+    m.el.style.transform = `translate(${x}px, ${y}px)`;
+  });
+
+  rafId = requestAnimationFrame(gameLoop);
+}
+
+function startRace() {
+  if (!validateProbabilities()) return;
+  if (raceInProgress) return;
+
+  selectedWinner = selectWeightedItem(names, probabilities);
+  raceInProgress = true;
+  document.getElementById('startRaceBtn').disabled = true;
+
+  lastTime = performance.now();
+
+  // Clear previous bodies
+  if (world) {
+    const bodies = Composite.allBodies(world);
+    bodies.forEach(b => {
+      if (b.label === 'marble') {
+        World.remove(world, b);
+      }
+    });
+  } else {
+    initPhysicsEngine();
+  }
+
+  createMatterMarbles();
+  rafId = requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+//  DOM & EVENTS
+// ============================================================
+const newNameInput = document.getElementById('newNameInput');
+const addNameBtn = document.getElementById('addNameBtn');
+
+newNameInput.addEventListener('click', () => {
+  newNameInput.style.borderColor='rgba(255,255,255,.5)'; newNameInput.style.background='rgba(255,255,255,.2)';
+  newNameInput.classList.remove('error-state'); clearErrorMessage();
+});
+newNameInput.addEventListener('focus', () => {
+  newNameInput.style.borderColor='rgba(255,255,255,.5)'; newNameInput.style.background='rgba(255,255,255,.2)';
+  newNameInput.classList.remove('error-state'); clearErrorMessage();
+});
+newNameInput.addEventListener('keypress', e => { if(e.key==='Enter') addNewParticipant(); });
+
+addNameBtn.addEventListener('click', addNewParticipant);
+
+const dmt = document.getElementById('desktopMenuToggle');
+const dd = document.getElementById('desktopDropdown');
+let dmOpen = false;
+if (dmt) {
+  dmt.addEventListener('click', e => { e.stopPropagation(); dmOpen=!dmOpen; dd.classList.toggle('active',dmOpen); dmt.classList.toggle('active',dmOpen); });
+  document.addEventListener('click', e => { if(dmOpen&&!dd.contains(e.target)&&!dmt.contains(e.target)){dmOpen=false;dd.classList.remove('active');dmt.classList.remove('active');} });
+}
+
+const bb = document.getElementById('burgerBtn');
+const md = document.getElementById('menuDropdown');
+let mOpen = false;
+if (bb) {
+  bb.addEventListener('click', e => { e.stopPropagation(); mOpen=!mOpen; md.classList.toggle('active',mOpen); bb.classList.toggle('active',mOpen); });
+  document.addEventListener('click', e => { if(mOpen&&!md.contains(e.target)&&!bb.contains(e.target)){mOpen=false;md.classList.remove('active');bb.classList.remove('active');} });
+}
+
+loadState();
+renderParticipants();
+validateProbabilities();
+initPhysicsEngine();
+createMatterMarbles();
+
+const startRaceBtn = document.getElementById('startRaceBtn');
+startRaceBtn.addEventListener('click', startRace);
+</script>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document,'script','https://mc.yandex.ru/metrika/tag.js','ym');
+  ym(104849796, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true});
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+
+</body>
+</html>
