@@ -19,29 +19,6 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           printf "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
 
-      - name: Preflight (whoami, hostname, ls)
-        run: |
-          ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
-            'echo "user=$(whoami) host=$(hostname)"; ls -la /srv/www/randomhostwebsite | head -n 20'
-
-      # dry-run покажет, что именно собирается поменять rsync
-      - name: Rsync DRY-RUN (debug)
-        run: |
-          rsync -avz --delete --checksum --itemize-changes \
-            --exclude='.git*' \
-            --exclude='.github*' \
-            --exclude='.vscode*' \
-            --exclude='node_modules*' \
-            --exclude='*.md' \
-            --exclude='LICENSE' \
-            --exclude='package*.json' \
-            --exclude='pnpm-lock.yaml' \
-            --exclude='yarn.lock' \
-            --exclude='.DS_Store' \
-            -e "ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SERVER_PORT }}" \
-            ./ ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/srv/www/randomhostwebsite/
-
-      # реальный деплой
       - name: Deploy via rsync
         run: |
           rsync -avz --delete --checksum \
@@ -56,10 +33,14 @@ jobs:
             --exclude='yarn.lock' \
             --exclude='.DS_Store' \
             -e "ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SERVER_PORT }}" \
-            ./ ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/srv/www/randomhostwebsite/
+            ./ ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/opt/randomhostwebsite/
+
+      - name: Rebuild and restart randomhost
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
+            'cd /opt/randomhostwebsite && docker compose up -d --build'
 
       - name: Post-check
         run: |
           ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
-            'echo "after:"; ls -la /srv/www/randomhostwebsite | head -n 20; \
-            echo "curl:"; curl -I http://127.0.0.1:8080/ | head -n 5'
+            'docker ps | grep randomhost; curl -I http://127.0.0.1:8080/ | head -n 5'
