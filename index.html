@@ -1618,6 +1618,126 @@
     }
   }
 }
+
+/* ====================================================================
+   Language switcher — main-page redesign (scoped to index.html only)
+   Tactile segmented control: flag + label chips, gold active state,
+   springy hover/press feedback to invite switching.
+   ==================================================================== */
+body .lang-switch {
+  top: 18px !important;
+  right: 18px !important;
+  gap: 4px !important;
+  padding: 6px !important;
+  border-radius: 16px !important;
+  background: linear-gradient(135deg, rgba(26, 0, 51, 0.72), rgba(118, 75, 162, 0.55)) !important;
+  border: 1px solid rgba(255, 212, 59, 0.35) !important;
+  box-shadow:
+    0 10px 30px rgba(26, 0, 51, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(1.4) !important;
+  backdrop-filter: blur(14px) saturate(1.4) !important;
+  animation: langSwitchIn 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+
+@keyframes langSwitchIn {
+  from { opacity: 0; transform: translateY(-12px) scale(0.9); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+body .lang-switch button {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 9px 14px !important;
+  border-radius: 12px !important;
+  font-weight: 800 !important;
+  font-size: 13.5px !important;
+  letter-spacing: 0.4px !important;
+  color: rgba(255, 255, 255, 0.72) !important;
+  background: transparent !important;
+  transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.5),
+              background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+body .lang-switch button:hover {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  transform: translateY(-2px) !important;
+}
+
+body .lang-switch button:active {
+  transform: translateY(0) scale(0.92) !important;
+}
+
+body .lang-switch button.is-active {
+  color: #2a0a4a !important;
+  background: linear-gradient(135deg, #ffe066, #f59e0b) !important;
+  box-shadow:
+    0 6px 16px rgba(245, 158, 11, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+  transform: translateY(-1px) !important;
+}
+
+@media (max-width: 520px) {
+  body .lang-switch {
+    top: 10px !important;
+    right: 10px !important;
+    padding: 5px !important;
+    border-radius: 14px !important;
+  }
+  body .lang-switch button {
+    padding: 8px 11px !important;
+    font-size: 12.5px !important;
+  }
+}
+
+/* ====================================================================
+   First-visit language-switcher spotlight (campaign until 2026-06-21)
+   Darkens the whole screen, leaving the switcher lit to highlight it.
+   ==================================================================== */
+.lang-spotlight {
+  position: fixed;
+  inset: 0;
+  z-index: 99990; /* sits just below .lang-switch (99999) so the pill stays lit */
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  transition: opacity 1s ease;
+  background: radial-gradient(
+    circle at calc(100% - 62px) 40px,
+    rgba(0, 0, 0, 0) 52px,
+    rgba(0, 0, 0, 0.45) 130px,
+    rgba(0, 0, 0, 0.86) 260px
+  );
+}
+.lang-spotlight.is-on {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Pulsing gold halo on the switcher while the spotlight is up */
+body.lang-spotlight-active .lang-switch {
+  animation: langSpotlightPulse 1.7s ease-in-out infinite !important;
+}
+@keyframes langSpotlightPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 10px 30px rgba(26, 0, 51, 0.45),
+                0 0 0 0 rgba(255, 212, 59, 0.55);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 14px 36px rgba(26, 0, 51, 0.5),
+                0 0 0 16px rgba(255, 212, 59, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.lang-spotlight-active .lang-switch { animation: none !important; }
+  .lang-spotlight { transition: opacity 0.3s ease; }
+}
   </style>
 </head>
 <body>
@@ -2849,5 +2969,47 @@
   };
   </script>
   <script src="i18n.js" defer></script>
+
+  <!-- First-visit spotlight: highlight the language switcher (campaign until 21 Jun 2026) -->
+  <div id="langSpotlight" class="lang-spotlight" aria-hidden="true"></div>
+  <script>
+  (function () {
+    var SEEN_KEY = 'rh_lang_spotlight_v1';
+    var DEADLINE = new Date('2026-06-21T23:59:59');
+    try {
+      if (localStorage.getItem(SEEN_KEY)) return;     // already shown once
+      if (new Date() > DEADLINE) return;              // campaign window closed
+    } catch (e) { return; }
+
+    function start() {
+      var ov = document.getElementById('langSpotlight');
+      var pill = document.querySelector('.lang-switch');
+      if (!ov || !pill) return;                        // switcher not ready yet
+      try { localStorage.setItem(SEEN_KEY, '1'); } catch (e) {}
+
+      document.body.classList.add('lang-spotlight-active');
+      requestAnimationFrame(function () { ov.classList.add('is-on'); });
+
+      function dismiss() {
+        ov.classList.remove('is-on');
+        document.body.classList.remove('lang-spotlight-active');
+        document.removeEventListener('click', dismiss, true);
+        document.removeEventListener('keydown', dismiss, true);
+        setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 1000);
+      }
+      // Any click or key press anywhere lifts the dimming.
+      document.addEventListener('click', dismiss, true);
+      document.addEventListener('keydown', dismiss, true);
+    }
+
+    // Wait a beat so the page settles and the switcher is mounted by i18n.js.
+    function boot() { setTimeout(start, 750); }
+    if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', boot);
+    } else {
+      boot();
+    }
+  })();
+  </script>
 </body>
 </html>
