@@ -1,0 +1,2887 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+  <title>Slack Рулетка — Кто чинит прод? | Онлайн рандомайзер</title>
+  <meta name="description" content="🚨 Симуляция Slack-треда с инцидентом: Большой Босс объявляет аврал и выбирает дежурного спасителя прода! Драматичный рандомайзер для IT-команд." data-i18n-meta="meta_desc" />
+  <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1">
+
+  <!-- Open Graph -->
+  <meta property="og:locale" content="ru_RU">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Slack Рулетка — Кто чинит прод?">
+  <meta property="og:description" content="Большой Босс ищет героя на инцидент! Драматичный рандомайзер в стиле Slack-треда.">
+  <meta property="og:url" content="https://randomhost.online/slack-roulette.html">
+  <meta property="og:site_name" content="Рандомайзер Онлайн">
+
+  <!-- Icons -->
+  <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f6a8.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#4A154B">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --slack-aubergine: #4A154B;
+      --slack-dark: #1A1D21;
+      --slack-panel: #222529;
+      --slack-border: #383B40;
+      --slack-accent: #ECB22E;
+      --slack-red: #E01E5A;
+      --slack-blue: #1264A3;
+      --slack-cyan: #1D9BD1;
+      --slack-text: #D1D2D3;
+      --slack-text-bright: #FFFFFF;
+      --slack-mention: #1D9BD1;
+      --slack-mention-bg: rgba(29, 155, 209, 0.2);
+    }
+
+    body {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 30px 20px 50px 20px;
+      background: linear-gradient(135deg, #2b092c 0%, #17191d 50%, #0d0e11 100%);
+      font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #fff;
+      touch-action: manipulation;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Фоновые плавающие эмодзи */
+    .bg-particles {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+
+    .particle {
+      position: absolute;
+      font-size: 24px;
+      opacity: 0.12;
+      animation: floatUp 14s linear infinite;
+    }
+
+    @keyframes floatUp {
+      0% { transform: translateY(105vh) rotate(0deg); opacity: 0; }
+      10% { opacity: 0.18; }
+      90% { opacity: 0.18; }
+      100% { transform: translateY(-10vh) rotate(360deg); opacity: 0; }
+    }
+
+    /* ===== TOP DESKTOP MENU ===== */
+    .top-buttons {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 1000;
+    }
+
+    .desktop-menu-toggle {
+      position: relative;
+      background: linear-gradient(135deg, rgba(74,21,75,0.9), rgba(34,37,41,0.95));
+      backdrop-filter: blur(12px);
+      color: #fff;
+      border: 2px solid rgba(255,255,255,0.25);
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+    }
+
+    .desktop-menu-toggle:hover {
+      transform: translateY(-3px) scale(1.05);
+      border-color: #ECB22E;
+      box-shadow: 0 8px 25px rgba(236,178,46,0.3);
+    }
+
+    .menu-icon {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      width: 24px;
+      height: 18px;
+      position: relative;
+    }
+
+    .menu-icon span {
+      display: block;
+      width: 100%;
+      height: 3px;
+      background: #fff;
+      border-radius: 2px;
+      position: absolute;
+      transition: all 0.3s ease;
+    }
+
+    .menu-icon span:nth-child(1) { top: 0; }
+    .menu-icon span:nth-child(2) { top: 7px; }
+    .menu-icon span:nth-child(3) { top: 14px; }
+
+    .desktop-menu-toggle.active .menu-icon span:nth-child(1) {
+      transform: rotate(45deg);
+      top: 7px;
+      background: #ECB22E;
+    }
+    .desktop-menu-toggle.active .menu-icon span:nth-child(2) { opacity: 0; }
+    .desktop-menu-toggle.active .menu-icon span:nth-child(3) {
+      transform: rotate(-45deg);
+      top: 7px;
+      background: #ECB22E;
+    }
+
+    .desktop-dropdown {
+      position: absolute;
+      top: 70px;
+      left: 0;
+      background: rgba(26, 29, 33, 0.98);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 16px;
+      padding: 10px 0;
+      min-width: 230px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+      backdrop-filter: blur(20px);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-10px) scale(0.95);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .desktop-dropdown.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0) scale(1);
+    }
+
+    .desktop-dropdown a {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      color: #D1D2D3;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+
+    .desktop-dropdown a:hover {
+      background: rgba(236,178,46,0.15);
+      color: #fff;
+      padding-left: 24px;
+    }
+
+    /* ===== MOBILE MENU ===== */
+    .menu-container {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: rgba(26, 29, 33, 0.95);
+      backdrop-filter: blur(15px);
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .menu-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+    }
+
+    .menu-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: #ECB22E;
+      letter-spacing: 0.5px;
+    }
+
+    .burger-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .burger-btn span {
+      display: block;
+      width: 22px;
+      height: 2px;
+      background: #fff;
+      border-radius: 2px;
+      transition: all 0.3s;
+    }
+
+    .burger-btn.active span:nth-child(1) {
+      transform: rotate(45deg) translateY(7px);
+    }
+
+    .burger-btn.active span:nth-child(2) {
+      opacity: 0;
+    }
+
+    .burger-btn.active span:nth-child(3) {
+      transform: rotate(-45deg) translateY(-7px);
+    }
+
+    .menu-dropdown {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+      background: #1A1D21;
+    }
+
+    .menu-dropdown.active {
+      max-height: 600px;
+    }
+
+    .menu-dropdown a {
+      display: block;
+      padding: 14px 24px;
+      color: #D1D2D3;
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 600;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+
+    /* ===== PAGE WRAPPER & HEADLINE ===== */
+    .page-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      max-width: 1350px;
+      width: 100%;
+      position: relative;
+      z-index: 1;
+    }
+
+    .app-headline {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .app-title {
+      font-size: clamp(26px, 4vw, 42px);
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #FFFFFF 0%, #ECB22E 65%, #E01E5A 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 10px 30px rgba(224, 30, 90, 0.3);
+    }
+
+    .app-subtitle {
+      font-size: 15px;
+      color: #A0A0A5;
+      margin-top: 6px;
+      font-weight: 600;
+    }
+
+    /* ===== MAIN TWO-COLUMN LAYOUT (Top-aligned) ===== */
+    .main-container {
+      display: flex;
+      flex-direction: row;
+      gap: 36px;
+      width: 100%;
+      align-items: flex-start;
+      justify-content: center;
+    }
+
+    /* ===== SETTINGS PANEL (LEFT SIDEBAR) ===== */
+    .settings-panel {
+      width: 440px;
+      flex-shrink: 0;
+      background: rgba(34, 37, 41, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      padding: 24px 22px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+      backdrop-filter: blur(20px);
+      transition: opacity 0.3s ease, filter 0.3s ease;
+    }
+
+    .settings-panel.disabled {
+      opacity: 0.4;
+      pointer-events: none;
+      filter: grayscale(0.3);
+      user-select: none;
+    }
+
+    .settings-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .settings-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .settings-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .equalize-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .equalize-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: #ECB22E;
+      transform: translateY(-1px);
+    }
+
+    .sound-toggle-btn {
+      width: 38px;
+      height: 38px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .headers-row {
+      display: grid;
+      grid-template-columns: 1fr 130px 40px;
+      gap: 10px;
+      padding: 0 10px 10px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #8C8D91;
+      text-transform: uppercase;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      margin-bottom: 12px;
+    }
+
+    .names-list-wrapper {
+      max-height: 480px;
+      overflow-y: auto;
+      padding-right: 6px;
+    }
+
+    .names-list-wrapper::-webkit-scrollbar {
+      width: 6px;
+    }
+    .names-list-wrapper::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.2);
+      border-radius: 3px;
+    }
+
+    .names-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .name-item {
+      display: grid;
+      grid-template-columns: 1fr 130px 40px;
+      gap: 10px;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      transition: all 0.2s;
+    }
+
+    .name-item:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .name-input {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 9px 12px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .name-input:focus {
+      border-color: #ECB22E;
+    }
+
+    .probability-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      width: 120px;
+      flex-shrink: 0;
+    }
+
+    .prob-btn {
+      padding: 5px 9px;
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 700;
+      transition: 0.2s;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    .prob-btn:hover {
+      background: rgba(255,255,255,0.25);
+      transform: scale(1.05);
+    }
+
+    .prob-btn:active {
+      transform: scale(0.95);
+    }
+
+    .probability-input {
+      width: 55px;
+      padding: 5px 4px;
+      background: rgba(0,0,0,0.4);
+      color: #ffd43b;
+      border: 2px solid rgba(255,212,59,0.3);
+      border-radius: 6px;
+      text-align: center;
+      font-weight: 800;
+      font-size: 14px;
+      transition: 0.2s;
+      flex-shrink: 0;
+      outline: none;
+    }
+
+    .probability-input:focus {
+      outline: none;
+      border-color: rgba(255,212,59,0.8);
+      background: rgba(0,0,0,0.6);
+    }
+
+    .probability-input.error {
+      border-color: rgba(239,68,68,0.9);
+      background: rgba(239,68,68,0.25);
+    }
+
+    .probability-input.manual {
+      background: rgba(245,158,11,0.18);
+      border-color: #F59E0B;
+      box-shadow: 0 0 0 2px rgba(245,158,11,0.3);
+    }
+
+    .remove-btn {
+      background: rgba(224, 30, 90, 0.15);
+      border: 1px solid rgba(224, 30, 90, 0.3);
+      color: #FF5C8A;
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .remove-btn:hover {
+      background: var(--slack-red);
+      color: #fff;
+      transform: scale(1.05);
+    }
+
+    .add-name-container {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .add-btn-small {
+      background: #2BAC76;
+      border: none;
+      color: #fff;
+      padding: 0 18px;
+      border-radius: 10px;
+      font-size: 18px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .add-btn-small:hover {
+      background: #239464;
+      transform: scale(1.05);
+    }
+
+    .error-message {
+      color: #FF5C8A;
+      font-size: 12px;
+      font-weight: 700;
+      margin-top: 10px;
+      min-height: 18px;
+      text-align: center;
+    }
+
+    /* ===== GAME CONTAINER (RIGHT SIDE) ===== */
+    .game-container {
+      flex: 1.4;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 0;
+    }
+
+    /* ===== SLACK WINDOW SIMULATION ===== */
+    .slack-window {
+      width: 100%;
+      background: var(--slack-panel);
+      border-radius: 18px;
+      border: 1px solid var(--slack-border);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      overflow: visible;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .slack-window.in-action {
+      border-color: #E01E5A;
+      box-shadow: 0 25px 70px rgba(224, 30, 90, 0.4), 0 0 30px rgba(224, 30, 90, 0.25);
+    }
+
+    /* Slack Window Header */
+    .slack-header {
+      background: #1A1D21;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--slack-border);
+      border-radius: 18px 18px 0 0;
+      user-select: none;
+    }
+
+    .window-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .win-btn {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    .win-close { background: #FF5F56; }
+    .win-min { background: #FFBD2E; }
+    .win-max { background: #27C93F; }
+
+    .channel-info {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--slack-text-bright);
+    }
+
+    .channel-hash {
+      color: #9A9B9E;
+      font-weight: 900;
+    }
+
+    .online-members {
+      font-size: 12px;
+      color: #8C8D91;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .online-dot {
+      width: 8px;
+      height: 8px;
+      background: #2BAC76;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #2BAC76;
+    }
+
+    /* Slack Message Body */
+    .slack-body {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      background: #1A1D21;
+      min-height: 420px;
+      border-radius: 0 0 18px 18px;
+      position: relative;
+    }
+
+    .date-divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      color: #8C8D91;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .date-divider::before, .date-divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid var(--slack-border);
+    }
+
+    .date-divider span {
+      padding: 0 14px;
+    }
+
+    /* Message Item */
+    .slack-message {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid transparent;
+      transition: all 0.3s;
+      position: relative;
+    }
+
+    .slack-message.highlight {
+      background: rgba(236, 178, 46, 0.05);
+      border-color: rgba(236, 178, 46, 0.2);
+    }
+
+    .boss-avatar-wrapper {
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .boss-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #ECB22E 0%, #E01E5A 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      user-select: none;
+    }
+
+    .avatar-status-badge {
+      position: absolute;
+      bottom: -4px;
+      right: -4px;
+      font-size: 14px;
+      background: #1A1D21;
+      border-radius: 50%;
+      padding: 2px;
+    }
+
+    .message-content {
+      flex: 1;
+      min-width: 0;
+      position: relative;
+    }
+
+    .message-meta {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+
+    .author-name {
+      font-weight: 800;
+      font-size: 15px;
+      color: var(--slack-text-bright);
+    }
+
+    .message-time {
+      font-size: 12px;
+      color: #8C8D91;
+    }
+
+    /* Incident Callout Card */
+    .incident-callout {
+      background: rgba(224, 30, 90, 0.08);
+      border-left: 4px solid var(--slack-red);
+      padding: 12px 16px;
+      border-radius: 0 8px 8px 0;
+      margin: 8px 0 14px 0;
+    }
+
+    .incident-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 800;
+      font-size: 14px;
+      color: #FF668B;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .incident-text {
+      font-size: 14px;
+      line-height: 1.5;
+      color: #F0F1F2;
+      font-weight: 600;
+    }
+
+    /* Target Selection Section: Realistic Slack Mention Line */
+    .duty-assignment-box {
+      margin-top: 14px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 16px 20px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .assignment-intro {
+      font-size: 14px;
+      font-weight: 700;
+      color: #ECB22E;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mention-typing-line {
+      display: block;
+      line-height: 1.6;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 10px 14px;
+      position: relative;
+      min-height: 48px;
+    }
+
+    .mention-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--slack-mention-bg);
+      color: var(--slack-mention);
+      padding: 2px 10px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 16px;
+      font-weight: 700;
+      transition: all 0.2s;
+      vertical-align: middle;
+    }
+
+    .mention-badge.locked {
+      background: #1264A3;
+      color: #FFFFFF;
+      box-shadow: 0 0 20px rgba(18, 100, 163, 0.8);
+      animation: mentionPop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .boss-directive-text {
+      font-size: 15px;
+      font-weight: 700;
+      color: #F0F1F2;
+      line-height: 1.5;
+      font-family: 'Montserrat', sans-serif;
+      word-break: break-word;
+      vertical-align: middle;
+      display: inline;
+    }
+
+    @keyframes mentionPop {
+      0% { transform: scale(0.8); }
+      60% { transform: scale(1.15); }
+      100% { transform: scale(1); }
+    }
+
+    .typing-cursor {
+      display: inline-block;
+      width: 2px;
+      height: 18px;
+      background: #1D9BD1;
+      margin-left: 2px;
+      vertical-align: middle;
+      animation: blinkCursor 0.8s infinite;
+    }
+
+    @keyframes blinkCursor {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    /* REALISTIC SLACK AUTOCOMPLETE MENTION DROPDOWN POPUP */
+    .slack-mention-popup {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 14px;
+      width: calc(100% - 28px);
+      max-width: 360px;
+      background: #222529;
+      border: 1px solid #383B40;
+      border-radius: 10px;
+      box-shadow: 0 14px 40px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.08);
+      z-index: 100;
+      overflow: hidden;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-8px) scale(0.96);
+      transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .slack-mention-popup.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0) scale(1);
+    }
+
+    .popup-header {
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #8C8D91;
+      text-transform: uppercase;
+      background: #1A1D21;
+      border-bottom: 1px solid #383B40;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .popup-list {
+      display: flex;
+      flex-direction: column;
+      max-height: 280px;
+      overflow-y: hidden;
+      scroll-behavior: smooth;
+    }
+
+    .popup-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #D1D2D3;
+      transition: background 0.1s;
+    }
+
+    .popup-item.selected {
+      background: #1264A3;
+      color: #FFFFFF;
+    }
+
+    .popup-avatar {
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      background: #383B40;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+
+    .popup-item.selected .popup-avatar {
+      background: rgba(255,255,255,0.25);
+    }
+
+    .popup-name {
+      flex: 1;
+      font-weight: 700;
+    }
+
+    .popup-tag {
+      font-size: 11px;
+      opacity: 0.7;
+    }
+
+    /* Typing Indicator Bar */
+    .typing-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #8C8D91;
+      font-style: italic;
+      min-height: 22px;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .typing-bar.visible {
+      opacity: 1;
+    }
+
+    .typing-dots {
+      display: flex;
+      gap: 4px;
+    }
+
+    .typing-dot {
+      width: 5px;
+      height: 5px;
+      background: #8C8D91;
+      border-radius: 50%;
+      animation: typingBounce 1.2s infinite ease-in-out;
+    }
+
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes typingBounce {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+      40% { transform: scale(1.2); opacity: 1; }
+    }
+
+    /* Reactions Bar */
+    .reactions-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .reaction-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--slack-text);
+      user-select: none;
+      transition: all 0.2s;
+    }
+
+    .reaction-pill.boosted {
+      background: rgba(236, 178, 46, 0.2);
+      border-color: #ECB22E;
+      color: #FFF;
+      transform: scale(1.12);
+      animation: reactBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @keyframes reactBounce {
+      0% { transform: scale(0.8); }
+      50% { transform: scale(1.3); }
+      100% { transform: scale(1.12); }
+    }
+
+    /* Thread reply strip */
+    .thread-footer {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #1D9BD1;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      cursor: pointer;
+    }
+
+    .thread-avatars {
+      display: flex;
+      margin-right: 4px;
+    }
+
+    .thread-avatars span {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      background: #383B40;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      margin-left: -4px;
+      border: 1px solid #1A1D21;
+    }
+
+    .thread-avatars span:first-child { margin-left: 0; }
+
+    /* ===== CONTROLS & ACTION BUTTON (Consistent with Slack Theme) ===== */
+    .controls {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin-top: 30px;
+      width: 100%;
+    }
+
+    button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):not(.desktop-menu-toggle):not(.close-modal-btn):not(.burger-btn) {
+      padding: 16px 36px;
+      font-size: 18px;
+      font-weight: 800;
+      border: 1px solid rgba(255, 102, 139, 0.5);
+      border-radius: 50px;
+      background: linear-gradient(135deg, #A81440 0%, #E01E5A 60%, #FF5C8A 100%);
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 6px 20px rgba(224, 30, 90, 0.45), 0 2px 6px rgba(0,0,0,0.4);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+      touch-action: manipulation;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+
+    button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):not(.desktop-menu-toggle):not(.close-modal-btn):not(.burger-btn):before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.25);
+      transform: translate(-50%, -50%);
+      transition: width 0.6s, height 0.6s;
+    }
+
+    button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):not(.desktop-menu-toggle):not(.close-modal-btn):not(.burger-btn):hover:before {
+      width: 320px;
+      height: 320px;
+    }
+
+    button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):not(.desktop-menu-toggle):not(.close-modal-btn):not(.burger-btn):hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 28px rgba(224, 30, 90, 0.65), 0 0 18px rgba(255, 102, 139, 0.4);
+      border-color: rgba(255, 255, 255, 0.8);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    /* ===== WINNER MODAL OVERLAY ===== */
+    .winner-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 12, 16, 0.88);
+      backdrop-filter: blur(16px);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .winner-overlay.show {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .winner-card {
+      background: linear-gradient(135deg, #241426 0%, #1A1D21 55%, #1f1422 100%);
+      border: 2px solid #E01E5A;
+      border-radius: 24px;
+      padding: 36px 30px;
+      max-width: 520px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 25px 80px rgba(0,0,0,0.85), 0 0 50px rgba(224, 30, 90, 0.35), inset 0 1px 0 rgba(255, 102, 139, 0.2);
+      transform: scale(0.85) translateY(20px);
+      transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      position: relative;
+    }
+
+    .winner-overlay.show .winner-card {
+      transform: scale(1) translateY(0);
+    }
+
+    .winner-badge-icon {
+      font-size: 56px;
+      margin-bottom: 12px;
+      animation: bounceWin 1s infinite alternate ease-in-out;
+    }
+
+    @keyframes bounceWin {
+      0% { transform: translateY(0) scale(1); }
+      100% { transform: translateY(-10px) scale(1.1); }
+    }
+
+    .winner-heading {
+      font-size: 14px;
+      font-weight: 800;
+      color: #FF668B;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    .winner-name-display {
+      font-size: clamp(28px, 6vw, 42px);
+      font-weight: 900;
+      color: #FFFFFF;
+      background: linear-gradient(135deg, #FFFFFF 0%, #FFD43B 45%, #FF5C8A 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+      word-break: break-all;
+      text-shadow: 0 10px 30px rgba(224, 30, 90, 0.4);
+    }
+
+    .winner-quote {
+      font-size: 15px;
+      color: #D1D2D3;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+
+    .modal-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .modal-btn {
+      padding: 14px 20px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-again {
+      background: linear-gradient(135deg, #A81440 0%, #E01E5A 60%, #FF5C8A 100%);
+      color: #fff;
+      box-shadow: 0 6px 20px rgba(224, 30, 90, 0.45);
+      border: 1px solid rgba(255, 102, 139, 0.4);
+    }
+    .btn-again:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(224, 30, 90, 0.65), 0 0 15px rgba(255, 102, 139, 0.4);
+      border-color: rgba(255, 255, 255, 0.8);
+    }
+
+    .btn-exclude {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #D1D2D3;
+    }
+    .btn-exclude:hover {
+      background: rgba(224, 30, 90, 0.25);
+      border-color: #E01E5A;
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    .close-modal-btn {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 50%;
+      color: #A0A0A5;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      z-index: 20;
+      transition: all 0.2s ease;
+      touch-action: manipulation;
+      user-select: none;
+    }
+    .close-modal-btn:hover {
+      background: rgba(224, 30, 90, 0.35);
+      border-color: #E01E5A;
+      color: #fff;
+      transform: scale(1.08);
+    }
+    .close-modal-btn:active {
+      transform: scale(0.92);
+    }
+
+    /* ===== RESPONSIVE & MOBILE ADAPTATION ===== */
+    @media (max-width: 960px) {
+      .main-container {
+        flex-direction: column-reverse;
+        align-items: stretch;
+        gap: 24px;
+      }
+      .top-buttons { display: none; }
+      .menu-container { display: block; }
+      body {
+        padding-top: max(75px, calc(env(safe-area-inset-top, 0px) + 60px));
+        padding-left: max(12px, env(safe-area-inset-left, 0px));
+        padding-right: max(12px, env(safe-area-inset-right, 0px));
+        padding-bottom: max(30px, env(safe-area-inset-bottom, 0px));
+      }
+      .settings-panel {
+        width: 100%;
+        max-width: 100%;
+      }
+      .game-container {
+        width: 100%;
+      }
+      .controls {
+        margin-top: 20px;
+      }
+      .controls button {
+        width: 100%;
+        max-width: 100%;
+      }
+    }
+
+    @media (max-width: 600px) {
+      body {
+        padding-left: 10px;
+        padding-right: 10px;
+      }
+      .app-headline {
+        margin-bottom: 16px;
+      }
+      .app-title {
+        font-size: 26px;
+      }
+      .thread-body {
+        padding: 16px 12px;
+      }
+      .boss-message-row {
+        gap: 10px;
+      }
+      .boss-avatar {
+        width: 38px;
+        height: 38px;
+        font-size: 20px;
+      }
+      .incident-callout {
+        padding: 10px 12px;
+        margin: 6px 0 10px 0;
+      }
+      .incident-header {
+        font-size: 12.5px;
+      }
+      .incident-text {
+        font-size: 13px;
+      }
+      .duty-assignment-box {
+        padding: 12px 12px;
+        gap: 10px;
+      }
+      .assignment-intro {
+        font-size: 13px;
+      }
+      .mention-typing-line {
+        font-size: 15px;
+        min-height: 44px;
+        padding: 8px 10px;
+      }
+      .mention-badge {
+        font-size: 14px;
+        padding: 2px 6px;
+      }
+      .boss-directive-text {
+        font-size: 13.5px;
+      }
+      .slack-mention-popup {
+        left: 0;
+        right: 0;
+        width: 100%;
+        max-width: 100%;
+      }
+      .popup-list {
+        max-height: 230px;
+      }
+      .reaction-pill {
+        padding: 3px 8px;
+        font-size: 12px;
+      }
+      .settings-panel {
+        padding: 20px 14px;
+      }
+      .settings-title {
+        font-size: 18px;
+      }
+      .headers-row {
+        grid-template-columns: 1fr 115px 36px;
+        padding: 0 4px 8px 4px;
+        font-size: 11px;
+      }
+      .name-item {
+        grid-template-columns: 1fr 115px 36px;
+        padding: 6px 6px;
+        gap: 6px;
+      }
+      .name-input {
+        padding: 7px 8px;
+        font-size: 13px;
+      }
+      .probability-controls {
+        width: 110px;
+        gap: 2px;
+      }
+      .prob-btn {
+        padding: 4px 6px;
+        font-size: 13px;
+      }
+      .probability-input {
+        width: 48px;
+        font-size: 13px;
+        padding: 4px 2px;
+      }
+      .remove-btn {
+        width: 34px;
+        height: 34px;
+        font-size: 14px;
+      }
+      .add-row {
+        gap: 8px;
+      }
+      .new-name-input {
+        padding: 10px 12px;
+        font-size: 13px;
+      }
+      .add-btn-small {
+        padding: 0 14px;
+        font-size: 16px;
+      }
+      .winner-card {
+        padding: 26px 18px;
+        border-radius: 20px;
+      }
+      .winner-badge-icon {
+        font-size: 46px;
+      }
+      .winner-heading {
+        font-size: 13px;
+      }
+      .winner-name-display {
+        font-size: clamp(24px, 7vw, 34px);
+      }
+      .winner-quote {
+        font-size: 13.5px;
+        margin-bottom: 20px;
+      }
+      .modal-btn {
+        padding: 12px 16px;
+        font-size: 14px;
+      }
+    }
+
+    /* Экстремально узкие экраны (<= 360px) */
+    @media (max-width: 360px) {
+      .app-title {
+        font-size: 22px;
+      }
+      .headers-row {
+        grid-template-columns: 1fr 100px 30px;
+      }
+      .name-item {
+        grid-template-columns: 1fr 100px 30px;
+        gap: 4px;
+        padding: 5px 4px;
+      }
+      .probability-controls {
+        width: 100px;
+      }
+      .prob-btn {
+        padding: 4px 5px;
+        font-size: 12px;
+      }
+      .probability-input {
+        width: 42px;
+        font-size: 12px;
+      }
+      .remove-btn {
+        width: 30px;
+        height: 30px;
+        font-size: 12px;
+      }
+    }
+
+    /* Touch Devices Optimization */
+    @media (hover: none) and (pointer: coarse) {
+      .prob-btn:hover,
+      .add-btn-small:hover,
+      .remove-btn:hover,
+      .equalize-btn:hover,
+      .desktop-menu-toggle:hover,
+      button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):hover {
+        transform: none !important;
+      }
+      button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):before {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Background Animated Emojis -->
+  <div class="bg-particles" id="bgParticles"></div>
+
+  <!-- Desktop Menu -->
+  <div class="top-buttons">
+    <button class="desktop-menu-toggle" id="desktopMenuToggle" aria-label="Меню" data-i18n-attr="aria-label:menu">
+      <div class="menu-icon">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </button>
+    <nav class="desktop-dropdown" id="desktopDropdown">
+      <a href="index.html" data-i18n="nav_home">🏠 Главная</a>
+      <a href="bingo.html" data-i18n="nav_bingo">🎲 Бинго</a>
+      <a href="el-credito.html" data-i18n="nav_bank">🇲🇽 Банк</a>
+      <a href="wheel-of-fortune.html" data-i18n="nav_wheel">🎡 Колесо Фортуны</a>
+      <a href="lottery-drum.html" data-i18n="nav_loto">🎱 Лототрон</a>
+      <a href="crystal-ball.html" data-i18n="nav_crystal">🔮 Магический Шар</a>
+      <a href="plinko.html" data-i18n="nav_plinko">🎯 Плинко</a>
+      <a href="racing.html" data-i18n="nav_racing">🏁 Гонки</a>
+      <a href="trading.html" data-i18n="nav_trading">📈 Трейдинг</a>
+    </nav>
+  </div>
+
+  <!-- Mobile Menu -->
+  <div class="menu-container">
+    <div class="menu-header">
+      <div class="menu-title" data-i18n="menu_title">🚨 SLACK РУЛЕТКА</div>
+      <button class="burger-btn" id="burgerBtn" aria-label="Меню" data-i18n-attr="aria-label:menu">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+    <nav class="menu-dropdown" id="menuDropdown">
+      <a href="index.html" data-i18n="nav_home">🏠 Главная</a>
+      <a href="bingo.html" data-i18n="nav_bingo">🎲 Бинго</a>
+      <a href="el-credito.html" data-i18n="nav_bank">🇲🇽 Банк</a>
+      <a href="wheel-of-fortune.html" data-i18n="nav_wheel">🎡 Колесо Фортуны</a>
+      <a href="lottery-drum.html" data-i18n="nav_loto">🎱 Лототрон</a>
+      <a href="crystal-ball.html" data-i18n="nav_crystal">🔮 Магический Шар</a>
+      <a href="plinko.html" data-i18n="nav_plinko">🎯 Плинко</a>
+      <a href="racing.html" data-i18n="nav_racing">🏁 Гонки</a>
+      <a href="trading.html" data-i18n="nav_trading">📈 Трейдинг</a>
+    </nav>
+  </div>
+
+  <!-- PAGE WRAPPER: Centers title above the two aligned columns -->
+  <div class="page-wrapper">
+
+    <div class="app-headline">
+      <h1 class="app-title" data-i18n="h1">🚨 SLACK РУЛЕТКА</h1>
+    </div>
+
+    <!-- Main Container: TWO COLUMNS (Settings on LEFT, Game on RIGHT, Level Top Alignment) -->
+    <div class="main-container">
+      
+      <!-- LEFT COLUMN: Settings Panel (Participants & Odds) -->
+      <div class="settings-panel" id="settingsPanel">
+        <div class="settings-header">
+          <h2 class="settings-title" data-i18n="participants">👥 Участники</h2>
+          <div class="settings-actions">
+            <button class="equalize-btn" id="equalizeBtn" title="Уравнять вероятности" data-i18n="equalize" data-i18n-attr="title:equalize_title">Уравнять</button>
+            <button class="equalize-btn sound-toggle-btn" id="soundToggleBtn"></button>
+          </div>
+        </div>
+
+        <div class="names-list-wrapper" id="namesListWrapper">
+          <div class="headers-row">
+            <div class="header-name" data-i18n="col_name">Имя</div>
+            <div class="header-probability" data-i18n="col_prob">📊 Шанс</div>
+            <div class="header-remove"></div>
+          </div>
+          <div class="names-list" id="namesList"></div>
+        </div>
+
+        <div class="add-name-container">
+          <input type="text" class="name-input" id="newNameInput" placeholder="Новый участник" data-i18n-attr="placeholder:ph_new" maxlength="20">
+          <button class="add-btn-small" id="addNameBtn" title="Добавить участника" data-i18n-attr="title:add_title">➕</button>
+        </div>
+
+        <div id="errorMessage" class="error-message"></div>
+      </div>
+
+      <!-- RIGHT COLUMN: Game Container (Slack Thread Simulation & Button) -->
+      <div class="game-container">
+
+        <!-- Slack Window -->
+        <div class="slack-window" id="slackWindow">
+          <!-- Window Header -->
+          <div class="slack-header">
+            <div class="window-controls">
+              <span class="win-btn win-close"></span>
+              <span class="win-btn win-min"></span>
+              <span class="win-btn win-max"></span>
+            </div>
+            <div class="channel-info">
+              <span class="channel-hash">#</span>
+              <span id="channelName">incident-p0-prod</span>
+            </div>
+            <div class="online-members">
+              <span class="online-dot"></span>
+              <span id="onlineCount">24 online</span>
+            </div>
+          </div>
+
+          <!-- Window Body -->
+          <div class="slack-body">
+            <div class="date-divider">
+              <span data-i18n="today_label">Сегодня</span>
+            </div>
+
+            <!-- Boss Message -->
+            <div class="slack-message highlight" id="bossMessage">
+              <div class="boss-avatar-wrapper">
+                <div class="boss-avatar">🤬</div>
+                <div class="avatar-status-badge">🔥</div>
+              </div>
+              <div class="message-content">
+                <div class="message-meta">
+                  <span class="author-name" data-i18n="boss_name">Big Boss</span>
+                  <span class="message-time" id="msgTime">18:00</span>
+                </div>
+
+                <!-- Incident text callout -->
+                <div class="incident-callout">
+                  <div class="incident-header">
+                    <span>🚨</span>
+                    <span data-i18n="callout_header">@channel КРИТИЧЕСКИЙ ИНЦИДЕНТ!</span>
+                  </div>
+                  <div class="incident-text" id="incidentText">
+                    Прод лежит! База данных ушла в бесконечный отпуск, а клиенты уже звонят директору!
+                  </div>
+                </div>
+
+                <!-- Target assignment slot with Typing & Mention Dropdown -->
+                <div class="duty-assignment-box">
+                  <div class="assignment-intro" data-i18n="target_label">👉 Тушить пожар на проде назначается:</div>
+                  
+                  <div class="mention-typing-line">
+                    <span class="mention-badge" id="mentionBadge">@</span>
+                    <span class="boss-directive-text" id="bossDirectiveText"></span>
+                    <span class="typing-cursor" id="typingCursor"></span>
+
+                    <!-- Interactive Autocomplete Mention Dropdown -->
+                    <div class="slack-mention-popup" id="slackMentionPopup">
+                      <div class="popup-header">
+                        <span data-i18n="popup_members">УЧАСТНИКИ КАНАЛА</span>
+                        <span>TAB / ENTER ↵</span>
+                      </div>
+                      <div class="popup-list" id="popupList">
+                        <!-- Generated dynamically during typing -->
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Typing Indicator -->
+                <div class="typing-bar" id="typingBar">
+                  <div class="typing-dots">
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                  </div>
+                  <span data-i18n="boss_typing">Big Boss печатает...</span>
+                </div>
+
+                <!-- Reaction Emojis -->
+                <div class="reactions-bar" id="reactionsBar">
+                  <div class="reaction-pill" data-emoji="🔥">🔥 <span class="react-count">12</span></div>
+                  <div class="reaction-pill" data-emoji="💀">💀 <span class="react-count">8</span></div>
+                  <div class="reaction-pill" data-emoji="🍿">🍿 <span class="react-count">15</span></div>
+                  <div class="reaction-pill" data-emoji="🫡">🫡 <span class="react-count">6</span></div>
+                  <div class="reaction-pill" data-emoji="☕️">☕️ <span class="react-count">4</span></div>
+                </div>
+
+                <!-- Thread Reply -->
+                <div class="thread-footer">
+                  <div class="thread-avatars">
+                    <span>👨‍💻</span>
+                    <span>👩‍💼</span>
+                    <span>🕵️</span>
+                  </div>
+                  <span data-i18n="thread_replies">14 ответов в треде</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Controls Section with Start Button (Consistent with other randomizers) -->
+        <div class="controls">
+          <button id="startBtn" data-i18n="start_btn">
+            <span>🚨</span>
+            <span data-i18n="start_text">Выбрать спасителя прода</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Winner Modal Overlay -->
+  <div class="winner-overlay" id="winnerOverlay">
+    <div class="winner-card">
+      <button class="close-modal-btn" id="closeModalBtn">✕</button>
+      <div class="winner-badge-icon">🚒</div>
+      <div class="winner-heading" data-i18n="win_heading">🚨 СПАСИТЕЛЬ ПРОДА НАЙДЕН!</div>
+      <div class="winner-name-display" id="winnerNameDisplay">@Name</div>
+      <div class="winner-quote" id="winnerQuote">Вся надежда компании держится на тебе! Удачного дебага!</div>
+      
+      <div class="modal-actions">
+        <button class="modal-btn btn-again" id="spinAgainBtn" data-i18n="btn_again">🔄 Назначить еще одного</button>
+        <button class="modal-btn btn-exclude" id="excludeWinnerBtn" data-i18n="btn_exclude">❌ Исключить и крутить снова</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio Context Engine (Procedural Sound Generation) -->
+  <script>
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+      }
+      init() {
+        if (!this.ctx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (AC) this.ctx = new AC();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      // Dual-tone Slack Notification pop/knock
+      playSlackKnock() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        
+        // Tone 1: high soft click
+        const osc1 = this.ctx.createOscillator();
+        const gain1 = this.ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(880, now);
+        osc1.frequency.exponentialRampToValueAtTime(1320, now + 0.08);
+        gain1.gain.setValueAtTime(0.3, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        osc1.connect(gain1);
+        gain1.connect(this.ctx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.08);
+
+        // Tone 2: resonant knock
+        const osc2 = this.ctx.createOscillator();
+        const gain2 = this.ctx.createGain();
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(540, now + 0.07);
+        osc2.frequency.exponentialRampToValueAtTime(780, now + 0.16);
+        gain2.gain.setValueAtTime(0.35, now + 0.07);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        osc2.connect(gain2);
+        gain2.connect(this.ctx.destination);
+        osc2.start(now + 0.07);
+        osc2.stop(now + 0.2);
+      }
+
+      // Typing key sound
+      playTypeKey() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(350 + Math.random() * 250, now);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.045);
+      }
+
+      // Tension step tick (escalating pitch)
+      playTensionTick(progress) {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        const baseFreq = 260 + progress * 560;
+        osc.frequency.setValueAtTime(baseFreq, now);
+        osc.frequency.exponentialRampToValueAtTime(baseFreq + 90, now + 0.04);
+        gain.gain.setValueAtTime(0.1 + progress * 0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.05);
+      }
+
+      // Select / Enter pop
+      playSelectEnter() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600, now);
+        osc.frequency.exponentialRampToValueAtTime(1200, now + 0.12);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.12);
+      }
+
+      // Winner victory fanfare
+      playWinner() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.09);
+          gain.gain.setValueAtTime(0.3, now + idx * 0.09);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.09 + 0.4);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + idx * 0.09);
+          osc.stop(now + idx * 0.09 + 0.4);
+        });
+      }
+    }
+    const sounds = new SoundEngine();
+  </script>
+
+  <!-- Game Logic -->
+  <script>
+    const DEFAULT_NAME_SETS = {
+      ru: ['Алексей', 'Дмитрий', 'Мария', 'Елена', 'Иван', 'Ольга'],
+      en: ['Alex', 'Dmitry', 'Sarah', 'Michael', 'Emma', 'David'],
+      el: ['Αλέξανδρος', 'Δημήτρης', 'Μαρία', 'Ελένη', 'Νίκος', 'Όλγα']
+    };
+
+    // Extended Bank of Incidents per language
+    const INCIDENTS_POOL = {
+      ru: [
+        'ЧТО-ТО НЕ ТАК! ПОЧИНИТЕ! Ничего не понятно, но всё горит красным, срочно разберитесь!',
+        'Наши конкуренты прямо сейчас скачивают всю клиентскую базу через забытую админку без пароля!',
+        'Кредитные лимиты сломаны, мы выдаем слишком мало денег! Бизнес теряет миллиарды в секунду!',
+        'Вся база данных перешла в режим только для чтения, потому что на сервере закончилось место под логи саппорта!',
+        'Прод лежит! База данных ушла в бесконечный отпуск, а клиенты уже звонят директору!',
+        'Кто задеплоил в пятницу в 18:00?! Платежи не проходят, корзина отвалилась!',
+        'Пользователь сгенерировал API-ключ и случайно получил доступ ко всем базам данных и секретам компании!',
+        'Пользователь жалуется в поддержку, что наша трейдинговая система отбирает у него деньги за его же убыточные сделки!',
+        'Память на сервере кончилась, OOM-killer срубил бэкенд, а логи забили диск до 100%!',
+        'В коде нашли костыль пятилетней давности с комментом "// НЕ ТРОГАТЬ", и он взорвался!',
+        'AWS упал, Kubernetes ушел в CrashLoopBackOff, а бэкапы восстанавливаются уже 4 часа!',
+        'SSL-сертификат протух ровно в полночь! Все пользователи видят красную плашку опасности!',
+        'Кто-то сделал git push --force в main и снес релизную ветку за 10 минут до демо!',
+        'Платежный шлюз отвечает 500-й ошибкой, а в саппорте уже 800 непрочитанных сообщений!',
+        'Очередь Kafka забита на 10 миллионов сообщений, воркеры умерли, брокер перегрелся!',
+        'Умный тостер из офисной кухни устроил DDoS-атаку на наш главный авторизационный сервер!',
+        'Джуниор случайно накатил тестовые миграции с DROP DATABASE на боевую базу данных!',
+        'Бесконечный цикл в микросервисе съел все 64 ядра процессора и раскалил серверную!',
+        'Провайдер авторизации через Google лег, и ни один пользователь не может войти!',
+        'Антифрод-система сошла с ума и заблокировала корпоративную карту генерального директора!',
+        'Бот с искусственным интеллектом зациклился и отправил 50 000 уведомлений в один чат!',
+        'Кэш Redis инвалидировался одновременно у всех пользователей, и база легла под нагрузкой!',
+        'Кто-то захардкодил в прод тестовый API-токен с жестким лимитом 1 запрос в минуту!',
+        'Фронтенд случайно скачал 4 гигабайта node_modules прямо в браузер клиенту и уронил вкладку!',
+        'Бэкапы исправно делались 3 года каждый день, но сегодня выяснилось, что архив пустой!',
+        'Сторонний вебхук прислал 100 000 дублей и по ошибке начислил пользователям миллион бонусов!',
+        'Домен компании забыли вовремя продлить, и его перехватил продавец надувных лодок!',
+        'Смарт-контракт заморозил баланс компании из-за опечатки в одном математическом знаке!',
+        'Кнопка "Купить" на главной странице вместо оформления заказа перенаправляет на видео с котиками!',
+        'Кто-то удалил системный Python на проде, пытаясь освободить 200 мегабайт места!'
+      ],
+      en: [
+        'SOMETHING IS WRONG! FIX IT! Nobody knows what happened, but everything is blinking red alert!',
+        'Our competitors are dumping our entire production database right now through an unauthenticated admin route!',
+        'Credit limits are totally broken, we are giving out way too little money! We are losing billions per second!',
+        'The entire database switched to read-only mode because debug logs filled up all available NVMe storage!',
+        'PROD IS DOWN! The database went on an infinite vacation and customers are calling the CEO!',
+        'Who deployed to main on Friday at 6 PM?! Checkout is broken and payments are failing!',
+        'A user generated an API key and accidentally got full root access to all databases and company secrets!',
+        'A user is raging at customer support that our trading platform is taking his money for his own losing trades!',
+        'OOM killer wiped the backend, Redis died, and application logs filled 100% of the disk!',
+        'A 5-year-old legacy workaround marked "// DO NOT TOUCH" just exploded in production!',
+        'AWS is having a major outage, Kubernetes is in CrashLoopBackOff, and panic mode is ON!',
+        'The SSL certificate expired at midnight! All users are seeing red browser security warnings!',
+        'Someone did git push --force to main and wiped the release branch 10 minutes before the demo!',
+        'The payment gateway returns 500 errors and support has 800 unread furious tickets!',
+        'Kafka lag reached 10 million messages, consumer workers crashed, and brokers are throttling!',
+        'A smart toaster from the office kitchen launched a DDoS attack on our auth servers!',
+        'A junior dev accidentally executed test migrations with DROP DATABASE on production!',
+        'An infinite loop in the notification worker consumed 100% CPU across all server clusters!',
+        'OAuth provider is down, single sign-on is broken, and nobody can log into their accounts!',
+        'The AI anti-fraud system went rogue and banned the CEO\'s corporate credit card!',
+        'The automated Slack bot entered an infinite recursive loop and spammed 50,000 alerts!',
+        'Redis cache expired globally at the exact same second, crushing PostgreSQL with 50k RPS!',
+        'Someone hardcoded a test API token into production with a strict rate limit of 1 request per minute!',
+        'The frontend bundle accidentally served 4 GB of node_modules directly to client browsers!',
+        'Backups were running smoothly every day for 3 years, but today we found out the archives are empty!',
+        'A buggy webhook sent 100,000 duplicate events and credited users with a billion reward points!',
+        'The company forgot to renew the domain name, and it was bought by an inflatable boat seller!',
+        'A smart contract locked the entire treasury due to a single inverted inequality sign!',
+        'The "Checkout" button on the homepage redirects customers to funny cat videos instead of billing!',
+        'Someone uninstalled system Python on prod trying to free up 200 megabytes of disk space!'
+      ],
+      el: [
+        'ΚΑΤΙ ΠΑΕΙ ΣΤΡΑΒΑ! ΦΤΙΑΞΤΕ ΤΟ! Κανείς δεν ξέρει τι έγινε, αλλά όλα αναβοσβήνουν με κόκκινο συναγερμό!',
+        'Οι ανταγωνιστές μας κατεβάζουν ολόκληρη τη βάση δεδομένων αυτή τη στιγμή μέσω μιας ξεχασμένης σελίδας admin χωρίς κωδικό!',
+        'Τα πιστωτικά όρια χάλασαν, δίνουμε πολύ λίγα χρήματα! Χάνουμε εκατομμύρια κάθε δευτερόλεπτο!',
+        'Η βάση δεδομένων κλείδωσε σε read-only γιατί τα logs υποστήριξης γέμισαν όλο τον διαθέσιμο χώρο!',
+        'ΤΟ PROD ΕΠΕΣΕ! Η βάση δεδομένων σταμάτησε να αποκρίνεται και οι πελάτες καλούν τον CEO!',
+        'Ποιος έκανε deploy την Παρασκευή στις 18:00; Το σύστημα πληρωμών κατέρρευσε εντελώς!',
+        'Ένας χρήστης δημιούργησε API key και απέκτησε κατά λάθος πρόσβαση σε όλες τις βάσεις και τα μυστικά!',
+        'Ένας πελάτης παραπονιέται έξαλλος ότι η πλατφόρμα trading του αφαιρεί χρήματα για τις δικές του χαμένες συναλλαγές!',
+        'Η μνήμη του server γέμισε, το OOM-killer έκλεισε το backend και τα logs κάλυψαν τον δίσκο!',
+        'Ένας παλιός κώδικας 5 ετών με σχόλιο "// ΜΗΝ ΑΓΓΙΖΕΤΕ" μόλις εξερράγη στο production!',
+        'Το cloud έπεσε, το Kubernetes κόλλησε και το war room προσπαθεί να επαναφέρει τα συστήματα!',
+        'Το πιστοποιητικό SSL έληξε τα μεσάνυχτα και όλοι οι χρήστες βλέπουν κόκκινη προειδοποίηση!',
+        'Κάποιος έκανε git push --force στο main 10 λεπτά πριν από την παρουσίαση στους επενδυτές!',
+        'Η πύλη πληρωμών επιστρέφει σφάλματα 500 και η υποστήριξη έχει 800 αναπάντητα μηνύματα!',
+        'Η ουρά μηνυμάτων Kafka ξεπέρασε τα 10 εκατομμύρια και οι workers σταμάτησαν να λειτουργούν!',
+        'Μια έξυπνη τοστιέρα από την κουζίνα έκανε επίθεση DDoS στον server ταυτοποίησης!',
+        'Ένας junior προγραμματιστής έτρεξε κατά λάθος DROP DATABASE στην παραγωγική βάση!',
+        'Ένας ατέρμονας βρόχος κατανάλωσε το 100% της CPU σε όλα τα clusters των servers!',
+        'Η σύνδεση μέσω Google έπεσε και κανένας χρήστης δεν μπορεί να συνδεθεί στον λογαριασμό του!',
+        'Το σύστημα anti-fraud τρελάθηκε και μπλόκαρε την κάρτα του γενικού διευθυντή!',
+        'Το bot τεχνητής νοημοσύνης κόλλησε και έστειλε 50.000 ειδοποιήσεις στο ίδιο κανάλι!',
+        'Η προσωρινή μνήμη Redis έληξε ταυτόχρονα και η βάση δεδομένων λύγισε υπό το φορτίο!',
+        'Κάποιος έβαλε στο prod ένα δοκιμαστικό API token με όριο μόνο 1 αίτημα ανά λεπτό!',
+        'Το frontend φόρτωσε κατά λάθος 4 GB αρχείων node_modules κατευθείαν στον browser του πελάτη!',
+        'Τα αντίγραφα ασφαλείας εκτελούνταν 3 χρόνια καθημερινά, αλλά σήμερα ανακαλύψαμε ότι είναι άδεια!',
+        'Ένα webhook έστειλε 100.000 διπλότυπα αιτήματα και πίστωσε στους χρήστες 1 δισεκατομμύριο πόντους!',
+        'Ξέχασαν να ανανεώσουν το domain της εταιρείας και το αγόρασε πωλητής φουσκωτών βαρκών!',
+        'Ένα smart contract πάγωσε τα κεφάλαια της εταιρείας λόγω τυπογραφικού λάθους σε ένα σύμβολο!',
+        'Το κουμπί "Αγορά" στην αρχική σελίδα αντί για πληρωμή ανοίγει βίντεο με γατάκια!',
+        'Κάποιος απεγκατέστησε την Python στο prod προσπαθώντας να ελευθερώσει 200 MB χώρο!'
+      ]
+    };
+
+    const WINNER_QUOTES = {
+      ru: [
+        'СРОЧНО подключайся к серверу, открывай логи и туши пожар! Вся надежда на тебя!',
+        'Бросай все дела, заваривай крепкий кофе и поднимай прод! У тебя 15 минут!',
+        'Никаких отговорок! Откатывай последний коммит и чини базу данных прямо сейчас!',
+        'Тебе достается экстренное дежурство! Спасай компанию, премия на кону!',
+        'Заходи в war room, поднимай бэкапы и не выходи из треда, пока всё не заработает!',
+        'Быстро проверь миграции и перезапусти кластер, клиенты уже штурмуют поддержку!'
+      ],
+      en: [
+        'Connect to the server immediately, check the logs, and fix prod! Everyone is counting on you!',
+        'Drop everything, grab some strong coffee, and revive the system! You have 15 minutes!',
+        'No excuses! Revert the last commit and fix the database right now!',
+        'Emergency duty is assigned to you! Save the company, your bonus is on the line!',
+        'Join the war room, restore backups, and do not leave until everything is green!',
+        'Quickly verify migrations and restart the cluster, support tickets are piling up!'
+      ],
+      el: [
+        'Συνδέσου αμέσως στον server, άνοιξε τα logs και σώσε το σύστημα! Όλοι βασίζονται σε εσένα!',
+        'Άφησε ό,τι κάνεις, πάρε δυνατό καφέ και επανάφερε την παραγωγή! Έχεις 15 λεπτά!',
+        'Χωρίς δικαιολογίες! Κάνε revert το τελευταίο commit και διόρθωσε τη βάση τώρα!',
+        'Αναλαμβάνεις έκτακτη βάρδια! Σώσε την εταιρεία, το bonus διακυβεύεται!',
+        'Μπες στο war room, επανάφερε τα backups και μην αποσυνδεθείς μέχρι να ανάψουν όλα πράσινα!',
+        'Έλεγξε γρήγορα τα migrations και επανεκκίνησε το cluster, η υποστήριξη έχει πάρει φωτιά!'
+      ]
+    };
+
+    let names = [...DEFAULT_NAME_SETS.ru];
+    let probabilities = {};
+    let lockedParticipants = {};
+    let hasCustomProbabilities = false;
+    let isLoadingFromStorage = false;
+    let isRunning = false;
+    let lastWinner = null;
+    let currentParticipantIndex = 0;
+    let currentIncidentIndex = Math.floor(Math.random() * 30);
+    let currentWinnerQuoteIndex = Math.floor(Math.random() * 6);
+
+    const NAMES_KEY = 'shared_names_v1';
+    const PROB_KEY = 'shared_probabilities_v2';
+    const LOCKED_KEY = 'shared_locked_v1';
+
+    // Local Storage State
+    function saveState() {
+      try {
+        localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+        saveProbabilities();
+      } catch (e) {}
+    }
+
+    function loadState() {
+      isLoadingFromStorage = true;
+      try {
+        const savedNames = localStorage.getItem(NAMES_KEY);
+        if (savedNames) {
+          const parsed = JSON.parse(savedNames);
+          if (Array.isArray(parsed) && parsed.length >= 2) names = parsed;
+        }
+        initProbabilities();
+      } catch (e) {
+        setEqualProbabilities();
+      }
+      isLoadingFromStorage = false;
+    }
+
+    function initProbabilities() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(PROB_KEY) || '{}');
+        const savedLocked = JSON.parse(localStorage.getItem(LOCKED_KEY) || '{}');
+
+        if (saved?.hasCustomProbabilities && saved?.probabilities && Object.keys(saved.probabilities).length) {
+          probabilities = { ...saved.probabilities };
+          lockedParticipants = { ...savedLocked };
+          hasCustomProbabilities = true;
+
+          Object.keys(probabilities).forEach(n => { if (!names.includes(n)) delete probabilities[n]; });
+          Object.keys(lockedParticipants).forEach(n => { if (!names.includes(n)) delete lockedParticipants[n]; });
+
+          names.forEach(n => { if (!(n in probabilities)) probabilities[n] = 0.05; });
+          validateAndFixProbabilities();
+        } else {
+          setEqualProbabilities();
+        }
+      } catch (_) {
+        setEqualProbabilities();
+      }
+    }
+
+    function validateAndFixProbabilities() {
+      const belowMin = names.filter(n => (probabilities[n] ?? 0) < 0.05);
+      if (belowMin.length === 0) {
+        const sum = names.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
+        if (Math.abs(sum - 1) > 1e-4) {
+          const k = 1 / sum;
+          names.forEach(nm => probabilities[nm] = (probabilities[nm] || 0) * k);
+        }
+        return;
+      }
+
+      belowMin.forEach(n => probabilities[n] = 0.05);
+      const fixedSum = belowMin.length * 0.05;
+      const others = names.filter(n => !belowMin.includes(n));
+
+      if (others.length === 0) {
+        setEqualProbabilities();
+        return;
+      }
+
+      const othersSum = others.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
+      const remainForOthers = 1 - fixedSum;
+
+      if (othersSum > 0) {
+        const scale = remainForOthers / othersSum;
+        others.forEach(nm => probabilities[nm] = (probabilities[nm] || 0) * scale);
+        const stillBelowMin = others.some(nm => (probabilities[nm] ?? 0) < 0.05);
+        if (stillBelowMin) {
+          setEqualProbabilities();
+        }
+      } else {
+        setEqualProbabilities();
+      }
+    }
+
+    function setEqualProbabilities() {
+      const p = 1 / (names.length || 1);
+      probabilities = {};
+      names.forEach(nm => probabilities[nm] = p);
+      lockedParticipants = {};
+      hasCustomProbabilities = false;
+      if (!isLoadingFromStorage) {
+        saveProbabilities();
+      }
+    }
+
+    function normalizeProbabilities() {
+      if (!hasCustomProbabilities) {
+        const exact = 1 / (names.length || 1);
+        names.forEach(nm => probabilities[nm] = exact);
+        return;
+      }
+
+      const locked = names.filter(n => lockedParticipants[n]);
+      const unlocked = names.filter(n => !lockedParticipants[n]);
+
+      if (unlocked.length === 0) {
+        const sum = names.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
+        if (sum > 0 && Math.abs(sum - 1) > 1e-4) {
+          const k = 1 / sum;
+          names.forEach(nm => probabilities[nm] = (probabilities[nm] || 0) * k);
+        }
+        const hasViolation = names.some(nm => (probabilities[nm] ?? 0) < 0.049);
+        if (hasViolation) {
+          setEqualProbabilities();
+        }
+        return;
+      }
+
+      const lockedSum = locked.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
+      const minUnlockedTotal = unlocked.length * 0.05;
+      const remainForUnlocked = 1 - lockedSum;
+      const lockedViolation = locked.some(nm => (probabilities[nm] ?? 0) < 0.049);
+
+      if (lockedViolation || remainForUnlocked < minUnlockedTotal - 0.001 || lockedSum > 1.001) {
+        setEqualProbabilities();
+        return;
+      }
+
+      const sharePerUnlocked = remainForUnlocked / unlocked.length;
+      unlocked.forEach(nm => probabilities[nm] = sharePerUnlocked);
+
+      const finalViolation = names.some(nm => (probabilities[nm] ?? 0) < 0.049);
+      if (finalViolation) {
+        setEqualProbabilities();
+      }
+    }
+
+    function saveProbabilities() {
+      try {
+        const cleanP = {};
+        names.forEach(nm => cleanP[nm] = probabilities[nm] ?? 0);
+        const cleanLocked = {};
+        names.forEach(nm => { if (lockedParticipants[nm]) cleanLocked[nm] = true; });
+
+        localStorage.setItem(PROB_KEY, JSON.stringify({
+          probabilities: cleanP,
+          hasCustomProbabilities
+        }));
+        localStorage.setItem(LOCKED_KEY, JSON.stringify(cleanLocked));
+      } catch (_) {}
+    }
+
+    function getRealisticMaxPercent(name) {
+      const otherLocked = names.filter(n => lockedParticipants[n] && n !== name);
+      const willBeUnlocked = names.filter(n => !lockedParticipants[n] && n !== name);
+      const otherLockedSum = otherLocked.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
+      const minUnlockedTotal = willBeUnlocked.length * 0.05;
+      const rawMax = (1 - otherLockedSum - minUnlockedTotal) * 100;
+      return Math.max(5, Math.min(100, rawMax));
+    }
+
+    function getProbabilityPercent(name) {
+      if (!hasCustomProbabilities && names.length) return (100 / names.length).toFixed(1);
+      return (((probabilities[name] || 0) * 100).toFixed(1));
+    }
+
+    function adjustProbability(name, delta) {
+      if (isRunning) return;
+      const cur = parseFloat(getProbabilityPercent(name)) || 0;
+      const maxPossible = 100 - (names.length - 1) * 5;
+      const next = Math.max(5, Math.min(maxPossible, cur + delta));
+
+      if (Math.abs(next - cur) < 0.01) return;
+
+      const otherLocked = names.filter(n => lockedParticipants[n] && n !== name);
+      const willBeUnlocked = names.filter(n => !lockedParticipants[n] && n !== name);
+      const otherLockedSum = otherLocked.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
+      const newProbForThis = next / 100;
+      const remainForUnlocked = 1 - otherLockedSum - newProbForThis;
+      const minUnlockedTotal = willBeUnlocked.length * 0.05;
+
+      if (remainForUnlocked < minUnlockedTotal - 0.001) {
+        const realisticMax = getRealisticMaxPercent(name);
+        const errTpl = (window.I18N && I18N.t('err_minmax')) || 'Минимум {min}%, максимум {max}%';
+        showError(errTpl.replace('{min}', '5.0').replace('{max}', realisticMax.toFixed(1)));
+        return;
+      }
+
+      setProbabilityManually(name, next);
+      renderParticipants();
+    }
+
+    function setProbabilityManually(name, percentValue) {
+      const maxPossible = getRealisticMaxPercent(name);
+
+      if (isNaN(percentValue) || percentValue < 4.999 || percentValue > maxPossible + 0.001) {
+        const errTpl = (window.I18N && I18N.t('err_minmax')) || 'Минимум {min}%, максимум {max}%';
+        showError(errTpl.replace('{min}', '5.0').replace('{max}', maxPossible.toFixed(1)));
+        return false;
+      }
+
+      hasCustomProbabilities = true;
+      lockedParticipants[name] = true;
+      probabilities[name] = percentValue / 100;
+
+      normalizeProbabilities();
+      saveProbabilities();
+      return true;
+    }
+
+    function equalizeProbabilities() {
+      if (isRunning) return;
+      setEqualProbabilities();
+      renderParticipants();
+    }
+
+    function getIncidentText(idx = currentIncidentIndex) {
+      const lang = (window.I18N && I18N.lang) || 'ru';
+      const list = INCIDENTS_POOL[lang] || INCIDENTS_POOL.ru;
+      return list[idx % list.length];
+    }
+
+    function updateIncidentDisplay() {
+      const el = document.getElementById('incidentText');
+      if (el) el.textContent = getIncidentText(currentIncidentIndex);
+    }
+
+    function pickNewIncident() {
+      const list = INCIDENTS_POOL.ru;
+      const count = list.length;
+      let nextIndex = Math.floor(Math.random() * count);
+      if (count > 1 && nextIndex === currentIncidentIndex) {
+        nextIndex = (nextIndex + 1 + Math.floor(Math.random() * (count - 1))) % count;
+      }
+      currentIncidentIndex = nextIndex;
+      updateIncidentDisplay();
+    }
+
+    function getWinnerQuoteText(idx = currentWinnerQuoteIndex) {
+      const lang = (window.I18N && I18N.lang) || 'ru';
+      const list = WINNER_QUOTES[lang] || WINNER_QUOTES.ru;
+      return list[idx % list.length];
+    }
+
+    function pickNewWinnerQuote() {
+      const list = WINNER_QUOTES.ru;
+      currentWinnerQuoteIndex = Math.floor(Math.random() * list.length);
+      return getWinnerQuoteText(currentWinnerQuoteIndex);
+    }
+
+    function updateWinnerQuoteDisplay() {
+      const quoteEl = document.getElementById('winnerQuote');
+      if (quoteEl) quoteEl.textContent = getWinnerQuoteText(currentWinnerQuoteIndex);
+      const directiveEl = document.getElementById('bossDirectiveText');
+      if (directiveEl && directiveEl.textContent) {
+        directiveEl.textContent = ` ${getWinnerQuoteText(currentWinnerQuoteIndex)}`;
+      }
+    }
+
+    // Pick winner, ensuring someone different from last time if names.length > 1
+    function pickWeightedWinner() {
+      normalizeProbabilities();
+      
+      let candidate = null;
+      let attempts = 0;
+      while (attempts < 8) {
+        const r = Math.random();
+        let cumulative = 0;
+        for (const name of names) {
+          cumulative += probabilities[name] || (1 / names.length);
+          if (r <= cumulative) {
+            candidate = name;
+            break;
+          }
+        }
+        if (!candidate) candidate = names[names.length - 1];
+        
+        if (candidate !== lastWinner || names.length <= 1) {
+          return candidate;
+        }
+        attempts++;
+      }
+      return candidate || names[0];
+    }
+
+    // Render Participants List
+    function renderParticipants() {
+      const list = document.getElementById('namesList');
+      list.innerHTML = '';
+      normalizeProbabilities();
+
+      names.forEach((name, idx) => {
+        const item = document.createElement('div');
+        item.className = 'name-item';
+
+        const probControls = document.createElement('div');
+        probControls.className = 'probability-controls';
+
+        const decBtn = document.createElement('button');
+        decBtn.className = 'prob-btn';
+        decBtn.textContent = '−';
+        decBtn.setAttribute('aria-label', (window.I18N && I18N.t('aria_dec')) || 'Уменьшить вероятность');
+        decBtn.disabled = isRunning;
+        decBtn.onclick = () => adjustProbability(name, -1);
+
+        const probInput = document.createElement('input');
+        probInput.type = 'text';
+        probInput.inputMode = 'decimal';
+        probInput.className = 'probability-input';
+        probInput.value = getProbabilityPercent(name);
+        probInput.disabled = isRunning;
+        probInput.setAttribute('aria-label', (window.I18N && I18N.t('aria_prob')) || 'Вероятность в процентах');
+        if (lockedParticipants[name]) {
+          probInput.classList.add('manual');
+        }
+        let lastValid = probInput.value;
+
+        probInput.addEventListener('focus', () => {
+          probInput.value = probInput.value.replace('%', '');
+          lastValid = probInput.value;
+        });
+
+        probInput.addEventListener('input', () => {
+          const val = probInput.value.replace('%', '').trim();
+          const num = parseFloat(val);
+          const maxAllowed = getRealisticMaxPercent(name);
+
+          if (val === '' || (num >= 4.999 && num <= maxAllowed + 0.001)) {
+            probInput.classList.remove('error');
+          } else {
+            probInput.classList.add('error');
+          }
+        });
+
+        probInput.addEventListener('blur', () => {
+          const val = probInput.value.replace('%', '').trim();
+          const num = parseFloat(val);
+          const maxAllowed = getRealisticMaxPercent(name);
+
+          if (val === '' || isNaN(num) || num < 4.999 || num > maxAllowed + 0.001) {
+            probInput.value = lastValid;
+            probInput.classList.remove('error');
+            if (!isNaN(num) && (num < 4.999 || num > maxAllowed + 0.001)) {
+              const errTpl = (window.I18N && I18N.t('err_minmax')) || 'Минимум {min}%, максимум {max}%';
+              showError(errTpl.replace('{min}', '5.0').replace('{max}', maxAllowed.toFixed(1)));
+            }
+          } else {
+            const otherLocked = names.filter(n => lockedParticipants[n] && n !== name);
+            const willBeUnlocked = names.filter(n => !lockedParticipants[n] && n !== name);
+            const otherLockedSum = otherLocked.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
+            const newProbForThis = num / 100;
+            const remainForUnlocked = 1 - otherLockedSum - newProbForThis;
+            const minUnlockedTotal = willBeUnlocked.length * 0.05;
+
+            if (remainForUnlocked < minUnlockedTotal - 0.001) {
+              probInput.value = lastValid;
+              probInput.classList.remove('error');
+              const realisticMax = getRealisticMaxPercent(name);
+              const errTpl = (window.I18N && I18N.t('err_minmax')) || 'Минимум {min}%, максимум {max}%';
+              showError(errTpl.replace('{min}', '5.0').replace('{max}', realisticMax.toFixed(1)));
+            } else if (setProbabilityManually(name, num)) {
+              lastValid = getProbabilityPercent(name);
+              renderParticipants();
+            } else {
+              probInput.value = lastValid;
+              probInput.classList.remove('error');
+            }
+          }
+        });
+
+        probInput.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            probInput.blur();
+          }
+          if (!/[\d.]/.test(e.key) && e.key !== 'Enter') e.preventDefault();
+        });
+
+        const incBtn = document.createElement('button');
+        incBtn.className = 'prob-btn';
+        incBtn.textContent = '+';
+        incBtn.setAttribute('aria-label', (window.I18N && I18N.t('aria_inc')) || 'Увеличить вероятность');
+        incBtn.disabled = isRunning;
+        incBtn.onclick = () => adjustProbability(name, 1);
+
+        probControls.appendChild(decBtn);
+        probControls.appendChild(probInput);
+        probControls.appendChild(incBtn);
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'name-input';
+        nameInput.value = name;
+        nameInput.dataset.idx = idx;
+        nameInput.maxLength = 20;
+        nameInput.disabled = isRunning;
+
+        nameInput.addEventListener('change', (e) => {
+          const v = e.target.value.trim();
+          if (v && !names.some((n, i) => i !== idx && n === v)) {
+            const oldName = names[idx];
+            names[idx] = v;
+            if (oldName in probabilities) {
+              probabilities[v] = probabilities[oldName];
+              delete probabilities[oldName];
+            }
+            if (oldName in lockedParticipants) {
+              lockedParticipants[v] = true;
+              delete lockedParticipants[oldName];
+            }
+            saveState();
+          }
+          renderParticipants();
+        });
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'remove-btn';
+        removeBtn.textContent = '✕';
+        removeBtn.disabled = isRunning;
+        removeBtn.onclick = () => {
+          if (isRunning) return;
+          if (names.length <= 2) {
+            showError((window.I18N && I18N.t('err_min2')) || 'Минимум 2 участника!');
+            return;
+          }
+          const removed = names.splice(idx, 1)[0];
+          delete probabilities[removed];
+          delete lockedParticipants[removed];
+          saveState();
+          normalizeProbabilities();
+          saveProbabilities();
+          renderParticipants();
+        };
+
+        item.appendChild(nameInput);
+        item.appendChild(probControls);
+        item.appendChild(removeBtn);
+        list.appendChild(item);
+      });
+
+      // Update online count mock
+      document.getElementById('onlineCount').textContent = `${names.length * 3 + 4} online`;
+    }
+
+    function setParticipantsDisabled(disabled) {
+      const panel = document.getElementById('settingsPanel');
+      panel.classList.toggle('disabled', disabled);
+      
+      const inputs = panel.querySelectorAll('input, button');
+      inputs.forEach(el => {
+        if (el.id !== 'soundToggleBtn') {
+          el.disabled = disabled;
+        }
+      });
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('errorMessage');
+      el.textContent = msg;
+      setTimeout(() => { el.textContent = ''; }, 3000);
+    }
+
+    // Floating background particles
+    function spawnParticles() {
+      const container = document.getElementById('bgParticles');
+      const emojis = ['🚨', '🔥', '💀', '💻', '☕️', '🚀', '🍿', '🫡'];
+      for (let i = 0; i < 15; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        p.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+        p.style.left = `${Math.random() * 100}%`;
+        p.style.animationDelay = `${Math.random() * 10}s`;
+        p.style.animationDuration = `${8 + Math.random() * 8}s`;
+        container.appendChild(p);
+      }
+    }
+
+    // Populate the Slack Autocomplete Dropdown list
+    function renderPopupList(activeName) {
+      const popupList = document.getElementById('popupList');
+      if (!popupList) return;
+
+      const activeTagText = (window.I18N && I18N.t('popup_active')) || 'active';
+
+      // Rebuild items only if participant list changed or list is empty
+      if (popupList.children.length !== names.length) {
+        popupList.innerHTML = '';
+        names.forEach(n => {
+          const row = document.createElement('div');
+          row.className = 'popup-item';
+          row.dataset.name = n;
+          row.innerHTML = `
+            <span class="popup-avatar">👤</span>
+            <span class="popup-name">@${n}</span>
+            <span class="popup-tag">${activeTagText}</span>
+          `;
+          popupList.appendChild(row);
+        });
+      }
+
+      // Fast update classes & auto-scroll active participant into view
+      let activeItemEl = null;
+      Array.from(popupList.children).forEach(row => {
+        const isMatch = row.dataset.name === activeName;
+        row.classList.toggle('selected', isMatch);
+        const avatar = row.querySelector('.popup-avatar');
+        if (avatar) avatar.textContent = isMatch ? '👉' : '👤';
+        if (isMatch) activeItemEl = row;
+      });
+
+      if (activeItemEl) {
+        activeItemEl.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+      }
+    }
+
+    // Run Realistic Slack Typing & Mention Roulette Animation (Sequential, No-jump, Variable Start Speed)
+    async function startRoulette() {
+      if (isRunning || names.length < 2) return;
+      isRunning = true;
+
+      const startBtn = document.getElementById('startBtn');
+      const slackWindow = document.getElementById('slackWindow');
+      const typingBar = document.getElementById('typingBar');
+      const incidentText = document.getElementById('incidentText');
+      const mentionBadge = document.getElementById('mentionBadge');
+      const slackMentionPopup = document.getElementById('slackMentionPopup');
+      const reactionsBar = document.getElementById('reactionsBar');
+      const msgTime = document.getElementById('msgTime');
+
+      // 1. Disable participants list and start button
+      startBtn.disabled = true;
+      setParticipantsDisabled(true);
+
+      slackWindow.classList.add('in-action');
+      mentionBadge.className = 'mention-badge';
+      mentionBadge.textContent = '@';
+      const bossDirectiveEl = document.getElementById('bossDirectiveText');
+      if (bossDirectiveEl) bossDirectiveEl.textContent = '';
+
+      // Current time update
+      const now = new Date();
+      msgTime.textContent = now.toTimeString().substring(0, 5);
+
+      // 2. Play initial trigger sound & generate fresh incident
+      sounds.playSlackKnock();
+      pickNewIncident();
+
+      // 3. Boss typing indicator phase
+      typingBar.classList.add('visible');
+      sounds.playTypeKey();
+      await new Promise(r => setTimeout(r, 400));
+      typingBar.classList.remove('visible');
+
+      // 4. Open the Slack Mention Dropdown popup
+      slackMentionPopup.classList.add('active');
+
+      const winner = pickWeightedWinner();
+      lastWinner = winner;
+
+      const N = names.length;
+      const winnerIndex = names.indexOf(winner);
+
+      // Start sequential progression from current participant index
+      const startIndex = currentParticipantIndex % N;
+
+      // Target animation duration: 3.5 to 5.5s (absolute hard cap: under 8s, well within 10s max)
+      const targetDurationMs = 3800 + Math.random() * 1400; // ~3.8s - 5.2s
+
+      // Full loops: at least 2 full rotations so every participant is shown multiple times
+      const fullRotations = Math.max(2, Math.min(4, Math.floor(28 / N)));
+
+      let distanceToWinner = (winnerIndex - startIndex) % N;
+      if (distanceToWinner <= 0) distanceToWinner += N;
+
+      const totalSteps = fullRotations * N + distanceToWinner;
+
+      // Calculate step timings to strictly fit within target duration
+      // Sum of delays: sum_{s=1}^{totalSteps} (initialDelay + (s/totalSteps)^2.6 * (maxFinalDelay - initialDelay))
+      const initialDelay = 30 + Math.random() * 25; // 30ms - 55ms
+      let sumWeights = 0;
+      for (let s = 1; s <= totalSteps; s++) {
+        sumWeights += Math.pow(s / totalSteps, 2.6);
+      }
+      const remainDuration = targetDurationMs - totalSteps * initialDelay;
+      const finalDelta = Math.max(120, remainDuration / Math.max(1, sumWeights));
+      const maxFinalDelay = initialDelay + finalDelta;
+
+      for (let step = 1; step <= totalSteps; step++) {
+        const currentIndex = (startIndex + step) % N;
+        currentParticipantIndex = currentIndex;
+        const candidate = names[currentIndex];
+
+        const progress = step / totalSteps;
+
+        // Smooth non-linear deceleration (power curve)
+        const delay = initialDelay + Math.pow(progress, 2.6) * (maxFinalDelay - initialDelay);
+
+        // Update inline text & popup highlight
+        mentionBadge.textContent = `@${candidate}`;
+        renderPopupList(candidate);
+
+        sounds.playTensionTick(progress);
+
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+
+      // Step sequence is guaranteed to end precisely at `winner` (strictly sequential, no jump!)
+      renderPopupList(winner);
+      mentionBadge.textContent = `@${winner}`;
+      sounds.playTypeKey();
+
+      await new Promise(r => setTimeout(r, 260));
+
+      // 5. Boss presses "Enter": close dropdown popup, lock badge
+      sounds.playSelectEnter();
+      slackMentionPopup.classList.remove('active');
+      mentionBadge.className = 'mention-badge locked';
+      sounds.playWinner();
+
+      // Boost reactions
+      reactionsBar.querySelectorAll('.reaction-pill').forEach((pill, idx) => {
+        setTimeout(() => {
+          pill.classList.add('boosted');
+          const countEl = pill.querySelector('.react-count');
+          if (countEl) countEl.textContent = parseInt(countEl.textContent) + 1;
+        }, idx * 100);
+      });
+
+      // 6. Boss immediately types urgent directives for the winner in the thread (~0.5s)
+      const directiveText = pickNewWinnerQuote();
+      const directiveEl = document.getElementById('bossDirectiveText');
+      if (directiveEl) {
+        directiveEl.textContent = ' ';
+        const totalDuration = 500; // exactly 0.5s
+        const charDelay = Math.max(3, Math.floor(totalDuration / Math.max(1, directiveText.length)));
+        for (let i = 0; i < directiveText.length; i++) {
+          directiveEl.textContent += directiveText[i];
+          if (i % 4 === 0) sounds.playTypeKey();
+          await new Promise(r => setTimeout(r, charDelay));
+        }
+      }
+
+      await new Promise(r => setTimeout(r, 400));
+
+      // 7. Show Winner Modal & re-enable controls
+      showWinnerModal(winner);
+      isRunning = false;
+      startBtn.disabled = false;
+      setParticipantsDisabled(false);
+      slackWindow.classList.remove('in-action');
+    }
+
+    function showWinnerModal(name) {
+      const overlay = document.getElementById('winnerOverlay');
+      const nameEl = document.getElementById('winnerNameDisplay');
+      const quoteEl = document.getElementById('winnerQuote');
+      const excludeBtn = document.getElementById('excludeWinnerBtn');
+      
+      nameEl.textContent = `@${name}`;
+      quoteEl.textContent = getWinnerQuoteText(currentWinnerQuoteIndex);
+
+      if (excludeBtn) {
+        excludeBtn.style.display = names.length <= 2 ? 'none' : '';
+      }
+
+      overlay.classList.add('show');
+    }
+
+    function hideWinnerModal() {
+      document.getElementById('winnerOverlay').classList.remove('show');
+    }
+
+    // Initialization & Event Listeners
+    document.addEventListener('DOMContentLoaded', () => {
+      loadState();
+      renderParticipants();
+      spawnParticles();
+      pickNewIncident();
+
+      // Add Name Button
+      const addInp = document.getElementById('newNameInput');
+      const addBtn = document.getElementById('addNameBtn');
+
+      const handleAdd = () => {
+        if (isRunning) return;
+        if (names.length >= 20) {
+          showError((window.I18N && I18N.t('ph_max20')) || 'Максимум 20 участников!');
+          return;
+        }
+        const val = addInp.value.trim();
+        if (!val) return;
+        if (names.includes(val)) {
+          showError((window.I18N && I18N.t('err_dup')) || 'Это имя уже используется!');
+          return;
+        }
+        names.push(val);
+        addInp.value = '';
+        saveState();
+
+        if (!hasCustomProbabilities) {
+          const equal = 1 / names.length;
+          names.forEach(nm => probabilities[nm] = equal);
+        } else {
+          probabilities[val] = 0.05;
+        }
+
+        normalizeProbabilities();
+        saveProbabilities();
+        renderParticipants();
+      };
+
+      addBtn.addEventListener('click', handleAdd);
+      addInp.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleAdd(); });
+
+      // Equalize
+      document.getElementById('equalizeBtn').addEventListener('click', () => {
+        if (!isRunning) equalizeProbabilities();
+      });
+
+      // Start Button
+      document.getElementById('startBtn').addEventListener('click', startRoulette);
+
+      // Modal buttons & Close handlers
+      const closeBtn = document.getElementById('closeModalBtn');
+      closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideWinnerModal();
+      });
+
+      const winnerOverlayEl = document.getElementById('winnerOverlay');
+      winnerOverlayEl.addEventListener('click', (e) => {
+        if (e.target === winnerOverlayEl) {
+          hideWinnerModal();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          hideWinnerModal();
+        }
+      });
+
+      document.getElementById('spinAgainBtn').addEventListener('click', () => {
+        hideWinnerModal();
+        setTimeout(startRoulette, 300);
+      });
+
+      document.getElementById('excludeWinnerBtn').addEventListener('click', () => {
+        if (lastWinner && names.includes(lastWinner)) {
+          if (names.length <= 2) {
+            showError((window.I18N && I18N.t('err_min2')) || 'Минимум 2 участника!');
+            hideWinnerModal();
+            return;
+          }
+          const idx = names.indexOf(lastWinner);
+          const removed = names.splice(idx, 1)[0];
+          delete probabilities[removed];
+          delete lockedParticipants[removed];
+          saveState();
+          normalizeProbabilities();
+          saveProbabilities();
+          renderParticipants();
+        }
+        hideWinnerModal();
+        setTimeout(startRoulette, 300);
+      });
+
+      // Desktop & Mobile Menus
+      const dToggle = document.getElementById('desktopMenuToggle');
+      const dDropdown = document.getElementById('desktopDropdown');
+      dToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dToggle.classList.toggle('active');
+        dDropdown.classList.toggle('active');
+      });
+
+      const bToggle = document.getElementById('burgerBtn');
+      const mDropdown = document.getElementById('menuDropdown');
+      bToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        bToggle.classList.toggle('active');
+        mDropdown.classList.toggle('active');
+      });
+
+      document.addEventListener('click', () => {
+        dToggle.classList.remove('active');
+        dDropdown.classList.remove('active');
+        bToggle.classList.remove('active');
+        mDropdown.classList.remove('active');
+      });
+
+      // Language switcher hook
+      window.addEventListener('langchange', () => {
+        updateIncidentDisplay();
+        updateWinnerQuoteDisplay();
+        const cur = JSON.stringify(names);
+        if (Object.values(DEFAULT_NAME_SETS).some(set => JSON.stringify(set) === cur)) {
+          names = [...(DEFAULT_NAME_SETS[window.I18N.lang] || DEFAULT_NAME_SETS.en)];
+          equalizeProbabilities();
+        }
+      });
+    });
+  </script>
+
+  <!-- Internationalization Dictionary (Full 3 Languages: RU, EN, EL) -->
+  <script>
+  window.I18N_DICT = {
+    ru: {
+      _title: `Slack Рулетка — Кто чинит прод? | Онлайн рандомайзер`,
+      meta_desc: `🚨 Симуляция Slack-треда с инцидентом: Большой Босс объявляет аврал и выбирает дежурного спасителя прода! Драматичный рандомайзер для IT-команд.`,
+      nav_home: `🏠 Главная`, nav_bingo: `🎲 Бинго`, nav_bank: `🇲🇽 Банк`, nav_wheel: `🎡 Колесо Фортуны`, nav_loto: `🎱 Лототрон`, nav_crystal: `🔮 Магический Шар`, nav_plinko: `🎯 Плинко`, nav_racing: `🏁 Гонки`, nav_trading: `📈 Трейдинг`,
+      menu: `Меню`, menu_title: `🚨 SLACK РУЛЕТКА`, h1: `🚨 SLACK РУЛЕТКА`,
+      today_label: `Сегодня`, boss_name: `Big Boss`, callout_header: `@channel КРИТИЧЕСКИЙ ИНЦИДЕНТ!`,
+      target_label: `👉 Тушить пожар на проде назначается:`, boss_typing: `Big Boss печатает...`, thread_replies: `14 ответов в треде`,
+      popup_members: `УЧАСТНИКИ КАНАЛА`, popup_active: `в сети`,
+      start_btn: `Выбрать спасителя прода`, start_text: `Выбрать спасителя прода`,
+      participants: `👥 Участники`, equalize: `Уравнять`, equalize_title: `Уравнять вероятности`,
+      col_name: `Имя`, col_prob: `📊 Шанс`, ph_new: `Новый участник`, add_title: `Добавить участника`,
+      aria_dec: `Уменьшить вероятность`, aria_prob: `Вероятность в процентах`, aria_inc: `Увеличить вероятность`, aria_del: `Удалить участника`,
+      ph_max20: `Максимум 20 участников!`,
+      err_min2: `Минимум 2 участника!`, err_dup: `Это имя уже используется!`, err_minmax: `Минимум {min}%, максимум {max}%`,
+      win_heading: `🚨 СПАСИТЕЛЬ ПРОДА НАЙДЕН!`, btn_again: `🔄 Назначить еще одного`,
+      btn_exclude: `❌ Исключить и крутить снова`
+    },
+    en: {
+      _title: `Slack Roulette — Who Fixes Prod? | Online Randomizer`,
+      meta_desc: `🚨 Slack incident thread simulation: Big Boss triggers emergency alert and picks the hero to fix prod! Dramatic randomizer for dev teams.`,
+      nav_home: `🏠 Home`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 The Bank`, nav_wheel: `🎡 Wheel of Fortune`, nav_loto: `🎱 Lottery Drum`, nav_crystal: `🔮 Magic Ball`, nav_plinko: `🎯 Plinko`, nav_racing: `🏁 Racing`, nav_trading: `📈 Trading`,
+      menu: `Menu`, menu_title: `🚨 SLACK ROULETTE`, h1: `🚨 SLACK ROULETTE`,
+      today_label: `Today`, boss_name: `Big Boss`, callout_header: `@channel CRITICAL INCIDENT!`,
+      target_label: `👉 Dispatched to resolve the incident:`, boss_typing: `Big Boss is typing...`, thread_replies: `14 replies in thread`,
+      popup_members: `CHANNEL MEMBERS`, popup_active: `active`,
+      start_btn: `Pick Incident Hero`, start_text: `Pick Incident Hero`,
+      participants: `👥 Participants`, equalize: `Equalize`, equalize_title: `Equalize probabilities`,
+      col_name: `Name`, col_prob: `📊 Chance`, ph_new: `New participant`, add_title: `Add participant`,
+      aria_dec: `Decrease probability`, aria_prob: `Probability in percent`, aria_inc: `Increase probability`, aria_del: `Remove participant`,
+      ph_max20: `Maximum 20 participants!`,
+      err_min2: `At least 2 participants!`, err_dup: `This name is already used!`, err_minmax: `Minimum {min}%, maximum {max}%`,
+      win_heading: `🚨 INCIDENT COMMANDER ASSIGNED!`, btn_again: `🔄 Assign another one`,
+      btn_exclude: `❌ Exclude and spin again`
+    },
+    el: {
+      _title: `Slack Ρουλέτα — Ποιος φτιάχνει το Prod; | Randomizer`,
+      meta_desc: `🚨 Προσομοίωση νήματος Slack με έκτακτη ανάγκη: Το Μεγάλο Αφεντικό ανακοινώνει πρόβλημα και διαλέγει τον ήρωα!`,
+      nav_home: `🏠 Αρχική`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 Η Τράπεζα`, nav_wheel: `🎡 Τροχός της Τύχης`, nav_loto: `🎱 Κληρωτίδα`, nav_crystal: `🔮 Μαγική Μπάλα`, nav_plinko: `🎯 Plinko`, nav_racing: `🏁 Αγώνες`, nav_trading: `📈 Trading`,
+      menu: `Μενού`, menu_title: `🚨 SLACK ΡΟΥΛΕΤΑ`, h1: `🚨 SLACK ΡΟΥΛΕΤΑ`,
+      today_label: `Σήμερα`, boss_name: `Μεγάλο Αφεντικό`, callout_header: `@channel ΚΡΙΣΙΜΟ ΣΦΑΛΜΑ!`,
+      target_label: `👉 Υπεύθυνος για την κατάσβεση της κρίσης:`, boss_typing: `Το Αφεντικό πληκτρολογεί...`, thread_replies: `14 απαντήσεις στο νήμα`,
+      popup_members: `ΜΕΛΗ ΚΑΝΑΛΙΟΥ`, popup_active: `ενεργός`,
+      start_btn: `Επιλογή υπεύθυνου`, start_text: `Επιλογή υπεύθυνου`,
+      participants: `👥 Συμμετέχοντες`, equalize: `Εξίσωση`, equalize_title: `Εξίσωση πιθανοτήτων`,
+      col_name: `Όνομα`, col_prob: `📊 Πιθανότητα`, ph_new: `Νέος συμμετέχων`, add_title: `Προσθήκη`,
+      aria_dec: `Μείωση πιθανότητας`, aria_prob: `Πιθανότητα σε ποσοστό`, aria_inc: `Αύξηση πιθανότητας`, aria_del: `Διαγραφή συμμετέχοντα`,
+      ph_max20: `Έως 20 συμμετέχοντες!`,
+      err_min2: `Τουλάχιστον 2 συμμετέχοντες!`, err_dup: `Αυτό το όνομα υπάρχει ήδη!`, err_minmax: `Ελάχιστο {min}%, μέγιστο {max}%`,
+      win_heading: `🚨 Ο ΗΡΩΑΣ ΒΡΕΘΗΚΕ!`, btn_again: `🔄 Επιλογή επόμενου`,
+      btn_exclude: `❌ Εξαίρεση και νέα επιλογή`
+    }
+  };
+  </script>
+
+  <!-- External scripts -->
+  <script src="sound-toggle.js" defer></script>
+  <script src="i18n.js" defer></script>
+
+  <!-- Yandex.Metrika counter -->
+  <script type="text/javascript">
+    (function(m,e,t,r,i,k,a){
+      m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+      m[i].l=1*new Date();
+      for (var j = 0; j < document.scripts.length; j++) {
+        if (document.scripts[j].src === r) { return; }
+      }
+      k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+    })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+
+    ym(104849796, 'init', {
+      clickmap:true,
+      trackLinks:true,
+      accurateTrackBounce:true,
+      webvisor:true
+    });
+  </script>
+  <noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+  <!-- /Yandex.Metrika counter -->
+
+</body>
+</html>
