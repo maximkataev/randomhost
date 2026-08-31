@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+  <title>Рандомный обед — куда пойти есть?</title>
+  <meta name="description" content="✏️ Рандомайзер обеда с карандашным дизайном. Добавьте кафе, кухни или блюда и выберите случайный вариант!" data-i18n-meta="meta_desc">
+  <meta name="robots" content="index,follow">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Bangers&family=Permanent+Marker&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&display=swap" rel="stylesheet">
+
+  <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/992/992651.png" type="image/png">
+
+  <meta name="theme-color" content="#ffffff">
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+
+      --white: #fcfcfc;
+      --black: #232323; /* не глухой, ближе к карандашу */
+      --gray-light: #f3f3f3;
+      --gray-medium: #c7c7c7;
+      --gray-dark: #777777;
+    }
+
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 0 0, rgba(0,0,0,0.04), transparent 55%),
+        radial-gradient(circle at 100% 100%, rgba(0,0,0,0.04), transparent 55%),
+        var(--white);
+      font-family: 'Permanent Marker', 'Bangers', cursive;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: calc(80px + var(--safe-top)) var(--safe-right) calc(20px + var(--safe-bottom)) var(--safe-left);
+      position: relative;
+      overflow-x: hidden;
+      color: var(--black);
+    }
+
+    /* Лист в клетку/линейку легким карандашом */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 27px,
+          rgba(0,0,0,0.04) 27px,
+          rgba(0,0,0,0.04) 28px
+        ),
+        repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent 27px,
+          rgba(0,0,0,0.025) 27px,
+          rgba(0,0,0,0.025) 28px
+        );
+      mix-blend-mode: multiply;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Кнопка домой */
+    .home-button {
+      position: fixed;
+      top: calc(20px + var(--safe-top));
+      left: calc(20px + var(--safe-left));
+      z-index: 1000;
+      padding: 10px 22px;
+      background: var(--white);
+      color: var(--black);
+      text-decoration: none;
+      font-family: 'Bangers', cursive;
+      font-size: 20px;
+      border-radius: 12px;
+      border: 2px solid var(--black);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.5),
+        3px 3px 0 rgba(0,0,0,0.5);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      transform: rotate(-2deg);
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.08) 0 1px,
+          transparent 1px 3px
+        );
+    }
+
+    .home-button:hover {
+      transform: rotate(-2deg) translate(-2px, -2px);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.6),
+        5px 5px 0 rgba(0,0,0,0.6);
+    }
+
+    .home-button:active {
+      transform: rotate(-2deg) translate(2px, 2px);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.6),
+        1px 1px 0 rgba(0,0,0,0.6);
+    }
+
+    .container {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      max-width: 1100px;
+      background: var(--white);
+      padding: 40px 30px;
+      border-radius: 20px;
+      border: 2px solid var(--black);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.7),
+        6px 6px 0 rgba(0,0,0,0.7);
+      transform: rotate(-0.8deg);
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.03) 0 2px,
+          transparent 2px 4px
+        );
+      overflow: hidden;
+    }
+
+    /* "Кривой" контур, как от руки */
+    .container::before {
+      content: '';
+      position: absolute;
+      inset: 6px;
+      border-radius: 16px;
+      border: 2px dashed rgba(0,0,0,0.3);
+      transform: rotate(0.8deg);
+      pointer-events: none;
+    }
+
+    .main-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      align-items: start;
+    }
+
+    .settings-column {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .generator-column {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 400px;
+    }
+
+    h1 {
+      font-family: 'Bangers', cursive;
+      font-size: clamp(32px, 8vw, 52px);
+      color: var(--black);
+      text-align: center;
+      margin-bottom: 30px;
+      font-weight: 400;
+      letter-spacing: 2px;
+      position: relative;
+      text-shadow:
+        0 0 1px rgba(0,0,0,0.8),
+        -1px 1px 0 rgba(255,255,255,0.5);
+      transform: rotate(-3deg);
+      grid-column: 1 / -1;
+    }
+
+    .subtitle {
+      display: none;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 220px;
+      padding: 16px;
+      font-family: 'Rubik', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 16px;
+      border-radius: 10px;
+      background: var(--white);
+      color: var(--black);
+      border: 2px solid var(--black);
+      box-shadow:
+        inset 0 0 0 1px rgba(0,0,0,0.3),
+        3px 3px 0 rgba(0,0,0,0.4);
+      transition: all 0.3s ease;
+      resize: vertical;
+      line-height: 1.6;
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.02) 0 2px,
+          transparent 2px 4px
+        );
+    }
+
+    textarea:focus {
+      outline: none;
+      transform: translateY(-2px) rotate(-0.5deg);
+      box-shadow:
+        inset 0 0 0 1px rgba(0,0,0,0.35),
+        4px 4px 0 rgba(0,0,0,0.55);
+    }
+
+    textarea:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .input-group {
+      background: var(--gray-light);
+      padding: 20px;
+      border-radius: 15px;
+      position: relative;
+      border: 2px solid var(--black);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.4),
+        4px 4px 0 rgba(0,0,0,0.4);
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.02) 0 2px,
+          transparent 2px 4px
+        );
+    }
+
+    .input-group::after {
+      content: '';
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid var(--black);
+      background:
+        radial-gradient(circle at 30% 30%, rgba(0,0,0,0.15), transparent 60%),
+        var(--white);
+    }
+
+    .input-label {
+      display: block;
+      font-size: clamp(18px, 4.5vw, 22px);
+      color: var(--black);
+      margin-bottom: 15px;
+      font-family: 'Bangers', cursive;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Пресеты — маленькие карандашные кнопки */
+    .presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .preset-btn {
+      padding: 8px 14px;
+      font-family: 'Permanent Marker', cursive;
+      font-size: 15px;
+      color: var(--black);
+      background: var(--white);
+      border-radius: 10px;
+      cursor: pointer;
+      border: 2px solid var(--black);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.4),
+        2px 2px 0 rgba(0,0,0,0.5);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.04) 0 1px,
+          transparent 1px 3px
+        );
+    }
+
+    .preset-btn:nth-child(1) { transform: rotate(-1.5deg); }
+    .preset-btn:nth-child(2) { transform: rotate(1deg); }
+    .preset-btn:nth-child(3) { transform: rotate(-0.5deg); }
+    .preset-btn:nth-child(4) { transform: rotate(1.2deg); }
+
+    .preset-btn:hover {
+      transform: translate(-1px, -1px);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.55),
+        4px 4px 0 rgba(0,0,0,0.6);
+    }
+
+    .preset-btn:active {
+      transform: translate(2px, 2px);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.55),
+        1px 1px 0 rgba(0,0,0,0.6);
+    }
+
+    /* Кнопка генерации */
+    .generate-btn {
+      padding: 18px 34px;
+      font-family: 'Bangers', cursive;
+      font-size: clamp(24px, 6vw, 34px);
+      font-weight: 400;
+      color: var(--black);
+      background: var(--gray-light);
+      border-radius: 14px;
+      cursor: pointer;
+      border: 2px solid var(--black);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.6),
+        4px 4px 0 rgba(0,0,0,0.7);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
+      overflow: hidden;
+      touch-action: manipulation;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      transform: rotate(-1deg);
+      margin-top: 26px;
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.08) 0 2px,
+          transparent 2px 5px
+        );
+    }
+
+    .generate-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(
+          90deg,
+          transparent 0 15px,
+          rgba(0,0,0,0.08) 15px 17px
+        );
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      pointer-events: none;
+    }
+
+    .generate-btn:hover:not(:disabled)::before {
+      opacity: 1;
+    }
+
+    .generate-btn:hover:not(:disabled) {
+      transform: rotate(-1deg) translate(-2px, -2px);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.75),
+        6px 6px 0 rgba(0,0,0,0.8);
+    }
+
+    .generate-btn:active:not(:disabled) {
+      transform: rotate(-1deg) translate(2px, 2px);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.75),
+        2px 2px 0 rgba(0,0,0,0.8);
+    }
+
+    .generate-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: rotate(-1deg);
+    }
+
+    .result-container {
+      text-align: center;
+      min-height: 280px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--white);
+      border-radius: 15px;
+      padding: 25px;
+      position: relative;
+      border: 2px dashed var(--black);
+      box-shadow:
+        inset 0 0 0 1px rgba(0,0,0,0.25);
+      transform: rotate(1deg);
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.02) 0 3px,
+          transparent 3px 6px
+        );
+    }
+
+    .result-container::before {
+      content: '?';
+      position: absolute;
+      font-size: 110px;
+      color: rgba(0,0,0,0.04);
+      font-weight: 700;
+      pointer-events: none;
+      font-family: 'Bangers', cursive;
+    }
+
+    /* Высота всегда зарезервирована, чтобы контейнер не прыгал */
+    .result-emoji {
+      height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 44px;
+      filter: grayscale(1);
+      opacity: 0;
+      position: relative;
+      z-index: 2;
+    }
+
+    .result-emoji.show {
+      animation: emojiIn 0.4s ease-out forwards;
+    }
+
+    @keyframes emojiIn {
+      0% { opacity: 0; transform: translateY(8px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+
+    .result-number {
+      font-family: 'Rubik', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: clamp(24px, 6vw, 38px);
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 500;
+      color: var(--black);
+      text-shadow:
+            0 0 1px rgba(0,0,0,0.6),
+            -1px 1px 0 rgba(255,255,255,0.6);
+      opacity: 0;
+      transform: scale(0) rotate(-10deg);
+      position: relative;
+      z-index: 2;
+      letter-spacing: 0.5px;
+      white-space: pre-line;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      max-width: 100%;
+      line-height: 1.35;
+    }
+
+    .result-number.show {
+      animation: popIn 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+    }
+
+    @keyframes popIn {
+      0% {
+        opacity: 0;
+        transform: scale(0) rotate(-10deg);
+      }
+      50% {
+        transform: scale(1.1) rotate(4deg);
+      }
+      100% {
+        opacity: 1;
+        transform: scale(1) rotate(-2deg);
+      }
+    }
+
+    .result-hint {
+      margin-top: 14px;
+      min-height: 22px;
+      font-size: 15px;
+      color: var(--gray-dark);
+      font-family: 'Permanent Marker', cursive;
+      position: relative;
+      z-index: 2;
+    }
+
+    .loading {
+      font-size: clamp(22px, 5.5vw, 30px);
+      color: var(--gray-dark);
+      font-family: 'Permanent Marker', cursive;
+      animation: pulse 1s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.03); }
+    }
+
+    .error-message {
+      color: var(--black);
+      background: var(--white);
+      border-radius: 8px;
+      font-size: 15px;
+      margin-top: 15px;
+      text-align: center;
+      font-family: 'Permanent Marker', cursive;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      border: 2px solid var(--black);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.4),
+        3px 3px 0 rgba(0,0,0,0.5);
+      transform: rotate(-1deg);
+      padding: 8px 12px;
+      background-image:
+        repeating-linear-gradient(
+          -45deg,
+          rgba(0,0,0,0.02) 0 2px,
+          transparent 2px 4px
+        );
+    }
+
+    .error-message.show {
+      opacity: 1;
+      animation: wiggle 0.5s ease;
+    }
+
+    @keyframes wiggle {
+      0%, 100% { transform: rotate(-1deg); }
+      25% { transform: rotate(-3deg); }
+      75% { transform: rotate(1deg); }
+    }
+
+    /* Декоративные звездочки */
+    .star-decoration {
+      position: absolute;
+      font-size: 22px;
+      opacity: 0.22;
+      pointer-events: none;
+      font-family: 'Bangers', cursive;
+      color: var(--black);
+    }
+
+    .star-decoration:nth-child(1) { top: 10px; right: 16px; transform: rotate(9deg); }
+    .star-decoration:nth-child(2) { top: 50%; left: -6px; transform: rotate(-18deg); }
+    .star-decoration:nth-child(3) { bottom: 15px; right: -4px; transform: rotate(27deg); }
+
+    /* Карандашные декорации */
+    .pencil-decoration {
+      position: fixed;
+      pointer-events: none;
+      opacity: 0.16;
+      z-index: 0;
+      font-size: 72px;
+      filter: grayscale(1);
+      color: var(--black);
+    }
+
+    /* ===== РЯД 1 — ВЕРХНИЙ ===== */
+    .pencil-1 { top: 7%; left: 9%; transform: rotate(-20deg); }
+    .pencil-2 { top: 3%; left: 45%; transform: rotate(12deg); }
+    .pencil-3 { top: 5%; right: 8%; transform: rotate(160deg); }
+
+    /* ===== РЯД 2 — СРЕДНИЙ ===== */
+    .pencil-4 { top: 45%; left: 10%; transform: rotate(95deg); }
+    .pencil-5 { top: 50%; left: 48%; transform: rotate(-35deg); }
+    .pencil-6 { top: 40%; right: 10%; transform: rotate(-10deg); }
+
+    /* ===== РЯД 3 — НИЖНИЙ ===== */
+    .pencil-7 { bottom: 20%; left: 12%; transform: rotate(110deg); }
+    .pencil-8 { bottom: 4%; left: 50%; transform: rotate(270deg); }
+    .pencil-9 { bottom: 5%; right: 12%; transform: rotate(10deg); }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: calc(80px + var(--safe-top)) 12px calc(20px + var(--safe-bottom)) 12px;
+      }
+
+      .home-button {
+        position: absolute;
+        font-size: 18px;
+        padding: 8px 18px;
+      }
+
+      .container {
+        padding: 28px 18px;
+        transform: rotate(-0.4deg);
+      }
+
+      .main-layout {
+        grid-template-columns: 1fr;
+        gap: 25px;
+      }
+
+      .generator-column {
+        min-height: auto;
+      }
+
+      .generate-btn {
+        width: 100%;
+        margin-top: 20px;
+        padding: 16px 24px;
+      }
+
+      .result-container {
+        min-height: 240px;
+      }
+
+      .pencil-decoration {
+        font-size: 56px;
+        opacity: 0.18;
+      }
+
+      /* часть карандашей убираем, чтобы не перегружать фон */
+      .pencil-3,
+      .pencil-4,
+      .pencil-5,
+      .pencil-6,
+      .pencil-7,
+      .pencil-8,
+      .pencil-9 {
+        display: none;
+      }
+
+      /* 👉 мобильный шрифт (iPhone fix) */
+      body,
+      h1,
+      .input-label,
+      .preset-btn,
+      .generate-btn,
+      .result-number,
+      .result-hint,
+      .loading,
+      .error-message,
+      .home-button {
+        font-family: 'Rubik', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+      }
+    }
+
+    textarea {
+      font-family: 'Rubik', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+    }
+
+    @media (max-width: 360px) {
+      .input-group {
+        padding: 15px;
+      }
+    }
+
+    @media (hover: none) {
+      .generate-btn:hover {
+        transform: rotate(-1deg) !important;
+      }
+    }
+  </style>
+
+</head>
+<body>
+  <a href="/" class="home-button" data-i18n="home">Главная</a>
+
+
+    <!-- Еда карандашом по фону -->
+    <div class="pencil-decoration pencil-1">🍕</div>
+    <div class="pencil-decoration pencil-2">✎</div>
+    <div class="pencil-decoration pencil-3">🍜</div>
+    <div class="pencil-decoration pencil-4">🥗</div>
+    <div class="pencil-decoration pencil-5">✏</div>
+    <div class="pencil-decoration pencil-6">🍔</div>
+    <div class="pencil-decoration pencil-7">🌮</div>
+    <div class="pencil-decoration pencil-8">✏</div>
+    <div class="pencil-decoration pencil-9">☕</div>
+
+
+  <div class="container">
+    <div class="star-decoration">✶</div>
+    <div class="star-decoration">✶</div>
+    <div class="star-decoration">✶</div>
+
+    <h1 data-i18n="h1">Рандомный обед</h1>
+
+    <div class="main-layout">
+      <div class="settings-column">
+        <div class="input-group">
+          <label class="input-label" for="lunchInput" data-i18n="input_label">Варианты обеда</label>
+          <textarea id="lunchInput" data-i18n-attr="placeholder:input_ph" placeholder="Введите варианты по строкам">Пицца
+Суши
+Рамен
+Бургеры
+Шаурма
+Паста
+Боулы
+Грузинская кухня
+Индийская кухня
+Вьетнамская кухня
+Корейская кухня
+Плов
+Пельмени
+Блины
+Фалафель
+Вок
+Поке
+Столовая без лишних вопросов</textarea>
+          <div class="presets">
+            <button class="preset-btn" data-preset="default" data-i18n="preset_default">Все варианты</button>
+            <button class="preset-btn" data-preset="office" data-i18n="preset_office">Офисный сет</button>
+            <button class="preset-btn" data-preset="delivery" data-i18n="preset_delivery">Доставка</button>
+            <button class="preset-btn" data-preset="healthy" data-i18n="preset_healthy">Полезное</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="generator-column">
+        <div class="result-container">
+          <div class="result-emoji" id="resultEmoji"></div>
+          <div class="result-number" id="result"></div>
+          <div class="result-hint" id="resultHint" data-i18n="hint_start">Добавь варианты и жми кнопку</div>
+        </div>
+
+        <button class="generate-btn" id="pickBtn" data-i18n="gen_btn">Выбрать обед</button>
+        <div class="error-message" id="errorMsg"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // Заглушка до загрузки i18n.js (defer)
+  window.I18N = window.I18N || { t: (k) => k, lang: 'ru', setLang(){}, supported: ['ru','en','el'] };
+  </script>
+
+  <script>
+    const input = document.getElementById('lunchInput');
+    const result = document.getElementById('result');
+    const resultEmoji = document.getElementById('resultEmoji');
+    const resultHint = document.getElementById('resultHint');
+    const pickBtn = document.getElementById('pickBtn');
+    const errorMsg = document.getElementById('errorMsg');
+
+    const EMOJIS = ['🍕', '🍜', '🥗', '🌮', '🍔', '🍣', '🥟', '🍛', '🥘', '🥪'];
+
+    let isPicking = false;
+    // какой список сейчас в поле: 'default' | имя пресета | null (пользователь правил сам)
+    let currentListKey = 'default';
+
+    function getList(key) {
+      if (key === 'default') return I18N.t('default_list');
+      return I18N.t('preset_' + key + '_list');
+    }
+
+    function fillList(key) {
+      const list = getList(key);
+      if (Array.isArray(list)) {
+        input.value = list.join('\n');
+        currentListKey = key;
+      }
+    }
+
+    function getOptions() {
+      return input.value.split(/\n|,|;/).map(item => item.trim()).filter(Boolean);
+    }
+
+    function showError(message) {
+      errorMsg.textContent = message;
+      errorMsg.classList.add('show');
+      setTimeout(() => {
+        errorMsg.classList.remove('show');
+      }, 3000);
+    }
+
+    document.querySelectorAll('.preset-btn').forEach(button => {
+      button.addEventListener('click', () => {
+        fillList(button.dataset.preset);
+      });
+    });
+
+    input.addEventListener('input', () => {
+      currentListKey = null;
+    });
+
+    async function pickLunch() {
+      if (isPicking) return;
+
+      const options = getOptions();
+      if (options.length < 2) {
+        showError(I18N.t('err_few'));
+        return;
+      }
+
+      isPicking = true;
+      pickBtn.disabled = true;
+      input.disabled = true;
+
+      result.classList.remove('show');
+      resultEmoji.classList.remove('show');
+      resultEmoji.textContent = '';
+      result.innerHTML = '<span class="loading">' + I18N.t('loading') + '</span>';
+      resultHint.textContent = '';
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const choice = options[Math.floor(Math.random() * options.length)];
+      resultEmoji.textContent = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+      result.textContent = choice;
+      result.classList.add('show');
+      resultEmoji.classList.add('show');
+      resultHint.textContent = '';
+
+      pickBtn.disabled = false;
+      input.disabled = false;
+      isPicking = false;
+    }
+
+    pickBtn.addEventListener('click', pickLunch);
+
+    window.addEventListener('langchange', () => {
+      // локализуем список, только если пользователь его не редактировал
+      if (currentListKey) fillList(currentListKey);
+      if (resultHint.textContent && !result.textContent) {
+        resultHint.textContent = I18N.t('hint_start');
+      }
+    });
+  </script>
+
+ <!-- Yandex.Metrika counter -->
+  <script type="text/javascript">
+    (function(m,e,t,r,i,k,a){
+      m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+      m[i].l=1*new Date();
+      for (var j = 0; j < document.scripts.length; j++) {
+        if (document.scripts[j].src === r) { return; }
+      }
+      k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+    })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+
+    ym(104849796, 'init', {
+      clickmap:true,
+      trackLinks:true,
+      accurateTrackBounce:true,
+      webvisor:true
+    });
+  </script>
+  <noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+  <!-- /Yandex.Metrika counter -->
+
+  <script>
+  window.I18N_DICT = {
+    ru: {
+      _title: `Рандомный обед — куда пойти есть?`,
+      meta_desc: `✏️ Рандомайзер обеда с карандашным дизайном. Добавьте кафе, кухни или блюда и выберите случайный вариант!`,
+      home: `Главная`,
+      h1: `Рандомный обед`,
+      input_label: `Варианты обеда`,
+      input_ph: `Введите варианты по строкам`,
+      preset_default: `Все варианты`,
+      preset_office: `Офисный сет`,
+      preset_delivery: `Доставка`,
+      preset_healthy: `Полезное`,
+      gen_btn: `Выбрать обед`,
+      loading: `Выбираю...`,
+      hint_start: `Добавь варианты и жми кнопку`,
+      err_few: `Добавьте хотя бы два варианта!`,
+      default_list: ['Пицца', 'Суши', 'Рамен', 'Бургеры', 'Шаурма', 'Паста', 'Боулы', 'Грузинская кухня', 'Индийская кухня', 'Вьетнамская кухня', 'Корейская кухня', 'Плов', 'Пельмени', 'Блины', 'Фалафель', 'Вок', 'Поке', 'Столовая без лишних вопросов'],
+      preset_office_list: ['Бизнес-ланч', 'Столовая', 'Кофейня рядом', 'Пицца в офис', 'Суп дня', 'Шаурма у метро', 'Кулинария в супермаркете', 'Ланч в кафе за углом', 'Где есть свободный стол'],
+      preset_delivery_list: ['Пицца', 'Суши', 'Рамен', 'Бургеры', 'Поке', 'Том-ям', 'Хинкали', 'Тако', 'Вок', 'Пад-тай', 'Пироги', 'Плов', 'Шаурма'],
+      preset_healthy_list: ['Боул с курицей', 'Салат с тунцом', 'Гречка и котлета', 'Суп и хлеб', 'Овощной вок', 'Киноа с овощами', 'Омлет и салат', 'Смузи-боул', 'Творог и смирение']
+    },
+    en: {
+      _title: `Lunch Randomizer — where to eat?`,
+      meta_desc: `✏️ Pencil-styled lunch randomizer. Add cafes, cuisines or dishes and pick a random one!`,
+      home: `Home`,
+      h1: `Lunch Randomizer`,
+      input_label: `Lunch options`,
+      input_ph: `Enter options, one per line`,
+      preset_default: `All options`,
+      preset_office: `Office set`,
+      preset_delivery: `Delivery`,
+      preset_healthy: `Healthy`,
+      gen_btn: `Pick lunch`,
+      loading: `Picking...`,
+      hint_start: `Add options and hit the button`,
+      err_few: `Add at least two options!`,
+      default_list: ['Pizza', 'Sushi', 'Ramen', 'Burgers', 'Shawarma', 'Pasta', 'Poke bowls', 'Georgian food', 'Indian food', 'Vietnamese food', 'Korean food', 'Pilaf', 'Dumplings', 'Pancakes', 'Falafel', 'Wok', 'Poke', 'Canteen, no questions asked'],
+      preset_office_list: ['Business lunch', 'Canteen', 'Coffee shop nearby', 'Pizza to the office', 'Soup of the day', 'Shawarma by the metro', 'Supermarket deli', 'Lunch at the corner cafe', 'Wherever has a free table'],
+      preset_delivery_list: ['Pizza', 'Sushi', 'Ramen', 'Burgers', 'Poke', 'Tom yum', 'Khinkali', 'Tacos', 'Wok', 'Pad thai', 'Pies', 'Pilaf', 'Shawarma'],
+      preset_healthy_list: ['Chicken bowl', 'Tuna salad', 'Buckwheat and a cutlet', 'Soup and bread', 'Veggie wok', 'Quinoa with veggies', 'Omelet and salad', 'Smoothie bowl', 'Cottage cheese and humility']
+    },
+    el: {
+      _title: `Τυχαίο Μεσημεριανό — πού θα φάμε;`,
+      meta_desc: `✏️ Τυχαία επιλογή μεσημεριανού σε στυλ μολυβιού. Προσθέστε μαγαζιά, κουζίνες ή πιάτα και διαλέξτε στην τύχη!`,
+      home: `Αρχική`,
+      h1: `Τυχαίο Μεσημεριανό`,
+      input_label: `Επιλογές φαγητού`,
+      input_ph: `Γράψτε επιλογές, μία ανά γραμμή`,
+      preset_default: `Όλες οι επιλογές`,
+      preset_office: `Σετ γραφείου`,
+      preset_delivery: `Ντελίβερι`,
+      preset_healthy: `Υγιεινά`,
+      gen_btn: `Διάλεξε φαγητό`,
+      loading: `Διαλέγω...`,
+      hint_start: `Πρόσθεσε επιλογές και πάτα το κουμπί`,
+      err_few: `Προσθέστε τουλάχιστον δύο επιλογές!`,
+      default_list: ['Πίτσα', 'Σούσι', 'Ράμεν', 'Μπέργκερ', 'Γύρος', 'Ζυμαρικά', 'Μπολ', 'Γεωργιανή κουζίνα', 'Ινδική κουζίνα', 'Βιετναμέζικη κουζίνα', 'Κορεάτικη κουζίνα', 'Πιλάφι', 'Ραβιόλια', 'Κρέπες', 'Φαλάφελ', 'Γουόκ', 'Πόκε', 'Κυλικείο χωρίς πολλές ερωτήσεις'],
+      preset_office_list: ['Μενού ημέρας', 'Κυλικείο', 'Καφέ δίπλα', 'Πίτσα στο γραφείο', 'Σούπα ημέρας', 'Σουβλάκι στη γωνία', 'Ντελικατέσεν σούπερ μάρκετ', 'Καφέ στη γωνία', 'Όπου υπάρχει ελεύθερο τραπέζι'],
+      preset_delivery_list: ['Πίτσα', 'Σούσι', 'Ράμεν', 'Μπέργκερ', 'Πόκε', 'Τομ γιαμ', 'Χινκάλι', 'Τάκος', 'Γουόκ', 'Παντ τάι', 'Πίτες', 'Πιλάφι', 'Γύρος'],
+      preset_healthy_list: ['Μπολ με κοτόπουλο', 'Σαλάτα με τόνο', 'Φαγόπυρο με μπιφτέκι', 'Σούπα και ψωμί', 'Γουόκ λαχανικών', 'Κινόα με λαχανικά', 'Ομελέτα και σαλάτα', 'Σμούθι μπολ', 'Τυρί κότατζ και υπομονή']
+    }
+  };
+  </script>
+  <script src="i18n.js" defer></script>
+</body>
+</html>
