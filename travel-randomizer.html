@@ -1,0 +1,1479 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+  <title>Рандомное место для путешествия — куда поехать?</title>
+  <meta name="description" content="✈️ Рандомайзер путешествий: выбери регион — Европа, Азия, Америка, Африка, Океания — и получи случайное направление из 1800 мест на посадочном талоне." data-i18n-meta="meta_desc">
+  <meta name="robots" content="index,follow">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+
+  <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/201/201623.png" type="image/png">
+
+  <meta name="theme-color" content="#0a1421">
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+
+      --ink: #0a1421;
+      --ink-2: #101f31;
+      --paper: #f7f3ea;
+      --paper-2: #ebe3d4;
+      --amber: #ffb703;
+      --amber-deep: #fb8500;
+      --teal: #2ec4b6;
+      --line: rgba(255, 255, 255, 0.14);
+
+      /* размеры названия: подбирается автоматически в пределах min..max */
+      --name-max: 50px;
+      --name-min: 15px;
+      --name-box: 80px;
+      --note-box: 21px;
+      --muted: #8ea0b5;
+      --pass-ink: #17202b;
+    }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      min-height: 100vh;
+      background: var(--ink);
+      color: #e8eef6;
+      font-family: 'Roboto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: calc(58px + var(--safe-top)) calc(18px + var(--safe-right)) calc(26px + var(--safe-bottom)) calc(18px + var(--safe-left));
+      display: flex;
+      align-items: center;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Фон: ночное небо, сетка-«карта», световые пятна */
+    .bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(1100px 620px at 12% -8%, rgba(255, 183, 3, 0.16), transparent 62%),
+        radial-gradient(900px 540px at 92% 108%, rgba(46, 196, 182, 0.16), transparent 60%),
+        linear-gradient(180deg, #0a1421 0%, #0c1a2b 55%, #08111c 100%);
+    }
+
+    .bg::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+      background-size: 26px 26px;
+      opacity: 0.22;
+      mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 30%, transparent 100%);
+      -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 30%, transparent 100%);
+    }
+
+    .arcs {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.4;
+    }
+
+    .arcs path {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.22);
+      stroke-width: 1.2;
+      stroke-dasharray: 5 9;
+    }
+
+    /* Кнопка домой */
+    .home-button {
+      position: fixed;
+      top: calc(14px + var(--safe-top));
+      left: calc(14px + var(--safe-left));
+      z-index: 90;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 16px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: #dbe6f2;
+      text-decoration: none;
+      font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      transition: background 0.2s ease, transform 0.2s ease, color 0.2s ease;
+    }
+
+    .home-button:hover { background: rgba(255, 255, 255, 0.14); color: #fff; transform: translateY(-1px); }
+
+    .wrap {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      max-width: 1080px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Шапка */
+    
+    
+    
+    
+    /* Панель управления */
+    .controls {
+      margin-top: 18px;
+      width: 100%;
+      max-width: 720px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .chips {
+      max-width: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 14px 9px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.05);
+      color: #cfdcea;
+      cursor: pointer;
+      font-family: 'Roboto Condensed', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.14s ease;
+    }
+
+    .chip .code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.09);
+      color: #9fb3c8;
+    }
+
+    .chip .num {
+      font-variant-numeric: tabular-nums;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--muted);
+      letter-spacing: 0;
+    }
+
+    .chip:hover { background: rgba(255, 255, 255, 0.1); transform: translateY(-1px); }
+
+    .chip.active {
+      background: linear-gradient(180deg, var(--amber), var(--amber-deep));
+      border-color: rgba(255, 183, 3, 0.6);
+      color: #241a02;
+      box-shadow: 0 8px 22px rgba(251, 133, 0, 0.28);
+    }
+
+    .chip.active .code { background: rgba(0, 0, 0, 0.16); color: #3a2a04; }
+    .chip.active .num { color: rgba(36, 26, 2, 0.62); }
+
+    .kinds { gap: 6px; }
+
+    .kind-btn {
+      padding: 7px 14px;
+      border-radius: 999px;
+      border: 1px dashed rgba(255, 255, 255, 0.22);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 0.6px;
+      transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+    }
+
+    .kind-btn:hover { color: #dce8f5; border-color: rgba(255, 255, 255, 0.4); }
+
+    .kind-btn.active {
+      color: var(--teal);
+      border-color: rgba(46, 196, 182, 0.55);
+      border-style: solid;
+      background: rgba(46, 196, 182, 0.1);
+    }
+
+    /* ===== ПОСАДОЧНЫЙ ТАЛОН ===== */
+    .pass {
+      margin-top: 20px;
+      width: 100%;
+      max-width: 720px;
+      display: grid;
+      grid-template-columns: 1fr 168px;
+      background: var(--paper);
+      color: var(--pass-ink);
+      border-radius: 18px;
+      position: relative;
+      box-shadow:
+        0 30px 60px -22px rgba(0, 0, 0, 0.75),
+        0 0 0 1px rgba(255, 255, 255, 0.08);
+      transition: box-shadow 0.4s ease, transform 0.4s ease;
+    }
+
+    .pass.settled {
+      box-shadow:
+        0 30px 70px -20px rgba(0, 0, 0, 0.8),
+        0 0 0 1px rgba(255, 183, 3, 0.35),
+        0 0 60px -10px rgba(255, 183, 3, 0.35);
+    }
+
+    .pass.shake { animation: passShake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97); }
+
+    @keyframes passShake {
+      0%, 100% { transform: translate3d(0, 0, 0) rotate(0); }
+      15% { transform: translate3d(-5px, 2px, 0) rotate(-0.5deg); }
+      35% { transform: translate3d(4px, -2px, 0) rotate(0.4deg); }
+      55% { transform: translate3d(-3px, 1px, 0) rotate(-0.3deg); }
+      75% { transform: translate3d(2px, 0, 0) rotate(0.15deg); }
+    }
+
+    .pass-main {
+      padding: 18px 24px 16px;
+      position: relative;
+      min-width: 0;
+      overflow: hidden;
+      border-radius: 18px 0 0 18px;
+      min-height: 296px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* линия отрыва + «пробитые» отверстия */
+    .pass-stub {
+      position: relative;
+      border-left: 2px dashed rgba(23, 32, 43, 0.28);
+      background: var(--paper-2);
+      border-radius: 0 18px 18px 0;
+      padding: 22px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .pass-stub::before,
+    .pass-stub::after {
+      content: '';
+      position: absolute;
+      left: -12px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--ink);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    }
+
+    .pass-stub::before { top: -11px; }
+    .pass-stub::after { bottom: -11px; }
+
+    /* сканирующая полоса при поиске */
+    .scan {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: -40%;
+      height: 40%;
+      background: linear-gradient(180deg, transparent, rgba(255, 183, 3, 0.28), transparent);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    .pass.searching .scan { opacity: 1; animation: scanMove 1.1s linear infinite; }
+
+    @keyframes scanMove {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(350%); }
+    }
+
+    .pass-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(23, 32, 43, 0.14);
+    }
+
+    .pass-head .logo {
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
+      background: var(--pass-ink);
+      color: var(--amber);
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+    }
+
+    .pass-head .brand {
+      font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 2.6px;
+      text-transform: uppercase;
+    }
+
+    .pass-head .serial {
+      margin-left: auto;
+      font-variant-numeric: tabular-nums;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: rgba(23, 32, 43, 0.55);
+      letter-spacing: 1px;
+    }
+
+    .route {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 0 4px;
+    }
+
+    .route-col .lbl {
+      display: block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(23, 32, 43, 0.45);
+      margin-bottom: 2px;
+    }
+
+    .route-col .code {
+      font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 700;
+      font-size: clamp(28px, 7vw, 40px);
+      letter-spacing: 2px;
+      line-height: 1;
+    }
+
+    .route-col.to { text-align: right; }
+    .route-col.to .code { color: var(--amber-deep); }
+
+    .route-line {
+      position: relative;
+      height: 20px;
+    }
+
+    .route-line::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      border-top: 2px dashed rgba(23, 32, 43, 0.28);
+    }
+
+    .route-line .plane {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--paper);
+      padding: 0 8px;
+      font-size: 17px;
+      line-height: 1;
+    }
+
+    .pass.searching .route-line .plane { animation: taxi 1.2s ease-in-out infinite alternate; }
+
+    @keyframes taxi {
+      from { left: 18%; }
+      to { left: 82%; }
+    }
+
+    /* Главное: название места */
+    .dest {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 6px 0 4px;
+      min-height: 133px;
+    }
+
+    .dest-flag {
+      font-size: 32px;
+      line-height: 1;
+      height: 36px;
+      opacity: 0;
+      transform: scale(0.4) rotate(-12deg);
+      transition: opacity 0.3s ease, transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .pass.settled .dest-flag { opacity: 1; transform: scale(1) rotate(0); }
+
+    .dest-name {
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      height: var(--name-box);
+      overflow: hidden;
+      font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 700;
+      font-size: var(--name-max);
+      line-height: 1.04;
+      letter-spacing: -0.5px;
+      text-transform: uppercase;
+      /* рвём строку только между словами, а не посреди слова */
+      word-break: normal;
+      overflow-wrap: normal;
+      hyphens: none;
+      text-wrap: balance;
+    }
+
+    /* внутренний блок обязателен: у flex/grid-контейнера дети «блокифицируются»,
+       и каждое слово вставало бы на отдельную строку */
+    .name-inner { display: block; width: 100%; }
+
+    /* слово целиком — чтобы на второй строке не оставалось «хвоста» из двух букв */
+    .dest-name .w {
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    .dest-name .ch {
+      display: inline-block;
+      transition: color 0.16s ease;
+    }
+
+    /* невидимая линейка для подбора кегля */
+    .name-measure {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      visibility: hidden;
+      pointer-events: none;
+      font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 700;
+      line-height: 1.04;
+      letter-spacing: -0.5px;
+      text-transform: uppercase;
+      word-break: normal;
+      overflow-wrap: normal;
+      text-wrap: balance;
+    }
+
+    .name-measure .seg,
+    .name-measure .w { white-space: nowrap; display: inline-block; }
+
+    .name-measure .ch { display: inline-block; }
+
+    /* буквы во время прокрутки занимают ровно ту же ширину, что финальные,
+       поэтому строка не «дышит» и не переносится иначе */
+    /* overflow тут оставляем visible: у inline-block со скрытым overflow
+       базовая линия считается по нижнему краю и строки становятся выше */
+    .dest-name .ch.rolling {
+      text-align: center;
+    }
+
+    .dest-name .ch.rolling {
+      color: rgba(23, 32, 43, 0.32);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .dest-name .ch.locked { animation: flapIn 0.26s ease-out; }
+
+    @keyframes flapIn {
+      0% { transform: translateY(-46%) scaleY(0.35); color: var(--amber-deep); }
+      60% { transform: translateY(6%) scaleY(1.06); }
+      100% { transform: translateY(0) scaleY(1); }
+    }
+
+    .dest-country {
+      margin-top: 10px;
+      height: 17px;
+      white-space: nowrap;
+      overflow: hidden;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      letter-spacing: 2.4px;
+      text-transform: uppercase;
+      color: rgba(23, 32, 43, 0.6);
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.35s ease 0.1s, transform 0.35s ease 0.1s;
+    }
+
+    .pass.settled .dest-country { opacity: 1; transform: none; }
+
+    .note {
+      margin-top: 10px;
+      height: var(--note-box);
+      overflow: hidden;
+      font-size: 14px;
+      line-height: 1.5;
+      color: rgba(23, 32, 43, 0.72);
+      max-width: 92%;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.35s ease 0.2s, transform 0.35s ease 0.2s;
+    }
+
+    .pass.settled .note { opacity: 1; transform: none; }
+
+    .pass-foot {
+      margin-top: auto;
+      padding-top: 14px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      border-top: 1px solid rgba(23, 32, 43, 0.14);
+    }
+
+    .map-btn {
+      max-width: 100%;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 16px;
+      border-radius: 999px;
+      background: var(--pass-ink);
+      color: var(--paper);
+      text-decoration: none;
+      font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(6px);
+      transition: opacity 0.3s ease 0.28s, transform 0.3s ease 0.28s, background 0.2s ease;
+    }
+
+    .pass.settled .map-btn { opacity: 1; pointer-events: auto; transform: none; }
+    .map-btn:hover { background: var(--amber-deep); color: #fff; }
+
+    .barcode {
+      margin-left: auto;
+      width: 118px;
+      height: 34px;
+      opacity: 0.85;
+      background-image: repeating-linear-gradient(90deg,
+        var(--pass-ink) 0 2px, transparent 2px 4px,
+        var(--pass-ink) 4px 5px, transparent 5px 9px,
+        var(--pass-ink) 9px 12px, transparent 12px 13px,
+        var(--pass-ink) 13px 14px, transparent 14px 18px);
+    }
+
+    /* Печать ЮНЕСКО */
+    .pass.has-stamp .dest { padding-right: 132px; }
+
+    .stamp {
+      position: absolute;
+      right: 16px;
+      bottom: 74px;
+      width: 116px;
+      height: 116px;
+      border-radius: 50%;
+      border: 3px double rgba(203, 60, 45, 0.75);
+      color: rgba(203, 60, 45, 0.85);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 3px;
+      transform: rotate(-14deg) scale(2.6);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 4;
+      font-family: 'Roboto Condensed', sans-serif;
+      text-transform: uppercase;
+    }
+
+    .stamp b { font-size: 19px; letter-spacing: 2px; line-height: 1; }
+    .stamp span { font-size: 9px; letter-spacing: 1.4px; line-height: 1.2; max-width: 96px; }
+    .stamp i { font-family: 'JetBrains Mono', monospace; font-style: normal; font-size: 9px; opacity: 0.8; }
+
+    .stamp.on { display: flex; animation: stampIn 0.45s cubic-bezier(0.2, 1.2, 0.3, 1) forwards; }
+
+    @keyframes stampIn {
+      0% { opacity: 0; transform: rotate(-32deg) scale(2.6); }
+      70% { opacity: 0.95; transform: rotate(-12deg) scale(0.94); }
+      100% { opacity: 0.9; transform: rotate(-14deg) scale(1); }
+    }
+
+    /* Корешок */
+    .stub-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .stub-row span {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9.5px;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      color: rgba(23, 32, 43, 0.45);
+    }
+
+    .stub-row b {
+      font-variant-numeric: tabular-nums;
+      font-family: 'Roboto Condensed', sans-serif;
+      font-size: 19px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .stub-code {
+      margin-top: auto;
+      writing-mode: vertical-rl;
+      align-self: flex-end;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: rgba(23, 32, 43, 0.5);
+    }
+
+    /* Кнопка запуска */
+    .go {
+      max-width: 100%;
+      margin-top: 18px;
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 17px 40px;
+      border: 0;
+      border-radius: 999px;
+      background: linear-gradient(180deg, var(--amber), var(--amber-deep));
+      color: #241a02;
+      font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 700;
+      font-size: clamp(19px, 3.4vw, 24px);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 16px 34px -12px rgba(251, 133, 0, 0.75);
+      transition: transform 0.16s ease, box-shadow 0.2s ease, filter 0.2s ease;
+      touch-action: manipulation;
+    }
+
+    .go:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 20px 40px -12px rgba(251, 133, 0, 0.85); }
+    .go:active:not(:disabled) { transform: translateY(1px) scale(0.99); }
+    .go:disabled { filter: grayscale(0.45) brightness(0.9); cursor: progress; }
+    .go .ico { font-size: 20px; }
+    .go:hover:not(:disabled) .ico { animation: nudge 0.6s ease infinite alternate; }
+
+    @keyframes nudge {
+      from { transform: translateX(0); }
+      to { transform: translateX(5px); }
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--amber);
+      outline-offset: 3px;
+      border-radius: 999px;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .hint {
+      margin-top: 10px;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 1.2px;
+      text-align: center;
+      min-height: 18px;
+    }
+
+    @media (max-width: 720px) {
+      :root { --name-max: 34px; --name-box: 70px; --note-box: 40px; }
+
+      .note { font-size: 13px; }
+
+      .pass { grid-template-columns: 1fr; max-width: 480px; }
+
+      .pass-main { border-radius: 18px 18px 0 0; padding: 20px 18px 18px; min-height: 0; }
+
+      .pass-stub {
+        border-left: 0;
+        border-top: 2px dashed rgba(23, 32, 43, 0.28);
+        border-radius: 0 0 18px 18px;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 18px;
+        align-items: flex-end;
+        padding: 16px 18px;
+      }
+
+      .pass-stub::before { left: -11px; top: -11px; }
+      .pass-stub::after { left: auto; right: -11px; top: -11px; bottom: auto; }
+
+      .stub-code { writing-mode: horizontal-tb; margin: 0 0 0 auto; }
+
+      .pass.has-stamp .dest { padding-right: 100px; }
+      .stamp { right: 10px; bottom: 78px; width: 92px; height: 92px; opacity: 0.9; }
+      .stamp b { font-size: 15px; }
+      .stamp span { font-size: 8px; max-width: 74px; }
+
+      .barcode { width: 72px; height: 26px; margin-left: auto; }
+      .map-btn { font-size: 12px; padding: 9px 14px; letter-spacing: 1px; }
+      .pass-head .brand { font-size: 12.5px; letter-spacing: 1.8px; }
+      .route-col .code { font-size: clamp(26px, 8vw, 34px); }
+
+      .note { max-width: 100%; }
+
+      .dest { min-height: 112px; }
+      .route { padding: 10px 0 2px; }
+      h1 { font-size: clamp(24px, 6vw, 34px); }
+      .controls { margin-top: 14px; }
+      .pass { margin-top: 16px; }
+      .go { margin-top: 14px; padding: 15px 30px; }
+    }
+
+    @media (max-width: 520px) {
+      .chip { font-size: 13px; padding: 7px 12px; gap: 6px; }
+      .chip .code { display: none; }
+      .chip .num { font-size: 10px; }
+      .kind-btn { font-size: 11px; padding: 6px 11px; }
+      .chips { gap: 6px; }
+      .go { width: 100%; justify-content: center; padding: 16px 24px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg"></div>
+  <svg class="arcs" viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M-40 700 C 320 420, 760 380, 1480 180" />
+    <path d="M-40 840 C 420 700, 900 640, 1480 420" />
+    <path d="M-40 340 C 300 120, 880 120, 1480 -40" />
+  </svg>
+
+  <a href="/" class="home-button" data-i18n="home">Главная</a>
+
+  <div class="wrap">
+    <h1 data-i18n="h1">Куда поехать?</h1>
+
+    <div class="controls">
+      <div class="chips" id="regions">
+        <button class="chip active" type="button" data-region="e">
+          <span class="code">EU</span><span data-i18n="region_europe">Европа</span><span class="num" data-count="e"></span>
+        </button>
+        <button class="chip" type="button" data-region="a">
+          <span class="code">AS</span><span data-i18n="region_asia">Азия</span><span class="num" data-count="a"></span>
+        </button>
+        <button class="chip" type="button" data-region="m">
+          <span class="code">AM</span><span data-i18n="region_america">Америка</span><span class="num" data-count="m"></span>
+        </button>
+        <button class="chip" type="button" data-region="f">
+          <span class="code">AF</span><span data-i18n="region_africa">Африка</span><span class="num" data-count="f"></span>
+        </button>
+        <button class="chip" type="button" data-region="o">
+          <span class="code">OC</span><span data-i18n="region_oceania">Океания</span><span class="num" data-count="o"></span>
+        </button>
+        <button class="chip" type="button" data-region="w">
+          <span class="code">WW</span><span data-i18n="region_world">Весь мир</span><span class="num" data-count="w"></span>
+        </button>
+      </div>
+
+      <div class="chips kinds" id="kinds">
+        <button class="kind-btn active" type="button" data-kind="all" data-i18n="kind_all">всё подряд</button>
+        <button class="kind-btn" type="button" data-kind="1" data-i18n="kind_unesco">наследие ЮНЕСКО</button>
+        <button class="kind-btn" type="button" data-kind="0" data-i18n="kind_city">направления</button>
+      </div>
+    </div>
+
+    <div class="pass" id="pass">
+      <div class="pass-main">
+        <div class="scan"></div>
+
+        <div class="pass-head">
+          <span class="logo">✈</span>
+          <span class="brand" data-i18n="brand">Посадочный талон</span>
+          <span class="serial" id="serial">RH-0000</span>
+        </div>
+
+        <div class="route">
+          <div class="route-col from">
+            <span class="lbl" data-i18n="lbl_from">откуда</span>
+            <span class="code" id="fromCode">HOME</span>
+          </div>
+          <div class="route-line"><span class="plane">✈</span></div>
+          <div class="route-col to">
+            <span class="lbl" data-i18n="lbl_to">куда</span>
+            <span class="code" id="toCode">???</span>
+          </div>
+        </div>
+
+        <div class="dest">
+          <div class="dest-flag" id="flag">🌍</div>
+          <div class="dest-name" id="destName" aria-hidden="true"><span class="name-inner" id="nameInner"></span></div>
+          <div class="name-measure" id="nameMeasure" aria-hidden="true"><span class="seg" id="segMeasure"></span><span class="seg" id="charMeasure"></span></div>
+          <p class="sr-only" id="live" aria-live="polite"></p>
+          <div class="dest-country" id="destCountry"></div>
+          <div class="note" id="note"></div>
+        </div>
+
+        <div class="pass-foot">
+          <a class="map-btn" id="mapLink" href="#" target="_blank" rel="noopener" data-i18n="map_link">Открыть на карте</a>
+          <div class="barcode" aria-hidden="true"></div>
+        </div>
+
+        <div class="stamp" id="stamp">
+          <b>UNESCO</b>
+          <span data-i18n="stamp_sub">Всемирное наследие</span>
+          <i id="stampCode">— —</i>
+        </div>
+      </div>
+
+      <div class="pass-stub">
+        <div class="stub-row"><span data-i18n="stub_region">регион</span><b id="stubRegion">EU</b></div>
+        <div class="stub-row"><span data-i18n="stub_pool">вариантов</span><b id="stubPool">0</b></div>
+        <div class="stub-code" id="stubCode">RANDOMHOST</div>
+      </div>
+    </div>
+
+    <button class="go" id="pickBtn" type="button">
+      <span class="ico">✈</span><span id="pickLabel" data-i18n="gen_btn">Найти место</span>
+    </button>
+    <div class="hint" id="hint" data-i18n="hint_start">выбери регион и нажми кнопку</div>
+  </div>
+
+  <script>
+  // Заглушка до загрузки i18n.js (defer)
+  window.I18N = window.I18N || { t: (k) => k, lang: 'ru', setLang(){}, supported: ['ru','en','el'] };
+  </script>
+
+  <script>
+const COUNTRIES = {"GA":["Габон","Gabon","Γκαμπόν"],"GM":["Гамбия","The Gambia","Γκάμπια"],"GN":["Гвинея","Guinea","Γουινέα"],"GW":["Гвинея-Бисау","Guinea-Bissau","Γουινέα-Μπισσάου"],"CI":["Кот-д’Ивуар","Ivory Coast","Ακτή Ελεφαντοστού"],"CM":["Камерун","Cameroon","Καμερούν"],"CV":["Кабо-Верде","Cape Verde","Πράσινο Ακρωτήριο"],"LS":["Лесото","Lesotho","Λεσότο"],"LR":["Либерия","Liberia","Λιβερία"],"LY":["Ливия","Libya","Λιβύη"],"MG":["Мадагаскар","Madagascar","Μαδαγασκάρη"],"MW":["Малави","Malawi","Μαλάουι"],"MR":["Мавритания","Mauritania","Μαυριτανία"],"MU":["Маврикий","Mauritius","Μαυρίκιος"],"MA":["Марокко","Morocco","Μαρόκο"],"MZ":["Мозамбик","Mozambique","Μοζαμβίκη"],"NA":["Намибия","Namibia","Ναμίμπια"],"NE":["Нигер","Niger","Νίγηρας"],"NG":["Нигерия","Nigeria","Νιγηρία"],"UG":["Уганда","Uganda","Ουγκάντα"],"RW":["Руанда","Rwanda","Ρουάντα"],"ST":["Сан-Томе и Принсипи","São Tomé and Príncipe","Σάο Τομέ και Πρίνσιπε"],"SN":["Сенегал","Senegal","Σενεγάλη"],"SC":["Сейшельские Острова","Seychelles","Σεϋχέλλες"],"SL":["Сьерра-Леоне","Sierra Leone","Σιέρα Λεόνε"],"SO":["Сомали","Somalia","Σομαλία"],"SD":["Судан","Sudan","Σουδάν"],"SZ":["Эсватини","Eswatini","Εσουατίνι"],"KE":["Кения","Kenya","Κένυα"],"ET":["Эфиопия","Ethiopia","Αιθιοπία"],"GH":["Гана","Ghana","Γκάνα"],"VI":["Виргинские Острова (США)","US Virgin Islands","Παρθένες Νήσοι (ΗΠΑ)"],"MS":["Монтсеррат","Montserrat","Μοντσερράτ"],"FR":["Франция","France","Γαλλία"],"GB":["Великобритания","United Kingdom","Ηνωμένο Βασίλειο"],"CN":["Китай","China","Κίνα"],"BR":["Бразилия","Brazil","Βραζιλία"],"RU":["Россия","Russia","Ρωσία"],"CA":["Канада","Canada","Καναδάς"],"DD":["Германия","Germany","Γερμανία"],"JP":["Япония","Japan","Ιαπωνία"],"DE":["Германия","Germany","Γερμανία"],"BY":["Беларусь","Belarus","Λευκορωσία"],"IS":["Исландия","Iceland","Ισλανδία"],"EE":["Эстония","Estonia","Εσθονία"],"SH":["Остров Святой Елены","Saint Helena","Αγία Ελένη"],"NO":["Норвегия","Norway","Νορβηγία"],"LV":["Латвия","Latvia","Λετονία"],"UA":["Украина","Ukraine","Ουκρανία"],"AW":["Аруба","Aruba","Αρούμπα"],"CZ":["Чехия","Czech Republic","Τσεχία"],"SK":["Словакия","Slovakia","Σλοβακία"],"SI":["Словения","Slovenia","Σλοβενία"],"MD":["Молдова","Moldova","Μολδαβία"],"RO":["Румыния","Romania","Ρουμανία"],"BG":["Болгария","Bulgaria","Βουλγαρία"],"PS":["Палестина","Palestine","Παλαιστίνη"],"MK":["Северная Македония","North Macedonia","Βόρεια Μακεδονία"],"AL":["Албания","Albania","Αλβανία"],"GL":["Гренландия","Greenland","Γροιλανδία"],"HR":["Хорватия","Croatia","Κροατία"],"BA":["Босния и Герцеговина","Bosnia and Herzegovina","Βοσνία και Ερζεγοβίνη"],"AZ":["Азербайджан","Azerbaijan","Αζερμπαϊτζάν"],"AD":["Андорра","Andorra","Ανδόρρα"],"CY":["Кипр","Cyprus","Κύπρος"],"GE":["Грузия","Georgia","Γεωργία"],"KZ":["Казахстан","Kazakhstan","Καζακστάν"],"MT":["Мальта","Malta","Μάλτα"],"MC":["Монако","Monaco","Μονακό"],"ME":["Черногория","Montenegro","Μαυροβούνιο"],"BM":["Бермудские Острова","Bermuda","Βερμούδες"],"VA":["Ватикан","Vatican City","Βατικανό"],"SM":["Сан-Марино","San Marino","Άγιος Μαρίνος"],"CU":["Куба","Cuba","Κούβα"],"BZ":["Белиз","Belize","Μπελίζ"],"BB":["Барбадос","Barbados","Μπαρμπάντος"],"ID":["Индонезия","Indonesia","Ινδονησία"],"AI":["Ангилья","Anguilla","Ανγκουίλα"],"GG":["Гернси","Guernsey","Γκέρνζι"],"CW":["Кюрасао","Curaçao","Κουρασάο"],"ZA":["ЮАР","South Africa","Νότια Αφρική"],"DZ":["Алжир","Algeria","Αλγερία"],"SX":["Синт-Мартен","Sint Maarten","Άγιος Μαρτίνος"],"UZ":["Узбекистан","Uzbekistan","Ουζμπεκιστάν"],"CK":["Острова Кука","Cook Islands","Νήσοι Κουκ"],"IE":["Ирландия","Ireland","Ιρλανδία"],"HU":["Венгрия","Hungary","Ουγγαρία"],"ES":["Испания","Spain","Ισπανία"],"CL":["Чили","Chile","Χιλή"],"NL":["Нидерланды","Netherlands","Κάτω Χώρες"],"US":["США","United States","ΗΠΑ"],"BE":["Бельгия","Belgium","Βέλγιο"],"LU":["Люксембург","Luxembourg","Λουξεμβούργο"],"FI":["Финляндия","Finland","Φινλανδία"],"SG":["Сингапур","Singapore","Σιγκαπούρη"],"SE":["Швеция","Sweden","Σουηδία"],"NU":["Ниуэ","Niue","Νιούε"],"LI":["Лихтенштейн","Liechtenstein","Λίχτενσταϊν"],"DK":["Дания","Denmark","Δανία"],"PL":["Польша","Poland","Πολωνία"],"LT":["Литва","Lithuania","Λιθουανία"],"IT":["Италия","Italy","Ιταλία"],"CH":["Швейцария","Switzerland","Ελβετία"],"BH":["Бахрейн","Bahrain","Μπαχρέιν"],"AM":["Армения","Armenia","Αρμενία"],"AT":["Австрия","Austria","Αυστρία"],"RS":["Сербия","Serbia","Σερβία"],"AU":["Австралия","Australia","Αυστραλία"],"GR":["Греция","Greece","Ελλάδα"],"AR":["Аргентина","Argentina","Αργεντινή"],"PE":["Перу","Peru","Περού"],"KP":["Северная Корея","North Korea","Βόρεια Κορέα"],"KH":["Камбоджа","Cambodia","Καμπότζη"],"TR":["Турция","Turkey","Τουρκία"],"PT":["Португалия","Portugal","Πορτογαλία"],"FO":["Фарерские острова","Faroe Islands","Νήσοι Φερόες"],"TL":["Восточный Тимор","Timor-Leste","Ανατολικό Τιμόρ"],"KY":["Каймановы Острова","Cayman Islands","Νησιά Καϋμάν"],"TD":["Чад","Chad","Τσαντ"],"NZ":["Новая Зеландия","New Zealand","Νέα Ζηλανδία"],"IN":["Индия","India","Ινδία"],"TV":["Тувалу","Tuvalu","Τουβαλού"],"SB":["Соломоновы Острова","Solomon Islands","Νησιά Σολομώντα"],"VU":["Вануату","Vanuatu","Βανουάτου"],"PW":["Палау","Palau","Παλάου"],"KI":["Кирибати","Kiribati","Κιριμπάτι"],"MN":["Монголия","Mongolia","Μογγολία"],"FJ":["Фиджи","Fiji","Φίτζι"],"VE":["Венесуэла","Venezuela","Βενεζουέλα"],"SR":["Суринам","Suriname","Σουρινάμ"],"PY":["Парагвай","Paraguay","Παραγουάη"],"GY":["Гайана","Guyana","Γουιάνα"],"EC":["Эквадор","Ecuador","Ισημερινός"],"CO":["Колумбия","Colombia","Κολομβία"],"BO":["Боливия","Bolivia","Βολιβία"],"TT":["Тринидад и Тобаго","Trinidad and Tobago","Τρινιντάντ και Τομπάγκο"],"VC":["Сент-Винсент и Гренадины","Saint Vincent and the Grenadines","Άγιος Βικέντιος και Γρεναδίνες"],"LC":["Сент-Люсия","Saint Lucia","Αγία Λουκία"],"KN":["Сент-Китс и Невис","Saint Kitts and Nevis","Άγιος Χριστόφορος και Νέβις"],"JM":["Ямайка","Jamaica","Τζαμάικα"],"GD":["Гренада","Grenada","Γρενάδα"],"UY":["Уругвай","Uruguay","Ουρουγουάη"],"GT":["Гватемала","Guatemala","Γουατεμάλα"],"BS":["Багамские Острова","The Bahamas","Μπαχάμες"],"AG":["Антигуа и Барбуда","Antigua and Barbuda","Αντίγκουα και Μπαρμπούντα"],"HN":["Гондурас","Honduras","Ονδούρα"],"DM":["Доминика","Dominica","Ντομίνικα"],"JE":["Джерси","Jersey","Τζέρσεϊ"],"DO":["Доминиканская Республика","Dominican Republic","Δομινικανή Δημοκρατία"],"EG":["Египет","Egypt","Αίγυπτος"],"HT":["Гаити","Haiti","Αϊτή"],"SV":["Сальвадор","El Salvador","Ελ Σαλβαδόρ"],"IR":["Иран","Iran","Ιράν"],"IQ":["Ирак","Iraq","Ιράκ"],"CR":["Коста-Рика","Costa Rica","Κόστα Ρίκα"],"IL":["Израиль","Israel","Ισραήλ"],"PA":["Панама","Panama","Παναμάς"],"YE":["Йемен","Yemen","Υεμένη"],"JO":["Иордания","Jordan","Ιορδανία"],"NI":["Никарагуа","Nicaragua","Νικαράγουα"],"KG":["Кыргызстан","Kyrgyzstan","Κιργιζία"],"KW":["Кувейт","Kuwait","Κουβέιτ"],"LA":["Лаос","Laos","Λάος"],"LB":["Ливан","Lebanon","Λίβανος"],"MV":["Мальдивы","Maldives","Μαλδίβες"],"MY":["Малайзия","Malaysia","Μαλαισία"],"MM":["Мьянма","Myanmar","Μιανμάρ"],"NP":["Непал","Nepal","Νεπάλ"],"OM":["Оман","Oman","Ομάν"],"PK":["Пакистан","Pakistan","Πακιστάν"],"QA":["Катар","Qatar","Κατάρ"],"SA":["Саудовская Аравия","Saudi Arabia","Σαουδική Αραβία"],"LK":["Шри-Ланка","Sri Lanka","Σρι Λάνκα"],"SY":["Сирия","Syria","Συρία"],"TJ":["Таджикистан","Tajikistan","Τατζικιστάν"],"TW":["Тайвань","Taiwan","Ταϊβάν"],"TH":["Таиланд","Thailand","Ταϊλάνδη"],"TM":["Туркменистан","Turkmenistan","Τουρκμενιστάν"],"AE":["ОАЭ","United Arab Emirates","ΗΑΕ"],"VN":["Вьетнам","Vietnam","Βιετνάμ"],"KR":["Южная Корея","South Korea","Νότια Κορέα"],"AF":["Афганистан","Afghanistan","Αφγανιστάν"],"BD":["Бангладеш","Bangladesh","Μπανγκλαντές"],"ML":["Мали","Mali","Μάλι"],"AO":["Ангола","Angola","Ανγκόλα"],"BT":["Бутан","Bhutan","Μπουτάν"],"BN":["Бруней","Brunei","Μπρουνέι"],"TZ":["Танзания","Tanzania","Τανζανία"],"PH":["Филиппины","Philippines","Φιλιππίνες"],"CF":["ЦАР","Central African Republic","Κεντροαφρικανική Δημ."],"TG":["Того","Togo","Τόγκο"],"TN":["Тунис","Tunisia","Τυνησία"],"ZM":["Замбия","Zambia","Ζάμπια"],"ZW":["Зимбабве","Zimbabwe","Ζιμπάμπουε"],"SS":["Южный Судан","South Sudan","Νότιο Σουδάν"],"MX":["Мексика","Mexico","Μεξικό"],"BJ":["Бенин","Benin","Μπενίν"],"BW":["Ботсвана","Botswana","Μποτσουάνα"],"FK":["Фолклендские острова","Falkland Islands","Νήσοι Φόκλαντ"],"BF":["Буркина-Фасо","Burkina Faso","Μπουρκίνα Φάσο"],"BI":["Бурунди","Burundi","Μπουρούντι"],"IM":["Остров Мэн","Isle of Man","Νήσος του Μαν"],"KM":["Коморы","Comoros","Κομόρες"],"CG":["Республика Конго","Republic of the Congo","Δημοκρατία του Κονγκό"],"CD":["ДР Конго","DR Congo","ΛΔ Κονγκό"],"DJ":["Джибути","Djibouti","Τζιμπουτί"],"GQ":["Экваториальная Гвинея","Equatorial Guinea","Ισημερινή Γουινέα"],"ER":["Эритрея","Eritrea","Ερυθραία"]};
+const PLACES = [["ES","e",1,"Atapuerca Mountains","Atapuerca","Σιέρα δε Αταπουέρκα"],["US","m",1,"The 20th-Century Architecture of Frank Lloyd Wright","The 20th-Century Architecture of Frank Lloyd Wright",""],["MU","f",1,"Ааправаси-Гхат","Aapravasi Ghat",""],["FR","e",1,"Аббатство Святого Ремигия","Royal abbey of Saint-Remi",""],["GB","e",0,"Абердин","Aberdeen","Αμπερντίν"],["CI","f",0,"Абиджан","Abidjan","Αμπιτζάν"],["AE","a",0,"Абу-Даби","Abu Dhabi","Άμπου Ντάμπι"],["EG","f",1,"Абу-Мина","Abu Mena","Αμπού Μένα"],["NG","f",0,"Абуджа","Abuja","Αμπούτζα"],["CK","o",0,"Аваруа","Avarua","Αβαρούα"],["FR","e",0,"Авиньон","Avignon","Αβινιόν"],["IN","a",0,"Агра","Agra","Άγκρα"],["IN","a",1,"Агра-форт","Agra Fort","Οχυρό Άγκρα"],["IT","e",0,"Агридженто","Agrigento","Αγκριτζέντο"],["GB","e",0,"Адамстаун","Adamstown","Άνταμσταουν"],["TR","a",0,"Адана","Adana","Άδανα"],["ET","f",0,"Аддис-Абеба","Addis Ababa","Αντίς Αμπέμπα"],["AU","o",0,"Аделаида","Adelaide","Αδελαΐδα"],["YE","a",0,"Аден","Aden","Άντεν"],["IN","a",1,"Аджанта","Ajanta Caves","Σπήλαια Ατζάντα"],["GB","e",1,"Айрон-Бридж","Ironbridge Gorge",""],["MA","f",1,"Айт-Бен-Хадду","Aït Benhaddou","Αΐτ-Μπεν-Χαντού"],["MX","m",1,"Акведук Падре Темблеке","Aqueduct of Padre Tembleque",""],["GB","e",1,"Акведук Понткисиллте","Pontcysyllte Aqueduct",""],["IL","a",1,"Акко","Acre","Άκρα"],["GH","f",0,"Аккра","Accra","Άκκρα"],["ET","f",1,"Аксум","Axum","Αυξούμη"],["EG","f",0,"Александрия","Alexandria","Αλεξάνδρεια"],["SY","a",0,"Алеппо","Aleppo","Χαλέπι"],["DZ","f",0,"Алжир","Algiers","Αλγέρι"],["ES","e",0,"Аликанте","Alicante","Αλικάντε"],["KZ","a",0,"Алма-Ата","Almaty","Αλμάτι"],["NU","o",0,"Алофи","Alofi","Αλόφι"],["PT","e",1,"Алту-Дору","Alto Douro Wine Region",""],["JO","a",1,"Аль-Махтас","Al Maghtas","Αλ Μάχτας"],["SA","a",1,"Аль-Тариф","At-Turaif District",""],["US","m",0,"Альбукерке","Albuquerque","Αλμπουκέρκη"],["SC","f",1,"Альдабра","Aldabra","Αλντάμπρα"],["ES","e",1,"Альтамира","Cave of Altamira","Σπήλαιο της Αλταμίρα"],["ES","e",1,"Альхаферия","Aljafería","Αλχαφερία"],["IT","e",1,"Амальфитанское побережье","Amalfi Coast",""],["MG","f",1,"Амбухиманга","Ambohimanga",""],["JO","a",0,"Амман","Amman","Αμμάν"],["IN","a",0,"Амритсар","Amritsar","Αμριτσάρ"],["NL","e",0,"Амстердам","Amsterdam","Άμστερνταμ"],["TN","f",1,"Амфитеатр Марка Антония Гордиана","Roman amphitheatre of El Jem","Αμφιθέατρο της Ελ Τζεμ"],["FR","e",1,"Амьенский собор","Notre-Dame d'Amiens","Καθεδρικός Ναός της Αμιένης"],["US","m",0,"Анахайм","Anaheim","Άναχαϊμ"],["LB","a",1,"Анджар","Anjar","Αντζάρ"],["AD","e",0,"Андорра-ла-Велья","Andorra la Vella","Ανδόρρα λα Βέλια"],["FR","e",0,"Анже","Angers","Ανζέ"],["TR","a",1,"Ани","Ani","Ανί"],["TR","a",0,"Анкара","Ankara","Άγκυρα"],["IT","e",0,"Анкона","Ancona","Ανκόνα"],["US","m",0,"Анкоридж","Anchorage","Ανκορέιτζ"],["US","m",0,"Аннаполис","Annapolis","Αννάπολις"],["IT","e",1,"Ансамбли Сакри-Монти в Пьемонте и Ломбардии","Sacri Monti of Piedmont and Lombardy","Ιερά όρη του Πεδεμοντίου και της Λομβαρδίας"],["TR","a",0,"Антакья","Antakya","Αντάκια"],["TR","a",0,"Анталья","Antalya","Αττάλεια"],["MG","f",0,"Антананариву","Antananarivo","Ανταναναρίβο"],["BE","e",0,"Антверпен","Antwerp","Αμβέρσα"],["CL","m",0,"Антофагаста","Antofagasta","Αντοφαγάστα"],["LK","a",1,"Анурадхапура","Anuradhapura","Ανουρανταπούρα"],["IT","e",1,"Аппиева дорога","Appian Way","Αππία Οδός"],["IR","a",1,"Арг-е Бам","Bam Citadel",""],["IT","e",0,"Ареццо","Arezzo","Αρέτσο"],["NL","e",0,"Арнем","Arnhem","Άρνεμ"],["TR","a",1,"Арслантепе","Arslantepe",""],["OM","a",1,"Археологические памятники Бат, Эль-Хутм и Эль-Айн","Bat, Al-Khutm and Al-Ayn archaeological sites",""],["GR","e",1,"Археологические памятники Дельф","archaeological Site of Delphi","αρχαιολογικός χώρος Δελφών"],["LT","e",1,"Археологические памятники культурного резервата Кярнаве","Cultural Reserve of Kernavė",""],["CU","m",1,"Археологический ландшафт первых кофейных плантаций на юго-востоке Кубы","Archaeological Landscape of the First Coffee Plantations in the South-East of Cuba",""],["IT","e",1,"Археологический музей Пестума","National Archaeological Museum of Paestum",""],["CO","m",1,"Археологический парк Сан-Агустин","San Agustin archeological park","Αρχαιολογικό Πάρκο Σαν Αγκουστίν"],["MY","a",1,"Археологическое наследие долины Ленггонг","Archaeological Heritage of the Lenggong Valley",""],["ES","e",1,"Архив Индий","General Archive of the Indies","Γενικό Αρχείο των Ινδιών"],["AR","m",1,"Архитектурное наследие Ле Корбюзье","The Architectural Work of Le Corbusier",""],["ER","f",0,"Асмэра","Asmara","Ασμάρα"],["KZ","a",0,"Астана","Astana","Αστανά"],["RU","e",0,"Астрахань","Astrakhan","Άστραχαν"],["RU","e",1,"Астрономическая обсерватория Казанского университета","Astronomical Observatory of the University of Kazan",""],["RU","e",1,"Астрономическая обсерватория имени В. П. Энгельгардта","Engelhardt Observatory",""],["PY","m",0,"Асунсьон","Asunción","Ασουνσιόν"],["US","m",0,"Атланта","Atlanta","Ατλάντα"],["DE","e",0,"Аугсбург","Augsburg","Άουγκσμπουργκ"],["DE","e",1,"Аугустусбург и Фалькенлуст","Augustusburg and Falkenlust Palaces","Kάστρα Αουγκούστουσμπουργκ και Φάλκενλουστ"],["GR","e",1,"Афинский Акрополь","Acropolis of Athens","Ακρόπολη Αθηνών"],["GR","e",0,"Афины","Athens","Αθήνα"],["DE","e",0,"Ахен","Aachen","Άαχεν"],["DE","e",1,"Ахенский собор","Aachen Cathedral","Καθεδρικός Ναός του Άαχεν"],["IN","a",0,"Ахмадабад","Ahmedabad","Αχμενταμπάντ"],["TM","a",0,"Ашхабад","Ashgabat","Ασγκαμπάτ"],["IQ","a",1,"Ашшур","Assur","Ασσούρ"],["TH","a",1,"Аютия","Ayutthaya Historical Park",""],["FR","e",0,"Аяччо","Ajaccio","Αιάκειο"],["LB","a",1,"Баальбек","Baalbek","Μπάαλμπεκ"],["IQ","a",0,"Багдад","Baghdad","Βαγδάτη"],["CN","a",1,"Бадын-Джаран","Badain Jaran Desert","Μπαντίν Τζαράν"],["CH","e",0,"Базель","Basel","Βασιλεία"],["IT","e",1,"Базилика Св. Франциска и другие францисканские памятники в городе Ассизи","Assisi, the Basilica of San Francesco and Other Franciscan Sites",""],["PE","m",1,"Базилика и монастырь Сан-Франсиско","Monastery of San Francisco",""],["RU","e",1,"Байкал","Lake Baikal","Βαϊκάλη"],["AZ","a",0,"Баку","Baku","Μπακού"],["US","m",0,"Балтимор","Baltimore","Βαλτιμόρη"],["IR","a",1,"Бам","Bam","Μπαμ"],["ML","f",0,"Бамако","Bamako","Μπαμακό"],["IN","a",0,"Бангалор","Bengaluru","Μπανγκαλόρ"],["CF","f",0,"Банги","Bangui","Μπανγκί"],["TH","a",0,"Бангкок","Bangkok","Μπανγκόκ"],["BN","a",0,"Бандар-Сери-Бегаван","Bandar Seri Begawan","Μπαντάρ Σερί Μπεγκαβάν"],["ML","f",1,"Бандиагара","Bandiagara Escarpment",""],["ID","a",0,"Бандунг","Bandung","Μπαντούνγκ"],["GM","f",0,"Банжул","Banjul","Μπανζούλ"],["TH","a",1,"Банчианг","Ban Chiang","Μπαν Τσιάνγκ"],["IT","e",0,"Бари","Bari","Μπάρι"],["ES","e",0,"Барселона","Barcelona","Βαρκελώνη"],["FR","e",1,"Барьерный риф Новой Каледонии","New Caledonia Barrier Reef",""],["FR","e",0,"Бас-Тер","Basse-Terre","Μπας-Τερ"],["KN","m",0,"Бастер","Basseterre","Μπαστέρ"],["GB","e",0,"Бат","Bath","Μπαθ"],["US","m",0,"Батон-Руж","Baton Rouge","Μπατόν Ρουζ"],["GE","a",0,"Батуми","Batumi","Μπατούμι"],["BH","a",1,"Бахрейнский жемчужный путь","Bahrain Pearling Trail","Μονοπάτι Μαργαριταριών του Μπαχρέιν"],["KG","a",1,"Башня Бурана","Burana Tower",""],["ES","e",1,"Башня Геркулеса","Tower of Hercules","Πύργος του Ηρακλή"],["BE","e",1,"Башня на Изере","Yser Tower",""],["FR","e",0,"Безансон","Besançon","Μπεζανσόν"],["LB","a",0,"Бейрут","Beirut","Βηρυτός"],["IL","a",1,"Бейт-Гуврин-Мареша","Beit Guvrin National Park",""],["IL","a",1,"Бейт-Шеарим","Beit She'arim National Park",""],["RS","e",0,"Белград","Belgrade","Βελιγράδι"],["BZ","m",1,"Белизский Барьерный риф","Belize Barrier Reef",""],["PL","e",1,"Беловежская пуща","Białowieża Forest","Δάσος Μπιαλοβιέζα"],["RU","e",1,"Белокаменные памятники Владимира и Суздаля","White Monuments of Vladimir and Suzdal",""],["BR","m",0,"Белу-Оризонти","Belo Horizonte","Μπέλο Οριζόντε"],["GB","e",0,"Белфаст","Belfast","Μπέλφαστ"],["IL","a",1,"Белый город","White City","Λευκή Πόλη"],["BZ","m",0,"Бельмопан","Belmopan","Μπελμοπάν"],["NL","e",1,"Бемстер","Beemster","Μπέιμστερ"],["CH","e",1,"Бенедиктинский монастырь Святого Иоанна","Saint John Abbey",""],["AL","e",0,"Берат","Berat","Μπεράτ"],["IT","e",0,"Бергамо","Bergamo","Μπέργκαμο"],["NO","e",0,"Берген","Bergen","Μπέργκεν"],["FR","e",1,"Берега Сены","banks of the Seine",""],["DE","e",0,"Берлин","Berlin","Βερολίνο"],["DE","e",1,"Берлинские кварталы эпохи модернизма","Berlin Modernism Housing Estates","Μοντερνιστικά Οικιστικά Συγκροτήματα του Βερολίνου"],["CH","e",0,"Берн","Bern","Βέρνη"],["BE","e",1,"Беффруа Бельгии и Франции","Belfries of Belgium and France",""],["LB","a",1,"Библ","Byblos","Βύβλος"],["DE","e",1,"Библиотека герцогини Анны Амалии","Duchess Anna Amalia Library",""],["DE","e",0,"Билефельд","Bielefeld","Μπίλεφελντ"],["MX","m",1,"Биосферный заповедник Марипоса-Монарка","Monarch Butterfly Biosphere Reserve",""],["SA","a",1,"Бир-Хима","Bir Hima Rock Petroglyphs and Inscriptions",""],["GB","e",0,"Бирмингем","Birmingham","Μπέρμιγχαμ"],["US","m",0,"Бирмингем","Birmingham","Μπέρμιγχαμ"],["GW","f",0,"Бисау","Bissau","Μπισάου"],["US","m",0,"Бисмарк","Bismarck","Μπίσμαρκ"],["KG","a",0,"Бишкек","Bishkek","Μπισκέκ"],["GB","e",1,"Бленхеймский дворец","Blenheim Palace","Ανάκτορο Μπλενχάιμ"],["ZA","f",0,"Блумфонтейн","Bloemfontein","Μπλουμφοντέιν"],["CO","m",0,"Богота","Bogotá","Μπογκοτά"],["US","m",0,"Бойсе","Boise","Μπόισι"],["IT","e",0,"Больцано","Bolzano","Μπολτσάνο"],["IN","a",1,"Большие Гималаи (национальный парк)","Great Himalayan National Park",""],["AU","o",1,"Большой Барьерный риф","Great Barrier Reef","Μεγάλος Κοραλλιογενής Ύφαλος"],["BR","m",1,"Бон-Жезус-ди-Матозиньюс","Sanctuary of Bom Jesus de Matosinhos",""],["PT","e",1,"Бон-Жезуш (Брага)","Bom Jesus do Monte",""],["DE","e",0,"Бонн","Bonn","Βόννη"],["FR","e",0,"Бордо","Bordeaux","Μπορντώ"],["SY","a",1,"Босра","Bosra","Μπόσρα"],["US","m",0,"Бостон","Boston","Βοστώνη"],["IT","e",1,"Ботанический сад Падуи","Padova botanical garden",""],["LB","a",1,"Бофор","Beaufort Castle",""],["PL","e",0,"Бохотница","Bochotnica","Μποχότνιτσα"],["BG","e",1,"Боянская церковь","Boyana Church","Εκκλησία της Μπογιάνα"],["CG","f",0,"Браззавиль","Brazzaville","Μπραζαβίλ"],["BR","m",0,"Бразилиа","Brasília","Μπραζίλια"],["DE","e",0,"Брайнигерберг","Breinigerberg","Μπράινιγκερμπεργκ"],["SK","e",0,"Братислава","Bratislava","Μπρατισλάβα"],["DE","e",0,"Брауншвейг","Brunswick","Μπράουνσβαϊγκ"],["MS","m",0,"Брейдс","Brades","Μπρέιντς"],["DE","e",0,"Бремен","Bremen","Βρέμη"],["DE","e",0,"Бремен","Bremen","Βρέμη"],["DE","e",1,"Бременская ратуша","Town Hall of Bremen",""],["FR","e",0,"Брест","Brest","Βρέστη"],["BB","m",0,"Бриджтаун","Bridgetown","Μπριτζτάουν"],["KN","m",1,"Бримстоун-Хилл-Фортресс","Brimstone Hill Fortress National Park","Μπρίμστοουν Χιλ"],["AU","o",0,"Брисбен","Brisbane","Μπρίσμπεϊν"],["GB","e",0,"Бристоль","Bristol","Μπρίστολ"],["CZ","e",0,"Брно","Brno","Μπρνο"],["US","m",0,"Бронкс","The Bronx","Μπρονξ"],["IE","e",1,"Бру-на-Бойн","Brú na Bóinne",""],["US","m",0,"Бруклин","Brooklyn","Μπρούκλιν"],["BE","e",0,"Брюгге","Bruges","Μπρυζ"],["NO","e",1,"Брюгген","Bryggen",""],["BE","e",0,"Брюссель","Brussels","Βρυξέλλες"],["HU","e",1,"Будайская крепость","Buda Castle","Κάστρο της Βούδας"],["HU","e",0,"Будапешт","Budapest","Βουδαπέστη"],["JP","a",1,"Буддийские памятники в местности Хорюдзи","Buddhist Monuments in the Hōryū-ji Area",""],["BI","f",0,"Бужумбура","Bujumbura","Μπουζουμπούρα"],["ES","e",1,"Бургосский собор","Burgos Cathedral","Καθεδρικός του Μπούργκος"],["FR","e",1,"Буржский собор","Bourges Cathedral","Καθεδρικός Ναός της Μπουρζ"],["TR","a",0,"Бурса","Bursa","Προύσα"],["MN","a",1,"Бурхан-Халдун","Burkhan Khaldun",""],["AL","e",1,"Бутринти","Butrint","Βουθρωτό"],["US","m",0,"Буффало","Buffalo","Μπάφαλο"],["UZ","a",0,"Бухара","Bukhara","Μπουχάρα"],["RO","e",0,"Бухарест","Bucharest","Βουκουρέστι"],["VN","a",1,"Бухта Халонг","Ha Long Bay","Κόλπος Χα Λονγκ"],["AR","m",0,"Буэнос-Айрес","Buenos Aires","Μπουένος Άιρες"],["IN","a",0,"Бхопал","Bhopal","Μποπάλ"],["IQ","a",0,"Вавилон","Babylon","Βαβυλώνα"],["AE","a",1,"Вади-Вурайя","Wadi Wurayah",""],["JO","a",1,"Вади-Рам","Wadi Rum","Ουάντι Ραμ"],["EG","f",1,"Вади-аль-Хитан","Wadi Al-Hitan","Κοιλάδα των Φαλαινών"],["LI","e",0,"Вадуц","Vaduz","Βαντούζ"],["GB","e",1,"Вал Адриана","Hadrian's Wall","Τείχος του Αδριανού"],["GB","e",1,"Вал Антонина","Antonine Wall",""],["IT","e",1,"Валкамоника","rock drawings in Valcamonica",""],["SC","f",1,"Валле-де-Мэ","Vallée de Mai",""],["MT","e",0,"Валлетта","Valletta","Βαλέτα"],["AI","m",0,"Валли","The Valley","Δε Βάλεϊ"],["IT","e",1,"Валь-д’Орча","Val d'Orcia",""],["AR","m",1,"Вальдес","Valdes Peninsula","Χερσόνησος Βαλντές"],["CL","m",0,"Вальпараисо","Valparaíso","Βαλπαραΐσο"],["CA","m",0,"Ванкувер","Vancouver","Βανκούβερ"],["IN","a",0,"Варанаси","Varanasi","Βαρανάσι"],["BG","e",0,"Варна","Varna","Βάρνα"],["PL","e",0,"Варшава","Warsaw","Βαρσοβία"],["TH","a",1,"Ват Пхра Махатхат","Wat Phra Mahathat",""],["VA","e",0,"Ватикан","Vatican City","Βατικανό"],["IS","e",1,"Ватнайёкюдль","Vatnajökull National Park",""],["AT","e",1,"Вахау","Wachau","Βαχάου"],["US","m",0,"Вашингтон","Washington, D.C.","Ουάσινγκτον"],["NO","e",1,"Вегаэйн","Vega Archipelago",""],["DE","e",0,"Веймар","Weimar","Βαϊμάρη"],["KE","f",1,"Великая рифтовая долина","Kenya Lake System in the Great Rift Valley",""],["IT","e",1,"Великие курортные города Европы","The Great Spa Towns of Europe","Οι μεγάλες λουτροπόλεις της Ευρώπης"],["RU","e",0,"Великий Новгород","Veliky Novgorod","Νόβγκοροντ"],["CN","a",1,"Великий канал","Grand Canal","Μεγάλο κανάλι"],["BG","e",0,"Велико-Тырново","Veliko Tarnovo","Βέλικο Τάρνοβο"],["NZ","o",0,"Веллингтон","Wellington","Ουέλλινγκτον"],["AT","e",0,"Вена","Vienna","Βιέννη"],["ME","e",1,"Венецианские оборонительные сооружения XVI—XVII веков","The Venetian Works of defence between 15th and 17th centuries",""],["IT","e",0,"Венеция","Venice","Βενετία"],["IT","e",1,"Венеция и ее лагуна","Venice and its Lagoon",""],["FI","e",1,"Верла","Verla",""],["IT","e",0,"Верона","Verona","Βερόνα"],["FR","e",1,"Версаль","Palace of Versailles","Ανάκτορο των Βερσαλλιών"],["FR","e",0,"Версаль","Versailles","Βερσαλλίες"],["AG","m",1,"Верфь Нельсона","Nelson's Dockyard",""],["DE","e",1,"Верхнегерманско-ретийский лимес","Upper German-Raetian Limes",""],["ZW","f",1,"Виктория","Victoria Falls","Καταρράκτες Βικτωρίας"],["SC","f",0,"Виктория","Victoria","Βικτώρια"],["CA","m",0,"Виктория","Victoria","Βικτωρία Βρετανικής Κολομβίας"],["IT","e",1,"Вилла Адриана","Hadrian's Villa","Έπαυλη του Αδριανού"],["CZ","e",1,"Вилла Тугендгат","Villa Tugendhat","Έπαυλη Τούγκεντατ"],["IT","e",1,"Вилла дель Казале","Villa Romana del Casale","Βίλα Ρομάνα ντελ Καζάλε"],["IT","e",1,"Вилла д’Эсте","Villa d'Este","Βίλα ντ' Έστε"],["CW","m",0,"Виллемстад","Willemstad","Βίλλεμστατ"],["IT","e",1,"Виллы Медичи","Medici Villas and Gardens in Tuscany",""],["IT","e",1,"Виллы Палладио","City of Vicenza and the Palladian Villas of the Veneto",""],["LT","e",0,"Вильнюс","Vilnius","Βίλνιους"],["FR","e",1,"Вимийский мемориал","Canadian National Vimy Memorial",""],["NA","f",0,"Виндхук","Windhoek","Βίντχουκ"],["CA","m",0,"Виннипег","Winnipeg","Γουίνιπεγκ"],["PT","e",1,"Винодельческий ландшафт острова Пику","Landscape of the Pico Island Vineyard Culture",""],["CD","f",1,"Вирунга","Virunga National Park",""],["DE","e",0,"Висбаден","Wiesbaden","Βίζμπαντεν"],["PS","a",0,"Вифлеем","Bethlehem","Βηθλεέμ"],["IT","e",0,"Виченца","Vicenza","Βιτσέντσα"],["BA","e",1,"Вишеградский мост","Mehmed Paša Sokolović Bridge","Γέφυρα του Μεχμέτ Πασά Σοκόλοβιτς"],["RU","e",0,"Владивосток","Vladivostok","Βλαδιβοστόκη"],["GE","a",1,"Влажные леса и водно-болотные угодья Колхиды","Colchic Rainforests and Wetlands",""],["AU","o",1,"Влажные тропики Квинсленда","Wet Tropics of Queensland",""],["MG","f",1,"Влажные тропические леса Ацинананы","Rainforests of the Atsinanana",""],["SK","e",1,"Влколинец","Vlkolínec","Βλκόλινετς"],["AL","e",0,"Влёра","Vlorë","Αυλώνας"],["ZA","f",1,"Водно-болотный район Исимангалисо","iSimangaliso Wetland Park",""],["FR","e",1,"Военное кладбище","Étaples Military Cemetery",""],["IN","a",1,"Военные ландшафты маратхов в Индии","Maratha Military Landscapes of India",""],["IN","a",1,"Вокзал Чхатрапати Шиваджи","Chhatrapati Shivaji Maharaj Terminus",""],["RU","e",0,"Волгоград","Volgograd","Βόλγκογκραντ"],["MA","f",1,"Волюбилис","Volubilis","Βολούμπιλις"],["RU","e",0,"Воронеж","Voronezh","Βορόνεζ"],["DE","e",0,"Восточный Берлин","East Berlin","Ανατολικό Βερολίνο"],["PS","a",0,"Восточный Иерусалим","East Jerusalem","Ανατολική Ιερουσαλήμ"],["CN","a",1,"Восточный Тянь-Шань","Xinjiang Tianshan",""],["ZA","f",1,"Вредефорт","Vredefort crater","Κρατήρας Βρέντεφορντ"],["PL","e",0,"Вроцлав","Wrocław","Βρότσλαβ"],["CA","m",1,"Вуд-Баффало","Wood Buffalo National Park",""],["RU","e",1,"Вулканы Камчатки","Volcanoes of Kamchatka",""],["VN","a",0,"Вунгтау","Vũng Tàu","Βουνγκ Τάου"],["DE","e",0,"Вупперталь","Wuppertal","Βούπερταλ"],["LA","a",0,"Вьентьян","Vientiane","Βιεντιάν"],["DE","e",0,"Вюрцбург","Würzburg","Βύρτσμπουργκ"],["DE","e",1,"Вёрлицкий парк","Wörlitzer Park",""],["NL","e",0,"Гаага","The Hague","Χάγη"],["BW","f",0,"Габороне","Gaborone","Γκαμπορόνε"],["CU","m",0,"Гавана","Havana","Αβάνα"],["FR","e",0,"Гавр","Le Havre","Χάβρη"],["FR","e",1,"Гавр, город перестроенный Августом Перретом","reconstructed center of Le Havre",""],["PS","a",0,"Газа","Gaza City","Γάζα"],["TR","a",0,"Газиантеп","Gaziantep","Γκαζιαντέπ"],["EC","m",1,"Галапагос","Galapagos Islands","Νησιά Γκαλάπαγος"],["CA","m",0,"Галифакс","Halifax","Χάλιφαξ"],["DE","e",0,"Галле","Halle (Saale)","Χάλλε"],["DE","e",0,"Гамбург","Hamburg","Αμβούργο"],["RS","e",1,"Гамзиград","Gamzigrad",""],["BM","m",0,"Гамильтон","Hamilton","Χάμιλτον"],["DE","e",1,"Ганзейский город Любек","Hanseatic City of Lübeck",""],["DE","e",0,"Ганновер","Hanover","Αννόβερο"],["CD","f",1,"Гарамба","Garamba National Park",""],["ES","e",1,"Гарахонай","Garajonay National Park",""],["US","m",0,"Гаррисберг","Harrisburg","Χάρρισμπεργκ"],["MX","m",0,"Гвадалахара","Guadalajara","Γουαδαλαχάρα"],["GT","m",0,"Гватемала","Guatemala City","πόλη της Γουατεμάλας"],["PL","e",0,"Гданьск","Gdańsk","Γκντανσκ"],["KE","f",1,"Геде (руины)","Ruins of Gedi",""],["DE","e",0,"Гейдельберг","Heidelberg","Χαϊδελβέργη"],["GE","a",1,"Гелатский монастырь","Gelati Monastery","Μοναστήρι Γκελάτι"],["BE","e",0,"Гент","Ghent","Γάνδη"],["IT","e",0,"Генуя","Genoa","Γένοβα"],["PE","m",1,"Геоглифы Наски","Nazca Lines","Γραμμές της Νάζκα"],["KR","a",1,"Гетбол, приливно-отливные равнины в Корее","Getbol, Korean Tidal Flats",""],["GB","e",0,"Гибралтар","Gibraltar","Γιβραλτάρ"],["IR","a",1,"Гирканские леса","Hyrcanian Forests",""],["BI","f",0,"Гитега","Gitega","Γκιτέγκα"],["GB","e",0,"Глазго","Glasgow","Γλασκώβη"],["AZ","a",1,"Гобустан","Gobustan State Historical and Cultural Reserve","Εθνικό Πάρκο του Γκομπουστάν"],["CZ","e",1,"Голашовице","Holašovice","Χόλασοβιτσε"],["US","m",0,"Голливуд","Hollywood","Χόλιγουντ"],["CA","m",1,"Голова, разбитая при прыжке бизона","Head-Smashed-In Buffalo Jump",""],["IR","a",1,"Гомбеде-Кавус","Gonbad-e Qabus",""],["CN","a",0,"Гонконг","Hong Kong","Χονγκ Κονγκ"],["US","m",0,"Гонолулу","Honolulu","Χονολουλού"],["KE","f",1,"Гора Кения","Mount Kenya National Park","Εθνικό Πάρκο Όρους Κένυα"],["TR","a",1,"Гордион","Gordion","Γόρδιον"],["SN","f",1,"Горе","Gorée","Ιλ ντε Γκορέ"],["CN","a",1,"Горное убежище от летнего зноя","Chengde Mountain Resort and its outlying temples",""],["GB","e",1,"Горнопромышленный ландшафт Блэнавона","Blaenavon Industrial Landscape",""],["GB","e",1,"Горнопромышленный ландшафт Корнуолла и Западного Девона","Cornwall and West Devon Mining Landscape",""],["IN","a",1,"Горные железные дороги Индии","Mountain Railways of India",""],["DE","e",1,"Горный парк Вильгельмсхёэ","Bergpark Wilhelmshöhe",""],["AT","e",1,"Город Грац – исторический центр и замок Еггенберг","City of Graz – Historic Centre and Schloss Eggenberg",""],["LU","e",1,"Город Люксембург: старые кварталы и фортификации","City of Luxembourg: its Old Quarters and Fortifications",""],["CU","m",1,"Город Тринидад и долина Де-лос-Инхеньос","Trinidad and the Valley de los Ingenios",""],["ET","f",1,"Горы Бале (национальный парк)","Bale Mountains National Park",""],["JM","m",1,"Горы Джона Кроу","John Crow Mountains",""],["UG","f",1,"Горы Рувензори","Rwenzori Mountains National Park","Εθνικό Πάρκο Όρους Ρουενζόρι"],["JP","a",1,"Горы Сираками","Shirakami-Sanchi","Σιρακάμι-Σάντσι"],["ET","f",1,"Горы Сымен","Simien Mountains National Park","Εθνικό Πάρκο Όρεων Σίμιεν"],["MX","m",1,"Госпиталь Кабаньяс","Hospicio Cabañas",""],["BE","e",1,"Гран-плас","Grand-Place","Γκραν-Πλας"],["US","m",1,"Гранд-Каньон","Grand Canyon National Park",""],["CA","m",1,"Гранд-Пре","Grand-Pré",""],["DE","e",1,"Границы Римской империи","borders of the Roman Empire","Σύνορα της Ρωμαικής Αυτοκρατορίας"],["AT","e",0,"Грац","Graz","Γκρατς"],["FR","e",0,"Гренобль","Grenoble","Γκρενόμπλ"],["IN","a",1,"Гробница Хумаюна","Humayun's Tomb","Μαυσωλείο Χουμαγιούν"],["CN","a",1,"Гробницы императоров династий Мин и Цин","Imperial Tombs of the Ming and Qing Dynasties",""],["KR","a",1,"Гробницы правителей династии Чосон","Royal Tombs of the Joseon Dynasty","Βασιλικοί Τάφοι της Δυναστείας Γιοσεάν"],["RU","e",0,"Грозный","Grozny","Γκρόζνυ"],["NL","e",0,"Гронинген","Groningen","Χρόνινγκεν"],["CA","m",1,"Грос-Морн","Gros Morne National Park",""],["JP","a",1,"Группа курганов Модзу-Фуруити Кофунгун: гробницы древней Японии","Mozu-Furuichi Kofun Group: Mounded Tombs of Ancient Japan",""],["AR","m",0,"Грютвикен","Grytviken","Γκρυτβίκεν"],["CR","m",1,"Гуанакасте","Area de Conservación Guanacaste World Heritage Site",""],["CN","a",0,"Гуанчжоу","Guangzhou","Κουανγκτσόου"],["EC","m",0,"Гуаякиль","Guayaquil","Γουαγιακίλ"],["MY","a",1,"Гунунг Мулу","Gunung Mulu National Park",""],["FR","e",0,"Густавия","Gustavia","Γουσταβία"],["TR","a",1,"Гёбекли-Тепе","Göbekli Tepe","Γκόμπεκλι Τεπέ"],["SE","e",0,"Гётеборг","Gothenburg","Γκέτεμποργκ"],["DE","e",0,"Гёттинген","Göttingen","Γκέτινγκεν"],["VN","a",0,"Да-Нанг","Da Nang","Ντα Νανγκ"],["CA","m",1,"Дайносор","Dinosaur Provincial Park","Περιφερειακό Πάρκο Δεινοσαύρων"],["SN","f",0,"Дакар","Dakar","Ντακάρ"],["BD","a",0,"Дакка","Dhaka","Ντάκα"],["US","m",0,"Даллас","Dallas","Ντάλας"],["SY","a",0,"Дамаск","Damascus","Δαμασκός"],["SY","a",1,"Дамаск-аль-Кадима","Ancient City of Damascus",""],["LK","a",1,"Дамбулла","Dambulla cave temple",""],["DE","e",1,"Даневирке","Danevirke",""],["CN","a",1,"Данься","China Danxia",""],["TZ","f",0,"Дар-эс-Салам","Dar es Salaam","Νταρ ες Σαλάμ"],["AU","o",0,"Дарвин","Darwin","Ντάργουιν"],["GB","e",1,"Даремский замок и собор","Durham Castle and Cathedral","Ανάκτορο και Καθεδρικός Ναός του Ντάραμ"],["DE","e",0,"Дармштадт","Darmstadt","Ντάρμστατ"],["PA","m",1,"Дарьен","Darién National Park",""],["IR","a",1,"Дворец Голестан","Golestan Palace","Παλάτι του Γκολεστάν"],["DE","e",1,"Дворец Гроскюнау","Schloss Großkühnau",""],["SE","e",1,"Дворец Дроттнингхольм","Drottningholm Palace","Ανάκτορο του Ντρότνινγκχολμ"],["IT","e",1,"Дворец Катанео-Адорно","Palazzo Cattaneo Adorno",""],["PT","e",1,"Дворец Мафра","Palace of Mafra","Ανάκτορο της Μάφρα"],["BE","e",1,"Дворец Стокле","Stoclet Palace","Μέγαρο Στόκλετ"],["FR","e",1,"Дворец Фонтенбло","Palace of Fontainebleau","Ανάκτορο Φονταινεμπλώ"],["IT","e",1,"Дворцы Савойского дома","Residences of the Royal House of Savoy",""],["DE","e",1,"Дворцы и сады Потсдама и Берлина","Palaces and Parks of Potsdam and Berlin",""],["US","m",0,"Де-Мойн","Des Moines","Ντι Μόιν"],["HU","e",0,"Дебрецен","Debrecen","Ντέμπρετσεν"],["BE","e",1,"Девственные буковые леса Карпат","Ancient and Primeval Beech Forests of the Carpathians and Other Regions of Europe",""],["RU","e",1,"Девственные леса Коми","Virgin Komi Forests","Παρθένο δάσος των Κόμι"],["IN","a",0,"Дели","Delhi","Δελχί"],["GR","e",1,"Делос","Delos","Δήλος"],["BW","f",1,"Дельта Окаванго","Okavango Delta","Δέλτα του Οκαβάνγκο"],["US","m",0,"Денвер","Denver","Ντένβερ"],["RU","e",1,"Дербент","Derbent","Ντερμπέντ"],["RU","e",1,"Дербентская Джума-мечеть","Derbent Mosque",""],["RU","e",1,"Дербентская крепость","Derbent Fortress",""],["RU","e",1,"Дербентская стена","Derbent Wall",""],["RU","e",1,"Дербентский маяк","Derbent Lighthouse",""],["RO","e",1,"Деревни с укреплёнными церквями в Трансильвании","Villages with fortified churches in Transylvania","Χωριά με οχυρωμένες εκκλησίες στην Τρανσυλβανία"],["PL","e",1,"Деревянные церкви Карпатского региона на территории Польши и Украины","Wooden tserkvas of Carpathian region in Poland and Ukraine","Ξύλινα τσέρκβα της περιοχής των Καρπαθίων στην Πολωνία και την Ουκρανία"],["RO","e",1,"Деревянные церкви исторической области Марамуреш","wooden churches of Maramureș","ξύλινες εκκλησίες του Μαραμούρες"],["PL","e",1,"Деревянные церкви на юге Малой Польши","Wooden churches of Southern Lesser Poland","Ξύλινες εκκλησίες της νότιας Ελάσσονος Πολωνίας"],["SK","e",1,"Деревянные церкви словацких Карпат","wooden churches of the Slovak Carpathians","Ξύλινες εκκλησίες στα Σλοβακικά Καρπάθια"],["CU","m",1,"Десембарко-дель-Гранма","Desembarco del Granma National Park",""],["DE","e",1,"Дессау","Dessau","Ντέσαου"],["US","m",0,"Детройт","Detroit","Ντιτρόιτ"],["IR","a",1,"Деште-Лут","Dasht-e Lut","Έρημος Λουτ"],["CM","f",1,"Джа","Dja Faunal Reserve",""],["IN","a",0,"Джайпур","Jaipur","Τζαϊπούρ"],["ID","a",0,"Джакарта","Jakarta","Τζακάρτα"],["IN","a",1,"Джантар-Мантар","Jantar Mantar",""],["IN","a",1,"Джантар-Мантар","Jantar Mantar",""],["SH","f",0,"Джеймстаун","Jamestown","Τζέιμσταουν"],["DZ","f",1,"Джемила","Djemila","Τζεμίλα"],["TN","f",1,"Джерба","Djerba","Τζέρμπα"],["US","m",0,"Джефферсон-Сити","Jefferson City","Τζέφερσον Σίτι"],["DJ","f",0,"Джибути","Djibouti","Τζιμπουτί"],["SA","a",0,"Джидда","Jeddah","Τζέντα"],["GB","e",1,"Джодрелл-Бэнк","Jodrell Bank Observatory",""],["GY","m",0,"Джорджтаун","Georgetown","Τζώρτζταουν"],["KY","m",0,"Джорджтаун","George Town","Τζορτζτάουν"],["GB","e",0,"Джорджтаун","Georgetown","Τζορτζτάουν"],["SS","f",0,"Джуба","Juba","Τζούμπα"],["SN","f",1,"Джудж","Djoudj National Bird Sanctuary",""],["US","m",0,"Джуно","Juneau","Τζούνο"],["US","m",0,"Джэксон","Jackson","Τζάκσον"],["FR","e",0,"Дижон","Dijon","Ντιζόν"],["AU","o",1,"Дикая природа Тасмании","Tasmanian Wilderness",""],["TL","a",0,"Дили","Dili","Ντίλι"],["UA","e",0,"Днепр","Dnipro","Ντνίπρο"],["US","m",0,"Довер","Dover","Ντόβερ"],["TZ","f",0,"Додома","Dodoma","Ντοντόμα"],["AU","o",1,"Дождевые леса восточного побережья Австралии","Gondwana Rainforests of Australia",""],["JP","a",1,"Доисторические памятники Дзёмон на севере Японии","Jōmon Prehistoric Sites in Northern Japan",""],["AT","e",1,"Доисторические свайные поселения в Альпах","prehistoric pile dwellings around the Alps","Προϊστορικά καταλύματα των Άλπεων"],["CU","m",1,"Долина Виньялес","Viñales Valley",""],["NP","a",1,"Долина Катманду","Kathmandu Valley","Κοιλάδα του Κατμαντού"],["PT","e",1,"Долина Коа","Prehistoric Rock Art Sites in the Côa Valley",""],["LA","a",1,"Долина Кувшинов","Plain of Jars",""],["DE","e",1,"Долина Среднего Рейна","Rhine Gorge","Κοιλάδα του κεντρικού Ρήνου"],["IN","a",1,"Долина Цветов","Valley of Flowers National Park",""],["KR","a",1,"Дольмены в Кочхане, Хвасуне и на Канхвадо","Gochang, Hwasun and Ganghwa Dolmen Sites",""],["NL","e",1,"Дом Шрёдера","Rietveld Schröder House",""],["MX","m",1,"Дом-студия Луиса Баррагана","Luis Barragán House and Studio",""],["IT","e",1,"Домус-де-Джанас","domus de janas","Domus de Janas"],["VN","a",0,"Донгхой","Đồng Hới","Ντονγκ Χόι"],["UA","e",0,"Донецк","Donetsk","Ντονέτσκ"],["ES","e",1,"Доньяна","Doñana National Park",""],["GB","e",1,"Дорога гигантов","Giant's Causeway","Λιθόστρωτο των Γιγάντων"],["CO","m",1,"Дороги инков","Inca road system","Οδικό δίκτυο των Ίνκα"],["DE","e",0,"Дортмунд","Dortmund","Ντόρτμουντ"],["QA","a",0,"Доха","Doha","Ντόχα"],["ES","e",1,"Древнеримские стены (Луго)","Roman Walls of Lugo",""],["MY","a",1,"Древние города на берегах Малаккского пролива – Мелака и Джорджтаун","Melaka and George Town, Historic Cities of the Straits of Malacca",""],["SY","a",1,"Древние деревни Северной Сирии","Dead Cities","Αρχαία Χωριά της Βόρειας Συρίας"],["JP","a",1,"Древние столицы Асука и Фудзивара","Ancient Capitals of Asuka and Fujiwara",""],["DE","e",0,"Дрезден","Dresden","Δρέσδη"],["AE","a",0,"Дубай","Dubai","Ντουμπάι"],["IE","e",0,"Дублин","Dublin","Δουβλίνο"],["HR","e",0,"Дубровник","Dubrovnik","Ντούμπροβνικ"],["EE","e",1,"Дуга Струве","Struve Geodetic Arc","Γεωδαιτικό Τόξο Στρούβε"],["TN","f",1,"Дугга","Dougga",""],["IM","e",0,"Дуглас","Douglas","Ντάγκλας"],["DE","e",0,"Дуйсбург","Duisburg","Ντούισμπουργκ"],["IR","a",1,"Дур-Унташ","Chogha Zanbil",""],["ZA","f",0,"Дурбан","Durban","Ντέρμπαν"],["ME","e",1,"Дурмитор","Durmitor National Park",""],["AL","e",0,"Дуррес","Durrës","Δυρράχιο"],["GR","e",1,"Духовный центр православия Гора Афон («Святая Гора»)","Mount Athos",""],["TJ","a",0,"Душанбе","Dushanbe","Ντουσαμπέ"],["IN","a",1,"Дхолавира","Dholavira",""],["CN","a",1,"Дэнфэн","Dengfeng","Ντενγκφένγκ"],["DE","e",0,"Дюссельдорф","Düsseldorf","Ντύσσελντορφ"],["CZ","e",1,"Еврейский район и базилика Св. Прокопа в городе Тршебич","Jewish Quarter and St Procopius' Basilica in Třebíč",""],["DE","e",1,"Еврейское средневековое наследие Эрфурта","Jewish-Medieval Heritage of Erfurt",""],["HR","e",1,"Евфразиева базилика","Euphrasian Basilica","Ευφρασιανή Βασιλική"],["RU","e",0,"Екатеринбург","Yekaterinburg","Γεκατερίνμπουργκ"],["AM","a",0,"Ереван","Yerevan","Γερεβάν"],["BR","m",1,"Жау","Jaú National Park","Σύμπλεγμα προστασίας Κεντρικού Αμαζονίου"],["IN","a",1,"Железная колонна в Дели","iron pillar of Delhi",""],["SE","e",1,"Железоделательный завод Энгельсберг","Engelsberg Ironworks",""],["CH","e",0,"Женева","Geneva","Γενεύη"],["PT","e",1,"Жеронимуш","Jerónimos Monastery","Μοναστήρι των Ιερωνυμιτών"],["YE","a",1,"Забид","Zabid","Ζαμπίντ"],["GR","e",1,"Загори","Zagori","Ζαγόρι"],["HR","e",0,"Загреб","Zagreb","Ζάγκρεμπ"],["PL","e",1,"Зал Столетия","Centennial Hall","Αίθουσα της Εκατονταετηρίδας"],["AT","e",0,"Зальцбург","Salzburg","Σάλτσμπουργκ"],["SY","a",1,"Замки Крак-де-Шевалье и Калъат-Салах-ад-Дин","Crac des Chevaliers and Qal’at Salah El-Din",""],["GB","e",1,"Замки Эдуарда I в Уэльсе","Castles and Town Walls of King Edward in Gwynedd","Κάστρα και Τείχη του Βασιλιά Εδουάρδου στο Γκουίνεδ"],["LB","a",1,"Замки горы Амель","Mount Amel Castles",""],["IR","a",1,"Замок Аламут и связанные укрепления","Alamūt Castle and Related Fortifications",""],["DE","e",1,"Замок Бабельсберг","Babelsberg Palace",""],["IT","e",1,"Замок Кастель-дель-Монте","Castel del Monte","Καστέλ ντελ Μόντε"],["JP","a",1,"Замок Химэдзи","Himeji Castle","Κάστρο του Χιμέτζι"],["FR","e",1,"Замок Шамбор","Château de Chambord","Κάστρο του Σαμπόρ"],["IN","a",1,"Западные Гхаты","Western Ghats","Δυτικότερα Γκατς"],["KG","a",1,"Западный Тянь-Шань","Western Tian Shan",""],["KI","o",1,"Заповедная территория островов Феникс","Phoenix Islands Protected Area",""],["RU","e",1,"Заповедник Остров Врангеля","Zapovednik Wrangel Island",""],["UA","e",0,"Запорожье","Zaporizhzhia","Ζαπορίζια"],["UG","f",1,"Захоронение королей Буганды в Касуби","Kasubi Tombs","Τάφοι των Βασιλιάδων της Μπουγκάντα στο Κασούμπι"],["IL","a",1,"Здания Всемирного центра бахаи","Bahá'í World Centre buildings",""],["OM","a",1,"Земля ладана","Land of Frankincense","Γη του Λιβανιού"],["AT","e",1,"Земмерингская железная дорога","Semmering railway","Σιδηροδρομική γραμμή Ζέμερινγκ"],["ZW","f",1,"Зимбабве","Great Zimbabwe","Μεγάλη Ζιμπάμπουε"],["RU","e",1,"Золотые горы Алтая","Golden Mountains of Altai","Χρυσά Όρη των Αλτάι"],["JP","a",1,"Золотые прииски на острове Садо","Sado Island Gold Mines",""],["MW","f",0,"Зомба","Zomba","Ζόμπα"],["QA","a",1,"Зубарах","Zubarah","Ζουμπάρα"],["JP","a",1,"Ивами Гиндзан","Iwami Ginzan Silver Mine",""],["GA","f",1,"Ивиндо (национальный парк)","Ivindo National Park",""],["IT","e",1,"Ивреа, промышленный город XX века","Ivrea, industrial city of the 20th century",""],["AR","m",1,"Игуасу","Iguazú National Park",""],["BR","m",1,"Игуасу","Iguaçu National Park","Εθνικό Πάρκο Ιγκουαζού"],["AR","m",1,"Иезуитские миссии на землях индейцев гуарани","Jesuit missions among the Guaraní",""],["AR","m",1,"Иезуитский квартал и миссии Кордовы","Jesuit Block and Estancias of Córdoba",""],["IL","a",0,"Иерусалим","Jerusalem","Ιερουσαλήμ"],["TR","a",0,"Измир","İzmir","Σμύρνη"],["GL","m",1,"Илулиссат-Исфьорд","Ilulissat Icefjord","Παγετώνας και Φιόρδ Ιλούλισσατ"],["DE","e",1,"Ильмский парк","Park an der Ilm",""],["US","m",1,"Индепенденс-холл","Independence Hall",""],["US","m",0,"Индианаполис","Indianapolis","Ιντιανάπολις"],["AT","e",0,"Инсбрук","Innsbruck","Ίνσμπρουκ"],["KR","a",0,"Инчхон","Incheon","Ίντσον"],["CN","a",1,"Иньсюй","Yinxu","Γινσού"],["JP","a",0,"Иокогама","Yokohama","Γιοκοχάμα"],["RU","e",0,"Иркутск","Irkutsk","Ιρκούτσκ"],["OM","a",1,"Ирригационные системы Афладж","Aflaj Irrigation System of Oman",""],["PK","a",0,"Исламабад","Islamabad","Ισλαμαμπάντ"],["EG","f",1,"Исламский Каир","Islamic Cairo","Ισλαμικό Κάιρο"],["SB","o",1,"Ист-Реннелл","East Rennell","Ανατολικό Ρενέλ"],["RU","e",1,"Историко-культурный комплекс Соловецких островов","Cultural and Historic Ensemble of the Solovetsky Islands",""],["UY","m",1,"Историческая часть города Колония-дель-Сакраменто","Historic Quarter of the City of Colonia del Sacramento",""],["RU","e",1,"Исторические памятники Новгорода и окрестностей","Historic Monuments of Novgorod and Surroundings",""],["KR","a",1,"Исторические памятники и объекты Пэкче","Baekje Historic Areas",""],["KR","a",1,"Исторические районы Кёнджу","Gyeongju Historic Areas",""],["DE","e",1,"Исторические центры Штральзунда и Висмара","Historic Centres of Stralsund and Wismar",""],["TR","a",1,"Исторические части Стамбула","Historic Areas of Istanbul","Ιστορικές περιοχές της Κωνσταντινούπολης"],["SR","m",1,"Исторический внутренний город Парамарибо","Historic Inner City of Paramaribo",""],["IN","a",1,"Исторический город Ахмадабад","Historic City of Ahmadabad",""],["PH","a",1,"Исторический город Вигана","Historic City of Vigan",""],["IR","a",1,"Исторический город Йезд","Heritage district of Yazd",""],["CA","m",1,"Исторический город Луненберг","Old Town Lunenburg",""],["BO","m",1,"Исторический город Сукре","Historic City of Sucre",""],["ES","e",1,"Исторический город Толедо","Historic City of Toledo",""],["BD","a",1,"Исторический город мечетей Багерхат","Mosque City of Bagerhat",""],["CL","m",1,"Исторический квартал портового города Вальпараисо","Historic Quarter of the Seaport City of Valparaíso",""],["FJ","o",1,"Исторический портовый город Левука","Levuka Historical Port Town",""],["BB","m",1,"Исторический район Гарнизон","Garrison Historic Area",""],["NE","f",1,"Исторический центр Агадеса","Historic Center of Agadez",""],["BE","e",1,"Исторический центр Брюгге","Historic Centre of Brugge",""],["UZ","a",1,"Исторический центр Бухары","Historic Centre of Bukhara",""],["AT","e",1,"Исторический центр Вены","Historic Centre of Vienna",""],["CI","f",1,"Исторический центр Гран-Басама","Historic town of Grand-Bassam",""],["CU","m",1,"Исторический центр Камагуэя","Historic Centre of Camagüey",""],["EC","m",1,"Исторический центр Кито","Historic Center of Quito",""],["ES","e",1,"Исторический центр Кордовы","historic centre of Córdoba","Ιστορικό κέντρο της Κόρδοβα"],["PE","m",1,"Исторический центр Лимы","Historic Centre of Lima",""],["UA","e",1,"Исторический центр Львова","Old Town of Lviv",""],["CN","a",1,"Исторический центр Макао","Historic Centre of Macau",""],["MX","m",1,"Исторический центр Мехико и Сочимилько","Historic Centre of Mexico City and Xochimilco",""],["MX","m",1,"Исторический центр Морелии","Historic Centre of Morelia",""],["IT","e",1,"Исторический центр Неаполя","Historic Centre of Naples",""],["UA","e",1,"Исторический центр Одессы","historical city centre of Odesa","ιστορικό κέντρο της Οδησσού"],["PT","e",1,"Исторический центр Порто","Historic Centre of Porto",""],["CZ","e",1,"Исторический центр Праги","Historic Centre of Prague",""],["VA","e",1,"Исторический центр Рима","Historic Centre of Rome, the Properties of the Holy See in that City Enjoying Extraterritorial Rights and San Paolo Fuori le Mura",""],["MX","m",1,"Исторический центр Сакатекаса","Historic centre of Zacatecas",""],["BR","m",1,"Исторический центр Сан-Луиса","Historic Centre of São Luís",""],["SM","e",1,"Исторический центр Сан-Марино и гора Титано","San Marino Historic Centre and Mount Titano",""],["EC","m",1,"Исторический центр Санта-Ана-де-лос-Риос-де-Куэнки","Historic Centre of Santa Ana de los Ríos de Cuenca",""],["CO","m",1,"Исторический центр Санта-Крус-де-Момпоса","Historic Centre of Santa Cruz de Mompox",""],["RO","e",1,"Исторический центр Сигишоары","Historic Centre of Sighișoara",""],["IT","e",1,"Исторический центр Сиены","Historic Centre of Siena",""],["CU","m",1,"Исторический центр Сьенфуэгоса","Historic Centre of Cienfuegos",""],["HR","e",1,"Исторический центр Трогира","Historic City of Trogir",""],["IT","e",1,"Исторический центр Флоренции","Historic Centre of Florence","ιστορικό κέντρο της Φλωρεντία"],["AZ","a",1,"Исторический центр Шехи с Ханским дворцом","Historic Centre of Sheki with the Khan’s Palace",""],["PT","e",1,"Исторический центр Эворы","Centro Histórico de Évora",""],["RU","e",1,"Исторический центр Ярославля","historical centre of Yaroslavl",""],["FR","e",1,"Исторический центр города Авиньон","Historic Centre of Avignon",""],["PE","m",1,"Исторический центр города Арекипа","Historic Centre of Arequipa",""],["PT","e",1,"Исторический центр города Гимарайнш","Historic Centre of Guimarães and Couros Zone",""],["AT","e",1,"Исторический центр города Зальцбурга","Historic Centre of the City of Salzburg",""],["BR","m",1,"Исторический центр города Олинда","Historic Centre of the Town of Olinda",""],["MX","m",1,"Исторический центр города Пуэбла","Historic Centre of Puebla",""],["IT","e",1,"Исторический центр города Пьенца","Historic Centre of the City of Pienza",""],["BR","m",1,"Исторический центр города Салвадор-ди-Баия","Historic Centre of Salvador da Bahia",""],["CZ","e",1,"Исторический центр города Тельч","Historic Centre of Telč",""],["CZ","e",1,"Исторический центр города Чески-Крумлов","Historic Centre of Český Krumlov",""],["IR","a",0,"Исфахан","Isfahan","Ισφαχάν"],["DE","e",0,"Итерзен","Uetersen","Ύτερζεν"],["UZ","a",1,"Ичан-Кала","Itchan Kala",""],["TN","f",1,"Ишкёль","Ichkeul National Park","Εθνικό Πάρκο του Ισκέλ"],["US","m",0,"Йеллоустонский национальный парк","Yellowstone National Park","Εθνικό Πάρκο Γιέλοουστοουν"],["DE","e",0,"Йена","Jena","Ιένα"],["SR","m",1,"Йоденсаванна","Jodensavanne",""],["GB","e",0,"Йорк","York","Γιορκ"],["US","m",1,"Йосемити","Yosemite National Park","Εθνικό πάρκο Γιοσέμιτι"],["ZA","f",0,"Йоханнесбург","Johannesburg","Γιοχάνεσμπουργκ"],["AU","o",1,"К'Гари","K'gari","Νήσος Φρέιζερ"],["AF","a",0,"Кабул","Kabul","Καμπούλ"],["RU","e",1,"Казанский кремль","Qazan Kremlin","Κρεμλίνο του Καζάν"],["RU","e",0,"Казань","Kazan","Καζάν"],["IN","a",1,"Казиранга","Kaziranga National Park","Εθνικό Πάρκο Καζιράνγκα"],["EG","f",0,"Каир","Cairo","Κάιρο"],["FR","e",0,"Кайенна","Cayenne","Καγιέν"],["TN","f",1,"Кайруан","Kairouan","Καϊραουάν"],["TR","a",0,"Кайсери","Kayseri","Καισάρεια"],["AU","o",1,"Какаду","Kakadu National Park","Εθνικό Πάρκο Κακαντού"],["DZ","f",1,"Кала-Бени-Хаммад","Qal'at Bani Hammad","Μπενί Χαμάντ"],["MX","m",1,"Калакмуль","Calakmul",""],["BH","a",1,"Калат-аль-Бахрейн","Qal’at al Bahrain","Καλάτ αλ Μπαχρέιν"],["CA","m",0,"Калгари","Calgary","Κάλγκαρι"],["FR","e",0,"Кале","Calais","Καλαί"],["CO","m",0,"Кали","Cali","Κάλι"],["RU","e",0,"Калининград","Kaliningrad","Καλίνινγκραντ"],["PL","e",1,"Кальвария-Зебжидовска","Kalwaria Zebrzydowska park","Πάρκο Καλβάρια Ζεμπζιντόφσκα"],["IN","a",0,"Калькутта","Kolkata","Καλκούτα"],["OM","a",1,"Кальхат","Qalhat","Καλχάτ"],["CR","m",1,"Каменные шары Коста-Рики","Stone spheres of Costa Rica","Λίθινες σφαίρες της Κόστα Ρίκα"],["TZ","f",1,"Каменный город","Stone Town","Στόουν Τάουν"],["MX","m",1,"Камино-Реаль-де-Тьерра-Адентро","El Camino Real de Tierra Adentro",""],["UG","f",0,"Кампала","Kampala","Καμπάλα"],["FR","e",0,"Кан","Caen","Καέν"],["VE","m",1,"Канайма","Canaima National Park",""],["AU","o",0,"Канберра","Canberra","Καμπέρα"],["AF","a",0,"Кандагар","Kandahar","Κανταχάρ"],["LK","a",1,"Канди","Kandy","Κάντι"],["US","m",0,"Канзас-Сити","Kansas City","Κάνσας Σίτι"],["FR","e",0,"Канны","Cannes","Κάννες"],["IN","a",1,"Канченджанга","Khangchendzonga National Park",""],["US","m",0,"Капитол-Хилл","Capitol Hill",""],["RU","e",1,"Капова пещера","Kapova Cave",""],["ZA","f",1,"Капская область","Cape Floristic Kingdom",""],["VE","m",0,"Каракас","Caracas","Καράκας"],["PK","a",0,"Карачи","Karachi","Καράτσι"],["GB","e",0,"Кардифф","Cardiff","Κάρντιφ"],["US","m",1,"Карлсбадские пещеры","Carlsbad Caverns National Park",""],["DE","e",0,"Карлсруэ","Karlsruhe","Καρλσρούη"],["US","m",0,"Карсон-Сити","Carson City","Κάρσον Σίτι"],["CO","m",0,"Картахена","Cartagena","Καρταχένα"],["TN","f",0,"Карфаген","Carthage","Καρχηδόνα"],["MA","f",0,"Касабланка","Casablanca","Καζαμπλάνκα"],["MX","m",1,"Касас-Грандес","Casas Grandes",""],["DE","e",0,"Кассель","Kassel","Κάσσελ"],["LC","m",0,"Кастри","Castries","Κάστρις"],["IT","e",0,"Катания","Catania","Κατάνια"],["VN","a",1,"Катба","Cát Bà Island",""],["NP","a",0,"Катманду","Kathmandu","Κατμαντού"],["PL","e",0,"Катовице","Katowice","Κατοβίτσε"],["AU","o",1,"Каторжные поселения Австралии","Australian Convict Sites","Αυστραλιανά σωφρονιστικά ιδρύματα της Βρετανικής Αυτοκρατορίας"],["LT","e",0,"Каунас","Kaunas","Κάουνας"],["DE","e",1,"Кафедральный собор Св. Марии и церковь Св. Михаила в городе Хильдесхайм","St Mary's Cathedral and St Michael's Church at Hildesheim",""],["KH","a",1,"Кахкае","Koh Ker",""],["US","m",1,"Кахокия","Cahokia",""],["CD","f",1,"Кахузи-Биега","Kahuzi-Biéga National Park",""],["CA","m",0,"Квебек","Quebec City","Κεμπέκ"],["AR","m",1,"Кебрада-де-Умауака","Quebrada de Humahuaca",""],["ZA","f",0,"Кейптаун","Cape Town","Κέιπ Τάουν"],["GB","e",0,"Кембридж","Cambridge","Κέιμπριτζ"],["IN","a",1,"Кеоладео","Kevladev National Park",""],["FR","e",1,"Керибюс","Château de Quéribus",""],["RW","f",0,"Кигали","Kigali","Κιγκάλι"],["UA","e",0,"Киев","Kyiv","Κίεβο"],["RU","e",1,"Кижский погост","Kizhi Pogost","Κίζι Πογκόστ"],["TZ","f",1,"Килиманджаро","Kilimanjaro National Park","Εθνικό Πάρκο Κιλιμάντζαρο"],["DE","e",0,"Киль","Kiel","Κίελο"],["GB","e",0,"Кинг Эдуард Пойнт","King Edward Point","Κίνγκ Έντουαρντ Πόιντ"],["VC","m",0,"Кингстаун","Kingstown","Κίνγκσταουν"],["AU","o",0,"Кингстон","Kingston","Κίνγκστον"],["JM","m",0,"Кингстон","Kingston","Κίνγκστον"],["CD","f",0,"Киншаса","Kinshasa","Κινσασά"],["JP","a",1,"Киото","Kyoto Prefecture","Νομός Κιότο"],["JP","a",0,"Киото","Kyoto","Κιότο"],["LY","f",1,"Кирена","Cyrene","Κυρήνη"],["GT","m",1,"Киригуа","Quiriguá",""],["SE","e",1,"Китайский павильон Drottningholm","Chinese Pavilion at Drottningholm",""],["EC","m",0,"Кито","Quito","Κίτο"],["MD","e",0,"Кишинёв","Chișinău","Κισινάου"],["AT","e",0,"Клагенфурт-ам-Вёртерзе","Klagenfurt am Wörthersee","Κλάγκενφουρτ"],["LT","e",0,"Клайпеда","Klaipėda","Κλάιπεντα"],["DE","e",1,"Классический Веймар","Classical Weimar",""],["FR","e",0,"Клермон-Ферран","Clermont-Ferrand","Κλερμόν-Φεράν"],["US","m",0,"Кливленд","Cleveland","Κλίβλαντ"],["RO","e",0,"Клуж-Напока","Cluj-Napoca","Κλουζ-Ναπόκα"],["JP","a",0,"Кобе","Kobe","Κόμπε"],["GB","e",0,"Коберн-Таун","Cockburn Town","Κόκμπερν Τάουν"],["DE","e",0,"Кобленц","Koblenz","Κόμπλεντς"],["PT","e",0,"Коимбра","Coimbra","Κοΐμπρα"],["PA","m",1,"Койба","Coiba",""],["MK","e",1,"Кокино","Kokino","Κόκινο"],["LK","a",0,"Коломбо","Colombo","Κολόμπο"],["DO","m",1,"Колониальный город Санто-Доминго","Colonial City of Santo Domingo",""],["DE","e",1,"Колония художников в Дармштадте","Artists' Colony in Darmstadt",""],["CZ","e",1,"Колонна Пресвятой Троицы","Holy Trinity Column in Olomouc","Στήλη της Αγίας Τριάδας (Όλομοουτς)"],["US","m",0,"Колорадо-Спрингс","Colorado Springs","Κολοράντο Σπρινγκς"],["US","m",0,"Колумбия","Columbia","Κολούμπια"],["US","m",0,"Колумбус","Columbus","Κολόμπους"],["ZA","f",1,"Колыбель человечества","Cradle of Humankind",""],["IT","e",0,"Комо","Como","Κόμο"],["ID","a",1,"Комодо","Komodo National Park","Εθνικό Πάρκο Κομόντο"],["KP","a",1,"Комплекс гробниц Когурё","Goguryeo tombs",""],["VN","a",1,"Комплекс памятников Хюэ","Complex of Huế Monuments","Σύμπλεγμα Μνημείων Χουέ"],["BJ","f",1,"Комплекс природоохранных зон В-Арли-Пенджари","W-Arly-Pendjari Complex",""],["GN","f",0,"Конакри","Conakry","Κονακρί"],["PT","e",1,"Конвенту-де-Кришту","Convent of Christ",""],["US","m",0,"Конкорд","Concord","Κόνκορντ"],["CL","m",0,"Консепсьон","Concepción","Κονσεπσιόν"],["TR","a",0,"Константинополь","Constantinople","Κωνσταντινούπολη"],["CN","a",1,"Конфуцианские святыни в Цюйфу","Temple and Cemetery of Confucius and the Kong Family Mansion in Qufu",""],["PL","e",0,"Коньсковоля","Końskowola","Κονσκόβολα"],["TR","a",0,"Конья","Konya","Ικόνιο"],["HN","m",1,"Копан","Copán",""],["DK","e",0,"Копенгаген","Copenhagen","Κοπεγχάγη"],["DE","e",1,"Корвей","Princely Abbey of Corvey","Κόρβεϋ"],["FR","e",1,"Кордуанский маяк","Cordouan Lighthouse","Φάρος του Κορντουάν"],["IT","e",0,"Корека","Coreca","Κορέκα"],["IE","e",0,"Корк","Cork","Κορκ"],["DE","e",1,"Королевская усадьба на Шахене","King's House on Schachen","Βασιλική Οικία στο Σάχεν"],["GB","e",1,"Королевские ботанические сады Кью","Royal Botanic Gardens, Kew","Ρόγιαλ Βοτάνικ Γκάρντενς, Κιού"],["GB","e",1,"Королевские ботанические сады Кью","Kew Gardens",""],["BJ","f",1,"Королевские дворцы Абомея","Royal Palaces of Abomey",""],["FR","e",1,"Королевские крепости Капетингов в Лангедоке","Royal Capetian Fortresses of Languedoc",""],["ES","e",1,"Королевский Алькасар в Сеговии","Royal Alcázar of Segovia","Βασιλικό Αλκάθαρ της Σεγόβια"],["PW","o",0,"Корор","Koror",""],["AL","e",0,"Корча","Korçë","Κορυτσά"],["BJ","f",0,"Котону","Cotonou","Κοτονού"],["BJ","f",1,"Коутаммакоу","Koutammakou",""],["IN","a",0,"Кочин","Kochi","Κοτσί"],["NZ","o",0,"Крайстчерч","Christchurch","Κράισττσερτς"],["PL","e",0,"Краков","Kraków","Κρακοβία"],["RU","e",0,"Краснодар","Krasnodar","Κρασνοντάρ"],["RU","e",0,"Красноярск","Krasnoyarsk","Κρασνογιάρσκ"],["IN","a",1,"Красный форт","Red Fort","Κόκκινο Οχυρό"],["RU","e",1,"Кремль и Красная площадь","Kremlin and Red Square","Κρεμλίνο και Κόκκινη Πλατεία"],["IT","e",0,"Кремона","Cremona","Κρεμόνα"],["RO","e",1,"Крепости даков в горах Орэштие","Dacian Fortresses of the Orăștie Mountains",""],["CH","e",1,"Крепостные сооружения Беллинцоны","Three Castles of Bellinzona","Τρία Κάστρα, Οχυρωματικό Τείχος και Ερείπια της πόλης Μπελλιντσόνα"],["OM","a",1,"Крепость Бахла","Bahla Fort","Φρούριο Μπάχλα"],["FR","e",1,"Крепость Каркасон","Cité de Carcassonne",""],["US","m",1,"Крепость и историческая часть города Сан-Хуан на острове Пуэрто-Рико","La Fortaleza and San Juan National Historic Site",""],["IT","e",1,"Креспи-д`Адда","Crespi d'Adda",""],["ET","f",1,"Крест Лалибелы","Lalibela Cross",""],["DK","e",1,"Кристиансфельд","Christiansfeld",""],["DK","e",1,"Кронборг","Kronborg Castle","Κάστρο Κρόνμποργκ"],["MY","a",0,"Куала-Лумпур","Kuala Lumpur","Κουάλα Λουμπούρ"],["CL","m",1,"Культура Чинчорро","Chinchorro culture",""],["ZA","f",1,"Культурный и ботанический ландшафт Рихтерсфельдского заповедника","Richtersveld",""],["CZ","e",1,"Культурный ландшафт Леднице-Вальтице","Lednice-Valtice Cultural Landscape",""],["LA","a",1,"Культурный ландшафт Чампасак","Champasak cultural landscape",""],["MN","a",1,"Культурный ландшафт долины реки Орхон","Orkhon Valley",""],["CN","a",1,"Культурный ландшафт древних чайных лесов горы Цзинмай в Пуэр","Cultural Landscape of Old Tea Forests of the Jingmai Mountain in Pu’er",""],["AF","a",1,"Культурный ландшафт и археологические находки в долине Бамиан","Cultural Landscape and Archaeological Remains of the Bamiyan Valley",""],["FI","e",0,"Куопио","Kuopio","Κουόπιο"],["PS","a",1,"Купол Скалы","Dome of the Rock","Θόλος του Βράχου"],["IQ","a",0,"Курдистан","Kurdistan","Κουρδιστάν"],["BR","m",0,"Куритиба","Curitiba","Κουριτίμπα"],["PL","e",0,"Курув","Kurów","Κούρουφ"],["LT","e",1,"Куршская коса","Curonian Spit","Κουρονική γλώσσα ξηράς"],["JO","a",1,"Кусейр-Амра","Qasr Amra","Κασρ Άμρα"],["PE","m",0,"Куско","Cusco","Κούζκο"],["GE","a",0,"Кутаиси","Kutaisi","Κουτάισι"],["IN","a",1,"Кутб-Минар","Qutb Minar","Μιναρές Κουτμπ"],["AR","m",1,"Куэва-де-лас-Манос","Cueva de las Manos","Κουέβα ντε λας Μάνος"],["GL","m",1,"Куято","Kujataa",""],["IN","a",1,"Кхаджурахо","Khajuraho Group of Monuments","Κχατζουράχο"],["ZW","f",1,"Кхами","Khami",""],["KP","a",1,"Кымгансан","Mount Kumgang",""],["DE","e",0,"Кёльн","Cologne","Κολωνία"],["DE","e",1,"Кёльнский собор","Cologne Cathedral","Καθεδρικός Ναός της Κολωνίας"],["TM","a",1,"Кёнеургенч","Köneürgenç",""],["BO","m",0,"Ла-Пас","La Paz","Λα Παζ"],["HT","m",1,"Ла-Ферьер","Citadelle Laferrière",""],["NG","f",0,"Лагос","Lagos","Λάγος"],["IN","a",0,"Лакхнау","Lucknow","Λάκναου"],["IT","e",1,"Лангобардское наследие в Италии","Longobards in Italy, Places of Power",""],["IT","e",1,"Ландшафт виноградников Пьемонта: Ланге-Роеро и Монферрато","The Vineyard Landscape of Piedmont: Langhe-Roero and Monferrato",""],["MX","m",1,"Ландшафт плантаций агавы и старинные предприятия по производству текилы","Agave Landscape and Ancient Industrial Facilities of Tequila",""],["VN","a",1,"Ландшафтный комплекс Чанган","Tràng An",""],["US","m",0,"Лансинг","Lansing","Λάνσινγκ"],["SE","e",1,"Лапония","Laponian National Park",""],["US","m",0,"Лас-Вегас","Las Vegas","Λας Βέγκας"],["ES","e",1,"Лас-Медулас","Las Médulas","Λας Μέδουλας"],["PK","a",0,"Лахор","Lahore","Λαχόρη"],["NL","e",0,"Лейден","Leiden","Λέιντεν"],["GB","e",1,"Лейк-Дистрикт","Lake District",""],["DE","e",0,"Лейпциг","Leipzig","Λειψία"],["MU","f",1,"Леморн Брабант","Le Morne Brabant",""],["RU","e",1,"Ленские столбы","Lena Pillars",""],["BR","m",1,"Ленсойс-Мараньенсис","Lençóis Maranhenses National Park","Εθνικό Πάρκο Λενσόις Μαρανιένσες"],["NI","m",1,"Леон-Вьехо","Ruínas de León Viejo",""],["NI","m",1,"Леонский собор","León Cathedral",""],["LY","f",1,"Лептис-Магна","Leptis Magna","Λέπτις Μάγκνα"],["KE","f",1,"Леса кайя Миджикенда","Sacred Mijikenda Kaya Forests",""],["SE","e",1,"Лесное кладбище","Skogskyrkogården",""],["TH","a",1,"Лесной комплекс Каенг Крачан","Kaeng Krachan Forest Complex",""],["GB","e",0,"Лестер","Leicester","Λέστερ"],["CN","a",1,"Летний дворец","Summer Palace","Θερινά Ανάκτορα του Πεκίνου"],["US","m",1,"Либерти","Liberty Island",""],["GA","f",0,"Либревиль","Libreville","Λιμπρεβίλ"],["GB","e",0,"Ливерпуль","Liverpool","Λίβερπουλ"],["IT","e",0,"Ливорно","Livorno","Λιβόρνο"],["GB","e",0,"Лидс","Leeds","Λιντς"],["FR","e",0,"Лилль","Lille","Λιλ"],["MW","f",0,"Лилонгве","Lilongwe","Λιλόνγκουε"],["PE","m",0,"Лима","Lima","Λίμα"],["DE","e",1,"Линдерхоф","Linderhof Palace","Ανάκτορο Λίντερχοφ"],["US","m",0,"Линкольн","Lincoln","Λίνκολν"],["AT","e",0,"Линц","Linz","Λιντς"],["FR","e",0,"Лион","Lyon","Λυών"],["IT","e",1,"Липарские острова","Aeolian Islands","Αιολίδες Νήσοι"],["PT","e",0,"Лиссабон","Lisbon","Λισαβόνα"],["US","m",0,"Литл-Рок","Little Rock","Λιτλ Ροκ"],["CZ","e",1,"Литомишльский замок","Litomyšl Chateau","Κάστρο του Λίτομισλ"],["SZ","f",0,"Лобамба","Lobamba","Λομπάμπα"],["PL","e",0,"Лобез","Łobez","Ουόμπες"],["PL","e",0,"Лодзь","Łódź","Λοτζ"],["CH","e",0,"Лозанна","Lausanne","Λωζάνη"],["TG","f",0,"Ломе","Lomé","Λομέ"],["US","m",0,"Лонг-Бич","Long Beach","Λονγκ Μπιτς"],["GB","e",0,"Лондон","London","Λονδίνο"],["ES","e",1,"Лонха-де-ла-Седа","Llotja de la Seda","Ανταλλακτήριο Μεταξιού της Βαλένθιας"],["ID","a",1,"Лоренц","Lorentz National Park",""],["DE","e",1,"Лоршский монастырь","Abbey and Altenmünster of Lorsch","Αββαείο του Λορς"],["US","m",0,"Лос-Анджелес","Los Angeles","Λος Άντζελες"],["AR","m",1,"Лос-Гласьярес","Los Glaciares National Park",""],["CO","m",1,"Лос-Катиос","Los Katíos National Park",""],["LA","a",1,"Луангпхабанг","Luang Prabang","Λουάνγκ Πραμπάνγκ"],["AO","f",0,"Луанда","Luanda","Λουάντα"],["CH","e",0,"Лугано","Lugano","Λουγκάνο"],["UA","e",0,"Луганск","Luhansk","Λουγκάνσκ"],["US","m",0,"Луисвилл","Louisville","Λούιβιλ"],["IT","e",0,"Лукка","Lucca","Λούκκα"],["NP","a",1,"Лумбини","Lumbini","Λούμπινι"],["CN","a",1,"Лунмынь","Longmen Grottoes",""],["ZM","f",0,"Лусака","Lusaka","Λουσάκα"],["CN","a",0,"Лхаса","Lhasa","Λάσα"],["UA","e",0,"Львов","Lviv","Λβιβ"],["BE","e",0,"Льеж","Liège","Λιέγη"],["DE","e",0,"Любек","Lübeck","Λύμπεκ"],["PL","e",0,"Люблин","Lublin","Λούμπλιν"],["SI","e",0,"Любляна","Ljubljana","Λιουμπλιάνα"],["LU","e",0,"Люксембург","Luxembourg","Λουξεμβούργο"],["CH","e",0,"Люцерн","Lucerne","Λουκέρνη"],["IT","e",0,"Л’Акуила","L'Aquila","Λ'Άκουιλα"],["CA","m",1,"Л’Анс-о-Медоуз","L'Anse aux Meadows",""],["NL","e",0,"Маастрихт","Maastricht","Μάαστριχτ"],["KZ","a",1,"Мавзолей Ходжи Ахмеда Ясави","Mausoleum of Khoja Ahmed Yasawi",""],["CN","a",1,"Мавзолей первого императора Цинь","Mausoleum of the First Qin Emperor",""],["IR","a",1,"Мавзолей шейха Сефи ад-Дина","Sheikh Safi al-Din Khānegāh and Shrine Ensemble",""],["DE","e",0,"Магдебург","Magdeburg","Μαγδεμβούργο"],["SA","a",1,"Мадаин-Салих","Hegra",""],["BG","e",1,"Мадарский всадник","Madara Rider","Ιππέας της Μαντάρα"],["ES","e",1,"Мадина аз-захра","Madinat Al-Zahra",""],["US","m",0,"Мадисон","Madison","Μάντισον"],["IT","e",1,"Мадонна-ди-Сан-Люка","Sanctuary of the Madonna di San Luca",""],["ES","e",0,"Мадрид","Madrid","Μαδρίτη"],["ES","e",0,"Мадрид-сити","Madrid city",""],["AD","e",1,"Мадриу-Перафита-Кларор","Madriu-Perafita-Claror Valley",""],["US","m",0,"Майами","Miami","Μαϊάμι"],["DE","e",0,"Майнц","Mainz","Μάιντς"],["CN","a",0,"Макао","Macau","Μακάου"],["AU","o",1,"Маккуори","Macquarie Island","Νήσος Μακουάρι"],["GQ","f",0,"Малабо","Malabo","Μαλάμπο"],["ES","e",0,"Малага","Málaga","Μάλαγα"],["MV","a",0,"Мале","Malé","Μαλέ"],["ZA","f",1,"Малоти-Дракенсберг","Maloti-Drakensberg Park",""],["SE","e",0,"Мальмё","Malmö","Μάλμε"],["US","m",1,"Мамонтова пещера","Mammoth Cave National Park",""],["FR","e",0,"Мамуцу","Mamoudzou","Μαμουτζού"],["NI","m",0,"Манагуа","Managua","Μανάγκουα"],["BH","a",0,"Манама","Manama","Μανάμα"],["IN","a",1,"Манас","Manas National Park","Εθνικό Πάρκο Μάνας"],["BR","m",0,"Манаус","Manaus","Μανάους"],["DE","e",0,"Мангейм","Mannheim","Μάνχαϊμ"],["PH","a",0,"Манила","Manila","Μανίλα"],["US","m",0,"Манхэттен","Manhattan","Μανχάταν"],["GB","e",0,"Манчестер","Manchester","Μάντσεστερ"],["MZ","f",0,"Мапуту","Maputo","Μαπούτο"],["FR","e",1,"Мараэ Тапутапуатеа","Taputapuatea marae",""],["FR","e",0,"Мариго","Marigot","Μαριγκό"],["PL","e",1,"Мариенбург","Malbork Castle","Κάστρο του Μαρίενμπουργκ"],["FI","e",0,"Мариехамн","Mariehamn","Μαριεχάμν"],["UA","e",0,"Мариуполь","Mariupol","Μαριούπολη"],["DE","e",1,"Маркграфский оперный театр","Margravial Opera House",""],["FR","e",1,"Маркизские острова","Marquesas Islands","Νήσοι Μαρκέζας"],["MK","e",1,"Марковы Кули","Markovi Kuli","Πίρλαπον"],["MA","f",0,"Марракеш","Marrakech","Μαρακές"],["IL","a",1,"Масада","Masada","Μασάντα"],["LS","f",0,"Масеру","Maseru","Μαζέρου"],["OM","a",0,"Маскат","Muscat","Μουσκάτ"],["FR","e",0,"Мата-Уту","Mata-Utu","Ματά-Ουτού"],["DE","e",1,"Маульброннский монастырь","Maulbronn Monastery","Μοναστήρι του Μαουλμπρόν"],["IN","a",1,"Махабодхи","Mahabodhi Temple","Ναός Μαχαμπόντι"],["RU","e",0,"Махачкала","Makhachkala","Μαχατσκαλά"],["PE","m",0,"Мачу-Пикчу","Machu Picchu","Μάτσου Πίτσου"],["CN","a",1,"Маяк Гуя","Guia Lighthouse",""],["SZ","f",0,"Мбабане","Mbabane","Μπαμπάνε"],["AO","f",1,"Мбанза-Конго","M'banza-Kongo","Εμπάνζα-Κόνγκο"],["MT","e",1,"Мегалитические храмы Мальты","Megalithic Temples of Malta","Μεγαλιθικοί Ναοί της Μάλτας"],["CO","m",0,"Медельин","Medellín","Μεδεγίν"],["SA","a",0,"Медина","Medina","Μεδίνα"],["MA","f",1,"Медина Марракешская","Medina of Marrakesh",""],["MA","f",1,"Медина Мекнесская","Medina of Meknes",""],["TN","f",1,"Медина Суса","Medina of Sousse",""],["MA","f",1,"Медина Тетуанская","Medina of Tétouan",""],["MA","f",1,"Медина Фесская","Medina of Fez","Μεντίνα της Φες"],["MA","f",1,"Медина Эс-Сувейрская","Medina of Essaouira",""],["TN","f",1,"Медина города Тунис","Medina of Tunis","Μεντίνα της Τύνιδας"],["KM","f",1,"Медины исторических султанатов Коморских Островов","The Medinas of the Historic Sultanates of the Comoros",""],["FR","e",1,"Мезон Карре","Maison Carrée","Μαιζόν καρέ"],["IR","a",1,"Мейманд","Maymand",""],["SA","a",0,"Мекка","Mecca","Μέκκα"],["ES","e",0,"Мелилья","Melilla","Μελίγια"],["ET","f",1,"Мелка-Контуре","Melka Kunture",""],["AU","o",0,"Мельбурн","Melbourne","Μελβούρνη"],["JP","a",1,"Мемориал мира в Хиросиме","Hiroshima Peace Memorial","Μνημείο Ειρήνης της Χιροσίμα"],["EG","f",0,"Мемфис","Memphis","Μέμφις"],["US","m",0,"Мемфис","Memphis","Μέμφις"],["BE","e",1,"Мененские ворота","Menin Gate",""],["TM","a",1,"Мерв","Merv","Μερβ"],["VE","m",0,"Мерида","Mérida","Μέριδα"],["US","m",1,"Меса-Верде","Mesa Verde National Park",""],["ES","e",1,"Мескита","Mosque-Cathedral of Cordoba","Τέμενος-Καθεδρικός της Κόρδοβα"],["IT","e",0,"Мессина","Messina","Μεσσίνα"],["DE","e",1,"Металлургический завод в Фёльклингене","Völklingen Ironworks","Χαλυβουργία του Φέλκλινγκεν"],["MX","m",0,"Мехико","Mexico City","Πόλη του Μεξικού"],["FR","e",0,"Мец","Metz","Μετς"],["IR","a",1,"Мечеть Джами в Исфахане","Jameh Mosque of Isfahan","Τζαμί της Παρασκευής, Iσφαχάν"],["TR","a",1,"Мечеть Селимие","Selimiye Mosque","Τέμενος Σελιμιγιέ"],["IR","a",0,"Мешхед","Mashhad","Μασχάντ"],["DZ","f",1,"Мзаб","M'zab","Κοιλάδα Μ'Ζαμπ"],["SS","f",1,"Миграционный ландшафт Бома — Бадингило","Boma-Badingilo Migratory Landscape",""],["IT","e",0,"Милан","Milan","Μιλάνο"],["US","m",0,"Милуоки","Milwaukee","Μιλγουόκι"],["US","m",0,"Миннеаполис","Minneapolis","Μινεάπολις"],["GR","e",1,"Минойские дворцовые центры","Minoan Palatial Centres","Μινωικά Ανακτορικά Κέντρα"],["BY","e",0,"Минск","Minsk","Μινσκ"],["BY","e",1,"Мирский замок","Mir Castle Complex","Καστρικό Σύμπλεγμα Μιρ"],["BO","m",1,"Миссия иезуитов в Чикитос","Jesuit Missions of Chiquitos",""],["CA","m",1,"Мистейкен Пойнт","Mistaken Point Ecological Reserve",""],["GR","e",1,"Мистра","Mystras","Μυστράς"],["VN","a",1,"Мишон","Mỹ Sơn",""],["SO","f",0,"Могадишо","Mogadishu","Μογκαντίσου"],["ML","f",1,"Могила Аскиа","Tomb of Askia",""],["BH","a",1,"Могильные курганы Дильмуна","Dilmun Burial Mounds","Ταφικοί Λόφοι Ντίλμουν"],["IT","e",0,"Модена","Modena","Μόντενα"],["MZ","f",1,"Мозамбик","Island of Mozambique",""],["KE","f",0,"Момбаса","Mombasa","Μομπάσα"],["CI","f",1,"Мон-Нимба","Mount Nimba Strict Nature Reserve","Φυσικό καταφύγιο του όρους Νίμπα"],["MC","e",0,"Монако","Monaco","Μονακό"],["AM","a",1,"Монастыри Ахпата и Санаина","Monasteries of Haghpat and Sanahin",""],["GR","e",1,"Монастыри Метеоры","Meteora","Μετέωρα"],["MX","m",1,"Монастыри на склонах вулкана Попокатепетль","Monasteries on the slopes of Popocatépetl",""],["PT","e",1,"Монастырь Алкобаса","Alcobaça Monastery","Μοναστήρι της Αλκομπάσα"],["GR","e",1,"Монастырь Варлаама","Varlaam monastery","Μονή Βαρλαάμ"],["RS","e",1,"Монастырь Высокие Дечаны","Visoki Dečani","Μονή Βισόκι Ντέτσανι"],["ES","e",1,"Монастырь Поблет","Poblet Monastery","Μονή Πομπλέτ"],["PT","e",1,"Монастырь Санта-Мария-да-Витория","Batalha Monastery","Μοναστήρι της Μπατάλια"],["CH","e",1,"Монастырь Святого Галла","Abbey of Saint Gall",""],["RS","e",1,"Монастырь Студеница","Studenica monastery","Μονή Στουντένιτσα"],["FR","e",0,"Монпелье","Montpellier","Μονπελιέ"],["CA","m",0,"Монреаль","Montreal","Μόντρεαλ"],["LR","f",0,"Монровия","Monrovia","Μονρόβια"],["US","m",0,"Монтгомери","Montgomery","Μοντγκόμερι"],["CL","m",0,"Монте-Агила","Monte Águila","Μόντε Άγιλα"],["CH","e",1,"Монте-Сан-Джорджио","Monte San Giorgio",""],["UY","m",0,"Монтевидео","Montevideo","Μοντεβιδέο"],["MX","m",0,"Монтеррей","Monterrey","Μοντερρέι"],["US","m",0,"Монтпилиер","Montpelier","Μονπελιέ"],["IT","e",0,"Монца","Monza","Μόντσα"],["DM","m",1,"Морн-Труа-Питон","Morne Trois Pitons National Park",""],["KM","f",0,"Морони","Moroni","Μορονί"],["JO","a",1,"Морской заповедник Акаба","Aqaba Marine Reserve",""],["RU","e",0,"Москва","Moscow","Μόσχα"],["FR","e",1,"Мост Сен-Бенезе","pont Saint-Bénézet",""],["IQ","a",0,"Мосул","Mosul","Μοσούλη"],["PK","a",1,"Мохенджо-Даро","Mohenjo-daro","Μοχέντζο-ντάρο"],["UA","e",0,"Мощёная","Moshchena","Μοστσένα"],["BE","e",1,"Музей Плантена-Моретуса","Museum Plantin-Moretus",""],["SE","e",1,"Музей медного рудника в Фалун","Falun Mine",""],["DE","e",1,"Музейный остров","Museum Island","Νησί των Μουσείων"],["MW","f",1,"Муландже","Mulanje Massif",""],["IN","a",0,"Мумбаи","Mumbai","Μουμπάι"],["RU","e",0,"Мурманск","Murmansk","Μούρμανσκ"],["FR","e",0,"Мюлуз","Mulhouse","Μυλούζη"],["DE","e",0,"Мюнстер","Münster","Μύνστερ"],["DE","e",0,"Мюнхен","Munich","Μόναχο"],["JP","a",0,"Нагасаки","Nagasaki","Ναγκασάκι"],["LK","a",1,"Нагорья Центральной Шри-Ланки","Central Highlands of Sri Lanka",""],["JP","a",0,"Нагоя","Nagoya","Ναγκόγια"],["IL","a",0,"Назарет","Nazareth","Ναζαρέτ"],["KE","f",0,"Найроби","Nairobi","Ναϊρόμπι"],["IN","a",1,"Наланда","Nalanda Mahavihara","Ναλάντα"],["KR","a",1,"Намхансансон","Namhansanseong",""],["IN","a",1,"Нанда-Деви","Nanda Devi National Park",""],["CN","a",0,"Нанкин","Nanjing","Ναντσίνγκ"],["FR","e",0,"Нанси","Nancy","Νανσύ"],["RU","e",1,"Нарын-кала","Naryn Castle",""],["CN","a",1,"Наскальная живопись Хуашань","Rock Paintings of Hua Mountain",""],["MX","m",1,"Наскальная живопись в горах Сьерра-де-Сан-Франсиско","Rock Paintings of Sierra de San Francisco",""],["SA","a",1,"Наскальная живопись в регионе Хаиль","Rock Art in the Hail Region of Saudi Arabia",""],["MW","f",1,"Наскальные изображения в Чонгони","Chongoni Rock Art Area",""],["CN","a",1,"Наскальные рельефы Дацзу","Dazu Rock Carvings","Βράχινα γλυπτά του Νταζού"],["ES","e",1,"Наскальные рисунки Средиземноморского побережья Испании","Rock Art of the Mediterranean Basin on the Iberian Peninsula",""],["NO","e",1,"Наскальные рисунки в Альте","Rock carvings at Alta",""],["AZ","a",1,"Наскальные рисунки в Гобустане","Gobustan Rock Art",""],["BS","m",0,"Нассау","Nassau","Νασσάου"],["DE","e",1,"Наумбургский собор","Naumburg Cathedral","Καθεδρικός ναός του Νάουμπουργκ"],["CA","m",1,"Наханни","Nahanni National Park Reserve",""],["US","m",1,"Национальные и государственные парки Редвуд","Redwood National and State Parks",""],["MY","a",1,"Национальный Парк Кинабалу","Kinabalu Park",""],["US","m",1,"Национальный морской парк Папаханаумокуакеа","Papahānaumokuākea Marine National Monument",""],["MR","f",1,"Национальный парк Банк-д'Арген","Banc d'Arguin National Park",""],["US","m",1,"Национальный парк Грейт-Смоки-Маунтинс","Great Smoky Mountains National Park",""],["AR","m",1,"Национальный парк Игуасу","Iguazú National Park World Heritage Site",""],["CI","f",1,"Национальный парк Комоэ","Comoé National Park",""],["AR","m",1,"Национальный парк Лос-Алерсес","Los Alerces National Park",""],["CF","f",1,"Национальный парк Маново-Гоунда-Сен-Флорис","Manovo-Gounda St. Floris National Park",""],["PE","m",1,"Национальный парк Ману","Manu National Park",""],["CA","m",1,"Национальный парк Мигуаша","Miguasha National Park",""],["CL","m",1,"Национальный парк Рапа-Нуи","Rapa Nui National Park","Εθνικό Πάρκο Ράπα Νούι"],["PE","m",1,"Национальный парк Рио-Абисео","Río Abiseo National Park","Εθνικό Πάρκο του Ρίο Αμπισέο"],["NP","a",1,"Национальный парк Сагарматха","Sagarmatha National Park",""],["NP","a",1,"Национальный парк Читван","Chitwan National Park","Εθνικό Πάρκο Τσιτουάν"],["CU","m",1,"Национальный парк имени Александра Гумбольдта","Alexander von Humboldt National Park",""],["NE","f",1,"Национальный резерват Аир и Тенере","Aïr and Ténéré National Nature Reserve",""],["US","m",1,"Национальный резерват дикой природы Окефеноки","Okefenokee National Wildlife Refuge",""],["US","m",0,"Нашвилл","Nashville","Νάσβιλ"],["PW","o",0,"Нгерулмуд","Ngerulmud","Νγκερουλμούντ"],["TZ","f",1,"Нгоронгоро","Ngorongoro Conservation Area","Περιοχή Διατήρησης Νγκορονγκόρο"],["TD","f",0,"Нджамена","N'Djamena","Ντζαμένα"],["IT","e",0,"Неаполь","Naples","Νάπολη"],["MM","a",0,"Нейпьидо","Naypyidaw","Νέπιντο"],["NL","e",1,"Неллефабрик","Van Nelle Factory",""],["TR","a",1,"Немрут-Даг","Mount Nemrut","Όρος Νεμρούτ"],["UG","f",1,"Непроходимый лес Бвинди","Bwindi Impenetrable National Park",""],["BG","e",1,"Несебыр","Nesebar","Νεσέμπαρ"],["NE","f",0,"Ниамей","Niamey","Νιαμέυ"],["MY","a",1,"Ниах","Niah National Park",""],["NL","e",1,"Нижнегерманский лимес","Lower German Limes",""],["RU","e",0,"Нижний Новгород","Nizhny Novgorod","Νίζνι Νόβγκοροντ"],["CY","e",0,"Никосия","Nicosia","Λευκωσία"],["FR","e",0,"Ним","Nîmes","Νιμ"],["AU","o",1,"Нингалу","Ningaloo Reef",""],["CA","m",1,"Нинстинц","Ninstints",""],["SN","f",1,"Ниоколо-Коба","Niokolo-Koba National Park","Εθνικό Πάρκο Νιοκόλο-Κόμπα"],["TM","a",1,"Ниса","Nisa",""],["FR","e",0,"Ницца","Nice","Νίκαια"],["FR","e",1,"Ницца, зимний курортный город Ривьеры","Nice, Winter Resort Town of the Riviera",""],["RU","e",1,"Новодевичий монастырь","Novodevichy Convent",""],["NZ","o",1,"Новозеландские субантарктические острова","New Zealand Subantarctic Islands","Υπο-Ανταρκτικά Νησιά της Νέας Ζηλανδίας"],["RU","e",0,"Новосибирск","Novosibirsk","Νοβοσιμπίρσκ"],["US","m",0,"Новый Орлеан","New Orleans","Νέα Ορλεάνη"],["HU","e",1,"Нойзидлер-Зе","Neusiedl Lake","Λίμνη Νόιζιντλ"],["BE","e",1,"Нотр-Дам","Tournai Cathedral","Καθεδρικός του Τουρναί"],["GB","e",0,"Ноттингем","Nottingham","Νότιγχαμ"],["BO","m",1,"Ноэль-Кемпфф-Меркадо","Noel Kempff Mercado National Park",""],["MR","f",0,"Нуакшот","Nouakchott","Νουακσότ"],["FR","e",0,"Нумеа","Nouméa","Νουμεά"],["GL","m",0,"Нуук","Nuuk","Νουούκ"],["IN","a",0,"Нью-Дели","New Delhi","Νέο Δελχί"],["US","m",0,"Нью-Йорк","New York City","Νέα Υόρκη"],["GB","e",1,"Нью-Ланарк","New Lanark","Νιου Λάναρκ"],["US","m",0,"Ньюарк","Newark","Νιούαρκ"],["GB","e",0,"Ньюкасл-апон-Тайн","Newcastle upon Tyne","Νιούκασλ"],["RW","f",1,"Ньюнгве","Nyungwe Forest",""],["DE","e",0,"Нюрнберг","Nuremberg","Νυρεμβέργη"],["VN","a",0,"Нячанг","Nha Trang","Να Τρανγκ"],["HU","e",1,"Объекты Всемирного Наследия в Будапеште","Budapest, including the Banks of the Danube, the Buda Castle Quarter and Andrássy Avenue",""],["JP","a",1,"Объекты промышленной революции периода Мэйдзи","Sites of Japan’s Meiji Industrial Revolution: Iron and Steel, Shipbuilding and Coal Mining",""],["CN","a",1,"Объекты ремесленного фарфорового производства Цзиндэчжэня","Jingdezhen Handicraft Porcelain Industry Sites",""],["JP","a",1,"Огасавара","Ogasawara Archipelago","Νήσοι Ογκασαβάρα"],["US","m",0,"Огаста","Augusta","Ογκάστα"],["DK","e",0,"Оденсе","Odense","Οντένσε"],["UA","e",0,"Одесса","Odesa","Οδησσός"],["CG","f",1,"Одзала","Odzala National Park",""],["MW","f",1,"Озеро Ньяса","Lake Malawi National Park","Εθνικό Πάρκο Λίμνης Μαλάουι"],["CD","f",1,"Окапи","Okapi Wildlife Reserve",""],["US","m",0,"Оклахома-Сити","Oklahoma City","Οκλαχόμα Σίτι"],["NZ","o",0,"Окленд","Auckland","Όκλαντ"],["US","m",0,"Окленд","Oakland","Όουκλαντ"],["GB","e",0,"Оксфорд","Oxford","Οξφόρδη"],["US","m",0,"Олбани","Albany","Όλμπανι"],["GR","e",1,"Олимп","Mount Olympus","Όλυμπος"],["US","m",1,"Олимпик","Olympic National Park",""],["GR","e",1,"Олимпия","Olympia","Ολυμπία"],["US","m",0,"Олимпия","Olympia","Ολύμπια"],["US","m",0,"Омаха","Omaha","Όμαχα"],["ET","f",1,"Омо","Omo River","Όμο"],["RU","e",0,"Омск","Omsk","Ομσκ"],["DZ","f",0,"Оран","Oran","Οράν"],["AW","m",0,"Ораньестад","Oranjestad","Οράνιεστατ"],["US","m",0,"Орландо","Orlando","Ορλάντο"],["FR","e",0,"Орлеан","Orléans","Ορλεάνη"],["DK","e",0,"Орхус","Aarhus","Ώρχους"],["JP","a",0,"Осака","Osaka","Οσάκα"],["NO","e",0,"Осло","Oslo","Όσλο"],["US","m",0,"Остин","Austin","Ώστιν"],["CZ","e",0,"Острава","Ostrava","Οστράβα"],["CN","a",1,"Остров Гуланъюй","Gulangyu",""],["SN","f",1,"Остров Сен-Луи","Island of Saint-Louis",""],["AU","o",1,"Остров Херд и острова Макдональд","Heard Island and McDonald Islands","Νήσοι Χερντ και Μακντόναλντ"],["NG","f",1,"Осун-Осогбо","Osun-Osogbo Grove",""],["CA","m",0,"Оттава","Ottawa","Οττάβα"],["FI","e",0,"Оулу","Oulu","Όουλου"],["LC","m",1,"Охраняемый природный район Питон","Pitons","Ηφαιστειακό Σύμπλεγμα των Πιτόν"],["MM","a",1,"Паган","Bagan","Μπαγκάν"],["US","m",0,"Паго-Паго","Pago Pago","Πάγκο Πάγκο"],["IT","e",0,"Падуя","Padua","Πάντοβα"],["IT","e",1,"Палаццо Дориа-Турси","Palazzo Doria Tursi",""],["MX","m",1,"Паленке","Palenque","Παλένκε"],["CN","a",1,"Палеонтологический заповедник Чэнцзян","Chengjiang Fossil Site",""],["IT","e",0,"Палермо","Palermo","Παλέρμο"],["DE","e",1,"Паломническая церковь в Висе","Wieskirche","Εκκλησία του Βις"],["RU","e",0,"Палтога","Paltoga","Παλτόγκα"],["ES","e",0,"Пальма","Palma","Πάλμα ντε Μαγιόρκα"],["SY","a",1,"Пальмира","Palmyra","Παλμύρα"],["ES","e",1,"Пальмовый лес Эльче","Palmeral of Elche","Φοινικόδασος του Έλτσε"],["TR","a",1,"Памуккале и Иераполис","Hierapolis-Pamukkale",""],["EG","f",1,"Памятники Нубии от Абу-Симбел до Филэ","Nubian Monuments from Abu Simbel to Philae",""],["JP","a",1,"Памятники исторической части города Нара","Historic Monuments of Ancient Nara","Ιστορικά Μνημεία της Αρχαίας Νάρα"],["JP","a",1,"Памятники культуры древнего Киото","Historic Monuments of Ancient Kyoto",""],["GB","e",1,"Памятники неолита на Оркнейских островах","Heart of Neolithic Orkney","Καρδιά του Νεολιθικού Όρκνεϊ"],["PA","m",0,"Панама","Panama City","Πόλη του Παναμά"],["HU","e",1,"Паннонхальма","Pannonhalma Archabbey",""],["FR","e",0,"Папеэте","Papeete","Παπεέτε"],["SR","m",0,"Парамарибо","Paramaribo","Παραμαρίμπο"],["BR","m",1,"Парати","Paraty",""],["FR","e",0,"Париж","Paris","Παρίσι"],["DE","e",1,"Парк Бабельсберг","Babelsberg Park",""],["PL","e",1,"Парк Мускау","Muskau Park","Εθνικό Πάρκο του Μούσκαου"],["CA","m",1,"Парки Канадских Скалистых гор","Canadian Rocky Mountain Parks World Heritage Site",""],["DE","e",1,"Парковое королевство Дессау-Вёрлиц","Dessau-Wörlitz Garden Realm",""],["IT","e",0,"Парма","Parma","Πάρμα"],["NL","e",1,"Паровая насосная станция Вауда","Ir.D.F. Woudagemaal",""],["IR","a",1,"Пасаргады","Pasargadae","Πασαργάδες"],["IN","a",0,"Патна","Patna","Πάτνα"],["IN","a",1,"Паттадакал","Pattadakal Group of Monuments",""],["PE","m",1,"Пачакамак","Pachacámac","Πατσακαμάκ"],["CN","a",0,"Пекин","Beijing","Πεκίνο"],["RU","e",0,"Пермь","Perm","Περμ"],["FR","e",0,"Перпиньян","Perpignan","Περπινιάν"],["IR","a",1,"Персеполь","Persepolis","Περσέπολη"],["IR","a",1,"Персидский Караван-сарай","Persian Caravanserai",""],["AU","o",0,"Перт","Perth","Περθ"],["IT","e",0,"Перуджа","Perugia","Περούτζα"],["JO","a",0,"Петра","Petra","Πέτρα Ιορδανίας"],["KR","a",1,"Петроглифы в Ульсане","Petroglyphs along the Bangucheon Stream",""],["MN","a",1,"Петроглифы монгольского Алтая","Petroglyphic Complexes of the Mongolian Altai",""],["BG","e",1,"Пещерные церкви в Иваново","Rock-hewn Churches of Ivanovo","Μονολιθικές εκκλησίες του Ιβάνοβο"],["HU","e",1,"Пещеры Аггтелекского и Словацкого карстов","Caves of Aggtelek Karst and Slovak Karst",""],["CN","a",1,"Пещеры Могао","Mogao Caves","Σπήλαια Μογκάο"],["DE","e",1,"Пещеры и искусство Ледникового периода в Швабском Альбе","Caves and Ice Age Art in the Swabian Jura",""],["IT","e",0,"Пиза","Pisa","Πίζα"],["BR","m",1,"Пилотный план Бразилии","Pilot Plan of Brasília",""],["MX","m",1,"Пирамида Кукулькана","Temple of Kukulcan",""],["BG","e",1,"Пирин","Pirin National Park","Εθνικό Πάρκο Πιρίν"],["US","m",0,"Пирр","Pierre","Πιερ"],["US","m",0,"Питтсбург","Pittsburgh","Πίτσμπεργκ"],["NL","e",1,"Планетарий Эйсе Эйсинги","Eise Eisinga Planetarium",""],["PE","m",1,"Пласа-де-Армас (Куско)","Plaza de Armas",""],["PE","m",1,"Пласа-де-торос-де-Ачо","Plaza de toros de Acho",""],["MS","m",0,"Плимут","Plymouth","Πλίμουθ"],["HR","e",1,"Плитвицкие озёра","Plitvice Lakes National Park","Εθνικό πάρκο λιμνών του Πλίτβιτσε"],["BG","e",0,"Пловдив","Plovdiv","Φιλιππούπολη"],["IR","a",1,"Площадь Имама","Naqsh-e Jahan Square","Πλατεία Νακσ-ε Τζαχάν"],["CZ","e",0,"Пльзень","Plzeň","Πίλζεν"],["FR","e",1,"Пляжи высадки в Нормандии, 1944 год","Beaches of the D-Day Landings, Normandy, 1944",""],["KH","a",0,"Пномпень","Phnom Penh","Πνομ Πεν"],["US","m",1,"Поверти-Пойнт","Poverty Point",""],["MN","a",1,"Погребальные комплексы знати хунну","The Cemetery Complexes of the Xiongnu Nobility",""],["ME","e",0,"Подгорица","Podgorica","Ποντγκόριτσα"],["PH","a",1,"Подземная река Пуэрто-Принсеса","Puerto Princesa Subterranean River National Park","Εθνικό πάρκο του υπόγειου ποταμού της Πουέρτο Πρινσέσα"],["RU","e",0,"Подольск","Podolsk","Ποντόλσκ"],["PL","e",0,"Познань","Poznań","Πόζναν"],["LK","a",1,"Полоннарува","Polonnaruwa","Πολοναρούγα"],["IT","e",0,"Помпеи","Pompeii","Πομπηία"],["FR","e",1,"Пон-дю-Гар","Pont du Gard","Γέφυρα του Γκαρ"],["IT","e",1,"Понте Веккьо","Ponte Vecchio","Πόντε Βέκιο"],["ES","e",0,"Понтеведра","Pontevedra","Ποντεβέδρα"],["FR","e",1,"Порт Луны","port of the Moon",""],["VU","o",0,"Порт-Вила","Port Vila","Πορτ Βίλα"],["MU","f",0,"Порт-Луи","Port Louis","Πορ-Λουί"],["JM","m",1,"Порт-Ройал","Port Royal","Πορτ Ρόγιαλ"],["FK","m",0,"Порт-Стэнли","Stanley","Στάνλεϋ"],["HT","m",0,"Порт-о-Пренс","Port-au-Prince","Πορ-ω-Πρενς"],["FR","e",0,"Порт-о-Франсэ","Port-aux-Français",""],["TT","m",0,"Порт-оф-Спейн","Port of Spain","Πορτ-οφ-Σπέιν"],["IT","e",1,"Портики Болоньи","porticoes of Bologna",""],["US","m",0,"Портленд","Portland","Πόρτλαντ"],["BJ","f",0,"Порто-Ново","Porto-Novo","Πόρτο-Νόβο"],["IT","e",1,"Портовенере","Porto Venere","Πόρτο Βένερε"],["PT","e",0,"Порту","Porto","Πόρτο"],["BR","m",0,"Порту-Алегри","Porto Alegre","Πόρτο Αλέγκρε"],["MA","f",1,"Португальская крепость Мазарган","Mazagan",""],["BO","m",1,"Потоси","Potosí","Ποτοσί"],["DE","e",0,"Потсдам","Potsdam","Πότσδαμ"],["CZ","e",0,"Прага","Prague","Πράγα"],["ID","a",1,"Прамбанан","Prambanan Temple","Πραμπανάν"],["CV","f",0,"Прая","Praia","Πράια"],["IN","a",0,"Праяградж","Prayagraj","Πραγιαγκράτζ"],["ZA","f",0,"Претория","Pretoria","Πρετόρια"],["JP","a",0,"Префектура Токио","Tokyo Prefecture","Νομός Τόκιο"],["AR","m",1,"Природные парки Исчигуаласто и Талампайя","Ischigualasto / Talampaya Natural Parks",""],["BG","e",1,"Природный заповедник Сребырна","Srebarna Nature Reserve","Εθνικό Πάρκο Σρεμπάρνα"],["ME","e",1,"Природный и культурно-исторический район Котор","Natural and Culturo-Historical Region of Kotor","Φυσική και Ιστορική-Πολιτισμική Περιοχή του Κότορ"],["SR","m",1,"Природоохранная территория Центрального Суринама","Central Suriname Nature Reserve",""],["BR","m",1,"Пристань Валонгу","Valongo Wharf",""],["RS","e",0,"Приштина","Pristina","Πρίστινα"],["US","m",0,"Провиденс","Providence","Πρόβιντενς"],["KH","a",1,"Прэахвихеа","Preah Vihear Temple",""],["RU","e",0,"Псков","Pskov","Πσκοβ"],["FR","e",0,"Пуатье","Poitiers","Πουατιέ"],["IN","a",0,"Пуна","Pune","Πούνε"],["AU","o",1,"Пурнулулу","Purnululu National Park","Εθνικό Πάρκο Πουρνουλούλου"],["KR","a",0,"Пусан","Busan","Μπουσάν"],["RU","e",1,"Путорана","Putorana Plateau","Πουτοράνα"],["MY","a",0,"Путраджая","Putrajaya","Πουτρατζάγια"],["DE","e",1,"Пфауэнинзель","Pfaueninsel",""],["KP","a",0,"Пхеньян","Pyongyang","Πιονγιάνγκ"],["IT","e",1,"Пьяцца деи Мираколи","Piazza del Duomo, Pisa","Πιάτσα Ντέι Μιράκολι"],["IT","e",0,"Пьяченца","Piacenza","Πιατσέντζα"],["MA","f",0,"Рабат","Rabat","Ραμπάτ"],["IT","e",0,"Равенна","Ravenna","Ραβέννα"],["SE","e",1,"Радиостанция Гриметон","Grimeton VLF transmitter",""],["GR","e",1,"Район горы Олимп","The wider area of Mount Olympus",""],["DE","e",1,"Райхенау","Reichenau Island","Ράιχεναου"],["DE","e",1,"Райхенау","Abbey of Reichenau",""],["PS","a",0,"Рамалла","Ramallah","Ραμάλα"],["IN","a",1,"Рани-ки-Вав","Rani ki vav",""],["IT","e",1,"Раннехристианские памятники Равенны","Early Christian Monuments of Ravenna","Παλαιοχριστιανικά Μνημεία της Ραβέννας"],["BE","e",1,"Ратуша Брюгге","Bruges City Hall","Δημαρχείο της Μπρυζ"],["MX","m",1,"Ревилья-Хихедо","Revillagigedo Islands",""],["DE","e",0,"Регенсбург","Regensburg","Ρέγκενσμπουργκ"],["IT","e",0,"Реджо-ди-Калабрия","Reggio Calabria","Ρήγιο"],["OM","a",1,"Резерват аравийской антилопы","Arabian Oryx Sanctuary","Καταφύγιο Αραβικού Όρυγα"],["CN","a",1,"Резерваты гигантской панды","Sichuan Giant Panda Sanctuaries",""],["UA","e",1,"Резиденция митрополитов Буковины и Далмации","Residence of Bukovinian and Dalmatian Metropolitans","Κατοικία των Μπουκοβινιανών και Δαλματών Μητροπολιτών"],["IS","e",0,"Рейкьявик","Reykjavík","Ρέικιαβικ"],["FR","e",0,"Реймс","Reims","Ρενς"],["BR","m",0,"Ресифи","Recife","Ρεσίφε"],["CH","e",1,"Ретийская железная дорога в культурном ландшафте Альбулы и Бернины","Rhaetian Railway in the Albula / Bernina Landscapes",""],["LV","e",0,"Рига","Riga","Ρίγα"],["IT","e",0,"Рим","Rome","Ρώμη"],["IT","e",0,"Римини","Rimini","Ρίμινι"],["DE","e",1,"Римский дом","Römisches Haus, Weimar",""],["HN","m",1,"Рио-Платано","Río Plátano Biosphere Reserve",""],["BR","m",0,"Рио-де-Жанейро","Rio de Janeiro","Ρίο Ντε Τζανέιρο"],["CN","a",1,"Рисовые террасы Хунхэ-Хани","Honghe Hani Rice Terraces",""],["PH","a",1,"Рисовые террасы в Филиппинских Кордильерах","Rice Terraces of the Philippine Cordilleras","Αναβαθμίδες Ορυζώνων των Κορδιλιέρων των Φιλιππίνων"],["PH","a",1,"Риф Туббатаха","Tubbataha Reef","Φυσικό Πάρκο Υφάλου Τουμπατάχα"],["US","m",0,"Ричмонд","Richmond","Ρίτσμοντ"],["ZA","f",1,"Роббенэйланд","Robben Island","Νήσος Ρόμπεν"],["FI","e",0,"Рованиеми","Rovaniemi","Ροβανιέμι"],["GB","e",0,"Род-Таун","Road Town","Ρόουντ Τάουν"],["GR","e",0,"Родос","Rhodes","Ρόδος"],["DM","m",0,"Розо","Roseau","Ροζό"],["BR","m",1,"Рокас","Rocas Atoll","Ατόλλη Ρόκας"],["US","m",0,"Роли","Raleigh","Ράλεϊ"],["ES","e",1,"Романские церкви в Валь-де-Бой","Catalan Romanesque Churches of the Vall de Boí",""],["AR","m",0,"Росарио","Rosario","Ροζάριο"],["RU","e",0,"Ростов-на-Дону","Rostov-on-Don","Ροστόφ επί του Ντον"],["DE","e",0,"Росток","Rostock","Ρόστοκ"],["NL","e",0,"Роттердам","Rotterdam","Ρότερνταμ"],["PK","a",1,"Рохтас","Rohtas Fort",""],["FR","e",0,"Руан","Rouen","Ρουέν"],["FR","e",0,"Рубе","Roubaix","Ρουμπαί"],["BF","f",1,"Руины Лоропени","Ruins of Loropéni",""],["CN","a",1,"Руины Святого Павла","Ruins of St. Paul's",""],["DE","e",0,"Саарбрюккен","Saarbrücken","Σααρμπρύκεν"],["ID","a",1,"Савахлунто","Sawahlunto","Σαουαχλούντο"],["SE","e",1,"Сады Дротнингхольмского дворца","Gardens of Drottningholm Palace",""],["FR","e",1,"Сады и парк Версаля","Park of Versailles","Πάρκο των Βερσαλλιών"],["US","m",0,"Сайпан","Saipan","Σαϊπάν"],["US","m",0,"Сакраменто","Sacramento","Σακραμέντο"],["BR","m",0,"Салвадор","Salvador","Σαλβαδόρ"],["CD","f",1,"Салонга","Salonga National Park",""],["GR","e",0,"Салоники","Thessaloniki","Θεσσαλονίκη"],["RU","e",0,"Самара","Samara","Σαμάρα"],["UZ","a",0,"Самарканд","Samarkand","Σαμαρκάνδη"],["UZ","a",1,"Самарканд – Перекрёсток культур","Samarkand – Crossroad of Cultures","Σαμαρκάνδη - Σταυροδρόμι Πολιτισμών"],["IQ","a",1,"Самарра","Samarra","Σαμάρα"],["KH","a",1,"Самбор-Прей-Кук","Sambor Prei Kuk",""],["FI","e",1,"Саммаллахденмяки","Sammallahdenmäki","Σαμμαλλαχντενμακί"],["US","m",0,"Сан-Антонио","San Antonio","Σαν Αντόνιο"],["IT","e",1,"Сан-Джеминиано","Modena Cathedral","Καθεδρικός ναός της Μόντενα"],["US","m",0,"Сан-Диего","San Diego","Σαν Ντιέγκο"],["ES","e",1,"Сан-Кристобаль-де-ла-Лагуна","San Cristóbal de La Laguna","Σαν Κριστόμπαλ ντε Λα Λαγούνα"],["SM","e",0,"Сан-Марино","San Marino","Άγιος Μαρίνος"],["BR","m",0,"Сан-Паулу","São Paulo","Σάο Πάολο"],["CU","m",1,"Сан-Педро-де-ла-Рока","Castillo de San Pedro de la Roca",""],["SV","m",0,"Сан-Сальвадор","San Salvador","Σαν Σαλβαδόρ"],["HT","m",1,"Сан-Суси","Sans-Souci Palace",""],["ST","f",0,"Сан-Томе","São Tomé","Σάο Τομέ"],["US","m",0,"Сан-Франциско","San Francisco","Σαν Φρανσίσκο"],["CR","m",0,"Сан-Хосе","San José","Σαν Χοσέ"],["US","m",0,"Сан-Хосе","San Jose","Σαν Χοσέ"],["US","m",0,"Сан-Хуан","San Juan","Σαν Χουάν"],["YE","a",0,"Сана","Sanaa","Σαναά"],["CG","f",1,"Санга","Sangha Trinational",""],["EC","m",1,"Сангай","Sangay National Park","Εθνικό Πάρκο Σανγκάυ"],["ID","a",1,"Сангиран","Sangiran",""],["RU","e",0,"Санкт-Петербург","Saint Petersburg","Αγία Πετρούπολη"],["KR","a",1,"Санса — горные буддийские монастыри в Корее","Sansa, Buddhist Mountain Monasteries in Korea",""],["CO","m",1,"Санта-Крус-де-Момпос","Santa Cruz de Mompós",""],["ES","e",1,"Санта-Мария-де-Гуадалупе","Royal Monastery of Saint Mary of Guadalupe","Βασιλικό Μοναστήρι της Σάντα Μαρία της Γουαδελούπης"],["IT","e",1,"Санта-Мария-делле-Грацие","Santa Maria delle Grazie","Σάντα Μαρία ντέλλε Γκράτσιε"],["US","m",0,"Санта-Фе","Santa Fe","Σάντα Φε"],["DO","m",0,"Санто-Доминго","Santo Domingo","Σάντο Ντομίγκο"],["CL","m",0,"Сантьяго","Santiago","Σαντιάγο"],["IN","a",1,"Санчи","Sanchi",""],["CN","a",1,"Саньциншань","Mount Sanqing",""],["JP","a",0,"Саппоро","Sapporo","Σαππόρο"],["BA","e",0,"Сараево","Sarajevo","Σαράγιεβο"],["TJ","a",1,"Саразм","Sarazm",""],["RU","e",0,"Саратов","Saratov","Σαράτοφ"],["CH","e",1,"Сардона","Glarus thrust",""],["IN","a",1,"Сарнатх","Sarnath",""],["KZ","a",1,"Сарыарка — Степи и озёра Северного Казахстана","Saryarka – Steppe and Lakes of Northern Kazakhstan",""],["GB","e",0,"Саутгемптон","Southampton","Σαουθάμπτον"],["FI","e",1,"Свеаборг","Suomenlinna","Κάστρο της Σουομενλίνα"],["RU","e",1,"Свияжский Успенский монастырь","Sviyazhsk Assumption Monastery",""],["JP","a",1,"Святилища и храмы Никко","Shrines and Temples of Nikkō","Ιερά και Ναοί της Νίκκο"],["JP","a",1,"Святилище Ицукусима","Itsukushima Shrine","Ιερό της Ιτσουκουσίμα"],["JP","a",1,"Священные места и дороги паломников в горах Кии","Sacred Sites and Pilgrimage Routes in the Kii Mountain Range",""],["RU","e",0,"Севастополь","Sevastopol","Σεβαστούπολη"],["FR","e",0,"Сегед","Szeged","Σέγκεντ"],["US","m",0,"Сейлем","Salem","Σέιλεμ"],["TZ","f",1,"Селус (охотничий резерват)","Selous Game Reserve",""],["FR","e",0,"Сен-Дени","Saint-Denis","Σαιν-Ντενί"],["FR","e",0,"Сен-Пьер","Saint-Pierre","Σαιν-Πιερ"],["FR","e",1,"Сен-Савен","Saint-Savin",""],["FR","e",1,"Сен-Савен-сюр-Гартамп","Abbey Church of Saint-Savin-sur-Gartempe",""],["JP","a",0,"Сендай","Sendai","Σεντάι"],["GD","m",0,"Сент-Джорджес","St. George's","Σαιντ Τζόρτζις"],["GB","e",1,"Сент-Килда","St Kilda","Σεντ Κίλντα"],["US","m",0,"Сент-Луис","St. Louis","Σαιντ Λούις"],["GG","e",0,"Сент-Питер-Порт","Saint Peter Port","Σεντ Πίτερ Πορτ"],["US","m",0,"Сент-Пол","Saint Paul","Σαιντ Πωλ"],["JE","e",0,"Сент-Хелиер","Saint Helier","Σεντ Χέλιερ"],["FR","e",0,"Сент-Этьен","Saint-Étienne","Σαιντ-Ετιέν"],["TZ","f",1,"Серенгети","Serengeti National Park","Εθνικό Πάρκο Σερενγκέτι"],["BR","m",1,"Серра-да-Капивара","Serra da Capivara National Park","Εθνικό Πάρκο Σέρρα ντα Καπιβάρα"],["BR","m",1,"Серрадо","Cerrado",""],["KR","a",0,"Сеул","Seoul","Σεούλ"],["ES","e",0,"Сеута","Ceuta","Θέουτα"],["TH","a",1,"Си Тхеп","Si Thep historical park",""],["MX","m",1,"Сиан-Каан","Sian Ka'an",""],["CN","a",0,"Сиань","Xi'an","Σιάν"],["LK","a",1,"Сигирия","Sigiriya","Σιγκιρίγια"],["CV","f",1,"Сидади-Велья","Cidade Velha","Σιδάδε Βέλα"],["TN","f",1,"Сиди-Бу-Саид","Sidi Bou Said","Σιντί Μπου Σαΐντ"],["AU","o",0,"Сидней","Sydney","Σίδνεϊ"],["AU","o",1,"Сиднейский оперный театр","Sydney Opera House","Όπερα του Σίδνεϊ"],["IT","e",0,"Сиена","Siena","Σιένα"],["RU","e",0,"Симферополь","Simferopol","Συμφερόπολη"],["SG","a",0,"Сингапур","Singapore","Σιγκαπούρη"],["SG","a",1,"Сингапурский ботанический сад","Singapore Botanic Gardens",""],["LK","a",1,"Синхараджа","Sinharaja Forest Reserve",""],["JP","a",1,"Сиракава-го и Гокаяма","Historic Villages of Shirakawa-gō and Gokayama","Ιστορικά Χωριά των Περιοχών Σιρακάουα-Γκο και Γκοκαγιάμα"],["IT","e",0,"Сиракузы","Syracuse","Συρακούσες"],["JP","a",1,"Сиретоко","Shiretoko Peninsula","Χερσόνησος Σιρετόκο"],["AU","o",1,"Система национальных парков в Голубых Горах","Greater Blue Mountains Area",""],["US","m",0,"Сиэтл","Seattle","Σιάτλ"],["IN","a",1,"Скальные жилища Бхимбетка","Bhimbetka rock shelters",""],["KZ","a",1,"Скальные мечети и связанные с ними сакральные объекты Мангистау","Rock Mosques and Associated Sacred Sites of Mangystau",""],["IE","e",1,"Скеллиг-Майкл","Skellig Michael",""],["MK","e",0,"Скопье","Skopje","Σκόπια"],["JP","a",1,"Скрытые христианские объекты в регионе Нагасаки","Hidden Christian Sites in the Nagasaki Region",""],["GB","e",1,"Сланцевый ландшафт Северо-Западного Уэльса","The Slate Landscape of Northwest Wales",""],["CA","m",1,"Сланцы Бёрджес","Burgess Shale",""],["RU","e",0,"Смоленск","Smolensk","Σμολένσκ"],["ES","e",1,"Собор Ла Сео","Cathedral of the Savior in his Epiphany of Zaragoza","Καθεδρικός Λα Σέο"],["RU","e",1,"Собор Рождества Пресвятой Богородицы","Cathedral of the Nativity in Suzdal",""],["HR","e",1,"Собор Святого Иакова","Šibenik Cathedral","Καθεδρικός Ναός του Σίμπενικ"],["MX","m",1,"Собор Святого Людовика","St. Louis the King Cathedral, San Luis Potosí",""],["PE","m",1,"Собор Успения Пресвятой Девы Марии (Куско)","Cusco Cathedral",""],["MA","f",1,"Современный центр и исторический город Рабата","Rabat, Modern Capital and Historic City",""],["YE","a",1,"Сокотра","Socotra Archipelago",""],["DE","e",1,"Сокровищница Аахенского собора","Aachen Cathedral Treasury",""],["RU","e",1,"Соловецкие острова","Solovetsky Islands","Νήσοι Σολοβέτσκι"],["US","m",0,"Солт-Лейк-Сити","Salt Lake City","Σολτ Λέικ Σίτι"],["GB","e",1,"Солтейр","Saltaire",""],["IR","a",1,"Сольтание","Soltaniyeh","Σολτανίγιε"],["UA","e",1,"Софийский собор","Saint Sophia Cathedral","Καθεδρικός Ναός Αγίας Σοφίας (Κίεβο)"],["BG","e",0,"София","Sofia","Σόφια"],["RU","e",0,"Сочи","Sochi","Σότσι"],["SK","e",1,"Спишска Капитула","Spišská Kapitula",""],["SK","e",1,"Спишский Град","Spiš Castle","κάστρο του Σπις"],["HR","e",0,"Сплит","Split","Σπλιτ"],["US","m",0,"Спрингфилд","Springfield","Σπρίνγκφιλντ"],["RS","e",1,"Средневековые памятники в Косове","Medieval Monuments in Kosovo",""],["NO","e",1,"Ставкирка в Урнесе","Urnes Stave Church","Εκκλησία του Ούρβες Στάβε"],["TR","a",0,"Стамбул","Istanbul","Κωνσταντινούπολη"],["DZ","f",1,"Старая Касба в Алжире","Casbah of Algiers",""],["FI","e",1,"Старая Раума","Old Rauma","Παλαιά Ράουμα"],["YE","a",1,"Старая Сана","Old Sana'a",""],["FI","e",1,"Старая церковь в деревне Петяявеси","Petäjävesi Old Church","Παλιά Εκκλησία Πεταγιαβέσι"],["CZ","e",1,"Старе-Место","Old Town","Στάρε Μιέστο"],["HR","e",1,"Стариградское поле","Stari Grad Plain",""],["CN","a",1,"Старое протестантское кладбище","Old Protestant Cemetery",""],["CA","m",1,"Старый Квебек","Old Quebec",""],["FR","e",1,"Старый Лион","Vieux Lyon",""],["CH","e",1,"Старый город","Old City of Bern",""],["SY","a",1,"Старый город Алеппо","Ancient City of Aleppo",""],["AZ","a",1,"Старый город Баку с дворцом Ширваншахов и Девичьей башней","Walled City of Baku with the Shirvanshahs' Palace and Maiden Tower",""],["PL","e",1,"Старый город Варшавы","Warsaw Old Town","Παλιά Πόλη της Βαρσοβίας"],["LT","e",1,"Старый город Вильнюса","Vilnius Old Town","Παλιά Πόλη της Βίλνιους"],["LY","f",1,"Старый город Гадамеса","Old Town of Ghadamès",""],["ML","f",1,"Старый город Дженне","Old Towns of Djenné",""],["HR","e",1,"Старый город Дубровника","Old city (Dubrovnik)","Παλαιά Πόλη του Ντούμπροβνικ"],["PL","e",1,"Старый город Замостье","Old City of Zamość","Παλιά Πόλη του Ζάμοστς"],["PL","e",1,"Старый город Кракова","Kraków Old Town","Παλιά Πόλη της Κρακοβίας"],["LV","e",1,"Старый город Кулдиги","Old town of Kuldīga",""],["KE","f",1,"Старый город Ламу","Lamu Old Town",""],["LV","e",1,"Старый город Риги","Vecrīga",""],["ES","e",1,"Старый город Саламанки","Old City of Salamanca",""],["EE","e",1,"Старый город Таллина","Tallinn Old Town",""],["PS","a",1,"Старый город Хеврона/Аль-Халиля","Old City of Hebron","Παλαιά Πόλη Χεβρώνος"],["IL","a",1,"Старый город в Иерусалиме и его крепостные стены","Old City of Jerusalem and its Walls",""],["GB","e",1,"Старый и Новый города Эдинбурга","Old and New Towns of Edinburgh",""],["DE","e",1,"Старый музей","Altes Museum","Άλτες Μουζέουμ"],["US","m",1,"Статуя Свободы","Statue of Liberty","Άγαλμα της Ελευθερίας"],["SE","e",0,"Стокгольм","Stockholm","Στοκχόλμη"],["GB","e",1,"Стоунхендж","Stonehenge","Στόουνχεντζ"],["SN","f",1,"Страны бассари: культурные ландшафты Бассари и Бедик","Bassari Country",""],["FR","e",0,"Страсбург","Strasbourg","Στρασβούργο"],["FR","e",1,"Страсбург, Гранд-Иль и Нойштадт","Strasbourg: from Grande-île to Neustadt, a European urban scene",""],["SE","e",1,"Стура-Шёфаллет","Stora Sjöfallet National Park",""],["IT","e",1,"Су-Нуракси-ди-Барумини","Su Nuraxi di Barumini",""],["FJ","o",0,"Сува","Suva","Σούβα"],["BE","e",1,"Судоподъёмники Центрального канала в Бельгии","lifts on the old Canal du Centre",""],["IR","a",1,"Сузы","Susa","Σούσα"],["BO","m",0,"Сукре","Sucre","Σούκρε"],["NG","f",1,"Сукур","Sukur",""],["KG","a",1,"Сулайман-Тоо","Sulaiman-Too",""],["IN","a",1,"Сундарбан","Sundarbans National Park",""],["ID","a",0,"Сурабая","Surabaya","Σουραμπάγια"],["GE","a",0,"Сухуми","Sokhumi","Σουχούμι"],["GQ","f",0,"Сьюдад-де-ла-Пас","Ciudad de la Paz","Θιουδάδ ντε λα Παθ"],["CL","m",1,"Сьюэлл","Sewell","Σουέλ"],["IS","e",1,"Сюртсей","Surtsey","Σούρτσεϊ"],["IN","a",1,"Тадж-Махал","Taj Mahal","Τατζ Μαχάλ"],["TJ","a",1,"Таджикский национальный парк","Pamir National Park",""],["LY","f",1,"Тадрарт-Акакус","Tadrart Acacus","Μνημεία Πέτρινης Τέχνης του Τάντραρτ Ακάκους"],["CI","f",1,"Таи","Taï National Park","Εθνικό Πάρκο Ταΐ"],["TW","a",0,"Тайбэй","Taipei","Ταϊπέι"],["CN","a",1,"Тайшань","Mount Tai","Όρος Τάι"],["GT","m",1,"Такалик-Абах","Takalik Abaj",""],["PK","a",1,"Таксила","Taxila","Τάξιλα"],["US","m",0,"Таллахасси","Tallahassee","Ταλαχάσι"],["EE","e",0,"Таллин","Tallinn","Τάλιν"],["KZ","a",1,"Тамгалы","Tamgaly","Ταμγκάλι"],["FI","e",0,"Тампере","Tampere","Τάμπερε"],["MA","f",0,"Танжер","Tangier","Ταγγέρη"],["US","m",1,"Таос-Пуэбло","Taos Pueblo",""],["KI","o",0,"Тарава","Tarawa","Ταράουα"],["IT","e",0,"Таранто","Taranto","Τάραντας"],["ES","e",1,"Тарракон","Colonia Iulia Urbs Triumphalis Tarraco","Τάρρακο"],["EE","e",0,"Тарту","Tartu","Τάρτου"],["DZ","f",1,"Тассилин-Адджер","Tassili n'Ajjer","Τασιλί ν'Ατζέρ"],["GB","e",1,"Тауэр","Tower of London","Πύργος του Λονδίνου"],["IR","a",1,"Тахт-е Солейман","Takht-e Soleyman",""],["UZ","a",0,"Ташкент","Tashkent","Τασκένδη"],["GE","a",0,"Тбилиси","Tbilisi","Τιφλίδα"],["NA","f",1,"Твифелфонтейн","Twyfelfontein",""],["NZ","o",1,"Те-Вахипунаму","Te Wahipounamu",""],["SE","e",1,"Театр дворца Дроттнигхолм","Drottningholm Palace Theatre",""],["IR","a",0,"Тебриз","Tabriz","Ταμπρίζ"],["IR","a",1,"Тебризский базар","Tabriz Bazaar","Ιστορικό Συγκρότημα Αγορών του Ταμπρίζ"],["IR","a",0,"Тегеран","Tehran","Τεχεράνη"],["HN","m",0,"Тегусигальпа","Tegucigalpa","Τεγκουσιγκάλπα"],["ES","e",1,"Тейде (национальный парк)","Teide National Park",""],["IL","a",0,"Тель-Авив","Tel Aviv","Τελ Αβίβ"],["MX","m",1,"Теотиуакан","Teotihuacan","Τεοτιουακάν"],["CH","e",1,"Террасные виноградники Лаво","Lavaux","Λαβώ"],["SE","e",1,"Территория дворца Drottningholm","Royal Domain of Drottningholm",""],["MX","m",1,"Теуакан-Куикатлан","Tehuacán-Cuicatlán Biosphere Reserve",""],["TJ","a",1,"Тигровая балка","Tigrovaya Balka Nature Reserve",""],["BR","m",1,"Тижука","Tijuca Forest",""],["DZ","f",1,"Тимгад","Timgad","Τιμγκάντ"],["RO","e",0,"Тимишоара","Timișoara","Τιμισοάρα"],["IS","e",1,"Тингветлир","Thingvellir National Park","Θίνκβετλιρ"],["EG","f",0,"Тинис","Thinis",""],["DZ","f",1,"Типаса","Tipasa",""],["AL","e",0,"Тирана","Tirana","Τίρανα"],["BO","m",1,"Тиуанако","Tiwanaku","Τιαουανάκο"],["MX","m",0,"Тихуана","Tijuana","Τιχουάνα"],["MX","m",1,"Тлакотальпан","Tlacotalpan","Τλακοτάλπαν"],["JP","a",0,"Токио","Tokyo","Τόκιο"],["ML","f",0,"Томбукту","Timbuktu","Τιμπουκτού"],["RU","e",0,"Томск","Tomsk","Τομσκ"],["NZ","o",1,"Тонгариро","Tongariro National Park",""],["US","m",0,"Топика","Topeka","Τοπίκα"],["CA","m",0,"Торонто","Toronto","Τορόντο"],["ES","e",1,"Торре-де-Сан-Мартин","Torre de San Martín","Τόρρε δε Σαν Μαρτίν"],["FO","e",0,"Торсхавн","Tórshavn","Τόρσχαβν"],["TR","a",0,"Трабзон","Trabzon","Τραπεζούντα"],["GH","f",1,"Традиционные строения Ашанти","Asante Traditional Buildings",""],["IR","a",1,"Трансиранская железная дорога","Trans-Iranian Railway",""],["FR","e",1,"Траншея штыков","Bayonet Trench",""],["IT","e",1,"Траянова дорога","Via Traiana",""],["US","m",0,"Трентон","Trenton","Τρέντον"],["CN","a",1,"Три параллельных реки","Three Parallel Rivers National Park",""],["IT","e",0,"Триест","Trieste","Τεργέστη"],["LY","f",0,"Триполи","Tripoli","Τρίπολη"],["DE","e",0,"Трир","Trier","Τριρ"],["RU","e",1,"Троице-Сергиева лавра","Trinity Lavra of St. Sergius","Λαύρα Τρόιτσε-Σεργκίγεβα"],["NO","e",0,"Тронхейм","Trondheim","Τρόντχαϊμ"],["TR","a",0,"Троя","Troy","Τροία"],["PL","e",0,"Трояны","Trojany","Τρογιάνι"],["FR","e",0,"Тулуза","Toulouse","Τουλούζη"],["TN","f",0,"Тунис","Tunis","Τύνιδα"],["FR","e",0,"Тур","Tours","Τουρ"],["TM","a",1,"Туранские пустыни умеренного пояса","Cold Winter Deserts of Turan",""],["IT","e",0,"Турин","Turin","Τορίνο"],["FI","e",0,"Турку","Turku","Τούρκου"],["US","m",0,"Тусон","Tucson","Τούσον"],["KE","f",1,"Тхимлич Охинга","Thimlich Ohinga",""],["BT","a",0,"Тхимпху","Thimphu","Τιμπού"],["TH","a",1,"Тхунгъяй","Thungyai Naresuan Wildlife Sanctuary",""],["CO","m",1,"Тьеррадентро","Tierradentro",""],["DE","e",0,"Тюбинген","Tübingen","Τύμπινγκεν"],["CN","a",0,"Тяньцзинь","Tianjin","Τιεντσίν"],["BF","f",0,"Уагадугу","Ouagadougou","Ουαγκαντουγκού"],["PE","m",1,"Уаскаран (национальный парк)","Huascarán National Park",""],["ID","a",1,"Уджунг Кулон","Ujung Kulon National Park","Εθνικό Πάρκο Ουτζούνγκ Κουλόν"],["IT","e",0,"Удине","Udine","Ούντινε"],["AU","o",1,"Уилландра","Willandra Lakes Region",""],["US","m",0,"Уичито","Wichita","Ουίτσιτα"],["CN","a",1,"Уишань","Wuyi Mountains",""],["MN","a",0,"Улан-Батор","Ulaanbaatar","Ουλάν Μπατόρ"],["CN","a",1,"Улинъюань","Wulingyuan","Γουλινγκγιουάν"],["TR","a",1,"Улу-джами","Divriği Great Mosque and Hospital","Μεγάλο Τζαμί και Νοσοκομείο του Ντιβριτζί"],["AU","o",1,"Улуру-Ката Тьюта","Uluṟu-Kata Tjuṯa National Park",""],["DE","e",0,"Ульм","Ulm","Ουλμ"],["RU","e",0,"Ульяновск","Ulyanovsk","Ουλιάνοφσκ"],["JO","a",1,"Ум-эр-Расас","Umm ar-Rasas","Ουμ αλ Ρασας"],["JO","a",1,"Умм-эль-Джималь","Umm el-Jimal",""],["TD","f",1,"Унианга","Lakes of Ounianga","Λίμνες της Ουνιάγγα"],["VE","m",1,"Университетский городок в Каракасе","University City of Caracas",""],["SE","e",0,"Уппсала","Uppsala","Ουψάλα"],["CN","a",0,"Урумчи","Ürümqi","Ουρούμκι"],["CN","a",1,"Утайшань","Mount Wutai","Όρος Γουτάι"],["NL","e",0,"Утрехт","Utrecht","Ουτρέχτη"],["RU","e",0,"Уфа","Ufa","Ουφά"],["CN","a",0,"Ухань","Wuhan","Γουχάν"],["AU","o",0,"Уэст-Айленд","West Island","Γουέστ Άιλαντ"],["DE","e",1,"Фабрика Фагуса в Альфельде","Fagus Factory",""],["JP","a",1,"Фабрика по производству шелка в городе Томиока и сопутствующие объекты","The Tomioka Silk Mill and Related Industrial Heritage",""],["GB","e",1,"Фабрики в долине реки Деруэнт","Derwent Valley Mills",""],["US","m",0,"Фагатого","Fagatogo",""],["NZ","o",0,"Факаофо","Fakaofo","Φακαόφο"],["ET","f",1,"Фасил-Гебби","Fasil Ghebbi",""],["IN","a",1,"Фатехпур-Сикри","Fatehpur Sikri",""],["GB","e",1,"Фаунтинское аббатство","Fountains Abbey",""],["RU","e",1,"Ферапонтов монастырь","Ferapontov Monastery",""],["IT","e",0,"Феррара","Ferrara","Φερράρα"],["IT","e",1,"Феррара, город Возрождения и дельта реки По","Ferrara, City of the Renaissance, and its Po Delta",""],["MA","f",0,"Фес","Fez","Φεζ"],["EG","f",1,"Фивы","Thebes","Θήβαι Αιγύπτου"],["AL","e",0,"Фиери","Fier","Φιέρι"],["US","m",0,"Филадельфия","Philadelphia","Φιλαδέλφεια"],["GR","e",1,"Филиппы","Philippi","Φίλιπποι"],["SX","m",0,"Филипсбург","Philipsburg","Φίλιπσμπουργκ"],["US","m",0,"Финикс","Phoenix","Φοίνιξ"],["AU","o",0,"Флайинг-Фиш-Коув","Flying Fish Cove","Φλάινγκ Φις Κόουβ"],["IT","e",0,"Флоренция","Florence","Φλωρεντία"],["VN","a",1,"Фонгня-Кебанг","Phong Nha–Ke Bang National Park","Εθνικό Πάρκο Phong Nha-Ke Bang"],["FR","e",1,"Фонтене","Abbey of Fontenay","Αββαείο του Φοντεναί"],["FR","e",0,"Фор-де-Франс","Fort-de-France","Φορ-ντε-Φρανς"],["KE","f",1,"Форт Иисус","Fort Jesus Museum",""],["GB","e",1,"Форт-Бридж","Forth Bridge","Γέφυρα Φορθ"],["US","m",0,"Форт-Уэрт","Fort Worth","Φορτ Γουόρθ"],["BR","m",0,"Форталеза","Fortaleza","Φορταλέζα"],["IN","a",1,"Форты Раджастхана","Hill Forts of Rajasthan",""],["GH","f",1,"Форты и замки Вольты, Большой Аккры, Центрального и Западного регионов","Forts and Castles, Volta, Greater Accra, Central and Western Regions",""],["DE","e",0,"Фрайбург-им-Брайсгау","Freiburg im Breisgau","Φράιμπουργκ"],["BG","e",1,"Фракийская гробница в Казанлыке","Thracian Tomb of Kazanlak","Θρακικός Τύμβος του Καζανλάκ"],["BG","e",1,"Фракийская гробница в Свештарах","Thracian Tomb of Sveshtari","Θρακικός Τύμβος του Σβεστάρι"],["US","m",0,"Франкфорт","Frankfort","Φράνκφορτ"],["DE","e",0,"Франкфурт-на-Майне","Frankfurt","Φρανκφούρτη"],["MX","m",1,"Францисканские миссии в Сьерра-Горда","Franciscan Missions in the Sierra Gorda",""],["US","m",0,"Фресно","Fresno","Φρέσνο"],["SL","f",0,"Фритаун","Freetown","Φρίταουν"],["JP","a",0,"Фукуока","Fukuoka","Φουκουόκα"],["TV","o",0,"Фунафути","Funafuti","Φουναφούτι"],["BO","m",1,"Фуэрте-де-Самайпата","El Fuerte de Samaipata","Φουέρτε ντε Σαμαϊπάτα"],["RU","e",0,"Хабаровск","Khabarovsk","Χαμπάροφσκ"],["US","m",1,"Хавайи-Волкейнос","Hawaiʻi Volcanoes National Park","Εθνικό Πάρκο Ηφαιστείων της Χαβάης"],["US","m",0,"Хагатна","Hagåtña","Χαγκάτνια"],["IN","a",0,"Хайдарабад","Hyderabad","Χαϊντεραμπάντ"],["IL","a",0,"Хайфа","Haifa","Χάιφα"],["MT","e",1,"Хал-Сафлиени","Hypogeum of Ħal Saflieni","Υπόγειο του Χαλ Σαφλιένι"],["CL","m",1,"Хамберстон и Санта-Лаура","Humberstone and Santa Laura Saltpeter Works","Εργοστάσια νιτρικού καλίου Χάμπερστοουν και Σάντα Λάουρα"],["IN","a",1,"Хампи","Hampi",""],["AZ","a",0,"Ханкенди","Khankendi","Στεπανακέρτ"],["VN","a",0,"Ханой","Hanoi","Ανόι"],["VN","a",1,"Ханойская цитадель","Imperial Citadel of Thang Long",""],["CN","a",0,"Ханчжоу","Hangzhou","Χανγκτσόου"],["ZW","f",0,"Хараре","Harare","Χαράρε"],["CN","a",0,"Харбин","Harbin","Χαρμπίν"],["SD","f",0,"Хартум","Khartoum","Χαρτούμ"],["US","m",0,"Хартфорд","Hartford","Χάρτφορντ"],["UA","e",0,"Харьков","Kharkiv","Χάρκοβο"],["IQ","a",1,"Хатра","Hatra",""],["KR","a",1,"Хвасон","Hwaseong Fortress",""],["US","m",0,"Хелена","Helena","Χέλενα"],["FI","e",0,"Хельсинки","Helsinki","Ελσίνκι"],["DE","e",0,"Хемниц","Chemnitz","Κέμνιτς"],["GB","e",1,"Хендерсон","Henderson Island",""],["DE","e",1,"Херренкимзе","Herrenchiemsee","Χέρενχιμζη"],["UA","e",0,"Херсон","Kherson","Χερσώνα"],["JP","a",1,"Хираизуми","Hiraizumi – Temples, Gardens and Archaeological Sites Representing the Buddhist Pure Land","Ιστορικά Μνημεία και Χώροι του Χιραϊζούμι"],["CY","e",1,"Хирокития","Khirokitia","Χοιροκοιτία"],["JP","a",0,"Хиросима","Hiroshima","Χιροσίμα"],["AU","o",0,"Хобарт","Hobart","Χόμπαρτ"],["VN","a",1,"Хойан","Hội An","Χόι Αν"],["SV","m",1,"Хойя-де-Серен","Joya de Cerén",""],["HU","e",1,"Холлокё","Hollókő","Χόλοκο"],["ZW","f",1,"Холмы Матобо","Matobo Hills",""],["IT","e",1,"Холмы Просекко в Конельяно и Вальдоббьядене","Le Colline del Prosecco di Conegliano e Valdobbiadene",""],["SB","o",0,"Хониара","Honiara","Ονιάρα"],["RO","e",1,"Хорезу","Horezu monastery","Μοναστήρι του Χορέζου"],["HU","e",1,"Хортобадь","Hortobágy National Park","Εθνικό Πάρκο Χόρτομπαγκ"],["VN","a",0,"Хошимин","Ho Chi Minh City","Χο Τσι Μινχ"],["GR","e",1,"Храм Аполлона в Бассах","Temple of Apollo Epicurius in Bassae","Ναός Επικούριου Απόλλωνα"],["CN","a",1,"Храм Неба","Temple of Heaven","Ναός του Ουρανού"],["ES","e",1,"Храм Святого Семейства","Basilica and Expiatory Church of the Holy Family","Σαγράδα Φαμίλια"],["IN","a",1,"Храм Солнца в Конараке","Konark Sun Temple",""],["LB","a",1,"Храм Юпитера (Баальбек)","Temple of Jupiter",""],["MX","m",1,"Храм надписей","Temple of the Inscriptions",""],["IN","a",1,"Храмы Чола","Great Living Chola Temples",""],["RU","e",1,"Храмы псковской архитектурной школы","Churches of the Pskov School of Architecture",""],["CN","a",1,"Хуанлун","Huanglong",""],["CN","a",1,"Хуаншань","Huangshan","Όρος Χουάνγκ"],["US","m",0,"Хьюстон","Houston","Χιούστον"],["DE","e",1,"Цepкoвь Cпacитeля в пopту Зaкpoвa","Church of the Redeemer",""],["PH","a",1,"Церкви Филиппин в стиле барокко","Baroque Churches of the Philippines","Μπαρόκ εκκλησίες των Φιλιππίνων"],["RO","e",1,"Церкви исторической области Молдова","churches of Moldavia",""],["PL","e",1,"Церкви мира","Churches of Peace","Εκκλησίες της Ειρήνης"],["CL","m",1,"Церкви острова Чилоэ","Churches of Chiloé","Εκκλησίες της Τσιλόε"],["CY","e",1,"Церкви с росписями в районе Троодос","Painted Churches in the Troödos Region","Τοιχογραφημένοι ναοί στην περιοχή του όρους Τρόοδος"],["SE","e",1,"Церковный городок Гаммельстад","Gammelstad Church Town",""],["PS","a",1,"Церковь Богоматери Страдания","Church of Our Lady of the Spasm, Jerusalem",""],["RS","e",1,"Церковь Богородица Левишка","Our Lady of Promise",""],["RU","e",1,"Церковь Вознесения Господня в Коломенском","Church of the Ascension, Kolomenskoye",""],["CN","a",1,"Церковь Святого Антония (Макао)","St. Anthony's Church",""],["RU","e",1,"Церковь Святого Всеспасителя","Church of the Holy All-Savior of Derbent",""],["ET","f",1,"Церковь Святого Георгия","Monolithic churches in Lalibela","Ναός Αγίου Γεωργίου"],["CZ","e",1,"Церковь Святого Иоанна Непомуцкого","Pilgrimage Church of Saint John of Nepomuk","Προσκυνηματικός ναός του Αγίου Ιωάννη του Νέπομουκ"],["CN","a",1,"Церковь Святого Лаврентия","St Lawrence's Church",""],["UA","e",1,"Церковь Спаса на Берестове","Church of the Saviour at Berestove","Ναός του Σωτήρος στο Μπερεστοβ"],["ME","e",0,"Цетине","Cetinje","Τσέτινιε"],["CN","a",1,"Цзючжайгоу","Jiuzhaigou Valley",""],["IT","e",1,"Циклы фресок Падуи XIV века","Padua's fourteenth-century fresco cycles",""],["MG","f",1,"Цинжи-дю-Бемараха","Tsingy de Bemaraha Strict Nature Reserve",""],["US","m",0,"Цинциннати","Cincinnati","Σινσινάτι"],["IQ","a",1,"Цитадель Эрбиль","Citadel of Erbil",""],["VN","a",1,"Цитадель династии Хо","Citadel of the Hồ Dynasty","Φρούριο της Δυναστείας Χο"],["RU","e",1,"Цитадель, старый город и крепостные сооружения Дербента","Citadel, old town and fortifications of Derbent",""],["BW","f",1,"Цодило","Tsodilo",""],["GE","a",0,"Цхинвал","Tskhinval","Τσχινβάλι"],["CH","e",0,"Цюрих","Zurich","Ζυρίχη"],["PE","m",1,"Чавин-де-Уантар","Chavin de Huantar",""],["US","m",1,"Чако","Chaco Culture World Heritage Site",""],["IN","a",1,"Чампанер-Павагадх","Champaner-Pavagadh Archaeological Park",""],["PE","m",1,"Чан-Чан","Chan Chan",""],["IN","a",0,"Чандигарх","Chandigarh","Τσαντιγκάρ"],["US","m",0,"Чарлстон","Charleston","Τσάρλεστον"],["TR","a",1,"Чатал-Хююк","Çatalhöyük","Τσαταλχογιούκ"],["RU","e",0,"Челябинск","Chelyabinsk","Τσελιάμπινσκ"],["IN","a",0,"Ченнаи","Chennai","Τσεννάι"],["UA","e",0,"Чернигов","Chernihiv","Τσερνίχιβ"],["CN","a",1,"Чжоукоудянь","Zhoukoudian site",""],["CN","a",0,"Чжэнчжоу","Zhengzhou","Τσεντσόου"],["US","m",0,"Чикаго","Chicago","Σικάγο"],["CO","m",1,"Чирибикете","Chiribiquete National Park",""],["BD","a",0,"Читтагонг","Chittagong","Τσιταγκόνγκ"],["MX","m",1,"Чичен-Ица","Chichen Itza","Τσιτσέν Ιτζά"],["KR","a",1,"Чонмё","Jongmyo","Τζονγκμιό"],["CN","a",0,"Чунцин","Chongqing","Τσονγκίνγκ"],["KR","a",1,"Чхандоккун","Changdeokgung","Τσάνγκντοκουνγκ"],["CN","a",0,"Чэнду","Chengdu","Τσενγκτού"],["US","m",0,"Шайенн","Cheyenne","Σαϊέν"],["CN","a",1,"Шанду","Xanadu","Σαντού"],["IN","a",1,"Шантиникетан","Santiniketan","Σαντινικετάν"],["CN","a",0,"Шанхай","Shanghai","Σαγκάη"],["US","m",0,"Шарлотт","Charlotte","Σάρλοτ"],["VI","m",0,"Шарлотта-Амалия","Charlotte Amalie","Σαρλότ Αμαλί"],["FR","e",1,"Шартрский собор","Notre-Dame de Chartres","Καθεδρικός Ναός της Παναγίας της Σαρτρ"],["IR","a",1,"Шахри-Сухте","Shahr-e Sukhteh","Σαχρ-ε Σουχτέχ"],["UZ","a",1,"Шахрисабз","Shahrisabz","Σαχρισάμπζ"],["DE","e",1,"Шахта Цольферайн","Zollverein Coal Mine Industrial Complex","Βιομηχανικό συγκρότημα Ανθρακωρυχείων του Τσόλφεραϊν"],["BE","e",1,"Шахтёрские выработки в Валлонии","Major Mining Sites of Wallonia",""],["DE","e",0,"Шверин","Schwerin","Σβερίν"],["DE","e",1,"Шверинский замок","Schwerin Castle",""],["GB","e",0,"Шеффилд","Sheffield","Σέφιλντ"],["YE","a",1,"Шибам","Shibam","Σιμπάμ"],["BA","e",0,"Шипраге","Šiprage","Σίπραγκε"],["IR","a",0,"Шираз","Shiraz","Σιράζ"],["AR","m",1,"Школа механиков ВМС Аргентины","Navy Petty-Officers School of Mechanics",""],["SI","e",1,"Шкоцянские пещеры","Škocjan Caves","Σπήλαια του Σκόκγιαν"],["MX","m",1,"Шочикалько","Xochicalco",""],["DE","e",1,"Шпайерский собор","Speyer Cathedral","Καθεδρικός Ναός του Σπάιερ"],["LK","a",0,"Шри-Джаяварденепура-Котте","Sri Jayawardenepura Kotte","Κότε"],["DE","e",0,"Штутгарт","Stuttgart","Στουτγκάρδη"],["CN","a",0,"Шэньчжэнь","Shenzhen","Σεντσέν"],["CN","a",0,"Шэньян","Shenyang","Σενγιάνγκ"],["PL","e",0,"Щецин","Szczecin","Στσέτσιν"],["US","m",1,"Эверглейдс","Everglades National Park",""],["GR","e",1,"Эги","Aigai","Αιγές"],["GR","e",0,"Эгина","Aegina","Αίγινα"],["GB","e",0,"Эдинбург","Edinburgh","Εδιμβούργο"],["GB","e",0,"Эдинбург семи морей","Edinburgh of the Seven Seas","Εδιμβούργο των 7 Θαλασσών"],["TR","a",0,"Эдирне","Edirne","Αδριανούπολη"],["CA","m",0,"Эдмонтон","Edmonton","Έντμοντον"],["JP","a",0,"Эдо","Edo","Έντο"],["NL","e",0,"Эйндховен","Eindhoven","Αϊντχόφεν"],["IR","a",1,"Экбатана","Ecbatana","Εκβάτανα"],["GA","f",1,"Экосистема и реликтовый культурный пейзаж Лопе-Оканда","Ecosystem and Relict Cultural Landscape of Lopé-Okanda",""],["IN","a",1,"Элефанта","Elephanta Caves",""],["IN","a",1,"Эллора","Ellora Caves",""],["IQ","a",1,"Эль-Ахвар","Ahwar of Southern Iraq",""],["MA","f",0,"Эль-Аюн","Laayoune","Λααγιούν"],["SA","a",1,"Эль-Балад (Джидда)","Al-Balad, Jeddah",""],["EG","f",0,"Эль-Гиза","Giza","Γκίζα"],["KW","a",0,"Эль-Кувейт","Kuwait City","Κουβέιτ"],["US","m",0,"Эль-Пасо","El Paso","Ελ Πάσο"],["MX","m",1,"Эль-Пинакате и Гран-Десиерто-де-Алтар","El Pinacate y Gran Desierto de Altar Biosphere Reserve",""],["MX","m",1,"Эль-Тахин","Tajín Veracruz",""],["SA","a",1,"Эль-Хаса","Al-Ahsa Oasis","Όαση Αλ Άχσα"],["AL","e",0,"Эльбасан","Elbasan","Ελμπασάν"],["TD","f",1,"Эннеди","Ennedi Plateau",""],["SA","a",0,"Эр-Рияд","Riyadh","Ριάντ"],["DE","e",0,"Эрфурт","Erfurt","Ερφούρτη"],["JO","a",1,"Эс-Салт","Salt","Σαλτ"],["DE","e",0,"Эссен","Essen","Έσσεν"],["KI","o",0,"Южная Тарава","South Tarawa",""],["CN","a",1,"Южно-Китайский карст","South China Karst",""],["FR","e",1,"Южный канал","Canal du Midi","Κανάλι του Midi"],["CN","a",1,"Юньган","Yungang Grottoes",""],["GB","e",1,"Юрское побережье","Jurassic Coast",""],["JP","a",1,"Якусима","Yakushima","Γιακουσίμα"],["RU","e",0,"Якутск","Yakutsk","Γιακούτσκ"],["JP","a",1,"Ямбару","Yanbaru National Park",""],["CI","f",0,"Ямусукро","Yamoussoukro","Γιαμουσουκρό"],["MM","a",0,"Янгон","Yangon","Γιανγκόν"],["RU","e",0,"Ярославль","Yaroslavl","Γιαροσλάβλ"],["CM","f",0,"Яунде","Yaoundé","Γιαουντέ"],["FR","e",1,"аббатство Откомб","Royal Abbey of Hautecombe","Αββαείο του Ωτκόμπ"],["PS","a",1,"аль-Акса","Al-Aqsa Mosque","Τέμενος του Αλ Ακσά"],["TN","f",1,"археологическое место Карфагена","Archaeological site of Carthage","αρχαιολογικός τόπος της Καρχηδόνας"],["LT","e",1,"архитектурный модернизм в Каунасе","Modernist Kaunas: Architecture of Optimism, 1919-1939",""],["PS","a",1,"базилика Рождества Христова","Church of the Nativity","Βασιλική της Γεννήσεως"],["BE","e",1,"бегинаж во Фландрии","Béguinages in Flanders",""],["ID","a",1,"влажные тропические леса Суматры","Tropical Rainforest Heritage of Sumatra","Τροπικά Δάση της Σουμάτρα"],["UA","e",1,"дельта Дуная","Danube Delta","Δέλτα Δούναβη"],["DE","e",1,"замок Вартбург","Wartburg","Πύργος του Βάρτμπουργκ"],["CN","a",1,"исторические памятники Деньфень в «Центре Неба и Земли»","Historic Monuments of Dengfeng in “The Centre of Heaven and Earth”",""],["DE","e",1,"карьер Мессель","Messel pit","Πεδίο Απολιθωμάτων Μέσσελ"],["MC","e",0,"коммуна Монако","Commune of Monaco","Κοινότητα του Μονακό"],["PL","e",0,"концлагерь Освенцим","Auschwitz","Στρατόπεδο Συγκέντρωσης Άουσβιτς"],["FR","e",1,"крепостные сооружения Вобана","Fortifications of Vauban","Οχυρώσεις του Βωμπάν"],["ES","e",1,"монументальные ансамбли Возрождения в городах Убеда и Баэса","Renaissance Monumental Ensembles of Úbeda and Baeza",""],["ES","e",1,"мудехарская архитектура Арагона","Mudéjar architecture of Aragon","Μουδέχαρ αρχιτεκτονική της Αραγονίας"],["SE","e",1,"наскальные рельефы в Тануме","Rock Carvings in Tanum",""],["TZ","f",1,"наскальные рисунки в Кондоа","Kondoa Rock Art Sites",""],["ES","e",1,"остров Ибиса: биоразнообразие и культура","Ibiza, Biodiversity and Culture",""],["RU","e",1,"петроглифы Онежского озера и Белого моря","Petroglyphs of Lake Onega and the White Sea",""],["FR","e",1,"пещера Шове","Chauvet Cave","Σπήλαιο Σοβέ"],["ES","e",1,"произведения Антонио Гауди","Works of Antoni Gaudí",""],["BA","e",1,"район Старого моста в историческом центре города Мостар","Old Bridge Area of the Old City of Mostar",""],["HU","e",1,"раннехристианское захоронение в городе Печ","Early Christian Necropolis of Pécs",""],["FR","e",1,"сады и парк версаля","Gardens of Versailles","Κήποι των Βερσαλλιών"],["DK","e",1,"собор Роскилле","Roskilde Cathedral","Καθεδρικός Ναός του Ρόσκιλε"],["ID","a",1,"угольная шахта Омбилин","Ombilin coal mine","Ανθρακωρυχείο Ομπιλίν"],["FR","e",1,"форт Дуомон","Fort Douaumont",""],["GR","e",0,"Санторини","Santorini","Σαντορίνη"],["CH","e",0,"Интерлакен","Interlaken","Ίντερλακεν"],["ID","a",0,"Бали","Bali","Μπαλί"],["KH","a",0,"Сиемреап","Siem Reap","Σιέμ Ριπ"],["MV","a",0,"Мальдивы","Maldives","Μαλδίβες"],["MX","m",0,"Канкун","Cancun","Κανκούν"],["CA","m",0,"Банф","Banff","Μπανφ"]];
+  </script>
+
+  <script>
+    // PLACES: [cc, region, kind, nameRu, nameEn, nameEl] — kind 1 = объект ЮНЕСКО
+    const pass = document.getElementById('pass');
+    const regionsBox = document.getElementById('regions');
+    const kindsBox = document.getElementById('kinds');
+    const destName = document.getElementById('destName');
+    const nameInner = document.getElementById('nameInner');
+    const nameMeasure = document.getElementById('nameMeasure');
+    const segMeasure = document.getElementById('segMeasure');
+    const charMeasure = document.getElementById('charMeasure');
+    const liveEl = document.getElementById('live');
+    const destCountry = document.getElementById('destCountry');
+    const flagEl = document.getElementById('flag');
+    const noteEl = document.getElementById('note');
+    const toCode = document.getElementById('toCode');
+    const serialEl = document.getElementById('serial');
+    const stampEl = document.getElementById('stamp');
+    const stampCode = document.getElementById('stampCode');
+    const stubRegion = document.getElementById('stubRegion');
+    const stubPool = document.getElementById('stubPool');
+    const stubCode = document.getElementById('stubCode');
+    const mapLink = document.getElementById('mapLink');
+    const pickBtn = document.getElementById('pickBtn');
+    const pickLabel = document.getElementById('pickLabel');
+    const hint = document.getElementById('hint');
+
+    const LANG_IDX = { ru: 3, en: 4, el: 5 };
+    const CODES = { e: 'EU', a: 'AS', m: 'AM', f: 'AF', o: 'OC', w: 'WW' };
+    const GLYPHS = {
+      ru: 'АБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЩЫЭЮЯ',
+      en: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+      el: 'ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ'
+    };
+
+    const SEARCH_MS = 1000;   // «поиск» до того, как буквы начнут вставать на место
+    const TICK_MS = 45;
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    let region = 'e';
+    let kind = 'all';
+    let busy = false;
+    let winner = null;
+    let recent = [];
+    let timers = [];
+
+    function lang() { return (window.I18N && I18N.lang) || 'ru'; }
+    function flagOf(cc) { return String.fromCodePoint(...[...cc].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)); }
+    function nameOf(p) { return p[LANG_IDX[lang()] || 3] || p[4] || p[3]; }
+
+    function countryOf(p) {
+      const c = COUNTRIES[p[0]];
+      if (!c) return '';
+      return c[{ ru: 0, en: 1, el: 2 }[lang()] || 0] || c[1];
+    }
+
+    function noteOf(p) {
+      const f = window.I18N && I18N.t('featured');
+      return (f && typeof f === 'object' && f[p[4]]) || '';
+    }
+
+    function codeOf(p) {
+      const words = (p[4] || '').toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/)
+        .filter(w => w.length > 2 && ['THE', 'AND', 'FOR', 'ITS'].indexOf(w) === -1);
+      const code = words.length >= 3
+        ? words.slice(0, 3).map(w => w[0]).join('')
+        : (words.join('') + 'XXX').slice(0, 3);
+      return (code + 'XXX').slice(0, 3);
+    }
+
+    function pool(r, k) {
+      r = r || region; k = k === undefined ? kind : k;
+      return PLACES.filter(p => (r === 'w' || p[1] === r) && (k === 'all' || String(p[2]) === k));
+    }
+
+    function updateCounts() {
+      document.querySelectorAll('[data-count]').forEach(el => {
+        el.textContent = pool(el.dataset.count, kind).length;
+      });
+      stubRegion.textContent = CODES[region];
+      stubPool.textContent = pool().length;
+    }
+
+    // Слова (и куски после дефиса) — точки, где строка имеет право переноситься.
+    function segments(text) {
+      const out = [];
+      text.split(' ').forEach(word => {
+        const parts = word.split('-');
+        parts.forEach((part, i) => out.push(i < parts.length - 1 ? part + '-' : part));
+      });
+      return out.filter(x => x !== '');
+    }
+
+    const charWidths = new Map();
+
+    function charWidth(ch, size) {
+      const key = size + ch;
+      if (charWidths.has(key)) return charWidths.get(key);
+      charMeasure.style.fontSize = size + 'px';
+      charMeasure.textContent = ch;
+      const w = charMeasure.getBoundingClientRect().width;
+      charMeasure.textContent = '';
+      charWidths.set(key, w);
+      return w;
+    }
+
+    function latinChar() {
+      const g = GLYPHS.en;
+      return g[Math.floor(Math.random() * g.length)];
+    }
+
+    function randChar() {
+      const g = GLYPHS[lang()] || GLYPHS.ru;
+      return g[Math.floor(Math.random() * g.length)];
+    }
+
+    // Разметка «каждое слово — неразрывный блок»: одна и та же в анимации
+    // и в измерителе, иначе подобранный кегль не совпадёт с реальным.
+    function wordsFragment(text, makeChar) {
+      const frag = document.createDocumentFragment();
+      const words = text.split(' ');
+      words.forEach((word, wi) => {
+        segments(word).forEach(seg => {
+          const box = document.createElement('span');
+          box.className = 'w';
+          if (makeChar) {
+            for (const ch of seg) box.appendChild(makeChar(ch));
+          } else {
+            box.textContent = seg;
+          }
+          frag.appendChild(box);
+        });
+        if (wi < words.length - 1) frag.appendChild(document.createTextNode(' '));
+      });
+      return frag;
+    }
+
+    function buildChars(text) {
+      const size = parseFloat(destName.style.fontSize) || cssPx('--name-max');
+      nameInner.textContent = '';
+      const spans = [];
+      nameInner.appendChild(wordsFragment(text, (ch) => {
+        const el = document.createElement('span');
+        el.className = 'ch';
+        if (!/[\p{L}\p{N}]/u.test(ch)) {
+          el.textContent = ch;
+          el.dataset.fixed = '1';
+        } else {
+          el.textContent = randChar();
+          el.classList.add('rolling');
+          el.dataset.final = ch;
+          el.style.width = charWidth(ch.toUpperCase(), size).toFixed(2) + 'px';
+        }
+        spans.push(el);
+        return el;
+      }));
+      return spans;
+    }
+
+    function cssPx(name) {
+      return parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0;
+    }
+
+    // Подбираем кегль так, чтобы название влезло в отведённый бокс,
+    // ни одно слово не пришлось рвать пополам и строк было как можно меньше:
+    // одна строка покрупнее читается лучше, чем две с «хвостом» из одного слова.
+    function fitName(text) {
+      const boxW = destName.clientWidth;
+      const boxH = destName.clientHeight;
+      const max = Math.round(cssPx('--name-max'));
+      const min = Math.round(cssPx('--name-min'));
+      if (!boxW || !boxH) { destName.style.fontSize = max + 'px'; return; }
+
+      nameMeasure.style.width = boxW + 'px';
+      const segs = segments(text);
+
+      // сколько строк занимает текст этим кеглем (0 — не влезает по ширине слова)
+      const linesAt = (size) => {
+        segMeasure.style.fontSize = size + 'px';
+        for (const seg of segs) {
+          segMeasure.textContent = seg;
+          if (segMeasure.getBoundingClientRect().width > boxW) return 0;
+        }
+        segMeasure.textContent = '';
+        nameMeasure.style.fontSize = size + 'px';
+        const probe = document.createElement('span');
+        probe.appendChild(wordsFragment(text, (ch) => {
+          const el = document.createElement('span');
+          el.className = 'ch';
+          el.textContent = ch;
+          return el;
+        }));
+        nameMeasure.appendChild(probe);
+        const h = nameMeasure.scrollHeight;
+        probe.remove();
+        return Math.max(1, Math.round(h / (size * 1.04)));
+      };
+
+      // самый крупный кегль, укладывающийся в заданное число строк
+      const bestFor = (lines) => {
+        let lo = min, hi = max, best = 0;
+        while (lo <= hi) {
+          const mid = Math.floor((lo + hi) / 2);
+          const n = linesAt(mid);
+          if (n && n <= lines && mid * 1.04 * n <= boxH + 1) { best = mid; lo = mid + 1; }
+          else hi = mid - 1;
+        }
+        return best;
+      };
+
+      const maxLines = Math.max(1, Math.floor(boxH / (min * 1.04)));
+      const comfy = Math.round(max * 0.55);   // ниже этого кегля одна строка уже мелковата
+      let chosen = 0;
+      for (let lines = 1; lines <= maxLines; lines++) {
+        const size = bestFor(lines);
+        if (!size) continue;
+        chosen = size;
+        if (size >= comfy) break;             // читаемо — берём минимум строк
+      }
+      destName.style.fontSize = (chosen || min) + 'px';
+    }
+
+    const nameOverflows = () => nameInner.scrollHeight > destName.clientHeight + 1;
+
+    // Контрольная примерка на живом элементе: измеритель даёт оценку,
+    // а дальше убавляем кегль, пока строка реально не влезет в бокс.
+    // Текст ставится синхронно, до перерисовки, поэтому «подсмотреть» его нельзя.
+    function showNameText(text) {
+      fitName(text);
+      const min = Math.round(cssPx('--name-min'));
+      let size = parseFloat(destName.style.fontSize) || Math.round(cssPx('--name-max'));
+      nameInner.textContent = text;
+      let guard = 0;
+      while (nameOverflows() && size > min && guard++ < 14) {
+        size -= 1;
+        destName.style.fontSize = size + 'px';
+      }
+      return size;
+    }
+
+    // То же самое, но для разметки прокрутки (буквы в неразрывных словах):
+    // кегль обязан подходить и ей, и обычному тексту.
+    function prepareName(text) {
+      let size = showNameText(text);
+      const min = Math.round(cssPx('--name-min'));
+      let spans = buildChars(text);
+      let guard = 0;
+      while (nameOverflows() && size > min && guard++ < 14) {
+        size -= 1;
+        destName.style.fontSize = size + 'px';
+        spans = buildChars(text);
+      }
+      return spans;
+    }
+
+    function clearTimers() {
+      timers.forEach(clearTimeout);
+      timers = [];
+    }
+
+    function showIdle() {
+      pass.classList.remove('settled', 'searching', 'has-stamp');
+      stampEl.classList.remove('on');
+      destName.style.fontSize = '';
+      nameInner.innerHTML = '<span class="ch rolling">•</span><span class="ch rolling">•</span><span class="ch rolling">•</span>';
+      destCountry.textContent = '';
+      noteEl.textContent = '';
+      flagEl.textContent = '🌍';
+      pass.classList.remove('has-stamp');
+      toCode.textContent = '???';
+      serialEl.textContent = 'RH-0000';
+      stubCode.textContent = 'RANDOMHOST';
+      hint.textContent = I18N.t('hint_start');
+    }
+
+    // Ужимаем строку, пока она не влезет в свой бокс
+    function fitLine(el, min, max) {
+      let size = max;
+      el.style.fontSize = size + 'px';
+      while (size > min &&
+             (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)) {
+        size -= 1;
+        el.style.fontSize = size + 'px';
+      }
+    }
+
+    // Заполняем всё, что занимает место, заранее: пока нет класса settled,
+    // эти элементы прозрачны, но высота талона уже финальная и не прыгает.
+    function prepare(p) {
+      pass.classList.toggle('has-stamp', p[2] === 1);
+      flagEl.textContent = flagOf(p[0]);
+      destCountry.textContent = countryOf(p);
+      fitLine(destCountry, 9, window.innerWidth <= 720 ? 12 : 13);
+      noteEl.textContent = noteOf(p);
+      fitLine(noteEl, 11, window.innerWidth <= 720 ? 13 : 14);
+      mapLink.href = 'https://www.google.com/maps/search/?api=1&query=' +
+        encodeURIComponent(nameOf(p) + ', ' + countryOf(p));
+      stampCode.textContent = p[0] + ' · ' + CODES[p[1]];
+    }
+
+    function reveal(p) {
+      prepare(p);
+      toCode.textContent = codeOf(p);
+      const serial = 'RH-' + String(PLACES.indexOf(p) + 1).padStart(4, '0');
+      stubCode.textContent = serial;
+      serialEl.textContent = serial;
+      pass.classList.add('settled');
+      stampEl.classList.toggle('on', p[2] === 1);
+      pickLabel.textContent = I18N.t('gen_btn_again');
+      hint.textContent = '';
+      liveEl.textContent = nameOf(p) + ', ' + countryOf(p);
+    }
+
+    function pick() {
+      if (busy) return;
+      const list = pool();
+      if (!list.length) return;
+
+      busy = true;
+      clearTimers();
+      pickBtn.disabled = true;
+      pass.classList.remove('settled', 'shake', 'has-stamp');
+      stampEl.classList.remove('on');
+      hint.textContent = I18N.t('searching');
+
+      let p = list[Math.floor(Math.random() * list.length)];
+      if (list.length > recent.length + 1) {
+        let guard = 0;
+        while (recent.indexOf(p) !== -1 && guard++ < 40) p = list[Math.floor(Math.random() * list.length)];
+      }
+      recent.push(p);
+      if (recent.length > 40) recent.shift();
+      winner = p;
+
+      prepare(p);
+      const text = nameOf(p);
+      const spans = prepareName(text);
+
+      if (reduceMotion) {
+        nameInner.textContent = text;
+        reveal(p);
+        pickBtn.disabled = false;
+        busy = false;
+        return;
+      }
+
+      pass.classList.add('searching');
+      const rolling = spans.filter(s => !s.dataset.fixed);
+      const step = Math.max(24, Math.min(70, Math.round(900 / Math.max(rolling.length, 1))));
+      const lockAt = rolling.map((_, i) => SEARCH_MS + i * step);
+      const total = lockAt.length ? lockAt[lockAt.length - 1] : SEARCH_MS;
+
+      const start = performance.now();
+      const spin = setInterval(() => {
+        const t = performance.now() - start;
+        // «поиск» — прыгают цифры рейса и код направления
+        if (t < total) {
+          serialEl.textContent = 'RH-' + String(Math.floor(Math.random() * 9000) + 1000);
+          toCode.textContent = latinChar() + latinChar() + latinChar();
+        }
+        rolling.forEach((s, i) => {
+          if (s.dataset.done) return;
+          if (t >= lockAt[i]) {
+            s.textContent = s.dataset.final;
+            s.classList.remove('rolling');
+            s.classList.add('locked');
+            s.style.width = '';
+            s.dataset.done = '1';
+          } else {
+            s.textContent = randChar();
+          }
+        });
+      }, TICK_MS);
+
+      timers.push(setTimeout(() => {
+        clearInterval(spin);
+        rolling.forEach(s => {
+          s.textContent = s.dataset.final;
+          s.classList.remove('rolling');
+          s.style.width = '';
+          s.dataset.done = '1';
+        });
+        pass.classList.remove('searching');
+        reveal(p);
+        // после того как последняя буква «щёлкнула», отдаём строку целиком:
+        // так работает кернинг и балансировка строк, а не набор inline-блоков
+        timers.push(setTimeout(() => {
+          if (winner === p && !busy) nameInner.textContent = text;
+        }, 420));
+        if (p[2] === 1) {
+          pass.classList.add('shake');
+          timers.push(setTimeout(() => pass.classList.remove('shake'), 600));
+        }
+        pickBtn.disabled = false;
+        busy = false;
+      }, total + 180));
+    }
+
+    regionsBox.addEventListener('click', (e) => {
+      const btn = e.target.closest('.chip');
+      if (!btn || busy) return;
+      region = btn.dataset.region;
+      document.querySelectorAll('#regions .chip').forEach(b => {
+        b.classList.toggle('active', b === btn);
+        b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+      });
+      try { localStorage.setItem('travel-region', region); } catch (err) {}
+      updateCounts();
+    });
+
+    kindsBox.addEventListener('click', (e) => {
+      const btn = e.target.closest('.kind-btn');
+      if (!btn || busy) return;
+      kind = btn.dataset.kind;
+      document.querySelectorAll('.kind-btn').forEach(b => {
+        b.classList.toggle('active', b === btn);
+        b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+      });
+      try { localStorage.setItem('travel-kind', kind); } catch (err) {}
+      updateCounts();
+    });
+
+    pickBtn.addEventListener('click', pick);
+
+    try {
+      const savedRegion = localStorage.getItem('travel-region');
+      const rBtn = savedRegion && document.querySelector('#regions .chip[data-region="' + savedRegion + '"]');
+      if (rBtn) {
+        region = savedRegion;
+        document.querySelectorAll('#regions .chip').forEach(b => b.classList.toggle('active', b === rBtn));
+      }
+      const savedKind = localStorage.getItem('travel-kind');
+      const kBtn = savedKind && document.querySelector('.kind-btn[data-kind="' + savedKind + '"]');
+      if (kBtn) {
+        kind = savedKind;
+        document.querySelectorAll('.kind-btn').forEach(b => b.classList.toggle('active', b === kBtn));
+      }
+    } catch (err) {}
+
+    window.addEventListener('langchange', () => {
+      updateCounts();
+      if (winner && !busy) {
+        reveal(winner);
+        showNameText(nameOf(winner));
+      } else if (!busy) {
+        showIdle();
+      }
+    });
+
+    document.querySelectorAll('#regions .chip, .kind-btn').forEach(b => {
+      b.setAttribute('aria-pressed', b.classList.contains('active') ? 'true' : 'false');
+    });
+
+    // при смене ширины окна пересчитываем кегль под новый бокс
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (winner && !busy) {
+          showNameText(nameOf(winner));
+        }
+      }, 150);
+    });
+
+    updateCounts();
+    showIdle();
+  </script>
+
+  <!-- Yandex.Metrika counter -->
+  <script type="text/javascript">
+    (function(m,e,t,r,i,k,a){
+      m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+      m[i].l=1*new Date();
+      for (var j = 0; j < document.scripts.length; j++) {
+        if (document.scripts[j].src === r) { return; }
+      }
+      k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+    })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+
+    ym(104849796, 'init', {
+      clickmap:true,
+      trackLinks:true,
+      accurateTrackBounce:true,
+      webvisor:true
+    });
+  </script>
+  <noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+  <!-- /Yandex.Metrika counter -->
+
+  <script>
+  window.I18N_DICT = {
+    ru: {
+      _title: `Рандомное место для путешествия — куда поехать?`,
+      meta_desc: `✈️ Рандомайзер путешествий: выбери регион — Европа, Азия, Америка, Африка, Океания — и получи случайное направление из 1800 мест на посадочном талоне.`,
+      home: `Главная`,
+      h1: `Куда поехать?`,
+      region_europe: `Европа`,
+      region_asia: `Азия`,
+      region_america: `Америка`,
+      region_africa: `Африка`,
+      region_oceania: `Океания`,
+      region_world: `Весь мир`,
+      kind_all: `всё подряд`,
+      kind_unesco: `наследие ЮНЕСКО`,
+      kind_city: `направления`,
+      brand: `Посадочный талон`,
+      lbl_from: `откуда`,
+      lbl_to: `куда`,
+      stub_region: `регион`,
+      stub_pool: `вариантов`,
+      stamp_sub: `Всемирное наследие`,
+      gen_btn: `Найти место`,
+      gen_btn_again: `Ещё раз`,
+      hint_start: `выбери регион и нажми кнопку`,
+      searching: `ищем направление...`,
+      map_link: `Открыть на карте`,
+      featured: {"Paris": "Эйфелева башня и прогулка по Монмартру","Rome": "Колизей, фонтан Треви и римская паста","Barcelona": "Саграда Фамилия и парк Гуэль","Prague": "Карлов мост и Староместская площадь","Amsterdam": "Каналы, велосипеды и музей Ван Гога","Lisbon": "Трамвай 28, Белемская башня и паштел-де-ната","Santorini": "Закат в Ие и белые домики над кальдерой","Vienna": "Дворец Шёнбрунн и кофе с захером","Budapest": "Купальни Сечени и вид с Рыбацкого бастиона","Reykjavík": "Голубая лагуна и охота за северным сиянием","Bergen": "Фьорды, набережная Брюгген и фуникулёр Флёйен","Dubrovnik": "Городские стены и купание в Адриатике","Edinburgh": "Замок на скале и Королевская миля","Venice": "Гранд-канал, гондолы и площадь Сан-Марко","Kraków": "Вавельский замок и Главная рыночная площадь","Interlaken": "Юнгфрауйох и озёра между Альп","Tokyo": "Перекрёсток Сибуя и храм Сэнсо-дзи","Kyoto": "Тысяча ворот Фусими Инари и бамбуковая роща Арасияма","Bangkok": "Ват Арун, плавучие рынки и стрит-фуд","Bali": "Рисовые террасы Тегаллаланг и храм Улувату","Singapore": "Gardens by the Bay и бассейн на крыше Marina Bay Sands","Seoul": "Дворец Кёнбоккун и ночной Мёндон","Hanoi": "Старый квартал и круиз по бухте Халонг","Agra": "Тадж-Махал на рассвете и Красный форт","Beijing": "Великая Китайская стена и Запретный город","Dubai": "Бурдж-Халифа и сафари по пустыне","Kathmandu": "Ступа Боднатх и треки в Гималаях","Siem Reap": "Ангкор-Ват на рассвете","Istanbul": "Айя-София, Босфор и Гранд-базар","Samarkand": "Площадь Регистан и мавзолей Гур-Эмир","Petra": "Скальный город и ущелье Сик","Maldives": "Бунгало над водой и снорклинг с скатами","New York City": "Центральный парк, Таймс-сквер и Бруклинский мост","San Francisco": "Мост Золотые Ворота и Алькатрас","Grand Canyon National Park": "Смотровая Мазер-Пойнт и рафтинг по Колорадо","New Orleans": "Французский квартал и живой джаз","Rio de Janeiro": "Статуя Христа, Сахарная голова и Копакабана","Cusco": "Тропа инков и Мачу-Пикчу","Buenos Aires": "Танго в Ла-Бока и кладбище Реколета","Mexico City": "Пирамиды Теотиуакана и дом Фриды Кало","Cancun": "Чичен-Ица, сеноты и белый песок","Havana": "Старый город, ретро-кабриолеты и малекон","Toronto": "Си-Эн Тауэр и Ниагарский водопад рядом","Vancouver": "Парк Стэнли и подвесной мост Капилано","Banff": "Озеро Луиз и бирюзовый Морейн","Santiago": "Анды на горизонте и долина Касабланка","Cartagena": "Цветные улочки старого города и Карибское море","Iguazú National Park": "Водопады и «Глотка дьявола»"}
+    },
+    en: {
+      _title: `Random Travel Destination — where to go?`,
+      meta_desc: `✈️ Travel randomizer: pick a region — Europe, Asia, America, Africa, Oceania — and get a random destination out of 1800 places on a boarding pass.`,
+      home: `Home`,
+      h1: `Where to go?`,
+      region_europe: `Europe`,
+      region_asia: `Asia`,
+      region_america: `America`,
+      region_africa: `Africa`,
+      region_oceania: `Oceania`,
+      region_world: `Whole world`,
+      kind_all: `everything`,
+      kind_unesco: `UNESCO heritage`,
+      kind_city: `destinations`,
+      brand: `Boarding pass`,
+      lbl_from: `from`,
+      lbl_to: `to`,
+      stub_region: `region`,
+      stub_pool: `options`,
+      stamp_sub: `World heritage`,
+      gen_btn: `Find a place`,
+      gen_btn_again: `Again`,
+      hint_start: `pick a region and hit the button`,
+      searching: `searching...`,
+      map_link: `Open in maps`,
+      featured: {"Paris": "The Eiffel Tower and a stroll around Montmartre","Rome": "The Colosseum, Trevi Fountain and Roman pasta","Barcelona": "Sagrada Familia and Park Güell","Prague": "Charles Bridge and the Old Town Square","Amsterdam": "Canals, bikes and the Van Gogh Museum","Lisbon": "Tram 28, Belém Tower and pastéis de nata","Santorini": "Sunset in Oia and white houses over the caldera","Vienna": "Schönbrunn Palace and coffee with Sachertorte","Budapest": "Széchenyi Baths and the view from Fisherman's Bastion","Reykjavík": "The Blue Lagoon and hunting the northern lights","Bergen": "Fjords, the Bryggen wharf and the Fløyen funicular","Dubrovnik": "The city walls and a swim in the Adriatic","Edinburgh": "The castle on the rock and the Royal Mile","Venice": "The Grand Canal, gondolas and St Mark's Square","Kraków": "Wawel Castle and the Main Market Square","Interlaken": "Jungfraujoch and the lakes between the Alps","Tokyo": "The Shibuya crossing and Senso-ji Temple","Kyoto": "The thousand gates of Fushimi Inari and the Arashiyama bamboo grove","Bangkok": "Wat Arun, floating markets and street food","Bali": "The Tegallalang rice terraces and Uluwatu Temple","Singapore": "Gardens by the Bay and the Marina Bay Sands rooftop pool","Seoul": "Gyeongbokgung Palace and Myeongdong at night","Hanoi": "The Old Quarter and a Ha Long Bay cruise","Agra": "The Taj Mahal at sunrise and the Red Fort","Beijing": "The Great Wall and the Forbidden City","Dubai": "Burj Khalifa and a desert safari","Kathmandu": "The Boudhanath Stupa and Himalayan treks","Siem Reap": "Angkor Wat at sunrise","Istanbul": "Hagia Sophia, the Bosphorus and the Grand Bazaar","Samarkand": "Registan Square and the Gur-e-Amir mausoleum","Petra": "The rock-carved city and the Siq canyon","Maldives": "Overwater bungalows and snorkeling with rays","New York City": "Central Park, Times Square and the Brooklyn Bridge","San Francisco": "The Golden Gate Bridge and Alcatraz","Grand Canyon National Park": "Mather Point and rafting the Colorado River","New Orleans": "The French Quarter and live jazz","Rio de Janeiro": "Christ the Redeemer, Sugarloaf and Copacabana","Cusco": "The Inca Trail and Machu Picchu","Buenos Aires": "Tango in La Boca and the Recoleta cemetery","Mexico City": "The Teotihuacan pyramids and Frida Kahlo's house","Cancun": "Chichen Itza, cenotes and white sand","Havana": "Old Havana, vintage convertibles and the Malecón","Toronto": "The CN Tower and Niagara Falls nearby","Vancouver": "Stanley Park and the Capilano suspension bridge","Banff": "Lake Louise and turquoise Moraine Lake","Santiago": "The Andes on the horizon and the Casablanca valley","Cartagena": "The colorful old town streets and the Caribbean Sea","Iguazú National Park": "The waterfalls and the Devil's Throat"}
+    },
+    el: {
+      _title: `Τυχαίος Προορισμός — πού να ταξιδέψω;`,
+      meta_desc: `✈️ Τυχαία επιλογή προορισμού: διάλεξε περιοχή — Ευρώπη, Ασία, Αμερική, Αφρική, Ωκεανία — και πάρε έναν τυχαίο προορισμό από 1800 μέρη.`,
+      home: `Αρχική`,
+      h1: `Πού να πάμε;`,
+      region_europe: `Ευρώπη`,
+      region_asia: `Ασία`,
+      region_america: `Αμερική`,
+      region_africa: `Αφρική`,
+      region_oceania: `Ωκεανία`,
+      region_world: `Όλος ο κόσμος`,
+      kind_all: `όλα`,
+      kind_unesco: `κληρονομιά UNESCO`,
+      kind_city: `προορισμοί`,
+      brand: `Κάρτα επιβίβασης`,
+      lbl_from: `από`,
+      lbl_to: `προς`,
+      stub_region: `περιοχή`,
+      stub_pool: `επιλογές`,
+      stamp_sub: `Παγκόσμια κληρονομιά`,
+      gen_btn: `Βρες προορισμό`,
+      gen_btn_again: `Ξανά`,
+      hint_start: `διάλεξε περιοχή και πάτα το κουμπί`,
+      searching: `ψάχνουμε...`,
+      map_link: `Άνοιγμα στον χάρτη`,
+      featured: {"Paris": "Ο Πύργος του Άιφελ και βόλτα στη Μονμάρτρη","Rome": "Κολοσσαίο, Φοντάνα ντι Τρέβι και ιταλικά ζυμαρικά","Barcelona": "Σαγράδα Φαμίλια και Πάρκο Γκουέλ","Prague": "Γέφυρα του Καρόλου και Παλιά Πλατεία","Amsterdam": "Κανάλια, ποδήλατα και Μουσείο Βαν Γκογκ","Lisbon": "Το τραμ 28, ο Πύργος του Μπελέμ και pastéis de nata","Santorini": "Ηλιοβασίλεμα στην Οία και λευκά σπίτια πάνω από την καλντέρα","Vienna": "Ανάκτορο Σένμπρουν και καφές με τούρτα Ζάχερ","Budapest": "Λουτρά Σέτσενι και θέα από τον Προμαχώνα των Ψαράδων","Reykjavík": "Η Γαλάζια Λιμνοθάλασσα και κυνήγι του Βόρειου Σέλαος","Bergen": "Φιόρδ, η προκυμαία Μπρίγκεν και το τελεφερίκ Φλόιεν","Dubrovnik": "Τα τείχη της πόλης και βουτιά στην Αδριατική","Edinburgh": "Το κάστρο στον βράχο και το Royal Mile","Venice": "Το Μεγάλο Κανάλι, γόνδολες και η Πλατεία Αγίου Μάρκου","Kraków": "Το κάστρο Βάβελ και η Κεντρική Αγορά","Interlaken": "Γιουνγκφράουγιοχ και λίμνες ανάμεσα στις Άλπεις","Tokyo": "Η διάβαση Σιμπούγια και ο ναός Σένσο-τζι","Kyoto": "Οι χιλιάδες πύλες Φουσίμι Ινάρι και το δάσος μπαμπού Αρασιγιάμα","Bangkok": "Ουάτ Αρούν, πλωτές αγορές και street food","Bali": "Οι ορυζώνες Τεγκαλαλάνγκ και ο ναός Ουλουβάτου","Singapore": "Gardens by the Bay και η πισίνα στην ταράτσα του Marina Bay Sands","Seoul": "Το ανάκτορο Γκιονγκμπόκγκουνγκ και το Μιονγκντόνγκ τη νύχτα","Hanoi": "Η Παλιά Συνοικία και κρουαζιέρα στον κόλπο Χα Λονγκ","Agra": "Το Ταζ Μαχάλ την αυγή και το Κόκκινο Οχυρό","Beijing": "Το Σινικό Τείχος και η Απαγορευμένη Πόλη","Dubai": "Μπουρτζ Χαλίφα και σαφάρι στην έρημο","Kathmandu": "Η στούπα Μπουντανάθ και πεζοπορίες στα Ιμαλάια","Siem Reap": "Το Ανγκόρ Βατ την αυγή","Istanbul": "Αγία Σοφία, Βόσπορος και Μεγάλο Παζάρι","Samarkand": "Η πλατεία Ρεγκιστάν και το μαυσωλείο Γκουρ-ε-Αμίρ","Petra": "Η λαξευμένη πόλη και το φαράγγι Σικ","Maldives": "Μπανγκαλόου πάνω από το νερό και snorkeling με σαλάχια","New York City": "Σέντραλ Παρκ, Τάιμς Σκουέρ και η Γέφυρα του Μπρούκλιν","San Francisco": "Η γέφυρα Golden Gate και το Αλκατράζ","Grand Canyon National Park": "Το Mather Point και ράφτινγκ στον ποταμό Κολοράντο","New Orleans": "Η Γαλλική Συνοικία και ζωντανή τζαζ","Rio de Janeiro": "Ο Χριστός Λυτρωτής, το Ζαχαρόψωμο και η Κοπακαμπάνα","Cusco": "Το μονοπάτι των Ίνκας και το Μάτσου Πίτσου","Buenos Aires": "Τάνγκο στη Λα Μπόκα και το κοιμητήριο Ρεκολέτα","Mexico City": "Οι πυραμίδες Τεοτιχουακάν και το σπίτι της Φρίντα Κάλο","Cancun": "Τσιτσέν Ιτσά, σενότες και λευκή άμμος","Havana": "Η παλιά πόλη, ρετρό αυτοκίνητα και ο Μαλεκόν","Toronto": "Ο πύργος CN και οι Καταρράκτες του Νιαγάρα δίπλα","Vancouver": "Το πάρκο Στάνλεϊ και η κρεμαστή γέφυρα Καπιλάνο","Banff": "Η λίμνη Λουίζ και η τιρκουάζ Μορέιν","Santiago": "Οι Άνδεις στον ορίζοντα και η κοιλάδα Κασαμπλάνκα","Cartagena": "Τα χρωματιστά σοκάκια της παλιάς πόλης και η Καραϊβική","Iguazú National Park": "Οι καταρράκτες και ο «Λαιμός του Διαβόλου»"}
+    }
+  };
+  </script>
+  <script src="i18n.js" defer></script>
+</body>
+</html>
