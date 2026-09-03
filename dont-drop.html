@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Не урони! — аркада с желешками, которые нельзя ронять</title>
+<meta name="description" content="Подбивай падающих желешек тапом и не дай им коснуться пола. Бомбы, звёзды, заморозка, три уровня сложности и рекорд. Играй в браузере бесплатно." data-i18n-meta="meta_desc"/>
+<meta name="robots" content="index, follow"/>
+<link rel="canonical" href="https://randomhost.online/dont-drop.html"/>
+
+<!-- Open Graph -->
+<meta property="og:type" content="website"/>
+<meta property="og:title" content="Не урони! — аркада с желешками"/>
+<meta property="og:description" content="Подбивай падающих желешек тапом и не дай им коснуться пола. Бомбы, звёзды, заморозка и рекорд."/>
+<meta property="og:url" content="https://randomhost.online/dont-drop.html"/>
+<meta property="og:site_name" content="Рандомайзер Онлайн"/>
+<meta property="og:locale" content="ru_RU"/>
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Не урони! — аркада с желешками"/>
+<meta name="twitter:description" content="Подбивай падающих желешек тапом и не дай им коснуться пола."/>
+
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤹</text></svg>"/>
+<meta name="theme-color" content="#1a0a2e"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+
+/* ── Background ─────────────────────────────────────────────────── */
+body {
+  width:100vw; height:100dvh; overflow:hidden;
+  background: linear-gradient(145deg, #1a0a2e 0%, #0d1b4b 35%, #0a2635 65%, #091a10 100%);
+  touch-action:none;
+}
+#bg { position:fixed; inset:0; overflow:hidden; pointer-events:none; z-index:0; }
+.star {
+  position:absolute; border-radius:50%; background:white;
+  animation: twinkle var(--td,3s) ease-in-out infinite;
+  animation-delay: var(--tl,0s);
+}
+@keyframes twinkle {
+  0%,100%{ opacity:var(--op,0.4); transform:scale(1) }
+  50%    { opacity:0.05; transform:scale(0.5) }
+}
+.orb {
+  position:absolute; border-radius:50%;
+  filter:blur(60px); pointer-events:none;
+  animation: drift var(--dt,12s) ease-in-out infinite alternate;
+  animation-delay: var(--dl,0s);
+}
+@keyframes drift {
+  0%  { transform:translate(0,0) scale(1) }
+  100%{ transform:translate(var(--dx,30px),var(--dy,-20px)) scale(1.15) }
+}
+
+/* ── Playfield ───────────────────────────────────────────────────── */
+#canvas { position:fixed; inset:0; width:100%; height:100%; z-index:1; }
+#canvas.shake { animation: shake 0.4s ease-out; }
+@keyframes shake {
+  0%,100%{ transform:translate(0,0) }
+  15% { transform:translate(-9px,4px) }
+  30% { transform:translate(8px,-5px) }
+  45% { transform:translate(-6px,-3px) }
+  60% { transform:translate(5px,4px) }
+  80% { transform:translate(-3px,1px) }
+}
+
+/* Danger floor */
+#floor {
+  position:fixed; left:0; right:0; bottom:0; z-index:2;
+  pointer-events:none;
+  height:var(--floor-h,52px);
+  background:linear-gradient(180deg, rgba(255,60,90,0) 0%, rgba(255,60,90,0.13) 55%, rgba(255,60,90,0.30) 100%);
+  border-top:2px solid rgba(255,90,120,0.75);
+  box-shadow:0 -8px 26px rgba(255,60,90,0.28), inset 0 2px 14px rgba(255,120,150,0.25);
+}
+#floor::before {
+  content:''; position:absolute; left:0; right:0; top:-2px; height:2px;
+  background:linear-gradient(90deg,transparent,rgba(255,190,210,0.95),transparent);
+  animation: floor-scan 2.6s linear infinite;
+}
+@keyframes floor-scan { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+#floor.hit { animation: floor-flash 0.45s ease-out; }
+@keyframes floor-flash {
+  0%  { background:rgba(255,60,90,0.75); box-shadow:0 -14px 46px rgba(255,60,90,0.85) }
+  100%{ background:linear-gradient(180deg, rgba(255,60,90,0) 0%, rgba(255,60,90,0.13) 55%, rgba(255,60,90,0.30) 100%) }
+}
+
+/* ── Jelly ───────────────────────────────────────────────────────── */
+.jelly {
+  position:absolute; left:0; top:0; cursor:pointer;
+  transform-origin:center; will-change:translate,transform;
+  z-index:3;
+  -webkit-backface-visibility:hidden; backface-visibility:hidden;
+}
+.jelly svg { display:block; filter:drop-shadow(0 3px 7px rgba(0,0,0,0.3)); }
+.jelly .badge {
+  position:absolute; right:-2px; top:-2px;
+  display:flex; align-items:center; justify-content:center;
+  line-height:1; pointer-events:none;
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,0.55));
+}
+
+@keyframes wobble {
+  0%,100%{ transform:rotate(-1.8deg) scaleX(1.04) scaleY(0.96) }
+  20%    { transform:rotate(1.2deg) scaleX(0.96) scaleY(1.04) }
+  40%    { transform:rotate(2deg) scaleX(1.02) scaleY(0.98) }
+  60%    { transform:rotate(-0.5deg) scaleX(0.98) scaleY(1.02) }
+  80%    { transform:rotate(1.5deg) scaleX(1.03) scaleY(0.97) }
+}
+.jelly.idle { animation: wobble var(--wd,3s) ease-in-out infinite; animation-delay:var(--wdl,0s); }
+
+/* Bounce squash — replaces idle wobble for its duration */
+@keyframes bump {
+  0%  { transform:scaleX(1.32) scaleY(0.68) }
+  45% { transform:scaleX(0.82) scaleY(1.22) }
+  75% { transform:scaleX(1.08) scaleY(0.94) }
+  100%{ transform:scaleX(1) scaleY(1) }
+}
+.jelly.bump { animation: bump 0.34s cubic-bezier(0.34,1.56,0.64,1) !important; }
+
+@keyframes wall-sq { 0%,100%{ transform:scaleX(0.78) scaleY(1.22) } 50%{ transform:scaleX(1.12) scaleY(0.9) } }
+.jelly.wall-sq { animation: wall-sq 0.22s ease-out !important; }
+
+@keyframes drop-in {
+  0%  { transform:scale(0.2); opacity:0 }
+  60% { transform:scale(1.14); opacity:1 }
+  100%{ transform:scale(1); opacity:1 }
+}
+.jelly.spawning { animation: drop-in 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+
+@keyframes splat {
+  0%  { transform:scaleX(1) scaleY(1); opacity:1 }
+  40% { transform:scaleX(1.6) scaleY(0.35); opacity:0.9 }
+  100%{ transform:scaleX(2) scaleY(0.1); opacity:0 }
+}
+.jelly.splatting { animation: splat 0.42s ease-out forwards; pointer-events:none; }
+
+@keyframes boom {
+  0%  { transform:scale(1); opacity:1 }
+  25% { transform:scale(1.9); opacity:0.9 }
+  100%{ transform:scale(0.2); opacity:0 }
+}
+.jelly.booming { animation: boom 0.36s ease-out forwards; pointer-events:none; }
+
+/* Danger ring on bombs */
+.jelly.bomb::after {
+  content:''; position:absolute; inset:-7px; border-radius:50%;
+  box-shadow:0 0 0 3px rgba(255,70,70,0.85), 0 0 20px 5px rgba(255,40,40,0.4);
+  pointer-events:none; animation: danger 0.85s ease-in-out infinite;
+}
+@keyframes danger { 0%,100%{opacity:0.35} 50%{opacity:1} }
+
+/* Glow on bonuses */
+.jelly.bonus::after {
+  content:''; position:absolute; inset:-7px; border-radius:50%;
+  box-shadow:0 0 0 3px rgba(255,225,90,0.9), 0 0 22px 6px rgba(255,190,0,0.45);
+  pointer-events:none; animation: danger 1.3s ease-in-out infinite;
+}
+.jelly.chill::after {
+  content:''; position:absolute; inset:-7px; border-radius:50%;
+  box-shadow:0 0 0 3px rgba(120,220,255,0.9), 0 0 22px 6px rgba(60,180,255,0.45);
+  pointer-events:none; animation: danger 1.3s ease-in-out infinite;
+}
+
+/* Particles + floating score */
+.pt { position:absolute; border-radius:50%; pointer-events:none; will-change:transform,opacity; z-index:10; }
+@keyframes pt-fly {
+  0%  { transform:translate(0,0) scale(1); opacity:0.95 }
+  100%{ transform:translate(var(--tx),var(--ty)) scale(0); opacity:0 }
+}
+.pop-score {
+  position:absolute; pointer-events:none; z-index:20;
+  font:900 20px/1 system-ui,sans-serif; color:#fff;
+  text-shadow:0 2px 8px rgba(0,0,0,0.6);
+  animation: pop-up 0.75s ease-out forwards;
+}
+@keyframes pop-up {
+  0%  { transform:translate(-50%,-50%) scale(0.6); opacity:0 }
+  25% { transform:translate(-50%,-70%) scale(1.15); opacity:1 }
+  100%{ transform:translate(-50%,-160%) scale(0.9); opacity:0 }
+}
+
+/* Freeze overlay */
+#freeze {
+  position:fixed; inset:0; z-index:4; pointer-events:none; opacity:0;
+  background:radial-gradient(circle at 50% 50%, rgba(120,220,255,0) 40%, rgba(120,220,255,0.22) 100%);
+  transition:opacity 0.3s ease;
+}
+#freeze.on { opacity:1; }
+
+/* ── HUD ─────────────────────────────────────────────────────────── */
+#hud {
+  position:fixed; top:0; left:0; right:0; z-index:50;
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  padding:14px 16px; pointer-events:none; flex-wrap:wrap;
+  padding-top:   max(14px, calc(env(safe-area-inset-top, 0px) + 8px));
+  padding-left:  max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.hud-pill {
+  display:flex; align-items:center; gap:7px;
+  background:rgba(12,8,32,0.55); backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,0.1);
+  border-radius:50px; padding:7px 16px;
+  font:800 16px/1 system-ui,sans-serif; color:#fff; white-space:nowrap;
+}
+.hud-pill .cap {
+  font:700 10px/1 system-ui,sans-serif; letter-spacing:0.14em;
+  text-transform:uppercase; color:rgba(255,255,255,0.4);
+}
+#lives { font-size:19px; letter-spacing:2px; }
+#lives .heart-lost { opacity:0.28; filter:grayscale(1); }
+#lives.pulse { animation: life-lost 0.5s ease-out; }
+@keyframes life-lost {
+  0%,100%{ transform:scale(1) }
+  35%    { transform:scale(1.28); filter:drop-shadow(0 0 12px rgba(255,60,90,0.9)) }
+}
+#score { font-size:20px; }
+#wave-pill { color:#ffe566; }
+#best-pill { color:rgba(255,255,255,0.55); font-size:13px; }
+
+/* ── Cursor paddle (mouse only) ──────────────────────────────────── */
+#paddle {
+  position:fixed; left:0; top:0; width:46px; height:46px; margin:-23px 0 0 -23px;
+  border-radius:50%; pointer-events:none; z-index:6; opacity:0;
+  border:2px solid rgba(255,255,255,0.5);
+  box-shadow:0 0 18px 5px rgba(255,255,255,0.14), inset 0 0 14px rgba(255,255,255,0.2);
+  transition:opacity 0.25s;
+}
+#paddle.on { opacity:1; }
+#paddle.hit { animation:paddle-hit 0.26s ease-out; }
+@keyframes paddle-hit {
+  0%  { transform:scale(0.65); border-color:rgba(255,255,255,0.95) }
+  60% { transform:scale(1.3) }
+  100%{ transform:scale(1) }
+}
+body.fine.playing { cursor:none; }
+body.fine.playing .diff-btn { cursor:pointer; }
+
+/* ── Right-side panel (sound) ────────────────────────────────────── */
+#side-panel {
+  position:fixed; right:max(14px, env(safe-area-inset-right,0px)); top:50%;
+  transform:translateY(-50%);
+  display:flex; flex-direction:column; gap:8px; z-index:50;
+}
+.diff-btn {
+  width:44px; height:44px; border-radius:14px; border:none;
+  font:700 10px/1 system-ui,sans-serif; letter-spacing:0.04em; text-transform:uppercase;
+  cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+  transition:transform 0.15s, box-shadow 0.15s, background 0.2s;
+  -webkit-appearance:none; appearance:none;
+}
+.diff-btn:active { transform:scale(0.9); }
+.diff-btn.active { box-shadow:0 0 0 3px white, 0 4px 16px rgba(0,0,0,0.4); }
+.diff-btn .icon { font-size:16px; line-height:1; }
+.diff-btn .lbl  { font-size:9px; opacity:0.85; }
+.sound-toggle-btn { background:rgba(255,255,255,0.12); color:#fff; }
+
+/* Difficulty lives inside the overlays — the side panel sits under them */
+.diff-row { display:flex; gap:10px; width:100%; justify-content:center; margin-bottom:22px; }
+.dchip {
+  flex:1 1 0; min-width:0;
+  display:flex; flex-direction:column; align-items:center; gap:5px;
+  padding:12px 8px; border-radius:18px; cursor:pointer;
+  border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.05); color:#fff;
+  transition:transform 0.15s, background 0.2s, box-shadow 0.2s, border-color 0.2s;
+  -webkit-appearance:none; appearance:none;
+}
+.dchip:hover  { background:rgba(255,255,255,0.11); transform:translateY(-2px); }
+.dchip:active { transform:scale(0.96); }
+.dchip .di { font-size:21px; line-height:1; }
+.dchip .dn { font:800 13px/1 system-ui,sans-serif; }
+.dchip .dl { font:600 11px/1 system-ui,sans-serif; opacity:0.7; }
+.dchip .db { font:600 10px/1 system-ui,sans-serif; letter-spacing:0.1em; text-transform:uppercase; color:rgba(255,255,255,0.35); }
+.dchip .db b { font-size:12px; color:#ffd93d; }
+.dchip.active { border-color:transparent; box-shadow:0 0 0 2px #fff, 0 6px 20px rgba(0,0,0,0.45); }
+.dchip.active[data-d="easy"]   { background:linear-gradient(145deg,#4ade80,#22c55e); color:#052e16; }
+.dchip.active[data-d="medium"] { background:linear-gradient(145deg,#fb923c,#f97316); color:#431407; }
+.dchip.active[data-d="hard"]   { background:linear-gradient(145deg,#f87171,#ef4444); color:#450a0a; }
+.dchip.active .db   { color:rgba(0,0,0,0.45); }
+.dchip.active .db b { color:rgba(0,0,0,0.75); }
+
+/* ── Banner ──────────────────────────────────────────────────────── */
+#banner {
+  position:fixed; top:50%; left:50%;
+  transform:translate(-50%,-50%) scale(0);
+  background:rgba(15,10,40,0.9); backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,0.12); border-radius:24px;
+  padding:16px 36px; font:800 26px/1.3 system-ui,sans-serif;
+  color:#fff; text-align:center; box-shadow:0 8px 40px rgba(0,0,0,0.5);
+  z-index:200; pointer-events:none; opacity:0;
+  transition:transform 0.42s cubic-bezier(0.34,1.56,0.64,1), opacity 0.28s ease;
+  max-width:min(85vw,480px);
+}
+#banner.on { transform:translate(-50%,-50%) scale(1); opacity:1; }
+
+/* ── Overlays (start + game over) ────────────────────────────────── */
+.overlay {
+  position:fixed; inset:0; z-index:400;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(6,3,18,0.92); backdrop-filter:blur(20px);
+  opacity:0; pointer-events:none; transition:opacity 0.4s ease;
+  overflow-y:auto; -webkit-overflow-scrolling:touch;
+  padding: max(20px, env(safe-area-inset-top,20px)) 20px max(20px, env(safe-area-inset-bottom,20px));
+}
+.overlay.on { opacity:1; pointer-events:all; touch-action:pan-y; }
+.overlay-inner {
+  text-align:center; color:#fff; position:relative; z-index:2;
+  display:flex; flex-direction:column; align-items:center;
+  transform:scale(0.6) translateY(32px);
+  transition:transform 0.5s cubic-bezier(0.34,1.56,0.64,1);
+  max-width:440px;
+}
+.overlay.on .overlay-inner { transform:scale(1) translateY(0); }
+.ov-emoji {
+  font-size:70px; line-height:1; margin-bottom:16px; display:block;
+  animation:v-bounce 1.1s ease-in-out infinite alternate;
+}
+@keyframes v-bounce { from{transform:translateY(0) rotate(-4deg)} to{transform:translateY(-10px) rotate(4deg)} }
+.ov-title { font:900 44px/1 system-ui,sans-serif; color:#fff; letter-spacing:-0.01em; margin-bottom:10px; }
+.ov-sub {
+  font:700 12px/1 system-ui,sans-serif; letter-spacing:0.18em; text-transform:uppercase;
+  background:linear-gradient(110deg,#ffd93d,#ff6bac,#a78bfa);
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+  background-size:220%; animation:grad-move 3s ease-in-out infinite alternate;
+  margin-bottom:24px;
+}
+@keyframes grad-move { from{background-position:0%} to{background-position:100%} }
+.rules { display:flex; flex-direction:column; gap:10px; margin-bottom:26px; width:100%; }
+.rule {
+  display:flex; align-items:center; gap:12px; text-align:left;
+  background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.09);
+  border-radius:16px; padding:11px 16px;
+  font:500 14px/1.35 system-ui,sans-serif; color:rgba(255,255,255,0.82);
+}
+.rule .ri { font-size:22px; line-height:1; flex:none; width:28px; text-align:center; }
+.score-box {
+  display:flex; gap:34px; align-items:flex-start; justify-content:center;
+  background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1);
+  border-radius:22px; padding:16px 38px; margin-bottom:24px;
+}
+.score-cell { display:flex; flex-direction:column; align-items:center; gap:6px; }
+.score-cell .lbl {
+  font:600 11px/1 system-ui,sans-serif; letter-spacing:0.18em;
+  text-transform:uppercase; color:rgba(255,255,255,0.35);
+}
+.score-cell .val { font:900 44px/1 system-ui,sans-serif; color:#fff; }
+.score-cell.best .val { color:#ffd93d; font-size:34px; }
+.big-btn {
+  padding:17px 46px; border-radius:50px; border:none; cursor:pointer;
+  font:700 17px/1 system-ui,sans-serif; letter-spacing:0.04em;
+  background:#fff; color:#0d0820; box-shadow:0 4px 20px rgba(0,0,0,0.35);
+  transition:transform 0.15s, box-shadow 0.15s, background 0.15s;
+  -webkit-appearance:none; appearance:none;
+}
+.big-btn:hover  { background:#ede8ff; transform:scale(1.04); box-shadow:0 8px 28px rgba(0,0,0,0.45); }
+.big-btn:active { transform:scale(0.95); }
+.home-link {
+  margin-top:18px; font:600 13px/1 system-ui,sans-serif;
+  color:rgba(255,255,255,0.4); text-decoration:none; transition:color 0.2s;
+}
+.home-link:hover { color:rgba(255,255,255,0.8); }
+.new-record {
+  font:800 12px/1 system-ui,sans-serif; letter-spacing:0.16em; text-transform:uppercase;
+  color:#ffd93d; margin-bottom:16px; display:none;
+}
+.new-record.on { display:block; animation: rec-blink 0.9s ease-in-out infinite alternate; }
+@keyframes rec-blink { from{opacity:0.45} to{opacity:1} }
+.cft { position:absolute; pointer-events:none; border-radius:2px; animation:cft-fall linear forwards; }
+@keyframes cft-fall {
+  0%   { transform:translate(0,0) rotate(0deg) scale(1); opacity:1 }
+  75%  { opacity:0.8 }
+  100% { transform:translate(var(--cx),var(--cy)) rotate(var(--cr)) scale(0.2); opacity:0 }
+}
+
+/* ── Responsive ──────────────────────────────────────────────────── */
+/* Landscape phone: the overlay has to fit 390px of height without scrolling */
+@media (orientation:landscape) and (max-height:480px) {
+  #side-panel { top:auto; bottom:max(8px, env(safe-area-inset-bottom,8px)); transform:none; flex-direction:row; }
+  #hud { padding-top:max(8px, calc(env(safe-area-inset-top,0px) + 4px)); }
+  .hud-pill { font-size:14px; padding:5px 12px; }
+  .overlay-inner { max-width:min(94vw,720px); }
+  .ov-emoji { display:none; }
+  .ov-title { font-size:24px; margin-bottom:4px; }
+  .ov-sub   { font-size:10px; margin-bottom:12px; }
+  .rules    { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:12px; }
+  .rule     { padding:6px 10px; font-size:11.5px; }
+  .rule .ri { font-size:17px; width:20px; }
+  .diff-row { margin-bottom:12px; }
+  .dchip    { padding:7px 6px; gap:2px; }
+  .dchip .di{ font-size:16px; }
+  .score-box{ padding:8px 22px; margin-bottom:12px; }
+  .score-cell .val { font-size:28px; }
+  .score-cell.best .val { font-size:22px; }
+  .big-btn  { padding:11px 28px; font-size:14px; }
+  .home-link{ margin-top:10px; }
+}
+/* Narrow screens: the language switcher owns the top-right corner, so the
+   HUD hugs the left edge and keeps clear of it. */
+@media (max-width:640px) {
+  #hud { justify-content:flex-start; padding-right:118px; }
+}
+@media (max-width:430px) {
+  .hud-pill { font-size:15px; padding:6px 11px; gap:5px; }
+  .hud-pill .cap { display:none; }
+  #best-pill { display:none; }
+  #score { font-size:18px; }
+  #lives { font-size:16px; letter-spacing:1px; }
+}
+@media (max-height:680px), (max-width:380px) {
+  .ov-emoji { font-size:46px; margin-bottom:10px; }
+  .ov-title { font-size:30px; }
+  .ov-sub   { font-size:11px; margin-bottom:14px; }
+  .rules    { gap:7px; margin-bottom:16px; }
+  .rule     { padding:8px 12px; font-size:12.5px; }
+  .score-box{ padding:11px 26px; margin-bottom:16px; gap:24px; }
+  .diff-row { gap:7px; margin-bottom:14px; }
+  .dchip    { padding:9px 6px; gap:3px; }
+  .dchip .di{ font-size:17px; }
+  .dchip .dn{ font-size:12px; }
+  .score-cell .val { font-size:32px; }
+  .score-cell.best .val { font-size:26px; }
+  .big-btn  { padding:13px 32px; font-size:15px; }
+}
+
+/* Very short landscape (740x360 and friends): squeeze the last ~20px */
+@media (orientation:landscape) and (max-height:400px) {
+  .ov-sub   { margin-bottom:8px; }
+  .rules    { gap:5px; margin-bottom:9px; }
+  .rule     { padding:5px 9px; font-size:11px; }
+  .diff-row { margin-bottom:9px; }
+  .dchip    { padding:6px 5px; }
+  .home-link{ margin-top:7px; font-size:12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .star, .orb, .jelly.idle, .ov-emoji { animation:none; }
+  .ov-sub { animation:none; background-position:0%; }
+  #floor::before, #canvas.shake { animation:none; }
+}
+</style>
+</head>
+<body>
+
+<div id="bg"></div>
+<div id="canvas"></div>
+<div id="freeze"></div>
+<div id="floor"></div>
+<div id="paddle"></div>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hud-pill"><span id="lives">❤️❤️❤️</span></div>
+  <div class="hud-pill"><span class="cap" data-i18n="hud_score">счёт</span><span id="score">0</span></div>
+  <div class="hud-pill" id="wave-pill"><span class="cap" data-i18n="hud_wave">волна</span><span id="wave">1</span></div>
+  <div class="hud-pill" id="best-pill"><span class="cap" data-i18n="hud_best">рекорд</span><span id="best">0</span></div>
+</div>
+
+<!-- Sound -->
+<div id="side-panel">
+  <button class="diff-btn sound-toggle-btn" id="soundToggleBtn" type="button"></button>
+</div>
+
+<div id="banner"></div>
+
+<!-- Start screen -->
+<div class="overlay on" id="start-screen">
+  <div class="overlay-inner">
+    <span class="ov-emoji">🤹</span>
+    <div class="ov-title" data-i18n="start_title">Не урони!</div>
+    <div class="ov-sub" data-i18n="start_sub">желешки падают — держи их в воздухе</div>
+    <div class="rules">
+      <div class="rule"><span class="ri" id="rule-tap-icon">👆</span><span id="rule-tap" data-i18n="rule_tap">Тапай по желешке — она подпрыгнет. Бей сбоку, чтобы отправить её в сторону.</span></div>
+      <div class="rule"><span class="ri">💔</span><span data-i18n="rule_floor">Коснулась красной полосы — минус жизнь. Три потери, и игра окончена.</span></div>
+      <div class="rule"><span class="ri">💣</span><span id="rule-bomb" data-i18n="rule_bomb">По бомбе не бей: взорвётся в руках. Пусть спокойно падает вниз.</span></div>
+      <div class="rule"><span class="ri">⭐</span><span data-i18n="rule_bonus">Звезда — очки и жизнь, снежинка замедляет время.</span></div>
+    </div>
+    <div class="diff-row">
+      <button class="dchip" data-d="easy" onclick="setDiff('easy')">
+        <span class="di">🌿</span>
+        <span class="dn" data-i18n="diff_easy_full">Спокойно</span>
+        <span class="dl">❤️ 5</span>
+        <span class="db"><span data-i18n="best_label">рекорд</span> <b class="best-val" data-d="easy">0</b></span>
+      </button>
+      <button class="dchip active" data-d="medium" onclick="setDiff('medium')">
+        <span class="di">🔥</span>
+        <span class="dn" data-i18n="diff_med_full">Как надо</span>
+        <span class="dl">❤️ 3</span>
+        <span class="db"><span data-i18n="best_label">рекорд</span> <b class="best-val" data-d="medium">0</b></span>
+      </button>
+      <button class="dchip" data-d="hard" onclick="setDiff('hard')">
+        <span class="di">💀</span>
+        <span class="dn" data-i18n="diff_hard_full">Жёстко</span>
+        <span class="dl">❤️ 3</span>
+        <span class="db"><span data-i18n="best_label">рекорд</span> <b class="best-val" data-d="hard">0</b></span>
+      </button>
+    </div>
+    <button class="big-btn" id="start-btn" onclick="startGame()" data-i18n="start_btn">Начать игру</button>
+    <a class="home-link" href="index.html" data-i18n="back_home">← На главную</a>
+  </div>
+</div>
+
+<!-- Game over screen -->
+<div class="overlay" id="over-screen">
+  <div class="overlay-inner">
+    <span class="ov-emoji" id="over-emoji">💔</span>
+    <div class="ov-title" data-i18n="over_title">Уронил!</div>
+    <div class="ov-sub" id="over-sub" data-i18n="over_sub">желешки не прощают</div>
+    <div class="new-record" id="new-record" data-i18n="new_record">🏆 Новый рекорд!</div>
+    <div class="score-box">
+      <div class="score-cell">
+        <span class="lbl" data-i18n="score_label">счёт</span>
+        <span class="val" id="final-score">0</span>
+      </div>
+      <div class="score-cell best">
+        <span class="lbl" data-i18n="best_label">рекорд</span>
+        <span class="val" id="final-best">0</span>
+      </div>
+    </div>
+    <div class="diff-row">
+      <button class="dchip" data-d="easy" onclick="setDiff('easy')">
+        <span class="di">🌿</span>
+        <span class="dn" data-i18n="diff_easy_full">Спокойно</span>
+        <span class="dl">❤️ 5</span>
+        <span class="db"><span data-i18n="best_label">рекорд</span> <b class="best-val" data-d="easy">0</b></span>
+      </button>
+      <button class="dchip active" data-d="medium" onclick="setDiff('medium')">
+        <span class="di">🔥</span>
+        <span class="dn" data-i18n="diff_med_full">Как надо</span>
+        <span class="dl">❤️ 3</span>
+        <span class="db"><span data-i18n="best_label">рекорд</span> <b class="best-val" data-d="medium">0</b></span>
+      </button>
+      <button class="dchip" data-d="hard" onclick="setDiff('hard')">
+        <span class="di">💀</span>
+        <span class="dn" data-i18n="diff_hard_full">Жёстко</span>
+        <span class="dl">❤️ 3</span>
+        <span class="db"><span data-i18n="best_label">рекорд</span> <b class="best-val" data-d="hard">0</b></span>
+      </button>
+    </div>
+    <button class="big-btn" onclick="startGame()" data-i18n="play_again">Играть снова</button>
+    <a class="home-link" href="index.html" data-i18n="back_home">← На главную</a>
+  </div>
+</div>
+
+<script>
+window.I18N = window.I18N || { t:(k)=>k, lang:"ru", setLang(){}, supported:["ru","en","el"] };
+
+// ─── Background: stars + orbs ────────────────────────────────────
+(function(){
+  const bg = document.getElementById('bg');
+  for(let i=0;i<80;i++){
+    const s=document.createElement('div'); s.className='star';
+    const r=Math.random()*2+0.5;
+    s.style.cssText=`width:${r}px;height:${r}px;left:${Math.random()*100}%;top:${Math.random()*100}%;
+      --op:${(Math.random()*0.5+0.1).toFixed(2)};--td:${(Math.random()*4+2).toFixed(1)}s;--tl:${(Math.random()*4).toFixed(1)}s`;
+    bg.appendChild(s);
+  }
+  const ORB_COLORS=['rgba(120,80,255,0.35)','rgba(50,180,255,0.28)','rgba(255,80,180,0.22)','rgba(50,255,180,0.2)'];
+  ORB_COLORS.forEach((c)=>{
+    const o=document.createElement('div'); o.className='orb';
+    const sz=200+Math.random()*200;
+    o.style.cssText=`width:${sz}px;height:${sz}px;background:${c};
+      left:${Math.random()*80}%;top:${Math.random()*80}%;
+      --dt:${10+Math.random()*10}s;--dl:${Math.random()*6}s;
+      --dx:${(Math.random()*60-30).toFixed(0)}px;--dy:${(Math.random()*60-30).toFixed(0)}px`;
+    bg.appendChild(o);
+  });
+})();
+
+// ─── Helpers ─────────────────────────────────────────────────────
+function mkrng(s){return ()=>{s=(s*1664525+1013904223)&0xffffffff;return(s>>>0)/0xffffffff;};}
+function rand(a,b){return a+Math.random()*(b-a);}
+function randi(a,b){return Math.floor(rand(a,b+0.999));}
+function pick(a){return a[Math.floor(Math.random()*a.length)];}
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+
+// ─── Audio ───────────────────────────────────────────────────────
+let actx=null;
+function ac(){if(!actx)try{actx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}return actx;}
+function resume(){const a=ac();if(a&&a.state==='suspended')a.resume();}
+function tone(f0,f1,type,vol,dur,when=0){
+  const a=ac();if(!a)return;
+  const o=a.createOscillator(),g=a.createGain();
+  o.connect(g);g.connect(a.destination);
+  const t=a.currentTime+when;
+  o.type=type;
+  o.frequency.setValueAtTime(f0,t);
+  if(f1)o.frequency.exponentialRampToValueAtTime(f1,t+dur*0.7);
+  g.gain.setValueAtTime(vol,t);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.start(t);o.stop(t+dur+0.05);
+}
+function noise(vol,dur,f0,f1){
+  const a=ac();if(!a)return;
+  const len=Math.floor(a.sampleRate*dur);
+  const buf=a.createBuffer(1,len,a.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+  const src=a.createBufferSource(); src.buffer=buf;
+  const flt=a.createBiquadFilter(); flt.type='lowpass';
+  const g=a.createGain(); g.gain.setValueAtTime(vol,a.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+dur);
+  flt.frequency.setValueAtTime(f0,a.currentTime);
+  flt.frequency.exponentialRampToValueAtTime(f1,a.currentTime+dur);
+  src.connect(flt);flt.connect(g);g.connect(a.destination);
+  src.start();
+}
+function sndBounce(n){const f=300+Math.min(n,18)*26;tone(f,f*1.7,'sine',0.13,0.14);tone(f*2,f*2.6,'triangle',0.04,0.09);}
+function sndSplat() {noise(0.35,0.28,900,90);tone(150,50,'sine',0.16,0.3);}
+function sndBomb()  {noise(0.5,0.5,2200,60);tone(110,32,'sawtooth',0.2,0.45);}
+function sndStar()  {[0,0.06,0.12,0.19].forEach((w,i)=>tone(520+i*180,null,'sine',0.11,0.22,w));}
+function sndIce()   {[0,0.05,0.1].forEach((w,i)=>tone(1400-i*260,null,'triangle',0.09,0.4,w));}
+function sndWave()  {[0,0.09,0.18].forEach((w,i)=>tone(380+i*140,null,'sine',0.11,0.26,w));}
+function sndOver()  {[0,0.13,0.26,0.42].forEach((w,i)=>tone(420-i*80,null,'sine',0.14,0.4,w));}
+function sndWall()  {tone(200,120,'sine',0.05,0.09);}
+
+// ─── Colors / shapes (shared look with jelly-toys) ───────────────
+const COLORS=[
+  {n:'coral',     b:'#FF6B6B',l:'#FFB8B8',d:'#C42B2B'},
+  {n:'mint',      b:'#3DD6CC',l:'#99EDE8',d:'#1A9E96'},
+  {n:'lemon',     b:'#FFD93D',l:'#FFF3A3',d:'#BFA000'},
+  {n:'lavender',  b:'#B57BEE',l:'#DFBAFA',d:'#7A35C0'},
+  {n:'peach',     b:'#FF9A6C',l:'#FFCDB2',d:'#CC5522'},
+  {n:'sky',       b:'#5BA8FF',l:'#B8D8FF',d:'#2260CC'},
+  {n:'lime',      b:'#82D43A',l:'#C9F08A',d:'#4A8A0F'},
+  {n:'rose',      b:'#FF7BAC',l:'#FFBBCF',d:'#CC2D5E'},
+  {n:'tangerine', b:'#FF9F1C',l:'#FFD48A',d:'#CC6A00'},
+  {n:'periwinkle',b:'#8B9EFF',l:'#C4CCFF',d:'#4455D0'},
+];
+const GOLD ={n:'gold', b:'#FFCF2E',l:'#FFF0A8',d:'#B37700'};
+const ICE  ={n:'ice',  b:'#7FD8FF',l:'#D6F4FF',d:'#1E7FB8'};
+const DARK ={n:'bomb', b:'#3A3550',l:'#6B6486',d:'#14111F'};
+const SHAPES=['blob','bear','cat','cloud','bunny'];
+
+function blobPath(rng){
+  const pts=9,R=38,cx=50,cy=52;
+  const verts=Array.from({length:pts},(_,i)=>{
+    const r=R+rng()*12-6,a=(i/pts)*Math.PI*2-Math.PI/2;
+    return[cx+Math.cos(a)*r,cy+Math.sin(a)*r];
+  });
+  const n=verts.length;
+  let d=`M${verts[0][0]},${verts[0][1]}`;
+  for(let i=0;i<n;i++){
+    const p=verts[i],q=verts[(i+1)%n],pp=verts[(i-1+n)%n],qq=verts[(i+2)%n];
+    d+=`C${p[0]+(q[0]-pp[0])*.28},${p[1]+(q[1]-pp[1])*.28},${q[0]-(qq[0]-p[0])*.28},${q[1]-(qq[1]-p[1])*.28},${q[0]},${q[1]}`;
+  }
+  return d+'Z';
+}
+function makeFace(rng, d, sid, angry){
+  const ex1=38, ex2=62, ey=50;
+  if(angry){
+    return `<path d="M31 42 L45 47" stroke="${d}" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+      <path d="M69 42 L55 47" stroke="${d}" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+      <circle cx="${ex1}" cy="${ey+2}" r="4.5" fill="${d}" opacity="0.9"/>
+      <circle cx="${ex2}" cy="${ey+2}" r="4.5" fill="${d}" opacity="0.9"/>
+      <path d="M40 66 Q50 58 60 66" stroke="${d}" stroke-width="2.6" fill="none" stroke-linecap="round" opacity="0.85"/>`;
+  }
+  const n=Math.floor(rng()*3);
+  const blush=`<ellipse cx="${ex1-8}" cy="${ey+8}" rx="7" ry="4" fill="${d}" opacity="0.13" clip-path="url(#${sid})"/>
+    <ellipse cx="${ex2+8}" cy="${ey+8}" rx="7" ry="4" fill="${d}" opacity="0.13" clip-path="url(#${sid})"/>`;
+  const f=[
+    `<ellipse cx="${ex1}" cy="${ey}" rx="5.5" ry="6.5" fill="${d}" opacity="0.85"/>
+     <ellipse cx="${ex2}" cy="${ey}" rx="5.5" ry="6.5" fill="${d}" opacity="0.85"/>
+     <circle cx="${ex1+1.5}" cy="${ey-2}" r="2.2" fill="white" opacity="0.75"/>
+     <circle cx="${ex2+1.5}" cy="${ey-2}" r="2.2" fill="white" opacity="0.75"/>
+     <path d="M${ex1+3} ${ey+10}Q50 ${ey+18} ${ex2-3} ${ey+10}" stroke="${d}" stroke-width="2.2" fill="none" stroke-linecap="round" opacity="0.8"/>
+     ${blush}`,
+    `<path d="M${ex1-5} ${ey+2} Q${ex1} ${ey-6} ${ex1+5} ${ey+2}" stroke="${d}" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.85"/>
+     <path d="M${ex2-5} ${ey+2} Q${ex2} ${ey-6} ${ex2+5} ${ey+2}" stroke="${d}" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.85"/>
+     <path d="M${ex1+2} ${ey+10}Q50 ${ey+21} ${ex2-2} ${ey+10}" stroke="${d}" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.8"/>
+     ${blush}`,
+    `<circle cx="${ex1}" cy="${ey}" r="7.5" fill="${d}" opacity="0.85"/>
+     <circle cx="${ex2}" cy="${ey}" r="7.5" fill="${d}" opacity="0.85"/>
+     <circle cx="${ex1+2.5}" cy="${ey-3}" r="3" fill="white" opacity="0.75"/>
+     <circle cx="${ex2+2.5}" cy="${ey-3}" r="3" fill="white" opacity="0.75"/>
+     <path d="M${ex1+5} ${ey+13}Q50 ${ey+20} ${ex2-5} ${ey+13}" stroke="${d}" stroke-width="2.2" fill="none" stroke-linecap="round" opacity="0.8"/>
+     ${blush}`,
+  ];
+  return f[n];
+}
+let uid=0;
+function makeSVG(type,color,size,seed,angry){
+  const id=uid++,rng=mkrng(seed*9999|0),bp=blobPath(rng);
+  const gid='g'+id,sid='s'+id;
+  const face=makeFace(rng,color.d,sid,angry);
+  const defs=`<defs>
+    <radialGradient id="${gid}" cx="38%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="${color.l}"/>
+      <stop offset="55%" stop-color="${color.b}"/>
+      <stop offset="100%" stop-color="${color.d}" stop-opacity="0.8"/>
+    </radialGradient>
+    <clipPath id="${sid}"><path d="${bp}"/></clipPath>
+  </defs>`;
+  const base=`<path d="${bp}" fill="url(#${gid})"/>`;
+  const g1=`<ellipse cx="40" cy="34" rx="13" ry="8" fill="white" opacity="0.38" clip-path="url(#${sid})" transform="rotate(-20,40,34)"/>`;
+  const g2=`<circle cx="58" cy="30" r="4" fill="white" opacity="0.22" clip-path="url(#${sid})"/>`;
+  let body='',redraw=false;
+  if(type==='bear'){redraw=true;body=`
+    <circle cx="24" cy="20" r="13" fill="${color.b}" opacity="0.65"/>
+    <circle cx="76" cy="20" r="13" fill="${color.b}" opacity="0.65"/>
+    <path d="${bp}" fill="url(#${gid})"/>
+    <circle cx="24" cy="20" r="8" fill="${color.l}" opacity="0.5"/>
+    <circle cx="76" cy="20" r="8" fill="${color.l}" opacity="0.5"/>
+    ${face}`;
+  }else if(type==='cat'){redraw=true;body=`
+    <polygon points="20,22 30,8 40,22" fill="${color.b}" opacity="0.7"/>
+    <polygon points="60,22 70,8 80,22" fill="${color.b}" opacity="0.7"/>
+    <path d="${bp}" fill="url(#${gid})"/>
+    <polygon points="22,22 30,11 38,22" fill="${color.l}" opacity="0.5"/>
+    <polygon points="62,22 70,11 78,22" fill="${color.l}" opacity="0.5"/>
+    ${face}`;
+  }else if(type==='bunny'){redraw=true;body=`
+    <ellipse cx="30" cy="14" rx="9" ry="18" fill="${color.b}" opacity="0.65"/>
+    <ellipse cx="70" cy="14" rx="9" ry="18" fill="${color.b}" opacity="0.65"/>
+    <path d="${bp}" fill="url(#${gid})"/>
+    <ellipse cx="30" cy="14" rx="5" ry="12" fill="${color.l}" opacity="0.5"/>
+    <ellipse cx="70" cy="14" rx="5" ry="12" fill="${color.l}" opacity="0.5"/>
+    ${face}`;
+  }else if(type==='cloud'){
+    body=`${face}
+    <circle cx="22" cy="40" r="5" fill="white" opacity="0.18" clip-path="url(#${sid})"/>
+    <circle cx="78" cy="38" r="4" fill="white" opacity="0.14" clip-path="url(#${sid})"/>`;
+  }else{
+    body=face;
+  }
+  return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
+    ${defs}${redraw?body:(base+body)}${g1}${g2}
+  </svg>`;
+}
+
+// ─── Game config ─────────────────────────────────────────────────
+const DIFF={
+  easy:  {g:0.100, waveMs:16000, start:1, lives:5, maxLives:5, bombP:0.28, growth:1.055, bonusMs:[5000,8000]},
+  medium:{g:0.132, waveMs:12000, start:2, lives:3, maxLives:4, bombP:0.42, growth:1.075, bonusMs:[4200,7000]},
+  hard:  {g:0.170, waveMs:9000,  start:3, lives:3, maxLives:3, bombP:0.55, growth:1.095, bonusMs:[3400,6000]},
+};
+let diffKey='medium';
+const FLOOR_H_BASE=52;
+
+function viewScale(){return clamp(Math.min(window.innerWidth,window.innerHeight)/600,0.45,1.4);}
+function floorH(){return Math.round(FLOOR_H_BASE*clamp(viewScale(),0.62,1.15));}
+function floorY(){return window.innerHeight-floorH();}
+function gravity(){return DIFF[diffKey].g*viewScale()*Math.pow(DIFF[diffKey].growth,wave-1);}
+function launchSpeed(){return Math.min(Math.sqrt(2*gravity()*Math.max(120,floorY()-CEIL)*0.62), 30*viewScale());}
+function baseSize(){return 92*viewScale();}
+
+// ─── State ───────────────────────────────────────────────────────
+const $canvas=document.getElementById('canvas');
+const $floor =document.getElementById('floor');
+const $freeze=document.getElementById('freeze');
+const $banner=document.getElementById('banner');
+const $lives =document.getElementById('lives');
+const $score =document.getElementById('score');
+const $wave  =document.getElementById('wave');
+const $best  =document.getElementById('best');
+const $start =document.getElementById('start-screen');
+const $over  =document.getElementById('over-screen');
+
+let jellies=[], nid=0;
+let running=false, lives=DIFF.medium.lives, score=0, wave=1, target=2, combo=0;
+let waveAcc=0, bonusAcc=0, bonusAt=6000, freezeLeft=0;
+
+// ─── Best score (per difficulty) ─────────────────────────────────
+const BEST_KEY='dontdrop-best';
+function loadBest(){
+  try{ return JSON.parse(localStorage.getItem(BEST_KEY))||{}; }catch(e){ return {}; }
+}
+function bestFor(k){ return loadBest()[k]||0; }
+function saveBest(k,v){
+  try{ const o=loadBest(); o[k]=v; localStorage.setItem(BEST_KEY,JSON.stringify(o)); }catch(e){}
+}
+function renderBest(){ $best.textContent=bestFor(diffKey); renderDiffRow(); }
+
+// ─── Difficulty ──────────────────────────────────────────────────
+function renderDiffRow(){
+  const best=loadBest();
+  document.querySelectorAll('.dchip').forEach(b=>b.classList.toggle('active',b.dataset.d===diffKey));
+  document.querySelectorAll('.best-val').forEach(e=>{ e.textContent=best[e.dataset.d]||0; });
+}
+function setDiff(k){
+  if(running || !DIFF[k]) return;
+  diffKey=k;
+  lives=DIFF[k].lives; wave=1;
+  renderDiffRow();
+  renderHUD();
+}
+
+// ─── HUD ─────────────────────────────────────────────────────────
+function renderLives(){
+  const max=DIFF[diffKey].maxLives;
+  let h='';
+  for(let i=0;i<max;i++) h+= i<lives ? '❤️' : '<span class="heart-lost">🖤</span>';
+  $lives.innerHTML=h;
+}
+function renderHUD(){
+  $score.textContent=score;
+  $wave.textContent=wave;
+  renderLives();
+  renderBest();
+}
+function showBanner(txt,dur=1500){
+  $banner.innerHTML=txt; $banner.classList.add('on');
+  clearTimeout(showBanner._t);
+  showBanner._t=setTimeout(()=>$banner.classList.remove('on'),dur);
+}
+
+// ─── Effects ─────────────────────────────────────────────────────
+function particles(cx,cy,color,n=10,spread=90){
+  for(let i=0;i<n;i++){
+    const p=document.createElement('div'); p.className='pt';
+    const a=Math.random()*Math.PI*2, d=rand(spread*0.4,spread), r=rand(3,8);
+    p.style.cssText=`width:${r}px;height:${r}px;background:${color};left:${cx}px;top:${cy}px;
+      --tx:${(Math.cos(a)*d).toFixed(0)}px;--ty:${(Math.sin(a)*d).toFixed(0)}px;
+      animation:pt-fly ${rand(0.45,0.8).toFixed(2)}s ease-out forwards`;
+    $canvas.appendChild(p);
+    setTimeout(()=>p.remove(),850);
+  }
+}
+function floatText(cx,cy,txt,color){
+  const e=document.createElement('div'); e.className='pop-score';
+  e.textContent=txt; e.style.left=cx+'px'; e.style.top=cy+'px';
+  if(color) e.style.color=color;
+  $canvas.appendChild(e);
+  setTimeout(()=>e.remove(),800);
+}
+function shake(){
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  $canvas.classList.remove('shake'); void $canvas.offsetWidth; $canvas.classList.add('shake');
+}
+function flashFloor(){
+  $floor.classList.remove('hit'); void $floor.offsetWidth; $floor.classList.add('hit');
+}
+function anim(j,cls,ms){
+  j.el.classList.remove(cls); void j.el.offsetWidth; j.el.classList.add(cls);
+  clearTimeout(j._at);
+  j._at=setTimeout(()=>j.el.classList.remove(cls),ms);
+}
+
+// ─── Jelly factory ───────────────────────────────────────────────
+const BADGE={bomb:'💣',star:'⭐',ice:'❄️'};
+function spawn(kind='jelly',opts={}){
+  const W=window.innerWidth;
+  const special=kind!=='jelly';
+  const seed=Math.random();
+  const size=Math.round(baseSize()*(special?0.82:rand(0.86,1.12)));
+  const color= kind==='bomb'?DARK : kind==='star'?GOLD : kind==='ice'?ICE : pick(COLORS);
+  const shape= special?'blob':pick(SHAPES);
+
+  const el=document.createElement('div');
+  el.className='jelly spawning'+(kind==='bomb'?' bomb':kind==='star'?' bonus':kind==='ice'?' chill':'');
+  el.style.width=size+'px'; el.style.height=size+'px';
+  el.innerHTML=makeSVG(shape,color,size,seed,kind==='bomb');
+  if(BADGE[kind]){
+    const b=document.createElement('span');
+    b.className='badge'; b.textContent=BADGE[kind];
+    b.style.fontSize=Math.round(size*0.38)+'px';
+    el.appendChild(b);
+  }
+  el.style.setProperty('--wd',rand(2.4,4).toFixed(1)+'s');
+  el.style.setProperty('--wdl',rand(0,2).toFixed(1)+'s');
+
+  const j={
+    id:nid++, kind, el, s:size, color, alive:true,
+    x: opts.x!=null?opts.x:rand(size*0.2, Math.max(size*0.2, W-size*1.2)),
+    y: opts.y!=null?opts.y:-size-rand(0,120),
+    vx: opts.vx!=null?opts.vx:rand(-0.7,0.7)*viewScale(),
+    vy: opts.vy!=null?opts.vy:rand(0,0.6),
+  };
+  el.style.translate=Math.round(j.x)+'px '+Math.round(j.y)+'px';
+  $canvas.appendChild(el);
+  setTimeout(()=>{ if(j.alive) el.classList.replace('spawning','idle'); },400);
+  jellies.push(j);
+  return j;
+}
+function kill(j,cls='splatting',ms=440){
+  if(!j.alive) return;
+  j.alive=false;
+  clearTimeout(j._at);
+  j.el.classList.remove('idle','bump','wall-sq','spawning');
+  j.el.classList.add(cls);
+  setTimeout(()=>{ j.el.remove(); jellies=jellies.filter(x=>x!==j); },ms);
+}
+function countAlive(kind){ return jellies.filter(j=>j.alive&&j.kind===kind).length; }
+
+// ─── Input ───────────────────────────────────────────────────────
+// Generous hit radius on jellies, tighter on bombs — an accidental bomb tap
+// should be the player's mistake, not the hit test's.
+function hitRadius(j){ return j.s*(j.kind==='bomb'?0.5:0.62); }
+function hitAt(px,py){
+  let best=null, bestRatio=Infinity;
+  for(const j of jellies){
+    if(!j.alive) continue;
+    const r=hitRadius(j);
+    const ratio=Math.hypot(px-(j.x+j.s/2), py-(j.y+j.s/2))/r;
+    if(ratio<=1 && ratio<bestRatio){ bestRatio=ratio; best=j; }
+  }
+  return best;
+}
+function bounce(j,px){
+  const cx=j.x+j.s/2;
+  const L=launchSpeed();
+  j.vy=-L;
+  j.vx=clamp(j.vx*0.35 + (cx-px)*0.075, -9*viewScale(), 9*viewScale());
+  anim(j,'bump',340);
+}
+function tap(px,py){
+  resume();
+  const j=hitAt(px,py);
+  if(j) act(j,px,py);
+}
+function act(j,px,py){
+  j._hit=performance.now();
+  const cx=j.x+j.s/2, cy=j.y+j.s/2;
+
+  if(j.kind==='bomb'){
+    kill(j,'booming',360);
+    particles(cx,cy,'#ff5a5a',18,150);
+    particles(cx,cy,'#ffb84d',10,110);
+    sndBomb(); shake();
+    // The blast tosses nearby jellies upward — small mercy for the mistake
+    for(const o of jellies){
+      if(!o.alive||o.kind!=='jelly') continue;
+      const d=Math.hypot(o.x+o.s/2-cx, o.y+o.s/2-cy);
+      if(d<260*viewScale()){ o.vy=-launchSpeed()*0.8; o.vx+=(o.x+o.s/2-cx)*0.02; anim(o,'bump',340); }
+    }
+    if(running){ loseLife(cx,cy,I18N.t('lost_bomb')); }
+    return;
+  }
+  if(j.kind==='star'){
+    const gain=25*wave;
+    score+=gain;
+    const max=DIFF[diffKey].maxLives;
+    let txt='+'+gain;
+    if(running && lives<max){ lives++; txt='+'+gain+' ❤️'; }
+    kill(j,'booming',360);
+    particles(cx,cy,'#ffd93d',16,130);
+    floatText(cx,cy,txt,'#ffd93d');
+    sndStar(); renderHUD();
+    return;
+  }
+  if(j.kind==='ice'){
+    freezeLeft=4200;
+    $freeze.classList.add('on');
+    kill(j,'booming',360);
+    particles(cx,cy,'#9fe6ff',16,130);
+    floatText(cx,cy,I18N.t('slowmo'),'#9fe6ff');
+    sndIce();
+    return;
+  }
+  // Regular jelly
+  bounce(j,px);
+  combo++;
+  const gain=wave*(combo>=10?2:1);
+  score+=gain;
+  floatText(cx,cy-j.s*0.3,'+'+gain, combo>=10?'#ffd93d':null);
+  particles(cx,cy+j.s*0.25,j.color.b,4,44);
+  sndBounce(combo);
+  renderHUD();
+}
+$canvas.addEventListener('pointerdown',e=>{ tap(e.clientX,e.clientY); },{passive:true});
+document.addEventListener('pointerdown',resume,{once:true});
+
+// ── Mouse: the cursor itself bats the jellies ────────────────────
+// Clicking a falling jelly with a single pointer is unfair on a desktop, so on
+// hover-capable devices the cursor works as a paddle: touch a jelly and it
+// bounces off. Bombs stay dangerous — the cursor has to weave around them.
+const FINE = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+const $paddle=document.getElementById('paddle');
+let curX=0, curY=0, prevX=0, prevY=0, curSeen=false;
+if(FINE){
+  document.body.classList.add('fine');
+  window.addEventListener('pointermove',e=>{
+    if(e.pointerType==='touch') return;
+    curX=e.clientX; curY=e.clientY;
+    if(!curSeen){ prevX=curX; prevY=curY; curSeen=true; }
+    $paddle.style.translate=curX+'px '+curY+'px';
+    $paddle.classList.toggle('on',running);
+  },{passive:true});
+  document.addEventListener('pointerleave',()=>{ curSeen=false; $paddle.classList.remove('on'); });
+}
+// Distance from a point to the segment the cursor travelled this frame — without
+// it a fast sweep tunnels straight through a jelly between two frames.
+function segDist(ax,ay,bx,by,px,py){
+  const dx=bx-ax, dy=by-ay, len=dx*dx+dy*dy;
+  let t = len>0 ? ((px-ax)*dx+(py-ay)*dy)/len : 0;
+  t=clamp(t,0,1);
+  return Math.hypot(px-(ax+dx*t), py-(ay+dy*t));
+}
+const SWEEP_CD=200; // ms per jelly, so a resting cursor doesn't machine-gun it
+function sweep(){
+  const now=performance.now();
+  let touched=false;
+  for(const j of jellies){
+    if(!j.alive) continue;
+    const r=j.s*(j.kind==='bomb'?0.42:0.5)+12;
+    if(segDist(prevX,prevY,curX,curY,j.x+j.s/2,j.y+j.s/2)>r) continue;
+    if(j.kind==='jelly' && now-(j._hit||0)<SWEEP_CD) continue;
+    act(j,curX,curY);
+    touched=true;
+  }
+  prevX=curX; prevY=curY;
+  if(touched){ $paddle.classList.remove('hit'); void $paddle.offsetWidth; $paddle.classList.add('hit'); }
+}
+
+// ─── Life / game over ────────────────────────────────────────────
+function loseLife(cx,cy,msg){
+  lives--;
+  combo=0;
+  $lives.classList.remove('pulse'); void $lives.offsetWidth; $lives.classList.add('pulse');
+  renderHUD();
+  if(msg) showBanner(msg,1100);
+  if(lives<=0) gameOver();
+}
+function gameOver(){
+  running=false;
+  freezeLeft=0; $freeze.classList.remove('on');
+  document.body.classList.remove('playing');
+  $paddle.classList.remove('on');
+  sndOver();
+  for(const j of jellies.slice()) if(j.alive) kill(j,'booming',360);
+  const prev=bestFor(diffKey);
+  const rec=score>prev;
+  if(rec) saveBest(diffKey,score);
+  document.getElementById('final-score').textContent=score;
+  document.getElementById('final-best').textContent=Math.max(prev,score);
+  document.getElementById('new-record').classList.toggle('on',rec);
+  document.getElementById('over-emoji').textContent=rec?'🏆':'💔';
+  setTimeout(()=>{
+    $over.classList.add('on');
+    if(rec) confetti();
+  },700);
+  renderBest();
+}
+function confetti(){
+  const cols=['#FF6B6B','#FFD93D','#3DD6CC','#B57BEE','#FF7BAC','#82D43A'];
+  const inner=$over.querySelector('.overlay-inner');
+  for(let i=0;i<70;i++){
+    const c=document.createElement('div'); c.className='cft';
+    const w=rand(6,12), h=rand(8,16);
+    c.style.cssText=`width:${w}px;height:${h}px;background:${pick(cols)};
+      left:${rand(0,100)}%;top:${rand(-10,20)}%;
+      --cx:${rand(-160,160).toFixed(0)}px;--cy:${rand(220,560).toFixed(0)}px;--cr:${rand(-540,540).toFixed(0)}deg;
+      animation-duration:${rand(1.4,2.6).toFixed(2)}s;animation-delay:${rand(0,0.5).toFixed(2)}s`;
+    inner.appendChild(c);
+    setTimeout(()=>c.remove(),3200);
+  }
+}
+
+// ─── Round flow ──────────────────────────────────────────────────
+function startGame(){
+  for(const j of jellies.slice()){ j.alive=false; j.el.remove(); }
+  jellies=[];
+  const cfg=DIFF[diffKey];
+  lives=cfg.lives; score=0; wave=1; combo=0;
+  target=cfg.start;
+  waveAcc=0; bonusAcc=0; bonusAt=rand(cfg.bonusMs[0],cfg.bonusMs[1]);
+  freezeLeft=0; $freeze.classList.remove('on');
+  running=true;
+  document.body.classList.add('playing');
+  if(FINE){ prevX=curX; prevY=curY; $paddle.classList.toggle('on',curSeen); }
+  $start.classList.remove('on');
+  $over.classList.remove('on');
+  document.getElementById('new-record').classList.remove('on');
+  renderHUD();
+  resume();
+  for(let i=0;i<target;i++) setTimeout(()=>{ if(running) spawn('jelly'); }, i*420);
+}
+function nextWave(){
+  wave++;
+  target++;
+  showBanner(I18N.t('wave_banner').replace('{n}',wave));
+  sndWave();
+  renderHUD();
+}
+
+// ─── Main loop ───────────────────────────────────────────────────
+let _last=0;
+function frame(ts){
+  if(!_last) _last=ts;
+  const raw=Math.min(ts-_last,42); _last=ts;
+  const slow = freezeLeft>0 ? 0.42 : 1;
+  const dt = raw/16.667*slow;
+  const gameMs = raw*slow;
+
+  if(freezeLeft>0){
+    freezeLeft-=raw;
+    if(freezeLeft<=0) $freeze.classList.remove('on');
+  }
+  step(dt);
+  if(FINE && running && curSeen) sweep();
+  if(running){
+    waveAcc+=gameMs;
+    if(waveAcc>=DIFF[diffKey].waveMs){ waveAcc=0; nextWave(); }
+    bonusAcc+=gameMs;
+    if(bonusAcc>=bonusAt){
+      bonusAcc=0;
+      const cfg=DIFF[diffKey];
+      bonusAt=rand(cfg.bonusMs[0],cfg.bonusMs[1]);
+      const roll=Math.random();
+      if(roll<cfg.bombP && countAlive('bomb')<2) spawn('bomb');
+      else if(roll<cfg.bombP+0.5*(1-cfg.bombP)) spawn('star');
+      else spawn('ice');
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+function step(dt){
+  const W=window.innerWidth, H=window.innerHeight;
+  const vs=viewScale(), g=gravity(), fy=floorY();
+  const term=26*vs;
+
+  for(const j of jellies){
+    if(!j.alive) continue;
+    j.vy=Math.min(j.vy+g*dt, term);
+    j.x+=j.vx*dt;
+    j.y+=j.vy*dt;
+  }
+
+  // Soft separation so a crowd stays readable
+  for(let i=0;i<jellies.length;i++){
+    for(let k=i+1;k<jellies.length;k++){
+      const a=jellies[i], b=jellies[k];
+      if(!a.alive||!b.alive) continue;
+      const ax=a.x+a.s/2, ay=a.y+a.s/2, bx=b.x+b.s/2, by=b.y+b.s/2;
+      const dx=bx-ax, dy=by-ay, dist=Math.hypot(dx,dy), minD=(a.s+b.s)/2;
+      if(dist>=minD||dist<0.01) continue;
+      const nx=dx/dist, ny=dy/dist, ov=(minD-dist)*0.5;
+      a.x-=nx*ov; a.y-=ny*ov; b.x+=nx*ov; b.y+=ny*ov;
+      const dvx=a.vx-b.vx, dvy=a.vy-b.vy, dot=dvx*nx+dvy*ny;
+      if(dot>0){
+        const imp=dot*0.45;
+        a.vx-=imp*nx; a.vy-=imp*ny;
+        b.vx+=imp*nx; b.vy+=imp*ny;
+      }
+    }
+  }
+
+  for(const j of jellies){
+    if(!j.alive) continue;
+
+    // Walls
+    if(j.x<=0 && j.vx<0){ j.x=0; j.vx=Math.abs(j.vx)*0.86; anim(j,'wall-sq',220); sndWall(); }
+    else if(j.x+j.s>=W && j.vx>0){ j.x=W-j.s; j.vx=-Math.abs(j.vx)*0.86; anim(j,'wall-sq',220); sndWall(); }
+    // Ceiling sits just under the HUD, so a jelly is never hidden behind a pill
+    if(j.y<CEIL && j.vy<0 && j._in){ j.y=CEIL; j.vy=Math.abs(j.vy)*0.45; }
+    if(j.y>=CEIL) j._in=true;
+
+    // Floor
+    if(j.y+j.s>=fy){
+      if(!running){
+        // Attract mode: nothing ever drops on the start screen
+        j.y=fy-j.s;
+        j.vy=-launchSpeed()*rand(0.75,1);
+        j.vx=clamp(j.vx+rand(-1,1),-6*vs,6*vs);
+        anim(j,'bump',340);
+        continue;
+      }
+      const cx=j.x+j.s/2, cy=fy;
+      if(j.kind==='jelly'){
+        kill(j,'splatting',440);
+        particles(cx,cy,j.color.b,14,120);
+        sndSplat(); flashFloor(); shake();
+        loseLife(cx,cy,I18N.t('lost_floor'));
+      }else if(j.kind==='bomb'){
+        kill(j,'booming',360);
+        particles(cx,cy,'#ff8a5a',10,90);
+        noise(0.2,0.25,600,80);
+        flashFloor();
+      }else{
+        kill(j,'booming',360);
+        particles(cx,cy,j.color.b,8,70);
+      }
+      continue;
+    }
+
+    j.el.style.translate=Math.round(j.x)+'px '+Math.round(j.y)+'px';
+  }
+
+  // Keep the field stocked during play — one refill at a time, ~0.9s apart
+  if(running && countAlive('jelly')<target){
+    const now=performance.now();
+    if(step._due==null) step._due=now+900;
+    else if(now>=step._due){ step._due=null; spawn('jelly'); }
+  }else{
+    step._due=null;
+  }
+}
+
+// ─── Init ────────────────────────────────────────────────────────
+let CEIL=0;
+function updateCeil(){
+  const r=document.getElementById('hud').getBoundingClientRect();
+  CEIL=Math.round(r.bottom)+4;
+}
+function applyPointerHints(){
+  if(!FINE) return;
+  const t=document.getElementById('rule-tap'), b=document.getElementById('rule-bomb');
+  if(t) t.textContent=I18N.t('rule_tap_mouse');
+  if(b) b.textContent=I18N.t('rule_bomb_mouse');
+  const i=document.getElementById('rule-tap-icon');
+  if(i) i.textContent='🖱️';
+}
+function applyFloorVar(){ document.documentElement.style.setProperty('--floor-h',floorH()+'px'); }
+applyFloorVar();
+updateCeil();
+renderDiffRow();
+applyPointerHints();
+renderHUD();
+window.addEventListener('resize',()=>{
+  applyFloorVar();
+  updateCeil();
+  const W=window.innerWidth;
+  for(const j of jellies){ if(j.alive) j.x=clamp(j.x,0,Math.max(0,W-j.s)); }
+});
+window.addEventListener('langchange',()=>{ renderHUD(); updateCeil(); applyPointerHints(); });
+for(let i=0;i<3;i++) setTimeout(()=>{ if(!running) spawn('jelly'); }, i*380+300);
+requestAnimationFrame(ts=>{ _last=ts; requestAnimationFrame(frame); });
+</script>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title:`Не урони! — аркада с желешками, которые нельзя ронять`,
+    meta_desc:`Подбивай падающих желешек тапом и не дай им коснуться пола. Бомбы, звёзды, заморозка, три уровня сложности и рекорд. Играй в браузере бесплатно.`,
+    hud_score:`счёт`, hud_wave:`волна`, hud_best:`рекорд`,
+    diff_easy:`Easy`, diff_med:`Med`, diff_hard:`Hard`,
+    diff_easy_full:`Спокойно`, diff_med_full:`Как надо`, diff_hard_full:`Жёстко`,
+    rule_tap_mouse:`Веди курсор в желешку — она отскочит от него. Клик тоже работает.`,
+    rule_bomb_mouse:`Бомбу не трогай ни курсором, ни кликом: рванёт. Обводи её и дай упасть.`,
+    start_title:`Не урони!`, start_sub:`желешки падают — держи их в воздухе`,
+    rule_tap:`Тапай по желешке — она подпрыгнет. Бей сбоку, чтобы отправить её в сторону.`,
+    rule_floor:`Коснулась красной полосы — минус жизнь. Жизни кончились — игра окончена.`,
+    rule_bomb:`По бомбе не бей: взорвётся в руках. Пусть спокойно падает вниз.`,
+    rule_bonus:`Звезда — очки и жизнь, снежинка замедляет время.`,
+    start_btn:`Начать игру`, back_home:`← На главную`,
+    over_title:`Уронил!`, over_sub:`желешки не прощают`,
+    new_record:`🏆 Новый рекорд!`, score_label:`счёт`, best_label:`рекорд`, play_again:`Играть снова`,
+    wave_banner:`Волна {n}`, lost_floor:`💔 Уронил!`, lost_bomb:`💥 Это была бомба!`, slowmo:`Замедление`
+  },
+  en: {
+    _title:`Don't Drop! — an arcade game with falling jellies`,
+    meta_desc:`Tap the falling jellies to keep them off the floor. Bombs, stars, slow-mo, three difficulty levels and a high score. Play free in your browser.`,
+    hud_score:`score`, hud_wave:`wave`, hud_best:`best`,
+    diff_easy:`Easy`, diff_med:`Med`, diff_hard:`Hard`,
+    diff_easy_full:`Easy`, diff_med_full:`Normal`, diff_hard_full:`Brutal`,
+    rule_tap_mouse:`Sweep the cursor into a jelly and it bounces off it. Clicking works too.`,
+    rule_bomb_mouse:`Never touch a bomb — cursor or click, it goes off. Steer around it and let it fall.`,
+    start_title:`Don't Drop!`, start_sub:`the jellies are falling — keep them in the air`,
+    rule_tap:`Tap a jelly and it bounces. Hit it off-centre to send it sideways.`,
+    rule_floor:`Touch the red line and you lose a life. Out of lives — game over.`,
+    rule_bomb:`Never tap a bomb: it blows up in your hands. Just let it fall.`,
+    rule_bonus:`A star gives points and a life, a snowflake slows time down.`,
+    start_btn:`Start game`, back_home:`← Home`,
+    over_title:`Dropped it!`, over_sub:`the jellies never forgive`,
+    new_record:`🏆 New record!`, score_label:`score`, best_label:`best`, play_again:`Play again`,
+    wave_banner:`Wave {n}`, lost_floor:`💔 Dropped!`, lost_bomb:`💥 That was a bomb!`, slowmo:`Slow-mo`
+  },
+  el: {
+    _title:`Μην το ρίξεις! — αρκέιντ με ζελεδάκια που πέφτουν`,
+    meta_desc:`Χτύπα τα ζελεδάκια που πέφτουν και μην τα αφήσεις να αγγίξουν το πάτωμα. Βόμβες, αστέρια, αργή κίνηση, τρία επίπεδα δυσκολίας και ρεκόρ. Δωρεάν στον browser.`,
+    hud_score:`σκορ`, hud_wave:`κύμα`, hud_best:`ρεκόρ`,
+    diff_easy:`Easy`, diff_med:`Med`, diff_hard:`Hard`,
+    diff_easy_full:`Χαλαρά`, diff_med_full:`Κανονικά`, diff_hard_full:`Σκληρά`,
+    rule_tap_mouse:`Πέρνα τον κέρσορα πάνω στο ζελεδάκι και αναπηδά. Το κλικ δουλεύει επίσης.`,
+    rule_bomb_mouse:`Μην αγγίζεις τη βόμβα ούτε με τον κέρσορα ούτε με κλικ: σκάει. Απόφυγέ την και άσ' την να πέσει.`,
+    start_title:`Μην το ρίξεις!`, start_sub:`τα ζελεδάκια πέφτουν — κράτα τα στον αέρα`,
+    rule_tap:`Χτύπα ένα ζελεδάκι και αναπηδά. Χτύπα το στο πλάι για να το στείλεις δεξιά ή αριστερά.`,
+    rule_floor:`Αν αγγίξει την κόκκινη γραμμή, χάνεις μια ζωή. Χωρίς ζωές, το παιχνίδι τελειώνει.`,
+    rule_bomb:`Μη χτυπάς τη βόμβα: σκάει στα χέρια σου. Άσ' την να πέσει.`,
+    rule_bonus:`Το αστέρι δίνει πόντους και ζωή, η νιφάδα επιβραδύνει τον χρόνο.`,
+    start_btn:`Ξεκίνα`, back_home:`← Αρχική`,
+    over_title:`Το έριξες!`, over_sub:`τα ζελεδάκια δεν συγχωρούν`,
+    new_record:`🏆 Νέο ρεκόρ!`, score_label:`σκορ`, best_label:`ρεκόρ`, play_again:`Ξανά`,
+    wave_banner:`Κύμα {n}`, lost_floor:`💔 Έπεσε!`, lost_bomb:`💥 Ήταν βόμβα!`, slowmo:`Αργή κίνηση`
+  }
+};
+</script>
+<script src="i18n.js" defer></script>
+<script src="sound-toggle.js" defer></script>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+
+  ym(104849796, 'init', {
+    clickmap:true,
+    trackLinks:true,
+    accurateTrackBounce:true,
+    webvisor:true
+  });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+
+<!-- Schema.org -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Не урони!",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web",
+  "url": "https://randomhost.online/dont-drop.html",
+  "description": "Аркада: подбивай падающих желешек тапом и не дай им коснуться пола. Бомбы, звёзды, замедление времени, три уровня сложности и рекорд.",
+  "inLanguage": "ru",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "RUB" },
+  "isPartOf": { "@type": "WebSite", "name": "Рандомайзер Онлайн", "url": "https://randomhost.online" }
+}
+</script>
+</body>
+</html>
