@@ -51,29 +51,45 @@
       display: flex;
       gap: 8px;
     }
-    .equalize-btn{
-      padding: 8px 18px;
-      background: linear-gradient(135deg, rgba(102,126,234,0.8), rgba(118,75,162,0.8));
-      color: #fff;
+    /* кнопки-иконки в шапке участников — как в остальных рандомайзерах */
+    .icon-btn{
+      width: 40px; height: 40px; padding: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.15);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
       border: 2px solid rgba(255,255,255,0.3);
       border-radius: 10px;
+      color: #fff;
       cursor: pointer;
-      font-size: 14px;
-      font-weight: 700;
-      transition: all .3s ease;
-      white-space: nowrap;
+      font-size: 20px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
     }
-    .equalize-btn:hover{
-      background: linear-gradient(135deg, rgba(118,75,162,1), rgba(102,126,234,1));
+    .icon-btn:before{ display: none; }
+    .icon-btn svg{ width: 20px; height: 20px; display: block; transition: all 0.3s ease; }
+    .icon-btn:hover{
+      background: rgba(255,255,255,0.25);
+      border-color: rgba(255,255,255,0.5);
       transform: translateY(-2px);
       box-shadow: 0 6px 16px rgba(0,0,0,0.3);
-      border-color: rgba(255,255,255,0.5);
     }
-    .equalize-btn:active{
-      transform: translateY(0px);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    .icon-btn:hover svg{ filter: drop-shadow(0 0 4px rgba(255,255,255,0.5)); }
+    .icon-btn:active{ transform: translateY(0); box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+    .icon-btn:focus-visible{ outline: 2px solid rgba(255,255,255,0.85); outline-offset: 2px; }
+    .icon-btn:disabled{
+      opacity: 0.4; cursor: not-allowed;
+      background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.15);
+    }
+    .icon-btn:disabled:hover{ transform: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    /* выключённый звук виден сразу */
+    .sound-toggle-btn.muted{
+      background: rgba(255,86,86,0.2);
+      border-color: rgba(255,120,120,0.5);
+      color: #ffc9c9;
+    }
+    .sound-toggle-btn.muted:hover{
+      background: rgba(255,86,86,0.3);
+      border-color: rgba(255,140,140,0.75);
     }
 
     .names-list{
@@ -357,27 +373,81 @@
     }
 
     .jar-container{ position:relative; width:300px; height:400px; margin:0 auto 50px; }
+    /* мягкий свет за банкой — она перестаёт «плавать» в градиенте фона */
+    .jar-container::before{
+      content:''; position:absolute; z-index:-2;
+      left:50%; top:52%; transform:translate(-50%,-50%);
+      width:135%; height:115%; border-radius:50%;
+      background:radial-gradient(ellipse at center,rgba(255,255,255,.18),rgba(255,255,255,0) 65%);
+      pointer-events:none;
+    }
     .jar{
       position:absolute; inset:0; border-radius:20px 20px 60px 60px;
       background:linear-gradient(to bottom,rgba(255,255,255,.1),rgba(255,255,255,.05) 50%,rgba(255,255,255,.1));
       border:3px solid rgba(255,255,255,.3);
       box-shadow:0 0 30px rgba(0,0,0,.2), inset 0 0 20px rgba(255,255,255,.1);
       overflow:hidden; transform-style:preserve-3d;
+      will-change:transform; transition:border-color .3s ease;
     }
-    .jar.shaking{ animation:shake .5s ease-in-out infinite; }
-    @keyframes shake{ 0%,100%{transform:rotate(0)} 25%{transform:rotate(-5deg)} 75%{transform:rotate(5deg)} }
+    /* пока открыт выход — верхняя кромка банки светится */
+    .jar-container.releasing .jar{
+      border-top-color:rgba(255,255,255,.85);
+      box-shadow:0 -6px 26px rgba(255,255,255,.35), 0 0 30px rgba(0,0,0,.2), inset 0 0 20px rgba(255,255,255,.1);
+    }
 
     .ball{
-      position:absolute; width:60px; height:60px; border-radius:50%;
+      position:absolute; left:0; top:0; width:60px; height:60px; border-radius:50%;
       display:flex; align-items:center; justify-content:center; text-align:center;
-      color:#fff; font-weight:300; font-size:8px; line-height:1.1;
+      color:#fff; font-weight:600; font-size:8px; line-height:1.1;
       text-shadow:1px 1px 2px rgba(0,0,0,.5);
-      box-shadow: inset -5px -5px 10px rgba(0,0,0,.3), inset 5px 5px 10px rgba(255,255,255,.3), 2px 2px 5px rgba(0,0,0,.2);
-      user-select:none; padding:8px; will-change:transform,left,top; overflow:hidden; word-break:break-word;
+      box-shadow: inset -6px -7px 12px rgba(0,0,0,.38), inset 6px 6px 12px rgba(255,255,255,.35), 2px 3px 6px rgba(0,0,0,.28);
+      user-select:none; will-change:transform; overflow:hidden; word-break:break-word;
+      transition:filter .35s ease;
     }
-    .ball > div { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
-    .ball.extracting{ animation:extractBall 2s linear forwards; z-index:100; }
-    @keyframes extractBall{ 0%{ transform:scale(1) translateY(0) rotate(0deg); opacity:1; } 100%{ transform:scale(4) translateY(-400px) rotate(1080deg); opacity:0; } }
+    /* «лицо» шара крутится вместе с ним, блик остаётся на месте */
+    .ball > div{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+    .ball-face{ will-change:transform; }
+    .ball-face::before{
+      content:''; position:absolute; inset:8%; border-radius:50%;
+      border-top:1.5px solid rgba(255,255,255,.28);
+      border-bottom:1.5px solid rgba(0,0,0,.18);
+      pointer-events:none;
+    }
+    .ball-label{ position:relative; z-index:1; }
+    .ball.dimmed{ filter:brightness(.5) saturate(.55); }
+    .ball.chosen{
+      z-index:60;
+      box-shadow: inset -6px -7px 12px rgba(0,0,0,.3), inset 6px 6px 12px rgba(255,255,255,.4),
+                  0 0 0 3px rgba(255,255,255,.95), 0 0 26px 10px rgba(255,255,255,.7);
+      animation:chosenGlow .5s ease-in-out infinite alternate;
+    }
+    @keyframes chosenGlow{
+      from{ box-shadow: inset -6px -7px 12px rgba(0,0,0,.3), inset 6px 6px 12px rgba(255,255,255,.4), 0 0 0 3px rgba(255,255,255,.95), 0 0 18px 6px rgba(255,255,255,.55); }
+      to  { box-shadow: inset -6px -7px 12px rgba(0,0,0,.3), inset 6px 6px 12px rgba(255,255,255,.4), 0 0 0 4px rgba(255,255,255,1),   0 0 38px 16px rgba(255,255,255,.85); }
+    }
+
+    /* шар, вылетающий из банки к центру экрана */
+    .flying-ball{
+      position:fixed; z-index:1500; border-radius:50%;
+      display:flex; align-items:center; justify-content:center; text-align:center;
+      color:#fff; font-weight:800; line-height:1.2;
+      text-shadow:2px 2px 6px rgba(0,0,0,.6);
+      box-shadow: inset -8px -9px 16px rgba(0,0,0,.35), inset 8px 8px 16px rgba(255,255,255,.35),
+                  0 0 40px rgba(255,255,255,.75);
+      pointer-events:none; will-change:transform; transform-origin:50% 50%;
+    }
+    .flying-ball > div{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+
+    /* ударная волна в момент приземления */
+    .shockwave{
+      position:fixed; z-index:1400; border-radius:50%; pointer-events:none;
+      transform:translate(-50%,-50%); border:4px solid rgba(255,255,255,.9);
+      animation:shockwave .8s cubic-bezier(.15,.7,.35,1) forwards;
+    }
+    @keyframes shockwave{
+      0%{ opacity:.95; transform:translate(-50%,-50%) scale(.35); border-width:8px; }
+      100%{ opacity:0; transform:translate(-50%,-50%) scale(3.2); border-width:1px; }
+    }
 
     .selected-ball-container{ position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); display:none; z-index:1000; }
     .selected-ball-container.show{ display:block; }
@@ -397,8 +467,15 @@
       85%{ transform:translateY(-8px) scale(0.98) rotate(355deg); }
       100%{ transform:translateY(0) scale(1) rotate(360deg); opacity:1; filter:blur(0); }
     }
-    .selected-ball.pulsing{
-      animation:ballAppear 2s cubic-bezier(0.68, -0.55, 0.265, 1.55), pulse 2.5s ease-in-out 2s infinite;
+    /* шар уже «летит» отдельным элементом — подменяем его в момент приземления */
+    .selected-ball.preland{ animation:none; opacity:0; }
+    .selected-ball.landed{
+      animation:landPop .4s cubic-bezier(.25,.9,.35,1), pulse 2.5s ease-in-out .4s infinite;
+    }
+    /* шар долетает пружиной и почти без скорости — на месте только мягко оседает */
+    @keyframes landPop{
+      0%{ transform:scale(1.05); filter:brightness(1.45); }
+      100%{ transform:scale(1); filter:brightness(1); }
     }
     @keyframes pulse{
       0%,100%{ transform:scale(1) rotate(360deg); box-shadow:0 0 100px rgba(255,255,255,1), 0 0 60px rgba(255,255,255,0.8), inset -20px -20px 40px rgba(0,0,0,.4), inset 20px 20px 40px rgba(255,255,255,.4); }
@@ -455,8 +532,37 @@
       transition: opacity 0.3s ease;
     }
 
-    .result{ margin-top:30px; padding:20px; border-radius:20px; background:rgba(255,255,255,.1); backdrop-filter:blur(10px); min-height:60px; display:flex; align-items:center; justify-content:center; }
-    .result-text{ font-size:28px; color:#fff; font-weight:800; text-shadow:2px 2px 4px rgba(0,0,0,.3); opacity:0; animation:fadeInScale .8s forwards; }
+    /* плашка победителя: появляется только когда есть результат */
+    .winner-card{
+      margin:26px auto 0;
+      display:inline-flex; align-items:center; gap:14px;
+      padding:12px 24px 12px 14px;
+      border-radius:16px;
+      background:rgba(255,255,255,.14);
+      backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+      border:1px solid rgba(255,255,255,.3);
+      box-shadow:0 14px 34px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.3);
+      animation:winnerIn .5s cubic-bezier(.2,1.05,.35,1);
+      max-width:100%;
+    }
+    .winner-card[hidden]{ display:none; }
+    /* кружок в цвете шара, который вышел */
+    .winner-ball{
+      width:46px; height:46px; border-radius:50%; flex:none;
+      box-shadow: inset -4px -5px 10px rgba(0,0,0,.35),
+                  inset 4px 4px 10px rgba(255,255,255,.35),
+                  0 3px 10px rgba(0,0,0,.25);
+    }
+    .winner-info{ text-align:left; min-width:0; }
+    .winner-label{
+      font-size:11px; font-weight:800; letter-spacing:1.6px; text-transform:uppercase;
+      color:#ffd76b; margin-bottom:2px;
+    }
+    .winner-name{
+      font-size:26px; font-weight:800; color:#fff; line-height:1.15;
+      text-shadow:0 2px 6px rgba(0,0,0,.35); word-break:break-word;
+    }
+    @keyframes winnerIn{ from{opacity:0; transform:translateY(14px) scale(.94)} to{opacity:1; transform:none} }
     @keyframes fadeInScale{ from{opacity:0; transform:scale(.5)} to{opacity:1; transform:scale(1)} }
 
     .drumroll-overlay{ position:fixed; inset:0; background:radial-gradient(circle,transparent 0%,rgba(0,0,0,.9) 100%); display:none; z-index:999; pointer-events:none; opacity: 0.5; }
@@ -606,33 +712,27 @@
         background: rgba(255,255,255,0.25);
       }
       .game-container { order: -1; }
-      .jar-container { width: min(92vw, 480px); aspect-ratio: 3 / 4; height: auto; margin: 8px auto 22px; }
+      .jar-container { width: min(92vw, 480px); height: min(54vh, calc(92vw * 1.2)); margin: 8px auto 22px; }
       .jar { border-width: 2px; border-radius: 16px 16px 46px 46px; }
       h1 { font-size: clamp(22px, 6vw, 34px); margin-bottom: 14px; }
       .settings-panel { width: 100%; max-width: 600px; padding: 20px 16px; margin: 0 auto; border-radius: 16px; }
 
+      /* кнопки стали иконками — шапка снова помещается в одну строку */
       .settings-header {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
         margin-bottom: 10px;
       }
 
       .settings-actions {
         display: flex;
-        justify-content: space-between;
-        width: 100%;
-        gap: 0;
-        margin-bottom: 4px;
+        justify-content: flex-end;
+        gap: 8px;
       }
 
-      .settings-actions .equalize-btn {
-        flex: 0 0 70%;
-        max-width: 40%;
-        padding: 10px 0;
-        font-size: 14px;
-        text-align: center;
-      }
+      .icon-btn { width: 36px; height: 36px; }
+      .icon-btn svg { width: 18px; height: 18px; }
 
       .headers-row { padding: 0 2px; }
       .header-name { font-size: 13px; }
@@ -717,7 +817,6 @@
         padding: 10px 14px;
         font-size: 18px;
       }
-      .equalize-btn { padding: 8px 12px; font-size: 13px; }
       .controls { gap: 12px; flex-wrap: wrap; padding: 0 6px; margin-top: 16px; justify-content: center; }
       .controls button { flex: 1 1 180px; min-height: 48px; font-size: 16px; border-radius: 40px; }
 
@@ -726,8 +825,9 @@
 
       /* Растягиваем кнопку "Вытянуть шарик" */
       #drawBtn { flex: 1 1 100%; max-width: 100%; }
-      .result { min-height: 52px; padding: 14px; }
-      .result-text { font-size: clamp(18px, 4.8vw, 24px); }
+      .winner-card { margin-top: 18px; padding: 10px 18px 10px 12px; gap: 12px; }
+      .winner-ball { width: 40px; height: 40px; }
+      .winner-name { font-size: clamp(19px, 5vw, 24px); }
       .selected-ball { width: clamp(160px, 52vw, 220px); height: clamp(160px, 52vw, 220px); font-size: clamp(18px, 4.6vw, 28px); padding: 18px; }
       .countdown { font-size: clamp(56px, 18vw, 120px); }
     }
@@ -796,8 +896,13 @@
       <div class="settings-header">
         <h2 class="settings-title" data-i18n="participants">Участники</h2>
         <div class="settings-actions">
-          <button class="equalize-btn sound-toggle-btn" id="soundToggleBtn"></button>
-          <button class="equalize-btn" id="equalizeBtn" title="Уравнять вероятности" data-i18n="equalize" data-i18n-attr="title:equalize_title">⚖️ Уравнять</button>
+          <button class="icon-btn sound-toggle-btn" id="soundToggleBtn"></button>
+          <button class="icon-btn equalize-btn" id="equalizeBtn" title="Уравнять вероятности" data-i18n-attr="title:equalize_title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="4" y="8" width="16" height="3" rx="1.5" fill="white"/>
+              <rect x="4" y="13" width="16" height="3" rx="1.5" fill="white"/>
+            </svg>
+          </button>
         </div>
       </div>
       <div class="headers-row">
@@ -814,12 +919,18 @@
 
     <div class="game-container">
       <h1 data-i18n="h1">ЛОТОТРОН ЛОТЕРЕЯ</h1>
-      <div class="jar-container"><div class="jar" id="jar"></div></div>
+      <div class="jar-container" id="jarContainer"><div class="jar" id="jar"></div></div>
       <div class="controls">
         <button id="mixBtn" data-i18n="mix_btn">Перемешать</button>
         <button id="drawBtn" data-i18n="draw_btn">Вытянуть шарик</button>
       </div>
-      <div class="result"><div id="resultText"></div></div>
+      <div class="winner-card" id="winnerCard" hidden>
+        <div class="winner-ball" id="winnerBall"></div>
+        <div class="winner-info">
+          <div class="winner-label" data-i18n="winner_label">Победитель</div>
+          <div class="winner-name" id="winnerName"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1392,20 +1503,8 @@ function createNameInputs(){
         return;
       }
       const removedName = names[idx];
-      
-      const bi = ballData.findIndex(b => b.name === removedName);
-      if (bi !== -1) {
-        const b = ballData[bi];
-        b.element.style.transition='transform .3s, opacity .3s';
-        b.element.style.transform='scale(0)'; 
-        b.element.style.opacity='0';
-        setTimeout(()=>{ 
-          b.element.remove(); 
-          ballData.splice(bi,1); 
-          balls.splice(bi,1); 
-        },300);
-      }
 
+      // сам шар уберётся с анимацией внутри syncBalls()
       names.splice(idx,1);
       delete probabilities[removedName];
       delete lockedParticipants[removedName];
@@ -1541,21 +1640,51 @@ const colors = [
 ];
 const getBallColor = i => colors[i % colors.length];
 
-// ===== Геометрия банки / физика =====
-const BALL_R = 30;
-const JAR_BORDER = 3;
-const JAR_BOTTOM_RADIUS = 60;
-const JAR_TOP_RADIUS = 20;
+/* ================== ФИЗИКА ЛОТОТРОНА ==================
+   Единицы: пиксели и секунды. Фиксированный шаг 1/120 c,
+   полуявное интегрирование, импульсный решатель с трением
+   и вращением (шар = диск, I = 0.5*m*r^2).
+   ====================================================== */
+const JAR_BORDER   = 3;
+const BASE_BALL_R  = 30;
 
-const GRAVITY = 1.45;
-const FRICTION = 0.992;
-const RESTITUTION = 0.95;
-const COLLISION_DAMPING = 0.985;
+const FIXED_DT     = 1 / 120;   // шаг симуляции: ровно ложится на 60 и 120 Гц
+const MAX_SUBSTEPS = 6;
+const GRAVITY      = 2600;      // px/s^2
+const AIR_DRAG     = 0.20;      // 1/с — сопротивление воздуха
+const WALL_REST    = 0.56;      // упругость о стекло
+const BALL_REST    = 0.84;      // упругость шар-шар (полый пластик)
+const WALL_MU      = 0.30;      // трение о стекло (даёт качение)
+const BALL_MU      = 0.12;      // трение шар-шар
+const REST_SPEED   = 95;        // ниже — удар без отскока, шар «садится»
+const SPIN_DAMP    = 0.55;      // 1/с
+const MAX_SPEED    = 2900;
+const SLEEP_SPIN   = 0.7;
+const SLEEP_FRAMES = 90;        // подшагов покоя, после которых можно спать
+const SOLVER_ITER  = 2;         // проходов импульсного решателя
+const RELAX_ITER   = 4;         // проходов «расталкивания» (плотная упаковка)
+const SLOP         = 0.4;       // допустимое проникновение — гасит дрожь стопки
+const CORR_RATE    = 0.7;       // доля проникновения, снимаемая за проход
+const CREEP_SPEED  = 14;        // ниже — шар «прилипает» и быстро останавливается
+const ROLL_RES     = 0.055;     // сопротивление качению — шар не катается вечно
+const STILL_STEP   = 0.25;      // перемещение за подшаг, ниже которого шар «стоит»
+const STILL_FRAMES = 50;        // подшагов покоя до полной остановки
+
+// Поток воздуха (перемешивание)
+const JET_FORCE    = 8000;
+const SWIRL_FORCE  = 3400;
+const TURB_FORCE   = 4200;
+const SHAKE_FREQ   = 4.4;       // Гц
+const SHAKE_TILT   = 0.075;     // рад при полной амплитуде
+const SHAKE_FORCE  = 0.45;      // доля переносного ускорения, идущая в шары
 
 const jar = document.getElementById('jar');
+const jarContainer = document.getElementById('jarContainer');
 const mixBtn = document.getElementById('mixBtn');
 const drawBtn = document.getElementById('drawBtn');
-const resultText = document.getElementById('resultText');
+const winnerCard = document.getElementById('winnerCard');
+const winnerBall = document.getElementById('winnerBall');
+const winnerName = document.getElementById('winnerName');
 const drumrollOverlay = document.getElementById('drumrollOverlay');
 const countdown = document.getElementById('countdown');
 const selectedBallContainer = document.getElementById('selectedBallContainer');
@@ -1563,11 +1692,120 @@ const selectedBall = document.getElementById('selectedBall');
 
 let balls = [];
 let ballData = [];
-let mixingIntensity = 0;
 let isDrawing = false;
 let rafId = null;
 
-function getJarSize(){ return { w: jar.clientWidth, h: jar.clientHeight }; }
+let BALL_R = BASE_BALL_R;          // подстраивается под число участников
+let geom = { w: 0, h: 0, rTL: 0, rTR: 0, rBR: 0, rBL: 0, ok: false };
+
+let simTime = 0, lastT = 0, acc = 0, timeScale = 1;
+let airPower = 0, airTarget = 0;
+let suction = null;                 // {ball, t, power} — тяга выхода наверху банки
+let shakeAmp = 0, shakeTarget = 0, shakePhase = 0;
+let idleFrames = 0;
+
+// ---------- геометрия банки (внутренняя область, скруглённые углы) ----------
+function refreshGeom(){
+  const w = jar.clientWidth, h = jar.clientHeight;
+  const cs = getComputedStyle(jar);
+  const bw = parseFloat(cs.borderTopWidth) || JAR_BORDER;
+  const rad = (k) => Math.max(0, (parseFloat(cs[k]) || 0) - bw);
+  const lim = Math.min(w, h) / 2;
+  geom = {
+    w, h,
+    rTL: Math.min(rad('borderTopLeftRadius'),     lim),
+    rTR: Math.min(rad('borderTopRightRadius'),    lim),
+    rBR: Math.min(rad('borderBottomRightRadius'), lim),
+    rBL: Math.min(rad('borderBottomLeftRadius'),  lim),
+    ok: w > 40 && h > 40
+  };
+  return geom.ok;
+}
+
+// радиус шара подбираем так, чтобы шары всегда помещались в банку
+function fitBallRadius(n){
+  if (!geom.ok) return BASE_BALL_R;
+  const area = geom.w * geom.h;
+  const r = Math.sqrt((area * 0.42) / (Math.max(1, n) * Math.PI));
+  return Math.max(11, Math.min(BASE_BALL_R, r));
+}
+
+function cornerAt(x, y, g){
+  if (x < g.rTL          && y < g.rTL)          return { cx: g.rTL,       cy: g.rTL,       rad: g.rTL };
+  if (x > g.w - g.rTR    && y < g.rTR)          return { cx: g.w - g.rTR, cy: g.rTR,       rad: g.rTR };
+  if (x > g.w - g.rBR    && y > g.h - g.rBR)    return { cx: g.w - g.rBR, cy: g.h - g.rBR, rad: g.rBR };
+  if (x < g.rBL          && y > g.h - g.rBL)    return { cx: g.rBL,       cy: g.h - g.rBL, rad: g.rBL };
+  return null;
+}
+
+// ---------- звук ----------
+let noiseBuf = null;
+function getNoiseBuffer(sec){
+  if (!noiseBuf){
+    const len = Math.floor(audioCtx.sampleRate * (sec || 1.5));
+    noiseBuf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+    const ch = noiseBuf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
+  }
+  return noiseBuf;
+}
+function playSweep(f0, f1, dur, vol, type){
+  if (audioCtx.state !== 'running') return;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  const t = audioCtx.currentTime;
+  o.type = type || 'sawtooth';
+  o.frequency.setValueAtTime(Math.max(20, f0), t);
+  o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.3);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(t); o.stop(t + dur + 0.03);
+}
+let lastClickAt = 0, clicksThisFrame = 0;
+function playClick(strength, deep){
+  if (audioCtx.state !== 'running') return;
+  const now = performance.now();
+  if (clicksThisFrame >= 2 || now - lastClickAt < 22) return;
+  const v = Math.min(0.2, strength * 0.2);
+  if (v < 0.012) return;
+  clicksThisFrame++; lastClickAt = now;
+  const src = audioCtx.createBufferSource(); src.buffer = getNoiseBuffer();
+  src.playbackRate.value = 1 + Math.random() * 0.4;
+  const bp = audioCtx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = (deep ? 380 : 950) * (0.8 + Math.random() * 0.5);
+  bp.Q.value = 5;
+  const g = audioCtx.createGain();
+  const t = audioCtx.currentTime;
+  g.gain.setValueAtTime(v, t);
+  g.gain.exponentialRampToValueAtTime(0.0005, t + (deep ? 0.09 : 0.05));
+  src.connect(bp); bp.connect(g); g.connect(audioCtx.destination);
+  src.start(t); src.stop(t + 0.12);
+}
+// непрерывный шум воздуходувки
+let airNode = null, airSoundTick = 0;
+function ensureAirNoise(){
+  if (airNode || audioCtx.state !== 'running') return;
+  try{
+    const src = audioCtx.createBufferSource();
+    src.buffer = getNoiseBuffer(); src.loop = true;
+    const lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 600;
+    const g = audioCtx.createGain(); g.gain.value = 0;
+    src.connect(lp); lp.connect(g); g.connect(audioCtx.destination);
+    src.start();
+    airNode = { gain: g, filter: lp };
+  }catch(e){}
+}
+function updateAirNoise(){
+  if (!airNode) return;
+  if (++airSoundTick % 6) return;
+  const t = audioCtx.currentTime;
+  try{
+    airNode.gain.gain.setTargetAtTime(Math.min(0.12, airPower * 0.1), t, 0.12);
+    airNode.filter.frequency.setTargetAtTime(420 + airPower * 1500, t, 0.2);
+  }catch(e){}
+}
 
 function createCelebrationEmojis(){
   const emojis = ['🎉','🎊','🏆','⭐','✨','🎯','🔥','💫','🌟','👏','🙌','🎈','🎆','💥'];
@@ -1622,296 +1860,755 @@ function createConfetti(){
   }
 }
 
-// Расположение на дне банки (скруглённом)
-function placeOnFloorRounded(existing){
-  const { w, h } = getJarSize();
-  const VISUAL_PADDING = 1;
-  const R = JAR_BOTTOM_RADIUS - JAR_BORDER - VISUAL_PADDING;
-  const minX = JAR_BORDER + BALL_R + VISUAL_PADDING;
-  const maxX = w - JAR_BORDER - BALL_R - VISUAL_PADDING;
-  const flatLeftEdge  = JAR_BORDER + R + VISUAL_PADDING;
-  const flatRightEdge = w - JAR_BORDER - R - VISUAL_PADDING;
-  const flatY = h - JAR_BORDER - BALL_R - VISUAL_PADDING;
-
-  let cx = minX + Math.random() * (maxX - minX);
-  let cy;
-
-  if (cx >= flatLeftEdge && cx <= flatRightEdge){
-    cy = flatY;
-  } else {
-    const Cx = (cx < flatLeftEdge) ? (JAR_BORDER + R + VISUAL_PADDING) : (w - JAR_BORDER - R - VISUAL_PADDING);
-    const Cy = h - JAR_BORDER - R - VISUAL_PADDING;
-    const vdx = cx - Cx, vdy = flatY - Cy;
-    const dist = Math.hypot(vdx, vdy) || 1;
-    const need = (R - BALL_R - VISUAL_PADDING);
-    cx = Cx + vdx * (need / dist);
-    cy = Cy + vdy * (need / dist);
-  }
-
-  let guard = 0;
-  while (guard++ < 700){
-    let overlap = false;
-    for (const p of existing){
-      const pcx = p.x + BALL_R, pcy = p.y + BALL_R;
-      if (Math.hypot(cx - pcx, cy - pcy) < BALL_R*2){ overlap = true; break; }
-    }
-    if (!overlap) break;
-    cy -= 2;
-  }
-  return { x: cx - BALL_R, y: cy - BALL_R };
+// ---------- создание/синхронизация шаров ----------
+function makeBallElement(name, i, r){
+  const el = document.createElement('div');
+  el.className = 'ball';
+  el.style.background = getBallColor(i);
+  el.style.width = el.style.height = (r * 2) + 'px';
+  el.style.padding = (r * 0.27).toFixed(1) + 'px';
+  const face = document.createElement('div');
+  face.className = 'ball-face';
+  const inner = document.createElement('div');
+  inner.className = 'ball-label';
+  inner.textContent = name;
+  face.appendChild(inner);
+  el.appendChild(face);
+  applyLabelSize(el, name, r);
+  return el;
+}
+function applyLabelSize(el, name, r){
+  const base = name.length > 10 ? 8 : name.length > 8 ? 9 : name.length > 6 ? 9.5 : 11;
+  el.style.fontSize = Math.max(6, base * (r / BASE_BALL_R)).toFixed(1) + 'px';
 }
 
-// Отражения / столкновения
-function reflectInJar(d){
-  const { w, h } = getJarSize();
-  const cx = d.x + BALL_R, cy = d.y + BALL_R;
-  const VISUAL_PADDING = 1;
-  const minX = JAR_BORDER + BALL_R + VISUAL_PADDING;
-  const maxX = w - JAR_BORDER - BALL_R - VISUAL_PADDING;
-  const topY = JAR_BORDER + BALL_R + (JAR_TOP_RADIUS ? (JAR_TOP_RADIUS - BALL_R) : 0) + VISUAL_PADDING;
-  const flatY = h - JAR_BORDER - BALL_R - VISUAL_PADDING;
-  const R = JAR_BOTTOM_RADIUS - JAR_BORDER - VISUAL_PADDING;
-  const leftCx  = JAR_BORDER + R + VISUAL_PADDING;
-  const rightCx = w - JAR_BORDER - R - VISUAL_PADDING;
-  const cornerRadius = R - BALL_R - VISUAL_PADDING;
-
-  if (cx < minX){ d.x = minX - BALL_R; d.vx = -d.vx * RESTITUTION; d.vy *= RESTITUTION; }
-  if (cx > maxX){ d.x = maxX - BALL_R; d.vx = -d.vx * RESTITUTION; d.vy *= RESTITUTION; }
-  if (cy < topY){ d.y = topY - BALL_R; d.vy = -d.vy * RESTITUTION; d.vx *= RESTITUTION; }
-
-  if (cx >= leftCx && cx <= rightCx){
-    if (cy > flatY){ d.y = flatY - BALL_R; d.vy = -d.vy * RESTITUTION; d.vx *= RESTITUTION; }
-    return;
+// точки появления: сетка сверху вниз, без наложений
+function spawnGrid(n, r){
+  const g = geom, out = [];
+  const step = r * 2 + 3;
+  const pad = r + 2;
+  const usable = Math.max(step, g.w - pad * 2);
+  const cols = Math.max(1, Math.floor(usable / step) + 1);
+  const x0 = Math.max(pad, (g.w - (cols - 1) * step) / 2);
+  for (let i = 0; i < n; i++){
+    const col = i % cols, row = Math.floor(i / cols);
+    out.push({
+      x: Math.min(g.w - pad, Math.max(pad, x0 + col * step + (Math.random() - 0.5) * 4)),
+      y: Math.min(g.h - pad, pad + 4 + row * step)
+    });
   }
-
-  const Cx = (cx < leftCx) ? leftCx : rightCx;
-  const Cy = h - JAR_BORDER - R - VISUAL_PADDING;
-  const vx = cx - Cx, vy = cy - Cy;
-  const dist = Math.hypot(vx, vy);
-
-  if (dist > cornerRadius){
-    const nx = vx / (dist || 1), ny = vy / (dist || 1);
-    const projX = Cx + nx * cornerRadius, projY = Cy + ny * cornerRadius;
-    d.x = projX - BALL_R; d.y = projY - BALL_R;
-    const dot = d.vx * nx + d.vy * ny;
-    d.vx -= 2 * dot * nx; d.vy -= 2 * dot * ny;
-    d.vx *= 0.98; d.vy *= RESTITUTION;
-    const tx = -ny, ty = nx;
-    const tang = d.vx * tx + d.vy * ty;
-    d.vx -= tx * tang * 0.08;
-    d.vy -= ty * tang * 0.08;
-  }
-}
-function checkCollision(a,b){
-  const dx=(a.x+BALL_R)-(b.x+BALL_R), dy=(a.y+BALL_R)-(b.y+BALL_R);
-  return Math.hypot(dx,dy) < (a.radius + b.radius);
-}
-function resolveCollision(a,b){
-  const dx=(b.x+BALL_R)-(a.x+BALL_R), dy=(b.y+BALL_R)-(a.y+BALL_R);
-  const dist=Math.hypot(dx,dy); if(dist<1e-6) return;
-  const nx=dx/dist, ny=dy/dist;
-  const dvx=b.vx - a.vx, dvy=b.vy - a.vy;
-  const dvn=dvx*nx + dvy*ny; if(dvn>0) return;
-  const impulse=(2*dvn)/(a.mass + b.mass);
-  a.vx += impulse*b.mass*nx*COLLISION_DAMPING;
-  a.vy += impulse*b.mass*ny*COLLISION_DAMPING;
-  b.vx -= impulse*a.mass*nx*COLLISION_DAMPING;
-  b.vy -= impulse*a.mass*ny*COLLISION_DAMPING;
-  const overlap=(a.radius + b.radius) - dist;
-  if(overlap>0){ const c=overlap*0.5; a.x-=nx*c; a.y-=ny*c; b.x+=nx*c; b.y+=ny*c; }
+  return out;
 }
 
-// Модель шаров
+function makeBall(name, i, pos, r){
+  const el = makeBallElement(name, i, r);
+  jar.appendChild(el);
+  const m = (r / BASE_BALL_R) * (r / BASE_BALL_R);
+  return {
+    element: el, face: el.firstChild, name, color: getBallColor(i),
+    x: pos.x, y: pos.y, vx: (Math.random() - 0.5) * 40, vy: 40 + Math.random() * 60,
+    a: 0, w: (Math.random() - 0.5) * 4, seed: Math.random() * 6.283,
+    r, m, I: 0.5 * m * r * r,
+    kin: false, out: false, hit: 0, contact: 0, still: 0, px: pos.x, py: pos.y, pa: 0
+  };
+}
+
 function initBalls(){
-  jar.innerHTML=''; balls=[]; ballData=[];
-  names.forEach((name,i)=>{
-    const el=document.createElement('div');
-    el.className='ball';
-    el.style.background=getBallColor(i);
-    const fs = name.length>10?8:name.length>8?10:name.length>6?9:10;
-    el.style.fontSize=fs+'px';
-    const inner=document.createElement('div'); inner.textContent=name; el.appendChild(inner);
-    const pos=placeOnFloorRounded(ballData);
-    el.style.left=pos.x+'px'; el.style.top=pos.y+'px';
-    jar.appendChild(el); balls.push(el);
-    ballData.push({ element:el, x:pos.x, y:pos.y, vx:0, vy:0, radius:BALL_R, mass:1, name, color:getBallColor(i) });
+  refreshGeom();
+  jar.innerHTML = ''; balls = []; ballData = [];
+  BALL_R = fitBallRadius(names.length);
+  if (!geom.ok) return;                       // раскладка ещё не готова — ждём ResizeObserver
+  const grid = spawnGrid(names.length, BALL_R);
+  names.forEach((name, i) => {
+    const d = makeBall(name, i, grid[i], BALL_R);
+    ballData.push(d); balls.push(d.element);
   });
-  void jar.offsetHeight;
+  render();
+  wake();
 }
 
-function addBallFor(name){
-  const i = names.indexOf(name);
-  if (i < 0) return;
-  const el=document.createElement('div');
-  el.className='ball';
-  el.style.background=getBallColor(i);
-  const fs = name.length>10?8:name.length>8?10:name.length>6?9:10;
-  el.style.fontSize=fs+'px';
-  const inner=document.createElement('div'); inner.textContent=name; el.appendChild(inner);
-  const pos=placeOnFloorRounded(ballData);
-  el.style.left=pos.x+'px'; el.style.top=pos.y+'px';
-  jar.appendChild(el); balls.push(el);
-  ballData.push({ element:el, x:pos.x, y:pos.y, vx:0, vy:-2-Math.random()*2, radius:BALL_R, mass:1, name, color:getBallColor(i) });
+// мягкая синхронизация: сохраняем позиции уже летающих шаров
+function syncBalls(){
+  if (!geom.ok || !ballData.length){ initBalls(); return; }
+  const newR = fitBallRadius(names.length);
+  const pool = ballData.slice();
+  const next = [];
+  const taken = new Array(pool.length).fill(false);
+
+  names.forEach((name) => {
+    const i = pool.findIndex((d, k) => !taken[k] && d.name === name && !d.out);
+    if (i >= 0){ taken[i] = true; next.push(pool[i]); } else next.push(null);
+  });
+  // оставшиеся элементы переиспользуем под новые имена (переименование)
+  names.forEach((name, idx) => {
+    if (next[idx]) return;
+    const i = pool.findIndex((d, k) => !taken[k] && !d.out);
+    if (i >= 0){ taken[i] = true; next[idx] = pool[i]; }
+  });
+  // лишние шары — убираем с анимацией
+  pool.forEach((d, k) => {
+    if (taken[k] || d.out) return;
+    const el = d.element;
+    el.style.transition = 'transform .3s ease, opacity .3s ease';
+    el.style.transform = `translate3d(${(d.x - d.r).toFixed(1)}px, ${(d.y - d.r).toFixed(1)}px, 0) scale(0)`;
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 320);
+  });
+
+  const spawn = spawnGrid(names.length, newR);
+  ballData = names.map((name, idx) => {
+    let d = next[idx];
+    if (!d){
+      d = makeBall(name, idx, { x: spawn[0].x + (Math.random() - 0.5) * 20, y: newR + 4 }, newR);
+      d.vy = 120;
+    } else {
+      d.name = name;
+      d.color = getBallColor(idx);
+      d.element.style.background = d.color;
+      const label = d.element.querySelector('.ball-label');
+      if (label) label.textContent = name;
+      applyLabelSize(d.element, name, newR);
+      setBallRadius(d, newR);
+    }
+    return d;
+  });
+  BALL_R = newR;
+  balls = ballData.map(d => d.element);
+  wake();
+}
+
+function setBallRadius(d, r){
+  if (Math.abs(d.r - r) < 0.01) return;
+  d.r = r; d.m = (r / BASE_BALL_R) * (r / BASE_BALL_R); d.I = 0.5 * d.m * r * r;
+  d.element.style.width = d.element.style.height = (r * 2) + 'px';
+  d.element.style.padding = (r * 0.27).toFixed(1) + 'px';
+  applyLabelSize(d.element, d.name, r);
 }
 
 function updateBalls(){
-  const valid = names.map(s=>s.trim()).filter(Boolean);
-  if(!valid.length) return;
+  const valid = names.map(s => s.trim()).filter(Boolean);
+  if (!valid.length) return;
   names = valid; saveNames();
-  initBalls();
-  requestAnimationFrame(()=> {
-    ballData.forEach(d=>{ d.vy = -1.5 - Math.random()*1; d.vx = (Math.random()-0.5)*1; });
-    startPhysics();
-  });
+  syncBalls();
+}
+function addBallFor(){ syncBalls(); }
+
+// ---------- решатель ----------
+function wallImpulse(d, nx, ny, depth){
+  d.contact = 1;
+  const corr = Math.max(depth - SLOP, 0) * CORR_RATE;
+  d.x += nx * corr; d.y += ny * corr;
+  const vn = d.vx * nx + d.vy * ny;
+  const tx = -ny, ty = nx;
+  let jn = 0;
+  if (vn < 0){
+    const e = (-vn > REST_SPEED) ? WALL_REST : 0;
+    jn = -(1 + e) * vn * d.m;
+    d.vx += (jn / d.m) * nx;
+    d.vy += (jn / d.m) * ny;
+    if (-vn > 150) d.hit = Math.max(d.hit, -vn * 0.8);
+  }
+  // трение → закрутка/качение
+  const vc = (d.vx * tx + d.vy * ty) - d.w * d.r;
+  const invEff = 1 / d.m + (d.r * d.r) / d.I;
+  let jt = -vc / invEff;
+  const lim = WALL_MU * Math.max(jn, d.m * GRAVITY * FIXED_DT);
+  if (jt >  lim) jt =  lim;
+  if (jt < -lim) jt = -lim;
+  d.vx += (jt / d.m) * tx;
+  d.vy += (jt / d.m) * ty;
+  d.w  += -(d.r * jt) / d.I;
+
+  // сопротивление качению: без него шар катается по дну бесконечно
+  const vtNow = d.vx * tx + d.vy * ty;
+  if (vtNow){
+    const dec = Math.min(Math.abs(vtNow), ROLL_RES * Math.max(jn, d.m * GRAVITY * FIXED_DT) / d.m);
+    const sgn = vtNow > 0 ? 1 : -1;
+    d.vx -= sgn * dec * tx;
+    d.vy -= sgn * dec * ty;
+  }
+  d.w *= 0.985;
 }
 
-// Физический цикл
-function step(){
-  for (const d of ballData){
-    if (d.element.style.display==='none') continue;
-    if (mixingIntensity > 0 || Math.abs(d.vx)>0.1 || Math.abs(d.vy)>0.1) d.vy += GRAVITY;
-
-    if (mixingIntensity>0){
-      const rf = mixingIntensity*1.2;
-      d.vx += (Math.random()-0.5)*rf;
-      d.vy += (Math.random()-0.5)*rf*0.7;
+function collideWalls(d){
+  const g = geom, r = d.r;
+  const c = cornerAt(d.x, d.y, g);
+  if (c && c.rad > r){
+    const dx = d.x - c.cx, dy = d.y - c.cy;
+    const dist = Math.hypot(dx, dy);
+    const lim = c.rad - r;
+    if (dist > lim){
+      const inv = 1 / (dist || 1);
+      wallImpulse(d, -dx * inv, -dy * inv, dist - lim);
     }
+    return;
+  }
+  if (d.x < r)           wallImpulse(d,  1,  0, r - d.x);
+  if (d.x > g.w - r)     wallImpulse(d, -1,  0, d.x - (g.w - r));
+  if (d.y < r)           wallImpulse(d,  0,  1, r - d.y);
+  if (d.y > g.h - r)     wallImpulse(d,  0, -1, d.y - (g.h - r));
+}
 
-    if (mixingIntensity > 0.5){ d.vx *= FRICTION; d.vy *= FRICTION; }
-    else if (mixingIntensity > 0){ d.vx *= 0.96; d.vy *= 0.96; }
-    else { d.vx *= 0.88; d.vy *= 0.88; if (Math.abs(d.vx)<0.02) d.vx=0; if (Math.abs(d.vy)<0.02) d.vy=0; }
+function clampInside(d){
+  const g = geom, r = d.r;
+  const c = cornerAt(d.x, d.y, g);
+  if (c && c.rad > r){
+    const dx = d.x - c.cx, dy = d.y - c.cy;
+    const dist = Math.hypot(dx, dy), lim = c.rad - r;
+    if (dist > lim){ const k = lim / (dist || 1); d.x = c.cx + dx * k; d.y = c.cy + dy * k; }
+    return;
+  }
+  d.x = Math.min(Math.max(d.x, r), Math.max(r, g.w - r));
+  d.y = Math.min(Math.max(d.y, r), Math.max(r, g.h - r));
+}
 
-    d.x += d.vx; d.y += d.vy; reflectInJar(d);
+function collidePair(a, b){
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const rsum = a.r + b.r;
+  let dist = Math.hypot(dx, dy);
+  if (dist >= rsum) return;
+  if (dist < 1e-4){ a.x -= 0.5; b.x += 0.5; dist = 1; }
+  const nx = dx / dist, ny = dy / dist;
+  a.contact = 1; b.contact = 1;
+  const ima = a.kin ? 0 : 1 / a.m, imb = b.kin ? 0 : 1 / b.m;
+  const isum = ima + imb;
+  if (isum <= 0) return;
+
+  const corr = Math.max(rsum - dist - SLOP, 0) * CORR_RATE;
+  a.x -= nx * corr * (ima / isum); a.y -= ny * corr * (ima / isum);
+  b.x += nx * corr * (imb / isum); b.y += ny * corr * (imb / isum);
+
+  const rvx = b.vx - a.vx, rvy = b.vy - a.vy;
+  const vn = rvx * nx + rvy * ny;
+  let jn = 0;
+  if (vn < 0){
+    // На покое слабые удары гасим (иначе стопка дрожит), но при продувке
+    // оставляем упругость — иначе плотная куча съедает всю энергию потока.
+    const e = (-vn > REST_SPEED) ? BALL_REST : (airPower > 0.3 ? 0.42 : 0.12);
+    jn = -(1 + e) * vn / isum;
+    a.vx -= jn * nx * ima; a.vy -= jn * ny * ima;
+    b.vx += jn * nx * imb; b.vy += jn * ny * imb;
+    if (-vn > 130){
+      const s = -vn * 0.9;
+      a.hit = Math.max(a.hit, s); b.hit = Math.max(b.hit, s);
+    }
+  }
+  const tx = -ny, ty = nx;
+  const vt = (rvx * tx + rvy * ty) - (a.w * a.r + b.w * b.r);
+  const invEff = isum + (a.kin ? 0 : (a.r * a.r) / a.I) + (b.kin ? 0 : (b.r * b.r) / b.I);
+  let jt = -vt / invEff;
+  const lim = BALL_MU * Math.max(jn, 0);
+  if (jt >  lim) jt =  lim;
+  if (jt < -lim) jt = -lim;
+  a.vx -= jt * tx * ima; a.vy -= jt * ty * ima;
+  b.vx += jt * tx * imb; b.vy += jt * ty * imb;
+  if (!a.kin) a.w += -(a.r * jt) / a.I;
+  if (!b.kin) b.w += -(b.r * jt) / b.I;
+}
+
+function separatePair(a, b){
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const rsum = a.r + b.r;
+  const dist = Math.hypot(dx, dy);
+  if (dist >= rsum || dist < 1e-6) return;
+  const ima = a.kin ? 0 : 1, imb = b.kin ? 0 : 1;
+  const isum = ima + imb; if (!isum) return;
+  const c = Math.max(rsum - dist - SLOP * 0.5, 0) * 0.85 / dist;
+  a.x -= dx * c * (ima / isum); a.y -= dy * c * (ima / isum);
+  b.x += dx * c * (imb / isum); b.y += dy * c * (imb / isum);
+}
+
+// ---------- шаг симуляции ----------
+function physicsStep(dt){
+  simTime += dt;
+  if (suction){
+    suction.t += dt;
+    // тяга нарастает: сперва шар только приподнимается и мечется у стенок,
+    // и лишь потом тяга его пересиливает — так вылет дольше и драматичнее
+    suction.power = Math.min(16000, 1100 + suction.t * suction.t * 2600);
   }
 
-  for(let i=0;i<ballData.length;i++){
-    if (ballData[i].element.style.display==='none') continue;
-    for(let j=i+1;j<ballData.length;j++){
-      if (ballData[j].element.style.display==='none') continue;
-      if (checkCollision(ballData[i], ballData[j])) resolveCollision(ballData[i], ballData[j]);
-    }
-  }
+  // тряска банки: наклон + переносное ускорение
+  shakeAmp += (shakeTarget - shakeAmp) * Math.min(1, dt * 6);
+  airPower += (airTarget - airPower) * Math.min(1, dt * (airTarget > airPower ? 9 : 2.2));
+  if (shakeAmp > 0.01) shakePhase += dt * SHAKE_FREQ * Math.PI * 2;
+  const tilt = Math.sin(shakePhase * 0.72) * SHAKE_TILT * (shakeAmp / 16);
+  const gx = Math.sin(tilt) * GRAVITY;
+  const gy = Math.cos(tilt) * GRAVITY;
+  const wsq = Math.pow(SHAKE_FREQ * Math.PI * 2, 2) * SHAKE_FORCE;
+  const px = -shakeAmp * wsq * Math.sin(shakePhase);
+  const py = -shakeAmp * 0.55 * wsq * Math.sin(shakePhase * 1.37 + 1.1);
 
-  for(let k=0;k<2;k++){
-    for(let i=0;i<ballData.length;i++){
-      for(let j=i+1;j<ballData.length;j++){
-        const a=ballData[i], b=ballData[j];
-        const dx=(b.x+BALL_R)-(a.x+BALL_R), dy=(b.y+BALL_R)-(a.y+BALL_R);
-        const dist=Math.hypot(dx,dy); 
-        const overlap=(a.radius+b.radius)-dist;
-        if (overlap>0){
-          const nx=dx/(dist||1), ny=dy/(dist||1), c=overlap*0.5;
-          a.x-=nx*c; a.y-=ny*c; 
-          b.x+=nx*c; b.y+=ny*c;
+  const list = ballData;
+  for (const d of list){
+    if (d.out) continue;
+    if (d.kin){ d.a += d.w * dt; continue; }
+    d.px = d.x; d.py = d.y; d.pa = d.a;
+    d.vx += (gx + px) * dt;
+    d.vy += (gy + py) * dt;
+
+    if (airPower > 0.002){
+      const nx = (d.x - geom.w / 2) / (geom.w / 2 || 1);
+      const up = 1 - Math.min(1, (geom.h - d.y) / (geom.h || 1)) * 0.82;  // у дна поток сильнее
+      d.vy -= JET_FORCE * airPower * up * (1 - Math.abs(nx) * 0.3) * dt;
+      d.vx += SWIRL_FORCE * airPower * Math.sin(simTime * 2.3 + d.y * 0.02) * dt;
+      d.vx += TURB_FORCE * airPower * Math.sin(simTime * 4.6 + d.seed) * dt;
+      d.vy += TURB_FORCE * airPower * Math.sin(simTime * 3.9 + d.seed * 2.1) * 0.8 * dt;
+    }
+
+    // Тяга выхода: выбранный шар тянет к верху банки, остальные сдувает
+    // от него вниз. Путь шара наверх целиком считает физика — он
+    // протискивается через остальные шары и бьётся о стенки.
+    if (suction){
+      const mx = geom.w / 2, my = -geom.h * 0.06;
+      if (d === suction.ball){
+        const ddx = mx - d.x, ddy = my - d.y;
+        const dist = Math.hypot(ddx, ddy) || 1;
+        d.vx += (ddx / dist) * suction.power * dt;
+        d.vy += (ddy / dist) * suction.power * dt;
+        d.vx += Math.sin(simTime * 6.3 + d.seed) * 1200 * dt;   // шар рыскает, а не летит по струне
+        d.vx *= Math.exp(-1.2 * dt);
+        d.w  += (Math.random() - 0.5) * 40 * dt;
+      } else {
+        const ddx = d.x - mx, ddy = d.y - my;
+        const dist = Math.hypot(ddx, ddy) || 1;
+        if (dist < geom.w * 0.7){
+          d.vx += (ddx / dist) * 1100 * dt;
+          d.vy += 900 * dt;
         }
       }
     }
+
+    const k = Math.exp(-AIR_DRAG * (1 + airPower * 2.5) * dt);
+    d.vx *= k; d.vy *= k;
+    d.w  *= Math.exp(-SPIN_DAMP * dt);
+
+    const sp = Math.hypot(d.vx, d.vy);
+    const cap = Math.min(MAX_SPEED, d.r * 0.8 / FIXED_DT);   // не больше 0.8r за подшаг
+    if (sp > cap){ const s = cap / sp; d.vx *= s; d.vy *= s; }
+
+    d.x += d.vx * dt; d.y += d.vy * dt; d.a += d.w * dt;
   }
 
-  for (const d of ballData){
-    if (d.element.style.display!=='none'){
-      d.element.style.left = d.x+'px';
-      d.element.style.top  = d.y+'px';
+  const dense = list.length > 8;
+  const solverIter = dense ? SOLVER_ITER + 1 : SOLVER_ITER;
+  const relaxIter  = dense ? RELAX_ITER + 2 : RELAX_ITER;
+  for (let it = 0; it < solverIter; it++){
+    for (let i = 0; i < list.length; i++){
+      if (list[i].out) continue;
+      for (let j = i + 1; j < list.length; j++){
+        if (list[j].out) continue;
+        collidePair(list[i], list[j]);
+      }
     }
+    for (const d of list){ if (!d.out && !d.kin) collideWalls(d); }
   }
 
-  if (mixingIntensity>0) mixingIntensity = Math.max(0, mixingIntensity - 0.02);
-  rafId = requestAnimationFrame(step);
+  // Шар, который фактически не двигается (зажат в стопке), гасим по перемещению,
+  // а не по скорости: иначе внутри плотной кучи навсегда остаётся «фантомная»
+  // скорость, стопка подрагивает и симуляция никогда не засыпает.
+  // плотная упаковка: чистое расталкивание без импульсов
+  for (let it = 0; it < relaxIter; it++){
+    for (let i = 0; i < list.length; i++){
+      if (list[i].out) continue;
+      for (let j = i + 1; j < list.length; j++){
+        if (list[j].out) continue;
+        separatePair(list[i], list[j]);
+      }
+    }
+    for (const d of list){ if (!d.out && !d.kin) clampInside(d); }
+  }
+  // Считаем шар остановившимся по реальному перемещению, а не по скорости:
+  // внутри плотной стопки решатель не успевает погасить скорость за отведённые
+  // итерации, и в зажатом шаре остаётся «фантомная» скорость. Из-за неё стопка
+  // вечно подрагивает, а симуляция никогда не засыпает.
+  const quiet = airPower < 0.05 && shakeAmp < 0.5;
+  for (const d of list){
+    if (d.out || d.kin) continue;
+    d.contact = 0;
+    if (Math.hypot(d.x - d.px, d.y - d.py) > STILL_STEP) d.still = 0; else d.still++;
+    if (!quiet) continue;
+    if (d.still > STILL_FRAMES){ d.vx = 0; d.vy = 0; d.w *= 0.85; }
+    else if (Math.hypot(d.vx, d.vy) < CREEP_SPEED){ d.vx *= 0.9; d.vy *= 0.9; d.w *= 0.9; }
+  }
 }
-function startPhysics(){ if (rafId) return; rafId = requestAnimationFrame(step); }
-function stopPhysics(){ if (!rafId) return; cancelAnimationFrame(rafId); rafId=null; }
-function addMixingForce(intensity){
-  mixingIntensity = Math.min(15, mixingIntensity + intensity);
-  ballData.forEach(d=>{
-    if (d.element.style.display==='none') return;
-    for(let k=0;k<4;k++){
-      const ang=Math.random()*Math.PI*2;
-      const force=intensity*(1.2+Math.random()*1.5);
-      d.vx += Math.cos(ang)*force*1.3;
-      d.vy += Math.sin(ang)*force*1.0 - intensity*0.4;
+
+// ---------- отрисовка ----------
+// Рисуем не «сырое» состояние симуляции, а интерполяцию между двумя последними
+// подшагами. Иначе на кадр то попадает два подшага, то один (частота экрана не
+// кратна шагу), и движение выглядит рваным, хотя физика считается верно.
+function render(){
+  const alpha = Math.min(1, acc / FIXED_DT);
+  for (const d of ballData){
+    if (d.out) continue;
+    // угол шара никак не подкручиваем: как лёг, так и лежит — как настоящий
+    const x = d.kin ? d.x : d.px + (d.x - d.px) * alpha;
+    const y = d.kin ? d.y : d.py + (d.y - d.py) * alpha;
+    const a = d.kin ? d.a : d.pa + (d.a - d.pa) * alpha;
+    d.element.style.transform =
+      `translate3d(${(x - d.r).toFixed(2)}px, ${(y - d.r).toFixed(2)}px, 0)`;
+    d.face.style.transform = `rotate(${a.toFixed(3)}rad)`;
+  }
+}
+
+function updateJarVisual(){
+  if (shakeAmp < 0.05){
+    if (jar.style.transform) jar.style.transform = '';
+    return;
+  }
+  const dx = shakeAmp * Math.sin(shakePhase);
+  const dy = shakeAmp * 0.5 * Math.sin(shakePhase * 1.37 + 1.1);
+  const rot = Math.sin(shakePhase * 0.72) * SHAKE_TILT * (shakeAmp / 16) * (180 / Math.PI);
+  jar.style.transform = `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px) rotate(${rot.toFixed(2)}deg)`;
+}
+
+function playImpacts(){
+  clicksThisFrame = 0;
+  for (const d of ballData){
+    if (d.hit > 0){
+      playClick(Math.min(1, d.hit / 900), d.r > BASE_BALL_R * 0.7);
+      d.hit = 0;
     }
+  }
+}
+
+function isAsleep(){
+  if (airPower > 0.01 || shakeAmp > 0.05 || isDrawing) return false;
+  for (const d of ballData){
+    if (d.out || d.kin) continue;
+    if (d.still < SLEEP_FRAMES || Math.abs(d.w) > SLEEP_SPIN) return false;
+  }
+  return true;
+}
+
+function frame(ts){
+  rafId = requestAnimationFrame(frame);
+  if (!lastT) lastT = ts;
+  let dt = (ts - lastT) / 1000;
+  lastT = ts;
+  if (dt > 0.1) dt = 0.1;
+
+  if (geom.ok){
+    acc += dt * timeScale;
+    let n = 0;
+    while (acc >= FIXED_DT && n < MAX_SUBSTEPS){ physicsStep(FIXED_DT); acc -= FIXED_DT; n++; }
+    if (n >= MAX_SUBSTEPS) acc = 0;
+    render();
+  }
+  updateJarVisual();
+  playImpacts();
+  updateAirNoise();
+
+  if (isAsleep()){
+    if (++idleFrames > SLEEP_FRAMES){
+      for (const d of ballData){ d.vx = 0; d.vy = 0; d.w = 0; }
+      render();
+      stopPhysics();
+    }
+  } else idleFrames = 0;
+}
+
+function startPhysics(){ if (rafId) return; lastT = 0; acc = 0; rafId = requestAnimationFrame(frame); }
+function stopPhysics(){ if (!rafId) return; cancelAnimationFrame(rafId); rafId = null; }
+function wake(){
+  idleFrames = 0;
+  for (const d of ballData){ d.still = 0; d.px = d.x; d.py = d.y; d.pa = d.a; }
+  startPhysics();
+}
+
+// ---------- перемешивание ----------
+function blowAir(level, ms){
+  ensureAirNoise();
+  clearTimeout(blowAir._t);              // новая команда отменяет прошлую
+  airTarget = level;
+  wake();
+  if (ms) blowAir._t = setTimeout(() => { airTarget = 0; }, ms);
+}
+function shakeJar(amp, ms){
+  clearTimeout(shakeJar._t);
+  shakeTarget = amp;
+  wake();
+  if (ms) shakeJar._t = setTimeout(() => { shakeTarget = 0; }, ms);
+}
+function mixBalls(){
+  if (isDrawing) return;
+  blowAir(1.15, 1300);
+  shakeJar(17, 1500);
+  for (const d of ballData){
+    if (d.out) continue;
+    d.vy -= 320 + Math.random() * 380;
+    d.vx += (Math.random() - 0.5) * 760;
+    d.w  += (Math.random() - 0.5) * 40;
+  }
+  playSweep(180, 620, 0.5, 0.1, 'triangle');
+  wake();
+}
+
+// ---------- эффектная выдача шара ----------
+function easeInOut(t){ return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2; }
+
+function animate(ms, fn){
+  return new Promise(res => {
+    const t0 = performance.now();
+    (function tick(now){
+      const t = Math.min(1, (now - t0) / ms);
+      fn(t);
+      if (t < 1) requestAnimationFrame(tick); else res();
+    })(t0);
   });
 }
 
-// Игровая логика
-function mixBalls(){ 
-  if(isDrawing) return; 
-  addMixingForce(9); 
-  jar.classList.add('shaking'); 
-  setTimeout(()=>jar.classList.remove('shaking'),1000); 
+// Выход шара: сверху включается тяга, дальше всё решает физика — шар сам
+// протискивается сквозь остальные и всплывает к выходу.
+// Возвращает true, если понадобился аварийный «дотяг» (шар застрял).
+async function releaseBall(d){
+  suction = { ball: d, t: 0, power: 1100 };
+  jarContainer.classList.add('releasing');
+  playSweep(120, 780, 1.4, 0.08, 'sawtooth');
+  wake();
+
+  const caught = () => Math.abs(d.x - geom.w / 2) < d.r * 0.95 && d.y < d.r * 1.7;
+  const t0 = performance.now();
+  const late = await new Promise(res => {
+    (function poll(){
+      // первые полсекунды тяга «раскачивается» — шар не может выскочить сразу
+      if (performance.now() - t0 > 500 && caught()) return res(false);
+      if (performance.now() - t0 > 7000) return res(true);
+      requestAnimationFrame(poll);
+    })();
+  });
+
+  if (late) await glideToExit(d);     // подстраховка: шар зажало намертво
+  suction = null;
+  jarContainer.classList.remove('releasing');
+  d.vx = 0; d.vy = 0;
+  d.kin = true;                       // шар замер у выхода
+}
+
+// аварийный «дотяг» к выходу, если шар так и не выбрался сам
+async function glideToExit(d){
+  d.kin = true;
+  const sx = d.x, sy = d.y;
+  const tx = geom.w / 2, ty = d.r + 4;
+  await animate(450, (t) => {
+    const e = easeInOut(t);
+    d.x = sx + (tx - sx) * e;
+    d.y = sy + (ty - sy) * e;
+    d.w = 24;
+  });
+  d.kin = false;
+}
+
+function spawnShockwave(rect){
+  const ring = document.createElement('div');
+  ring.className = 'shockwave';
+  ring.style.left = (rect.left + rect.width / 2) + 'px';
+  ring.style.top  = (rect.top + rect.height / 2) + 'px';
+  ring.style.width = ring.style.height = rect.width + 'px';
+  document.body.appendChild(ring);
+  setTimeout(() => ring.remove(), 900);
+}
+
+// Вылет шара наружу. Считается покадрово, а не кейфреймами: сначала честный
+// баллистический выброс из банки (шар продолжает вращаться с той же угловой
+// скоростью и тормозится гравитацией), затем критически задемпфированная
+// пружина к месту показа. Скорость на стыке непрерывна, поэтому нет излома
+// траектории, а размер растёт только по мере приближения — как будто шар
+// летит на зрителя.
+async function flyOut(d, target){
+  const jr = jar.getBoundingClientRect();
+  const size = d.r * 2;
+  const startX = jr.left + d.x, startY = jr.top + d.y;      // центр шара на экране
+  const endX = target.left + target.width / 2;
+  const endY = target.top + target.height / 2;
+  const endScale = target.width / size;
+
+  const fly = document.createElement('div');
+  fly.className = 'flying-ball';
+  fly.style.width = fly.style.height = size + 'px';
+  fly.style.padding = (d.r * 0.27).toFixed(1) + 'px';
+  fly.style.left = (startX - d.r) + 'px';
+  fly.style.top  = (startY - d.r) + 'px';
+  fly.style.background = d.color;
+  const landFont  = parseFloat(getComputedStyle(selectedBall).fontSize) || 28;
+  const startFont = parseFloat(getComputedStyle(d.element).fontSize) || 11;
+  fly.style.fontSize = startFont + 'px';
+  fly.innerHTML = '<div>' + d.name + '</div>';
+  document.body.appendChild(fly);
+
+  d.out = true;
+  d.kin = false;
+  d.element.style.display = 'none';
+
+  // старт: шар выбрасывает вверх ровно настолько, чтобы вершина дуги осталась
+  // в пределах экрана — иначе он улетал бы за верхний край и возвращался
+  const rise = Math.max(70, Math.min(startY - d.r - 40, 250));
+  let x = startX, y = startY;
+  let vx = (endX - startX) * 0.25 + (Math.random() - 0.5) * 60;
+  let vy = -Math.sqrt(2 * GRAVITY * rise);
+  let ang = d.a, spin = d.w * 0.4 + (Math.random() - 0.5) * 6;
+  let scale = 1;
+  const dist0 = Math.hypot(endX - startX, endY - startY) || 1;
+
+  playSweep(240, 900, 0.5, 0.13, 'triangle');
+
+  const BALLISTIC = -vy / GRAVITY;      // свободный полёт ровно до вершины дуги
+  const K = 70, C = 2 * Math.sqrt(K);   // пружина без перелёта
+  await new Promise(res => {
+    let last = performance.now(), t = 0;
+    (function tick(now){
+      let dt = (now - last) / 1000; last = now;
+      if (dt > 0.05) dt = 0.05;
+      t += dt;
+
+      if (t < BALLISTIC){
+        vy += GRAVITY * dt;
+      } else {
+        vx += (K * (endX - x) - C * vx) * dt;
+        vy += (K * (endY - y) - C * vy) * dt;
+      }
+      x += vx * dt; y += vy * dt;
+
+      // размер набирается ближе к концу — шар «подлетает к зрителю»,
+      // а не раздувается сразу на вылете
+      const p = Math.min(1, Math.max(0, 1 - Math.hypot(endX - x, endY - y) / dist0));
+      const e = Math.pow(p, 2.2);
+      scale = 1 + (endScale - 1) * e;
+
+      // на подлёте вращение гасится и шар доворачивается именем вверх,
+      // чтобы подмена на итоговый шар была незаметной
+      ang += spin * dt;
+      spin *= Math.exp(-(1.7 + 9 * e) * dt);
+      const upright = Math.round(ang / (Math.PI * 2)) * Math.PI * 2;
+      ang += (upright - ang) * Math.min(0.35, e * e * 0.4);
+
+      // видимый размер подписи ведём от «как в банке» к «как на итоговом шаре»,
+      // иначе текст скачком меняет масштаб в момент вылета
+      fly.style.fontSize = ((startFont + (landFont - startFont) * e) / scale).toFixed(2) + 'px';
+      fly.style.transform =
+        `translate(${(x - startX).toFixed(2)}px, ${(y - startY).toFixed(2)}px) ` +
+        `rotate(${ang.toFixed(3)}rad) scale(${scale.toFixed(3)})`;
+
+      const done = t > BALLISTIC &&
+                   Math.hypot(endX - x, endY - y) < 2 && Math.hypot(vx, vy) < 40;
+      if (done || t > 2.2){
+        fly.style.fontSize = (landFont / endScale).toFixed(2) + 'px';
+        fly.style.transform = `translate(${(endX - startX).toFixed(2)}px, ${(endY - startY).toFixed(2)}px) ` +
+                              `rotate(0rad) scale(${endScale.toFixed(3)})`;
+        return res();
+      }
+      requestAnimationFrame(tick);
+    })(last);
+  });
+  return fly;
 }
 
 async function drawBall(){
   if (isDrawing) return;
+  if (!geom.ok) refreshGeom();
   isDrawing = true;
   setUILocked(true);
-  resultText.innerHTML='';
+  winnerCard.hidden = true;
   selectedBallContainer.classList.remove('show');
-  startPhysics();
+  timeScale = 1;
+  wake();
+  ensureAirNoise();
 
-  jar.classList.add('shaking');
-  for(let i=0;i<25;i++){ 
-    addMixingForce(0.7 + i*0.22); 
-    await new Promise(r=>setTimeout(r,100)); 
+  // 1. Разгон: воздуходувка раскручивается, банку трясёт всё сильнее
+  shakeJar(6);
+  blowAir(0.35);
+  for (let i = 0; i < 12; i++){
+    blowAir(0.35 + i * 0.06);
+    shakeJar(6 + i * 0.7);
+    await new Promise(r => setTimeout(r, 110));
   }
 
+  // 2. Обратный отсчёт на полной мощности
   drumrollOverlay.classList.add('active');
-  for (let i=5;i>0;i--){
-    addMixingForce(8.5);
-    countdown.textContent=i; 
-    countdown.classList.add('show'); 
-    playCountdownBeep();
-    await new Promise(r=>setTimeout(r,900));
+  blowAir(1.15);
+  shakeJar(16);
+  const pitches = [640, 720, 810, 910, 1040];
+  for (let i = 5; i > 0; i--){
+    playSound(pitches[5 - i], 0.12, 0.22);
+    countdown.textContent = i;
+    countdown.classList.add('show');
+    await new Promise(r => setTimeout(r, 900));
     countdown.classList.remove('show');
-    await new Promise(r=>setTimeout(r,100));
+    await new Promise(r => setTimeout(r, 100));
   }
 
-  await new Promise(r=>setTimeout(r,300));
+  // 3. Вспышка, замедление — шары обрушиваются вниз
   drumrollOverlay.classList.remove('active');
   drumrollOverlay.classList.add('flash');
   document.body.classList.add('shake');
-  setTimeout(()=>document.body.classList.remove('shake'), 500);
-  await new Promise(r=>setTimeout(r,300));
-  jar.classList.remove('shaking'); 
   playFinalBeep();
-  await new Promise(r=>setTimeout(r,200));
+  setTimeout(() => document.body.classList.remove('shake'), 450);
+  timeScale = 0.35;
+  blowAir(0.25);
+  shakeJar(5);
+  await new Promise(r => setTimeout(r, 260));
   drumrollOverlay.classList.remove('flash');
-  await new Promise(r=>setTimeout(r,300));
+  await new Promise(r => setTimeout(r, 420));
 
-  const available = ballData.filter(d=>d.element.style.display!=='none');
-
-  // === ВЗВЕШЕННЫЙ ВЫБОР С ВЕРОЯТНОСТЯМИ ===
+  // 4. Сверху открывается выход. Кого он вытянет — задано вероятностями,
+  //    но дорогу наверх шар пробивает сам, по физике.
+  timeScale = 1;
+  const available = ballData.filter(d => !d.out);
   const winnerData = selectWeightedItem(
     available,
     d => probabilities[d.name] || (1 / available.length)
   );
-  const winner = winnerData.element;
+  blowAir(0.55);
+  shakeJar(7);
+  await releaseBall(winnerData);
 
-  winner.classList.add('extracting');
-  await new Promise(r=>setTimeout(r,800));
-  winner.style.display='none';
+  // 5. Пойман: подсветка у выхода и вылет наружу
+  blowAir(0);
+  shakeJar(0);
+  ballData.forEach(d => { if (d !== winnerData) d.element.classList.add('dimmed'); });
+  winnerData.element.classList.add('chosen');
+  playSound(1500, 0.18, 0.16);
+  await new Promise(r => setTimeout(r, 260));
 
   selectedBall.style.background = winnerData.color;
   selectedBall.innerHTML = '<div>' + winnerData.name + '</div>';
-  selectedBall.className='selected-ball pulsing';
+  selectedBall.className = 'selected-ball preland';
   selectedBallContainer.classList.add('show');
+  const target = selectedBall.getBoundingClientRect();
 
-  playFanfare(); 
+  const fly = await flyOut(winnerData, target);
+
+  selectedBall.className = 'selected-ball landed';
+  spawnShockwave(target);
+  fly.remove();
+
+  playFanfare();
   createConfetti();
   createCelebrationEmojis();
   createCelebrationWords();
 
-  await new Promise(r=>setTimeout(r,600));
-  resultText.innerHTML = '<div class="result-text">'+I18N.t('winner')+winnerData.name+'! 🎉</div>';
-  await new Promise(r=>setTimeout(r,3500));
-  selectedBallContainer.classList.remove('show');
-  winner.classList.remove('extracting');
-  winner.style.display='block';
-  winnerData.vx = (Math.random()-0.5)*8;
-  winnerData.vy = -10 - Math.random()*5;
-  addMixingForce(4);
+  await new Promise(r => setTimeout(r, 600));
+  winnerBall.style.background = winnerData.color;
+  winnerName.textContent = winnerData.name;
+  winnerCard.hidden = false;
+  await new Promise(r => setTimeout(r, 3500));
 
-  isDrawing=false;
+  // 6. Шар возвращается в банку
+  selectedBallContainer.classList.remove('show');
+  ballData.forEach(d => d.element.classList.remove('dimmed'));
+  winnerData.element.classList.remove('chosen');
+  winnerData.out = false;
+  winnerData.kin = false;
+  winnerData.element.style.display = '';
+  winnerData.x = geom.w / 2 + (Math.random() - 0.5) * 20;
+  winnerData.y = winnerData.r + 4;
+  winnerData.vx = (Math.random() - 0.5) * 120;
+  winnerData.vy = 260;
+  winnerData.w = (Math.random() - 0.5) * 12;
+  shakeJar(7, 700);
+  wake();
+
+  isDrawing = false;
   setUILocked(false);
 }
 
@@ -1923,12 +2620,32 @@ function boot(){
   initProbabilities();
   createNameInputs();
   initBalls();
-  requestAnimationFrame(() => {
-    ballData.forEach(d=>{ d.vy = -1.5 - Math.random()*1; d.vx = (Math.random()-0.5)*1; });
-    startPhysics();
-  });
+  startPhysics();
 }
 boot();
+
+// Раскладка может прийти позже (aspect-ratio на мобильных) — следим за банкой
+let lastW = geom.w, lastH = geom.h;
+new ResizeObserver(() => {
+  const prevOk = geom.ok, pw = lastW, ph = lastH;
+  refreshGeom();
+  lastW = geom.w; lastH = geom.h;
+  if (!geom.ok) return;
+  if (!prevOk || !ballData.length){ initBalls(); return; }   // первая валидная раскладка
+  if (Math.abs(pw - geom.w) < 0.5 && Math.abs(ph - geom.h) < 0.5) return;
+  const kx = pw ? geom.w / pw : 1, ky = ph ? geom.h / ph : 1;
+  const nr = fitBallRadius(names.length);
+  BALL_R = nr;
+  for (const d of ballData){
+    d.x *= kx; d.y *= ky;
+    setBallRadius(d, nr);
+    clampInside(d);
+  }
+  wake();
+}).observe(jar);
+
+// Если вкладка была скрыта — не копим огромный dt и не «телепортируем» шары
+document.addEventListener('visibilitychange', () => { lastT = 0; acc = 0; if (!document.hidden) wake(); });
 
 const DEFAULT_NAME_SETS = {
   ru: ['Дима','Саша','Никита','Максим','Кирилл','Семён'],
@@ -1943,7 +2660,7 @@ function onLang(){
   }
   initProbabilities();
   createNameInputs();
-  initBalls();
+  syncBalls();
 }
 window.addEventListener('langchange', onLang);
 
@@ -1963,25 +2680,6 @@ window.addEventListener('langchange', onLang);
   window.addEventListener('pointerdown', unlock, {passive:true});
   window.addEventListener('click', unlock, {passive:true});
 })();
-
-// Адаптация при ресайзе
-let resizeTimeout;
-window.addEventListener('resize', ()=>{ 
-  clearTimeout(resizeTimeout);
-  resizeTimeout = setTimeout(() => {
-    ballData.forEach(d => {
-      if (d.element.style.display !== 'none') {
-        const { w, h } = getJarSize();
-        const cx = d.x + BALL_R;
-        const cy = d.y + BALL_R;
-        if (cx > w - JAR_BORDER - BALL_R) { d.x = w - JAR_BORDER - BALL_R*2; d.vx = -Math.abs(d.vx)*0.5; }
-        if (cy > h - JAR_BORDER - BALL_R) { d.y = h - JAR_BORDER - BALL_R*2; d.vy = -Math.abs(d.vy)*0.5; }
-        d.vy += 0.5;
-      }
-    });
-    addMixingForce(2);
-  }, 150);
-});
 </script>
 
   <script>
@@ -1994,7 +2692,7 @@ window.addEventListener('resize', ()=>{
       participants: `Участники`, equalize: `⚖️ Уравнять`, equalize_title: `Уравнять вероятности`,
       col_name: `Имя`, col_prob: `📊 Вероятность`, ph_new: `Новый участник`,
       ph_max15w: `⚠️ Максимум 15 символов`, ph_enter_name: `Введите имя`, ph_min2: `Минимум 2 участника`, ph_max10: `Максимум 10 участников`, ph_atleast1: `Введите хотя бы один символ`, ph_dup: `Такой участник уже есть`,
-      winner: `🎉 Победитель: `,
+      winner: `🎉 Победитель: `, winner_label: `Победитель`,
       celebrate_words: ['ВАУ','ЧЕМПИОН','МОЛОДЕЦ','КРАСАВА','ЛЕГЕНДА','ВПЕРЁД','ТОПЧИК','ПОБЕДА','ОГОНЬ','ТЫ ЛУЧШИЙ','ДАВАЙ ЕЩЁ','НЕВЕРОЯТНО','СУПЕР','НАДО ЖЕ КТО ВЫПАЛ','КРАСАВЧИК','МАСТЕР','ГЕНИЙ','БОСС','КТО БЫ МОГ ПОДУМАТЬ','ЭПИЧНО','БРАВО','ГГ','РЕСПЕКТ','ШИКАРНО','ИМБА','КРУТЯК','МОЩНО','ЗА ПОБЕДУ','ВОТ ЭТО ДА','КРУТО','ФАЙЕР','БОМБА','ТОП-1','ПРО','ЛЕГЕНДА ВОЗВРАЩАЕТСЯ','БЕЗУПРЕЧНО','МАГИЯ','ЧУДО','ФАНТАСТИКА']
     },
     en: {
@@ -2005,7 +2703,7 @@ window.addEventListener('resize', ()=>{
       participants: `Participants`, equalize: `⚖️ Equalize`, equalize_title: `Equalize the odds`,
       col_name: `Name`, col_prob: `📊 Probability`, ph_new: `New participant`,
       ph_max15w: `⚠️ Maximum 15 characters`, ph_enter_name: `Enter a name`, ph_min2: `At least 2 participants`, ph_max10: `Maximum 10 participants`, ph_atleast1: `Enter at least one character`, ph_dup: `That participant already exists`,
-      winner: `🎉 Winner: `,
+      winner: `🎉 Winner: `, winner_label: `Winner`,
       celebrate_words: ['WOW','CHAMPION','WELL DONE','AWESOME','LEGEND',"LET'S GO",'TOP','VICTORY','FIRE',"YOU'RE THE BEST",'ONE MORE','INCREDIBLE','SUPER','LOOK WHO WON','NICE ONE','MASTER','GENIUS','BOSS',"WHO'D HAVE THOUGHT",'EPIC','BRAVO','GG','RESPECT','GORGEOUS','OP','COOL','POWERFUL','FOR THE WIN','NO WAY','COOL','FIRE','BOMB','TOP-1','PRO','THE LEGEND RETURNS','FLAWLESS','MAGIC','MIRACLE','FANTASTIC']
     },
     el: {
@@ -2016,7 +2714,7 @@ window.addEventListener('resize', ()=>{
       participants: `Συμμετέχοντες`, equalize: `⚖️ Εξίσωση`, equalize_title: `Εξίσωση πιθανοτήτων`,
       col_name: `Όνομα`, col_prob: `📊 Πιθανότητα`, ph_new: `Νέος συμμετέχων`,
       ph_max15w: `⚠️ Έως 15 χαρακτήρες`, ph_enter_name: `Εισάγετε όνομα`, ph_min2: `Τουλάχιστον 2 συμμετέχοντες`, ph_max10: `Έως 10 συμμετέχοντες`, ph_atleast1: `Εισάγετε τουλάχιστον έναν χαρακτήρα`, ph_dup: `Αυτός ο συμμετέχων υπάρχει ήδη`,
-      winner: `🎉 Νικητής: `,
+      winner: `🎉 Νικητής: `, winner_label: `Νικητής`,
       celebrate_words: ['ΟΥΑΟΥ','ΠΡΩΤΑΘΛΗΤΗΣ','ΜΠΡΑΒΟ','ΤΕΛΕΙΟΣ','ΘΡΥΛΟΣ','ΠΑΜΕ','ΚΟΡΥΦΗ','ΝΙΚΗ','ΦΩΤΙΑ','ΕΙΣΑΙ Ο ΚΑΛΥΤΕΡΟΣ','ΑΛΛΗ ΜΙΑ','ΑΠΙΣΤΕΥΤΟ','ΣΟΥΠΕΡ','ΔΕΣ ΠΟΙΟΣ ΒΓΗΚΕ','ΦΟΒΕΡΟΣ','ΜΑΣΤΟΡΑΣ','ΙΔΙΟΦΥΙΑ','ΑΦΕΝΤΙΚΟ','ΠΟΙΟΣ ΤΟ ΠΕΡΙΜΕΝΕ','ΕΠΙΚΟ','ΜΠΡΑΒΟ','GG','ΣΕΒΑΣΜΟΣ','ΥΠΕΡΟΧΟ','OP','ΖΟΡΙΚΟ','ΔΥΝΑΤΑ','ΓΙΑ ΤΗ ΝΙΚΗ','ΑΠΙΘΑΝΟ','ΩΡΑΙΟ','ΦΩΤΙΑ','ΒΟΜΒΑ','ΤΟΠ-1','PRO','Ο ΘΡΥΛΟΣ ΕΠΙΣΤΡΕΦΕΙ','ΑΨΟΓΟ','ΜΑΓΕΙΑ','ΘΑΥΜΑ','ΦΑΝΤΑΣΤΙΚΟ']
     }
   };
