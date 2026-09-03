@@ -730,10 +730,13 @@ function makeSVG(type,color,size,seed,angry){
 }
 
 // ─── Game config ─────────────────────────────────────────────────
+// maxJellies caps how many are in the air at once — without a cap every wave
+// adds one more forever, and by wave 6 even "easy" was a six-ball juggle.
+// kick / vmax shape how far an off-centre hit throws the jelly sideways.
 const DIFF={
-  easy:  {g:0.100, waveMs:16000, start:1, lives:5, maxLives:5, bombP:0.28, growth:1.055, bonusMs:[5000,8000]},
-  medium:{g:0.132, waveMs:12000, start:2, lives:3, maxLives:4, bombP:0.42, growth:1.075, bonusMs:[4200,7000]},
-  hard:  {g:0.170, waveMs:9000,  start:3, lives:3, maxLives:3, bombP:0.55, growth:1.095, bonusMs:[3400,6000]},
+  easy:  {g:0.085, waveMs:20000, start:1, maxJellies:4, lives:5, maxLives:5, bombP:0.18, growth:1.04,  kick:0.05,  vmax:6, bonusMs:[5000,8000]},
+  medium:{g:0.125, waveMs:13000, start:2, maxJellies:6, lives:3, maxLives:4, bombP:0.40, growth:1.065, kick:0.065, vmax:8, bonusMs:[4200,7000]},
+  hard:  {g:0.170, waveMs:9000,  start:3, maxJellies:99,lives:3, maxLives:3, bombP:0.55, growth:1.095, kick:0.075, vmax:9, bonusMs:[3400,6000]},
 };
 let diffKey='medium';
 const FLOOR_H_BASE=52;
@@ -900,8 +903,9 @@ function hitAt(px,py){
 function bounce(j,px){
   const cx=j.x+j.s/2;
   const L=launchSpeed();
+  const cfg=DIFF[diffKey];
   j.vy=-L;
-  j.vx=clamp(j.vx*0.35 + (cx-px)*0.075, -9*viewScale(), 9*viewScale());
+  j.vx=clamp(j.vx*0.35 + (cx-px)*cfg.kick, -cfg.vmax*viewScale(), cfg.vmax*viewScale());
   anim(j,'bump',340);
 }
 function tap(px,py){
@@ -1068,7 +1072,7 @@ function startGame(){
 }
 function nextWave(){
   wave++;
-  target++;
+  target=Math.min(target+1, DIFF[diffKey].maxJellies);
   showBanner(I18N.t('wave_banner').replace('{n}',wave));
   sndWave();
   renderHUD();
