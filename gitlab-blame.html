@@ -1551,6 +1551,7 @@
       <a href="crystal-ball.html" data-i18n="nav_crystal">🔮 Магический Шар</a>
       <a href="trading.html" data-i18n="nav_trading">📈 Трейдинг</a>
       <a href="daisy.html" data-i18n="nav_daisy">🌼 Ромашка</a>
+      <a href="time-randomizer.html" data-i18n="nav_pseudo">⏱️ Псевдорандом</a>
     </nav>
   </div>
 
@@ -1578,6 +1579,7 @@
       <a href="crystal-ball.html" data-i18n="nav_crystal">🔮 Магический Шар</a>
       <a href="trading.html" data-i18n="nav_trading">📈 Трейдинг</a>
       <a href="daisy.html" data-i18n="nav_daisy">🌼 Ромашка</a>
+      <a href="time-randomizer.html" data-i18n="nav_pseudo">⏱️ Псевдорандом</a>
     </nav>
   </div>
 
@@ -1945,6 +1947,7 @@
       ]
     };
 
+    const MAX_PARTICIPANTS = 20;
     const NAMES_STORAGE_KEY = 'shared_names_v1';
     const PROBS_STORAGE_KEY = 'shared_probabilities_v2';
     const LOCKED_STORAGE_KEY = 'shared_locked_v1';
@@ -1952,6 +1955,7 @@
     let names = [];
     let probabilities = {};
     let lockedParticipants = {};
+    let hasCustomProbabilities = false;
     let isRunning = false;
     let lastWinner = null;
     let currentLineNo = 1;
@@ -1975,7 +1979,7 @@
         const saved = localStorage.getItem(NAMES_STORAGE_KEY);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) names = parsed;
+          if (Array.isArray(parsed) && parsed.length >= 2) names = parsed.slice(0, MAX_PARTICIPANTS);
         }
       } catch (e) {}
 
@@ -1985,16 +1989,26 @@
       }
 
       try {
-        const savedP = localStorage.getItem(PROBS_STORAGE_KEY);
-        if (savedP) probabilities = JSON.parse(savedP) || {};
-      } catch (e) {}
+        const saved = JSON.parse(localStorage.getItem(PROBS_STORAGE_KEY) || '{}');
+        const savedLocked = JSON.parse(localStorage.getItem(LOCKED_STORAGE_KEY) || '{}');
 
-      try {
-        const savedL = localStorage.getItem(LOCKED_STORAGE_KEY);
-        if (savedL) lockedParticipants = JSON.parse(savedL) || {};
-      } catch (e) {}
+        if (saved?.hasCustomProbabilities && saved?.probabilities && Object.keys(saved.probabilities).length) {
+          probabilities = { ...saved.probabilities };
+          lockedParticipants = { ...savedLocked };
+          hasCustomProbabilities = true;
 
-      normalizeProbabilities();
+          Object.keys(probabilities).forEach(n => { if (!names.includes(n)) delete probabilities[n]; });
+          Object.keys(lockedParticipants).forEach(n => { if (!names.includes(n)) delete lockedParticipants[n]; });
+          names.forEach(n => { if (!(n in probabilities)) probabilities[n] = 0.05; });
+
+          normalizeProbabilities();
+          saveProbabilities();
+        } else {
+          setEqualProbabilities();
+        }
+      } catch (e) {
+        setEqualProbabilities();
+      }
     }
 
     function saveState() {
@@ -2004,13 +2018,22 @@
 
     function saveProbabilities() {
       try {
-        localStorage.setItem(PROBS_STORAGE_KEY, JSON.stringify(probabilities));
-        localStorage.setItem(LOCKED_STORAGE_KEY, JSON.stringify(lockedParticipants));
+        const cleanP = {};
+        names.forEach(nm => cleanP[nm] = probabilities[nm] ?? 0);
+        const cleanLocked = {};
+        names.forEach(nm => { if (lockedParticipants[nm]) cleanLocked[nm] = true; });
+
+        localStorage.setItem(PROBS_STORAGE_KEY, JSON.stringify({
+          probabilities: cleanP,
+          hasCustomProbabilities
+        }));
+        localStorage.setItem(LOCKED_STORAGE_KEY, JSON.stringify(cleanLocked));
       } catch (e) {}
     }
 
     function normalizeProbabilities() {
       if (!names.length) return;
+      Object.keys(probabilities).forEach(n => { if (!names.includes(n)) delete probabilities[n]; });
       names.forEach(n => {
         if (typeof probabilities[n] !== 'number' || isNaN(probabilities[n]) || probabilities[n] <= 0) {
           probabilities[n] = 1 / names.length;
@@ -2024,14 +2047,18 @@
       }
     }
 
+    function setEqualProbabilities() {
+      const eq = 1 / (names.length || 1);
+      probabilities = {};
+      lockedParticipants = {};
+      hasCustomProbabilities = false;
+      names.forEach(n => { probabilities[n] = eq; });
+      saveProbabilities();
+    }
+
     function equalizeProbabilities() {
       if (!names.length) return;
-      const eq = 1 / names.length;
-      names.forEach(n => {
-        probabilities[n] = eq;
-        delete lockedParticipants[n];
-      });
-      saveProbabilities();
+      setEqualProbabilities();
       renderParticipants();
     }
 
@@ -2097,6 +2124,7 @@
         return false;
       }
 
+      hasCustomProbabilities = true;
       lockedParticipants[name] = true;
       probabilities[name] = percentValue / 100;
 
@@ -2498,7 +2526,7 @@
       const handleAdd = () => {
         const val = addInp.value.trim();
         if (!val) return;
-        if (names.length >= 20) {
+        if (names.length >= MAX_PARTICIPANTS) {
           showError((window.I18N && I18N.t('ph_max20')) || 'Максимум 20 участников!');
           return;
         }
@@ -2508,8 +2536,10 @@
         }
         names.push(val);
         addInp.value = '';
-        equalizeProbabilities();
+        probabilities[val] = 1 / names.length;
+        normalizeProbabilities();
         saveState();
+        renderParticipants();
       };
       addBtn.addEventListener('click', handleAdd);
       addInp.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleAdd(); });
@@ -2531,12 +2561,18 @@
 
       document.getElementById('excludeWinnerBtn').addEventListener('click', () => {
         if (lastWinner && names.includes(lastWinner)) {
+          if (names.length <= 2) {
+            showError((window.I18N && I18N.t('err_min2')) || 'Минимум 2 участника!');
+            hideWinnerModal();
+            return;
+          }
           const idx = names.indexOf(lastWinner);
           names.splice(idx, 1);
           delete probabilities[lastWinner];
           delete lockedParticipants[lastWinner];
+          normalizeProbabilities();
           saveState();
-          equalizeProbabilities();
+          renderParticipants();
         }
         hideWinnerModal();
         setTimeout(startPipelineFlow, 300);
@@ -2583,7 +2619,7 @@
     ru: {
       _title: `GitLab CI/CD Blame | Кто сломал прод?`,
       meta_desc: `🦊 Интерактивный рандомайзер в стиле GitLab CI/CD: запуск пайплайна, эпичный сбой на проде и поиск виновника через git blame!`,
-      nav_home: `🏠 Главная`, nav_ai: `🤖 LLM-рандомайзер`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Рулетка`, nav_racing: `🏁 Гонки`, nav_wheel: `🎡 Колесо Фортуны`, nav_bingo: `🎲 Бинго`, nav_bank: `🇲🇽 Банк`, nav_plinko: `🎯 Плинко`, nav_loto: `🎱 Лототрон`, nav_crystal: `🔮 Магический Шар`, nav_daisy: `🌼 Ромашка`, nav_trading: `📈 Трейдинг`,
+      nav_home: `🏠 Главная`, nav_ai: `🤖 LLM-рандомайзер`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Рулетка`, nav_racing: `🏁 Гонки`, nav_wheel: `🎡 Колесо Фортуны`, nav_bingo: `🎲 Бинго`, nav_bank: `🇲🇽 Банк`, nav_plinko: `🎯 Плинко`, nav_loto: `🎱 Лототрон`, nav_crystal: `🔮 Магический Шар`, nav_pseudo: `⏱️ Псевдорандом`, nav_daisy: `🌼 Ромашка`, nav_trading: `📈 Трейдинг`,
       menu: `Меню`, menu_title: `🦊 GITLAB PIPELINE`, h1: `🦊 GITLAB PIPELINE & BLAME`,
       participants: `👥 Участники`, equalize: `Уравнять`, equalize_title: `Уравнять вероятности`,
       col_name: `Имя`, col_prob: `📊 Шанс`, ph_new: `Новый участник`, add_title: `Добавить`,
@@ -2603,7 +2639,7 @@
     en: {
       _title: `GitLab CI/CD Blame | Who Broke Prod?`,
       meta_desc: `🦊 Interactive GitLab CI/CD Randomizer: pipeline execution, epic prod failure, and git blame culprit reveal!`,
-      nav_home: `🏠 Home`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Roulette`, nav_racing: `🏁 Racing`, nav_wheel: `🎡 Wheel of Fortune`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 The Bank`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Lottery Drum`, nav_crystal: `🔮 Magic Ball`, nav_daisy: `🌼 Daisy`, nav_trading: `📈 Trading`,
+      nav_home: `🏠 Home`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Roulette`, nav_racing: `🏁 Racing`, nav_wheel: `🎡 Wheel of Fortune`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 The Bank`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Lottery Drum`, nav_crystal: `🔮 Magic Ball`, nav_pseudo: `⏱️ Pseudorandom`, nav_daisy: `🌼 Daisy`, nav_trading: `📈 Trading`,
       menu: `Menu`, menu_title: `🦊 GITLAB PIPELINE`, h1: `🦊 GITLAB PIPELINE & BLAME`,
       participants: `👥 Participants`, equalize: `Equalize`, equalize_title: `Equalize odds`,
       col_name: `Name`, col_prob: `📊 Chance`, ph_new: `New participant`, add_title: `Add`,
@@ -2623,7 +2659,7 @@
     el: {
       _title: `GitLab CI/CD Blame | Ποιος χάλασε το σύστημα;`,
       meta_desc: `🦊 Διαδραστικός GitLab CI/CD Randomizer: εκτέλεση pipeline, αποτυχία στο prod και εύρεση υπευθύνου μέσω git blame!`,
-      nav_home: `🏠 Αρχική`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Ρουλέτα`, nav_racing: `🏁 Αγώνες`, nav_wheel: `🎡 Τροχός της Τύχης`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 Η Τράπεζα`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Κληρωτίδα`, nav_crystal: `🔮 Μαγική Μπάλα`, nav_daisy: `🌼 Μαργαρίτα`, nav_trading: `📈 Trading`,
+      nav_home: `🏠 Αρχική`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Ρουλέτα`, nav_racing: `🏁 Αγώνες`, nav_wheel: `🎡 Τροχός της Τύχης`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 Η Τράπεζα`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Κληρωτίδα`, nav_crystal: `🔮 Μαγική Μπάλα`, nav_pseudo: `⏱️ Ψευδοτυχαίο`, nav_daisy: `🌼 Μαργαρίτα`, nav_trading: `📈 Trading`,
       menu: `Μενού`, menu_title: `🦊 GITLAB PIPELINE`, h1: `🦊 GITLAB PIPELINE & BLAME`,
       participants: `👥 Συμμετέχοντες`, equalize: `Εξίσωση`, equalize_title: `Εξίσωση πιθανοτήτων`,
       col_name: `Όνομα`, col_prob: `📊 Πιθανότητα`, ph_new: `Νέος συμμετέχων`, add_title: `Προσθήκη`,

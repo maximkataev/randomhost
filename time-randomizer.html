@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+  <title>Псевдорандом — победитель по остатку от деления времени</title>
+  <meta name="description" content="⏱ Рандомайзер на времени: фиксируем момент нажатия в миллисекундах, делим на число участников — остаток и есть порядковый номер победителя. С настройкой вероятностей." data-i18n-meta="meta_desc">
+  <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1">
+  <link rel="canonical" href="https://randomhost.online/time-randomizer.html">
+
+  <!-- Open Graph -->
+  <meta property="og:locale" content="ru_RU">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Псевдорандом — победитель по остатку от деления времени">
+  <meta property="og:description" content="Ловим момент нажатия в миллисекундах и делим на число участников: остаток — номер победителя. С настройкой вероятностей.">
+  <meta property="og:url" content="https://randomhost.online/time-randomizer.html">
+  <meta property="og:site_name" content="Рандомайзер-игры">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⏱️</text></svg>" type="image/svg+xml">
+
+  <meta name="theme-color" content="#080c12">
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+
+      --bg: #080c12;
+      --panel: rgba(255, 255, 255, 0.035);
+      --panel-hi: rgba(255, 255, 255, 0.055);
+      --line: rgba(255, 255, 255, 0.10);
+      --line-soft: rgba(255, 255, 255, 0.06);
+      --ink: #e9f1fa;
+      --muted: #869ab2;
+      --mint: #5eead4;
+      --amber: #fbbf24;
+      --rose: #fb7185;
+
+      --lang-switch-bg: rgba(13, 20, 29, 0.75);
+      --lang-switch-border: rgba(94, 234, 212, 0.25);
+      --lang-switch-font: 'JetBrains Mono', monospace;
+      --lang-switch-active-bg: rgba(94, 234, 212, 0.18);
+      --lang-switch-active-fg: #5eead4;
+    }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'Roboto Condensed', 'JetBrains Mono', system-ui, sans-serif;
+      padding: calc(22px + var(--safe-top)) calc(16px + var(--safe-right)) calc(40px + var(--safe-bottom)) calc(16px + var(--safe-left));
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--line-soft) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+      background-size: 46px 46px;
+      mask-image: radial-gradient(ellipse 85% 65% at 50% 30%, #000 25%, transparent 78%);
+      -webkit-mask-image: radial-gradient(ellipse 85% 65% at 50% 30%, #000 25%, transparent 78%);
+      opacity: 0.7;
+      pointer-events: none;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(560px 400px at 18% 0%, rgba(94, 234, 212, 0.13), transparent 65%),
+        radial-gradient(620px 440px at 88% 6%, rgba(251, 191, 36, 0.10), transparent 62%),
+        radial-gradient(900px 700px at 50% 120%, rgba(56, 89, 140, 0.20), transparent 70%);
+      pointer-events: none;
+    }
+
+    /* ── Меню разделов (то же, что на других рандомайзерах) ── */
+    .menu-wrap {
+      position: fixed;
+      top: calc(14px + var(--safe-top));
+      left: calc(14px + var(--safe-left));
+      z-index: 1000;
+    }
+
+    .menu-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 13px;
+      background: rgba(13, 20, 29, 0.78);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+      transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+    }
+    .menu-btn span {
+      width: 18px; height: 2px; border-radius: 2px;
+      background: var(--ink);
+      transition: transform 0.25s ease, opacity 0.2s ease, background 0.2s ease;
+    }
+    .menu-btn:hover { border-color: rgba(94,234,212,0.45); background: rgba(13,20,29,0.92); }
+    .menu-btn:hover span { background: var(--mint); }
+    .menu-btn:active { transform: scale(0.95); }
+    .menu-btn.open span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+    .menu-btn.open span:nth-child(2) { opacity: 0; }
+    .menu-btn.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+    .menu-drop {
+      position: absolute;
+      top: 54px;
+      left: 0;
+      min-width: 320px;
+      padding: 12px;
+      background: rgba(9, 14, 21, 0.94);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.55);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      max-height: calc(100vh - 90px);
+      overflow-y: auto;
+      opacity: 0;
+      transform: translateY(-10px) scale(0.98);
+      transform-origin: top left;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .menu-drop.open { opacity: 1; transform: none; pointer-events: auto; }
+    .menu-drop a {
+      color: var(--muted);
+      text-decoration: none;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 15px;
+      letter-spacing: 0.01em;
+      padding: 11px 18px;
+      border-radius: 10px;
+      white-space: nowrap;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .menu-drop a:hover { background: rgba(94,234,212,0.10); color: var(--ink); }
+
+    .wrap {
+      position: relative;
+      z-index: 2;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .hero { text-align: center; margin: 22px 0 22px; }
+
+    h1 {
+      font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 700;
+      font-size: clamp(32px, 7vw, 54px);
+      line-height: 1.03;
+      letter-spacing: 0.01em;
+      text-transform: uppercase;
+    }
+    h1 b { color: var(--amber); font-weight: 700; }
+
+    .grid { display: grid; grid-template-columns: 420px minmax(320px, 1fr); gap: 18px; align-items: start; }
+    /* правая колонка липкая при длинном списке; специфичность выше .card,
+       иначе position:relative съедал sticky, а top сдвигал карточку вниз */
+    @media (min-width: 901px) {
+      .grid > .stage-card { position: sticky; top: calc(20px + var(--safe-top)); }
+    }
+
+    .card {
+      background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      position: relative;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0 0 auto;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent);
+      border-radius: 20px 20px 0 0;
+    }
+
+    /* ── Табло времени ───────────────────────────────── */
+    .readout {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background:
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 3px),
+        radial-gradient(120% 140% at 50% 0%, rgba(94, 234, 212, 0.08), transparent 60%),
+        rgba(0, 0, 0, 0.34);
+      padding: 20px 16px 16px;
+      overflow: hidden;
+    }
+    .readout .corner { position: absolute; width: 12px; height: 12px; border: 1px solid rgba(94,234,212,0.5); }
+    .readout .c1 { top: 9px; left: 9px; border-right: 0; border-bottom: 0; }
+    .readout .c2 { top: 9px; right: 9px; border-left: 0; border-bottom: 0; }
+    .readout .c3 { bottom: 9px; left: 9px; border-right: 0; border-top: 0; }
+    .readout .c4 { bottom: 9px; right: 9px; border-left: 0; border-top: 0; }
+
+    .clock {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: clamp(30px, 7.4vw, 50px);
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      text-shadow: 0 0 22px rgba(94, 234, 212, 0.28);
+      line-height: 1.1;
+    }
+    .clock .ms { color: var(--mint); }
+    .clock .sec, .clock .ms, .unix .tail { transition: filter 0.3s ease, opacity 0.3s ease; }
+    /* пока шансы разные, делитель 1000 — а это ровно миллисекунды на табло: под блюром бежит шум */
+    .readout.masked .clock .sec, .readout.masked .clock .ms { filter: blur(9px); opacity: 0.7; }
+    .readout.masked .unix .tail { filter: blur(4px); opacity: 0.7; }
+
+    .mask-note {
+      margin-top: 8px;
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      letter-spacing: 0.04em;
+      color: #566d84;
+      line-height: 1.4;
+    }
+    .readout.frozen .clock { color: #fff; text-shadow: 0 0 26px rgba(251, 191, 36, 0.45); }
+    .readout.frozen .clock .ms { color: var(--amber); }
+
+    .unix {
+      margin-top: 9px;
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .unix b { color: var(--ink); font-weight: 500; letter-spacing: 0.06em; transition: color 0.2s ease, text-shadow 0.2s ease; }
+    .readout.lit .unix b { color: var(--mint); text-shadow: 0 0 14px rgba(94,234,212,0.6); }
+
+    .flash { position: absolute; inset: 0; background: rgba(255,255,255,0.9); opacity: 0; pointer-events: none; }
+    .readout.snap .flash { animation: snap 0.42s ease-out; }
+    @keyframes snap { 0% { opacity: 0.85; } 100% { opacity: 0; } }
+    .readout.snap { animation: shake 0.36s ease-out; }
+    @keyframes shake {
+      0% { transform: translate(0,0); }
+      22% { transform: translate(-3px, 2px); }
+      48% { transform: translate(3px, -2px); }
+      72% { transform: translate(-2px, -1px); }
+      100% { transform: translate(0,0); }
+    }
+
+    .scanline {
+      position: absolute; left: 0; right: 0; top: 0; height: 32%;
+      background: linear-gradient(180deg, transparent, rgba(94,234,212,0.22), transparent);
+      opacity: 0; pointer-events: none;
+    }
+    .readout.snap .scanline { animation: scanmove 0.7s ease-in-out; }
+    @keyframes scanmove { 0% { opacity: 0; transform: translateY(-110%); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(330%); } }
+
+    /* ── Кнопка ──────────────────────────────────────── */
+    .go {
+      width: 100%;
+      padding: 17px 20px;
+      border: 1px solid rgba(94, 234, 212, 0.4);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(94,234,212,0.20), rgba(94,234,212,0.07));
+      color: #eafffb;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: transform 0.12s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+    }
+    .go:hover { border-color: rgba(94,234,212,0.8); box-shadow: 0 8px 30px rgba(94,234,212,0.18); transform: translateY(-1px); }
+    .go:active { transform: translateY(1px) scale(0.995); }
+    .go:disabled { opacity: 0.5; cursor: default; transform: none; box-shadow: none; }
+    .go.again { border-color: rgba(251,191,36,0.45); background: linear-gradient(180deg, rgba(251,191,36,0.18), rgba(251,191,36,0.06)); color: #fff5df; }
+    .go.again:hover { border-color: rgba(251,191,36,0.8); box-shadow: 0 8px 30px rgba(251,191,36,0.16); }
+
+    /* ── Операция и победитель ───────────────────────── */
+    .result {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(0, 0, 0, 0.22);
+      padding: 20px 16px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.3s ease, background 0.3s ease, box-shadow 0.3s ease;
+      min-height: 150px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    .result.waiting { border-color: rgba(94,234,212,0.35); }
+    .result.on {
+      border-color: rgba(251,191,36,0.5);
+      background: rgba(251,191,36,0.07);
+      box-shadow: inset 0 0 60px rgba(251,191,36,0.06);
+    }
+
+
+    .v-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--amber);
+    }
+
+    .op {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: clamp(13px, 3.2vw, 17px);
+      color: #566d84;
+      font-variant-numeric: tabular-nums;
+      word-break: break-word;
+      min-height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4em;
+      flex-wrap: wrap;
+    }
+    .op.appear { animation: opin 0.4s cubic-bezier(0.2, 1, 0.4, 1); }
+    @keyframes opin { 0% { opacity: 0; transform: translateY(-6px); } 100% { opacity: 1; transform: none; } }
+    .op .ts { color: var(--ink); font-weight: 700; }
+    .op .mod { color: var(--mint); font-weight: 700; }
+    .op .rr {
+      color: var(--amber);
+      font-weight: 800;
+      font-size: 1.5em;
+      text-shadow: 0 0 20px rgba(251,191,36,0.45);
+    }
+    @keyframes waitpulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+    .op .hint { color: #566d84; }
+
+    .winner {
+      font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 700;
+      font-size: clamp(28px, 7vw, 44px);
+      line-height: 1.1;
+      text-transform: uppercase;
+      word-break: break-word;
+      opacity: 0;
+      transform: translateY(8px);
+      text-shadow: 0 0 34px rgba(251,191,36,0.35);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    .winner.on { opacity: 1; transform: none; }
+    .v-label { opacity: 0; transition: opacity 0.5s ease 0.1s; }
+    .result.on .v-label { opacity: 0.85; }
+
+    .shock {
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 40px; height: 40px;
+      margin: -20px 0 0 -20px;
+      border-radius: 50%;
+      border: 2px solid var(--amber);
+      opacity: 0;
+      pointer-events: none;
+    }
+    .result.on .shock { animation: shock 1s ease-out; }
+    @keyframes shock { 0% { opacity: 0.9; transform: scale(0.4); } 100% { opacity: 0; transform: scale(11); } }
+
+    .spark {
+      position: absolute; left: 50%; top: 50%;
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--amber); pointer-events: none;
+      animation: spark 1.1s ease-out forwards;
+    }
+    @keyframes spark {
+      0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+      100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.2); opacity: 0; }
+    }
+
+    /* ── Участники ───────────────────────────────────── */
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .settings-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .settings-title span { color: var(--mint); }
+    .settings-actions { display: flex; gap: 8px; }
+
+    .equalize-btn, .collapse-btn {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 7px 12px;
+      cursor: pointer;
+      transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+    }
+    .collapse-btn { padding: 7px 10px; min-width: 34px; line-height: 1; }
+    .sound-toggle-btn { font-size: 14px; }
+    .equalize-btn:hover, .collapse-btn:hover { color: var(--mint); border-color: rgba(94,234,212,0.4); background: rgba(94,234,212,0.08); }
+    .equalize-btn:disabled, .collapse-btn:disabled { opacity: 0.4; cursor: default; }
+    .collapse-btn span { display: inline-block; transition: transform 0.25s ease; }
+    .collapse-btn.closed span { transform: rotate(-90deg); }
+
+    .list-wrap { overflow: hidden; transition: max-height 0.3s ease, opacity 0.25s ease; max-height: 1400px; }
+    .list-wrap.closed { max-height: 0; opacity: 0; }
+
+    .headers-row, .prow {
+      display: grid;
+      grid-template-columns: 46px 1fr 116px 28px;
+      gap: 8px;
+      align-items: center;
+    }
+    .headers-row {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #566d84;
+      padding: 0 6px 7px;
+      border-bottom: 1px dashed var(--line);
+      margin-bottom: 8px;
+    }
+    .headers-row .h-prob { text-align: center; }
+
+    .plist { display: flex; flex-direction: column; gap: 5px; }
+
+    .prow {
+      padding: 5px 6px;
+      border-radius: 11px;
+      border: 1px solid transparent;
+      transition: background 0.45s ease, border-color 0.45s ease, box-shadow 0.45s ease;
+    }
+    .prow:hover { background: rgba(255,255,255,0.028); }
+    .prow.win {
+      background: rgba(251,191,36,0.16);
+      border-color: rgba(251,191,36,0.55);
+      box-shadow: 0 0 0 1px rgba(251,191,36,0.18), 0 8px 26px rgba(251,191,36,0.14);
+    }
+
+    .pnum {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .pnum .n {
+      min-width: 26px;
+      height: 23px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.045);
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--muted);
+      transition: color 0.45s ease, background 0.45s ease, border-color 0.45s ease;
+    }
+    .pnum .rng { font-size: 8.5px; color: #46596c; letter-spacing: -0.02em; }
+    .prow.win .pnum .n { background: rgba(251,191,36,0.18); border-color: rgba(251,191,36,0.5); }
+    .prow .pnum .n, .prow.win .pnum .n { transition: color 0.45s ease; }
+    .prow.win .pnum .n { color: var(--amber); }
+
+    .name-input {
+      background: rgba(0,0,0,0.28);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      color: var(--ink);
+      font-family: 'Roboto Condensed', sans-serif;
+      font-size: 15px;
+      height: 34px;
+      padding: 0 10px;
+      outline: none;
+      width: 100%;
+      transition: border-color 0.18s ease, background 0.18s ease;
+    }
+    .name-input:focus { border-color: rgba(94,234,212,0.5); background: rgba(94,234,212,0.05); }
+    .name-input.error-state { border-color: var(--rose); background: rgba(251,113,133,0.10); }
+    .name-input.error-state::placeholder { color: var(--rose); }
+
+    /* слитный блок: − / значение / + */
+    .prob-controls {
+      display: grid;
+      grid-template-columns: 28px 1fr 28px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(0,0,0,0.28);
+      overflow: hidden;
+      transition: border-color 0.18s ease;
+    }
+    .prob-controls:focus-within { border-color: rgba(94,234,212,0.5); }
+    .prob-btn {
+      background: transparent;
+      border: 0;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 15px;
+      line-height: 1;
+      height: 34px;
+      cursor: pointer;
+      transition: color 0.15s ease, background 0.15s ease;
+    }
+    .prob-btn:hover { color: var(--mint); background: rgba(94,234,212,0.12); }
+    .prob-btn:disabled { opacity: 0.35; cursor: default; background: transparent; }
+
+    .prob-input {
+      background: transparent;
+      border: 0;
+      outline: none;
+      width: 100%;
+      height: 34px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      text-align: center;
+      color: var(--mint);
+      transition: color 0.18s ease, background 0.18s ease;
+    }
+    .prob-input.error { color: var(--rose); background: rgba(251,113,133,0.12); }
+    /* значение, выставленное руками — как в других рандомайзерах */
+    .prob-input.manual { color: var(--amber); }
+
+    .remove-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      color: #4a5f74;
+      font-size: 18px;
+      line-height: 1;
+      height: 34px;
+      cursor: pointer;
+      transition: color 0.15s ease, background 0.15s ease;
+    }
+    .remove-btn:hover { color: var(--rose); background: rgba(251,113,133,0.10); }
+    .remove-btn:disabled { opacity: 0.3; cursor: default; }
+
+    .add-row { display: grid; grid-template-columns: 1fr 44px; gap: 8px; margin-top: 14px; }
+    .add-row .name-input { height: 38px; }
+    .add-btn {
+      height: 38px;
+      background: rgba(94,234,212,0.10);
+      border: 1px solid rgba(94,234,212,0.3);
+      border-radius: 9px;
+      color: var(--mint);
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.18s ease, border-color 0.18s ease;
+    }
+    .add-btn:hover { background: rgba(94,234,212,0.2); border-color: rgba(94,234,212,0.6); }
+    .add-btn:disabled { opacity: 0.4; cursor: default; }
+
+    .err {
+      margin-top: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      color: var(--rose);
+      min-height: 15px;
+      text-align: center;
+    }
+
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; max-width: 560px; margin: 0 auto; }
+      .stage-card { order: -1; }   /* на телефоне сначала часы и кнопка */
+    }
+
+    @media (max-width: 520px) {
+      .menu-drop { min-width: calc(100vw - 28px - var(--safe-left) - var(--safe-right)); }
+      body { padding-top: calc(64px + var(--safe-top)); }
+      .hero { margin: 0 0 18px; }
+      .card { padding: 15px; border-radius: 18px; }
+      .home-button { font-size: 12px; padding: 7px 13px; }
+      .headers-row, .prow { grid-template-columns: 40px 1fr 104px 26px; gap: 6px; }
+      .prob-controls { grid-template-columns: 23px 1fr 23px; }
+      .name-input { font-size: 14px; padding: 7px 9px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.001s !important; transition-duration: 0.05s !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="menu-wrap">
+    <button class="menu-btn" id="menuBtn" aria-label="Меню" aria-expanded="false" data-i18n-attr="aria-label:menu">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="menu-drop" id="menuDrop">
+      <a href="index.html" data-i18n="nav_home">🏠 Главная</a>
+      <a href="ai-judge.html" data-i18n="nav_ai">🤖 LLM-рандомайзер</a>
+      <a href="slack-roulette.html" data-i18n="nav_slack">🚨 Slack Рулетка</a>
+      <a href="gitlab-blame.html" data-i18n="nav_gitlab">🦊 GitLab Blame</a>
+      <a href="racing.html" data-i18n="nav_racing">🏁 Гонки</a>
+      <a href="wheel-of-fortune.html" data-i18n="nav_wheel">🎡 Колесо Фортуны</a>
+      <a href="bingo.html" data-i18n="nav_bingo">🎲 Бинго</a>
+      <a href="el-credito.html" data-i18n="nav_bank">🇲🇽 Банк</a>
+      <a href="plinko.html" data-i18n="nav_plinko">🎯 Плинко</a>
+      <a href="lottery-drum.html" data-i18n="nav_loto">🎱 Лототрон</a>
+      <a href="crystal-ball.html" data-i18n="nav_crystal">🔮 Магический Шар</a>
+      <a href="trading.html" data-i18n="nav_trading">📈 Трейдинг</a>
+      <a href="daisy.html" data-i18n="nav_daisy">🌼 Ромашка</a>
+    </nav>
+  </div>
+
+  <div class="wrap">
+    <header class="hero">
+      <h1 data-i18n="h1">Псевдо<b>рандом</b></h1>
+    </header>
+
+    <div class="grid">
+      <!-- Участники -->
+      <section class="card people-card">
+        <div class="settings-header">
+          <h2 class="settings-title"><span data-i18n="participants">Участники</span> · <span id="countLabel">8</span></h2>
+          <div class="settings-actions">
+            <button class="collapse-btn sound-toggle-btn" id="soundToggleBtn"></button>
+            <button class="equalize-btn" id="equalizeBtn" data-i18n="equalize" data-i18n-attr="title:equalize_title" title="Уравнять вероятности">Уравнять</button>
+            <button class="collapse-btn" id="collapseBtn" data-i18n-attr="title:collapse_title" title="Свернуть список"><span id="collapseIcon">▼</span></button>
+          </div>
+        </div>
+
+        <div class="list-wrap" id="listWrap">
+          <div class="headers-row">
+            <div data-i18n="col_num">№</div>
+            <div data-i18n="col_name">Имя</div>
+            <div class="h-prob" data-i18n="col_prob">📊 Вероятность</div>
+            <div></div>
+          </div>
+          <div class="plist" id="plist"></div>
+
+          <div class="add-row">
+            <input type="text" class="name-input" id="newNameInput" maxlength="18" placeholder="Новый участник" data-i18n-attr="placeholder:ph_new">
+            <button class="add-btn" id="addBtn" data-i18n-attr="title:add_title" title="Добавить участника">＋</button>
+          </div>
+
+          <div class="err" id="errorMsg"></div>
+        </div>
+      </section>
+
+      <!-- Табло, кнопка, результат -->
+      <section class="card stage-card">
+        <div class="readout" id="readout">
+          <span class="corner c1"></span><span class="corner c2"></span>
+          <span class="corner c3"></span><span class="corner c4"></span>
+          <div class="clock"><span id="clkHm">00:00</span><span class="sec" id="clkSec">:00</span><span class="ms" id="clkMs">.000</span></div>
+          <div class="unix"><span data-i18n="unix_label">метка времени, мс</span><b><span id="unixHead">—</span><span class="tail" id="unixTail"></span></b></div>
+          <div class="mask-note" id="maskNote" hidden data-i18n="mask_note">секунды и миллисекунды скрыты — иначе момент нажатия можно подгадать</div>
+          <div class="scanline"></div>
+          <div class="flash"></div>
+        </div>
+
+        <button class="go" id="goBtn" data-i18n="btn">⏱ Зафиксировать время</button>
+
+        <div class="result" id="result" aria-live="polite">
+          <span class="shock"></span>
+          <div class="op" id="op"></div>
+          <div class="v-label" id="vLabel" hidden data-i18n="v_label">победитель</div>
+          <div class="winner" id="winner"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+  // Заглушка до загрузки i18n.js (defer)
+  window.I18N = window.I18N || { t: (k) => k, lang: 'ru', setLang(){}, supported: ['ru','en','el'] };
+  </script>
+
+  <script>
+    const readout   = document.getElementById('readout');
+    const clkHm     = document.getElementById('clkHm');
+    const clkSec    = document.getElementById('clkSec');
+    const clkMs     = document.getElementById('clkMs');
+    const unixHead  = document.getElementById('unixHead');
+    const unixTail  = document.getElementById('unixTail');
+    const maskNote  = document.getElementById('maskNote');
+    const goBtn     = document.getElementById('goBtn');
+    const resultEl  = document.getElementById('result');
+    const opEl      = document.getElementById('op');
+    const winnerEl  = document.getElementById('winner');
+    const vLabel    = document.getElementById('vLabel');
+    const plist     = document.getElementById('plist');
+    const countLbl  = document.getElementById('countLabel');
+    const errorMsg  = document.getElementById('errorMsg');
+    const equalizeBtn = document.getElementById('equalizeBtn');
+    const collapseBtn = document.getElementById('collapseBtn');
+    const listWrap  = document.getElementById('listWrap');
+    const newNameInput = document.getElementById('newNameInput');
+    const addBtn    = document.getElementById('addBtn');
+
+    const MIN_PLAYERS = 2;
+    const MAX_PLAYERS = 20;
+    const MAX_NAME_LEN = 15;
+    const REVEAL_AT = 1000;                    // имя проявляется через секунду после остатка
+    const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const DEFAULT_NAME_SETS = {
+      ru: ['Аня', 'Борис', 'Вика', 'Глеб', 'Даша', 'Егор', 'Женя', 'Захар'],
+      en: ['Anna', 'Boris', 'Vicky', 'Gleb', 'Dasha', 'Egor', 'Jane', 'Zach'],
+      el: ['Άννα', 'Μπόρις', 'Βίκυ', 'Γκλεμπ', 'Ντάσα', 'Έγκορ', 'Τζένη', 'Ζαχαρίας']
+    };
+
+    // Общий список участников со всеми остальными рандомайзерами сайта
+    const NAMES_KEY  = 'shared_names_v1';
+    const PROB_KEY   = 'shared_probabilities_v2';
+    const LOCKED_KEY = 'shared_locked_v1';
+
+    const guessLang = () => {
+      try {
+        const saved = localStorage.getItem('site-lang');
+        if (DEFAULT_NAME_SETS[saved]) return saved;
+      } catch (e) {}
+      const nav = (navigator.language || 'en').slice(0, 2).toLowerCase();
+      return DEFAULT_NAME_SETS[nav] ? nav : 'ru';
+    };
+
+    let names = DEFAULT_NAME_SETS[guessLang()].slice();
+    let probabilities = {};
+    let lockedParticipants = {};
+    let hasCustomProbabilities = false;
+    let truncatedFrom = 0;
+    let userEdited = false;
+    let running = false;
+    let done = false;
+    let timers = [];
+
+    const t = (k) => I18N.t(k);
+    const fill = (k, map) => {
+      let s = t(k);
+      for (const key in map) s = s.split('{' + key + '}').join(map[key]);
+      return s;
+    };
+    const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+    const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+    const pad = (v, n) => String(v).padStart(n, '0');
+
+    /* ── ЗАГРУЗКА ИМЁН ───────────────────────────────── */
+    try {
+      const saved = JSON.parse(localStorage.getItem(NAMES_KEY) || '[]');
+      if (Array.isArray(saved) && saved.length) {
+        const list = saved.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim().slice(0, MAX_NAME_LEN));
+        if (list.length) {
+          names = list;
+          // один участник — добавляем второго, розыгрыш без пары бессмыслен
+          if (names.length < MIN_PLAYERS) names.push(DEFAULT_NAME_SETS[guessLang()][1]);
+          // длинный список показываем первыми 20 и обратно НЕ пишем
+          if (names.length > MAX_PLAYERS) { truncatedFrom = names.length; names = names.slice(0, MAX_PLAYERS); }
+        }
+      } else {
+        localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+      }
+    } catch (e) {}
+
+    const saveNames = () => {
+      truncatedFrom = 0;
+      try { localStorage.setItem(NAMES_KEY, JSON.stringify(names)); } catch (e) {}
+    };
+
+    /* ── ВЕРОЯТНОСТИ (та же логика, что в колесе и гонках) ── */
+    function initProbabilities() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(PROB_KEY) || '{}');
+        const savedLocked = JSON.parse(localStorage.getItem(LOCKED_KEY) || '{}');
+
+        if (saved && saved.hasCustomProbabilities && saved.probabilities && Object.keys(saved.probabilities).length) {
+          probabilities = { ...saved.probabilities };
+          lockedParticipants = { ...savedLocked };
+          hasCustomProbabilities = true;
+
+          names.forEach((n) => { if (!(n in probabilities)) probabilities[n] = 1 / names.length; });
+          Object.keys(probabilities).forEach((n) => { if (!names.includes(n)) delete probabilities[n]; });
+          Object.keys(lockedParticipants).forEach((n) => { if (!names.includes(n)) delete lockedParticipants[n]; });
+
+          normalizeProbabilities();
+          if (!truncatedFrom) saveProbabilities();   // обрезанный список обратно не пишем
+        } else {
+          setEqualProbabilities();
+        }
+      } catch (_) {
+        setEqualProbabilities();
+      }
+    }
+
+    function setEqualProbabilities() {
+      const p = 1 / (names.length || 1);
+      probabilities = {};
+      names.forEach((nm) => probabilities[nm] = p);
+      lockedParticipants = {};
+      hasCustomProbabilities = false;
+      saveProbabilities();
+    }
+
+    function clampProbabilitiesMin(min = 0.001) {
+      names.forEach((nm) => { if ((probabilities[nm] ?? 0) < min) probabilities[nm] = min; });
+    }
+
+    function normalizeProbabilities() {
+      const vals = names.map((n) => probabilities[n] ?? 0);
+      const uniq = [...new Set(vals.map((v) => +v.toFixed(6)))];
+      if (uniq.length === 1 && !hasCustomProbabilities) {
+        const exact = 1 / (names.length || 1);
+        names.forEach((nm) => probabilities[nm] = exact);
+        return;
+      }
+
+      clampProbabilitiesMin(0.001);
+
+      const sum = names.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
+      if (sum > 0 && Math.abs(sum - 1) > 1e-4) {
+        const k = 1 / sum;
+        names.forEach((nm) => probabilities[nm] = (probabilities[nm] || 0) * k);
+      }
+
+      clampProbabilitiesMin(0.001);
+    }
+
+    function saveProbabilities() {
+      try {
+        const cleanP = {};
+        names.forEach((nm) => cleanP[nm] = probabilities[nm] ?? 0);
+
+        const cleanLocked = {};
+        names.forEach((nm) => { if (lockedParticipants[nm]) cleanLocked[nm] = true; });
+
+        localStorage.setItem(PROB_KEY, JSON.stringify({
+          probabilities: cleanP,
+          hasCustomProbabilities
+        }));
+        localStorage.setItem(LOCKED_KEY, JSON.stringify(cleanLocked));
+      } catch (_) {}
+    }
+
+    function getProbabilityPercent(name) {
+      if (!hasCustomProbabilities && names.length) return (100 / names.length).toFixed(1);
+      return (((probabilities[name] || 0) * 100).toFixed(1));
+    }
+
+    function adjustProbability(name, delta) {
+      const cur = parseFloat(getProbabilityPercent(name)) || 0;
+      const maxPossible = 100 - (names.length - 1) * 0.1;
+      const next = Math.max(0.1, Math.min(maxPossible, cur + delta));
+      setProbabilityManually(name, next);
+      renderList();
+    }
+
+    function setProbabilityManually(name, percentValue) {
+      if (isNaN(percentValue) || percentValue < 0.1 || percentValue > 99.9) return false;
+
+      hasCustomProbabilities = true;
+      const newProb = percentValue / 100;
+
+      const otherLocked = names.filter((n) => n !== name && lockedParticipants[n]);
+      const lockedTotal = otherLocked.reduce((s, n) => s + (probabilities[n] || 0), 0);
+      const minOthers = (names.length - 1) * 0.001;
+
+      if (newProb + lockedTotal + minOthers > 1) {
+        lockedParticipants = {};
+        probabilities[name] = newProb;
+        lockedParticipants[name] = true;
+
+        const others = names.filter((n) => n !== name);
+        const remain = 1 - newProb;
+        const share = remain / (others.length || 1);
+        others.forEach((n) => probabilities[n] = share);
+
+        normalizeProbabilities();
+        saveProbabilities();
+        return true;
+      }
+
+      lockedParticipants[name] = true;
+
+      const free = names.filter((n) => n !== name && !lockedParticipants[n]);
+      const locked = names.filter((n) => n !== name && lockedParticipants[n]);
+
+      if (free.length) {
+        probabilities[name] = newProb;
+        const lockedSum = locked.reduce((s, n) => s + (probabilities[n] || 0), 0) + newProb;
+        let remain = Math.max(0, 1 - lockedSum);
+
+        const freeSum = free.reduce((s, n) => s + (probabilities[n] || 0), 0);
+        if (freeSum > 0) {
+          const k = remain / freeSum;
+          free.forEach((n) => probabilities[n] = (probabilities[n] || 0) * k);
+        } else {
+          free.forEach((n) => probabilities[n] = remain / free.length);
+        }
+
+        free.forEach((n) => { if (probabilities[n] < 0.001) probabilities[n] = 0.001; });
+      } else {
+        const others = names.filter((n) => n !== name).sort((a, b) => (probabilities[a] || 0) - (probabilities[b] || 0));
+        const victim = others[0];
+        delete lockedParticipants[victim];
+
+        probabilities[name] = newProb;
+        const stillLocked = names.filter((n) => n !== name && lockedParticipants[n]);
+        const lockedSum = stillLocked.reduce((s, n) => s + (probabilities[n] || 0), 0) + newProb;
+        const remain = 1 - lockedSum;
+
+        probabilities[victim] = Math.max(0.001, remain);
+      }
+
+      normalizeProbabilities();
+      saveProbabilities();
+      return true;
+    }
+
+    function equalizeProbabilities() {
+      setEqualProbabilities();
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
+    /* ── БИЛЕТЫ: одна операция ts mod T ──────────────── */
+    const shares = () => names.map(n => hasCustomProbabilities ? (probabilities[n] || 0) : 1 / names.length);
+    const equalOdds = () => !hasCustomProbabilities;
+
+    // Накликали одинаковые проценты — это то же самое, что нажать «Уравнять»:
+    // сбрасываем ручной режим, и делитель снова равен числу участников
+    function collapseIfEqual() {
+      if (!hasCustomProbabilities) return;
+      const shown = names.map(n => getProbabilityPercent(n));
+      if (shown.every(v => v === shown[0])) setEqualProbabilities();
+    }
+
+    // Уравнены — T = число участников, остаток и есть порядковый номер.
+    // Выставлены руками — 1000 билетов по долям, у каждого свой диапазон номеров.
+    function ticketPlan() {
+      const n = names.length;
+      if (equalOdds()) return { T: n, ranges: names.map((_, i) => [i, i]), equal: true };
+
+      const exact = shares().map(p => p * 1000);
+      const w = exact.map(v => Math.max(1, Math.floor(v)));
+      let diff = 1000 - w.reduce((a, b) => a + b, 0);
+      const order = exact.map((v, i) => [v - Math.floor(v), i]).sort((a, b) => b[0] - a[0]).map(x => x[1]);
+      let k = 0;
+      while (diff > 0 && k < 5000) { w[order[k % order.length]]++; diff--; k++; }
+      while (diff < 0 && k < 5000) {
+        const i = order[order.length - 1 - (k % order.length)];
+        if (w[i] > 1) { w[i]--; diff++; }
+        k++;
+      }
+      const ranges = [];
+      let acc = 0;
+      for (const v of w) { ranges.push([acc, acc + v - 1]); acc += v; }
+      return { T: 1000, ranges, equal: false };
+    }
+
+    const ownerOf = (r, ranges) => ranges.findIndex(([a, b]) => r >= a && r <= b);
+
+    /* ── СПИСОК УЧАСТНИКОВ ───────────────────────────── */
+    function flashHint(key) {
+      newNameInput.classList.add('error-state');
+      newNameInput.placeholder = t(key);
+      setTimeout(() => {
+        newNameInput.classList.remove('error-state');
+        newNameInput.placeholder = t('ph_new');
+      }, 2000);
+    }
+
+    function validateAllNames() {
+      let allValid = names.length >= MIN_PLAYERS;
+      plist.querySelectorAll('.name-input').forEach(input => {
+        const v = input.value.trim();
+        if (!v || input.value.length > MAX_NAME_LEN || input.classList.contains('error-state')) allValid = false;
+      });
+      goBtn.disabled = !allValid || running;
+      return allValid;
+    }
+
+    function renderList() {
+      collapseIfEqual();
+      const plan = ticketPlan();
+      plist.innerHTML = '';
+
+      names.forEach((name, idx) => {
+        const row = document.createElement('div');
+        row.className = 'prow';
+        row.dataset.i = idx;
+
+        const num = document.createElement('div');
+        num.className = 'pnum';
+        const rng = plan.equal ? '' : '<span class="rng">' + plan.ranges[idx][0] + '–' + plan.ranges[idx][1] + '</span>';
+        num.innerHTML = '<span class="n">' + idx + '</span>' + rng;
+        row.appendChild(num);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'name-input';
+        input.maxLength = MAX_NAME_LEN;
+        input.value = name;
+        input.setAttribute('aria-label', t('col_name'));
+
+        input.addEventListener('input', () => {
+          const v = input.value.trim();
+          if (!v) { input.classList.add('error-state'); validateAllNames(); return; }
+
+          const dup = names.some((n, i) => i !== idx && n.toLowerCase() === v.toLowerCase());
+          input.classList.toggle('error-state', dup);
+          if (dup) { validateAllNames(); return; }
+
+          // переносим вероятность и ручную пометку на новое имя
+          const oldName = names[idx];
+          if (oldName in probabilities) { probabilities[v] = probabilities[oldName]; delete probabilities[oldName]; }
+          if (oldName in lockedParticipants) { lockedParticipants[v] = true; delete lockedParticipants[oldName]; }
+
+          names[idx] = v;
+          userEdited = true;
+          saveNames();
+          saveProbabilities();
+          if (done) softReset();
+          validateAllNames();
+        });
+
+        input.addEventListener('blur', () => {
+          const v = input.value.trim();
+          const dup = names.some((n, i) => i !== idx && n.toLowerCase() === v.toLowerCase());
+          if (!v || dup) { input.value = names[idx]; input.classList.remove('error-state'); validateAllNames(); }
+        });
+
+        row.appendChild(input);
+
+        const controls = document.createElement('div');
+        controls.className = 'prob-controls';
+
+        const dec = document.createElement('button');
+        dec.className = 'prob-btn';
+        dec.textContent = '−';
+        dec.setAttribute('aria-label', t('aria_dec'));
+        dec.onclick = () => { userEdited = true; if (done) softReset(); adjustProbability(names[idx], -1); };
+        controls.appendChild(dec);
+
+        const probInput = document.createElement('input');
+        probInput.type = 'text';
+        probInput.inputMode = 'decimal';
+        probInput.className = 'prob-input' + (lockedParticipants[name] ? ' manual' : '');
+        probInput.value = getProbabilityPercent(name) + '%';
+        probInput.setAttribute('aria-label', t('aria_prob'));
+        let lastValid = getProbabilityPercent(name);
+
+        probInput.addEventListener('focus', () => {
+          probInput.value = probInput.value.replace('%', '');
+          lastValid = probInput.value;
+        });
+        probInput.addEventListener('input', () => {
+          const val = probInput.value.replace('%', '').trim();
+          const num2 = parseFloat(val);
+          probInput.classList.toggle('error', !(val === '' || (num2 >= 0.1 && num2 <= 99.9)));
+        });
+        probInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); probInput.blur(); }
+        });
+        probInput.addEventListener('blur', () => {
+          const val = probInput.value.replace('%', '').trim();
+          const num2 = parseFloat(val);
+          probInput.classList.remove('error');
+
+          if (val === '' || isNaN(num2) || num2 < 0.1 || num2 > 99.9) {
+            probInput.value = lastValid + '%';
+            return;
+          }
+          userEdited = true;
+          if (done) softReset();
+          if (setProbabilityManually(names[idx], num2)) renderList();
+          else probInput.value = lastValid + '%';
+        });
+        controls.appendChild(probInput);
+
+        const inc = document.createElement('button');
+        inc.className = 'prob-btn';
+        inc.textContent = '+';
+        inc.setAttribute('aria-label', t('aria_inc'));
+        inc.onclick = () => { userEdited = true; if (done) softReset(); adjustProbability(names[idx], 1); };
+        controls.appendChild(inc);
+
+        row.appendChild(controls);
+
+        const rm = document.createElement('button');
+        rm.className = 'remove-btn';
+        rm.innerHTML = '×';
+        rm.title = t('aria_del');
+        rm.setAttribute('aria-label', t('aria_del'));
+        rm.onclick = () => removeParticipant(idx);
+        row.appendChild(rm);
+
+        plist.appendChild(row);
+      });
+
+      countLbl.textContent = names.length;
+      errorMsg.textContent = truncatedFrom
+        ? fill('err_trunc', { n: MAX_PLAYERS, total: truncatedFrom })
+        : (names.length >= MAX_PLAYERS ? fill('err_max', { n: MAX_PLAYERS }) : '');
+
+      updateOpHint(plan);
+      updateMask();
+      validateAllNames();
+    }
+
+    function addNewParticipant() {
+      const v = newNameInput.value.trim();
+
+      if (names.length >= MAX_PLAYERS) { newNameInput.value = ''; flashHint('ph_max'); return; }
+      if (!v) { flashHint('ph_atleast1'); return; }
+      if (names.some((n) => n.toLowerCase() === v.toLowerCase())) { newNameInput.value = ''; flashHint('ph_dup'); return; }
+
+      newNameInput.value = '';
+      newNameInput.placeholder = t('ph_new');
+
+      names.push(v);
+      saveNames();
+
+      probabilities[v] = 1 / names.length;
+      normalizeProbabilities();
+      saveProbabilities();
+
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
+    function removeParticipant(idx) {
+      if (names.length <= MIN_PLAYERS) { flashHint('ph_min2'); return; }
+
+      const removed = names[idx];
+      names.splice(idx, 1);
+      delete probabilities[removed];
+      delete lockedParticipants[removed];
+
+      saveNames();
+      normalizeProbabilities();
+      saveProbabilities();
+
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
+    addBtn.addEventListener('click', addNewParticipant);
+    newNameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addNewParticipant(); } });
+    equalizeBtn.addEventListener('click', equalizeProbabilities);
+
+    collapseBtn.addEventListener('click', () => {
+      const closed = listWrap.classList.toggle('closed');
+      collapseBtn.classList.toggle('closed', closed);
+    });
+
+    /* ── ЧАСЫ ────────────────────────────────────────── */
+    function fmtClock(ts) {
+      const d = new Date(ts);
+      return {
+        hm: pad(d.getHours(), 2) + ':' + pad(d.getMinutes(), 2),
+        sec: ':' + pad(d.getSeconds(), 2),
+        ms: '.' + pad(d.getMilliseconds(), 3)
+      };
+    }
+
+    // Голова числа отдельно, хвост (секунды и миллисекунды) отдельно —
+    // хвост замыливается, пока шансы неравные
+    // Под маской цифры бегут, но это шум: секунды перебрасываются в реальном
+    // темпе, миллисекунды — каждый кадр. Настоящие значения в DOM не попадают.
+    const rnd = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('');
+    let fakeSec = rnd(2), fakeSecAt = 0;
+    function showTime(ts) {
+      const p = fmtClock(ts);
+      const str = String(ts);
+      // подменяем цифры на шум только когда блюр уже полностью наплыл,
+      // иначе виден скачок настоящих секунд в случайные
+      const hidden = readout.classList.contains('masked') && performance.now() - maskedAt >= MASK_FADE;
+      clkHm.textContent = p.hm;
+      unixHead.textContent = str.slice(0, -5);
+      if (hidden) {
+        const sec = Math.floor(ts / 1000);
+        if (sec !== fakeSecAt) { fakeSecAt = sec; fakeSec = rnd(2); }
+        clkSec.textContent = ':' + fakeSec;
+        clkMs.textContent = '.' + rnd(3);
+        unixTail.textContent = rnd(5);
+      } else {
+        clkSec.textContent = p.sec;
+        clkMs.textContent = p.ms;
+        unixTail.textContent = str.slice(-5);
+      }
+    }
+
+    // При разных шансах делитель равен 1000, и остаток — это прямо миллисекунды:
+    // открытое табло позволило бы подгадать нажатие
+    const MASK_FADE = 320;                     // = transition у .sec/.ms
+    let maskedAt = 0;
+    function updateMask() {
+      const hide = !running && !done && !equalOdds();
+      if (hide && !readout.classList.contains('masked')) maskedAt = performance.now();
+      readout.classList.toggle('masked', hide);
+      maskNote.hidden = !hide;
+      if (!running && !done) showTime(Date.now());   // не ждём следующего кадра
+    }
+
+    function loop() {
+      if (!running && !done) showTime(Date.now());
+      requestAnimationFrame(loop);
+    }
+
+    /* ── РОЗЫГРЫШ ────────────────────────────────────── */
+    function updateOpHint(plan) {
+      if (running || done) return;
+      opEl.innerHTML = '<span class="hint">' + fill('op_hint', { T: (plan || ticketPlan()).T }) + '</span>';
+    }
+
+    function highlightWinner(i) {
+      for (const row of plist.children) row.classList.remove('win');
+      const el = plist.children[i];
+      if (el) el.classList.add('win');
+    }
+
+    function lockInputs(locked) {
+      plist.querySelectorAll('input, button').forEach(el => el.disabled = locked);
+      equalizeBtn.disabled = locked;
+      newNameInput.disabled = locked;
+      addBtn.disabled = locked;
+    }
+
+    function softReset() {
+      clearTimers();
+      running = false; done = false;
+      readout.classList.remove('frozen', 'snap', 'lit');
+      resultEl.classList.remove('on', 'waiting');
+      opEl.classList.remove('appear');
+      vLabel.hidden = true;
+      winnerEl.classList.remove('on');
+      winnerEl.textContent = '';
+      for (const row of plist.children) row.classList.remove('win');
+      goBtn.textContent = t('btn');
+      goBtn.classList.remove('again');
+      lockInputs(false);
+      updateMask();
+      updateOpHint();
+      validateAllNames();
+    }
+
+    function run() {
+      if (running) return;
+      if (done) { softReset(); return; }
+      if (!validateAllNames()) return;
+
+      // Время снимается ровно здесь, в момент нажатия
+      const ts = Date.now();
+      const plan = ticketPlan();
+      const r = ts % plan.T;                    // вся логика — одна операция
+      const widx = ownerOf(r, plan.ranges);
+
+      running = true;
+      goBtn.disabled = true;
+      lockInputs(true);
+      winnerEl.classList.remove('on');
+      winnerEl.textContent = '';
+      vLabel.hidden = true;
+      resultEl.classList.remove('on');
+      for (const row of plist.children) row.classList.remove('win');
+
+      updateMask();                             // зафиксировали — маска снята
+      showTime(ts);                             // и только теперь пишем реальные цифры
+      readout.classList.add('frozen');
+      void readout.offsetWidth;
+      readout.classList.add('snap');
+      playSnap();
+
+      // Счёт показываем сразу и целиком — прятать тут нечего
+      opEl.innerHTML =
+        '<span class="ts">' + ts + '</span>' +
+        '<span class="mod">mod ' + plan.T + '</span>' +
+        '<span class="eq">=</span>' +
+        '<span class="rr">' + r + '</span>';
+      opEl.classList.remove('appear');
+      void opEl.offsetWidth;
+      opEl.classList.add('appear');
+
+      if (REDUCED) { reveal(widx); return; }
+
+      // Секунда на то, чтобы прочитать остаток, — и имя проявляется
+      resultEl.classList.add('waiting');
+      later(() => reveal(widx), REVEAL_AT);
+    }
+
+    function reveal(widx) {
+      resultEl.classList.remove('waiting');
+      highlightWinner(widx);                    // плавная подсветка строки победителя
+      resultEl.classList.add('on');
+      vLabel.hidden = false;
+      winnerEl.textContent = names[widx];
+      void winnerEl.offsetWidth;
+      winnerEl.classList.add('on');
+      sparks();
+      playWin();
+
+      running = false;
+      done = true;
+      goBtn.textContent = t('btn_again');
+      goBtn.classList.add('again');
+      goBtn.disabled = false;
+      lockInputs(false);
+    }
+
+    function sparks() {
+      if (REDUCED) return;
+      for (let i = 0; i < 22; i++) {
+        const el = document.createElement('span');
+        el.className = 'spark';
+        const a = Math.random() * Math.PI * 2;
+        const dist = 70 + Math.random() * 110;
+        el.style.setProperty('--dx', (Math.cos(a) * dist).toFixed(1) + 'px');
+        el.style.setProperty('--dy', (Math.sin(a) * dist).toFixed(1) + 'px');
+        el.style.animationDelay = (Math.random() * 0.16).toFixed(2) + 's';
+        if (i % 3 === 0) el.style.background = 'var(--mint)';
+        resultEl.appendChild(el);
+        setTimeout(() => el.remove(), 1400);
+      }
+    }
+
+    /* ── Звук (общий выключатель — sound-toggle.js) ──── */
+    let audioCtx = null;
+    function playSound(f, d, v, type) {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = type || 'sine';
+        o.frequency.value = f;
+        const t = audioCtx.currentTime;
+        g.gain.setValueAtTime(v || 0.1, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + (d || 0.1));
+        o.connect(g);
+        g.connect(audioCtx.destination);
+        o.start(t);
+        o.stop(t + (d || 0.1));
+      } catch (e) {}
+    }
+    const playSnap = () => { playSound(880, 0.06, 0.16, 'square'); setTimeout(() => playSound(320, 0.10, 0.12, 'square'), 55); };
+    const playWin  = () => { [660, 880, 1320].forEach((f, i) => setTimeout(() => playSound(f, 0.32, 0.09), i * 110)); };
+
+    /* ── Меню ────────────────────────────────────────── */
+    const menuBtn = document.getElementById('menuBtn');
+    const menuDrop = document.getElementById('menuDrop');
+    const setMenu = (open) => {
+      menuBtn.classList.toggle('open', open);
+      menuDrop.classList.toggle('open', open);
+      menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    menuBtn.addEventListener('click', (e) => { e.stopPropagation(); setMenu(!menuDrop.classList.contains('open')); });
+    document.addEventListener('click', (e) => { if (!menuDrop.contains(e.target)) setMenu(false); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+
+    goBtn.addEventListener('click', run);
+
+    document.addEventListener('keydown', (e) => {
+      if (['INPUT', 'BUTTON', 'A'].includes(e.target.tagName)) return;
+      if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); run(); }
+    });
+
+    /* ── ЯЗЫК ────────────────────────────────────────── */
+    window.addEventListener('langchange', () => {
+      if (!userEdited) {
+        const isDefault = Object.values(DEFAULT_NAME_SETS).some(set => set.join('|') === names.join('|'));
+        if (isDefault && names.join('|') !== DEFAULT_NAME_SETS[I18N.lang].join('|')) {
+          const wasEqual = !hasCustomProbabilities;
+          names = DEFAULT_NAME_SETS[I18N.lang].slice();
+          saveNames();
+          if (wasEqual) setEqualProbabilities();
+          else { probabilities = {}; lockedParticipants = {}; setEqualProbabilities(); }
+        }
+      }
+      const wasDone = done;
+      const winIdx = wasDone ? [...plist.children].findIndex(el => el.classList.contains('win')) : -1;
+      renderList();
+      goBtn.textContent = wasDone ? t('btn_again') : t('btn');
+      if (wasDone && winIdx >= 0) {
+        highlightWinner(winIdx);
+        winnerEl.textContent = names[winIdx];
+        goBtn.disabled = false;
+      }
+    });
+
+    initProbabilities();
+    renderList();
+    loop();
+  </script>
+
+ <!-- Yandex.Metrika counter -->
+  <script type="text/javascript">
+    (function(m,e,t,r,i,k,a){
+      m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+      m[i].l=1*new Date();
+      for (var j = 0; j < document.scripts.length; j++) {
+        if (document.scripts[j].src === r) { return; }
+      }
+      k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+    })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+
+    ym(104849796, 'init', {
+      clickmap:true,
+      trackLinks:true,
+      accurateTrackBounce:true,
+      webvisor:true
+    });
+  </script>
+  <noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+  <!-- /Yandex.Metrika counter -->
+
+  <script>
+  window.I18N_DICT = {
+    ru: {
+      _title: `Псевдорандом — победитель по остатку от деления времени`,
+      meta_desc: `⏱ Рандомайзер на времени: фиксируем момент нажатия в миллисекундах, делим на число участников — остаток и есть порядковый номер победителя. С настройкой вероятностей.`,
+      menu: `Меню`,
+      nav_home: `🏠 Главная`, nav_ai: `🤖 LLM-рандомайзер`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Рулетка`, nav_racing: `🏁 Гонки`, nav_wheel: `🎡 Колесо Фортуны`, nav_bingo: `🎲 Бинго`, nav_bank: `🇲🇽 Банк`, nav_plinko: `🎯 Плинко`, nav_loto: `🎱 Лототрон`, nav_crystal: `🔮 Магический Шар`, nav_trading: `📈 Трейдинг`, nav_daisy: `🌼 Ромашка`,
+      h1: `Псевдо<b>рандом</b>`,
+      unix_label: `метка времени, мс`,
+      btn: `⏱ Зафиксировать время`,
+      btn_again: `↻ Ещё раз`,
+      op_hint: `метка времени mod {T}`,
+      v_label: `победитель`,
+      participants: `Участники`,
+      equalize: `Уравнять`,
+      equalize_title: `Уравнять вероятности`,
+      collapse_title: `Свернуть список`,
+      col_num: `№`,
+      col_name: `Имя`,
+      col_prob: `📊 Вероятность`,
+      ph_new: `Новый участник`,
+      add_title: `Добавить участника`,
+      new_name: `Участник {n}`,
+      aria_dec: `Уменьшить вероятность`,
+      aria_prob: `Вероятность в процентах`,
+      aria_inc: `Увеличить вероятность`,
+      aria_del: `Удалить участника`,
+      err_min: `Нужно минимум 2 участника.`,
+      err_max: `Максимум {n} участников.`,
+      err_trunc: `Список общий с другими рандомайзерами: показаны первые {n} из {total}.`,
+      mask_note: `секунды и миллисекунды скрыты — иначе момент нажатия можно подгадать`,
+      ph_dup: `Такое имя уже есть`,
+      ph_atleast1: `Введите имя`,
+      ph_min2: `Нужно минимум 2 участника`,
+      ph_max: `Максимум {n} участников`
+    },
+    en: {
+      _title: `Pseudorandom — the winner is the remainder of the clock`,
+      meta_desc: `⏱ A randomizer built on time: we capture the moment of your press in milliseconds and divide it by the number of participants — the remainder is the winner's index. With adjustable odds.`,
+      menu: `Menu`,
+      nav_home: `🏠 Home`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Roulette`, nav_racing: `🏁 Racing`, nav_wheel: `🎡 Wheel of Fortune`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 The Bank`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Lottery Drum`, nav_crystal: `🔮 Magic Ball`, nav_trading: `📈 Trading`, nav_daisy: `🌼 Daisy`,
+      h1: `Pseudo<b>random</b>`,
+      unix_label: `timestamp, ms`,
+      btn: `⏱ Capture the time`,
+      btn_again: `↻ Run again`,
+      op_hint: `timestamp mod {T}`,
+      v_label: `winner`,
+      participants: `Participants`,
+      equalize: `Equalize`,
+      equalize_title: `Equalize the odds`,
+      collapse_title: `Collapse the list`,
+      col_num: `#`,
+      col_name: `Name`,
+      col_prob: `📊 Odds`,
+      ph_new: `New participant`,
+      add_title: `Add a participant`,
+      new_name: `Participant {n}`,
+      aria_dec: `Decrease probability`,
+      aria_prob: `Probability in percent`,
+      aria_inc: `Increase probability`,
+      aria_del: `Remove participant`,
+      err_min: `At least 2 participants are needed.`,
+      err_max: `{n} participants max.`,
+      err_trunc: `The roster is shared with the other randomizers: showing the first {n} of {total}.`,
+      mask_note: `seconds and milliseconds are hidden — otherwise the press could be timed`,
+      ph_dup: `That name already exists`,
+      ph_atleast1: `Enter a name`,
+      ph_min2: `At least 2 participants`,
+      ph_max: `{n} participants max`
+    },
+    el: {
+      _title: `Ψευδοτυχαίο — νικητής το υπόλοιπο του χρόνου`,
+      meta_desc: `⏱ Τυχαία επιλογή με βάση τον χρόνο: πιάνουμε τη στιγμή του πατήματος σε χιλιοστά και τη διαιρούμε με το πλήθος των συμμετεχόντων — το υπόλοιπο είναι ο αριθμός του νικητή. Με ρυθμιζόμενες πιθανότητες.`,
+      menu: `Μενού`,
+      nav_home: `🏠 Αρχική`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Ρουλέτα`, nav_racing: `🏁 Αγώνες`, nav_wheel: `🎡 Τροχός της Τύχης`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 Η Τράπεζα`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Κληρωτίδα`, nav_crystal: `🔮 Μαγική Μπάλα`, nav_trading: `📈 Trading`, nav_daisy: `🌼 Μαργαρίτα`,
+      h1: `Ψευδο<b>τυχαίο</b>`,
+      unix_label: `χρονοσήμανση, ms`,
+      btn: `⏱ Κλείδωσε τον χρόνο`,
+      btn_again: `↻ Ξανά`,
+      op_hint: `χρονοσήμανση mod {T}`,
+      v_label: `νικητής`,
+      participants: `Συμμετέχοντες`,
+      equalize: `Εξίσωση`,
+      equalize_title: `Εξίσωση πιθανοτήτων`,
+      collapse_title: `Σύμπτυξη λίστας`,
+      col_num: `Αρ.`,
+      col_name: `Όνομα`,
+      col_prob: `📊 Πιθανότητα`,
+      ph_new: `Νέος συμμετέχων`,
+      add_title: `Προσθήκη συμμετέχοντα`,
+      new_name: `Συμμετέχων {n}`,
+      aria_dec: `Μείωση πιθανότητας`,
+      aria_prob: `Πιθανότητα σε ποσοστό`,
+      aria_inc: `Αύξηση πιθανότητας`,
+      aria_del: `Αφαίρεση συμμετέχοντα`,
+      err_min: `Χρειάζονται τουλάχιστον 2 συμμετέχοντες.`,
+      err_max: `Το πολύ {n} συμμετέχοντες.`,
+      err_trunc: `Η λίστα είναι κοινή με τους άλλους τυχαίους επιλογείς: εμφανίζονται οι πρώτοι {n} από {total}.`,
+      mask_note: `τα δευτερόλεπτα και τα χιλιοστά είναι κρυμμένα — αλλιώς μπορείς να χρονομετρήσεις το πάτημα`,
+      ph_dup: `Το όνομα υπάρχει ήδη`,
+      ph_atleast1: `Γράψε ένα όνομα`,
+      ph_min2: `Τουλάχιστον 2 συμμετέχοντες`,
+      ph_max: `Το πολύ {n} συμμετέχοντες`
+    }
+  };
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Псевдорандом",
+    "applicationCategory": "GameApplication",
+    "operatingSystem": "Web",
+    "url": "https://randomhost.online/time-randomizer.html",
+    "description": "Рандомайзер на времени: момент нажатия в миллисекундах делится на число участников, остаток от деления — порядковый номер победителя.",
+    "inLanguage": "ru",
+    "publisher": {
+      "@type": "Organization",
+      "name": "Рандомайзер-игры",
+      "url": "https://randomhost.online"
+    }
+  }
+  </script>
+
+  <script src="i18n.js" defer></script>
+  <script src="sound-toggle.js" defer></script>
+</body>
+</html>
