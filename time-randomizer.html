@@ -1265,10 +1265,12 @@
 
     // Голова числа отдельно, хвост (секунды и миллисекунды) отдельно —
     // хвост замыливается, пока шансы неравные
-    // Под маской цифры бегут, но это шум: секунды перебрасываются в реальном
-    // темпе, миллисекунды — каждый кадр. Настоящие значения в DOM не попадают.
+    // Под маской цифры бегут, но это шум: миллисекунды — каждый кадр, а секунды
+    // стоят на месте. Если бы они менялись по реальной границе секунды, сам момент
+    // смены выдавал бы, что миллисекунды сейчас 0–99, и нажатие можно было бы подгадать.
+    // Настоящие значения в DOM не попадают.
     const rnd = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('');
-    let fakeSec = rnd(2), fakeSecAt = 0;
+    let fakeSec = rnd(2);
     function showTime(ts) {
       const p = fmtClock(ts);
       const str = String(ts);
@@ -1278,8 +1280,6 @@
       clkHm.textContent = p.hm;
       unixHead.textContent = str.slice(0, -5);
       if (hidden) {
-        const sec = Math.floor(ts / 1000);
-        if (sec !== fakeSecAt) { fakeSecAt = sec; fakeSec = rnd(2); }
         clkSec.textContent = ':' + fakeSec;
         clkMs.textContent = '.' + rnd(3);
         unixTail.textContent = rnd(5);
@@ -1296,7 +1296,7 @@
     let maskedAt = 0;
     function updateMask() {
       const hide = !running && !done && !equalOdds();
-      if (hide && !readout.classList.contains('masked')) maskedAt = performance.now();
+      if (hide && !readout.classList.contains('masked')) { maskedAt = performance.now(); fakeSec = rnd(2); }
       readout.classList.toggle('masked', hide);
       maskNote.hidden = !hide;
       if (!running && !done) showTime(Date.now());   // не ждём следующего кадра
