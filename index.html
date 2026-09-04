@@ -304,8 +304,10 @@
       display: flex;
       flex-direction: column;
       gap: 12px;
-      background: var(--glass);
-      backdrop-filter: blur(10px);
+      /* Без backdrop-filter: в Safari/Chrome блюр на карточке с transform-анимацией
+         (IntersectionObserver + fadeInUp сетки) после возврата назад рисовался
+         смещённым «призраком». Стекло имитируем более плотным фоном. */
+      background: rgba(255, 255, 255, 0.13);
       border: 2px solid var(--glass-border);
       border-radius: 20px;
       padding: 30px;
@@ -315,8 +317,6 @@
       position: relative;
       overflow: hidden;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-      /* Свой композитный слой: чинит глюк рендера backdrop-filter внутри анимированной сетки */
-      transform: translateZ(0);
     }
 
     .game-card::before {
@@ -1363,8 +1363,8 @@
       position: absolute;
       top: 12px;
       right: 12px;
-      background: rgba(110, 120, 255, 0.22);
-      backdrop-filter: blur(20px);
+      /* Без backdrop-filter: вложенный блюр внутри карточки провоцировал глюк рендера */
+      background: rgba(110, 120, 255, 0.45);
       color: #ffffff;
       padding: 7px 14px;
       font-size: 11px;
@@ -2605,7 +2605,10 @@ body.lang-spotlight-active .lang-switch {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
           entry.target.style.opacity = '1';
-          entry.target.style.transform = 'translateY(0)';
+          // Сбрасываем transform полностью (а не в translateY(0)), чтобы у карточки
+          // не оставался лишний композитный слой после появления
+          entry.target.style.transform = '';
+          observer.unobserve(entry.target);
         }
       });
     }, observerOptions);
