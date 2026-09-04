@@ -1265,26 +1265,28 @@
 
     // Голова числа отдельно, хвост (секунды и миллисекунды) отдельно —
     // хвост замыливается, пока шансы неравные
-    // Под маской цифры бегут, но это шум: миллисекунды — каждый кадр, а секунды
-    // стоят на месте. Если бы они менялись по реальной границе секунды, сам момент
-    // смены выдавал бы, что миллисекунды сейчас 0–99, и нажатие можно было бы подгадать.
-    // Настоящие значения в DOM не попадают.
+    // Под маской миллисекунды и хвост метки бегут шумом, а секунды замирают на
+    // значении, которое было в момент включения маски. Если бы они менялись по
+    // реальной границе секунды, сам момент смены выдавал бы, что миллисекунды
+    // сейчас 0–99, и нажатие можно было бы подгадать. Настоящие мс в DOM не попадают.
     const rnd = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('');
-    let fakeSec = rnd(2);
+    let frozenSec = ':00';
     function showTime(ts) {
       const p = fmtClock(ts);
       const str = String(ts);
       // подменяем цифры на шум только когда блюр уже полностью наплыл,
       // иначе виден скачок настоящих секунд в случайные
-      const hidden = readout.classList.contains('masked') && performance.now() - maskedAt >= MASK_FADE;
+      const masked = readout.classList.contains('masked');
+      const hidden = masked && performance.now() - maskedAt >= MASK_FADE;
       clkHm.textContent = p.hm;
       unixHead.textContent = str.slice(0, -5);
+      // секунды замирают сразу, как только маска включилась: в этот момент они
+      // совпадают с настоящими, поэтому скачка нет
+      clkSec.textContent = masked ? frozenSec : p.sec;
       if (hidden) {
-        clkSec.textContent = ':' + fakeSec;
         clkMs.textContent = '.' + rnd(3);
         unixTail.textContent = rnd(5);
       } else {
-        clkSec.textContent = p.sec;
         clkMs.textContent = p.ms;
         unixTail.textContent = str.slice(-5);
       }
@@ -1296,7 +1298,7 @@
     let maskedAt = 0;
     function updateMask() {
       const hide = !running && !done && !equalOdds();
-      if (hide && !readout.classList.contains('masked')) { maskedAt = performance.now(); fakeSec = rnd(2); }
+      if (hide && !readout.classList.contains('masked')) { maskedAt = performance.now(); frozenSec = fmtClock(Date.now()).sec; }
       readout.classList.toggle('masked', hide);
       maskNote.hidden = !hide;
       if (!running && !done) showTime(Date.now());   // не ждём следующего кадра
