@@ -240,6 +240,7 @@
     .readout.masked .clock .sec, .readout.masked .clock .ms { filter: blur(9px); opacity: 0.7; }
     .readout.masked .unix .tail { filter: blur(4px); opacity: 0.7; }
 
+    /* слот под подпись занят всегда, чтобы табло не меняло высоту при смене маски */
     .mask-note {
       margin-top: 8px;
       text-align: center;
@@ -248,7 +249,11 @@
       letter-spacing: 0.04em;
       color: #566d84;
       line-height: 1.4;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s;
     }
+    .readout.masked .mask-note { opacity: 1; visibility: visible; }
     .readout.frozen .clock { color: #fff; text-shadow: 0 0 26px rgba(251, 191, 36, 0.45); }
     .readout.frozen .clock .ms { color: var(--amber); }
 
@@ -347,7 +352,7 @@
       color: #566d84;
       font-variant-numeric: tabular-nums;
       word-break: break-word;
-      min-height: 24px;
+      min-height: 2em;                 /* высота строки с остатком (.rr 1.5em) — не растёт при показе формулы */
       display: flex;
       align-items: center;
       justify-content: center;
@@ -428,6 +433,7 @@
       line-height: 1.1;
       text-transform: uppercase;
       word-break: break-word;
+      min-height: 1.1em;               /* одна строка имени зарезервирована и до объявления */
       opacity: 0;
       transform: translateY(8px);
       text-shadow: 0 0 34px rgba(251,191,36,0.35);
@@ -743,7 +749,7 @@
           <span class="corner c3"></span><span class="corner c4"></span>
           <div class="clock"><span id="clkHm">00:00</span><span class="sec" id="clkSec">:00</span><span class="ms" id="clkMs">.000</span></div>
           <div class="unix"><span data-i18n="unix_label">метка времени, мс</span><b><span id="unixHead">—</span><span class="tail" id="unixTail"></span></b></div>
-          <div class="mask-note" id="maskNote" hidden data-i18n="mask_note">секунды и миллисекунды скрыты — иначе момент нажатия можно подгадать</div>
+          <div class="mask-note" id="maskNote" data-i18n="mask_note">секунды и миллисекунды скрыты — иначе момент нажатия можно подгадать</div>
           <div class="scanline"></div>
           <div class="flash"></div>
         </div>
@@ -753,7 +759,7 @@
         <div class="result" id="result" aria-live="polite">
           <span class="shock"></span>
           <div class="op" id="op"></div>
-          <div class="v-label" id="vLabel" hidden data-i18n="v_label">победитель</div>
+          <div class="v-label" data-i18n="v_label">победитель</div>
           <div class="winner" id="winner"></div>
         </div>
 
@@ -781,12 +787,10 @@
     const clkMs     = document.getElementById('clkMs');
     const unixHead  = document.getElementById('unixHead');
     const unixTail  = document.getElementById('unixTail');
-    const maskNote  = document.getElementById('maskNote');
     const goBtn     = document.getElementById('goBtn');
     const resultEl  = document.getElementById('result');
     const opEl      = document.getElementById('op');
     const winnerEl  = document.getElementById('winner');
-    const vLabel    = document.getElementById('vLabel');
     const plist     = document.getElementById('plist');
     const countLbl  = document.getElementById('countLabel');
     const errorMsg  = document.getElementById('errorMsg');
@@ -1300,7 +1304,6 @@
       const hide = !running && !done && !equalOdds();
       if (hide && !readout.classList.contains('masked')) { maskedAt = performance.now(); frozenSec = fmtClock(Date.now()).sec; }
       readout.classList.toggle('masked', hide);
-      maskNote.hidden = !hide;
       if (!running && !done) showTime(Date.now());   // не ждём следующего кадра
     }
 
@@ -1334,7 +1337,6 @@
       readout.classList.remove('frozen', 'snap', 'lit');
       resultEl.classList.remove('on', 'waiting');
       opEl.classList.remove('appear');
-      vLabel.hidden = true;
       winnerEl.classList.remove('on');
       winnerEl.textContent = '';
       for (const row of plist.children) row.classList.remove('win');
@@ -1362,7 +1364,6 @@
       lockInputs(true);
       winnerEl.classList.remove('on');
       winnerEl.textContent = '';
-      vLabel.hidden = true;
       resultEl.classList.remove('on');
       for (const row of plist.children) row.classList.remove('win');
 
@@ -1394,7 +1395,6 @@
       resultEl.classList.remove('waiting');
       highlightWinner(widx);                    // плавная подсветка строки победителя
       resultEl.classList.add('on');
-      vLabel.hidden = false;
       winnerEl.textContent = names[widx];
       void winnerEl.offsetWidth;
       winnerEl.classList.add('on');
