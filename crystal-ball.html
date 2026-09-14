@@ -559,6 +559,62 @@
       transform: scale(0.95);
     }
 
+    /* «Отпуск / болеет»: участник временно выключен из розыгрыша, но не удалён */
+    .away-btn {
+      padding: 8px 10px;
+      background: rgba(255,255,255,0.14);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 17px;
+      line-height: 1.2;
+      transition: 0.3s;
+      flex-shrink: 0;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    .away-btn:hover {
+      background: rgba(255,255,255,0.26);
+      transform: scale(1.1);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+    }
+
+    .away-btn:active {
+      transform: scale(0.95);
+    }
+
+    .header-away {
+      width: 48px;
+    }
+
+    /* без этого поле имени держит ширину ~20 символов и выталкивает ✕ за край списка */
+    .name-item .name-input {
+      min-width: 0;
+    }
+
+    .name-item.is-away .name-input {
+      opacity: 0.55;
+      font-style: italic;
+      cursor: default;
+    }
+
+    .away-badge {
+      width: 120px;
+      flex-shrink: 0;
+      box-sizing: border-box;
+      padding: 6px 4px;
+      border: 2px dashed rgba(186,85,211,0.45);
+      border-radius: 8px;
+      color: rgba(255,255,255,0.75);
+      font-size: 13px;
+      font-weight: 700;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .add-name-container {
       display: flex;
       gap: 10px;
@@ -593,177 +649,326 @@
       margin-bottom: 30px;
       text-shadow: 0 0 20px rgba(186,85,211,0.8), 0 0 40px rgba(138,43,226,0.6);
       font-weight: 800;
-      animation: glow 2s ease-in-out infinite alternate;
+      animation: glow 4s ease-in-out infinite alternate;
     }
 
     @keyframes glow {
-      from { text-shadow: 0 0 20px rgba(186,85,211,0.8), 0 0 40px rgba(138,43,226,0.6); }
-      to { text-shadow: 0 0 30px rgba(186,85,211,1), 0 0 60px rgba(138,43,226,0.8), 0 0 80px rgba(148,0,211,0.6); }
+      from { text-shadow: 0 0 20px rgba(186,85,211,0.7), 0 0 40px rgba(138,43,226,0.5); }
+      to { text-shadow: 0 0 26px rgba(216,180,254,0.95), 0 0 56px rgba(168,85,247,0.75), 0 0 90px rgba(192,38,211,0.45); }
     }
 
+    /* Фон: дрейфующая туманность и редкие падающие звёзды */
+    .nebula-bg {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .nebula-bg::before,
+    .nebula-bg::after {
+      content: '';
+      position: absolute;
+      width: 75vmax;
+      height: 75vmax;
+      border-radius: 50%;
+      will-change: transform;
+    }
+    .nebula-bg::before {
+      left: -20vmax;
+      top: -25vmax;
+      background: radial-gradient(circle, rgba(124,58,237,0.28) 0%, rgba(124,58,237,0.08) 40%, transparent 65%);
+      animation: nebulaDrift 38s ease-in-out infinite alternate;
+    }
+    .nebula-bg::after {
+      right: -25vmax;
+      bottom: -30vmax;
+      background: radial-gradient(circle, rgba(219,39,119,0.18) 0%, rgba(34,211,238,0.05) 45%, transparent 68%);
+      animation: nebulaDrift 46s ease-in-out infinite alternate-reverse;
+    }
+    @keyframes nebulaDrift {
+      from { transform: translate(0, 0) scale(1); }
+      to { transform: translate(8vmax, 6vmax) scale(1.15); }
+    }
+    .shooting-star {
+      position: absolute;
+      top: 14%;
+      left: 72%;
+      width: 150px;
+      height: 2px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, rgba(255,255,255,0.95), rgba(196,181,253,0.45) 35%, transparent);
+      opacity: 0;
+      transform: rotate(-24deg) translateX(0);
+      animation: shoot 13s ease-in 4s infinite;
+    }
+    .shooting-star.s2 {
+      top: 38%;
+      left: 34%;
+      animation-duration: 19s;
+      animation-delay: 11s;
+    }
+    @keyframes shoot {
+      0%, 93% { opacity: 0; transform: rotate(-24deg) translateX(0); }
+      94% { opacity: 1; }
+      100% { opacity: 0; transform: rotate(-24deg) translateX(-460px); }
+    }
+
+    /* Сцена шара: кольцо рун, ореол, шар, подставка. Всё в долях ширины контейнера */
     .crystal-ball-container {
       position: relative;
-      width: 400px;
-      height: 400px;
-      margin: 0 auto 50px;
+      width: min(440px, 100%);
+      aspect-ratio: 1;
+      margin: 0 auto 44px;
+      container-type: inline-size;
+      --energy: 0;
+      --tilt-x: 0;
+      --tilt-y: 0;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .orb-floor {
+      position: absolute;
+      left: 10%;
+      width: 80%;
+      top: 86%;
+      height: 14%;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 0;
+      background: radial-gradient(ellipse at center, rgba(168,85,247,0.45) 0%, rgba(88,28,135,0.22) 40%, transparent 70%);
+      opacity: calc(0.55 + var(--energy) * 0.45);
+    }
+
+    .orb-halo {
+      position: absolute;
+      left: 6%;
+      top: 2%;
+      width: 88%;
+      height: 88%;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 1;
+      box-shadow:
+        0 0 50px 6px rgba(139,92,246,0.5),
+        0 0 120px 24px rgba(192,38,211,0.24);
+      opacity: calc(0.5 + var(--energy) * 0.5);
+      transform: scale(calc(1 + var(--energy) * 0.035));
+    }
+    .crystal-ball-container:has(.crystal-ball:focus-visible) .orb-halo {
+      box-shadow:
+        0 0 0 3px rgba(233,213,255,0.8),
+        0 0 50px 6px rgba(139,92,246,0.5),
+        0 0 120px 24px rgba(192,38,211,0.24);
+    }
+
+    .orb-ring {
+      position: absolute;
+      left: 0;
+      top: -4%;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      perspective: 1200px;
+    }
+    /* верхняя половина кольца уходит за шар, нижняя проходит перед ним */
+    .orb-ring.back { z-index: 1; clip-path: inset(0 0 50% 0); }
+    .orb-ring.front { z-index: 3; clip-path: inset(50% 0 0 0); }
+    .orb-ring-plane {
+      position: absolute;
+      inset: 0;
+      transform-style: preserve-3d;
+      transform: rotateX(calc(73deg + var(--tilt-y) * 4deg)) rotateY(calc(var(--tilt-x) * -6deg));
+    }
+    .orb-ring svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      color: #d8b4fe;
+      filter: drop-shadow(0 0 2px rgba(192,132,252,0.9));
+    }
+    .orb-ring .runes {
+      opacity: calc(0.35 + var(--energy) * 0.65);
     }
 
     .crystal-ball {
-      position: relative;
+      position: absolute;
+      left: 6%;
+      top: 2%;
+      width: 88%;
+      height: 88%;
+      border-radius: 50%;
+      overflow: hidden;
+      z-index: 2;
+      cursor: pointer;
+      outline: none;
+      background: radial-gradient(circle at 50% 55%, #2a0b4d 0%, #16052e 55%, #07010f 100%);
+      /* Safari: без маски скругление не обрезает canvas при transform */
+      -webkit-mask-image: -webkit-radial-gradient(white, black);
+    }
+    .crystal-ball-container.impact .crystal-ball {
+      animation: orbImpact 0.9s cubic-bezier(.16,1,.3,1);
+    }
+    @keyframes orbImpact {
+      0% { scale: 1.07; }
+      100% { scale: 1; }
+    }
+    .crystal-ball-container.refuse .crystal-ball {
+      animation: orbRefuse 0.45s ease;
+    }
+    @keyframes orbRefuse {
+      0%, 100% { translate: 0 0; }
+      20% { translate: -6px 0; }
+      40% { translate: 5px 0; }
+      60% { translate: -3px 0; }
+      80% { translate: 2px 0; }
+    }
+
+    .orb-canvas {
+      position: absolute;
+      inset: 0;
       width: 100%;
       height: 100%;
-      border-radius: 50%;
-      background: radial-gradient(circle at 30% 30%, rgba(186,85,211,0.4), rgba(75,0,130,0.6), rgba(25,0,51,0.9));
-      box-shadow: 
-        0 0 60px rgba(138,43,226,0.6),
-        0 0 100px rgba(148,0,211,0.4),
-        inset 0 0 100px rgba(186,85,211,0.2),
-        inset -30px -30px 80px rgba(0,0,0,0.6);
-      animation: ballPulse 3s ease-in-out infinite;
+      display: block;
     }
 
-    @keyframes ballPulse {
-      0%, 100% {
-        box-shadow: 
-          0 0 60px rgba(138,43,226,0.6),
-          0 0 100px rgba(148,0,211,0.4),
-          inset 0 0 100px rgba(186,85,211,0.2),
-          inset -30px -30px 80px rgba(0,0,0,0.6);
-      }
-      50% {
-        box-shadow: 
-          0 0 80px rgba(138,43,226,0.8),
-          0 0 120px rgba(148,0,211,0.6),
-          inset 0 0 120px rgba(186,85,211,0.3),
-          inset -30px -30px 80px rgba(0,0,0,0.6);
-      }
-    }
-
-    .mist {
+    /* стекло: френелевский край, тень снизу справа, отсвет подставки */
+    .orb-glass {
       position: absolute;
       inset: 0;
       border-radius: 50%;
-      overflow: hidden;
-    }
-
-    .mist-layer {
-      position: absolute;
-      width: 200%;
-      height: 200%;
-      top: -50%;
-      left: -50%;
-      background: radial-gradient(circle, rgba(186,85,211,0.3) 0%, transparent 50%);
-      animation: mistSwirl 20s linear infinite;
-    }
-
-    .mist-layer:nth-child(2) {
-      animation-duration: 15s;
-      animation-direction: reverse;
-      background: radial-gradient(circle, rgba(138,43,226,0.2) 0%, transparent 50%);
-    }
-
-    .mist-layer:nth-child(3) {
-      animation-duration: 25s;
-      background: radial-gradient(circle, rgba(148,0,211,0.25) 0%, transparent 50%);
-    }
-
-    @keyframes mistSwirl {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-
-    .victory-smoke {
-      position: absolute;
-      inset: 0;
-      border-radius: 50%;
-      overflow: hidden;
       pointer-events: none;
-      opacity: 0;
-    }
-
-    .victory-smoke.active {
-      animation: smokeAppear 2s ease-out forwards;
-    }
-
-    @keyframes smokeAppear {
-      0% { opacity: 0; }
-      20% { opacity: 1; }
-      100% { opacity: 0; }
-    }
-
-    .smoke-particle {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      background: radial-gradient(circle, rgba(186,85,211,0.4) 0%, transparent 70%);
-      animation: smokeRise 2s ease-out forwards;
-    }
-
-    .smoke-particle:nth-child(2) {
-      animation-delay: 0.2s;
-      background: radial-gradient(circle, rgba(138,43,226,0.3) 0%, transparent 70%);
-    }
-
-    .smoke-particle:nth-child(3) {
-      animation-delay: 0.4s;
-      background: radial-gradient(circle, rgba(148,0,211,0.35) 0%, transparent 70%);
-    }
-
-    @keyframes smokeRise {
-      0% {
-        transform: translateY(50%) scale(0.5);
-        opacity: 0;
-      }
-      30% {
-        opacity: 1;
-      }
-      100% {
-        transform: translateY(-50%) scale(2);
-        opacity: 0;
-      }
+      z-index: 5;
+      background:
+        radial-gradient(circle at 50% 108%, rgba(236,72,153,0.26) 0%, transparent 36%),
+        radial-gradient(circle at 50% 50%, transparent 60%, rgba(196,181,253,0.08) 72%, rgba(233,213,255,0.26) 100%);
+      box-shadow:
+        inset 0 0 0 1px rgba(233,213,255,0.16),
+        inset 0 0 30px rgba(216,180,254,0.22),
+        inset -18px -28px 60px rgba(0,0,0,0.5),
+        inset 10px 14px 40px rgba(255,255,255,0.05);
     }
 
     .highlight {
       position: absolute;
-      top: 15%;
-      left: 20%;
-      width: 120px;
-      height: 120px;
-      background: radial-gradient(circle, rgba(255,255,255,0.6) 0%, transparent 60%);
+      top: 8%;
+      left: 16%;
+      width: 40%;
+      height: 26%;
       border-radius: 50%;
-      filter: blur(20px);
+      pointer-events: none;
+      z-index: 6;
+      background: radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.1) 45%, transparent 70%);
+      filter: blur(6px);
+      transform: translate(calc(var(--tilt-x) * -7%), calc(var(--tilt-y) * -7%)) rotate(-30deg);
+    }
+    .highlight.highlight-sm {
+      top: 19%;
+      left: 26%;
+      width: 9%;
+      height: 5.5%;
+      background: radial-gradient(ellipse, rgba(255,255,255,0.95) 0%, transparent 70%);
+      filter: blur(1px);
+      transform: translate(calc(var(--tilt-x) * -40%), calc(var(--tilt-y) * -40%)) rotate(-30deg);
+    }
+    .highlight.highlight-rim {
+      top: auto;
+      left: auto;
+      bottom: 8%;
+      right: 15%;
+      width: 30%;
+      height: 9%;
+      background: radial-gradient(ellipse, rgba(196,181,253,0.32) 0%, transparent 70%);
+      filter: blur(4px);
+      transform: translate(calc(var(--tilt-x) * 10%), calc(var(--tilt-y) * 10%)) rotate(-32deg);
+    }
+
+    .orb-hint {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 18%;
+      z-index: 7;
+      text-align: center;
+      pointer-events: none;
+      font-size: clamp(10px, 2.8cqw, 13px);
+      font-weight: 600;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(233,213,255,0.8);
+      text-shadow: 0 0 10px rgba(192,132,252,0.9);
+      animation: hintBreath 3.2s ease-in-out infinite;
+      transition: opacity 0.5s ease;
+    }
+    .orb-hint.gone {
+      opacity: 0;
+      animation: none;
+    }
+    @keyframes hintBreath {
+      0%, 100% { opacity: 0.35; }
+      50% { opacity: 0.9; }
     }
 
     .ball-text {
       position: absolute;
       inset: 0;
+      z-index: 8;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 48px;
+      font-size: 11cqw;
       font-weight: 800;
+      line-height: 1.1;
+      white-space: nowrap;
       color: #fff;
-      z-index: 10;
+      pointer-events: none;
       opacity: 0;
-      --blur: 10px;
-      filter: blur(var(--blur));
+      filter: blur(6px);
       text-shadow:
-        0 0 20px rgba(186,85,211,1),
-        0 0 40px rgba(138,43,226,0.8),
-        0 0 60px rgba(148,0,211,0.6);
-      transition: filter .25s ease, opacity .25s ease, transform .25s ease;
+        0 0 10px rgba(255,255,255,0.55),
+        0 0 26px rgba(217,70,239,0.9),
+        0 0 54px rgba(139,92,246,0.75);
+      transition: opacity 0.35s ease, filter 0.35s ease;
     }
     .ball-text.show {
       opacity: 1;
-    }
-
-    @keyframes finalPop {
-      0% { transform: scale(0.6); opacity: 0; filter: blur(8px); }
-      60% { transform: scale(1.15); opacity: 1; filter: blur(2px); }
-      100% { transform: scale(1); opacity: 1; filter: blur(0); }
+      filter: blur(0);
     }
     .ball-text.final-pop {
-      animation: finalPop 700ms cubic-bezier(.2,.8,.2,1) forwards;
+      animation: finalPop 1s cubic-bezier(.16,1,.3,1) both;
+    }
+    .ball-text.final-pop .ball-name {
+      animation: nameFloat 5s ease-in-out 1s infinite;
+    }
+    .ball-name {
+      display: inline-block;
+    }
+    @keyframes finalPop {
+      0% { opacity: 0; transform: scale(1.18); filter: blur(4px) brightness(2.2); }
+      30% { opacity: 1; }
+      100% { opacity: 1; transform: scale(1); filter: blur(0) brightness(1); }
+    }
+    @keyframes nameFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-4%); }
+    }
+
+    .orb-stand {
+      position: absolute;
+      left: 22%;
+      top: 81%;
+      width: 56%;
+      height: auto;
+      z-index: 4;
+      pointer-events: none;
+      overflow: visible;
+    }
+    .orb-stand .stand-gem {
+      filter: drop-shadow(0 0 3px rgba(232,121,249,0.95));
+      opacity: calc(0.65 + var(--energy) * 0.35);
     }
 
     /* ===== КНОПКИ И ЭФФЕКТЫ ===== */
@@ -774,7 +979,7 @@
       margin-top: 30px;
     }
 
-    button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):not(.desktop-menu-toggle) {
+    button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.away-btn):not(.add-btn-small):not(.host-ui):not(.desktop-menu-toggle) {
       padding: 15px 30px;
       font-size: 18px;
       font-weight: 800;
@@ -790,7 +995,7 @@
       touch-action: manipulation;
     }
 
-    button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):not(.desktop-menu-toggle):before {
+    button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.away-btn):not(.add-btn-small):not(.host-ui):not(.desktop-menu-toggle):before {
       content: '';
       position: absolute;
       top: 50%;
@@ -803,12 +1008,12 @@
       transition: width 0.6s, height 0.6s;
     }
 
-    button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):not(.desktop-menu-toggle):hover:before {
+    button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.away-btn):not(.add-btn-small):not(.host-ui):not(.desktop-menu-toggle):hover:before {
       width: 300px;
       height: 300px;
     }
 
-    button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):not(.desktop-menu-toggle):hover {
+    button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.away-btn):not(.add-btn-small):not(.host-ui):not(.desktop-menu-toggle):hover {
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(138,43,226,0.5);
     }
@@ -825,78 +1030,112 @@
     .mystical-overlay {
       position: fixed;
       inset: 0;
-      background: radial-gradient(circle, transparent 0%, rgba(25,0,51,0.95) 100%);
-      display: none;
       z-index: 999;
       pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      --cx: 50%;
+      --cy: 50%;
+      --r0: 200px;
+      --r1: 640px;
+      background: radial-gradient(circle at var(--cx) var(--cy), transparent 0, transparent var(--r0), rgba(9,1,22,0.9) var(--r1));
+      transition: opacity 0.9s ease, visibility 0s linear 0.9s;
     }
     .mystical-overlay.active {
-      display: block;
-      animation: mysticalPulse 2s ease-in-out infinite;
-    }
-    @keyframes mysticalPulse {
-      0%, 100% { opacity: 0.6 }
-      50% { opacity: 0.9 }
+      opacity: 1;
+      visibility: visible;
+      transition: opacity 0.9s ease, visibility 0s;
     }
 
-    @keyframes screenShake {
-      0%, 100% { transform: translate(0, 0); }
-      10% { transform: translate(-3px, 2px); }
-      20% { transform: translate(3px, -2px); }
-      30% { transform: translate(-2px, 2px); }
-      40% { transform: translate(2px, -2px); }
-      50% { transform: translate(-2px, 1px); }
-      60% { transform: translate(2px, -1px); }
-      70% { transform: translate(-2px, 2px); }
-      80% { transform: translate(2px, -2px); }
-      90% { transform: translate(-1px, 1px); }
-    }
-    body.shake {
-      animation: screenShake 0.5s ease-in-out;
-    }
-
-    .confetti {
+    .fx-canvas {
       position: fixed;
-      width: 10px;
-      height: 10px;
-      z-index: 0;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1000;
       pointer-events: none;
-      animation: confetti-fall 3s ease-out forwards;
-    }
-    @keyframes confetti-fall {
-      0% { transform: translateY(0) rotate(300deg); opacity: 1; }
-      100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
     }
 
-    .celebration-emoji {
-      position: fixed;
-      font-size: 60px;
-      z-index: 998;
-      pointer-events: none;
-      animation: emojiCelebrate 3s ease-out forwards;
-    }
     .celebration-word {
       position: fixed;
       font-size: 40px;
       font-weight: 800;
-      color: #ba55d3;
-      text-shadow: 0 0 20px rgba(186,85,211,1), 3px 3px 6px rgba(0,0,0,0.5);
+      letter-spacing: 1.5px;
+      white-space: nowrap;
+      color: #f5e8ff;
+      background: linear-gradient(180deg, #ffffff 0%, #f0d9ff 45%, #c084fc 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 12px rgba(192,132,252,0.85)) drop-shadow(0 2px 4px rgba(0,0,0,0.5));
       z-index: 998;
       pointer-events: none;
-      opacity: 0.9;
-      animation: wordFloat 4s ease-out forwards;
+      opacity: 0;
+      animation: wordFloat 4s cubic-bezier(.2,.7,.3,1) forwards;
     }
     @keyframes wordFloat {
-      0% { transform: scale(0) translateY(0) rotate(-15deg); opacity: 0; }
-      15% { transform: scale(1.2) translateY(-20px) rotate(5deg); opacity: 0.9; }
-      50% { opacity: 0.8; }
-      100% { transform: scale(0.8) translateY(-150px) rotate(15deg); opacity: 0; }
+      0% { opacity: 0; transform: translateY(24px) scale(0.85); }
+      18% { opacity: 1; transform: translateY(0) scale(1); }
+      70% { opacity: 0.9; }
+      100% { opacity: 0; transform: translateY(-70px) scale(1.04); }
     }
-    @keyframes emojiCelebrate {
-      0% { transform: scale(0) rotate(0deg); opacity: 0; }
-      20% { transform: scale(1.5) rotate(180deg); opacity: 1; }
-      80% { opacity: 1; }
-      100% { transform: scale(0.5) rotate(360deg); opacity: 0; }
+
+    #consultBtn {
+      padding: 16px 40px;
+      letter-spacing: 0.4px;
+      background: linear-gradient(115deg, #6d28d9 0%, #a21caf 45%, #7c3aed 70%, #6d28d9 100%);
+      background-size: 220% 100%;
+      box-shadow:
+        inset 0 0 0 1px rgba(233,213,255,0.35),
+        inset 0 1px 0 rgba(255,255,255,0.25),
+        0 10px 30px rgba(124,58,237,0.45),
+        0 0 44px rgba(192,38,211,0.28);
+      text-shadow: 0 1px 8px rgba(255,255,255,0.35);
+      animation: btnFlow 7s ease-in-out infinite;
+      transition: transform 0.35s cubic-bezier(.2,.9,.3,1.3), box-shadow 0.35s ease, opacity 0.3s ease, filter 0.3s ease;
+    }
+    #consultBtn::before {
+      top: 0;
+      left: -45%;
+      width: 35%;
+      height: 100%;
+      border-radius: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+      transform: skewX(-20deg);
+      transition: none;
+      animation: btnShimmer 4.5s ease-in-out 1s infinite;
+    }
+    #consultBtn:hover::before {
+      width: 35%;
+      height: 100%;
+    }
+    #consultBtn:hover:not(:disabled) {
+      transform: translateY(-3px) scale(1.03);
+      box-shadow:
+        inset 0 0 0 1px rgba(233,213,255,0.55),
+        inset 0 1px 0 rgba(255,255,255,0.3),
+        0 14px 40px rgba(124,58,237,0.6),
+        0 0 70px rgba(192,38,211,0.45);
+    }
+    #consultBtn:active:not(:disabled) {
+      transform: translateY(0) scale(0.98);
+    }
+    #consultBtn:disabled {
+      transform: none;
+      animation: none;
+      filter: saturate(0.55);
+    }
+    #consultBtn:disabled::before {
+      animation: none;
+      opacity: 0;
+    }
+    @keyframes btnFlow {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+    @keyframes btnShimmer {
+      0% { transform: skewX(-20deg) translateX(0); }
+      55%, 100% { transform: skewX(-20deg) translateX(520%); }
     }
 
     .settings-panel {
@@ -909,9 +1148,6 @@
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
-      }
-      body.shake {
-        animation: none !important;
       }
     }
 
@@ -1123,13 +1359,9 @@
       }
 
       .crystal-ball-container {
-        width: min(90vw, 400px);
-        height: min(90vw, 400px);
-        margin: 0 auto 32px;
-      }
-
-      .ball-text {
-        font-size: clamp(24px, 9vw, 48px);
+        width: min(92vw, 400px);
+        height: min(92vw, 400px);
+        margin: 0 auto 28px;
       }
 
       .controls {
@@ -1146,10 +1378,6 @@
 
       .celebration-word {
         font-size: clamp(22px, 5.5vw, 40px);
-      }
-
-      .celebration-emoji {
-        font-size: clamp(40px, 10vw, 60px);
       }
 
       .headers-row {
@@ -1209,6 +1437,46 @@
         margin-left: 14px;
       }
 
+      /* в строке теперь две кнопки справа — ужимаем ± и ✕, чтобы имени осталось место */
+      .prob-btn {
+        flex: 0 0 38px;
+        width: 38px;
+        min-width: 38px;
+        max-width: 38px;
+      }
+
+      .probability-input {
+        flex: 0 0 46px;
+        width: 46px;
+        min-width: 46px;
+        max-width: 46px;
+      }
+
+      .away-btn {
+        flex: 0 0 40px;
+        width: 40px;
+        min-height: 48px;
+        padding: 6px 0;
+        margin-left: 8px;
+      }
+
+      .away-btn + .remove-btn {
+        flex: 0 0 44px;
+        width: 44px;
+        min-width: 44px;
+        max-width: 44px;
+        margin-left: 0;
+      }
+
+      .away-badge {
+        flex: 0 0 130px;
+        width: 130px;
+      }
+
+      .header-away {
+        width: 48px;
+      }
+
       .add-btn-small {
         min-width: 52px;
         min-height: 52px;
@@ -1219,8 +1487,8 @@
     /* Очень маленькие экраны */
     @media (max-width: 360px) {
       .crystal-ball-container {
-        width: min(85vw, 300px);
-        height: min(85vw, 300px);
+        width: min(90vw, 320px);
+        height: min(90vw, 320px);
       }
 
       .probability-controls,
@@ -1248,10 +1516,10 @@
       .prob-btn:hover,
       .add-btn-small:hover,
       .remove-btn:hover,
-      button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):hover {
+      button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.away-btn):not(.add-btn-small):not(.host-ui):hover {
         transform: none !important;
       }
-      button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.add-btn-small):before {
+      button:not(.equalize-btn):not(.collapse-btn):not(.prob-btn):not(.remove-btn):not(.away-btn):not(.add-btn-small):not(.host-ui):before {
         display: none;
       }
 
@@ -1416,7 +1684,8 @@
         min-height: 40px;
       }
 
-      .remove-btn {
+      .remove-btn,
+      .away-btn {
         min-height: 40px;
       }
     }
@@ -1474,7 +1743,8 @@
     }
 
     /* Самые узкие телефоны: тач-цели остаются ≥36px, но поле имени перестаёт быть в 50px */
-    @media (max-width: 360px) {
+    /* до 380px, в т.ч. 375 (iPhone SE/mini): иначе поле имени ужималось до 66–71px */
+    @media (max-width: 380px) {
       .name-item {
         gap: 6px;
       }
@@ -1506,6 +1776,69 @@
         max-width: 40px;
         margin-left: 6px;
       }
+
+      .away-btn {
+        flex: 0 0 36px;
+        width: 36px;
+        margin-left: 0;
+      }
+
+      .away-badge {
+        flex: 0 0 116px;
+        width: 116px;
+        font-size: 12px;
+      }
+
+      /* 360px: две кнопки справа — ± и поле шанса ещё компактнее, имя не меньше ~80px */
+      .name-item .prob-btn {
+        flex: 0 0 34px;
+        width: 34px;
+        min-width: 34px;
+        max-width: 34px;
+      }
+
+      .name-item .probability-input {
+        flex: 0 0 42px;
+        width: 42px;
+        min-width: 42px;
+        max-width: 42px;
+      }
+
+      .name-item .name-input {
+        padding-left: 8px;
+        padding-right: 8px;
+      }
+    }
+
+    /* 320–359px: даже ужатые ±/🌴/✕ оставляли имени 43–63px — имя на своей строке во всю ширину,
+       контролы второй строкой (🌴 и ✕ прижаты вправо парой); с 360px строка снова одна (имя ≥80px) */
+    @media (max-width: 359px) {
+      .name-item {
+        flex-wrap: wrap;
+        row-gap: 6px;
+      }
+
+      .name-item > .name-field,
+      .name-item > .name-input {
+        flex: 1 1 100%;
+        max-width: 100%;
+      }
+
+      .name-item .away-btn {
+        margin-left: auto;
+      }
+
+      .name-item .away-btn + .remove-btn {
+        margin-left: 0;
+      }
+    }
+
+    /* Десктоп и планшеты ≥919px: фиксированная круглая кнопка меню (20+56px) накрывала заголовок
+       «Участники», когда страница выше экрана (например, открыт блок 🎙) — контент начинается ниже кнопки */
+    @media (min-width: 919px) {
+      body {
+        padding-top: 88px;
+      }
     }
 
     /* 320px: заголовок с двумя эмодзи не должен занимать две строки */
@@ -1514,9 +1847,359 @@
         font-size: 21px;
       }
     }
+  
+    /* «Уравнять» — иконкой, как соседние кнопки звука и «свернуть» */
+    #equalizeBtn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+    }
+
+    #equalizeBtn svg {
+      display: block;
+      flex-shrink: 0;
+    }
+
+    /* ===== ВЕДУЩИЕ: история, правило прошлого ведущего ===== */
+    /* четвёртая иконка 🎙: длинный заголовок (EL) и иконки переносятся, а не вылезают за панель */
+    .settings-header {
+      flex-wrap: wrap;
+      row-gap: 8px;
+    }
+
+    /* 🎙 оформлена как соседняя «Уравнять» (класс equalize-btn), эмодзи по центру */
+    .settings-actions .hosts-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    /* подсвечена, только пока нажата (блок «Ведущие» открыт) */
+    .settings-actions .hosts-btn.active {
+      background: rgba(94,234,212,0.2);
+      border-color: #5EEAD4;
+    }
+
+    .hosts-box {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 15px;
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(20,0,50,0.3);
+      border: 1px solid rgba(94,234,212,0.35);
+    }
+
+    .hosts-box[hidden] {
+      display: none;
+    }
+
+    .hosts-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 6px 8px;
+    }
+
+    .hosts-heading {
+      color: #5EEAD4;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .hosts-pager {
+      display: flex;
+      margin-left: auto;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .hosts-range {
+      min-width: 96px;
+      color: rgba(255,255,255,0.8);
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .hosts-page-btn {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border: none;
+      border-radius: 7px;
+      background: rgba(255,255,255,0.18);
+      color: #fff;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .hosts-page-btn:hover {
+      background: rgba(255,255,255,0.3);
+    }
+
+    .hosts-page-btn:disabled {
+      opacity: 0.3;
+    }
+
+    .hosts-week {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 4px;
+    }
+
+    .host-day {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      min-width: 0;
+      padding: 5px 2px 6px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.08);
+    }
+
+    .host-day:hover {
+      background: rgba(255,255,255,0.18);
+    }
+
+    .host-day:focus-within {
+      outline: 2px solid #fff;
+      outline-offset: 1px;
+    }
+
+    .host-day.weekend {
+      background: rgba(255,255,255,0.03);
+    }
+
+    .host-day.today {
+      box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.45);
+    }
+
+    .host-day.hit {
+      background: rgba(94,234,212,0.16);
+      box-shadow: inset 0 0 0 1.5px #5EEAD4;
+    }
+
+    .host-day-wd {
+      color: rgba(255,255,255,0.6);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .host-day-name {
+      max-width: 100%;
+      padding: 0 2px;
+      overflow: hidden;
+      color: #fff;
+      font-size: 11.5px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .host-day.empty .host-day-name {
+      color: rgba(255,255,255,0.45);
+      font-weight: 500;
+    }
+
+    .host-day-num {
+      color: rgba(255,255,255,0.55);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* нативный выпадающий список поверх ячейки: на телефонах открывается системный выбор */
+    .host-day-select {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    .host-rule {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .host-rule-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .host-switch {
+      position: relative;
+      flex-shrink: 0;
+      width: 42px;
+      height: 24px;
+      padding: 0;
+      border: none;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.25);
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .host-switch::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      transition: transform 0.2s;
+    }
+
+    .host-switch[aria-checked="true"] {
+      background: #5EEAD4;
+    }
+
+    .host-switch[aria-checked="true"]::after {
+      transform: translateX(18px);
+    }
+
+    .host-rule-stepper {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .host-rule-hint {
+      margin: 0;
+      color: rgba(255,255,255,0.8);
+      font-size: 12.5px;
+      line-height: 1.4;
+    }
+
+    .host-rule-hint:empty {
+      display: none;
+    }
+
+    .host-rule-hint b {
+      color: #5EEAD4;
+    }
+
+    .host-ui:focus-visible,
+    .host-switch:focus-visible {
+      outline: 2px solid #fff;
+      outline-offset: 2px;
+    }
+
+    /* шанс, заданный правилом прошлого ведущего (янтарный .manual — заданный вручную) */
+    .probability-input.rule {
+      color: #fff;
+      background: rgba(94,234,212,0.18);
+      border-color: #5EEAD4;
+      box-shadow: 0 0 0 3px rgba(94,234,212,0.25);
+    }
+
+    .name-field {
+      position: relative;
+      display: flex;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .name-field .name-input {
+      flex: 1 1 auto;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .names-list:not(.chips-corner) .name-field.has-chip .name-input {
+      padding-right: calc(var(--chip-w, 48px) + 14px);
+    }
+
+    /* имя не помещается рядом с чипом (или экран ≤480px) — все чипы списка стоят на углу рамки */
+    /* на десктопе список прокручиваемый (overflow-y: auto): без отступа сверху значок первой строки обрезается */
+    .names-list.chips-corner {
+      padding-top: 8px;
+    }
+
+    .names-list.chips-corner .host-chip {
+      top: -7px;
+      right: -5px;
+      padding: 1px 4px;
+      font-size: 10px;
+      line-height: 1;
+      transform: none;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+    }
+
+    .host-chip {
+      position: absolute;
+      top: 50%;
+      right: 7px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 6px; /* +1px рамки = прежние 3px 7px: ширина чипа и порог «угла» не меняются */
+      border: 1px solid #7a4bb0;
+      border-radius: 999px;
+      /* сплошной фон в тон круглой кнопке меню: рамка поля и текст под меткой не просвечивают */
+      background: #2a1d47;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      transform: translateY(-50%);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+      pointer-events: none;
+    }
+
+    .host-chip.hot {
+      background: #5EEAD4;
+      border-color: #5EEAD4;
+      color: #134e4a;
+    }
+
+    /* узкие экраны: в чипе остаётся только 🎙, чтобы имени хватало места */
+    @media (max-width: 480px) {
+      .host-chip-day {
+        display: none;
+      }
+
+      .hosts-range {
+        min-width: 84px;
+        font-size: 11px;
+      }
+
+      .host-day-name {
+        font-size: 10.5px;
+      }
+    }
   </style>
 </head>
 <body>
+  <div class="nebula-bg" aria-hidden="true"><div class="shooting-star"></div><div class="shooting-star s2"></div></div>
   <div class="stars" id="stars"></div>
 
   <!-- DESKTOP МЕНЮ -->
@@ -1542,6 +2225,7 @@
       <a href="crystal-ball.html" data-i18n="nav_crystal">🔮 Магический Шар</a>
       <a href="trading.html" data-i18n="nav_trading">📈 Трейдинг</a>
       <a href="daisy.html" data-i18n="nav_daisy">🌼 Ромашка</a>
+      <a href="duck-race.html" data-i18n="nav_ducks">🦆 Утиные бега</a>
       <a href="time-randomizer.html" data-i18n="nav_pseudo">⏱️ Псевдорандом</a>
     </nav>
   </div>
@@ -1569,6 +2253,7 @@
       <a href="crystal-ball.html" data-i18n="nav_crystal">🔮 Магический Шар</a>
       <a href="trading.html" data-i18n="nav_trading">📈 Трейдинг</a>
       <a href="daisy.html" data-i18n="nav_daisy">🌼 Ромашка</a>
+      <a href="duck-race.html" data-i18n="nav_ducks">🦆 Утиные бега</a>
       <a href="time-randomizer.html" data-i18n="nav_pseudo">⏱️ Псевдорандом</a>
     </nav>
   </div>
@@ -1577,17 +2262,51 @@
     <!-- ИГРА -->
     <div class="game-container">
       <h1 data-i18n="h1">🔮 МАГИЧЕСКИЙ ШАР 🔮</h1>
-      <div class="crystal-ball-container">
-        <div class="crystal-ball" id="crystalBall">
-          <div class="mist">
-            <div class="mist-layer"></div>
-            <div class="mist-layer"></div>
-            <div class="mist-layer"></div>
-          </div>
+      <div class="crystal-ball-container" id="orbContainer">
+        <div class="orb-floor"></div>
+        <div class="orb-ring back" aria-hidden="true"><div class="orb-ring-plane"><svg viewBox="-52 -52 104 104"></svg></div></div>
+        <div class="orb-halo"></div>
+        <div class="crystal-ball" id="crystalBall" role="button" tabindex="0" aria-label="✨ Узнать судьбу" data-i18n-attr="aria-label:consult_btn">
+          <canvas class="orb-canvas" id="orbCanvas" aria-hidden="true"></canvas>
+          <div class="orb-glass"></div>
           <div class="highlight"></div>
-          <div class="victory-smoke" id="victorySmoke"></div>
-          <div class="ball-text" id="ballText"></div>
+          <div class="highlight highlight-sm"></div>
+          <div class="highlight highlight-rim"></div>
+          <div class="orb-hint" id="orbHint" data-i18n="orb_hint">коснись шара</div>
+          <div class="ball-text" id="ballText" aria-live="polite"></div>
         </div>
+        <div class="orb-ring front" aria-hidden="true"><div class="orb-ring-plane"><svg viewBox="-52 -52 104 104"></svg></div></div>
+        <svg class="orb-stand" viewBox="0 0 240 82" aria-hidden="true">
+          <defs>
+            <linearGradient id="standMetal" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stop-color="#12061f"/>
+              <stop offset=".32" stop-color="#3b1672"/>
+              <stop offset=".5" stop-color="#6d3fc4"/>
+              <stop offset=".68" stop-color="#3b1672"/>
+              <stop offset="1" stop-color="#0e0418"/>
+            </linearGradient>
+            <linearGradient id="standGold" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stop-color="#6b4a16"/>
+              <stop offset=".5" stop-color="#f7dc92"/>
+              <stop offset="1" stop-color="#6b4a16"/>
+            </linearGradient>
+            <radialGradient id="standGem">
+              <stop offset="0" stop-color="#ffffff"/>
+              <stop offset=".45" stop-color="#e879f9"/>
+              <stop offset="1" stop-color="#7e22ce"/>
+            </radialGradient>
+          </defs>
+          <path d="M40 20 C46 40 78 52 120 52 C162 52 194 40 200 20 A80 10 0 0 1 40 20 Z" fill="url(#standMetal)"/>
+          <path d="M40 20 A80 10 0 0 0 200 20" fill="none" stroke="url(#standGold)" stroke-width="3" stroke-linecap="round"/>
+          <path d="M54 34 C82 45 158 45 186 34" fill="none" stroke="url(#standGold)" stroke-width="1.1" opacity=".75"/>
+          <g class="stand-gem"><path d="M120 33 L127 41 L120 49 L113 41 Z" fill="url(#standGem)"/></g>
+          <circle cx="92" cy="42" r="1.6" fill="#f7dc92" opacity=".8"/>
+          <circle cx="148" cy="42" r="1.6" fill="#f7dc92" opacity=".8"/>
+          <path d="M104 51 C106 56 106 58 100 61 L140 61 C134 58 134 56 136 51 Z" fill="url(#standMetal)"/>
+          <rect x="96" y="59" width="48" height="4" rx="2" fill="url(#standGold)"/>
+          <path d="M86 63 L154 63 C166 65 182 69 192 74 L48 74 C58 69 74 65 86 63 Z" fill="url(#standMetal)"/>
+          <rect x="40" y="73" width="160" height="7" rx="3.5" fill="url(#standGold)"/>
+        </svg>
       </div>
       <div class="controls">
         <button id="consultBtn" data-i18n="consult_btn">✨ Узнать судьбу</button>
@@ -1600,17 +2319,49 @@
         <h2 class="settings-title" data-i18n="participants">Участники</h2>
         <div class="settings-actions">
           <button class="collapse-btn sound-toggle-btn" id="soundToggleBtn"></button>
-          <button class="equalize-btn" id="equalizeBtn" title="Уравнять вероятности" data-i18n="equalize" data-i18n-attr="title:equalize_title">Уравнять</button>
+          <button class="equalize-btn" id="equalizeBtn" title="Уравнять вероятности" aria-label="Уравнять вероятности" data-i18n-attr="title:equalize_title;aria-label:equalize_title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="8" width="16" height="3" rx="1.5" fill="currentColor"/><rect x="4" y="13" width="16" height="3" rx="1.5" fill="currentColor"/></svg></button>
           <button class="collapse-btn" id="collapseBtn" title="Свернуть список" data-i18n-attr="title:collapse_title">
             <span id="collapseIcon">▼</span>
           </button>
+          <button class="equalize-btn icon-btn hosts-btn" id="hostsBtn" type="button" aria-expanded="false" aria-controls="hostsBox" title="Ведущие" aria-label="Ведущие" data-i18n-attr="title:hosts_title;aria-label:hosts_title">🎙</button>
         </div>
       </div>
-      
+
+      <div class="hosts-box" id="hostsBox" hidden>
+        <div class="hosts-top">
+          <span class="hosts-heading" data-i18n="hosts_title">Ведущие</span>
+          <div class="hosts-pager">
+            <button class="hosts-page-btn host-ui" id="hostsPrev" type="button" aria-label="Неделя назад" data-i18n-attr="aria-label:hosts_prev">‹</button>
+            <span class="hosts-range" id="hostsRange"></span>
+            <button class="hosts-page-btn host-ui" id="hostsNext" type="button" aria-label="Неделя вперёд" data-i18n-attr="aria-label:hosts_next">›</button>
+          </div>
+        </div>
+        <div class="hosts-week" id="hostsWeek"></div>
+        <div class="host-rule">
+          <label class="host-rule-label">
+            <button class="host-switch host-ui" id="hostRuleSwitch" type="button" role="switch" aria-checked="true" aria-labelledby="hostRuleText"></button>
+            <span id="hostRuleText" data-i18n="host_rule">Прошлому ведущему</span>
+          </label>
+          <div class="host-rule-stepper">
+            <button class="prob-btn" id="hostRuleDec" type="button" aria-label="Уменьшить вероятность" data-i18n-attr="aria-label:aria_dec">−</button>
+            <input type="text" inputmode="decimal" class="probability-input rule" id="hostRuleInput" aria-label="Шанс прошлого ведущего, %" data-i18n-attr="aria-label:host_rule_aria">
+            <button class="prob-btn" id="hostRuleInc" type="button" aria-label="Увеличить вероятность" data-i18n-attr="aria-label:aria_inc">+</button>
+          </div>
+        </div>
+        <p class="host-rule-hint" id="hostRuleHint"></p>
+        <div class="host-rule">
+          <label class="host-rule-label">
+            <button class="host-switch host-ui" id="hostChipsSwitch" type="button" role="switch" aria-checked="true" aria-labelledby="hostChipsText"></button>
+            <span id="hostChipsText" data-i18n="host_chips">Метки у участников</span>
+          </label>
+        </div>
+      </div>
+
       <div class="names-list-wrapper" id="namesListWrapper">
         <div class="headers-row">
           <div class="header-name" data-i18n="col_name">Имя</div>
           <div class="header-probability" data-i18n="col_prob">📊 Вероятность</div>
+          <div class="header-away"></div>
           <div class="header-remove"></div>
         </div>
         <div class="names-list" id="namesList"></div>
@@ -1624,6 +2375,7 @@
   </div>
 
   <div class="mystical-overlay" id="mysticalOverlay"></div>
+  <canvas class="fx-canvas" id="fxCanvas" aria-hidden="true"></canvas>
 
   <script>
     window.I18N = window.I18N || { t: (k) => k, lang: 'ru', setLang() {}, supported: ['ru','en','el'] };
@@ -1634,6 +2386,11 @@
     const NAMES_KEY = 'shared_names_v1';
     const PROB_KEY = 'shared_probabilities_v2';
     const LOCKED_KEY = 'shared_locked_v1';
+    const AWAY_KEY = 'shared_away_v1';
+    const HOSTS_KEY = 'shared_hosts_v1';
+    const HOST_RULE_KEY = 'shared_host_rule_v1';
+    const HOSTS_OPEN_KEY = 'hosts_panel_open_v1';
+    const HOSTS_CHIPS_KEY = 'hosts_chips_visible_v1';
 
     function secureRandomFloat() {
       const arr = new Uint32Array(1);
@@ -1666,12 +2423,18 @@
     let probabilities = {};
     let lockedParticipants = {};
     let hasCustomProbabilities = false;
+    // «Отпуск / болеет»: [{ name, idx, p, locked }] — в names их нет, поэтому в розыгрыше они не участвуют
+    let awayList = [];
     let isConsulting = false;
+    // Ведущие: [{ name, t, host: true }] — одна запись на день: последний победитель (или правка через 🎙)
+    let hostLog = [];
+    let hostRule = { on: true, p: 5 };
+    let hostWeekPage = 0;
+    let hostChipsVisible = true; // метки 🎙 у участников — переключатель в блоке «Ведущие»
 
     // ===== DOM ЭЛЕМЕНТЫ =====
     const crystalBall = document.getElementById('crystalBall');
     const ballText = document.getElementById('ballText');
-    const victorySmoke = document.getElementById('victorySmoke');
     const consultBtn = document.getElementById('consultBtn');
     const mysticalOverlay = document.getElementById('mysticalOverlay');
     const namesList = document.getElementById('namesList');
@@ -1683,6 +2446,18 @@
     const collapseBtn = document.getElementById('collapseBtn');
     const collapseIcon = document.getElementById('collapseIcon');
     const namesListWrapper = document.getElementById('namesListWrapper');
+    const hostsBtn = document.getElementById('hostsBtn');
+    const hostsBox = document.getElementById('hostsBox');
+    const hostsWeek = document.getElementById('hostsWeek');
+    const hostsRange = document.getElementById('hostsRange');
+    const hostsPrev = document.getElementById('hostsPrev');
+    const hostsNext = document.getElementById('hostsNext');
+    const hostRuleSwitch = document.getElementById('hostRuleSwitch');
+    const hostRuleInput = document.getElementById('hostRuleInput');
+    const hostRuleDec = document.getElementById('hostRuleDec');
+    const hostRuleInc = document.getElementById('hostRuleInc');
+    const hostRuleHint = document.getElementById('hostRuleHint');
+    const hostChipsSwitch = document.getElementById('hostChipsSwitch');
 
     // ===== БЛОКИРОВКА UI =====
     function setUILocked(locked) {
@@ -1696,11 +2471,18 @@
       if (soundBtn) soundBtn.disabled = locked;
 
       const allInputs = namesList.querySelectorAll('.name-input, .probability-input');
-      const allButtons = namesList.querySelectorAll('.prob-btn, .remove-btn');
+      const allButtons = namesList.querySelectorAll('.prob-btn, .remove-btn, .away-btn');
       
       allInputs.forEach(input => input.disabled = locked);
       allButtons.forEach(button => button.disabled = locked);
-      
+
+      if (locked) {
+        hostsBtn.disabled = true;
+        hostsBox.querySelectorAll('button, input, select').forEach((el) => el.disabled = true);
+      } else {
+        renderHostsBox();
+      }
+
       if (locked) {
         document.querySelector('.settings-panel').style.opacity = '0.5';
         document.querySelector('.settings-panel').style.pointerEvents = 'none';
@@ -1798,39 +2580,746 @@
       star.style.top = Math.random() * 100 + '%';
       star.style.width = star.style.height = (Math.random() < 0.85 ? 2 : 3) + 'px';
       star.style.animationDelay = (Math.random() * 3) + 's';
+      star.style.animationDuration = (2.5 + Math.random() * 4) + 's';
+      if (Math.random() < 0.12) {
+        star.style.background = '#e9d5ff';
+        star.style.boxShadow = '0 0 6px 1px rgba(216,180,254,0.8)';
+      }
       starsContainer.appendChild(star);
     }
 
     // ===== ЗВУК =====
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
-    function playSound(f, d, v) {
+
+    // тон с мягкой атакой и затуханием — без щелчков в начале и конце
+    function playSound(f, d, v, type) {
       try {
+        const dur = d || 0.1;
+        const vol = v || 0.1;
         const o = audioCtx.createOscillator();
         const g = audioCtx.createGain();
-        o.type = 'sine';
+        o.type = type || 'sine';
         o.frequency.value = f;
-        g.gain.value = v || 0.1;
+        const t = audioCtx.currentTime;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.02, dur * 0.3));
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
         o.connect(g);
         g.connect(audioCtx.destination);
-        const t = audioCtx.currentTime;
         o.start(t);
-        o.stop(t + (d || 0.1));
+        o.stop(t + dur + 0.02);
       } catch(e) {}
     }
 
-    const playMysticalSound = () => {
-      playSound(220, 0.5, 0.1);
-      setTimeout(() => playSound(277, 0.5, 0.1), 200);
-      setTimeout(() => playSound(330, 0.5, 0.1), 400);
+    function playChime(f, v, d) {
+      playSound(f, d, v, 'sine');
+      playSound(f * 2.005, d * 0.6, v * 0.35, 'sine');
+    }
+
+    // гул на всё гадание: фильтр медленно раскрывается к моменту откровения
+    function playMysticalSound(seconds) {
+      try {
+        const t = audioCtx.currentTime;
+        const dur = Math.max(1.5, seconds);
+        const out = audioCtx.createGain();
+        out.gain.setValueAtTime(0.0001, t);
+        out.gain.exponentialRampToValueAtTime(0.07, t + 1);
+        out.gain.setValueAtTime(0.07, t + dur - 0.5);
+        out.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.3);
+        const lp = audioCtx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.Q.value = 5;
+        lp.frequency.setValueAtTime(260, t);
+        lp.frequency.exponentialRampToValueAtTime(1600, t + dur);
+        lp.connect(out);
+        out.connect(audioCtx.destination);
+        [110, 164.8, 220.7].forEach((f, i) => {
+          const o = audioCtx.createOscillator();
+          o.type = 'triangle';
+          o.frequency.value = f;
+          o.detune.setValueAtTime(0, t);
+          o.detune.linearRampToValueAtTime(i === 2 ? 25 : -12, t + dur);
+          o.connect(lp);
+          o.start(t);
+          o.stop(t + dur + 0.4);
+        });
+      } catch(e) {}
+      [440, 554.4, 659.3].forEach((f, i) => setTimeout(() => playChime(f, 0.045, 1.4), i * 180));
+    }
+
+    // каждое растаявшее имя — нота выше предыдущей
+    const ELIMINATE_NOTES = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.66, 1318.5];
+    let lastEliminateSound = 0;
+    function playEliminateSound(done, total) {
+      const now = performance.now();
+      if (now - lastEliminateSound < 70) return;
+      lastEliminateSound = now;
+      const k = total > 2 ? (done - 1) / (total - 2) : 1;
+      playChime(ELIMINATE_NOTES[Math.min(ELIMINATE_NOTES.length - 1, Math.floor(k * ELIMINATE_NOTES.length))], 0.04, 0.7);
+    }
+
+    const playRevealSound = () => {
+      playSound(65.4, 1.4, 0.22, 'sine');
+      [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, i) => setTimeout(() => playChime(f, 0.06, 1.8), i * 55));
     };
-    const playRevealSound = () => playSound(880, 0.8, 0.2);
-    
+
     function playFanfare() {
-      [523, 659, 784, 1046, 784, 1046, 1319, 1568].forEach((f, i) =>
-        setTimeout(() => playSound(f, 0.18, 0.15), i * 150)
+      [783.99, 987.77, 1174.66, 1567.98, 1975.53].forEach((f, i) =>
+        setTimeout(() => playChime(f, 0.045, 1.1), 150 + i * 110)
       );
     }
+
+    // ===== ШАР: ТУМАН, ЗВЁЗДНАЯ ПЫЛЬ И ИМЕНА ВНУТРИ =====
+    const orbContainer = document.getElementById('orbContainer');
+    const orbHint = document.getElementById('orbHint');
+    const prefersReducedMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const TAU = Math.PI * 2;
+    const ORB_FONT = "Montserrat, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif";
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    const clamp01 = (v) => v < 0 ? 0 : v > 1 ? 1 : v;
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+    const easeInOutCubic = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+    function glowSprite(rgb, px, core) {
+      const c = document.createElement('canvas');
+      c.width = c.height = px;
+      const g = c.getContext('2d');
+      const grad = g.createRadialGradient(px / 2, px / 2, 0, px / 2, px / 2, px / 2);
+      grad.addColorStop(0, `rgba(${rgb},1)`);
+      grad.addColorStop(core, `rgba(${rgb},0.35)`);
+      grad.addColorStop(1, `rgba(${rgb},0)`);
+      g.fillStyle = grad;
+      g.fillRect(0, 0, px, px);
+      return c;
+    }
+
+    const Orb = (() => {
+      const ball = crystalBall;
+      const canvas = document.getElementById('orbCanvas');
+      const ctx = canvas.getContext('2d');
+      const ringSvgs = orbContainer.querySelectorAll('.orb-ring svg');
+      const lite = isMobile;
+
+      const PALETTE = ['139,92,246', '217,70,239', '79,70,229', '34,211,238', '244,114,182'];
+      const MIST = PALETTE.map((c) => glowSprite(c, 128, 0.5));
+      const SPARK = PALETTE.map((c) => glowSprite(c, 48, 0.2));
+      const DOT = glowSprite('245,236,255', 48, 0.16);
+      const WHITE = glowSprite('255,248,255', 128, 0.3);
+      const MIST_ORDER = [0, 1, 2, 0, 4, 1, 0, 2, 3, 1, 0, 4, 2];
+
+      const blobs = Array.from({ length: lite ? 9 : 13 }, (_, i) => ({
+        sprite: MIST[MIST_ORDER[i]],
+        orbit: rnd(0.05, 0.55),
+        ang: rnd(0, TAU),
+        speed: rnd(0.5, 1.3) * (Math.random() < 0.3 ? -1 : 1),
+        size: rnd(0.8, 1.5),
+        alpha: MIST_ORDER[i] === 3 ? rnd(0.15, 0.25) : rnd(0.25, 0.45),
+        phase: rnd(0, TAU)
+      }));
+      const motes = Array.from({ length: lite ? 45 : 80 }, () => {
+        const rad = Math.sqrt(Math.random()) * 0.9;
+        return {
+          rad,
+          ang: rnd(0, TAU),
+          y: rnd(-1, 1) * Math.sqrt(1 - rad * rad) * 0.85,
+          speed: rnd(0.4, 1.3),
+          size: rnd(0.5, 1.4),
+          tw: rnd(0, TAU),
+          tws: rnd(1.2, 3.5)
+        };
+      });
+      const ARM_N = lite ? 10 : 14;
+      const sparks = [];
+
+      const st = {
+        energy: 0, energyTo: 0, hover: 0,
+        implode: 0, implodeTo: 0,
+        dim: 0, dimTo: 0,
+        flash: 0, spin: 0, ring: 0,
+        tiltX: 0, tiltY: 0, aimX: 0, aimY: 0, pointer: false
+      };
+      let size = 0, R = 0, dpr = 1, time = 0, last = 0;
+      let running = false, onScreen = true, show = null;
+
+      // появление имён → выбывание по одному → последнее затягивает в центр
+      const TIMING = prefersReducedMotion
+        ? { appear: 0.2, start: 0.35, dur: 0.5, gather: 0.35 }
+        : lite ? { appear: 0.8, start: 1.0, dur: 2.6, gather: 0.85 }
+        : { appear: 0.9, start: 1.2, dur: 3.2, gather: 0.95 };
+      const timeline = () => TIMING.start + TIMING.dur + 0.25 + TIMING.gather;
+
+      const cssVars = {};
+      function setVar(k, v) {
+        if (cssVars[k] === v) return;
+        cssVars[k] = v;
+        orbContainer.style.setProperty(k, v);
+      }
+
+      // кольцо рун: знаки рисуются штрихами, чтобы не зависеть от шрифтов
+      (function buildRing() {
+        let seed = 11;
+        const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+        const pts = [[-1, -1.4], [0, -1.4], [1, -1.4], [-1, 0], [0, 0], [1, 0], [-1, 1.4], [0, 1.4], [1, 1.4]];
+        let runes = '';
+        const N = 28;
+        for (let i = 0; i < N; i++) {
+          let d = 'M0 -1.4L0 1.4';
+          const segs = 2 + Math.floor(rand() * 2);
+          for (let s = 0; s < segs; s++) {
+            const a = pts[Math.floor(rand() * 9)];
+            const b = pts[Math.floor(rand() * 9)];
+            if (a !== b) d += `M${a[0]} ${a[1]}L${b[0]} ${b[1]}`;
+          }
+          runes += `<path d="${d}" transform="rotate(${(i / N * 360).toFixed(2)}) translate(0 -47.8)"/>`;
+        }
+        const diamonds = [45, 135, 225, 315]
+          .map((a) => `<path d="M0 -52.6L1.1 -51L0 -49.4L-1.1 -51Z" fill="currentColor" transform="rotate(${a})"/>`)
+          .join('');
+        const markup =
+          '<circle r="51" fill="none" stroke="currentColor" stroke-width=".45" opacity=".8"/>' +
+          '<circle r="44.2" fill="none" stroke="currentColor" stroke-width=".3" stroke-dasharray=".5 1.8" opacity=".7"/>' +
+          `<g class="runes" fill="none" stroke="currentColor" stroke-width=".42" stroke-linecap="round">${runes}</g>` +
+          diamonds;
+        ringSvgs.forEach((svg) => { svg.innerHTML = markup; });
+      })();
+
+      function resize() {
+        const s = ball.clientWidth;
+        if (!s) return;
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const px = Math.round(s * dpr);
+        if (canvas.width !== px) {
+          canvas.width = px;
+          canvas.height = px;
+        }
+        size = s;
+        R = s / 2;
+      }
+
+      const measureCtx = document.createElement('canvas').getContext('2d');
+      function fitFont(text, maxW, maxFs, minFs) {
+        measureCtx.font = `800 100px ${ORB_FONT}`;
+        const w = measureCtx.measureText(text).width || 1;
+        return Math.max(minFs, Math.min(maxFs, 100 * maxW / w));
+      }
+
+      // кегль имени в шаре: длинное имя ужимается, короткое не раздувается
+      function revealFontSize(name) {
+        resize();
+        const s = size || 300;
+        return Math.round(fitFont(name, s * 0.72, s * 0.135, 12));
+      }
+
+      function nameSprite(name, fs) {
+        const c = document.createElement('canvas');
+        const g = c.getContext('2d');
+        g.font = `800 ${fs}px ${ORB_FONT}`;
+        const w = Math.ceil(g.measureText(name).width);
+        const pad = Math.ceil(fs * 0.8);
+        const cw = w + pad * 2;
+        const ch = Math.ceil(fs * 1.3) + pad * 2;
+        c.width = Math.ceil(cw * dpr);
+        c.height = Math.ceil(ch * dpr);
+        g.scale(dpr, dpr);
+        g.font = `800 ${fs}px ${ORB_FONT}`;
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        // shadowBlur не масштабируется матрицей — умножаем на dpr сами
+        g.shadowColor = 'rgba(217,70,239,0.95)';
+        g.shadowBlur = fs * 0.6 * dpr;
+        g.fillStyle = 'rgba(255,255,255,0.85)';
+        g.fillText(name, cw / 2, ch / 2);
+        g.shadowColor = 'rgba(255,255,255,0.9)';
+        g.shadowBlur = fs * 0.2 * dpr;
+        g.fillStyle = '#fff';
+        g.fillText(name, cw / 2, ch / 2);
+        return { c, w: cw, h: ch, fs };
+      }
+
+      function burst(x, y, n, power) {
+        for (let i = 0; i < n; i++) {
+          const a = rnd(0, TAU);
+          const v = rnd(0.2, 1) * R * power;
+          sparks.push({
+            x, y,
+            vx: Math.cos(a) * v,
+            vy: Math.sin(a) * v,
+            life: 0,
+            max: rnd(0.45, 1.1),
+            size: rnd(0.6, 1.6),
+            sp: SPARK[(Math.random() * SPARK.length) | 0]
+          });
+        }
+        if (sparks.length > 600) sparks.splice(0, sparks.length - 600);
+      }
+
+      function divine(list, winner) {
+        resize();
+        return new Promise((resolve) => {
+          const n = list.length;
+          const few = n <= 8;
+          const orbitFs = Math.max(11, R * 0.2 * Math.sqrt(6 / Math.max(6, n)));
+          const bigFs = revealFontSize(winner);
+          const order = list.slice();
+          for (let i = order.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [order[i], order[j]] = [order[j], order[i]];
+          }
+          const wisps = order.map((name, i) => {
+            const isWin = name === winner;
+            const fs = fitFont(name, R * 0.8, orbitFs, 9);
+            const sp = nameSprite(name, isWin ? Math.max(fs, bigFs) : fs);
+            const orbit = few ? rnd(0.46, 0.58) : rnd(0.22, 0.62);
+            const yv = few ? rnd(-0.3, 0.3) : rnd(-0.55, 0.55);
+            return {
+              name, isWin, sp,
+              base: fs / sp.fs,
+              final: bigFs / sp.fs,
+              ang: (i / n) * TAU + rnd(-0.25, 0.25),
+              orbit, cur: orbit, rNow: 0,
+              yv, ycur: yv,
+              speed: rnd(0.8, 1.2),
+              born: (i / n) * TIMING.appear * 0.7 + rnd(0, TIMING.appear * 0.3),
+              dieAt: Infinity,
+              state: 'orbit',
+              x: 0, y: 0, z: 0, scale: 0, alpha: 0,
+              bob: rnd(0, TAU)
+            };
+          });
+          // порядок выбывания — свой, не по кругу: иначе соседи гасли бы подряд
+          const losers = wisps.filter((w) => !w.isWin);
+          for (let i = losers.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [losers[i], losers[j]] = [losers[j], losers[i]];
+          }
+          // паузы растут: первые гаснут быстро, финальная дуэль тянется
+          losers.forEach((w, k) => {
+            w.dieAt = TIMING.start + TIMING.dur * Math.pow((k + 1) / losers.length, 1.7);
+          });
+          const gatherAt = losers.length ? TIMING.start + TIMING.dur + 0.25 : TIMING.start;
+          show = { wisps, t: 0, left: n, total: n, gatherAt, revealAt: gatherAt + TIMING.gather, resolve };
+          st.energyTo = 1;
+          st.dimTo = 0.3;
+          wake();
+        });
+      }
+
+      function updateShow(dt) {
+        const s = show;
+        s.t += dt;
+        const t = s.t;
+        const duel = s.left <= 2 && s.total > 2;
+        const spinK = 0.9 + st.energy * 1.4 + (duel ? 0.8 : 0);
+        const gp = clamp01((t - s.gatherAt) / TIMING.gather);
+        if (t >= s.gatherAt) st.implodeTo = 1;
+        const smooth = 1 - Math.exp(-dt * 3);
+
+        for (const w of s.wisps) {
+          if (w.state === 'dead') continue;
+
+          if (w.isWin && t >= s.gatherAt) {
+            if (!w.g) w.g = { ang: w.ang, r: w.rNow, y: w.y, scale: w.scale, alpha: w.alpha };
+            const e = easeInOutCubic(gp);
+            w.g.ang += dt * (2.5 + 9 * e);
+            w.x = Math.cos(w.g.ang) * w.g.r * (1 - e) * R;
+            w.y = w.g.y * (1 - e);
+            w.z = 1;
+            w.scale = w.g.scale + (w.final - w.g.scale) * e * e;
+            w.alpha = w.g.alpha + (1 - w.g.alpha) * e;
+            continue;
+          }
+
+          const ap = clamp01((t - w.born) / 0.55);
+          if (ap <= 0) {
+            w.alpha = 0;
+            continue;
+          }
+          const ea = easeOutCubic(ap);
+          w.ang += dt * w.speed * spinK;
+          w.cur += ((duel ? 0.4 : w.orbit) - w.cur) * smooth;
+          w.ycur += ((duel ? w.yv * 0.25 : w.yv) - w.ycur) * smooth;
+          w.rNow = w.cur * ea;
+          const z = Math.sin(w.ang);
+          const d = (z + 1) / 2;
+          w.z = z;
+          w.x = Math.cos(w.ang) * w.rNow * R;
+          w.y = (w.ycur * ea + z * w.rNow * 0.12 + Math.sin(time * 1.4 + w.bob) * 0.025) * R;
+          w.scale = w.base * (0.56 + 0.44 * d) * (0.35 + 0.65 * ea);
+          w.alpha = (0.28 + 0.72 * d) * ea;
+
+          if (w.state === 'orbit' && t >= w.dieAt) {
+            w.state = 'dying';
+            w.dying = 0;
+            s.left--;
+            if (api.onEliminate) api.onEliminate(s.total - s.left, s.total);
+          }
+          if (w.state === 'dying') {
+            w.dying += dt;
+            const q = clamp01(w.dying / 0.3);
+            w.scale *= 1 + q * 0.5;
+            w.alpha *= (1 - q) * (0.55 + 0.45 * Math.sin(w.dying * 80));
+            if (q >= 1) {
+              w.state = 'dead';
+              burst(R + w.x, R + w.y, lite ? 12 : 20, 0.9);
+            }
+          }
+        }
+
+        if (t >= s.revealAt) {
+          show = null;
+          st.flash = 1;
+          st.implodeTo = 0;
+          st.energyTo = 0.25;
+          st.dimTo = 0.4;
+          burst(R, R, lite ? 36 : 60, 1.5);
+          s.resolve();
+        }
+      }
+
+      function update(dt) {
+        time += dt;
+        const ease = (rate) => 1 - Math.exp(-dt * rate);
+        const eTarget = Math.max(st.energyTo, st.hover * 0.35);
+        st.energy += (eTarget - st.energy) * ease(eTarget > st.energy ? 2.2 : 1.1);
+        st.implode += (st.implodeTo - st.implode) * ease(st.implodeTo > st.implode ? 3 : 1.8);
+        st.dim += (st.dimTo - st.dim) * ease(2);
+        st.flash = Math.max(0, st.flash - dt * 1.4);
+
+        // без мыши шар сам слегка покачивается
+        if (!st.pointer) {
+          st.aimX = prefersReducedMotion ? 0 : Math.sin(time * 0.21) * 0.35;
+          st.aimY = prefersReducedMotion ? 0 : Math.cos(time * 0.16) * 0.25;
+        }
+        st.tiltX += (st.aimX - st.tiltX) * ease(4);
+        st.tiltY += (st.aimY - st.tiltY) * ease(4);
+
+        const rate = (prefersReducedMotion ? 0.05 : 0.13) * (1 + st.energy * 6);
+        st.spin += dt * rate;
+        for (const b of blobs) b.ang += dt * rate * b.speed;
+        for (const m of motes) m.ang += dt * rate * m.speed * 1.3;
+        st.ring += dt * (5 + st.energy * 60);
+
+        const drag = Math.exp(-dt * 2.4);
+        for (let i = sparks.length - 1; i >= 0; i--) {
+          const p = sparks[i];
+          p.life += dt;
+          if (p.life >= p.max) {
+            sparks.splice(i, 1);
+            continue;
+          }
+          p.vx *= drag;
+          p.vy *= drag;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+        }
+
+        if (show) updateShow(dt);
+
+        const breath = Math.sin(time * 1.2) * 0.04;
+        setVar('--energy', (st.energy + st.flash * 0.6 + breath + 0.04).toFixed(3));
+        setVar('--tilt-x', st.tiltX.toFixed(3));
+        setVar('--tilt-y', st.tiltY.toFixed(3));
+        const ringTransform = `rotate(${(st.ring % 360).toFixed(2)}deg)`;
+        ringSvgs.forEach((svg) => { svg.style.transform = ringTransform; });
+      }
+
+      function draw() {
+        if (!size) return;
+        const c = R;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, size, size);
+        ctx.globalCompositeOperation = 'lighter';
+
+        const px = -st.tiltX * R * 0.05;
+        const py = -st.tiltY * R * 0.05;
+        const shrink = 1 - st.implode * 0.75;
+        const mistA = (0.5 + st.energy * 0.3) * (1 - st.dim * 0.45);
+
+        // туман
+        for (const b of blobs) {
+          const r = (b.orbit * R + Math.sin(time * 0.35 + b.phase) * R * 0.07) * shrink;
+          const sz = b.size * R * (0.9 + st.energy * 0.25) * (1 - st.implode * 0.45);
+          ctx.globalAlpha = b.alpha * mistA;
+          ctx.drawImage(b.sprite, c + px + Math.cos(b.ang) * r - sz / 2, c + py + Math.sin(b.ang) * r * 0.75 - sz / 2, sz, sz);
+        }
+
+        // спиральные рукава — разгораются во время гадания
+        const armA = (0.05 + st.energy * 0.3) * (1 - st.dim * 0.5);
+        for (let a = 0; a < 2; a++) {
+          for (let i = 0; i < ARM_N; i++) {
+            const u = (i + 0.5) / ARM_N;
+            const ang = st.spin * 2.4 + a * Math.PI + u * 3.4;
+            const r = u * R * 0.8 * shrink;
+            const sz = R * (0.46 - u * 0.3);
+            ctx.globalAlpha = armA * (1 - u * 0.5) * clamp01((u - 0.12) / 0.25);
+            ctx.drawImage(MIST[a ? 1 : 0], c + px * 0.6 + Math.cos(ang) * r - sz / 2, c + py * 0.6 + Math.sin(ang) * r * 0.78 - sz / 2, sz, sz);
+          }
+        }
+
+        // свет в сердце шара
+        const csz = R * (0.7 + st.implode * 0.5);
+        ctx.globalAlpha = Math.min(1, (0.2 + st.energy * 0.1 + st.implode * 0.5) * (1 - st.dim * 0.4));
+        ctx.drawImage(MIST[1], c - csz / 2, c - csz / 2, csz, csz);
+        if (st.implode > 0.01) {
+          const wsz = R * 0.35 * st.implode;
+          ctx.globalAlpha = st.implode * 0.5;
+          ctx.drawImage(WHITE, c - wsz / 2, c - wsz / 2, wsz, wsz);
+        }
+
+        // звёздная пыль: ближние крупнее, ярче и сильнее уходят за наклоном
+        const mA = 0.55 + st.energy * 0.45;
+        const unit = R / 180;
+        for (const m of motes) {
+          const z = Math.sin(m.ang);
+          const d = (z + 1) / 2;
+          const rad = m.rad * R * shrink;
+          const x = c + Math.cos(m.ang) * rad + st.tiltX * R * 0.08 * (d - 0.5);
+          const y = c + m.y * R * shrink + z * rad * 0.12 + st.tiltY * R * 0.08 * (d - 0.5);
+          const tw = 0.5 + 0.5 * Math.sin(time * m.tws + m.tw);
+          const sz = m.size * (3 + d * 5) * unit;
+          ctx.globalAlpha = (0.2 + 0.8 * d) * tw * mA;
+          ctx.drawImage(DOT, x - sz, y - sz, sz * 2, sz * 2);
+        }
+
+        // имена: дальние мельче и тусклее, рисуются первыми
+        if (show) {
+          const list = show.wisps.filter((w) => w.state !== 'dead' && w.alpha > 0.01).sort((a, b) => a.z - b.z);
+          for (const w of list) {
+            const sw = w.sp.w * w.scale;
+            const sh = w.sp.h * w.scale;
+            ctx.globalAlpha = Math.min(1, w.alpha);
+            ctx.drawImage(w.sp.c, c + w.x - sw / 2, c + w.y - sh / 2, sw, sh);
+          }
+        }
+
+        for (const p of sparks) {
+          const q = p.life / p.max;
+          const sz = p.size * R * 0.09 * (1 - q * 0.6);
+          ctx.globalAlpha = (1 - q) * Math.min(1, q * 12);
+          ctx.drawImage(p.sp, p.x - sz / 2, p.y - sz / 2, sz, sz);
+          const s2 = sz * 0.35;
+          ctx.drawImage(DOT, p.x - s2 / 2, p.y - s2 / 2, s2, s2);
+        }
+
+        if (st.flash > 0) {
+          const fsz = R * (1.6 + (1 - st.flash) * 1.8);
+          ctx.globalAlpha = st.flash * st.flash;
+          ctx.drawImage(WHITE, c - fsz / 2, c - fsz / 2, fsz, fsz);
+        }
+
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      function frame(ts) {
+        if (!running) return;
+        const dt = last ? Math.min(0.05, (ts - last) / 1000) : 1 / 60;
+        last = ts;
+        update(dt);
+        draw();
+        // за экраном шар засыпает, но гадание и искры доигрывают
+        if (!onScreen && !show && !sparks.length) {
+          running = false;
+          return;
+        }
+        requestAnimationFrame(frame);
+      }
+
+      function wake() {
+        if (running) return;
+        running = true;
+        last = 0;
+        requestAnimationFrame(frame);
+      }
+
+      function touch(fx, fy) {
+        resize();
+        burst(fx * size, fy * size, lite ? 14 : 22, 0.6);
+        st.flash = Math.max(st.flash, 0.25);
+        wake();
+      }
+
+      function settle() {
+        st.energyTo = 0;
+      }
+
+      orbContainer.addEventListener('pointermove', (e) => {
+        if (e.pointerType !== 'mouse' || prefersReducedMotion) return;
+        const r = orbContainer.getBoundingClientRect();
+        st.pointer = true;
+        st.aimX = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width - 0.5) * 2));
+        st.aimY = Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height - 0.5) * 2));
+      });
+      orbContainer.addEventListener('pointerleave', () => { st.pointer = false; });
+      ball.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') st.hover = 1; });
+      ball.addEventListener('pointerleave', () => { st.hover = 0; });
+
+      if ('ResizeObserver' in window) new ResizeObserver(resize).observe(ball);
+      else window.addEventListener('resize', resize);
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver((entries) => {
+          onScreen = entries[entries.length - 1].isIntersecting;
+          if (onScreen) wake();
+        }).observe(orbContainer);
+      }
+
+      const api = { divine, touch, settle, revealFontSize, timeline, onEliminate: null };
+      resize();
+      wake();
+      return api;
+    })();
+
+    // ===== ЗВЁЗДНАЯ ПЫЛЬ И УДАРНАЯ ВОЛНА ПОВЕРХ СТРАНИЦЫ =====
+    const Fx = (() => {
+      const cv = document.getElementById('fxCanvas');
+      const g = cv.getContext('2d');
+      const COLORS = ['233,213,255', '240,171,252', '255,255,255', '165,243,252', '253,230,138'];
+      // четырёхлучевая искра с ореолом
+      const SPR = COLORS.map((rgb) => {
+        const c = document.createElement('canvas');
+        c.width = c.height = 64;
+        const s = c.getContext('2d');
+        const grad = s.createRadialGradient(32, 32, 0, 32, 32, 32);
+        grad.addColorStop(0, `rgba(${rgb},0.9)`);
+        grad.addColorStop(0.25, `rgba(${rgb},0.25)`);
+        grad.addColorStop(1, `rgba(${rgb},0)`);
+        s.fillStyle = grad;
+        s.fillRect(0, 0, 64, 64);
+        s.fillStyle = `rgba(${rgb},0.95)`;
+        s.beginPath();
+        s.moveTo(32, 2);
+        s.quadraticCurveTo(34, 30, 62, 32);
+        s.quadraticCurveTo(34, 34, 32, 62);
+        s.quadraticCurveTo(30, 34, 2, 32);
+        s.quadraticCurveTo(30, 30, 32, 2);
+        s.fill();
+        s.fillStyle = '#fff';
+        s.beginPath();
+        s.arc(32, 32, 3, 0, TAU);
+        s.fill();
+        return c;
+      });
+      let parts = [];
+      let running = false, last = 0, W = 0, H = 0, dpr = 1;
+
+      function fit() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        W = window.innerWidth;
+        H = window.innerHeight;
+        cv.width = Math.round(W * dpr);
+        cv.height = Math.round(H * dpr);
+      }
+
+      function centerOf(el) {
+        const r = el.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: r.width / 2 };
+      }
+
+      function start() {
+        if (running) return;
+        running = true;
+        last = 0;
+        requestAnimationFrame(tick);
+      }
+
+      function shock(el) {
+        if (!running) fit();
+        const o = centerOf(el);
+        parts.push({ ring: true, x: o.x, y: o.y, r: o.r, life: 0, max: 1.1 });
+        parts.push({ ring: true, x: o.x, y: o.y, r: o.r * 0.9, life: -0.14, max: 1.1 });
+        start();
+      }
+
+      function celebrate(el) {
+        if (!running) fit();
+        const o = centerOf(el);
+        const sprite = () => SPR[(Math.random() * SPR.length) | 0];
+        const n = isMobile ? 45 : 80;
+        for (let i = 0; i < n; i++) {
+          const a = rnd(0, TAU);
+          const v = rnd(140, isMobile ? 520 : 760);
+          parts.push({
+            x: o.x + Math.cos(a) * o.r * 0.6,
+            y: o.y + Math.sin(a) * o.r * 0.6,
+            vx: Math.cos(a) * v,
+            vy: Math.sin(a) * v - rnd(60, 200),
+            grav: rnd(90, 220), drag: rnd(1.4, 2.4),
+            life: -rnd(0, 0.15), max: rnd(1.3, 2.6),
+            size: rnd(6, 16), rot: rnd(0, TAU), vr: rnd(-4, 4),
+            tw: rnd(6, 14), sp: sprite()
+          });
+        }
+        const m = isMobile ? 20 : 36;
+        for (let i = 0; i < m; i++) {
+          parts.push({
+            x: rnd(0, W), y: rnd(-20, H * 0.6),
+            vx: rnd(-15, 15), vy: rnd(50, 130),
+            grav: 0, drag: 0,
+            life: -rnd(0, 1.6), max: rnd(3, 5),
+            size: rnd(5, 11), rot: rnd(0, TAU), vr: rnd(-1.5, 1.5),
+            tw: rnd(3, 7), sway: rnd(0, TAU), sp: sprite()
+          });
+        }
+        start();
+      }
+
+      function tick(ts) {
+        const dt = last ? Math.min(0.05, (ts - last) / 1000) : 1 / 60;
+        last = ts;
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.clearRect(0, 0, W, H);
+        g.globalCompositeOperation = 'lighter';
+        for (let i = parts.length - 1; i >= 0; i--) {
+          const p = parts[i];
+          p.life += dt;
+          if (p.life >= p.max) {
+            parts.splice(i, 1);
+            continue;
+          }
+          if (p.life < 0) continue;
+          const q = p.life / p.max;
+          if (p.ring) {
+            const e = easeOutCubic(q);
+            g.globalAlpha = (1 - q) * 0.9;
+            g.strokeStyle = 'rgb(233,213,255)';
+            g.lineWidth = Math.max(0.5, 5 * (1 - e));
+            g.beginPath();
+            g.arc(p.x, p.y, p.r * (1 + e * 1.4), 0, TAU);
+            g.stroke();
+            continue;
+          }
+          if (p.drag) {
+            const k = Math.exp(-dt * p.drag);
+            p.vx *= k;
+            p.vy *= k;
+          }
+          p.vy += p.grav * dt;
+          if (p.sway !== undefined) p.x += Math.sin(p.life * 1.5 + p.sway) * 18 * dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.rot += p.vr * dt;
+          const tw = 0.6 + 0.4 * Math.sin(p.life * p.tw);
+          g.globalAlpha = Math.min(1, p.life * 5) * (1 - q * q) * tw;
+          const s = p.size * (1 - q * 0.3);
+          g.save();
+          g.translate(p.x, p.y);
+          g.rotate(p.rot);
+          g.drawImage(p.sp, -s, -s, s * 2, s * 2);
+          g.restore();
+        }
+        g.globalAlpha = 1;
+        g.globalCompositeOperation = 'source-over';
+        if (parts.length) {
+          requestAnimationFrame(tick);
+        } else {
+          g.clearRect(0, 0, W, H);
+          running = false;
+        }
+      }
+
+      window.addEventListener('resize', () => { if (running) fit(); });
+      return { shock, celebrate };
+    })();
 
     // ===== ЗАГРУЗКА ИМЕН =====
     try {
@@ -1844,6 +3333,26 @@
         localStorage.setItem(NAMES_KEY, JSON.stringify(names));
       } catch(e) {}
     };
+
+    try {
+      const savedAway = JSON.parse(localStorage.getItem(AWAY_KEY) || '[]');
+      if (Array.isArray(savedAway)) {
+        awayList = savedAway.filter((a) => a && typeof a.name === 'string' && a.name && !names.includes(a.name));
+      }
+    } catch(e) {}
+
+    const saveAway = () => {
+      try {
+        localStorage.setItem(AWAY_KEY, JSON.stringify(awayList));
+      } catch(e) {}
+    };
+
+    // Имя занято, если оно есть среди активных (кроме строки exceptIdx) или среди отсутствующих
+    function isNameTaken(v, exceptIdx = -1) {
+      const low = v.toLowerCase();
+      return names.some((n, i) => i !== exceptIdx && n.toLowerCase() === low) ||
+        awayList.some((a) => a.name.toLowerCase() === low);
+    }
 
     // ===== УПРАВЛЕНИЕ ВЕРОЯТНОСТЯМИ =====
     function initProbabilities() {
@@ -1918,9 +3427,9 @@
       } catch(_) {}
     }
 
+    // Показываем эффективный шанс: сохранённые вероятности + правило прошлого ведущего
     function getProbabilityPercent(name) {
-      if (!hasCustomProbabilities && names.length) return (100 / names.length).toFixed(1);
-      return (((probabilities[name] || 0) * 100).toFixed(1));
+      return ((getEffectiveProbabilities()[name] || 0) * 100).toFixed(1);
     }
 
     function adjustProbability(name, delta) {
@@ -1998,118 +3507,398 @@
       createNameInputs();
     }
 
-    // ===== ПРАЗДНОВАНИЯ =====
-    function createCelebrationEmojis() {
-      const emojis = ['🔮', '✨', '⭐', '💫', '🌟', '🪄', '🎆', '💜', '🌙', '🔥'];
-      const count = isMobile ? 12 : 20;
+    // ===== ВЕДУЩИЕ: ИСТОРИЯ И ПРАВИЛО ПРОШЛОГО ВЕДУЩЕГО =====
+    function loadHostLog() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(HOSTS_KEY) || '[]');
+        if (Array.isArray(saved)) {
+          hostLog = saved.filter((e) => e && typeof e.name === 'string' && e.name && Number.isFinite(e.t));
+        }
+      } catch(e) {}
+    }
+    loadHostLog();
+    try { hostChipsVisible = localStorage.getItem(HOSTS_CHIPS_KEY) !== '0'; } catch(e) {}
 
-      for (let i = 0; i < count; i++) {
-        setTimeout(() => {
-          const emoji = document.createElement('div');
-          emoji.className = 'celebration-emoji';
-          emoji.textContent = emojis[Math.floor(Math.random() * emojis.length)];
-          emoji.style.left = (Math.random() * 100) + '%';
-          emoji.style.top = (Math.random() * 100) + '%';
-          emoji.style.animationDelay = (Math.random() * 0.5) + 's';
-          document.body.appendChild(emoji);
-          setTimeout(() => emoji.remove(), 3500);
-        }, i * 100);
+    try {
+      const savedRule = JSON.parse(localStorage.getItem(HOST_RULE_KEY) || 'null');
+      if (savedRule && typeof savedRule === 'object') {
+        hostRule.on = savedRule.on !== false;
+        if (Number.isFinite(savedRule.p)) hostRule.p = savedRule.p;
       }
+    } catch(e) {}
+
+    const saveHostLog = () => {
+      try {
+        hostLog = hostLog.filter((e) => e.host);
+        hostLog.sort((a, b) => a.t - b.t);
+        localStorage.setItem(HOSTS_KEY, JSON.stringify(hostLog));
+      } catch(e) {}
+    };
+
+    const saveHostRule = () => {
+      try {
+        localStorage.setItem(HOST_RULE_KEY, JSON.stringify(hostRule));
+      } catch(e) {}
+    };
+
+    const escHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const tpl = (key, vars) => String(I18N.t(key)).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
+
+    // Локальная дата вида 2026-09-14 — строки сравниваются как даты
+    function dayKey(t) {
+      const d = new Date(t);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
 
+    function hostEntryOn(key) {
+      return hostLog.find((e) => e.host && dayKey(e.t) === key) || null;
+    }
+
+    // Прошлый ведущий — из последнего дня до сегодняшнего, в котором есть запись (в понедельник это пятница)
+    function previousHost() {
+      const today = dayKey(Date.now());
+      let best = null;
+      hostLog.forEach((e) => {
+        if (e.host && dayKey(e.t) < today && (!best || e.t > best.t)) best = e;
+      });
+      return best;
+    }
+
+    // На кого сегодня действует правило: прошлый ведущий участвует, и его шанс не задан вручную
+    function hostRuleTarget() {
+      if (!hostRule.on) return null;
+      const prev = previousHost();
+      if (!prev || !names.includes(prev.name)) return null;
+      if (hasCustomProbabilities && lockedParticipants[prev.name]) return null;
+      return prev.name;
+    }
+
+    // Максимум для прошлого ведущего: на этой странице шанс 0.1–99.9%, остальным незафиксированным — хотя бы по 0.1%
+    function hostRuleMaxPercent(target) {
+      const others = names.filter((n) => n !== target);
+      const locked = hasCustomProbabilities ? others.filter((n) => lockedParticipants[n]) : [];
+      const free = others.length - locked.length;
+      if (!free) return 0;
+      const lockedSum = locked.reduce((s, n) => s + (probabilities[n] || 0), 0);
+      return Math.min(99.9, (1 - lockedSum - free * 0.001) * 100);
+    }
+
+    function hostRuleLimitPercent() {
+      const target = hostRuleTarget() || (previousHost() || {}).name;
+      const max = target && names.includes(target) ? hostRuleMaxPercent(target) : 100 - (names.length - 1) * 0.1;
+      // 1e-6: (1 − 0.005)·100 даёт 99.4999…, без поправки максимум округлялся бы до 99.4
+      return Math.max(0.1, Math.min(99.9, Math.floor(max * 10 + 1e-6) / 10));
+    }
+
+    // Шансы, по которым шар выбирает победителя: сохранённые вероятности + правило прошлого ведущего.
+    // Сами сохранённые вероятности не меняются — выключили правило, и всё как было.
+    function getEffectiveProbabilities() {
+      const eff = {};
+      names.forEach((n) => eff[n] = hasCustomProbabilities ? (probabilities[n] || 0) : 1 / (names.length || 1));
+
+      const target = hostRuleTarget();
+      if (!target) return eff;
+
+      // процент правила общий для всех страниц — подводим его к границам этой страницы, а не выключаем правило
+      const maxShare = hostRuleMaxPercent(target) / 100;
+      if (maxShare < 0.001 - 1e-9) return eff;
+      const p = Math.max(0.001, Math.min(hostRule.p / 100, maxShare));
+
+      const others = names.filter((n) => n !== target);
+      const locked = hasCustomProbabilities ? others.filter((n) => lockedParticipants[n]) : [];
+      const free = others.filter((n) => !locked.includes(n));
+      const lockedSum = locked.reduce((s, n) => s + eff[n], 0);
+
+      eff[target] = p;
+      free.forEach((n) => eff[n] = (1 - lockedSum - p) / free.length);
+      return eff;
+    }
+
+    // Ведущие за последние 7 дней (включая сегодня): имя → самая свежая запись
+    function hostChips() {
+      const now = new Date();
+      const from = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime());
+      const map = {};
+      hostLog.forEach((e) => {
+        if (e.host && dayKey(e.t) >= from && (!map[e.name] || e.t > map[e.name].t)) map[e.name] = e;
+      });
+      return map;
+    }
+
+    function hostNameView() {
+      return { target: hostRuleTarget(), prev: previousHost(), chips: hostChips() };
+    }
+
+    // Поле имени с чипом 🎙: день, когда человек вёл; у прошлого ведущего под правилом чип бирюзовый
+    function buildHostNameField(input, name, view) {
+      const field = document.createElement('div');
+      field.className = 'name-field';
+      field.appendChild(input);
+
+      const hot = !!name && name === view.target;
+      const entry = hot ? view.prev : view.chips[name];
+      if (!name || !entry || !hostChipsVisible) return field;
+
+      const lang = I18N.lang || 'ru';
+      const d = new Date(entry.t);
+      field.classList.add('has-chip');
+      field.title = tpl(hot ? 'host_chip_last' : 'host_chip_title', {
+        date: new Intl.DateTimeFormat(lang, { weekday: 'long', day: 'numeric', month: 'long' }).format(d)
+      });
+
+      const now = new Date();
+      const weekAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
+      const chip = document.createElement('span');
+      chip.className = 'host-chip' + (hot ? ' hot' : '');
+      chip.setAttribute('aria-hidden', 'true');
+      const day = document.createElement('span');
+      day.className = 'host-chip-day';
+      day.textContent = dayKey(entry.t) === dayKey(now.getTime())
+        ? I18N.t('host_chip_today')
+        : entry.t >= weekAgo
+        ? new Intl.DateTimeFormat(lang, { weekday: 'short' }).format(d).replace(/\.$/, '')
+        : new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'numeric' }).format(d);
+      chip.append('🎙', day);
+      field.appendChild(chip);
+      return field;
+    }
+
+    // Чип стоит внутри поля, пока имя помещается рядом с ним («сегодня» шире «пт»).
+    // Если хоть одно имя не влезает (или экран ≤480px) — все чипы списка переезжают на угол рамки.
+    const chipMeasureCtx = document.createElement('canvas').getContext('2d');
+    function syncHostChipPadding() {
+      namesList.classList.remove('chips-corner');
+      let corner = window.matchMedia('(max-width: 480px)').matches;
+      namesList.querySelectorAll('.name-field.has-chip').forEach((field) => {
+        const w = field.querySelector('.host-chip').offsetWidth;
+        if (!w) return;
+        field.style.setProperty('--chip-w', w + 'px');
+        const input = field.querySelector('.name-input');
+        const cs = getComputedStyle(input);
+        chipMeasureCtx.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+        const room = input.clientWidth - parseFloat(cs.paddingLeft) - (w + 14);
+        if (chipMeasureCtx.measureText(input.value).width > room) corner = true;
+      });
+      namesList.classList.toggle('chips-corner', corner);
+    }
+
+    function renameInHostLog(from, to) {
+      if (!from || !to || from === to) return;
+      let changed = false;
+      hostLog.forEach((e) => { if (e.name === from) { e.name = to; changed = true; } });
+      if (changed) saveHostLog();
+    }
+
+    function renderHostsBox() {
+      const lang = I18N.lang || 'ru';
+      const now = new Date();
+      const todayKey = dayKey(now.getTime());
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - hostWeekPage * 7);
+      const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6);
+
+      const rangeFmt = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short' });
+      hostsRange.textContent = rangeFmt.formatRange
+        ? rangeFmt.formatRange(start, end)
+        : rangeFmt.format(start) + ' – ' + rangeFmt.format(end);
+
+      const earliest = hostLog.reduce((m, e) => Math.min(m, e.t), Infinity);
+      hostsBtn.disabled = false;
+      hostsBtn.classList.toggle('active', !hostsBox.hidden);
+      hostsPrev.disabled = !(earliest < start.getTime());
+      hostsNext.disabled = hostWeekPage === 0;
+
+      const prev = previousHost();
+      const target = hostRuleTarget();
+      const wdFmt = new Intl.DateTimeFormat(lang, { weekday: 'short' });
+      const longFmt = new Intl.DateTimeFormat(lang, { weekday: 'long', day: 'numeric', month: 'long' });
+      const candidates = [...new Set([...names, ...awayList.map((a) => a.name)].filter(Boolean))];
+
+      hostsWeek.textContent = '';
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+        const key = dayKey(d.getTime());
+        const entry = hostEntryOn(key);
+
+        const cell = document.createElement('div');
+        cell.className = 'host-day';
+        if (!entry) cell.classList.add('empty');
+        if (d.getDay() === 0 || d.getDay() === 6) cell.classList.add('weekend');
+        if (key === todayKey) cell.classList.add('today');
+        if (target && prev && dayKey(prev.t) === key) cell.classList.add('hit');
+
+        const label = tpl('host_day_aria', { date: longFmt.format(d) });
+        cell.title = entry ? label + ' — ' + entry.name : label;
+
+        const wd = document.createElement('span');
+        wd.className = 'host-day-wd';
+        wd.textContent = wdFmt.format(d).replace(/\.$/, '');
+
+        const nm = document.createElement('span');
+        nm.className = 'host-day-name';
+        nm.textContent = entry ? entry.name : '—';
+
+        const num = document.createElement('span');
+        num.className = 'host-day-num';
+        num.textContent = d.getDate();
+
+        const select = document.createElement('select');
+        select.className = 'host-day-select';
+        select.setAttribute('aria-label', label);
+        const options = entry && !candidates.includes(entry.name) ? [...candidates, entry.name] : candidates;
+        [['', I18N.t('host_nobody')], ...options.map((n) => [n, n])].forEach(([value, text]) => {
+          const opt = document.createElement('option');
+          opt.value = value;
+          opt.textContent = text;
+          select.appendChild(opt);
+        });
+        select.value = entry ? entry.name : '';
+        select.addEventListener('change', () => setDayHost(d, select.value));
+
+        cell.append(wd, nm, num, select);
+        hostsWeek.appendChild(cell);
+      }
+
+      hostRuleSwitch.disabled = false;
+      hostChipsSwitch.disabled = false;
+      hostChipsSwitch.setAttribute('aria-checked', String(hostChipsVisible));
+      hostRuleSwitch.setAttribute('aria-checked', String(hostRule.on));
+      hostRuleInput.disabled = hostRuleDec.disabled = hostRuleInc.disabled = !hostRule.on;
+      if (document.activeElement !== hostRuleInput) hostRuleInput.value = hostRule.p.toFixed(1);
+
+      let hint = '';
+      if (hostRule.on) {
+        if (!prev) {
+          // сегодняшний ведущий не влияет на сегодняшние шансы — говорим, что правило сработает завтра
+          const todayHost = hostEntryOn(todayKey);
+          hint = todayHost
+            ? tpl('host_hint_today', { name: escHtml(todayHost.name), p: hostRule.p.toFixed(1) })
+            : I18N.t('host_hint_empty');
+        } else {
+          const vars = {
+            name: escHtml(prev.name),
+            day: escHtml(new Intl.DateTimeFormat(lang, { weekday: 'short', day: 'numeric', month: 'numeric' }).format(new Date(prev.t)))
+          };
+          if (!names.includes(prev.name)) hint = tpl('host_hint_absent', vars);
+          else if (!target) hint = tpl('host_hint_manual', vars);
+          else hint = tpl('host_hint', { ...vars, p: ((getEffectiveProbabilities()[target] || 0) * 100).toFixed(1) });
+        }
+      }
+      hostRuleHint.innerHTML = hint;
+    }
+
+    // Ручная правка дня в полоске недели
+    function setDayHost(date, name) {
+      const key = dayKey(date.getTime());
+      hostLog = hostLog.filter((e) => dayKey(e.t) !== key);
+      if (name) {
+        const noon = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12).getTime();
+        hostLog.push({ name, t: noon, host: true });
+      }
+      commitHostChange();
+    }
+
+    // Холста здесь нет: шансы видны в списке, шар берёт их при следующем предсказании
+    function commitHostChange() {
+      saveHostLog();
+      createNameInputs();
+    }
+
+    function applyHostRule() {
+      createNameInputs();
+    }
+
+    function setHostRulePercent(v) {
+      const max = hostRuleLimitPercent();
+      if (!Number.isFinite(v) || v < 0.1 || v > max) {
+        playSound(300, 0.1, 0.2);
+        renderHostsBox();
+        return;
+      }
+      hostRule.p = Math.round(v * 10) / 10;
+      saveHostRule();
+      applyHostRule();
+    }
+
+    function stepHostRule(delta) {
+      const max = hostRuleLimitPercent();
+      const next = Math.max(0.1, Math.min(max, hostRule.p + delta));
+      if (Math.abs(next - hostRule.p) < 0.01) {
+        playSound(300, 0.1, 0.2);
+        return;
+      }
+      hostRule.p = Math.round(next * 10) / 10;
+      saveHostRule();
+      applyHostRule();
+    }
+
+    // Ведущий дня — последний победитель: каждое новое предсказание заменяет сегодняшнюю запись
+    function recordHostWin(name) {
+      if (!name) return;
+      const now = Date.now();
+      loadHostLog();
+      hostLog = hostLog.filter((e) => dayKey(e.t) !== dayKey(now));
+      hostLog.push({ name, t: now, host: true });
+      commitHostChange();
+    }
+
+    // ===== ПРАЗДНОВАНИЯ =====
+    // слова разлетаются вокруг, но не ложатся на шар, заголовок и друг на друга
     function createCelebrationWords() {
-      const words = (window.I18N ? I18N.t('predict_words') : ['ПРЕДСКАЗАНО']);
-
-      const wordsToShow = isMobile ? 6 : 10;
-
-      // Диапазоны появления
-      const topMin = isMobile ? 20 : 10;  // чтобы не лезть под бургер и совсем верх
-      const topMax = 80;
-      const leftMin = 4;
-      const leftMax = 96;
-
-      function rnd(min, max) {
-        return min + Math.random() * (max - min);
-      }
-
-      const positions = [];
-
-      // Гарантируем хотя бы одно слово прямо у левого края
-      if (wordsToShow >= 1) {
-        positions.push({
-          left: rnd(1, 12),
-          top: rnd(topMin, topMax),
-        });
-      }
-
-      // И хотя бы одно у правого края
-      if (wordsToShow >= 2) {
-        positions.push({
-          left: rnd(88, 99),
-          top: rnd(topMin, topMax),
-        });
-      }
-
-      // Остальные — равномерно раскидываем по экрану
-      while (positions.length < wordsToShow) {
-        positions.push({
-          left: rnd(leftMin, leftMax),
-          top: rnd(topMin, topMax),
-        });
-      }
-
-      // Перемешаем, чтобы порядок появления не был "сначала левый, потом правый"
-      for (let i = positions.length - 1; i > 0; i--) {
+      const words = (window.I18N ? I18N.t('predict_words') : ['ПРЕДСКАЗАНО']).slice();
+      for (let i = words.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [positions[i], positions[j]] = [positions[j], positions[i]];
+        [words[i], words[j]] = [words[j], words[i]];
       }
+      const count = isMobile ? 4 : 7;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const taken = [crystalBall, document.querySelector('.game-container h1')]
+        .filter(Boolean)
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          return { l: r.left - 16, t: r.top - 12, r: r.right + 16, b: r.bottom + 12 };
+        });
+      const overlaps = (x, y) => x.l < y.r && x.r > y.l && x.t < y.b && x.b > y.t;
 
-      for (let i = 0; i < wordsToShow; i++) {
+      for (let i = 0; i < count; i++) {
         setTimeout(() => {
           const word = document.createElement('div');
           word.className = 'celebration-word';
-          word.textContent = words[Math.floor(Math.random() * words.length)];
-
-          const pos = positions[i];
-          word.style.left = pos.left + '%';
-          word.style.top = pos.top + '%';
-          word.style.animationDelay = (Math.random() * 0.3) + 's';
-
+          word.textContent = words[i % words.length];
+          word.style.visibility = 'hidden';
           document.body.appendChild(word);
+          const w = word.offsetWidth;
+          const h = word.offsetHeight;
+          let spot = null;
+          for (let k = 0; k < 40 && !spot; k++) {
+            const l = rnd(8, Math.max(8, vw - w - 8));
+            const t = rnd(vh * 0.12, Math.max(vh * 0.12, vh * 0.88 - h));
+            const box = { l, t, r: l + w, b: t + h };
+            if (!taken.some((x) => overlaps(x, box))) spot = box;
+          }
+          if (!spot) {
+            word.remove();
+            return;
+          }
+          taken.push(spot);
+          word.style.left = spot.l + 'px';
+          word.style.top = spot.t + 'px';
+          word.style.visibility = '';
           setTimeout(() => word.remove(), 4500);
-        }, i * 150);
-      }
-    }
-
-
-
-    function createConfetti() {
-      const cs = ['#8a2be2','#9370db','#ba55d3','#da70d6','#dda0dd','#ee82ee'];
-      const count = isMobile ? 50 : 100;
-
-      for (let i = 0; i < count; i++) {
-        setTimeout(() => {
-          const d = document.createElement('div');
-          d.className = 'confetti';
-          d.style.left = (Math.random() * 100) + '%';
-          d.style.top = '0';
-          d.style.background = cs[Math.floor(Math.random() * cs.length)];
-          d.style.width = (5 + Math.random() * 10) + 'px';
-          d.style.height = (5 + Math.random() * 10) + 'px';
-          d.style.animationDelay = (Math.random() * 0.5) + 's';
-          d.style.animationDuration = (2 + Math.random() * 2) + 's';
-          document.body.appendChild(d);
-          setTimeout(() => d.remove(), 4000);
-        }, i * 25);
+        }, i * 180);
       }
     }
 
     // ===== UI ИМЁН =====
     function createNameInputs() {
       namesList.innerHTML = '';
-      names.forEach((name, idx) => {
+      const hostView = hostNameView();
+      names.forEach((name) => {
         const row = document.createElement('div');
         row.className = 'name-item';
+        // имя и позицию читаем в момент события: после переименования (без перерисовки) строка — уже новый участник
+        const curIdx = () => [...namesList.children].indexOf(row);
+        const curName = () => names[curIdx()];
 
         const input = document.createElement('input');
         input.type = 'text';
@@ -2142,12 +3931,13 @@
 
         input.addEventListener('input', () => {
           const v = input.value.trim();
-          
+          const idx = curIdx();
+
           if (!v || v.length === 0) {
             input.classList.add('error-state');
             input.style.borderColor = '#ef4444';
             input.style.background = 'rgba(239,68,68,0.1)';
-            
+
             const oldName = names[idx];
             if (oldName in probabilities) {
               probabilities[''] = probabilities[oldName];
@@ -2165,7 +3955,7 @@
             return;
           }
           
-          const dup = names.some((n, i) => i !== idx && n.toLowerCase() === v.toLowerCase());
+          const dup = isNameTaken(v, idx);
           if (dup) {
             input.classList.add('error-state');
             input.style.borderColor = '#ef4444';
@@ -2192,6 +3982,11 @@
             delete lockedParticipants[oldName];
           }
 
+          // история ведущих переименовывается вместе с участником
+          renameInHostLog(input.dataset.histName || name, v);
+          input.dataset.histName = v;
+          syncHostChipPadding();
+
           names[idx] = v;
           saveNames();
           saveProbabilities();
@@ -2200,7 +3995,8 @@
 
         input.addEventListener('blur', () => {
           const v = input.value.trim();
-          
+          const idx = curIdx();
+
           if (!v || v.length === 0) {
             input.value = '';
             input.classList.add('error-state');
@@ -2211,7 +4007,7 @@
             return;
           }
           
-          const dup = names.some((n, i) => i !== idx && n.toLowerCase() === v.toLowerCase());
+          const dup = isNameTaken(v, idx);
           if (dup) {
             input.value = names[idx];
             input.classList.remove('error-state');
@@ -2242,7 +4038,7 @@
         decreaseBtn.textContent = '−';
         decreaseBtn.setAttribute('aria-label', I18N.t('aria_dec'));
         decreaseBtn.onclick = () => {
-          adjustProbability(name, -1);
+          if (curName()) adjustProbability(curName(), -1);
         };
 
         const probInput = document.createElement('input');
@@ -2253,6 +4049,9 @@
         probInput.setAttribute('aria-label', I18N.t('aria_prob'));
         if (lockedParticipants[name]) {
           probInput.classList.add('manual');
+        }
+        if (name && name === hostView.target) {
+          probInput.classList.add('rule');
         }
         let lastValid = probInput.value;
 
@@ -2273,15 +4072,22 @@
 
         probInput.addEventListener('blur', () => {
           const val = probInput.value.replace('%', '').trim();
+          // значение не меняли (просто открыли и закрыли / Enter) — ни фиксации, ни пересчёта, ни звука; для любой строки
+          if (val === lastValid) {
+            probInput.value = lastValid;
+            probInput.classList.remove('error');
+            return;
+          }
           const num = parseFloat(val);
+          const curNm = curName();
 
-          if (val === '' || isNaN(num) || num < 0.1 || num > 99.9) {
+          if (!curNm || val === '' || isNaN(num) || num < 0.1 || num > 99.9) {
             probInput.value = lastValid;
             probInput.classList.remove('error');
             playSound(300, 0.1, 0.2);
           } else {
-            if (setProbabilityManually(name, num)) {
-              lastValid = getProbabilityPercent(name);
+            if (setProbabilityManually(curNm, num)) {
+              lastValid = getProbabilityPercent(curNm);
               createNameInputs();
             } else {
               probInput.value = lastValid;
@@ -2303,7 +4109,7 @@
         increaseBtn.textContent = '+';
         increaseBtn.setAttribute('aria-label', I18N.t('aria_inc'));
         increaseBtn.onclick = () => {
-          adjustProbability(name, 1);
+          if (curName()) adjustProbability(curName(), 1);
         };
 
         probControls.appendChild(decreaseBtn);
@@ -2316,19 +4122,11 @@
         btn.setAttribute('aria-label', I18N.t('aria_del'));
         btn.onclick = () => {
           if (names.length <= 2) {
-            newNameInput.style.borderColor = '#ef4444';
-            newNameInput.style.background = 'rgba(239,68,68,0.1)';
-            newNameInput.placeholder = I18N.t('ph_min2');
-            
-            setTimeout(() => {
-              newNameInput.placeholder = I18N.t('ph_new');
-              if (!newNameInput.value.trim()) {
-                newNameInput.style.borderColor = 'rgba(186,85,211,0.3)';
-                newNameInput.style.background = 'rgba(75,0,130,0.2)';
-              }
-            }, 2000);
+            warnMinParticipants();
             return;
           }
+          const idx = curIdx();
+          if (idx < 0) return;
           const removedName = names[idx];
           names.splice(idx, 1);
           delete probabilities[removedName];
@@ -2341,13 +4139,127 @@
           createNameInputs();
         };
 
-        row.appendChild(input);
+        const awayBtn = document.createElement('button');
+        awayBtn.className = 'away-btn';
+        awayBtn.textContent = '🌴';
+        awayBtn.title = I18N.t('aria_away');
+        awayBtn.setAttribute('aria-label', I18N.t('aria_away'));
+        awayBtn.onclick = () => { if (curIdx() >= 0) sendAway(curIdx()); };
+
+        row.appendChild(buildHostNameField(input, name, hostView));
         row.appendChild(probControls);
+        row.appendChild(awayBtn);
         row.appendChild(btn);
         namesList.appendChild(row);
       });
-      
+
+      awayList.forEach((a, i) => {
+        const row = document.createElement('div');
+        row.className = 'name-item is-away';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'name-input';
+        input.value = a.name;
+        input.readOnly = true;
+        input.tabIndex = -1;
+
+        const badge = document.createElement('div');
+        badge.className = 'away-badge';
+        badge.textContent = I18N.t('away_badge');
+
+        const backBtn = document.createElement('button');
+        backBtn.className = 'away-btn';
+        backBtn.textContent = '↩';
+        backBtn.title = I18N.t('aria_back');
+        backBtn.setAttribute('aria-label', I18N.t('aria_back'));
+        backBtn.onclick = () => bringBack(i);
+
+        const btn = document.createElement('button');
+        btn.className = 'remove-btn';
+        btn.textContent = '✕';
+        btn.setAttribute('aria-label', I18N.t('aria_del'));
+        btn.onclick = () => {
+          awayList.splice(i, 1);
+          saveAway();
+          createNameInputs();
+        };
+
+        row.appendChild(input);
+        row.appendChild(badge);
+        row.appendChild(backBtn);
+        row.appendChild(btn);
+        namesList.appendChild(row);
+      });
+
+      syncHostChipPadding();
+      renderHostsBox();
+      // во время предсказания перерисованный список (запись ведущего, смена языка) остаётся заблокированным
+      if (isConsulting) setUILocked(true);
       validateAllNames();
+    }
+
+    function warnMinParticipants() {
+      newNameInput.style.borderColor = '#ef4444';
+      newNameInput.style.background = 'rgba(239,68,68,0.1)';
+      newNameInput.placeholder = I18N.t('ph_min2');
+
+      setTimeout(() => {
+        newNameInput.placeholder = I18N.t('ph_new');
+        if (!newNameInput.value.trim()) {
+          newNameInput.style.borderColor = 'rgba(186,85,211,0.3)';
+          newNameInput.style.background = 'rgba(75,0,130,0.2)';
+        }
+      }, 2000);
+    }
+
+    // Временно убрать участника из розыгрыша, запомнив место в списке и его шанс
+    function sendAway(idx) {
+      if (names.length <= 2) {
+        warnMinParticipants();
+        return;
+      }
+      const name = names[idx];
+      // строка с пустым (редактируемым) именем подсвечена красным — в отпуск её не отправляем
+      if (!name || !name.trim()) return;
+      awayList.push({
+        name,
+        idx,
+        p: hasCustomProbabilities ? (probabilities[name] ?? null) : null,
+        locked: !!lockedParticipants[name]
+      });
+      names.splice(idx, 1);
+      delete probabilities[name];
+      delete lockedParticipants[name];
+
+      saveNames();
+      saveAway();
+      normalizeProbabilities();
+      saveProbabilities();
+
+      createNameInputs();
+    }
+
+    function bringBack(i) {
+      const a = awayList[i];
+      if (!a) return;
+      awayList.splice(i, 1);
+
+      // С тем же именем участника могли уже добавить заново — тогда просто снимаем отметку
+      if (!names.includes(a.name)) {
+        const p = hasCustomProbabilities && a.p > 0 && a.p < 1 ? a.p : 1 / (names.length + 1);
+        // Остальные делят оставшееся, чтобы вернувшийся получил ровно свой прежний шанс
+        names.forEach((n) => probabilities[n] = (probabilities[n] || 0) * (1 - p));
+        names.splice(Math.min(a.idx, names.length), 0, a.name);
+        probabilities[a.name] = p;
+        if (hasCustomProbabilities && a.locked) lockedParticipants[a.name] = true;
+        normalizeProbabilities();
+        saveNames();
+        saveProbabilities();
+      }
+      saveAway();
+
+      createNameInputs();
     }
 
     // ===== ДОБАВЛЕНИЕ УЧАСТНИКА =====
@@ -2363,7 +4275,7 @@
         setTimeout(() => {
           newNameInput.placeholder = I18N.t('ph_new');
           if (newNameInput.value.trim()) {
-            const dup = names.some((n) => n.toLowerCase() === newNameInput.value.trim().toLowerCase());
+            const dup = isNameTaken(newNameInput.value.trim());
             if (!dup) {
               newNameInput.style.borderColor = 'rgba(186,85,211,0.3)';
               newNameInput.style.background = 'rgba(75,0,130,0.2)';
@@ -2385,7 +4297,7 @@
         return;
       }
       
-      const dup = names.some((n) => n.toLowerCase() === v.toLowerCase());
+      const dup = isNameTaken(v);
       if (dup) {
         newNameInput.style.borderColor = '#ef4444';
         newNameInput.style.background = 'rgba(239,68,68,0.1)';
@@ -2427,7 +4339,7 @@
         return;
       }
 
-      const dup = names.some((n) => n.toLowerCase() === v.toLowerCase());
+      const dup = isNameTaken(v);
       if (dup) {
         newNameInput.style.borderColor = '#ef4444';
         newNameInput.style.background = 'rgba(239,68,68,0.1)';
@@ -2464,111 +4376,173 @@
     equalizeBtn.addEventListener('click', equalizeProbabilities);
 
     // ===== КОНСУЛЬТАЦИЯ ОРАКУЛА =====
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    function showBallName(name) {
+      const span = document.createElement('span');
+      span.className = 'ball-name';
+      span.textContent = name;
+      ballText.replaceChildren(span);
+      ballText.dataset.name = name;
+      ballText.style.fontSize = Orb.revealFontSize(name) + 'px';
+      ballText.classList.remove('final-pop');
+      void ballText.offsetWidth;
+      ballText.classList.add('show', 'final-pop');
+    }
+
+    function hideBallName() {
+      if (!ballText.classList.contains('show')) return;
+      // снимаем анимацию на её конечном кадре, затем плавно гасим
+      ballText.classList.remove('final-pop');
+      void ballText.offsetWidth;
+      ballText.classList.remove('show');
+      delete ballText.dataset.name;
+    }
+
+    let ballFitTimeout;
+    window.addEventListener('resize', () => {
+      clearTimeout(ballFitTimeout);
+      ballFitTimeout = setTimeout(() => {
+        if (ballText.dataset.name) ballText.style.fontSize = Orb.revealFontSize(ballText.dataset.name) + 'px';
+      }, 150);
+    });
+
+    // затемнение вокруг шара, а не вокруг центра экрана
+    function aimOverlay() {
+      const r = crystalBall.getBoundingClientRect();
+      const rad = r.width / 2;
+      mysticalOverlay.style.setProperty('--cx', (r.left + rad) + 'px');
+      mysticalOverlay.style.setProperty('--cy', (r.top + rad) + 'px');
+      mysticalOverlay.style.setProperty('--r0', (rad * 1.15) + 'px');
+      mysticalOverlay.style.setProperty('--r1', (rad * 3.4) + 'px');
+    }
+    window.addEventListener('scroll', () => {
+      if (mysticalOverlay.classList.contains('active')) aimOverlay();
+    }, { passive: true });
+
     async function consultOracle() {
-      if (isConsulting) return;
+      if (isConsulting || consultBtn.disabled) return;
       isConsulting = true;
       consultBtn.disabled = true;
       setUILocked(true);
 
-      ballText.classList.add('show');
-      ballText.textContent = '';
-
+      // веса — эффективные шансы: правило прошлого ведущего участвует в выборе
+      const effProbs = getEffectiveProbabilities();
       const winnerName = selectWeightedItem(
         names,
-        n => probabilities[n] || (1 / names.length)
+        n => effProbs[n] || (1 / names.length)
       );
 
+      orbHint.classList.add('gone');
+      hideBallName();
+      aimOverlay();
       mysticalOverlay.classList.add('active');
-      playMysticalSound();
+      playMysticalSound(Orb.timeline());
 
-      const prevAnim = crystalBall.style.animation;
-      crystalBall.style.animation = 'ballPulse 0.5s ease-in-out infinite';
+      // имена кружат в шаре и гаснут по одному; последнее оставшееся и есть выбор
+      Orb.onEliminate = playEliminateSound;
+      await Orb.divine(names, winnerName);
 
-      const total = isMobile ? 3800 : 5000;
-      const startInterval = isMobile ? 14 : 22;
-      const endInterval = isMobile ? 110 : 140;
+      showBallName(winnerName);
+      playRevealSound();
+      Fx.shock(crystalBall);
+      orbContainer.classList.remove('impact');
+      void orbContainer.offsetWidth;
+      orbContainer.classList.add('impact');
 
-      const fontPx = parseFloat(getComputedStyle(ballText).fontSize) || 32;
-      const minBlurPx = Math.max(4, fontPx * 0.10);
-      const startBlur = Math.max(minBlurPx, 16);
-      const endRollBlur = minBlurPx;
+      // имя проявилось в шаре — это и есть объявление победителя
+      recordHostWin(winnerName);
 
-      ballText.style.setProperty('--blur', `${startBlur}px`);
+      await wait(700);
+      mysticalOverlay.classList.remove('active');
+      playFanfare();
+      Fx.celebrate(crystalBall);
+      createCelebrationWords();
 
-      let startTS = null;
-      const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
-
-      function tick(ts) {
-        if (!startTS) startTS = ts;
-        const elapsed = Math.min(ts - startTS, total);
-        const p = easeOutCubic(elapsed / total);
-
-        if (elapsed < total) {
-          const randomName = names[secureRandomInt(names.length)];
-          ballText.textContent = randomName;
-
-          const blurNow = startBlur + (endRollBlur - startBlur) * p;
-          ballText.style.setProperty('--blur', `${Math.max(endRollBlur, blurNow)}px`);
-
-          const intervalNow = startInterval + (endInterval - startInterval) * p;
-          setTimeout(() => requestAnimationFrame(tick), intervalNow);
-          return;
-        }
-
-        ballText.textContent = '';
-        ballText.style.setProperty('--blur', '10px');
-        
-        victorySmoke.innerHTML = '<div class="smoke-particle"></div><div class="smoke-particle"></div><div class="smoke-particle"></div>';
-        victorySmoke.classList.add('active');
-        
-        setTimeout(() => {
-          ballText.textContent = winnerName;
-          ballText.style.setProperty('--blur', '0px');
-          
-          ballText.classList.remove('final-pop');
-          void ballText.offsetWidth;
-          ballText.classList.add('final-pop');
-          
-          playRevealSound();
-          
-          setTimeout(() => {
-            victorySmoke.classList.remove('active');
-            victorySmoke.innerHTML = '';
-          }, 1000);
-        }, 1000);
-
-        setTimeout(async () => {
-          mysticalOverlay.style.background = 'radial-gradient(circle,transparent 0%,rgba(10,0,21,.98) 100%)';
-          await new Promise(r => setTimeout(r, 500));
-          mysticalOverlay.classList.remove('active');
-          mysticalOverlay.style.background = 'radial-gradient(circle,transparent 0%,rgba(25,0,51,.95) 100%)';
-          crystalBall.style.animation = prevAnim || 'ballPulse 3s ease-in-out infinite';
-
-          document.body.classList.add('shake');
-          setTimeout(() => document.body.classList.remove('shake'), 500);
-
-          playFanfare();
-          createConfetti();
-          createCelebrationEmojis();
-          createCelebrationWords();
-
-          setTimeout(() => {
-            isConsulting = false;
-            consultBtn.disabled = false;
-            setUILocked(false);
-          }, 2000);
-        }, 1800);
-      }
-
-      requestAnimationFrame(tick);
+      await wait(2000);
+      Orb.settle();
+      isConsulting = false;
+      consultBtn.disabled = false;
+      setUILocked(false);
     }
 
     consultBtn.addEventListener('click', consultOracle);
 
+    crystalBall.addEventListener('click', (e) => {
+      if (isConsulting) return;
+      if (consultBtn.disabled) {
+        orbContainer.classList.remove('refuse');
+        void orbContainer.offsetWidth;
+        orbContainer.classList.add('refuse');
+        return;
+      }
+      const r = crystalBall.getBoundingClientRect();
+      const fromPointer = e.detail > 0 && r.width > 0;
+      Orb.touch(
+        fromPointer ? (e.clientX - r.left) / r.width : 0.5,
+        fromPointer ? (e.clientY - r.top) / r.height : 0.5
+      );
+      consultOracle();
+    });
+    crystalBall.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        crystalBall.click();
+      }
+    });
+
     // ===== ИНИЦИАЛИЗАЦИЯ =====
+    hostsBtn.addEventListener('click', () => {
+      hostsBox.hidden = !hostsBox.hidden;
+      hostsBtn.setAttribute('aria-expanded', String(!hostsBox.hidden));
+      hostsBtn.classList.toggle('active', !hostsBox.hidden);
+      try { localStorage.setItem(HOSTS_OPEN_KEY, hostsBox.hidden ? '0' : '1'); } catch(e) {}
+    });
+    hostsPrev.addEventListener('click', () => { hostWeekPage++; renderHostsBox(); });
+    hostsNext.addEventListener('click', () => { hostWeekPage = Math.max(0, hostWeekPage - 1); renderHostsBox(); });
+    hostRuleSwitch.addEventListener('click', () => {
+      hostRule.on = !hostRule.on;
+      saveHostRule();
+      applyHostRule();
+    });
+    hostChipsSwitch.addEventListener('click', () => {
+      hostChipsVisible = !hostChipsVisible;
+      try { localStorage.setItem(HOSTS_CHIPS_KEY, hostChipsVisible ? '1' : '0'); } catch(e) {}
+      createNameInputs();
+    });
+    hostRuleDec.addEventListener('click', () => stepHostRule(-1));
+    hostRuleInc.addEventListener('click', () => stepHostRule(1));
+    hostRuleInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        hostRuleInput.blur();
+        return;
+      }
+      if (!/[\d.]/.test(e.key)) e.preventDefault();
+    });
+    hostRuleInput.addEventListener('blur', () => {
+      const val = hostRuleInput.value.replace('%', '').trim();
+      if (val === '' || val === hostRule.p.toFixed(1)) {
+        renderHostsBox();
+        return;
+      }
+      setHostRulePercent(parseFloat(val));
+    });
+
+    // ===== RESIZE: чипы 🎙 внутри поля или на углу рамки =====
+    let hostChipResizeTimeout;
+    window.addEventListener('resize', () => {
+      clearTimeout(hostChipResizeTimeout);
+      hostChipResizeTimeout = setTimeout(syncHostChipPadding, 250);
+    });
+
     function init() {
       initProbabilities();
+      try { hostsBox.hidden = localStorage.getItem(HOSTS_OPEN_KEY) !== '1'; } catch(e) {}
+      hostsBtn.setAttribute('aria-expanded', String(!hostsBox.hidden));
       createNameInputs();
+      // ширина имён меряется шрифтом поля — пересчитываем после загрузки Montserrat
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncHostChipPadding);
     }
 
     // Разблокировка аудио контекста
@@ -2603,8 +4577,25 @@
     function onLang() {
       const cur = JSON.stringify(names);
       if (Object.values(DEFAULT_NAME_SETS).some(set => JSON.stringify(set) === cur)) {
+        const prev = names;
         names = [...(DEFAULT_NAME_SETS[I18N.lang] || DEFAULT_NAME_SETS.en)];
+        // вероятности и закрепления привязаны к именам — переносим их по позиции
+        const nextProb = {};
+        const nextLocked = {};
+        names.forEach((nm, i) => {
+          nextProb[nm] = probabilities[prev[i]] ?? 1 / names.length;
+          if (lockedParticipants[prev[i]]) nextLocked[nm] = true;
+        });
+        probabilities = nextProb;
+        lockedParticipants = nextLocked;
+        // и историю ведущих — те же люди под локализованными именами
+        hostLog.forEach((e) => {
+          const i = prev.indexOf(e.name);
+          if (i !== -1) e.name = names[i];
+        });
+        saveHostLog();
         saveNames();
+        saveProbabilities();
       }
       initProbabilities();
       createNameInputs();
@@ -2617,34 +4608,64 @@
     ru: {
       _title: `Шар Судьбы — случайный выбор участника онлайн`,
       meta_desc: `Магический «Шар Судьбы» поможет честно и красиво выбрать ведущего, победителя или участника. Список имён, веса вероятностей, анимации и фанфары.`,
-      nav_home: `🏠 Главная`, nav_ai: `🤖 LLM-рандомайзер`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Рулетка`, nav_racing: `🏁 Гонки`, nav_wheel: `🎡 Колесо Фортуны`, nav_bingo: `🎲 Бинго`, nav_bank: `🇲🇽 Банк`, nav_plinko: `🎯 Плинко`, nav_loto: `🎱 Лототрон`, nav_crystal: `🔮 Магический Шар`, nav_pseudo: `⏱️ Псевдорандом`, nav_daisy: `🌼 Ромашка`, nav_trading: `📈 Трейдинг`, nav_tournament: `⚔️ Турнир`,
-      menu: `Меню`, h1: `🔮 МАГИЧЕСКИЙ ШАР 🔮`, consult_btn: `✨ Узнать судьбу`,
+      nav_home: `🏠 Главная`, nav_ducks: `🦆 Утиные бега`, nav_ai: `🤖 LLM-рандомайзер`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Рулетка`, nav_racing: `🏁 Гонки`, nav_wheel: `🎡 Колесо Фортуны`, nav_bingo: `🎲 Бинго`, nav_bank: `🇲🇽 Банк`, nav_plinko: `🎯 Плинко`, nav_loto: `🎱 Лототрон`, nav_crystal: `🔮 Магический Шар`, nav_pseudo: `⏱️ Псевдорандом`, nav_daisy: `🌼 Ромашка`, nav_trading: `📈 Трейдинг`, nav_tournament: `⚔️ Турнир`,
+      menu: `Меню`, h1: `🔮 МАГИЧЕСКИЙ ШАР 🔮`, consult_btn: `✨ Узнать судьбу`, orb_hint: `коснись шара`,
       participants: `Участники`, equalize: `Уравнять`, equalize_title: `Уравнять вероятности`, collapse_title: `Свернуть список`,
       col_name: `Имя`, col_prob: `📊 Вероятность`, ph_new: `Новый участник`, add_title: `Добавить участника`,
       ph_enter_name: `Введите имя`, ph_max15w: `⚠️ Максимум 15 символов`, aria_dec: `Уменьшить вероятность`, aria_prob: `Вероятность в процентах`, aria_inc: `Увеличить вероятность`, aria_del: `Удалить участника`,
+      aria_away: `Отпуск / болеет — временно убрать`, aria_back: `Вернуть в розыгрыш`, away_badge: `🌴 нет на месте`,
       ph_min2: `Минимум 2 участника`, ph_max100: `Максимум 100 участников`, ph_atleast1: `Введите хотя бы один символ`, ph_dup: `Такой участник уже есть`,
+      hosts_title: `Ведущие`, hosts_prev: `Неделя назад`, hosts_next: `Неделя вперёд`,
+      host_rule: `Прошлому ведущему`, host_rule_aria: `Шанс прошлого ведущего, %`, host_nobody: `— никто`,
+      host_day_aria: `Ведущий: {date}`, host_chip_title: `Ведущий: {date}`, host_chip_last: `Прошлый ведущий: {date}`,
+      host_hint: `Прошлый ведущий — <b>{name}</b> ({day}): шанс <b>{p}%</b>, остальные делят оставшееся.`,
+      host_hint_manual: `Прошлый ведущий — <b>{name}</b> ({day}). Шанс задан вручную, правило его не трогает.`,
+      host_hint_absent: `Прошлый ведущий — <b>{name}</b> ({day}) — сейчас не участвует, шансы обычные.`,
+      host_hint_empty: `Пока никто не записан ведущим.`,
+      host_hint_today: `Сегодня ведёт <b>{name}</b>. Правило сработает со следующего дня: тогда шанс будет <b>{p}%</b>.`,
+      host_chip_today: `сегодня`, host_chips: `Метки у участников`,
       predict_words: ['ПРЕДСКАЗАНО','СУДЬБА РЕШЕНА','ТАК ВЕЛИТ МАГИЯ','ПРЕДНАЧЕРТАНО','ЗВЁЗДЫ УКАЗАЛИ','СУДЬБОНОСНО','МИСТИЧЕСКИ','ВОЛШЕБНО','ОРАКУЛ ВЫБРАЛ','ПРОВИДЕНИЕ','МАГИЧЕСКИЙ ВЫБОР','ПРЕДВЕСТИЕ','ТЫ ИЗБРАННЫЙ','БАБА ВАНГА ШЕПНУЛА','БЫВАЕТ ЖЕ!']
     },
     en: {
       _title: `Ball of Fate — random participant picker online`,
       meta_desc: `The magic "Ball of Fate" helps you fairly and beautifully pick a host, a winner or a participant. Name list, probability weights, animations and fanfare.`,
-      nav_home: `🏠 Home`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Roulette`, nav_racing: `🏁 Racing`, nav_wheel: `🎡 Wheel of Fortune`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 The Bank`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Lottery Drum`, nav_crystal: `🔮 Magic Ball`, nav_pseudo: `⏱️ Pseudorandom`, nav_daisy: `🌼 Daisy`, nav_trading: `📈 Trading`, nav_tournament: `⚔️ Tournament`,
-      menu: `Menu`, h1: `🔮 MAGIC BALL 🔮`, consult_btn: `✨ Reveal fate`,
+      nav_home: `🏠 Home`, nav_ducks: `🦆 Duck Race`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Roulette`, nav_racing: `🏁 Racing`, nav_wheel: `🎡 Wheel of Fortune`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 The Bank`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Lottery Drum`, nav_crystal: `🔮 Magic Ball`, nav_pseudo: `⏱️ Pseudorandom`, nav_daisy: `🌼 Daisy`, nav_trading: `📈 Trading`, nav_tournament: `⚔️ Tournament`,
+      menu: `Menu`, h1: `🔮 MAGIC BALL 🔮`, consult_btn: `✨ Reveal fate`, orb_hint: `touch the orb`,
       participants: `Participants`, equalize: `Equalize`, equalize_title: `Equalize the odds`, collapse_title: `Collapse the list`,
       col_name: `Name`, col_prob: `📊 Probability`, ph_new: `New participant`, add_title: `Add a participant`,
       ph_enter_name: `Enter a name`, ph_max15w: `⚠️ Maximum 15 characters`, aria_dec: `Decrease probability`, aria_prob: `Probability in percent`, aria_inc: `Increase probability`, aria_del: `Remove participant`,
+      aria_away: `On leave / sick — take out for now`, aria_back: `Bring back`, away_badge: `🌴 away`,
       ph_min2: `At least 2 participants`, ph_max100: `Maximum 100 participants`, ph_atleast1: `Enter at least one character`, ph_dup: `That participant already exists`,
+      hosts_title: `Hosts`, hosts_prev: `Previous week`, hosts_next: `Next week`,
+      host_rule: `Last host's chance`, host_rule_aria: `Last host's chance, %`, host_nobody: `— nobody`,
+      host_day_aria: `Host: {date}`, host_chip_title: `Hosted: {date}`, host_chip_last: `Last host: {date}`,
+      host_hint: `Last host — <b>{name}</b> ({day}): chance <b>{p}%</b>, the rest share what's left.`,
+      host_hint_manual: `Last host — <b>{name}</b> ({day}). Their chance is set manually, so the rule leaves it alone.`,
+      host_hint_absent: `Last host — <b>{name}</b> ({day}) — not in the draw right now, odds are normal.`,
+      host_hint_empty: `No hosts recorded yet.`,
+      host_hint_today: `Hosting today: <b>{name}</b>. The rule kicks in from the next day, with a <b>{p}%</b> chance.`,
+      host_chip_today: `today`, host_chips: `Labels on participants`,
       predict_words: ['FORETOLD','FATE IS SEALED','SO SAYS MAGIC','DESTINED','THE STARS POINTED','FATEFUL','MYSTICAL','MAGICAL','THE ORACLE CHOSE','PROVIDENCE','A MAGIC PICK','AN OMEN','YOU ARE THE CHOSEN','BABA VANGA WHISPERED','WHO KNEW!']
     },
     el: {
       _title: `Σφαίρα της Μοίρας — τυχαία επιλογή συμμετέχοντα online`,
       meta_desc: `Η μαγική «Σφαίρα της Μοίρας» σε βοηθά να διαλέξεις δίκαια και όμορφα παρουσιαστή, νικητή ή συμμετέχοντα. Λίστα ονομάτων, βάρη πιθανοτήτων, animations και φανφάρες.`,
-      nav_home: `🏠 Αρχική`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Ρουλέτα`, nav_racing: `🏁 Αγώνες`, nav_wheel: `🎡 Τροχός της Τύχης`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 Η Τράπεζα`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Κληρωτίδα`, nav_crystal: `🔮 Μαγική Μπάλα`, nav_pseudo: `⏱️ Ψευδοτυχαίο`, nav_daisy: `🌼 Μαργαρίτα`, nav_trading: `📈 Trading`, nav_tournament: `⚔️ Τουρνουά`,
-      menu: `Μενού`, h1: `🔮 ΜΑΓΙΚΗ ΜΠΑΛΑ 🔮`, consult_btn: `✨ Μάθε τη μοίρα`,
+      nav_home: `🏠 Αρχική`, nav_ducks: `🦆 Αγώνας Παπιών`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Ρουλέτα`, nav_racing: `🏁 Αγώνες`, nav_wheel: `🎡 Τροχός της Τύχης`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 Η Τράπεζα`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Κληρωτίδα`, nav_crystal: `🔮 Μαγική Μπάλα`, nav_pseudo: `⏱️ Ψευδοτυχαίο`, nav_daisy: `🌼 Μαργαρίτα`, nav_trading: `📈 Trading`, nav_tournament: `⚔️ Τουρνουά`,
+      menu: `Μενού`, h1: `🔮 ΜΑΓΙΚΗ ΜΠΑΛΑ 🔮`, consult_btn: `✨ Μάθε τη μοίρα`, orb_hint: `άγγιξε τη σφαίρα`,
       participants: `Συμμετέχοντες`, equalize: `Εξίσωση`, equalize_title: `Εξίσωση πιθανοτήτων`, collapse_title: `Σύμπτυξη λίστας`,
       col_name: `Όνομα`, col_prob: `📊 Πιθανότητα`, ph_new: `Νέος συμμετέχων`, add_title: `Προσθήκη συμμετέχοντα`,
       ph_enter_name: `Εισάγετε όνομα`, ph_max15w: `⚠️ Έως 15 χαρακτήρες`, aria_dec: `Μείωση πιθανότητας`, aria_prob: `Πιθανότητα σε ποσοστό`, aria_inc: `Αύξηση πιθανότητας`, aria_del: `Διαγραφή συμμετέχοντα`,
+      aria_away: `Άδεια / ασθένεια — προσωρινή αφαίρεση`, aria_back: `Επιστροφή στην κλήρωση`, away_badge: `🌴 απών`,
       ph_min2: `Τουλάχιστον 2 συμμετέχοντες`, ph_max100: `Έως 100 συμμετέχοντες`, ph_atleast1: `Εισάγετε τουλάχιστον έναν χαρακτήρα`, ph_dup: `Αυτός ο συμμετέχων υπάρχει ήδη`,
+      hosts_title: `Παρουσιαστές`, hosts_prev: `Προηγούμενη εβδομάδα`, hosts_next: `Επόμενη εβδομάδα`,
+      host_rule: `Προηγούμενος παρουσιαστής`, host_rule_aria: `Πιθανότητα προηγούμενου παρουσιαστή, %`, host_nobody: `— κανείς`,
+      host_day_aria: `Παρουσιαστής: {date}`, host_chip_title: `Παρουσίασε: {date}`, host_chip_last: `Προηγούμενος παρουσιαστής: {date}`,
+      host_hint: `Προηγούμενος παρουσιαστής — <b>{name}</b> ({day}): πιθανότητα <b>{p}%</b>, οι υπόλοιποι μοιράζονται τα υπόλοιπα.`,
+      host_hint_manual: `Προηγούμενος παρουσιαστής — <b>{name}</b> ({day}). Η πιθανότητα ορίστηκε χειροκίνητα, ο κανόνας δεν την αλλάζει.`,
+      host_hint_absent: `Προηγούμενος παρουσιαστής — <b>{name}</b> ({day}) — δεν συμμετέχει τώρα, κανονικές πιθανότητες.`,
+      host_hint_empty: `Δεν έχει καταγραφεί παρουσιαστής ακόμη.`,
+      host_hint_today: `Σήμερα παρουσιάζει: <b>{name}</b>. Ο κανόνας ισχύει από την επόμενη μέρα, με πιθανότητα <b>{p}%</b>.`,
+      host_chip_today: `σήμερα`, host_chips: `Ετικέτες στους συμμετέχοντες`,
       predict_words: ['ΠΡΟΒΛΕΦΘΗΚΕ','Η ΜΟΙΡΑ ΚΡΙΘΗΚΕ','ΕΤΣΙ ΟΡΙΖΕΙ Η ΜΑΓΕΙΑ','ΠΡΟΚΑΘΟΡΙΣΜΕΝΟ','ΤΑ ΑΣΤΡΑ ΕΔΕΙΞΑΝ','ΜΟΙΡΑΙΟ','ΜΥΣΤΙΚΙΣΤΙΚΑ','ΜΑΓΙΚΑ','ΤΟ ΜΑΝΤΕΙΟ ΔΙΑΛΕΞΕ','ΘΕΙΑ ΠΡΟΝΟΙΑ','ΜΑΓΙΚΗ ΕΠΙΛΟΓΗ','ΟΙΩΝΟΣ','ΕΙΣΑΙ Ο ΕΚΛΕΚΤΟΣ','Η ΜΠΑΜΠΑ ΒΑΝΓΚΑ ΨΙΘΥΡΙΣΕ','ΚΟΙΤΑ ΝΑ ΔΕΙΣ!']
     }
   };

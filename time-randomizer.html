@@ -511,7 +511,7 @@
 
     .headers-row, .prow {
       display: grid;
-      grid-template-columns: 46px 1fr 116px 36px;
+      grid-template-columns: 46px 1fr 116px 36px 36px;
       gap: 8px;
       align-items: center;
     }
@@ -525,7 +525,15 @@
       border-bottom: 1px dashed var(--line);
       margin-bottom: 8px;
     }
-    .headers-row .h-prob { text-align: center; }
+    /* «📊 Πιθανότητα» (EL) шире колонки с разрядкой 0.12em — держим в одну строку:
+       разрядка меньше, а если всё равно не влезает — аккуратное многоточие */
+    .headers-row .h-prob {
+      text-align: center;
+      white-space: nowrap;
+      letter-spacing: 0.04em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
     .plist { display: flex; flex-direction: column; gap: 5px; }
 
@@ -643,6 +651,43 @@
     .remove-btn:hover { color: var(--rose); background: rgba(251,113,133,0.10); }
     .remove-btn:disabled { opacity: 0.3; cursor: default; }
 
+    /* «Отпуск / болеет»: участник временно выключен из розыгрыша, но не удалён */
+    .away-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1;
+      height: 36px;
+      min-width: 36px;
+      cursor: pointer;
+      transition: color 0.15s ease, background 0.15s ease;
+    }
+    .away-btn:hover { color: var(--mint); background: rgba(94,234,212,0.10); }
+    .away-btn:disabled { opacity: 0.3; cursor: default; }
+
+    /* без этого поле имени держит свою ширину и выталкивает ✕ за край списка */
+    .prow .name-input { min-width: 0; }
+    .prow.is-away .name-input { opacity: 0.55; font-style: italic; cursor: default; }
+
+    .away-badge {
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 4px;
+      border: 1px dashed var(--line);
+      border-radius: 9px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
     .add-row { display: grid; grid-template-columns: 1fr 44px; gap: 8px; margin-top: 14px; }
     .add-row .name-input { height: 38px; }
     .add-btn {
@@ -675,7 +720,7 @@
     /* тач-планшеты (iPad и т.п.) — мобильные медиа до 520px их не покрывают:
        поднимаем только высоту, ширина колонок остаётся 36px */
     @media (hover: none) and (pointer: coarse) and (min-width: 521px) {
-      .prob-btn, .prob-input, .remove-btn, .name-input { height: 40px; }
+      .prob-btn, .prob-input, .remove-btn, .away-btn, .away-badge, .name-input { height: 40px; }
       .equalize-btn, .collapse-btn { min-height: 40px; }
     }
 
@@ -685,15 +730,303 @@
       .hero { margin: 0 0 18px; }
       .card { padding: 15px; border-radius: 18px; }
       .home-button { font-size: 12px; padding: 7px 13px; }
-      /* тап-цели ±/× держим на 36px, ужимаем колонки и gap */
-      .headers-row, .prow { grid-template-columns: 40px 1fr 112px 36px; gap: 4px; }
-      .prob-controls { grid-template-columns: 36px 1fr 36px; }
+      /* справа две кнопки (🌴 и ×) — ужимаем поля, колонки и gap, чтобы имени осталось ≥80px на 360px;
+         тап-цели ±/🌴/× держим на 34px */
+      body { padding-left: calc(12px + var(--safe-left)); padding-right: calc(12px + var(--safe-right)); }
+      .people-card { padding: 15px 12px; }
+      .headers-row, .prow { grid-template-columns: 34px 1fr 104px 34px 34px; gap: 3px; }
+      .prow { padding: 5px 3px; }
+      .headers-row { padding-left: 3px; padding-right: 3px; }
+      .prob-controls { grid-template-columns: 34px 1fr 34px; }
+      .prob-btn, .remove-btn, .away-btn { min-width: 34px; }
+      .prob-input { font-size: 11.5px; padding: 0; }
+      .pnum .rng { font-size: 10px; }
+      .away-badge { font-size: 10.5px; padding: 0 2px; }
       .name-input { font-size: 14px; padding: 0 7px; }
       .headers-row { font-size: 11px; letter-spacing: 0.04em; }
+      .headers-row .h-prob { letter-spacing: 0; }
+    }
+
+    /* самые узкие телефоны (320–359px): в одну строку имени оставалось 44–64px —
+       имя занимает первую строку целиком, шанс, 🌴 и ✕ — вторую (приём как на гонках) */
+    @media (max-width: 359px) {
+      .prow {
+        grid-template-columns: 34px 104px 1fr 34px 34px;
+        grid-template-areas: "num name name name name" ". prob . away rm";
+        row-gap: 4px;
+      }
+      .prow > :nth-child(1) { grid-area: num; }
+      .prow > :nth-child(2) { grid-area: name; }
+      .prow > :nth-child(3) { grid-area: prob; }
+      .prow > :nth-child(4) { grid-area: away; }
+      .prow > :nth-child(5) { grid-area: rm; }
+      /* подпись колонки шанса — справа от «Имя», пустые ячейки под 🌴 и ✕ не нужны */
+      .headers-row { grid-template-columns: 34px 1fr auto; }
+      .headers-row .h-prob { text-align: right; }
+      .headers-row .header-away, .headers-row .header-remove { display: none; }
     }
 
     @media (prefers-reduced-motion: reduce) {
       * { animation-duration: 0.001s !important; transition-duration: 0.05s !important; }
+    }
+  
+    /* «Уравнять» — иконкой, как соседние кнопки звука и «свернуть» */
+    #equalizeBtn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+    }
+
+    #equalizeBtn svg {
+      display: block;
+      flex-shrink: 0;
+    }
+
+    /* ===== ВЕДУЩИЕ: история (у псевдорандома без правила — победителя решает миллисекунда) ===== */
+    /* четвёртая иконка 🎙: длинный заголовок (EL) и иконки переносятся, а не вылезают за карточку */
+    .settings-header {
+      flex-wrap: wrap;
+      row-gap: 8px;
+    }
+    .settings-actions { margin-left: auto; }
+
+    .hosts-btn { font-size: 15px; }
+
+    /* подсвечена, только пока нажата (блок «Ведущие» открыт) */
+    .hosts-btn.active {
+      color: var(--mint);
+      background: rgba(94,234,212,0.14);
+      border-color: rgba(94,234,212,0.6);
+    }
+
+    .hosts-box {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(0,0,0,0.22);
+      border: 1px solid rgba(94,234,212,0.35);
+    }
+
+    .hosts-box[hidden] { display: none; }
+
+    .hosts-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 6px 8px;
+    }
+
+    .hosts-heading {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--mint);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .hosts-pager {
+      display: flex;
+      margin-left: auto;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .hosts-range {
+      min-width: 96px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--ink);
+      font-size: 11.5px;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .hosts-page-btn {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(255,255,255,0.05);
+      color: var(--ink);
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+    .hosts-page-btn:hover { color: var(--mint); border-color: rgba(94,234,212,0.4); background: rgba(94,234,212,0.08); }
+    .hosts-page-btn:disabled { opacity: 0.3; cursor: default; color: var(--ink); border-color: var(--line); background: rgba(255,255,255,0.05); }
+
+    .hosts-week {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 4px;
+    }
+
+    .host-day {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      min-width: 0;
+      padding: 5px 2px 6px;
+      border-radius: 8px;
+      border: 1px solid var(--line-soft);
+      background: rgba(255,255,255,0.045);
+      transition: background 0.15s ease;
+    }
+    .host-day:hover { background: rgba(94,234,212,0.10); }
+    .host-day:focus-within { outline: 2px solid var(--mint); outline-offset: 1px; }
+    .host-day.weekend { background: rgba(255,255,255,0.015); }
+    .host-day.today { border-color: rgba(251,191,36,0.55); }
+
+    .host-day-wd {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--muted);
+      font-size: 9.5px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .host-day-name {
+      max-width: 100%;
+      padding: 0 2px;
+      overflow: hidden;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .host-day.empty .host-day-name { color: #566d84; font-weight: 400; }
+
+    .host-day-num {
+      font-family: 'JetBrains Mono', monospace;
+      color: #566d84;
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* нативный выпадающий список поверх ячейки: на телефонах открывается системный выбор */
+    .host-day-select {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .host-day-select:disabled { cursor: default; }
+
+    .host-rule {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--line);
+    }
+
+    .host-rule-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--ink);
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .host-switch {
+      position: relative;
+      flex-shrink: 0;
+      width: 42px;
+      height: 24px;
+      padding: 0;
+      border: none;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.18);
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .host-switch::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      transition: transform 0.2s;
+    }
+    .host-switch[aria-checked="true"] { background: var(--mint); }
+    .host-switch[aria-checked="true"]::after { transform: translateX(18px); }
+    .host-switch:disabled { opacity: 0.5; cursor: default; }
+
+    .host-ui:focus-visible {
+      outline: 2px solid var(--mint);
+      outline-offset: 2px;
+    }
+
+    .name-field {
+      position: relative;
+      display: flex;
+      min-width: 0;
+    }
+    .name-field .name-input {
+      flex: 1 1 auto;
+      width: 100%;
+      min-width: 0;
+    }
+    .plist:not(.chips-corner) .name-field.has-chip .name-input {
+      padding-right: calc(var(--chip-w, 48px) + 14px);
+    }
+
+    /* имя не помещается рядом с чипом (или экран ≤480px) — все чипы списка стоят на углу рамки;
+       справа от поля всего 3px до шанса на телефоне — чип не заходит на соседний блок */
+    .plist.chips-corner .host-chip {
+      top: -7px;
+      right: -2px;
+      padding: 2px 5px;
+      font-size: 10.5px;
+      line-height: 1;
+      transform: none;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+    }
+
+    .host-chip {
+      position: absolute;
+      top: 50%;
+      right: 7px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      /* сплошной фон: рамка поля и буквы имени под меткой не просвечивают */
+      background: #12302e;
+      border: 1px solid #2c6f66;
+      color: var(--mint);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      font-weight: 700;
+      white-space: nowrap;
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+
+    /* узкие экраны: в чипе остаётся только 🎙, чтобы имени хватало места */
+    @media (max-width: 480px) {
+      .host-chip-day { display: none; }
+      .hosts-range { min-width: 84px; font-size: 10.5px; }
+      .host-day-name { font-size: 10.5px; }
     }
   </style>
 </head>
@@ -716,6 +1049,7 @@
       <a href="crystal-ball.html" data-i18n="nav_crystal">🔮 Магический Шар</a>
       <a href="trading.html" data-i18n="nav_trading">📈 Трейдинг</a>
       <a href="daisy.html" data-i18n="nav_daisy">🌼 Ромашка</a>
+      <a href="duck-race.html" data-i18n="nav_ducks">🦆 Утиные бега</a>
     </nav>
   </div>
 
@@ -731,8 +1065,27 @@
           <h2 class="settings-title"><span data-i18n="participants">Участники</span> · <span id="countLabel">8</span></h2>
           <div class="settings-actions">
             <button class="collapse-btn sound-toggle-btn" id="soundToggleBtn"></button>
-            <button class="equalize-btn" id="equalizeBtn" data-i18n="equalize" data-i18n-attr="title:equalize_title" title="Уравнять вероятности">Уравнять</button>
+            <button class="equalize-btn" id="equalizeBtn" title="Уравнять вероятности" aria-label="Уравнять вероятности" data-i18n-attr="title:equalize_title;aria-label:equalize_title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="8" width="16" height="3" rx="1.5" fill="currentColor"/><rect x="4" y="13" width="16" height="3" rx="1.5" fill="currentColor"/></svg></button>
             <button class="collapse-btn" id="collapseBtn" data-i18n-attr="title:collapse_title" title="Свернуть список"><span id="collapseIcon">▼</span></button>
+            <button class="collapse-btn hosts-btn" id="hostsBtn" type="button" aria-expanded="false" aria-controls="hostsBox" title="Ведущие" aria-label="Ведущие" data-i18n-attr="title:hosts_title;aria-label:hosts_title">🎙</button>
+          </div>
+        </div>
+
+        <div class="hosts-box" id="hostsBox" hidden>
+          <div class="hosts-top">
+            <span class="hosts-heading" data-i18n="hosts_title">Ведущие</span>
+            <div class="hosts-pager">
+              <button class="hosts-page-btn host-ui" id="hostsPrev" type="button" aria-label="Неделя назад" data-i18n-attr="aria-label:hosts_prev">‹</button>
+              <span class="hosts-range" id="hostsRange"></span>
+              <button class="hosts-page-btn host-ui" id="hostsNext" type="button" aria-label="Неделя вперёд" data-i18n-attr="aria-label:hosts_next">›</button>
+            </div>
+          </div>
+          <div class="hosts-week" id="hostsWeek"></div>
+          <div class="host-rule">
+            <label class="host-rule-label">
+              <button class="host-switch host-ui" id="hostChipsSwitch" type="button" role="switch" aria-checked="true" aria-labelledby="hostChipsText"></button>
+              <span id="hostChipsText" data-i18n="host_chips">Метки у участников</span>
+            </label>
           </div>
         </div>
 
@@ -741,7 +1094,8 @@
             <div data-i18n="col_num">№</div>
             <div data-i18n="col_name">Имя</div>
             <div class="h-prob" data-i18n="col_prob">📊 Вероятность</div>
-            <div></div>
+            <div class="header-away"></div>
+            <div class="header-remove"></div>
           </div>
           <div class="plist" id="plist"></div>
 
@@ -828,6 +1182,20 @@
     const NAMES_KEY  = 'shared_names_v1';
     const PROB_KEY   = 'shared_probabilities_v2';
     const LOCKED_KEY = 'shared_locked_v1';
+    const AWAY_KEY   = 'shared_away_v1';
+    // Ведущие: общая история со всеми рандомайзерами. Правило «прошлому ведущему» (shared_host_rule_v1)
+    // здесь не действует и не записывается — победителя решает миллисекунда
+    const HOSTS_KEY       = 'shared_hosts_v1';
+    const HOSTS_OPEN_KEY  = 'hosts_panel_open_v1';
+    const HOSTS_CHIPS_KEY = 'hosts_chips_visible_v1';
+
+    const hostsBtn        = document.getElementById('hostsBtn');
+    const hostsBox        = document.getElementById('hostsBox');
+    const hostsWeek       = document.getElementById('hostsWeek');
+    const hostsRange      = document.getElementById('hostsRange');
+    const hostsPrev       = document.getElementById('hostsPrev');
+    const hostsNext       = document.getElementById('hostsNext');
+    const hostChipsSwitch = document.getElementById('hostChipsSwitch');
 
     const guessLang = () => {
       try {
@@ -842,11 +1210,17 @@
     let probabilities = {};
     let lockedParticipants = {};
     let hasCustomProbabilities = false;
+    // «Отпуск / болеет»: [{ name, idx, p, locked }] — в names их нет, поэтому в розыгрыше они не участвуют
+    let awayList = [];
     let truncatedFrom = 0;
     let userEdited = false;
     let running = false;
     let done = false;
     let timers = [];
+    // Ведущие: [{ name, t, host: true }] — одна запись на день: последний победитель (или правка через 🎙)
+    let hostLog = [];
+    let hostWeekPage = 0;
+    let hostChipsVisible = true; // метки 🎙 у участников — переключатель в блоке «Ведущие»
 
     const t = (k) => I18N.t(k);
     const fill = (k, map) => {
@@ -879,6 +1253,235 @@
       truncatedFrom = 0;
       try { localStorage.setItem(NAMES_KEY, JSON.stringify(names)); } catch (e) {}
     };
+
+    try {
+      const savedAway = JSON.parse(localStorage.getItem(AWAY_KEY) || '[]');
+      if (Array.isArray(savedAway)) {
+        awayList = savedAway.filter((a) => a && typeof a.name === 'string' && a.name && !names.includes(a.name));
+      }
+    } catch (e) {}
+
+    const saveAway = () => {
+      try { localStorage.setItem(AWAY_KEY, JSON.stringify(awayList)); } catch (e) {}
+    };
+
+    // Имя занято, если оно есть среди активных (кроме строки exceptIdx) или среди отсутствующих
+    function isNameTaken(v, exceptIdx = -1) {
+      const low = v.toLowerCase();
+      return names.some((n, i) => i !== exceptIdx && n.toLowerCase() === low) ||
+        awayList.some((a) => a.name.toLowerCase() === low);
+    }
+
+    /* ── ВЕДУЩИЕ: ИСТОРИЯ ────────────────────────────── */
+    function loadHostLog() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(HOSTS_KEY) || '[]');
+        if (Array.isArray(saved)) {
+          hostLog = saved.filter((e) => e && typeof e.name === 'string' && e.name && Number.isFinite(e.t));
+        }
+      } catch (e) {}
+    }
+    loadHostLog();
+    try { hostChipsVisible = localStorage.getItem(HOSTS_CHIPS_KEY) !== '0'; } catch (e) {}
+
+    const saveHostLog = () => {
+      try {
+        hostLog = hostLog.filter((e) => e.host);
+        hostLog.sort((a, b) => a.t - b.t);
+        localStorage.setItem(HOSTS_KEY, JSON.stringify(hostLog));
+      } catch (e) {}
+    };
+
+    // Локальная дата вида 2026-09-14 — строки сравниваются как даты
+    function dayKey(ts) {
+      const d = new Date(ts);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    function hostEntryOn(key) {
+      return hostLog.find((e) => e.host && dayKey(e.t) === key) || null;
+    }
+
+    // Ведущие за последние 7 дней (включая сегодня): имя → самая свежая запись
+    function hostChips() {
+      const now = new Date();
+      const from = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime());
+      const map = {};
+      hostLog.forEach((e) => {
+        if (e.host && dayKey(e.t) >= from && (!map[e.name] || e.t > map[e.name].t)) map[e.name] = e;
+      });
+      return map;
+    }
+
+    // Чип 🎙 с днём, когда человек вёл, внутри уже созданного поля имени
+    function setHostChip(field, name, chips) {
+      field.dataset.hostName = name;
+      field.classList.remove('has-chip');
+      field.removeAttribute('title');
+      const old = field.querySelector('.host-chip');
+      if (old) old.remove();
+
+      const entry = chips[name];
+      if (!name || !entry || !hostChipsVisible) return;
+
+      const lang = I18N.lang || 'ru';
+      const d = new Date(entry.t);
+      field.classList.add('has-chip');
+      field.title = fill('host_chip_title', {
+        date: new Intl.DateTimeFormat(lang, { weekday: 'long', day: 'numeric', month: 'long' }).format(d)
+      });
+
+      const chip = document.createElement('span');
+      chip.className = 'host-chip';
+      chip.setAttribute('aria-hidden', 'true');
+      const day = document.createElement('span');
+      day.className = 'host-chip-day';
+      day.textContent = dayKey(entry.t) === dayKey(Date.now())
+        ? t('host_chip_today')
+        : new Intl.DateTimeFormat(lang, { weekday: 'short' }).format(d).replace(/\.$/, '');
+      chip.append('🎙', day);
+      field.appendChild(chip);
+    }
+
+    function buildHostNameField(input, name, chips) {
+      const field = document.createElement('div');
+      field.className = 'name-field';
+      field.appendChild(input);
+      setHostChip(field, name, chips);
+      return field;
+    }
+
+    // После записи победителя строки не перерисовываем (подсветка победителя и фокус остаются) — только чипы
+    function refreshHostChips() {
+      const chips = hostChips();
+      plist.querySelectorAll('.name-field').forEach((field) => setHostChip(field, field.dataset.hostName || '', chips));
+      syncHostChipPadding();
+    }
+
+    // Чип стоит внутри поля, пока имя помещается рядом с ним («сегодня» шире «пт»).
+    // Если хоть одно имя не влезает (или экран ≤480px) — все чипы списка переезжают на угол рамки.
+    const chipMeasureCtx = document.createElement('canvas').getContext('2d');
+    function syncHostChipPadding() {
+      plist.classList.remove('chips-corner');
+      let corner = window.matchMedia('(max-width: 480px)').matches;
+      plist.querySelectorAll('.name-field.has-chip').forEach((field) => {
+        const w = field.querySelector('.host-chip').offsetWidth;
+        if (!w) return;
+        field.style.setProperty('--chip-w', w + 'px');
+        const input = field.querySelector('.name-input');
+        const cs = getComputedStyle(input);
+        chipMeasureCtx.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+        const room = input.clientWidth - parseFloat(cs.paddingLeft) - (w + 14);
+        if (chipMeasureCtx.measureText(input.value).width > room) corner = true;
+      });
+      plist.classList.toggle('chips-corner', corner);
+    }
+
+    function renameInHostLog(from, to) {
+      if (!from || !to || from === to) return;
+      let changed = false;
+      hostLog.forEach((e) => { if (e.name === from) { e.name = to; changed = true; } });
+      if (changed) saveHostLog();
+    }
+
+    function renderHostsBox() {
+      const lang = I18N.lang || 'ru';
+      const now = new Date();
+      const todayKey = dayKey(now.getTime());
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - hostWeekPage * 7);
+      const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6);
+
+      const rangeFmt = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short' });
+      hostsRange.textContent = rangeFmt.formatRange
+        ? rangeFmt.formatRange(start, end)
+        : rangeFmt.format(start) + ' – ' + rangeFmt.format(end);
+
+      // пока часы фиксируют время, блок заблокирован вместе со списком
+      const earliest = hostLog.reduce((m, e) => Math.min(m, e.t), Infinity);
+      hostsBtn.disabled = running;
+      hostsBtn.classList.toggle('active', !hostsBox.hidden);
+      hostsPrev.disabled = running || !(earliest < start.getTime());
+      hostsNext.disabled = running || hostWeekPage === 0;
+      hostChipsSwitch.disabled = running;
+      hostChipsSwitch.setAttribute('aria-checked', String(hostChipsVisible));
+
+      const wdFmt = new Intl.DateTimeFormat(lang, { weekday: 'short' });
+      const longFmt = new Intl.DateTimeFormat(lang, { weekday: 'long', day: 'numeric', month: 'long' });
+      const candidates = [...new Set([...names, ...awayList.map((a) => a.name)].filter(Boolean))];
+
+      hostsWeek.textContent = '';
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+        const key = dayKey(d.getTime());
+        const entry = hostEntryOn(key);
+
+        const cell = document.createElement('div');
+        cell.className = 'host-day';
+        if (!entry) cell.classList.add('empty');
+        if (d.getDay() === 0 || d.getDay() === 6) cell.classList.add('weekend');
+        if (key === todayKey) cell.classList.add('today');
+
+        const label = fill('host_day_aria', { date: longFmt.format(d) });
+        cell.title = entry ? label + ' — ' + entry.name : label;
+
+        const wd = document.createElement('span');
+        wd.className = 'host-day-wd';
+        wd.textContent = wdFmt.format(d).replace(/\.$/, '');
+
+        const nm = document.createElement('span');
+        nm.className = 'host-day-name';
+        nm.textContent = entry ? entry.name : '—';
+
+        const num = document.createElement('span');
+        num.className = 'host-day-num';
+        num.textContent = d.getDate();
+
+        const select = document.createElement('select');
+        select.className = 'host-day-select';
+        select.setAttribute('aria-label', label);
+        select.disabled = running;
+        const options = entry && !candidates.includes(entry.name) ? [...candidates, entry.name] : candidates;
+        [['', t('host_nobody')], ...options.map((n) => [n, n])].forEach(([value, text]) => {
+          const opt = document.createElement('option');
+          opt.value = value;
+          opt.textContent = text;
+          select.appendChild(opt);
+        });
+        select.value = entry ? entry.name : '';
+        select.addEventListener('change', () => setDayHost(d, select.value));
+
+        cell.append(wd, nm, num, select);
+        hostsWeek.appendChild(cell);
+      }
+    }
+
+    // Ручная правка дня в полоске недели
+    function setDayHost(date, name) {
+      const key = dayKey(date.getTime());
+      hostLog = hostLog.filter((e) => dayKey(e.t) !== key);
+      if (name) {
+        const noon = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12).getTime();
+        hostLog.push({ name, t: noon, host: true });
+      }
+      commitHostChange();
+    }
+
+    // На шансы история здесь не влияет — обновляем только чипы и полоску недели
+    function commitHostChange() {
+      saveHostLog();
+      refreshHostChips();
+      renderHostsBox();
+    }
+
+    // Ведущий дня — последний победитель: каждая новая фиксация времени заменяет сегодняшнюю запись
+    function recordHostWin(name) {
+      if (!name) return;
+      const now = Date.now();
+      loadHostLog();
+      hostLog = hostLog.filter((e) => dayKey(e.t) !== dayKey(now));
+      hostLog.push({ name, t: now, host: true });
+      commitHostChange();
+    }
 
     /* ── ВЕРОЯТНОСТИ (та же логика, что в колесе и гонках) ── */
     function initProbabilities() {
@@ -1031,6 +1634,9 @@
 
     function equalizeProbabilities() {
       setEqualProbabilities();
+      // отсутствующие вернутся уже с равным шансом
+      awayList.forEach((a) => { a.p = null; a.locked = false; });
+      saveAway();
       userEdited = true;
       if (done) softReset();
       renderList();
@@ -1085,7 +1691,7 @@
 
     function validateAllNames() {
       let allValid = names.length >= MIN_PLAYERS;
-      plist.querySelectorAll('.name-input').forEach(input => {
+      plist.querySelectorAll('.prow:not(.is-away) .name-input').forEach(input => {
         const v = input.value.trim();
         if (!v || input.value.length > MAX_NAME_LEN || input.classList.contains('error-state')) allValid = false;
       });
@@ -1096,6 +1702,7 @@
     function renderList() {
       collapseIfEqual();
       const plan = ticketPlan();
+      const chips = hostChips();
       plist.innerHTML = '';
 
       names.forEach((name, idx) => {
@@ -1120,12 +1727,14 @@
           const v = input.value.trim();
           if (!v) { input.classList.add('error-state'); validateAllNames(); return; }
 
-          const dup = names.some((n, i) => i !== idx && n.toLowerCase() === v.toLowerCase());
+          const dup = isNameTaken(v, idx);
           input.classList.toggle('error-state', dup);
           if (dup) { validateAllNames(); return; }
 
           // переносим вероятность и ручную пометку на новое имя
+          // (то же имя — например, дописали пробел — ничего не переносим, иначе delete стёр бы шанс)
           const oldName = names[idx];
+          if (v === oldName) { validateAllNames(); return; }
           if (oldName in probabilities) { probabilities[v] = probabilities[oldName]; delete probabilities[oldName]; }
           if (oldName in lockedParticipants) { lockedParticipants[v] = true; delete lockedParticipants[oldName]; }
 
@@ -1133,17 +1742,22 @@
           userEdited = true;
           saveNames();
           saveProbabilities();
+          // история ведущих переименовывается вместе с участником
+          renameInHostLog(oldName, v);
+          setHostChip(field, v, hostChips());
+          syncHostChipPadding();
           if (done) softReset();
           validateAllNames();
         });
 
         input.addEventListener('blur', () => {
           const v = input.value.trim();
-          const dup = names.some((n, i) => i !== idx && n.toLowerCase() === v.toLowerCase());
+          const dup = isNameTaken(v, idx);
           if (!v || dup) { input.value = names[idx]; input.classList.remove('error-state'); validateAllNames(); }
         });
 
-        row.appendChild(input);
+        const field = buildHostNameField(input, name, chips);
+        row.appendChild(field);
 
         const controls = document.createElement('div');
         controls.className = 'prob-controls';
@@ -1184,6 +1798,11 @@
             probInput.value = lastValid + '%';
             return;
           }
+          // фокус и уход без правки (или Enter) — не фиксация: шанс остаётся автоматическим
+          if (val === String(lastValid).trim()) {
+            probInput.value = lastValid + '%';
+            return;
+          }
           userEdited = true;
           if (done) softReset();
           if (setProbabilityManually(names[idx], num2)) renderList();
@@ -1206,6 +1825,61 @@
         rm.title = t('aria_del');
         rm.setAttribute('aria-label', t('aria_del'));
         rm.onclick = () => removeParticipant(idx);
+
+        const awayBtn = document.createElement('button');
+        awayBtn.className = 'away-btn';
+        awayBtn.textContent = '🌴';
+        awayBtn.title = t('aria_away');
+        awayBtn.setAttribute('aria-label', t('aria_away'));
+        awayBtn.onclick = () => sendAway(idx);
+
+        row.appendChild(awayBtn);
+        row.appendChild(rm);
+
+        plist.appendChild(row);
+      });
+
+      // Отсутствующие идут после активных — индексы строк победителя не сдвигаются
+      awayList.forEach((a, i) => {
+        const row = document.createElement('div');
+        row.className = 'prow is-away';
+        row.appendChild(document.createElement('div'));   // номера у них нет
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'name-input';
+        input.value = a.name;
+        input.readOnly = true;
+        input.tabIndex = -1;
+        input.setAttribute('aria-label', t('col_name'));
+        row.appendChild(input);
+
+        const badge = document.createElement('div');
+        badge.className = 'away-badge';
+        badge.textContent = t('away_badge');
+        row.appendChild(badge);
+
+        const backBtn = document.createElement('button');
+        backBtn.className = 'away-btn';
+        backBtn.textContent = '↩';
+        backBtn.title = t('aria_back');
+        backBtn.setAttribute('aria-label', t('aria_back'));
+        backBtn.onclick = () => bringBack(i);
+        row.appendChild(backBtn);
+
+        const rm = document.createElement('button');
+        rm.className = 'remove-btn';
+        rm.innerHTML = '×';
+        rm.title = t('aria_del');
+        rm.setAttribute('aria-label', t('aria_del'));
+        rm.onclick = () => {
+          awayList.splice(i, 1);
+          saveAway();
+          // на розыгрыш это не влияет — подсветку победителя сохраняем
+          const winIdx = [...plist.children].findIndex(el => el.classList.contains('win'));
+          renderList();
+          if (winIdx >= 0) highlightWinner(winIdx);
+        };
         row.appendChild(rm);
 
         plist.appendChild(row);
@@ -1216,6 +1890,8 @@
         ? fill('err_trunc', { n: MAX_PLAYERS, total: truncatedFrom })
         : (names.length >= MAX_PLAYERS ? fill('err_max', { n: MAX_PLAYERS }) : '');
 
+      syncHostChipPadding();
+      renderHostsBox();
       updateOpHint(plan);
       updateMask();
       validateAllNames();
@@ -1226,7 +1902,7 @@
 
       if (names.length >= MAX_PLAYERS) { newNameInput.value = ''; flashHint('ph_max'); return; }
       if (!v) { flashHint('ph_atleast1'); return; }
-      if (names.some((n) => n.toLowerCase() === v.toLowerCase())) { newNameInput.value = ''; flashHint('ph_dup'); return; }
+      if (isNameTaken(v)) { newNameInput.value = ''; flashHint('ph_dup'); return; }
 
       newNameInput.value = '';
       newNameInput.placeholder = t('ph_new');
@@ -1260,9 +1936,81 @@
       renderList();
     }
 
+    // Временно убрать участника из розыгрыша, запомнив место в списке и его шанс
+    function sendAway(idx) {
+      if (names.length <= MIN_PLAYERS) { flashHint('ph_min2'); return; }
+
+      const name = names[idx];
+      // строка с пустым (редактируемым) именем подсвечена красным — в отпуск её не отправляем
+      if (!name || !name.trim()) return;
+      awayList.push({
+        name,
+        idx,
+        p: hasCustomProbabilities ? (probabilities[name] ?? null) : null,
+        locked: !!lockedParticipants[name]
+      });
+      names.splice(idx, 1);
+      delete probabilities[name];
+      delete lockedParticipants[name];
+
+      saveNames();
+      saveAway();
+      normalizeProbabilities();
+      saveProbabilities();
+
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
+    function bringBack(i) {
+      const a = awayList[i];
+      if (!a) return;
+
+      // С тем же именем участника могли уже добавить заново — тогда просто снимаем отметку
+      if (!names.includes(a.name)) {
+        if (names.length >= MAX_PLAYERS) { flashHint('ph_max'); return; }
+        // collapseIfEqual мог выключить ручной режим, пока человек отсутствовал (остальные стали равны),
+        // поэтому сохранённый шанс сам по себе признак ручного режима; «Уравнять» его стирает
+        if (a.p > 0 && a.p < 1) hasCustomProbabilities = true;
+        const p = hasCustomProbabilities && a.p > 0 && a.p < 1 ? a.p : 1 / (names.length + 1);
+        // Остальные делят оставшееся, чтобы вернувшийся получил ровно свой прежний шанс
+        names.forEach((n) => probabilities[n] = (probabilities[n] || 0) * (1 - p));
+        names.splice(Math.min(a.idx, names.length), 0, a.name);
+        probabilities[a.name] = p;
+        if (hasCustomProbabilities && a.locked) lockedParticipants[a.name] = true;
+        normalizeProbabilities();
+        saveNames();
+        saveProbabilities();
+      }
+      awayList.splice(i, 1);
+      saveAway();
+
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
     addBtn.addEventListener('click', addNewParticipant);
     newNameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addNewParticipant(); } });
     equalizeBtn.addEventListener('click', equalizeProbabilities);
+
+    hostsBtn.addEventListener('click', () => {
+      hostsBox.hidden = !hostsBox.hidden;
+      hostsBtn.setAttribute('aria-expanded', String(!hostsBox.hidden));
+      hostsBtn.classList.toggle('active', !hostsBox.hidden);
+      try { localStorage.setItem(HOSTS_OPEN_KEY, hostsBox.hidden ? '0' : '1'); } catch (e) {}
+    });
+    hostsPrev.addEventListener('click', () => { hostWeekPage++; renderHostsBox(); });
+    hostsNext.addEventListener('click', () => { hostWeekPage = Math.max(0, hostWeekPage - 1); renderHostsBox(); });
+    hostChipsSwitch.addEventListener('click', () => {
+      hostChipsVisible = !hostChipsVisible;
+      try { localStorage.setItem(HOSTS_CHIPS_KEY, hostChipsVisible ? '1' : '0'); } catch (e) {}
+      refreshHostChips();
+      renderHostsBox();
+    });
+    // чип «внутри поля / на углу» зависит от ширины поля
+    window.addEventListener('resize', syncHostChipPadding);
 
     collapseBtn.addEventListener('click', () => {
       const closed = listWrap.classList.toggle('closed');
@@ -1341,6 +2089,12 @@
       equalizeBtn.disabled = locked;
       newNameInput.disabled = locked;
       addBtn.disabled = locked;
+      if (locked) {
+        hostsBtn.disabled = true;
+        hostsBox.querySelectorAll('button, select').forEach((el) => el.disabled = true);
+      } else {
+        renderHostsBox();
+      }
     }
 
     function softReset() {
@@ -1419,6 +2173,7 @@
       goBtn.classList.add('again');
       goBtn.disabled = false;
       lockInputs(false);
+      recordHostWin(names[widx]);
     }
 
     function sparks() {
@@ -1473,7 +2228,7 @@
     goBtn.addEventListener('click', run);
 
     document.addEventListener('keydown', (e) => {
-      if (['INPUT', 'BUTTON', 'A'].includes(e.target.tagName)) return;
+      if (['INPUT', 'BUTTON', 'A', 'SELECT'].includes(e.target.tagName)) return;
       if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); run(); }
     });
 
@@ -1483,7 +2238,14 @@
         const isDefault = Object.values(DEFAULT_NAME_SETS).some(set => set.join('|') === names.join('|'));
         if (isDefault && names.join('|') !== DEFAULT_NAME_SETS[I18N.lang].join('|')) {
           const wasEqual = !hasCustomProbabilities;
+          const prev = names;
           names = DEFAULT_NAME_SETS[I18N.lang].slice();
+          // историю ведущих переносим по позиции — те же люди под локализованными именами
+          hostLog.forEach((e) => {
+            const i = prev.indexOf(e.name);
+            if (i !== -1) e.name = names[i];
+          });
+          saveHostLog();
           saveNames();
           if (wasEqual) setEqualProbabilities();
           else { probabilities = {}; lockedParticipants = {}; setEqualProbabilities(); }
@@ -1499,6 +2261,9 @@
         goBtn.disabled = false;
       }
     });
+
+    try { hostsBox.hidden = localStorage.getItem(HOSTS_OPEN_KEY) !== '1'; } catch (e) {}
+    hostsBtn.setAttribute('aria-expanded', String(!hostsBox.hidden));
 
     initProbabilities();
     renderList();
@@ -1532,7 +2297,7 @@
       _title: `Псевдорандом — победитель по остатку от деления времени`,
       meta_desc: `⏱ Рандомайзер на времени: фиксируем момент нажатия в миллисекундах, делим на число участников — остаток и есть порядковый номер победителя. С настройкой вероятностей.`,
       menu: `Меню`,
-      nav_home: `🏠 Главная`, nav_ai: `🤖 LLM-рандомайзер`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Рулетка`, nav_racing: `🏁 Гонки`, nav_wheel: `🎡 Колесо Фортуны`, nav_bingo: `🎲 Бинго`, nav_bank: `🇲🇽 Банк`, nav_plinko: `🎯 Плинко`, nav_loto: `🎱 Лототрон`, nav_crystal: `🔮 Магический Шар`, nav_trading: `📈 Трейдинг`, nav_daisy: `🌼 Ромашка`,
+      nav_home: `🏠 Главная`, nav_ducks: `🦆 Утиные бега`, nav_ai: `🤖 LLM-рандомайзер`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Рулетка`, nav_racing: `🏁 Гонки`, nav_wheel: `🎡 Колесо Фортуны`, nav_bingo: `🎲 Бинго`, nav_bank: `🇲🇽 Банк`, nav_plinko: `🎯 Плинко`, nav_loto: `🎱 Лототрон`, nav_crystal: `🔮 Магический Шар`, nav_trading: `📈 Трейдинг`, nav_daisy: `🌼 Ромашка`,
       h1: `Псевдо<b>рандом</b>`,
       unix_label: `метка времени, мс`,
       btn: `⏱ Зафиксировать время`,
@@ -1553,6 +2318,12 @@
       aria_prob: `Вероятность в процентах`,
       aria_inc: `Увеличить вероятность`,
       aria_del: `Удалить участника`,
+      aria_away: `Отпуск / болеет — временно убрать`,
+      aria_back: `Вернуть в розыгрыш`,
+      away_badge: `🌴 нет на месте`,
+      hosts_title: `Ведущие`, hosts_prev: `Неделя назад`, hosts_next: `Неделя вперёд`, host_nobody: `— никто`,
+      host_day_aria: `Ведущий: {date}`, host_chip_title: `Ведущий: {date}`,
+      host_chip_today: `сегодня`, host_chips: `Метки у участников`,
       err_min: `Нужно минимум 2 участника.`,
       err_max: `Максимум {n} участников.`,
       err_trunc: `Список общий с другими рандомайзерами: показаны первые {n} из {total}.`,
@@ -1571,7 +2342,7 @@
       _title: `Pseudorandom — the winner is the remainder of the clock`,
       meta_desc: `⏱ A randomizer built on time: we capture the moment of your press in milliseconds and divide it by the number of participants — the remainder is the winner's index. With adjustable odds.`,
       menu: `Menu`,
-      nav_home: `🏠 Home`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Roulette`, nav_racing: `🏁 Racing`, nav_wheel: `🎡 Wheel of Fortune`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 The Bank`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Lottery Drum`, nav_crystal: `🔮 Magic Ball`, nav_trading: `📈 Trading`, nav_daisy: `🌼 Daisy`,
+      nav_home: `🏠 Home`, nav_ducks: `🦆 Duck Race`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Roulette`, nav_racing: `🏁 Racing`, nav_wheel: `🎡 Wheel of Fortune`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 The Bank`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Lottery Drum`, nav_crystal: `🔮 Magic Ball`, nav_trading: `📈 Trading`, nav_daisy: `🌼 Daisy`,
       h1: `Pseudo<b>random</b>`,
       unix_label: `timestamp, ms`,
       btn: `⏱ Capture the time`,
@@ -1592,6 +2363,12 @@
       aria_prob: `Probability in percent`,
       aria_inc: `Increase probability`,
       aria_del: `Remove participant`,
+      aria_away: `On leave / sick — take out for now`,
+      aria_back: `Bring back`,
+      away_badge: `🌴 away`,
+      hosts_title: `Hosts`, hosts_prev: `Previous week`, hosts_next: `Next week`, host_nobody: `— nobody`,
+      host_day_aria: `Host: {date}`, host_chip_title: `Hosted: {date}`,
+      host_chip_today: `today`, host_chips: `Labels on participants`,
       err_min: `At least 2 participants are needed.`,
       err_max: `{n} participants max.`,
       err_trunc: `The roster is shared with the other randomizers: showing the first {n} of {total}.`,
@@ -1610,7 +2387,7 @@
       _title: `Ψευδοτυχαίο — νικητής το υπόλοιπο του χρόνου`,
       meta_desc: `⏱ Τυχαία επιλογή με βάση τον χρόνο: πιάνουμε τη στιγμή του πατήματος σε χιλιοστά και τη διαιρούμε με το πλήθος των συμμετεχόντων — το υπόλοιπο είναι ο αριθμός του νικητή. Με ρυθμιζόμενες πιθανότητες.`,
       menu: `Μενού`,
-      nav_home: `🏠 Αρχική`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Ρουλέτα`, nav_racing: `🏁 Αγώνες`, nav_wheel: `🎡 Τροχός της Τύχης`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 Η Τράπεζα`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Κληρωτίδα`, nav_crystal: `🔮 Μαγική Μπάλα`, nav_trading: `📈 Trading`, nav_daisy: `🌼 Μαργαρίτα`,
+      nav_home: `🏠 Αρχική`, nav_ducks: `🦆 Αγώνας Παπιών`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Ρουλέτα`, nav_racing: `🏁 Αγώνες`, nav_wheel: `🎡 Τροχός της Τύχης`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 Η Τράπεζα`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Κληρωτίδα`, nav_crystal: `🔮 Μαγική Μπάλα`, nav_trading: `📈 Trading`, nav_daisy: `🌼 Μαργαρίτα`,
       h1: `Ψευδο<b>τυχαίο</b>`,
       unix_label: `χρονοσήμανση, ms`,
       btn: `⏱ Κλείδωσε τον χρόνο`,
@@ -1631,6 +2408,12 @@
       aria_prob: `Πιθανότητα σε ποσοστό`,
       aria_inc: `Αύξηση πιθανότητας`,
       aria_del: `Αφαίρεση συμμετέχοντα`,
+      aria_away: `Άδεια / ασθένεια — προσωρινή αφαίρεση`,
+      aria_back: `Επιστροφή στην κλήρωση`,
+      away_badge: `🌴 απών`,
+      hosts_title: `Παρουσιαστές`, hosts_prev: `Προηγούμενη εβδομάδα`, hosts_next: `Επόμενη εβδομάδα`, host_nobody: `— κανείς`,
+      host_day_aria: `Παρουσιαστής: {date}`, host_chip_title: `Παρουσίασε: {date}`,
+      host_chip_today: `σήμερα`, host_chips: `Ετικέτες στους συμμετέχοντες`,
       err_min: `Χρειάζονται τουλάχιστον 2 συμμετέχοντες.`,
       err_max: `Το πολύ {n} συμμετέχοντες.`,
       err_trunc: `Η λίστα είναι κοινή με τους άλλους τυχαίους επιλογείς: εμφανίζονται οι πρώτοι {n} από {total}.`,
