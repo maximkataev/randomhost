@@ -3116,6 +3116,31 @@
       namesList.classList.toggle('chips-corner', corner);
     }
 
+    // Метки 🎙 пересчитываются на любое действие с участниками, а не только при добавлении/удалении:
+    // ввод или удаление символа в имени, нажатие любой кнопки в форме участников, запуск рандомайзера.
+    // Форма — ближайший общий предок списка и кнопки 🎙. Путь события берём из composedPath: кнопка строки
+    // к этому моменту может быть уже удалена перерисовкой списка.
+    const HOST_CHIP_START_BTNS = '#composerSendBtn, #retryActionBtn, #spinAgainBtn';
+    let hostChipsForm = null;
+    function recountHostChips() {
+      const list = document.getElementById('namesList');
+      if (list && list.offsetWidth) syncHostChipPadding(); // скрытый список не меряем — ширины нулевые
+    }
+    document.addEventListener('input', (e) => {
+      if (e.target.matches && e.target.matches('#namesList .name-input')) recountHostChips();
+    });
+    document.addEventListener('click', (e) => {
+      const path = e.composedPath();
+      const btn = path.find((el) => el instanceof Element && el.tagName === 'BUTTON');
+      if (!btn) return;
+      if (!hostChipsForm) {
+        hostChipsForm = document.getElementById('namesList');
+        const hostsBtnEl = document.getElementById('hostsBtn');
+        while (hostChipsForm && !hostChipsForm.contains(hostsBtnEl)) hostChipsForm = hostChipsForm.parentElement;
+      }
+      if (btn.matches(HOST_CHIP_START_BTNS) || path.includes(hostChipsForm)) recountHostChips();
+    });
+
     function renameInHostLog(from, to) {
       if (!from || !to || from === to) return;
       let changed = false;
