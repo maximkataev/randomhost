@@ -3940,7 +3940,8 @@
 
   const race = {
     state: 'idle', t: 0, winner: null, winnerDone: false, n0: 0, outCount: 0, behind: 0,
-    clamps: 0, rescue: false, lastErode: -9, duelSaid: false, attacks: [], recentW: [], lastPlan: -9, lastSpar: -9
+    clamps: 0, rescue: false, lastErode: -9, duelSaid: false, attacks: [], recentW: [], lastPlan: -9, lastSpar: -9,
+    lastRelease: -9, stuckSince: null, dur: 0
   };
 
   // Ящик с арсеналом посреди льдины: на старте разлетается, и в ход идёт всё, что в нём было
@@ -4281,14 +4282,21 @@
   };
   const WEAPON_KEYS = Object.keys(WEAPONS);
 
+  // Стычки идут по одной, и большую толпу за выбранные секунды не убрать: график честно растягивается
+  // до того, что физически возможно (≈ секунда на выбывание с учётом темпа)
+  const fightSeconds = () => race.dur || raceSeconds;
+  function planDuration() {
+    const perKill = 0.45 + 0.9 * speedK();
+    race.dur = Math.max(raceSeconds, raceSeconds * 0.14 + (race.n0 - 1) * perKill);
+  }
   // Сколько пингвинов должно выбыть к моменту t: разминка, затем падения всё чаще, последнее — к концу
   function expectedOut(t) {
-    const x = t / raceSeconds;
+    const x = t / fightSeconds();
     const g = x < 0.14 ? 0 : Math.pow(clamp((x - 0.14) / 0.86, 0, 1), 0.85);
     return (race.n0 - 1) * g;
   }
   // на короткой схватке подходы и замахи быстрее
-  const speedK = () => lerp(0.6, 1, TS);
+  const speedK = () => lerp(0.6, 1, TS) * lerp(1, 0.78, clamp((race.n0 - 8) / 12, 0, 1));
   // от решения «столкнуть» до всплеска
   const planLead = () => 0.45 + 1.0 * speedK();
 
@@ -4305,7 +4313,7 @@
       // лёд под победителем и в шаге от него не трогаем
       if (pointInPoly(w.x, w.y, s.poly)) return false;
       // в затянувшейся дуэли разрешаем колоть лёд совсем рядом с победителем
-      const lim = (PR * (race.t > raceSeconds * 1.5 + 2 ? 1.1 : 2.4)) ** 2;
+      const lim = (PR * (race.t > fightSeconds() * 1.5 + 2 ? 1.1 : 2.4)) ** 2;
       for (let i = 0; i < s.poly.length; i++) {
         const a = s.poly[i], b = s.poly[(i + 1) % s.poly.length];
         if (nearestOnSeg(w.x, w.y, a[0], a[1], b[0], b[1])[2] < lim) return false;
@@ -4325,7 +4333,7 @@
         p.doomed = true;
         p.doomedAt = simTime;
         p.grip = 0;
-        if (by) p.hitBy = { a: by, k: 'icepick', t: simTime + 1 };
+        if (by) { p.hitBy = { a: by, k: 'icepick', t: simTime + 1 }; if (by.att) by.att.kos = (by.att.kos || 0) + 1; }
         if (p.state === 'stand') { p.state = 'panic'; p.st = 0; }
       }
     });
@@ -4393,7 +4401,7 @@
   function erode() {
     if (simTime - race.lastErode < 0.3 * Math.max(0.5, TS)) return;
     const live = alive();
-    const x = clamp(race.t / raceSeconds, 0, 1);
+    const x = clamp(race.t / fightSeconds(), 0, 1);
     const target = Math.max(floe.area0 * (1 - 0.8 * Math.pow(x, 1.1)), live.length * 950 + 4400);
     if (solidArea() <= target) return;
     const w = race.winner;
@@ -4438,6 +4446,7 @@
         if (penguins.some(o => o !== a && o !== v && !o.out && Math.hypot(o.x - x, o.y - y) < PR * 2.2)) continue;
         if (a && !pathOnIce(a.x, a.y, x, y)) continue;
         if ((k === 'belly' || k === 'glove' || k === 'puck') && !segClear(x, y, v.x, v.y, [a, v], PR * 1.9)) continue;
+        if ((k === 'belly' || k === 'puck') && !pathOnIce(x, y, v.x, v.y)) continue;
         return [x, y];
       }
     }
@@ -4463,14 +4472,24 @@
     const e = edgeInfo(v.x, v.y);
     if (((v.x - a.x) * -e.nx + (v.y - a.y) * -e.ny) / (d || 1) < 0.2) return null;
     if ((k === 'glove' || k === 'puck') && !segClear(a.x, a.y, v.x, v.y, [a, v], PR * 1.9)) return null;
+    if (k === 'puck' && !pathOnIce(a.x, a.y, v.x, v.y)) return null;
     return [a.x, a.y];
   }
 
-  function pickVictim(doomed) {
+  function pickVictim(doomed, near = null) {
+    return victimList(doomed, near)[0] || null;
+  }
+  function crowdAt(v, r, except = []) {
     const w = race.winner;
-    let best = null, bs = 1e9;
+    return alive().filter(p => p !== v && p !== w && !p.doomed && !except.includes(p) && p.state !== 'hop'
+      && Math.hypot(p.x - v.x, p.y - v.y) < r).length;
+  }
+
+  function victimList(doomed, near = null, want = 1) {
+    const w = race.winner;
+    const list = [];
     for (const p of alive()) {
-      if (p.att || p.targeted || p.doomed || p.state !== 'stand') continue;
+      if (p.att || p.targeted || p.doomed || p.state !== 'stand' || p === near) continue;
       if (doomed && p === w) continue;
       const s = supportAt(p.x, p.y);
       if (!s || s.state !== 'solid') continue;
@@ -4478,28 +4497,55 @@
       if (doomed) {
         const e = edgeInfo(p.x, p.y);
         sc = e.d + rnd() * 45;
+        // серия: следующий — тот, кто под рукой
+        if (near) sc += Math.hypot(p.x - near.x, p.y - near.y) * 0.7;
+        // нужно несколько — лучше тот, вокруг кого толпятся: один удар снимет и соседей
+        if (want > 1) sc -= Math.min(crowdAt(p, 40), want - 1) * 30;
         // по пути к воде никто не стоит — полёт получится чистым
         if (!segClear(p.x, p.y, p.x - e.nx * (e.d + 10), p.y - e.ny * (e.d + 10), [p], PR * 2)) sc += 70;
       } else {
         sc = rnd() * 100 - (p === w ? 35 : 0);
       }
-      if (sc < bs) { bs = sc; best = p; }
+      list.push([sc, p]);
     }
-    return best;
+    return list.sort((x, y) => x[0] - y[0]).map(x => x[1]);
   }
 
-  function planAttack(elim, behind) {
+  // Сколько жертв должна дать следующая стычка с выбыванием: по отставанию от графика, не больше трёх
+  function comboFor(behind, liveN) {
+    const room = Math.max(1, Math.min(3, liveN - 1));
+    const cycle = 1.2 * speedK() + 0.45;                       // одна стычка: от плана до всплеска
+    const left = Math.max(0.3, fightSeconds() * 0.95 - race.t);   // сколько времени осталось по графику
+    const perFight = (liveN - 1) * cycle / left;
+    let n = clamp(Math.max(Math.round(behind + 0.35), Math.ceil(perFight - 0.3)), 1, room);
+    // изредка серия и без отставания — толпе это к лицу
+    if (n === 1 && liveN >= 6 && rnd() < 0.2) n = 2;
+    return n;
+  }
+
+  // streak — продолжение серии: нападающий задан, бьёт тем же, что и раньше, и с места (или почти с места)
+  function planAttack(elim, behind, streak = null) {
+    const want = elim ? (streak ? streak.left : comboFor(behind, alive().length)) : 1;
+    if (streak) {
+      for (const v of victimList(true, streak.a, want).slice(0, 4)) if (planAttackOn(v, elim, behind, streak, want)) return true;
+      return false;
+    }
     const w = race.winner;
     let v = null;
     // иногда нападают на самого фаворита — и промахнувшийся сам улетает в воду
-    if (elim && w && !w.out && !w.att && !w.targeted && w.state === 'stand' && supportAt(w.x, w.y)?.state === 'solid'
+    if (elim && want === 1 && w && !w.out && !w.att && !w.targeted && w.state === 'stand' && supportAt(w.x, w.y)?.state === 'solid'
         && edgeInfo(w.x, w.y).d < 60 && rnd() < 0.18) v = w;
-    else v = pickVictim(elim);
+    else v = victimList(elim, null, want)[0];
     if (!v) return false;
+    return planAttackOn(v, elim, behind, null, want);
+  }
+
+  function planAttackOn(v, elim, behind, streak, combo) {
+    const w = race.winner;
     const progress = clamp(race.outCount / Math.max(1, race.n0 - 1), 0, 1);
-    const cands = alive()
+    const cands = streak ? [{ p: streak.a }] : alive()
       .filter(p => p !== v && !p.att && !p.targeted && !p.doomed && p.state === 'stand' && supportAt(p.x, p.y)?.state === 'solid')
-      .map(p => ({ p, d: Math.hypot(p.x - v.x, p.y - v.y) + rnd() * 40 - (p === w ? lerp(20, 90, progress) : 0) }))
+      .map(p => ({ p, d: Math.hypot(p.x - v.x, p.y - v.y) + rnd() * 25 - (p === w ? lerp(20, 90, progress) : 0) }))
       .sort((x, y) => x.d - y.d)
       .slice(0, 4);
     const ang = rr(-0.5, 0.5);
@@ -4511,23 +4557,35 @@
         let st = stanceFor(v, k, a, ang);
         if (!st) st = shootFromHere(v, k, a);
         if (!st) continue;
-        let cost = Math.hypot(st[0] - a.x, st[1] - a.y) * 2.4 + rnd() * 70;
+        const walk = Math.hypot(st[0] - a.x, st[1] - a.y);
+        // серия — без долгих подходов, иначе это уже другая стычка
+        if (streak && walk > 50) continue;
+        let cost = walk * (streak ? 4 : 2.4) + rnd() * 40;
         const used = race.recentW.indexOf(k);
         if (used >= 0) cost += 160 - used * 40;   // недавние способы — реже
-        if (elim && behind > 1.8 && (k === 'firecracker' || k === 'icepick')) cost -= 90;
+        if (streak) cost += k === streak.k ? -220 : 0;   // серия одним и тем же оружием
+        if (combo > 1) {
+          const vs = supportAt(v.x, v.y);
+          const nb = k === 'firecracker' ? crowdAt(v, 40, [a])
+            : k === 'icepick' ? alive().filter(p => p !== v && p !== w && p !== a && !p.doomed && supportAt(p.x, p.y) === vs).length : 0;
+          cost -= Math.min(nb, combo - 1) * 130;
+        }
         opts.push({ k, st, cost });
       }
       opts.sort((x, y) => x.cost - y.cost);
       for (const o of opts.slice(0, 3)) {
-        const outcome = chooseOutcome(a, v, o.k, elim);
+        const outcome = chooseOutcome(a, v, o.k, elim, !!streak, combo);
         if (!outcome) continue;
         if ((outcome === 'reversal' || outcome === 'dodge') && o.k !== 'firecracker' && !dodgeSpot(v, o.st[0], o.st[1])) continue;
-        const att = { a, v, k: o.k, st: o.st, ang, phase: 'approach', t: 0, elim, outcome, hit: false, shot: null };
+        const att = { a, v, k: o.k, st: o.st, ang, phase: 'approach', t: 0, elim, outcome, hit: false, shot: null,
+          combo, kos: 0, streakN: streak ? streak.n : 1 };
         a.att = att;
         v.targeted = att;
         race.attacks.push(att);
-        race.recentW.unshift(o.k);
-        race.recentW.length = Math.min(race.recentW.length, 4);
+        if (!streak) {
+          race.recentW.unshift(o.k);
+          race.recentW.length = Math.min(race.recentW.length, 4);
+        }
         return true;
       }
     }
@@ -4541,6 +4599,19 @@
     const free = live.filter(p => !p.att && !p.targeted && !p.doomed && p.state === 'stand');
     const hunter = free.includes(w) ? w : free[0];
     if (!hunter) return;
+    // в концовке — навстречу сопернику, насколько пускает лёд: оттуда есть чем достать
+    const prey = live.length <= 3 ? live.find(p => p !== hunter && !p.doomed) : null;
+    if (prey) {
+      const d = Math.hypot(prey.x - hunter.x, prey.y - hunter.y);
+      for (let r = d - 30; r >= 20; r -= 8) {
+        const x = lerp(hunter.x, prey.x, r / d), y = lerp(hunter.y, prey.y, r / d);
+        if (edgeInfo(x, y).d < 12 || !pathOnIce(hunter.x, hunter.y, x, y)) continue;
+        hunter.tx = x;
+        hunter.ty = y;
+        hunter.hunt = simTime + 0.8;
+        return;
+      }
+    }
     const c = floeCenter();
     let tx = c[0], ty = c[1];
     const s = onHoldIce(tx, ty);
@@ -4560,12 +4631,26 @@
     hunter.hunt = simTime + 0.8;
   }
 
-  function release(att) {
+  // Удар решён — стычка по сути окончена (дальше анимация). Столкнул и норму не выбрал — серия: тут же за следующего
+  function finishAttack(att) {
+    if (att.done) return;
+    att.done = true;
+    race.lastRelease = simTime;
+    const a = att.a;
+    const left = (att.combo || 1) - (att.kos || 0);
+    if (att.elim && att.kos > 0 && left > 0 && !a.out && !a.doomed && !race.winnerDone) {
+      a.streak = { a, left, k: att.k, n: att.streakN + att.kos, until: simTime + 1.8 * speedK() };
+    } else if (a.streak) a.streak = null;
+  }
+
+  function release(att, why = '') {
+    att.why = why;
     const i = race.attacks.indexOf(att);
     if (i >= 0) race.attacks.splice(i, 1);
     if (att.a.att === att) att.a.att = null;
     if (att.v.targeted === att) att.v.targeted = null;
     att.a.retarget = rr(0.4, 1);
+    finishAttack(att);
   }
 
   // Цель, которую не собираются сталкивать, может отпрыгнуть в сторону
@@ -4597,22 +4682,22 @@
   // Без выбывания: промах, уворот, балансирование со спасением, прыжок с треснувшего осколка, фаворит держит удар.
   const REVERSIBLE = ['belly', 'fish', 'glove', 'firecracker'];
 
-  function chooseOutcome(a, v, k, elim) {
+  function chooseOutcome(a, v, k, elim, streak = false, combo = 1) {
     const w = race.winner;
     const opts = [];
     if (elim) {
       if (v !== w) {
         opts.push(['ko', k === 'icepick' ? 60 : 36]);
-        if (k !== 'icepick') opts.push(['teeterFall', 34]);
+        if (k !== 'icepick') opts.push(['teeterFall', streak || combo > 1 ? 10 : 22]);
       }
-      if (a !== w && REVERSIBLE.includes(k)) opts.push(['reversal', v === w ? 100 : 30]);
+      if (a !== w && !streak && REVERSIBLE.includes(k)) opts.push(['reversal', v === w ? 100 : combo > 1 ? 8 : 30]);
     } else {
       if (k === 'icepick') {
         if (!breakable(supportAt(v.x, v.y))) return null;
         opts.push(['hopSave', 60], ['miss', 12]);
       } else {
         opts.push(['miss', 28]);
-        opts.push(['dodge', 24], ['teeterSave', 34]);
+        opts.push(['dodge', 24], ['teeterSave', 20]);
       }
       if (v === w) opts.push(['tank', 22]);
     }
@@ -4651,6 +4736,12 @@
     p.hitBy = by || { a: att.a, k: att.k, t: simTime };
     p.flapT = 0.6;
     const strong = mode === 'ko' || mode === 'teeterFall' || mode === 'teeterSave';
+    if ((mode === 'ko' || mode === 'teeterFall') && (!by || by.a === att.a)) {
+      att.kos = (att.kos || 0) + 1;
+      const n = (att.streakN || 1) + att.kos - 1;
+      if (n === 2) say('c_streak2', att.a, 1.4);
+      else if (n >= 3) say('c_streak3', att.a, 1.6);
+    }
     if (mode === 'tank') {
       p.vx = ux * 40;
       p.vy = uy * 40;
@@ -4665,7 +4756,7 @@
       p.vx = 0;
       p.vy = 0;
       p.grip = 0;
-      p.slideTo = { x0: p.x, y0: p.y, x1: p.x + ux * dist, y1: p.y + uy * dist, t: 0, dur: clamp(dist / 260, 0.18, 0.5), fall: mode === 'teeterFall' };
+      p.slideTo = { x0: p.x, y0: p.y, x1: p.x + ux * dist, y1: p.y + uy * dist, t: 0, dur: clamp(dist / (mode === 'teeterFall' ? 320 : 260), 0.15, mode === 'teeterFall' ? 0.4 : 0.5), fall: mode === 'teeterFall' };
       if (mode === 'teeterFall') { p.doomed = true; p.doomedAt = simTime; }
     } else {
       const ahead = iceAhead(p.x, p.y, ux, uy);
@@ -4716,7 +4807,7 @@
     const target = o === 'reversal' ? att.a : att.v;
     const by = o === 'reversal' ? { a: att.v, k: 'firecracker', icon: '↩️', t: simTime } : null;
     // хлопушка может смести и соседей, если по графику пора
-    let extra = o === 'ko' ? Math.max(0, Math.round(race.behind + 0.3)) : 0;
+    let extra = o === 'ko' ? (att.combo || 1) - 1 : 0;
     boom(x, y);
     weaponHitSound('firecracker');
     shake(8);
@@ -4802,6 +4893,7 @@
     if (k === 'belly') {
       if (!att.hit && vOk && dist < PR * 2 + 4 && o !== 'miss' && o !== 'dodge') {
         land(v.x - a.x, v.y - a.y, 240);
+        finishAttack(att);
         a.vx *= -0.2;
         a.vy *= -0.2;
       }
@@ -4823,6 +4915,7 @@
           else if (o === 'miss') say('c_short', a, 0.9);
           else if (vOk && dist < 56) land(v.x - a.x, v.y - a.y, 215);
           else whiff(att);
+          finishAttack(att);
         }
         att.ext = att.reach * Math.max(0, 1 - (att.t - 0.12) / 0.22);
       }
@@ -4835,6 +4928,7 @@
         if (o === 'reversal') lunge(att);
         else if (o !== 'miss' && vOk && dist < 36) land(v.x - a.x, v.y - a.y, 225);
         else if (o !== 'miss') whiff(att);
+        finishAttack(att);
       }
       if (att.t > 0.42) release(att);
       return;
@@ -4853,11 +4947,12 @@
           const s = supportAt(v.x, v.y);
           att.hit = true;
           if ((o === 'ko' || o === 'hopSave') && vOk && breakable(s)) {
-            startCrack(s, v, o === 'ko' ? Math.max(1, Math.round(race.behind + 1)) : 0, a);
+            startCrack(s, v, o === 'ko' ? (att.combo || 1) : 0, a);
             s.dur = att.per * 1.2 + 0.25;
           } else {
             say('c_ice_holds', a, 0.9);
           }
+          finishAttack(att);
         }
       }
       if (att.t > att.per * 3.3) release(att);
@@ -4961,14 +5056,15 @@
     for (const att of race.attacks.slice()) {
       const { a, v } = att;
       att.t += dt;
-      if (race.winnerDone || a.out || a.state === 'hop' || a.state === 'fall') { release(att); continue; }
+      if (race.winnerDone || a.out || a.state === 'hop' || a.state === 'fall') { release(att, 'aGone'); continue; }
       if (att.phase !== 'strike') {
         const vGone = v.out || v.state === 'hop' || v.state === 'fall' || v.doomed;
-        if (vGone || a.state !== 'stand') { release(att); continue; }
-        if (att.phase === 'approach' && att.t > 1.1 * speedK() + 0.4) {
+        const aBad = a.doomed || (att.phase === 'approach' ? !['stand', 'stagger', 'slide'].includes(a.state) : a.state !== 'stand');
+        if (vGone || aBad) { release(att, vGone ? 'v:' + (v.out ? 'out' : v.doomed ? 'doomed' : v.state) : 'a:' + a.state); continue; }
+        if (att.phase === 'approach' && att.t > (att.streakN > 1 ? 0.5 : 1.1) * speedK() + 0.4) {
           // долго идёт — бьёт с того места, где стоит, а если так не выйдет — отступается
           const k2 = [att.k, 'snowball', 'puck', 'firecracker', 'glove', 'fish'].find(k => shootFromHere(v, k, a));
-          if (!k2) { release(att); continue; }
+          if (!k2) { release(att, 'noShot'); continue; }
           att.k = k2;
           att.st = [a.x, a.y];
           if (att.outcome === 'reversal' && !REVERSIBLE.includes(k2)) att.outcome = v === race.winner ? 'tank' : 'ko';
@@ -4980,20 +5076,25 @@
       if (att.phase === 'approach') {
         if (att.t - (att.re || 0) > 0.25 && att.t < 90) {
           att.re = att.t;
-          const st = stanceFor(v, att.k, a, att.ang);
-          if (!st) { release(att); continue; }
-          att.st = st;
+          const st = stanceFor(v, att.k, a, att.ang) || shootFromHere(v, att.k, a);
+          if (st) { att.st = st; att.noSt = 0; }
+          else if ((att.noSt = (att.noSt || 0) + 0.25) > 0.5 || !onHoldIce(att.st[0], att.st[1])) { release(att, 'noStance'); continue; }
         }
         a.tx = att.st[0];
         a.ty = att.st[1];
         // упёрся и не приближается — отступается
         const dd = Math.hypot(a.x - att.st[0], a.y - att.st[1]);
+        if (dd < 7 && arenaBusy(att) && (att.wait = (att.wait || 0) + dt) < 2.5) {
+          a.tx = a.x; a.ty = a.y; a.face = v.x >= a.x ? 1 : -1;
+          att.prog = att.t; att.re = att.t; att.t -= dt;
+          continue;
+        }
         if (dd < (att.bestD ?? 1e9) - 3) { att.bestD = dd; att.prog = att.t; }
-        else if (att.t - (att.prog ?? 0) > 0.45) { release(att); continue; }
+        else if (att.t - (att.prog ?? 0) > 0.6) { release(att, 'stall'); continue; }
         if (dd < 7) {
           att.phase = 'windup';
           att.t = 0;
-          att.dur = WEAPONS[att.k].wind * speedK();
+          att.dur = WEAPONS[att.k].wind * speedK() * (att.streakN > 1 ? 0.6 : 1);
           a.tx = a.x;
           a.ty = a.y;
           a.vx *= 0.3;
@@ -5014,12 +5115,18 @@
     }
   }
 
-  // Сколько стычек идёт одновременно: столько, чтобы успеть по графику, но не больше пяти
-  function maxAttacks(liveN) {
-    const rate = (race.n0 - 1) / (raceSeconds * 0.86);   // выбываний в секунду
-    const cycle = 1.8 * speedK() + 0.6;                   // подход, замах, удар и полёт до воды
-    return clamp(Math.round(rate * cycle + 0.5), 1, Math.max(1, Math.min(5, Math.floor(liveN / 2))));
-  }
+  // Стычки идут строго по одной: следующая начинается, когда прошлая закончилась и никто не балансирует на краю.
+  // Чтобы успеть по графику, одна стычка может унести до трёх (серия, хлопушка по соседям, осколок ледоруба).
+  // Активная стычка — та, где уже замах или удар. Пока она идёт, следующий нападающий может лишь идти на позицию
+  // («на подходе»: без подписи и прицела), а замах начнёт, когда прошлая решена и никто не балансирует на краю.
+  const activeAttacks = () => race.attacks.filter(a => !a.done && a.phase !== 'approach');
+  const queuedAttacks = () => race.attacks.filter(a => a.phase === 'approach');
+  // (обречённому дают довисеть почти до конца: замах следующего начинается за миг до срыва)
+  const teeterOn = () => penguins.some(p => !p.out && ((p.state === 'teeter' && !(p.teeter && p.teeter.fall && p.st > p.teeter.dur - 0.2))
+    || (p.slideTo && p.slideTo.fall !== undefined)));
+  // серия в разгаре — очередник на позиции пропускает её вперёд
+  const streakPending = att => penguins.some(p => !p.out && p.streak && p !== att.a && simTime <= p.streak.until);
+  const arenaBusy = att => teeterOn() || streakPending(att) || race.attacks.some(o => o !== att && !o.done && o.phase !== 'approach');
 
   function updateDirector(dt) {
     if (floe.rimDirty) rebuildRim();
@@ -5027,11 +5134,14 @@
     const live = alive();
     // атака, которая ещё в пути к позиции, засчитывается не целиком: она может сорваться
     const pending = live.filter(p => p.doomed).length
-      + race.attacks.reduce((n, a) => n + (a.elim && !a.hit ? (a.phase === 'approach' ? 0.6 : 1) : 0), 0);
+      + race.attacks.reduce((n, a) => n + (a.elim && !a.hit ? (a.combo || 1) * (a.phase === 'approach' ? 0.6 : 1) : 0), 0);
     const behind = expectedOut(race.t + planLead()) - race.outCount - pending;
     race.behind = behind;
-    const overtime = race.t > raceSeconds * 1.5 + 2;
-    race.rescue = race.t > raceSeconds * 2 + 4;
+    const overtime = race.t > fightSeconds() * 1.5 + 2;
+    // тупик в концовке: льдина раскололась, до соперника по льду не дойти и никто не нападает — лёд трещит сразу
+    const stuck = live.length <= 3 && race.attacks.length === 0 && race.stuckSince != null
+      && simTime - race.stuckSince > 3 && simTime - race.lastPlan > 3;
+    race.rescue = race.t > fightSeconds() * 2 + 4 || stuck;
 
     for (const p of live) {
       if (p === w) { p.grip = 2.4; continue; }
@@ -5040,19 +5150,37 @@
       p.grip = g < p.grip ? g : p.grip + (g - p.grip) * Math.min(1, dt * 3);
     }
 
-    const cap = maxAttacks(live.length);
-    if (live.length >= 2 && simTime - race.lastPlan > 0.15 * speedK() && simTime - (race.planFail || -9) > 0.1) {
-      const needElim = (behind > 0.35 || overtime) && race.attacks.filter(a => a.elim).length < cap;
-      // стычки без выбывания (промах, уворот, спасение на краю) — ради интриги, в том числе при небольшом отставании
-      const sparOk = !overtime && behind < (live.length <= 3 ? 0.35 : 1.2) && race.attacks.length < cap + 1
-        && simTime - race.lastSpar > (race.attacks.length ? 1.0 : 0.6) * speedK();
-      if (sparOk && (!needElim || rnd() < 0.25)) {
+    // серия: тот, кто только что столкнул, сразу берётся за следующего
+    const streaker = live.find(p => p.streak && (!p.att || p.att.done));
+    if (streaker) {
+      const s = streaker.streak;
+      if (simTime > s.until || streaker.doomed) streaker.streak = null;
+      else if (activeAttacks().length === 0 && live.length >= 2 && streaker.state === 'stand'
+          && supportAt(streaker.x, streaker.y)?.state === 'solid' && simTime - race.lastPlan > 0.05) {
+        if (planAttack(true, behind, s)) { race.lastPlan = simTime; race.stuckSince = null; }
+        else streaker.streak = null;
+      }
+    }
+    // следующая стычка назначается, пока идёт текущая: нападающий успевает дойти до позиции.
+    // Если никого нет — пауза, вдох перед следующей; при отставании короче
+    const gap = (behind > 1.5 || overtime ? 0.2 : 0.55) * speedK();
+    // в системе не больше двух стычек: одна идёт (или ещё только идёт на позицию), вторая — на подходе
+    const active = activeAttacks().length, queued = queuedAttacks().length;
+    if (live.length >= 2 && !streaker && active + queued <= 1
+        && (active === 1 || simTime - (race.lastRelease ?? -9) > gap)
+        && simTime - race.lastPlan > 0.15 * speedK() && simTime - (race.planFail || -9) > 0.1) {
+      const needElim = behind > 0.35 || overtime;
+      // стычки без выбывания (промах, уворот, спасение на краю) — ради интриги, но не чаще раза в пару секунд:
+      // слот один, и каждая такая стычка — пауза в выбываниях
+      const sparOk = !overtime && active === 0 && behind < 0.35 && simTime - race.lastSpar > 2.2 * speedK();
+      if (sparOk && !needElim) {
         race.lastSpar = simTime;
         if (planAttack(false, behind)) race.lastPlan = simTime;
       } else if (needElim) {
-        if (planAttack(true, behind)) race.lastPlan = simTime;
+        if (planAttack(true, behind)) { race.lastPlan = simTime; race.stuckSince = null; }
         else {
           race.planFail = simTime;
+          if (race.attacks.length === 0) race.stuckSince ??= simTime;
           huntCloser(live);
         }
       }
@@ -5367,7 +5495,7 @@
         p.slideTo = null;
         p.state = 'teeter';
         p.st = 0;
-        p.teeter = { fall: m.fall, dur: 0.6 + 0.55 * TS };
+        p.teeter = { fall: m.fall, dur: m.fall ? 0.4 + 0.25 * TS : 0.6 + 0.55 * TS };
         p.teeterSide = -edgeInfo(p.x, p.y).nx >= 0 ? 1 : -1;
         p.flapT = 1.2;
         say('c_teeter', p, 1);
@@ -5381,7 +5509,7 @@
 
     if (p.state === 'stand') {
       const dx = p.tx - p.x, dy = p.ty - p.y, d = Math.hypot(dx, dy);
-      const walk = !fight ? WALK_IDLE : p.att ? lerp(135, 100, TS) : WALK_FIGHT;
+      const walk = !fight ? WALK_IDLE : p.att ? lerp(150, 115, TS) : WALK_FIGHT;
       const want = d > 4 ? walk : 0;
       const wx = d > 0.01 ? (dx / d) * want : 0, wy = d > 0.01 ? (dy / d) * want : 0;
       const k = Math.min(1, dt * 7);
@@ -5439,7 +5567,7 @@
         const imp = (-(1 + 0.6) * rel) / (1 / ma + 1 / mb);
         a.vx -= (imp / ma) * nx; a.vy -= (imp / ma) * ny;
         b.vx += (imp / mb) * nx; b.vy += (imp / mb) * ny;
-        if (-rel > 70 && fight) {
+        if (-rel > 70 && fight && (a.state !== 'stand' || b.state !== 'stand')) {
           for (const p of [a, b]) {
             if (p.state === 'stand' || (p.state === 'panic' && !p.doomed)) { p.state = 'stagger'; p.st = 0; }
           }
@@ -6450,7 +6578,7 @@
     for (const p of penguins.slice().sort((a, b) => b.y - a.y)) {
       const win = p === winner;
       const r = role.get(p);
-      const icon = r === 'teeter' ? '😱 ' : r && r !== 'target' ? WEAPONS[r].icon + ' ' : '';
+      const icon = r === 'teeter' ? '😱 ' : r && r !== 'target' ? WEAPONS[r].icon + (p.att && p.att.streakN > 1 ? '×' + p.att.streakN : '') + ' ' : '';
       const text = (win ? '👑 ' : icon) + (p.out ? I18N.t('place_fmt').replace('{name}', p.name).replace('{n}', p.place) : p.name);
       const h = 18;
       const w = ctx.measureText(text).width + (win || p.out ? 16 : 24);
@@ -6518,6 +6646,14 @@
         }
         ctx.fillStyle = '#ffffff';
         ctx.fillText(r === 'teeter' ? '😱' : WEAPONS[r].icon, X, Y + 1);
+        if (p.att && p.att.streakN > 1) {
+          ctx.font = 'bold 10px sans-serif';
+          ctx.fillStyle = 'rgba(6,24,44,0.9)';
+          circle(ctx, X + 10, Y - 8, 7);
+          ctx.fillStyle = '#ffd23f';
+          ctx.fillText('×' + p.att.streakN, X + 10, Y - 7);
+          ctx.font = '13px sans-serif';
+        }
       }
     }
     ctx.globalAlpha = 1;
@@ -6626,6 +6762,7 @@
     Object.assign(race, {
       state: 'idle', t: 0, winner: null, winnerDone: false, n0: 0, outCount: 0, behind: 0,
       clamps: 0, saves: 0, winnerHops: 0, rescue: false, lastErode: -9, attacks: [], recentW: [], lastPlan: -9, lastSpar: -9,
+      lastRelease: -9, stuckSince: null, dur: 0,
       duelSaid: false, lastHopSay: -9, lastFallAt: -9, fallBurst: 1, lastMissSay: -9, lastTankSay: -9, byWeapon: {}
     });
     crate.open = 0;
@@ -6787,6 +6924,7 @@
     race.state = 'fight';
     race.t = 0;
     race.n0 = penguins.length;
+    planDuration();
     commentUntil = 0;
     say('c_start', null, 2);
     for (const p of penguins) {
@@ -7105,6 +7243,7 @@
       c_crack: `Лёд трещит — {name} в опасности!`, c_push: `{name} идёт на таран!`,
       c_hop: `{name} перепрыгивает в последний момент!`, c_save: `Спасение! {name} отпрыгивает от края 😮‍💨`,
       c_fall: `{name} плюхается в воду! 💦`, c_fall_many: `Сразу {n} за борт! 💦`,
+      c_streak2: `{name} в ударе — второй подряд! 🔥`, c_streak3: `Хет-трик! {name} убирает третьего подряд! 🔥🔥🔥`,
       c_duel: `Финальная дуэль: {name} против {name2}!`, c_win: `{name} — последний на льдине! 👑`,
       participants: `Участники`, equalize: `Уравнять`, equalize_title: `Уравнять вероятности`,
       col_name: `Имя`, col_prob: `Вероятность`, ph_new: `Новый участник`, add_title: `Добавить участника`, default_name2: `Участник 2`,
@@ -7144,6 +7283,7 @@
       c_crack: `The ice cracks under {name}!`, c_push: `{name} goes for a belly-slam!`,
       c_hop: `{name} leaps clear just in time!`, c_save: `Saved! {name} hops back from the edge 😮‍💨`,
       c_fall: `{name} goes splash! 💦`, c_fall_many: `{n} overboard at once! 💦`,
+      c_streak2: `{name} is on a roll — two in a row! 🔥`, c_streak3: `Hat-trick! {name} takes out a third in a row! 🔥🔥🔥`,
       c_duel: `Final duel: {name} vs {name2}!`, c_win: `{name} is the last penguin standing! 👑`,
       participants: `Participants`, equalize: `Equalize`, equalize_title: `Equalize the odds`,
       col_name: `Name`, col_prob: `Probability`, ph_new: `New participant`, add_title: `Add a participant`, default_name2: `Participant 2`,
@@ -7183,6 +7323,7 @@
       c_crack: `Ο πάγος ραγίζει — {name} σε κίνδυνο!`, c_push: `{name}: επίθεση με την κοιλιά!`,
       c_hop: `{name}: πηδάει την τελευταία στιγμή!`, c_save: `Σώθηκε! {name}: πηδάει μακριά από την άκρη 😮‍💨`,
       c_fall: `{name}: πλατς στο νερό! 💦`, c_fall_many: `{n} στο νερό μαζί! 💦`,
+      c_streak2: `{name} έχει φόρμα: δεύτερος στη σειρά! 🔥`, c_streak3: `Χατ-τρικ! {name} ρίχνει και τρίτο στη σειρά! 🔥🔥🔥`,
       c_duel: `Τελική μονομαχία: {name} εναντίον {name2}!`, c_win: `{name}: ο τελευταίος στον πάγο! 👑`,
       participants: `Συμμετέχοντες`, equalize: `Εξίσωση`, equalize_title: `Εξίσωση πιθανοτήτων`,
       col_name: `Όνομα`, col_prob: `Πιθανότητα`, ph_new: `Νέος συμμετέχων`, add_title: `Προσθήκη συμμετέχοντα`, default_name2: `Συμμετέχων 2`,
