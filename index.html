@@ -33,6 +33,17 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800;900&display=swap" rel="stylesheet">
 
+  <!-- Временная подсветка «Выборов» на главной: до 21 сентября 2026, 00:00 локального времени.
+       Класс ставится до первой отрисовки, чтобы карточки не «прыгали»: «Выборы» встают первыми
+       и получают золотую рамку. Тень с таймером живёт внизу <body> (#elShade...). После даты
+       ничего не делает — блок, стили .spotlight-elections/.el-shade-* и разметку можно удалить. -->
+  <script>
+    window.EL_SPOTLIGHT_DEADLINE = new Date(2026, 8, 21, 0, 0, 0); // 21.09.2026 00:00 локального времени
+    if (Date.now() < window.EL_SPOTLIGHT_DEADLINE.getTime()) {
+      document.documentElement.classList.add('spotlight-elections');
+    }
+  </script>
+
   <style>
     * {
       margin: 0;
@@ -471,6 +482,185 @@
       50% { transform: translateY(-5px) translateX(8px); }
       75% { transform: translateY(3px) translateX(-4px); }
       100% { transform: translateY(0) translateX(0); }
+    }
+
+    /* 🗳️ Выборы - бюллетень опускается в урну */
+    a[href="elections.html"]:hover .game-icon {
+      animation: ballot-drop 0.7s ease-in-out;
+    }
+
+    @keyframes ballot-drop {
+      0% { transform: translateY(0); }
+      35% { transform: translateY(-8px) rotate(-6deg); }
+      70% { transform: translateY(2px) rotate(3deg); }
+      100% { transform: translateY(0); }
+    }
+
+    /* ===== Временная подсветка «Выборов» (до 21.09.2026 00:00, см. скрипт в <head>) =====
+       Карточка встаёт первой и получает золотую рамку. Сама «тень» — отдельные fixed-элементы
+       внизу <body>: #elShadeHole рисует затемнение с вырезом под карточку (box-shadow),
+       #elShadeClick ловит клики по тени (clip-path с тем же вырезом, чтобы карточка оставалась
+       кликабельной), #elShadePanel — таймер обратного отсчёта. Позиции считает скрипт. */
+    html.spotlight-elections .participants-randomizers .games-grid a[href="elections.html"] {
+      order: -1;
+      border-color: rgba(255, 212, 59, 0.75);
+      background: rgba(255, 255, 255, 0.2);
+      box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.25),
+        0 0 0 1px rgba(255, 212, 59, 0.35),
+        0 0 40px rgba(255, 212, 59, 0.3);
+    }
+
+    html.spotlight-elections .participants-randomizers .games-grid a[href="elections.html"]:hover {
+      box-shadow:
+        0 20px 60px rgba(0, 0, 0, 0.4),
+        0 0 0 1px rgba(255, 212, 59, 0.5),
+        0 0 60px rgba(255, 212, 59, 0.5);
+    }
+
+    html.spotlight-elections .participants-randomizers .games-grid a[href="elections.html"] .featured-label {
+      background: rgba(255, 212, 59, 0.9);
+      color: #2a2200;
+      box-shadow:
+        0 4px 14px rgba(255, 212, 59, 0.45),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+    }
+
+    .el-shade-hole,
+    .el-shade-click,
+    .el-shade-panel {
+      position: fixed;
+      opacity: 0;
+      transition: opacity 0.9s ease;
+    }
+
+    .el-shade-hole {
+      left: 0; top: 0; width: 0; height: 0;
+      border-radius: 22px;
+      pointer-events: none;
+      z-index: 100000;
+      box-shadow:
+        0 0 0 3px rgba(255, 212, 59, 0.85),
+        0 0 60px 10px rgba(255, 212, 59, 0.45),
+        0 0 0 200vmax rgba(5, 6, 24, 0.84);
+    }
+
+    .el-shade-click {
+      inset: 0;
+      z-index: 100001;
+      cursor: pointer;
+      background: transparent;
+    }
+
+    .el-shade-panel {
+      left: 0; top: 0;
+      z-index: 100002;
+      width: min(360px, calc(100vw - 24px));
+      box-sizing: border-box;
+      padding: 18px 44px 16px 20px;
+      border-radius: 18px;
+      background: rgba(22, 18, 52, 0.92);
+      border: 1px solid rgba(255, 212, 59, 0.45);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
+      color: #fff;
+      font-family: 'Montserrat', sans-serif;
+      text-align: left;
+    }
+
+    .el-shade-on .el-shade-hole,
+    .el-shade-on .el-shade-click,
+    .el-shade-on .el-shade-panel {
+      opacity: 1;
+    }
+
+    .el-shade-close {
+      position: absolute;
+      top: 10px; right: 10px;
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font-size: 15px;
+      line-height: 1;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .el-shade-close:hover { background: rgba(255, 255, 255, 0.2); }
+
+    .el-shade-kicker {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255, 212, 59, 0.95);
+      margin-bottom: 4px;
+    }
+
+    .el-shade-title {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .el-shade-sub {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.75);
+      margin-bottom: 8px;
+    }
+
+    .el-shade-timer {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+
+    .el-shade-cell {
+      min-width: 52px;
+      padding: 8px 6px 6px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      text-align: center;
+    }
+
+    .el-shade-cell b {
+      display: block;
+      font-size: 24px;
+      font-weight: 800;
+      line-height: 1;
+      color: #ffd43b;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .el-shade-cell span {
+      display: block;
+      margin-top: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .el-shade-sep {
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1;
+      padding-top: 9px;
+      color: rgba(255, 212, 59, 0.7);
+    }
+
+    .el-shade-hint {
+      margin-top: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .el-shade-hole, .el-shade-click, .el-shade-panel { transition: opacity 0.3s ease; }
     }
 
     /* 🐧 Пингвины на льдине - переваливаются с лапы на лапу */
@@ -2178,6 +2368,21 @@ body.lang-spotlight-active .lang-switch {
             <span class="feature-tag" data-i18n="ft_custom">Вероятности</span>
           </div>
         </a>
+        <a href="elections.html" class="game-card">
+          <div class="featured-label" data-i18n="fl_elections_new">Новая</div>
+          <span class="game-icon">🗳️</span>
+          <h3 class="game-title" data-i18n="g_elections_t">Выборы</h3>
+          <p class="game-description" data-i18n="g_elections_d">
+            Избиратели идут к урне, лайв-табло считает голоса, лидер меняется,
+            кто-то снимает кандидатуру. Победитель проходит инаугурацию и правит на дейлике.
+          </p>
+          <div class="game-features">
+            <span class="feature-tag" data-i18n="ft_live_tally">Лайв-табло</span>
+            <span class="feature-tag" data-i18n="ft_intrigue">Интрига до последнего бюллетеня</span>
+            <span class="feature-tag" data-i18n="ft_for_daily">Для дейли и ретро</span>
+            <span class="feature-tag" data-i18n="ft_custom">Вероятности</span>
+          </div>
+        </a>
 
         <!-- <div class="game-card disabled-card desktop-only">
           <div class="construction-tape"></div>
@@ -2874,6 +3079,7 @@ body.lang-spotlight-active .lang-switch {
         'daisy.html',
         'duck-race.html',
         'penguin-floe.html',
+        'elections.html',
         'time-randomizer.html'
       ];
       randomGameBtn.addEventListener('click', () => {
@@ -3065,6 +3271,8 @@ body.lang-spotlight-active .lang-switch {
       g_ducks_d: `Резиновые уточки плывут по речке мимо камней, брёвен и водоворотов. Кто первым порвёт финишную ленточку — тот и чемпик.`,
       g_penguins_t: `Пингвины на льдине`,
       g_penguins_d: `Льдина трескается, пингвины таранят друг друга пузом и плюхаются в воду. Кто последним устоит на льду — тот и ведёт чемпик.`,
+      g_elections_t: `Выборы`,
+      g_elections_d: `Избиратели идут к урне, лайв-табло считает голоса, лидер меняется, кто-то снимает кандидатуру. Победитель проходит инаугурацию и правит на дейлике.`,
       fl_pseudo_new: `Новая`,
       g_pseudo_t: `Псевдорандом`,
       g_pseudo_d: `Ловим момент нажатия в миллисекундах и делим на число участников — остаток от деления и есть номер победителя. Вся математика на виду.`,
@@ -3074,7 +3282,7 @@ body.lang-spotlight-active .lang-switch {
       g_term_t: `Терминал Квест`, g_term_d: `Симулятор bash с 16 офисными заданиями: найди ведущего дейлика, заглуши кофемашину, спрячь мемы от аудита`,
       ft_term_bash: `Настоящий bash`, ft_term_rounds: `16 раундов`, ft_term_hints: `Подсказки`, ft_term_hooligan: `Счётчик хулиганств`,
       ft_daisy_chant: `Любит — не любит`, ft_elimination: `На выбывание`, ft_petal_drama: `Лепестковая драма`, ft_romance: `Романтика`,
-      ft_obstacles: `Препятствия`, ft_whirlpools: `Водовороты`, ft_elimination: `На выбывание`, ft_ice_cracks: `Трещины во льду`,
+      ft_obstacles: `Препятствия`, ft_whirlpools: `Водовороты`, ft_elimination: `На выбывание`, ft_ice_cracks: `Трещины во льду`, ft_live_tally: `Лайв-табло`, ft_intrigue: `Интрига до последнего бюллетеня`,
       ft_candles: `Свечной график`,
       ft_unpredict: `Непредсказуемость`,
       ft_real_market: `Как на реальном рынке`,
@@ -3086,7 +3294,10 @@ body.lang-spotlight-active .lang-switch {
       ft_two_teams: `Две команды`,
       ft_champions_league: `Как в Лиге Чемпионов`,
       sec_games: `Игры`,
-      fl_new_f: `🆕 Новая`, fl_daisy_new: `Новая`, fl_ducks_new: `Новая`, fl_penguins_new: `Новая`,
+      fl_new_f: `🆕 Новая`, fl_daisy_new: `Новая`, fl_ducks_new: `Новая`, fl_penguins_new: `Новая`, fl_elections_new: `Новая`,
+      el_shade_kicker: `Новый рандомайзер`, el_shade_title: `🗳️ Выборы`, el_shade_sub: `До конца выборов осталось`,
+      el_shade_d: `дн`, el_shade_h: `час`, el_shade_m: `мин`, el_shade_s: `сек`,
+      el_shade_hint: `Клик по тени или Esc — закрыть`, el_shade_close: `Закрыть`,
       g_drop_t: `Не урони!`,
       g_drop_d: `Желешки падают сверху — подбивай их тапом и не дай коснуться пола. Бомбы взрываются в руках, звёзды дают жизнь, снежинки замедляют время.`,
       ft_reaction: `Реакция`,
@@ -3261,6 +3472,8 @@ body.lang-spotlight-active .lang-switch {
       g_ducks_d: `Rubber ducks float down a river past rocks, logs and whirlpools. The first to break the finish tape hosts the daily.`,
       g_penguins_t: `Penguin Floe`,
       g_penguins_d: `The ice floe cracks apart while penguins belly-slam each other into the sea. The last one standing hosts the daily.`,
+      g_elections_t: `Elections`,
+      g_elections_d: `Voters line up at the ballot box, a live board counts the votes, the lead changes hands and someone drops out. The winner is inaugurated and hosts the daily.`,
       fl_pseudo_new: `New`,
       g_pseudo_t: `Pseudorandom`,
       g_pseudo_d: `We capture the press down to the millisecond and divide it by the number of participants — the remainder is the winner's index. All the math in plain sight.`,
@@ -3270,7 +3483,7 @@ body.lang-spotlight-active .lang-switch {
       g_term_t: `Terminal Quest`, g_term_d: `A bash simulator with 16 office challenges: find the stand-up host, silence the coffee machine, hide the memes from the audit. The host comes from your participant list, and rm -rf gets you scolded.`,
       ft_term_bash: `Real bash`, ft_term_rounds: `16 rounds`, ft_term_hints: `Hints`, ft_term_hooligan: `Mischief counter`,
       ft_daisy_chant: `Loves me, loves me not`, ft_elimination: `Elimination`, ft_petal_drama: `Petal drama`, ft_romance: `Romance`,
-      ft_obstacles: `Obstacles`, ft_whirlpools: `Whirlpools`, ft_elimination: `Knockout`, ft_ice_cracks: `Cracking ice`,
+      ft_obstacles: `Obstacles`, ft_whirlpools: `Whirlpools`, ft_elimination: `Knockout`, ft_ice_cracks: `Cracking ice`, ft_live_tally: `Live tally`, ft_intrigue: `Down to the last ballot`,
       ft_candles: `Candlestick chart`,
       ft_unpredict: `Unpredictability`,
       ft_real_market: `Like a real market`,
@@ -3282,7 +3495,10 @@ body.lang-spotlight-active .lang-switch {
       ft_two_teams: `Two teams`,
       ft_champions_league: `Like the Champions League`,
       sec_games: `Games`,
-      fl_new_f: `🆕 New`, fl_daisy_new: `New`, fl_ducks_new: `New`, fl_penguins_new: `New`,
+      fl_new_f: `🆕 New`, fl_daisy_new: `New`, fl_ducks_new: `New`, fl_penguins_new: `New`, fl_elections_new: `New`,
+      el_shade_kicker: `New randomizer`, el_shade_title: `🗳️ Elections`, el_shade_sub: `Time left until the polls close`,
+      el_shade_d: `days`, el_shade_h: `hrs`, el_shade_m: `min`, el_shade_s: `sec`,
+      el_shade_hint: `Click the shade or press Esc to close`, el_shade_close: `Close`,
       g_drop_t: `Don't Drop!`,
       g_drop_d: `Jellies keep falling — tap them back up and never let them touch the floor. Bombs blow up in your hands, stars give a life, snowflakes slow time down.`,
       ft_reaction: `Reaction`,
@@ -3457,6 +3673,8 @@ body.lang-spotlight-active .lang-switch {
       g_ducks_d: `Λαστιχένια παπάκια κατεβαίνουν το ποτάμι ανάμεσα σε βράχους, κορμούς και δίνες. Όποιο κόψει πρώτο την κορδέλα του τερματισμού, παρουσιάζει το daily.`,
       g_penguins_t: `Πιγκουίνοι στον πάγο`,
       g_penguins_d: `Ο πάγος ραγίζει και οι πιγκουίνοι σπρώχνονται με την κοιλιά στη θάλασσα. Όποιος μείνει τελευταίος όρθιος, παρουσιάζει το daily.`,
+      g_elections_t: `Εκλογές`,
+      g_elections_d: `Οι ψηφοφόροι πηγαίνουν στην κάλπη, ο ζωντανός πίνακας μετρά τις ψήφους, ο πρώτος αλλάζει και κάποιος αποσύρεται. Ο νικητής ορκίζεται και παρουσιάζει το daily.`,
       fl_pseudo_new: `Νέο`,
       g_pseudo_t: `Ψευδοτυχαίο`,
       g_pseudo_d: `Πιάνουμε το πάτημα με ακρίβεια χιλιοστού και το διαιρούμε με το πλήθος των συμμετεχόντων — το υπόλοιπο είναι ο αριθμός του νικητή. Όλα τα μαθηματικά σε κοινή θέα.`,
@@ -3466,7 +3684,7 @@ body.lang-spotlight-active .lang-switch {
       g_term_t: `Terminal Quest`, g_term_d: `Προσομοιωτής bash με 16 αποστολές γραφείου: βρες τον συντονιστή του stand-up, σώπασε την καφετιέρα, κρύψε τα memes από τον έλεγχο. Ο συντονιστής βγαίνει από τη λίστα συμμετεχόντων σου, και για rm -rf σε μαλώνουν.`,
       ft_term_bash: `Πραγματικό bash`, ft_term_rounds: `16 γύροι`, ft_term_hints: `Βοήθειες`, ft_term_hooligan: `Μετρητής ζαβολιών`,
       ft_daisy_chant: `Μ' αγαπά, δεν μ' αγαπά`, ft_elimination: `Με αποκλεισμό`, ft_petal_drama: `Δράμα με πέταλα`, ft_romance: `Ρομαντισμός`,
-      ft_obstacles: `Εμπόδια`, ft_whirlpools: `Δίνες`, ft_elimination: `Αποκλεισμοί`, ft_ice_cracks: `Ραγισμένος πάγος`,
+      ft_obstacles: `Εμπόδια`, ft_whirlpools: `Δίνες`, ft_elimination: `Αποκλεισμοί`, ft_ice_cracks: `Ραγισμένος πάγος`, ft_live_tally: `Ζωντανός πίνακας`, ft_intrigue: `Μέχρι το τελευταίο ψηφοδέλτιο`,
       ft_candles: `Γράφημα κεριών`,
       ft_unpredict: `Απροβλεψιμότητα`,
       ft_real_market: `Όπως στην πραγματική αγορά`,
@@ -3478,7 +3696,10 @@ body.lang-spotlight-active .lang-switch {
       ft_two_teams: `Δύο ομάδες`,
       ft_champions_league: `Όπως στο Champions League`,
       sec_games: `Παιχνίδια`,
-      fl_new_f: `🆕 Νέο`, fl_daisy_new: `Νέο`, fl_ducks_new: `Νέο`, fl_penguins_new: `Νέο`,
+      fl_new_f: `🆕 Νέο`, fl_daisy_new: `Νέο`, fl_ducks_new: `Νέο`, fl_penguins_new: `Νέο`, fl_elections_new: `Νέο`,
+      el_shade_kicker: `Νέο ραντομάιζερ`, el_shade_title: `🗳️ Εκλογές`, el_shade_sub: `Μέχρι το τέλος των εκλογών`,
+      el_shade_d: `ημ`, el_shade_h: `ώρ`, el_shade_m: `λεπ`, el_shade_s: `δευ`,
+      el_shade_hint: `Κλικ στη σκιά ή Esc για κλείσιμο`, el_shade_close: `Κλείσιμο`,
       g_drop_t: `Μην το ρίξεις!`,
       g_drop_d: `Τα ζελεδάκια πέφτουν από ψηλά — χτύπα τα για να ανέβουν και μην τα αφήσεις να αγγίξουν το πάτωμα. Οι βόμβες σκάνε στα χέρια σου, τα αστέρια δίνουν ζωή, οι νιφάδες επιβραδύνουν τον χρόνο.`,
       ft_reaction: `Αντανακλαστικά`,
@@ -3619,6 +3840,122 @@ body.lang-spotlight-active .lang-switch {
     } else {
       boot();
     }
+  })();
+  </script>
+  <!-- Тень с таймером вокруг «Выборов» (до 21.09.2026 00:00; условие — класс html.spotlight-elections из <head>) -->
+  <div id="elShadeHole" class="el-shade-hole" aria-hidden="true" hidden></div>
+  <div id="elShadeClick" class="el-shade-click" aria-hidden="true" hidden></div>
+  <div id="elShadePanel" class="el-shade-panel" role="dialog" aria-live="polite" hidden>
+    <button id="elShadeCloseBtn" class="el-shade-close" type="button" aria-label="Закрыть" data-i18n-attr="aria-label:el_shade_close">✕</button>
+    <div class="el-shade-kicker" data-i18n="el_shade_kicker">Новый рандомайзер</div>
+    <div class="el-shade-title" data-i18n="el_shade_title">🗳️ Выборы</div>
+    <div class="el-shade-sub" data-i18n="el_shade_sub">До конца выборов осталось</div>
+    <div class="el-shade-timer">
+      <div class="el-shade-cell"><b id="elShadeD">0</b><span data-i18n="el_shade_d">дн</span></div>
+      <div class="el-shade-sep">:</div>
+      <div class="el-shade-cell"><b id="elShadeH">00</b><span data-i18n="el_shade_h">час</span></div>
+      <div class="el-shade-sep">:</div>
+      <div class="el-shade-cell"><b id="elShadeM">00</b><span data-i18n="el_shade_m">мин</span></div>
+      <div class="el-shade-sep">:</div>
+      <div class="el-shade-cell"><b id="elShadeS">00</b><span data-i18n="el_shade_s">сек</span></div>
+    </div>
+    <div class="el-shade-hint" data-i18n="el_shade_hint">Клик по тени или Esc — закрыть</div>
+  </div>
+  <script>
+  (function () {
+    var SEEN_KEY = 'rh_el_shade_v1';          // показываем один раз за вкладку (sessionStorage)
+    var DEADLINE = window.EL_SPOTLIGHT_DEADLINE;
+    if (!DEADLINE || !document.documentElement.classList.contains('spotlight-elections')) return;
+    try { if (sessionStorage.getItem(SEEN_KEY)) return; } catch (e) {}
+
+    var hole, click, panel, card, raf = 0, timer = 0, active = false;
+
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+    function tick() {
+      var left = DEADLINE.getTime() - Date.now();
+      if (left <= 0) { dismiss(); return; }
+      var s = Math.floor(left / 1000);
+      document.getElementById('elShadeD').textContent = Math.floor(s / 86400);
+      document.getElementById('elShadeH').textContent = pad(Math.floor(s % 86400 / 3600));
+      document.getElementById('elShadeM').textContent = pad(Math.floor(s % 3600 / 60));
+      document.getElementById('elShadeS').textContent = pad(s % 60);
+    }
+
+    // Вырез под карточку: тень — box-shadow у прозрачного прямоугольника, клики ловит
+    // отдельный слой с clip-path-«дыркой» (обход внутреннего контура против часовой стрелки).
+    function layout() {
+      var r = card.getBoundingClientRect();
+      var pad = 8;
+      var L = r.left - pad, T = r.top - pad, R = r.right + pad, B = r.bottom + pad;
+      hole.style.left = L + 'px';
+      hole.style.top = T + 'px';
+      hole.style.width = (R - L) + 'px';
+      hole.style.height = (B - T) + 'px';
+      click.style.clipPath = 'polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 0, '
+        + L + 'px ' + T + 'px, ' + L + 'px ' + B + 'px, ' + R + 'px ' + B + 'px, ' + R + 'px ' + T + 'px, ' + L + 'px ' + T + 'px)';
+
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var pw = panel.offsetWidth, ph = panel.offsetHeight, gap = 14;
+      var top;
+      if (T - gap - ph >= 8) top = T - gap - ph;               // над карточкой
+      else if (B + gap + ph <= vh - 8) top = B + gap;           // под карточкой
+      else top = Math.max(8, T - gap - ph);                     // совсем тесно — над карточкой, сколько влезет
+      var left = Math.max(12, Math.min(vw - pw - 12, (L + R) / 2 - pw / 2));
+      panel.style.left = left + 'px';
+      panel.style.top = top + 'px';
+    }
+
+    function loop() { if (!active) return; layout(); raf = requestAnimationFrame(loop); }
+
+    function onKey(e) { if (e.key === 'Escape') dismiss(); }
+
+    function dismiss() {
+      if (!active) return;
+      active = false;
+      try { sessionStorage.setItem(SEEN_KEY, '1'); } catch (e) {}
+      cancelAnimationFrame(raf);
+      clearInterval(timer);
+      document.body.classList.remove('el-shade-on');
+      document.removeEventListener('keydown', onKey);
+      setTimeout(function () {
+        [hole, click, panel].forEach(function (el) { if (el.parentNode) el.parentNode.removeChild(el); });
+      }, 1000);
+    }
+
+    function start() {
+      hole = document.getElementById('elShadeHole');
+      click = document.getElementById('elShadeClick');
+      panel = document.getElementById('elShadePanel');
+      card = document.querySelector('.participants-randomizers .games-grid a[href="elections.html"]');
+      if (!hole || !click || !panel || !card) return;
+      if (Date.now() >= DEADLINE.getTime()) return;
+
+      hole.hidden = click.hidden = panel.hidden = false;
+      // Если над карточкой нет места под таймер или карточка не целиком на экране —
+      // плавно подкручиваем страницу так, чтобы таймер встал над карточкой.
+      var r = card.getBoundingClientRect();
+      var need = panel.offsetHeight + 14 + 12;
+      if (r.top < need || r.bottom > window.innerHeight) {
+        var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        window.scrollTo({ top: Math.max(0, window.scrollY + r.top - need), behavior: reduce ? 'auto' : 'smooth' });
+      }
+      active = true;
+      tick();
+      layout();
+      timer = setInterval(tick, 250);
+      loop();
+      requestAnimationFrame(function () { document.body.classList.add('el-shade-on'); });
+
+      click.addEventListener('click', dismiss);
+      document.getElementById('elShadeCloseBtn').addEventListener('click', dismiss);
+      document.addEventListener('keydown', onKey);
+    }
+
+    // Сначала сайт рисуется как обычно, тень наплывает через секунду.
+    function boot() { setTimeout(start, 1000); }
+    if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', boot);
+    else boot();
   })();
   </script>
 </body>
