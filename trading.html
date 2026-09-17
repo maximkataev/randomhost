@@ -3376,13 +3376,17 @@ window.addEventListener('resize', ()=>{ clearTimeout(window.__rs); window.__rs=s
 let zones=[];
 function rebuildZones(){
   zones=[];
-  const top=PADDING_TOP, bottom=H-PADDING_BOTTOM;
-  // высота зоны — эффективный шанс (с правилом прошлого ведущего)
+  const top=PADDING_TOP, bottom=H-PADDING_BOTTOM, inner=bottom-top;
+  // высота зоны — эффективный шанс (с правилом прошлого ведущего), но не уже 8px, чтобы зона была видна.
+  // Если полы 8px не помещаются (телефон, много участников с 5%), масштабируем все высоты под график:
+  // иначе последние зоны схлопывались в ноль у нижнего края, и вместо выбранного объявлялся сосед выше
   const eff = getEffectiveProbabilities();
+  let hs = names.map((n) => Math.max(8, (eff[n]||0)*inner));
+  const sum = hs.reduce((s,h) => s+h, 0);
+  if (sum > inner && sum > 0) hs = hs.map((h) => h*inner/sum);
   let acc=top;
   names.forEach((n,i)=>{
-    const h = Math.max(8,(eff[n]||0)*(bottom-top));
-    const y0 = acc, y1 = Math.min(bottom, acc+h); acc=y1;
+    const y0 = acc, y1 = Math.min(bottom, acc+hs[i]); acc=y1;
     zones.push({name:n,y0,y1,color:colors[i%colors.length]});
   });
 }
