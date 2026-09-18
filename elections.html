@@ -385,7 +385,7 @@
       position: absolute;
       top: 12px;
       right: 12px;
-      bottom: 12px;
+      max-height: calc(100% - 24px);
       width: 210px;
       display: flex;
       flex-direction: column;
@@ -432,8 +432,7 @@
 
     .tally-rows {
       position: relative;
-      flex: 1;
-      min-height: 0;
+      flex: none;   /* высота задаётся из JS по числу участников */
     }
 
     .t-row {
@@ -577,7 +576,6 @@
 
     @media (max-width: 600px) {
       .tally { position: static; width: auto; margin-top: 10px; padding: 10px 12px; }
-      .tally-rows { flex: none; }
       .t-row { font-size: 13px; }
       .t-num { flex-basis: 22px; }
     }
@@ -2148,7 +2146,7 @@
   
     /* низкое поле в ландшафте: табло уже и компактнее */
     @media (max-height: 500px) and (orientation: landscape) {
-      .tally { width: 150px; top: 8px; right: 8px; bottom: 8px; padding: 6px 8px 6px; }
+      .tally { width: 150px; top: 8px; right: 8px; max-height: calc(100% - 16px); padding: 6px 8px 6px; }
       .tally-head { font-size: 9px; margin-bottom: 4px; white-space: nowrap; }
       .tally-head > span[data-i18n] { display: none; }
       .commentary { left: calc(50% - 80px); max-width: calc(100% - 190px); }
@@ -3665,9 +3663,10 @@
   // Длительность голосования: сколько бюллетеней успевает упасть в урну
   const DURATION_KEY = 'elections_duration_v1';
   const COURSES = {
-    5:  { ballots: 17, prefill: 17 },
-    10: { ballots: 31, prefill: 10 },
-    20: { ballots: 56, prefill: 12 }
+    // show/drop — ритуал у стола: показать бюллетень комиссии, печать, опустить
+    5:  { ballots: 9,  prefill: 9, show: 0.14, drop: 0.26 },
+    10: { ballots: 16, prefill: 9, show: 0.18, drop: 0.32 },
+    20: { ballots: 32, prefill: 9, show: 0.16, drop: 0.30 }
   };
   const LEAD = 4;
   const BUS_ENABLED = false;   // карусель бюджетников выключена по просьбе Максима (18.09), код остаётся   // за сколько секунд до своего бюллетеня избиратель выходит на площадь
@@ -3776,7 +3775,7 @@
   let cands = [];
 
   function makeCand(name) {
-    return { name, ci: colorIndex(name), votes: 0, rank: 0, out: false, outAt: -1, isWinner: false, row: null, bump: 0 };
+    return { name, ci: colorIndex(name), votes: 0, real: 0, rank: 0, out: false, outAt: -1, isWinner: false, row: null, bump: 0 };
   }
 
   // ===================================================================
@@ -3941,8 +3940,8 @@
   function retime(s) {
     const pending = s.busBlock.filter(e => !e.spliced);   // ещё не вставшие в очередь пассажиры
     const n = s.seq.length + pending.length;
-    // последние десять — вдвое медленнее, последние пять — ещё на 30 % медленнее
-    const wg = (i) => (i >= n - 5 ? 2.6 : i >= n - LAST_N ? 2 : 1);
+    // основной темп задаёт ритуал у стола; последние десять заметно медленнее, последние пять — ещё на 30 %
+    const wg = (i) => (i >= n - 5 ? 2.1 : i >= n - LAST_N ? 1.6 : 1);
     let sumG = 0;
     s.seq.forEach((e, i) => { sumG += e.g * wg(i); });
     pending.forEach((e, i) => { sumG += e.g * wg(s.seq.length + i); });
@@ -3961,7 +3960,7 @@
   const PANTS = ['#2b2d42', '#3d405b', '#4a4e69', '#6b705c', '#1d3557', '#7f5539', '#212529', '#5c677d'];
 
   // Очередь: змейка вдоль ограждений, от хвоста к урне
-  const QUEUE_PATH = [[700, 468], [150, 468], [150, 420], [470, 420], [470, 372], [356, 372], [VOTE_SPOT.x, VOTE_SPOT.y]];
+  const QUEUE_PATH = [[700, 468], [150, 468], [150, 420], [600, 420], [600, 372], [356, 372], [VOTE_SPOT.x, VOTE_SPOT.y]];
   const QUEUE_STEP = 21;
   const qSeg = [];
   let qLen = 0;
@@ -4050,12 +4049,14 @@
     list.push(makeExtra('eater', 602, 340, { face: 1, look: makeLook() }));
     list.push(makeExtra('eater', 584, 352, { face: -1, look: makeLook() }));
     list.push(makeExtra('reader', 62, 339, { look: Object.assign(makeLook(), { kind: 'plain' }) }));
+    list.push(makeExtra('sitter', 760, 413, { look: Object.assign(makeLook(), { kind: 'plain' }) }));
+    list.push(makeExtra('sitter', 788, 413, { look: Object.assign(makeLook(), { kind: 'plain', h: 0.8 }) }));
     return list;
   }
 
   function buildPigeons() {
     const list = [];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 3; i++) {
       list.push({ x: rr(120, 560), y: rr(236, 300), tx: 0, ty: 0, t: rr(0, 3), fly: 0, z: 0, face: 1, ph: rnd() * TAU, tone: rnd() < 0.3 ? '#cfd3d8' : '#7d8390' });
     }
     return list;
@@ -4463,11 +4464,23 @@
       return;
     }
     if (v.state === 'vote') {
+      // ритуал у стола: показать бюллетень комиссии → печать → опустить в урну
       const e = v.entry;
       if (race.state !== 'vote') return;
-      if (race.t >= e.t - DROP_DUR || race.t > raceSeconds) {
-        // отстаём от графика — бюллетень уходит в урну быстрее
-        v.dropT += dt / (race.t > e.t + 0.05 ? 0.15 : DROP_DUR);
+      const late = race.t > e.t + 0.05;
+      const show = late ? COURSE.show * 0.7 : COURSE.show, drop = late ? COURSE.drop * 0.7 : COURSE.drop;
+      if (v.showT === undefined) v.showT = 0;
+      if (race.t >= e.t - show - drop || race.t > raceSeconds) {
+        if (v.showT < 1) {
+          v.showT += dt / show;
+          if (v.showT >= 1) {
+            const clerk = extras.find(x => x.kind === 'clerk');
+            if (clerk) clerk.act = 1;
+            stampSound();
+          }
+          return;
+        }
+        v.dropT += dt / drop;
         if (v.dropT >= 1) castVote(v);
       }
       return;
@@ -4507,12 +4520,11 @@
     e.done = true;
     if (e.c.out) {
       const wd = race.sched.withdraw;
-      e.c = (wd && !wd.to.out && wd.to !== race.winner && wd.to.votes + 1 < race.winner.votes + race.sched.margin) ? wd.to : race.winner;
+      e.c = (wd && !wd.to.out && wd.to !== race.winner && wd.to.real + 1 < race.winner.real + race.sched.margin) ? wd.to : race.winner;
       v.flip = 1;
     }
     const c = e.c;
-    c.votes++;
-    c.bump = 1;
+    c.real++;
     race.counted++;
     v.dropT = 1;
     if (v.busborn && race.bus && bus) {
@@ -4530,16 +4542,34 @@
     }
     addFloat(BOX.x + 10, BOX.y - 66, '+1 ' + c.name, CAND_COLORS[c.ci][0]);
     dropSound();
-    const clerk = extras.find(x => x.kind === 'clerk');
-    if (clerk) clerk.act = 1;
     if (race.counted === 1) say('c_first', { name: c.name }, 1.1);
     else if (v.look.kind === 'grandma' && simTime - race.lastFlavor > 9 && rnd() < 0.5) { race.lastFlavor = simTime; say('c_grandma', {}, 0.5); }
     else if (v.look.kind === 'kid' && simTime - race.lastFlavor > 9 && rnd() < 0.5) { race.lastFlavor = simTime; say('c_kid', {}, 0.5); }
     else if (v.look.kind === 'dog' && simTime - race.lastFlavor > 9 && rnd() < 0.5) { race.lastFlavor = simTime; say('c_dog', {}, 0.5); }
-    updateStandings();
     const wd = race.sched.withdraw;
-    if (wd && !race.withdrawn && e === wd.lastBefore) triggerWithdraw();
-    if (race.counted === Math.floor(totalBallots() / 2) && race.leader) {
+    if (wd && !race.withdrawn && e === wd.lastBefore) race.withdrawDue = true;
+    // табло обновляется сводками: каждые три бюллетеня или раз в 2,5 с; в последней пятёрке — по каждому, с паузой после броска
+    const lastFive = race.counted > totalBallots() - 5;
+    if (lastFive) race.flushDue = simTime + 0.45;
+    else if (race.counted - race.flushedAt >= 3) race.flushDue = simTime + 0.2;
+    else if (!race.flushDue) race.flushDue = race.lastFlush + 2.5;
+    if (race.counted >= totalBallots()) { race.flushDue = simTime + (lastFive ? 0.45 : 0.2); race.closeDue = true; }
+  }
+
+  // Сводка: показанные голоса догоняют настоящие, табло перерисовывается, объявляются лидер и события
+  function flushTally() {
+    race.flushDue = null;
+    race.lastFlush = simTime;
+    const before = race.flushedAt;
+    race.flushedAt = race.counted;
+    race.shownCounted = race.counted;
+    for (const c of cands) { if (c.votes !== c.real) { c.votes = c.real; c.bump = 1; } }
+    const prevLeader = race.leader;
+    updateStandings();
+    if (race.withdrawDue && !race.withdrawn) { race.withdrawDue = false; triggerWithdraw(); }
+    if (prevLeader && race.leader !== prevLeader && race.counted < totalBallots()) race.slowmo = 0.5;
+    const half = Math.floor(totalBallots() / 2);
+    if (before < half && race.counted >= half && race.leader && race.counted < totalBallots()) {
       const pct = Math.round(100 * race.leader.votes / Math.max(1, race.counted));
       say('c_exitpoll', { name: race.leader.name, p: pct }, 1.3);
     }
@@ -4547,8 +4577,8 @@
       race.saidFinal = true;
       say('c_final', {}, 1.4);
     }
-    if (race.counted >= totalBallots()) startCount();
     renderTally();
+    if (race.closeDue && race.counted >= totalBallots()) { race.closeDue = false; startCount(); }
   }
 
   function totalBallots() {
@@ -4609,6 +4639,7 @@
     // последний час: осталось LAST_N бюллетеней, темп вдвое ниже, бюллетени в руках белые
     if (!race.lastHour && race.counted >= totalBallots() - LAST_N) {
       race.lastHour = true;
+      race.lastEvent = simTime;
       say('c_lasthour', { n: totalBallots() - race.counted }, 1.6, 1.5);
       chimeSound();
       if (tallyEl) tallyEl.classList.add('final');
@@ -4620,7 +4651,8 @@
       say('c_bus_for', { name: s.bus.who.name }, 1.3);
     }
     // ровно 12:00 — обеденный перерыв: на площадь разом выходит толпа
-    if (!race.rush && race.sun >= 1 / 3 && s.seq.length - race.next >= 6) {
+    if (!race.rush && race.sun >= 1 / 3 && s.seq.length - race.next >= 4 && simTime - race.lastEvent > 4) {
+      race.lastEvent = simTime;
       race.rush = true;
       race.rushLeft = Math.min(12, s.seq.length - race.next);
       say('c_noon', {}, 1.5, 1.3);
@@ -4639,6 +4671,8 @@
 
   function triggerWithdraw() {
     const s = race.sched;
+    if (simTime - race.lastEvent < 4 && race.counted < totalBallots() - 1) { race.withdrawDue = true; return; }
+    race.lastEvent = simTime;
     race.withdrawn = s.withdraw.who;
     s.withdraw.who.out = true;
     s.withdraw.who.outAt = simTime;
@@ -4646,7 +4680,6 @@
     for (const v of voters) if (v.entry && v.entry.orig === s.withdraw.who && v.entry.c !== v.entry.orig && !v.done) v.flip = 1;
     say('c_withdraw', { name: s.withdraw.who.name, name2: s.withdraw.to.name }, 1.6, 1.4);
     tromboneSound();
-    pressFlash(2);
     updateStandings();
     renderTally();
   }
@@ -4664,6 +4697,8 @@
       for (const v of voters) if (v.state === 'toBus') v.gone = true;
     }
   }
+
+  function stampSound() { tone(180, 0.06, 'square', 0.05, 0, 120); noiseBurst(0.05, 900, 300, 0.05); }
 
   function chimeSound() { [0, 0.35, 0.7].forEach(d => tone(1046, 0.6, 'sine', 0.12, d, 1040)); }
 
@@ -4717,6 +4752,7 @@
 
   // ----- Подсчёт и инаугурация -----
   function startCount() {
+    race.flushDue = null;
     race.state = 'count';
     race.count = { t: 0, recount: race.sched.margin === 1 && rnd() < 0.7, said: false };
     say('c_count', {}, 2, 1.2);
@@ -4732,7 +4768,6 @@
       c.said = true;
       say('c_recount', {}, 2, 1.2);
       drumRoll(1.5);
-      pressFlash(2);
     }
     const need = c.recount ? 2.9 : 1.5;
     if (c.t >= need) declareWinner();
@@ -4821,8 +4856,8 @@
   let walkerCd = 1;
   function stepWalkers(dt) {
     walkerCd -= dt;
-    if (walkerCd <= 0 && walkers.length < 2) {
-      walkerCd = rr(4, 8);
+    if (walkerCd <= 0 && walkers.length < 1) {
+      walkerCd = rr(7, 14);
       const dir = rnd() < 0.5 ? 1 : -1;
       const y = rr(226, 252);
       walkers.push({ x: dir > 0 ? -40 : 720, y, dir, look: makeLook(), t: 0, cheer: 0, moving: true, face: dir, sp: rr(38, 60) });
@@ -4848,6 +4883,8 @@
       stepEvents();
       stepLeadSay();
       stepSpawner(dt);
+      if (race.withdrawDue && !race.withdrawn && simTime - race.lastEvent >= 4) triggerWithdraw();
+      if (race.flushDue && simTime >= race.flushDue) flushTally();
       const busy = voters.some(v => !v.gone && (v.state === 'queue' || v.state === 'vote' || v.state === 'approach' || v.state === 'toBus'))
         || (bus && !bus.leaving) || (race.bus && race.bus.lap < race.sched.bus.laps);
       if (busy || race.counted >= totalBallots()) race.idleSince = simTime;
@@ -5164,7 +5201,7 @@
     rrect(ctx, 359, 152, 34, 14, 2);
     ctx.fill();
     ctx.fillStyle = isOpen ? '#1f7a70' : '#a12a1f';
-    ctx.font = '800 6.2px Montserrat, sans-serif';
+    ctx.font = '800 5.4px Montserrat, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(I18N.t(isOpen ? 'sign_open' : 'sign_closed'), 376, 159.5);
@@ -5213,8 +5250,8 @@
     ctx.fillStyle = '#d4c49c';
     ctx.fillRect(x0 - 12, 92, x1 - x0 + 24, 6);
     drawClock(330, 82, 9);
-    // флаги: российский в центре, кипрский и греческий по краям фронтона
-    drawFlag(330, top - 30, 'ru', t);
+    // флаги: Евросоюз в центре, греческий слева, кипрский справа
+    drawFlag(330, top - 30, 'eu', t);
     drawFlag(x0 - 6, 92 - 30, 'gr', t);
     drawFlag(x1 + 6, 92 - 30, 'cy', t);
     // баннер
@@ -5245,7 +5282,7 @@
     }
   }
 
-  // Флаги на крыше: Россия, Кипр, Греция
+  // Флаги на крыше: Евросоюз, Греция, Кипр
   function drawFlag(x, y, kind, t) {
     const W = 26, H = 15;
     ctx.fillStyle = '#3b3f48';
@@ -5260,8 +5297,11 @@
       ctx.closePath();
       ctx.fill();
     };
-    if (kind === 'ru') {
-      band(0, H / 3, '#ffffff'); band(H / 3, 2 * H / 3, '#0039a6'); band(2 * H / 3, H, '#d52b1e');
+    if (kind === 'eu') {
+      band(0, H, '#0b3d91');
+      const cx = x + 1 + W / 2, cy = y + H / 2 + wave(0.5);
+      ctx.fillStyle = '#ffd23f';
+      for (let i = 0; i < 12; i++) { const a = i / 12 * TAU; circle(ctx, cx + Math.cos(a) * 4.6, cy + Math.sin(a) * 4.6, 0.75); }
     } else if (kind === 'cy') {
       band(0, H, '#ffffff');
       const cx = x + 1 + W / 2, cy = y + H / 2 + wave(0.5);
@@ -5688,7 +5728,7 @@
     const list = [];
     for (const y of [444, 394]) {
       const posts = [];
-      for (let x = 140; x <= 480; x += 56) posts.push(x);
+      for (let x = 140; x <= 616; x += 56) posts.push(x);
       list.push({ y, posts });
     }
     return list;
@@ -5775,6 +5815,69 @@
     ctx.fillRect(x + W / 2 - 3, y - H + 12, 3, 6);
   }
 
+  // Агитстенд справа: плакаты кандидатов в их цветах
+  function drawBoard(t) {
+    const x = 700, y = 346;
+    ctx.fillStyle = 'rgba(20,20,40,0.2)';
+    ell(ctx, x + 3, y + 2, 40, 5);
+    ctx.fillStyle = '#3b3f48';
+    ctx.fillRect(x - 34, y - 60, 3, 60);
+    ctx.fillRect(x + 31, y - 60, 3, 60);
+    ctx.fillStyle = '#5a3d22';
+    rrect(ctx, x - 40, y - 66, 80, 46, 3);
+    ctx.fill();
+    ctx.fillStyle = '#d9cba6';
+    ctx.fillRect(x - 37, y - 63, 74, 40);
+    ctx.fillStyle = '#1d3557';
+    ctx.fillRect(x - 37, y - 63, 74, 8);
+    ctx.fillStyle = '#fffbea';
+    ctx.font = '800 5px Montserrat, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(I18N.t('sign_board'), x, y - 59);
+    const n = Math.min(cands.length, 8);
+    const cols = Math.min(4, Math.max(1, n)), rows = Math.ceil(n / cols);
+    const pw = 66 / cols, ph = 28 / Math.max(1, rows);
+    for (let i = 0; i < n; i++) {
+      const c = cands[i];
+      const px = x - 33 + (i % cols) * pw + 1.5, py = y - 53 + Math.floor(i / cols) * ph + 1;
+      ctx.fillStyle = '#fffbea';
+      ctx.fillRect(px, py, pw - 3, ph - 2);
+      ctx.fillStyle = CAND_COLORS[c.ci][0];
+      ctx.fillRect(px, py, pw - 3, 2.2);
+      const look = candLook(c.name);
+      ctx.fillStyle = look.skin;
+      circle(ctx, px + (pw - 3) / 2, py + ph * 0.45, Math.min(3.2, ph * 0.22));
+      ctx.fillStyle = look.hair;
+      ctx.beginPath(); ctx.arc(px + (pw - 3) / 2, py + ph * 0.45 - 0.4, Math.min(3.3, ph * 0.23), Math.PI, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(px + 2, py + ph - 5, pw - 7, 1.2);
+      if (c.out) {
+        ctx.strokeStyle = '#c0392b';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + pw - 3, py + ph - 2); ctx.moveTo(px + pw - 3, py); ctx.lineTo(px, py + ph - 2); ctx.stroke();
+      }
+    }
+    // урна для мусора рядом
+    ctx.fillStyle = '#464c57';
+    rrect(ctx, x + 48, y - 16, 10, 16, 2);
+    ctx.fill();
+    ctx.fillStyle = '#5c677d';
+    ctx.fillRect(x + 46, y - 18, 14, 3);
+  }
+
+  function drawBench2(t) {
+    const x = 772, y = 412;
+    ctx.fillStyle = 'rgba(20,20,40,0.2)';
+    ell(ctx, x + 2, y + 2, 30, 4);
+    ctx.fillStyle = '#3b3f48';
+    ctx.fillRect(x - 24, y - 12, 3, 12);
+    ctx.fillRect(x + 21, y - 12, 3, 12);
+    ctx.fillStyle = '#8a5a2b';
+    for (let i = 0; i < 3; i++) ctx.fillRect(x - 28, y - 15 + i * 3.4, 56, 2.6);
+    for (let i = 0; i < 3; i++) ctx.fillRect(x - 28, y - 30 + i * 3.4, 56, 2.6);
+  }
+
   function drawBench(t) {
     const x = 70, y = 338;
     ctx.fillStyle = 'rgba(20,20,40,0.2)';
@@ -5792,8 +5895,8 @@
     ctx.beginPath(); ctx.moveTo(x + 46, y - 5); ctx.lineTo(x + 51, y - 13); ctx.lineTo(x + 57, y - 5); ctx.lineTo(x + 51, y - 13); ctx.lineTo(x + 55, y - 14); ctx.stroke();
   }
 
-  function drawReader(x) {
-    // сидит на скамейке и читает газету: видна только верхняя часть
+  function drawReader(x, phone) {
+    // сидит на скамейке: читает газету или смотрит в телефон
     const s = persp(x.y);
     ctx.save();
     ctx.translate(x.x, x.y);
@@ -5818,14 +5921,22 @@
     circle(ctx, 0, -36, 6.2);
     ctx.fillStyle = x.look.hair;
     ctx.beginPath(); ctx.arc(0, -36.6, 6.4, Math.PI * 1.02, Math.PI * 1.98); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#f2efe6';
-    ctx.save();
-    ctx.translate(0, -24 + Math.sin(x.t * 1.4) * 0.6);
-    ctx.rotate(-0.08);
-    ctx.fillRect(-9, -8, 18, 12);
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    for (let i = 0; i < 4; i++) ctx.fillRect(-7, -5 + i * 2.6, i === 0 ? 8 : 14, 1);
-    ctx.restore();
+    if (phone) {
+      ctx.strokeStyle = x.look.skin;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(-5, -26); ctx.lineTo(2, -22); ctx.stroke();
+      ctx.fillStyle = '#1b1b1f';
+      rrect(ctx, 1, -26, 4, 6, 0.8); ctx.fill();
+    } else {
+      ctx.fillStyle = '#f2efe6';
+      ctx.save();
+      ctx.translate(0, -24 + Math.sin(x.t * 1.4) * 0.6);
+      ctx.rotate(-0.08);
+      ctx.fillRect(-9, -8, 18, 12);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      for (let i = 0; i < 4; i++) ctx.fillRect(-7, -5 + i * 2.6, i === 0 ? 8 : 14, 1);
+      ctx.restore();
+    }
     ctx.restore();
   }
 
@@ -5951,7 +6062,20 @@
 
   // ----- Эффекты -----
   function drawFlyingBallot(v) {
-    if (v.state !== 'vote' || v.dropT <= 0 || v.dropT >= 1) return;
+    if (v.state !== 'vote' || v.dropT >= 1) return;
+    if (v.dropT <= 0) {
+      // фаза показа: бюллетень поднят к комиссии
+      if (!v.showT) return;
+      const s0 = persp(v.y) * v.look.h;
+      const u = Math.min(1, v.showT);
+      ctx.save();
+      ctx.translate(v.x + (6.5 * v.look.w + 4) * s0 - u * 6 * s0, v.y - 45 * s0 - u * 8 * s0);
+      ctx.rotate(-u * 0.5);
+      ctx.scale(s0, s0);
+      drawBallot(ctx, 0, 0, isSecret(v.entry) ? '' : CAND_COLORS[v.entry.c.ci][0], 0);
+      ctx.restore();
+      return;
+    }
     const s = persp(v.y) * v.look.h;
     const u = v.dropT;
     const x0 = v.x + (6.5 * v.look.w + 4) * s, y0 = v.y - 45 * s;
@@ -6028,7 +6152,7 @@
     drawStation(t);
     // всё, что стоит на площади, рисуется снизу вверх по глубине
     const actors = [];
-    for (const v of voters) if (!v.gone) actors.push({ y: v.y, d: () => drawPerson(ctx, v, { ballot: v.state === 'leave' ? undefined : (v.ballot ? (shownCand(v) ? CAND_COLORS[shownCand(v).ci][0] : '') : ''), noPhone: v.state !== 'leave' }) });
+    for (const v of voters) if (!v.gone) actors.push({ y: v.y, d: () => drawPerson(ctx, v, { ballot: v.state === 'leave' || (v.state === 'vote' && v.showT > 0) ? undefined : (v.ballot ? (shownCand(v) ? CAND_COLORS[shownCand(v).ci][0] : '') : ''), noPhone: v.state !== 'leave' }) });
     for (const x of extras) actors.push({ y: x.y, d: () => drawExtra(x, t) });
     for (const w of walkers) actors.push({ y: w.y, d: () => drawPerson(ctx, w, { noDog: true }) });
     for (const p of pigeons) actors.push({ y: p.y, d: () => drawPigeon(p) });
@@ -6036,6 +6160,8 @@
     actors.push({ y: BOX.y, d: () => drawTable(t) });
     actors.push({ y: 300, d: () => drawCart(t) });
     actors.push({ y: 338, d: () => drawBench(t) });
+    actors.push({ y: 412, d: () => drawBench2(t) });
+    actors.push({ y: 346, d: () => drawBoard(t) });
     if (bus) actors.push({ y: bus.y, d: () => drawBus(t) });
     if (podium) {
       actors.push({ y: podium.y, d: () => drawPodiumFigure(podium) });
@@ -6057,6 +6183,12 @@
         // за столом: комиссия видна по пояс, при каждом бюллетене поднимает печать
         const p = { x: x.x, y: x.y, look: L, t: x.t, face: 1, moving: false, cheer: x.cheer };
         drawPerson(ctx, p, { noPhone: true, clipboard: race.state !== 'idle' && x.act < 0.5 });
+        if (x.act > 0.5) {
+          const s = persp(x.y);
+          ctx.fillStyle = '#5a3d22';
+          rrect(ctx, x.x + 9 * s, x.y - 40 * s + (1 - x.act) * 10 * s, 6 * s, 8 * s, 1.5);
+          ctx.fill();
+        }
         if (race.state === 'idle') {
           ctx.fillStyle = 'rgba(255,255,255,0.8)';
           ctx.font = '700 7px Montserrat, sans-serif';
@@ -6071,7 +6203,8 @@
         break;
       }
       case 'observer': drawPerson(ctx, x, { clipboard: true, noDog: true }); break;
-      case 'reader': drawReader(x); break;
+      case 'reader': drawReader(x, false); break;
+      case 'sitter': drawReader(x, true); break;
       case 'press': {
         drawPerson(ctx, x, { camera: true, noDog: true });
         break;
@@ -6112,12 +6245,17 @@
     const st = standings();
     const n = cands.length;
     const B = race.sched ? totalBallots() : COURSE.ballots;
-    if (tallyCountEl) tallyCountEl.textContent = race.lastHour && race.counted < B ? fmt('tally_left', { k: B - race.counted }) : fmt('tally_count', { n: race.counted, m: B });
+    const shown = race.shownCounted || 0;
+    if (tallyCountEl) tallyCountEl.textContent = race.lastHour && race.counted < B ? fmt('tally_left', { k: B - race.counted }) : fmt('tally_count', { n: shown, m: B });
+    // табло по высоте под число участников: строки не выше 30px, но всё помещается в поле
     const overlay = tallyOverlay();
-    const avail = overlay ? tallyRowsEl.clientHeight : 0;
-    const rowH = overlay ? clamp(Math.floor(avail / Math.max(1, n)), 15, 30) : (n > 12 ? 24 : 28);
-    if (!overlay) tallyRowsEl.style.height = n * rowH + 'px';
-    else tallyRowsEl.style.height = '';
+    let rowH = n > 12 ? 24 : 28;
+    if (overlay) {
+      const chrome = tallyEl.offsetHeight - tallyRowsEl.offsetHeight;   // заголовок и отступы
+      const avail = tallyEl.parentElement.clientHeight - 24 - chrome;
+      rowH = clamp(Math.floor(avail / Math.max(1, n)), 15, 30);
+    }
+    tallyRowsEl.style.height = n * rowH + 'px';
     tallyEl.classList.toggle('compact', rowH < 21);
     const maxV = Math.max(1, ...cands.map(c => c.votes));
     const top = st[0], second = st[1];
@@ -6134,7 +6272,7 @@
       row.querySelector('.t-rank').textContent = i + 1;
       row.querySelector('.t-bar i').style.width = (c.votes / maxV * 100) + '%';
       row.querySelector('.t-num').textContent = c.votes;
-      row.querySelector('.t-pct').textContent = race.counted ? Math.round(c.votes / race.counted * 100) + '%' : '';
+      row.querySelector('.t-pct').textContent = shown ? Math.round(c.votes / shown * 100) + '%' : '';
       row.dataset.out = I18N.t('tally_out');
     });
   }
@@ -6168,7 +6306,7 @@
     Object.assign(race, {
       state: 'idle', t: 0, winner: null, winnerDone: false, sched: null, next: 0, counted: 0,
       leader: null, leaderSince: 0, lastLeadSay: -9, saidFinal: false, saidHalf: false, ties: 0,
-      events: [], withdrawn: null, bus: null, count: null, inaug: null, flash: 0, doors: 0, sun: 0, lastFlavor: 0, rescue: false, spawnCd: 0, joined: 0, rush: false, rushLeft: 0, lastHour: false, idleSince: undefined, pendingLead: null
+      events: [], withdrawn: null, bus: null, count: null, inaug: null, flash: 0, doors: 0, sun: 0, lastFlavor: 0, rescue: false, spawnCd: 0, joined: 0, rush: false, rushLeft: 0, lastHour: false, idleSince: undefined, pendingLead: null, flushDue: null, lastFlush: 0, flushedAt: 0, shownCounted: 0, withdrawDue: false, closeDue: false, lastEvent: -9, slowmo: 0
     });
     voters = [];
     walkers = [];
@@ -6555,7 +6693,9 @@
   function frame(ts) {
     const dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 0.016;
     lastTs = ts;
-    acc += dt;
+    // смена лидера: полсекунды замедленного времени, чтобы момент читался
+    if (race.slowmo > 0) race.slowmo = Math.max(0, race.slowmo - dt);
+    acc += dt * (race.slowmo > 0 ? 0.35 : 1);
     let n = 0;
     while (acc >= STEP && n < 8) {
       stepWorld(STEP);
@@ -6656,7 +6796,7 @@
       c_first: `Первый бюллетень — за {name}`, c_lead: `{name} выходит в лидеры!`, c_tie: `Ничья! {name} и {name2} идут вровень`,
       c_withdraw: `{name} снимает кандидатуру в пользу {name2}!`, c_bus: `Подъехал автобус с избирателями 🚌`, c_bus_for: `Автобус привёз бюджетников — дружно за {name} 🚌`, c_carousel: `Карусель! Те же бюджетники снова встают в очередь 🎠`, c_noon: `Ровно 12:00 — обеденный перерыв, к участку валит толпа! 🕛`,
       c_exitpoll: `Экзит-пол: лидирует {name} ({p}%)`, c_grandma: `Бабушка голосует уже 60 лет подряд 👵`, c_kid: `Впервые голосует! 🎈`, c_dog: `Пёс тоже за — но без права голоса 🐕`,
-      c_final: `Последние бюллетени! Участок закрывается`, c_lasthour: `Час до закрытия: осталось {n} бюллетеней, темп падает — интрига! ⏳`, sign_poster: `ГОЛОСУЙ!`, c_count: `Участок закрыт. Подсчёт голосов… 🧮`, c_recount: `Разрыв в один голос — пересчёт! 😱`,
+      c_final: `Последние бюллетени! Участок закрывается`, c_lasthour: `Час до закрытия: осталось {n} бюллетеней, темп падает — интрига! ⏳`, sign_poster: `ГОЛОСУЙ!`, sign_board: `КАНДИДАТЫ`, c_count: `Участок закрыт. Подсчёт голосов… 🧮`, c_recount: `Разрыв в один голос — пересчёт! 😱`,
       c_win: `{name} побеждает на выборах! 🎉`, c_inaug: `Инаугурация: {name} принимает присягу ведущего 🎤`,
       color_title: `Цвет кандидата`, color_pick: `Этот цвет`, color_swap: `Поменяться цветами: {name}`,
       participants: `Участники`, equalize: `Уравнять`, equalize_title: `Уравнять вероятности`,
@@ -6691,7 +6831,7 @@
       c_first: `The first ballot goes to {name}`, c_lead: `{name} takes the lead!`, c_tie: `Tied! {name} and {name2} are level`,
       c_withdraw: `{name} drops out and endorses {name2}!`, c_bus: `A bus full of voters pulls up 🚌`, c_bus_for: `A bus of civil servants — nearly all for {name} 🚌`, c_carousel: `Carousel! The same civil servants line up again 🎠`, c_noon: `12:00 sharp — lunch break, a huge crowd pours in! 🕛`,
       c_exitpoll: `Exit poll: {name} leads ({p}%)`, c_grandma: `Grandma has voted 60 years in a row 👵`, c_kid: `A first-time voter! 🎈`, c_dog: `The dog approves — but can't vote 🐕`,
-      c_final: `Last ballots! The polls are closing`, c_lasthour: `One hour to closing: {n} ballots left, the pace drops — suspense! ⏳`, sign_poster: `VOTE!`, c_count: `Polls closed. Counting the votes… 🧮`, c_recount: `One vote apart — recount! 😱`,
+      c_final: `Last ballots! The polls are closing`, c_lasthour: `One hour to closing: {n} ballots left, the pace drops — suspense! ⏳`, sign_poster: `VOTE!`, sign_board: `CANDIDATES`, c_count: `Polls closed. Counting the votes… 🧮`, c_recount: `One vote apart — recount! 😱`,
       c_win: `{name} wins the election! 🎉`, c_inaug: `Inauguration: {name} takes the host's oath 🎤`,
       color_title: `Candidate colour`, color_pick: `This colour`, color_swap: `Swap colours with {name}`,
       participants: `Participants`, equalize: `Equalize`, equalize_title: `Equalize the odds`,
@@ -6726,7 +6866,7 @@
       c_first: `Το πρώτο ψηφοδέλτιο πάει στον/στην {name}`, c_lead: `{name}: περνάει μπροστά!`, c_tie: `Ισοπαλία! {name} και {name2} είναι ισόπαλοι`,
       c_withdraw: `{name} αποσύρεται υπέρ του/της {name2}!`, c_bus: `Έφτασε λεωφορείο με ψηφοφόρους 🚌`, c_bus_for: `Λεωφορείο με δημοσίους υπαλλήλους — σχεδόν όλοι για {name} 🚌`, c_carousel: `Καρουζέλ! Οι ίδιοι υπάλληλοι ξαναμπαίνουν στην ουρά 🎠`, c_noon: `12:00 ακριβώς — μεσημεριανό διάλειμμα, τεράστια ουρά! 🕛`,
       c_exitpoll: `Exit poll: προηγείται {name} ({p}%)`, c_grandma: `Η γιαγιά ψηφίζει 60 χρόνια συνεχόμενα 👵`, c_kid: `Ψηφίζει για πρώτη φορά! 🎈`, c_dog: `Ο σκύλος συμφωνεί — αλλά δεν ψηφίζει 🐕`,
-      c_final: `Τελευταία ψηφοδέλτια! Η κάλπη κλείνει`, c_lasthour: `Μία ώρα ως το κλείσιμο: {n} ψηφοδέλτια ακόμη, ο ρυθμός πέφτει ⏳`, sign_poster: `ΨΗΦΙΣΕ!`, c_count: `Η κάλπη έκλεισε. Καταμέτρηση… 🧮`, c_recount: `Διαφορά μίας ψήφου — επανακαταμέτρηση! 😱`,
+      c_final: `Τελευταία ψηφοδέλτια! Η κάλπη κλείνει`, c_lasthour: `Μία ώρα ως το κλείσιμο: {n} ψηφοδέλτια ακόμη, ο ρυθμός πέφτει ⏳`, sign_poster: `ΨΗΦΙΣΕ!`, sign_board: `ΥΠΟΨΗΦΙΟΙ`, c_count: `Η κάλπη έκλεισε. Καταμέτρηση… 🧮`, c_recount: `Διαφορά μίας ψήφου — επανακαταμέτρηση! 😱`,
       c_win: `{name} κερδίζει τις εκλογές! 🎉`, c_inaug: `Ορκωμοσία: {name} ορκίζεται παρουσιαστής 🎤`,
       color_title: `Χρώμα υποψηφίου`, color_pick: `Αυτό το χρώμα`, color_swap: `Ανταλλαγή χρωμάτων με {name}`,
       participants: `Συμμετέχοντες`, equalize: `Εξίσωση`, equalize_title: `Εξίσωση πιθανοτήτων`,
