@@ -33,17 +33,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800;900&display=swap" rel="stylesheet">
 
-  <!-- Временная подсветка «Выборов» на главной: до 21 сентября 2026, 00:00 локального времени.
-       Класс ставится до первой отрисовки, чтобы карточки не «прыгали»: «Выборы» встают первыми
-       и получают золотую рамку. Тень живёт внизу <body> (#elShade...). После даты
-       ничего не делает — блок, стили .spotlight-elections/.el-shade-* и разметку можно удалить. -->
-  <script>
-    window.EL_SPOTLIGHT_DEADLINE = new Date(2026, 8, 21, 0, 0, 0); // 21.09.2026 00:00 локального времени
-    if (Date.now() < window.EL_SPOTLIGHT_DEADLINE.getTime()) {
-      document.documentElement.classList.add('spotlight-elections');
-    }
-  </script>
-
   <style>
     * {
       margin: 0;
@@ -494,70 +483,6 @@
       35% { transform: translateY(-8px) rotate(-6deg); }
       70% { transform: translateY(2px) rotate(3deg); }
       100% { transform: translateY(0); }
-    }
-
-    /* ===== Временная подсветка «Выборов» (до 21.09.2026 00:00, см. скрипт в <head>) =====
-       Карточка встаёт первой и получает золотую рамку. Сама «тень» — отдельные fixed-элементы
-       внизу <body>: #elShadeHole рисует затемнение с вырезом под карточку (box-shadow),
-       #elShadeClick ловит клики по тени (clip-path с тем же вырезом, чтобы карточка оставалась
-       кликабельной). Позицию выреза считает скрипт. */
-    html.spotlight-elections .participants-randomizers .games-grid a[href="elections.html"] {
-      order: -1;
-      border-color: rgba(255, 212, 59, 0.75);
-      background: rgba(255, 255, 255, 0.2);
-      box-shadow:
-        0 8px 32px rgba(0, 0, 0, 0.25),
-        0 0 0 1px rgba(255, 212, 59, 0.35),
-        0 0 40px rgba(255, 212, 59, 0.3);
-    }
-
-    html.spotlight-elections .participants-randomizers .games-grid a[href="elections.html"]:hover {
-      box-shadow:
-        0 20px 60px rgba(0, 0, 0, 0.4),
-        0 0 0 1px rgba(255, 212, 59, 0.5),
-        0 0 60px rgba(255, 212, 59, 0.5);
-    }
-
-    html.spotlight-elections .participants-randomizers .games-grid a[href="elections.html"] .featured-label {
-      background: rgba(255, 212, 59, 0.9);
-      color: #2a2200;
-      box-shadow:
-        0 4px 14px rgba(255, 212, 59, 0.45),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.35);
-    }
-
-    .el-shade-hole,
-    .el-shade-click {
-      position: fixed;
-      opacity: 0;
-      transition: opacity 0.9s ease;
-    }
-
-    .el-shade-hole {
-      left: 0; top: 0; width: 0; height: 0;
-      border-radius: 22px;
-      pointer-events: none;
-      z-index: 100000;
-      box-shadow:
-        0 0 0 3px rgba(255, 212, 59, 0.85),
-        0 0 60px 10px rgba(255, 212, 59, 0.45),
-        0 0 0 200vmax rgba(5, 6, 24, 0.84);
-    }
-
-    .el-shade-click {
-      inset: 0;
-      z-index: 100001;
-      cursor: pointer;
-      background: transparent;
-    }
-
-    .el-shade-on .el-shade-hole,
-    .el-shade-on .el-shade-click {
-      opacity: 1;
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .el-shade-hole, .el-shade-click { transition: opacity 0.3s ease; }
     }
 
     /* 🐧 Пингвины на льдине - переваливаются с лапы на лапу */
@@ -3728,78 +3653,6 @@ body.lang-spotlight-active .lang-switch {
     } else {
       boot();
     }
-  })();
-  </script>
-  <!-- Тень вокруг «Выборов» (до 21.09.2026 00:00; условие — класс html.spotlight-elections из <head>) -->
-  <div id="elShadeHole" class="el-shade-hole" aria-hidden="true" hidden></div>
-  <div id="elShadeClick" class="el-shade-click" aria-hidden="true" hidden></div>
-  <script>
-  (function () {
-    var SEEN_KEY = 'rh_el_shade_v1';          // показываем один раз за вкладку (sessionStorage)
-    var DEADLINE = window.EL_SPOTLIGHT_DEADLINE;
-    if (!DEADLINE || !document.documentElement.classList.contains('spotlight-elections')) return;
-    try { if (sessionStorage.getItem(SEEN_KEY)) return; } catch (e) {}
-
-    var hole, click, card, raf = 0, active = false;
-
-    // Вырез под карточку: тень — box-shadow у прозрачного прямоугольника, клики ловит
-    // отдельный слой с clip-path-«дыркой» (обход внутреннего контура против часовой стрелки).
-    function layout() {
-      var r = card.getBoundingClientRect();
-      var pad = 8;
-      var L = r.left - pad, T = r.top - pad, R = r.right + pad, B = r.bottom + pad;
-      hole.style.left = L + 'px';
-      hole.style.top = T + 'px';
-      hole.style.width = (R - L) + 'px';
-      hole.style.height = (B - T) + 'px';
-      click.style.clipPath = 'polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 0, '
-        + L + 'px ' + T + 'px, ' + L + 'px ' + B + 'px, ' + R + 'px ' + B + 'px, ' + R + 'px ' + T + 'px, ' + L + 'px ' + T + 'px)';
-
-    }
-
-    function loop() { if (!active) return; layout(); raf = requestAnimationFrame(loop); }
-
-    function onKey(e) { if (e.key === 'Escape') dismiss(); }
-
-    function dismiss() {
-      if (!active) return;
-      active = false;
-      try { sessionStorage.setItem(SEEN_KEY, '1'); } catch (e) {}
-      cancelAnimationFrame(raf);
-      document.body.classList.remove('el-shade-on');
-      document.removeEventListener('keydown', onKey);
-      setTimeout(function () {
-        [hole, click].forEach(function (el) { if (el.parentNode) el.parentNode.removeChild(el); });
-      }, 1000);
-    }
-
-    function start() {
-      hole = document.getElementById('elShadeHole');
-      click = document.getElementById('elShadeClick');
-      card = document.querySelector('.participants-randomizers .games-grid a[href="elections.html"]');
-      if (!hole || !click || !card) return;
-      if (Date.now() >= DEADLINE.getTime()) return;
-
-      hole.hidden = click.hidden = false;
-      // Карточка не целиком на экране — плавно подвозим её к центру.
-      var r = card.getBoundingClientRect();
-      if (r.top < 0 || r.bottom > window.innerHeight) {
-        var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        card.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
-      }
-      active = true;
-      layout();
-      loop();
-      requestAnimationFrame(function () { document.body.classList.add('el-shade-on'); });
-
-      click.addEventListener('click', dismiss);
-      document.addEventListener('keydown', onKey);
-    }
-
-    // Сначала сайт рисуется как обычно, тень наплывает через секунду.
-    function boot() { setTimeout(start, 1000); }
-    if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', boot);
-    else boot();
   })();
   </script>
 </body>
