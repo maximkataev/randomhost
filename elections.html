@@ -4548,15 +4548,12 @@
     else if (v.look.kind === 'dog' && simTime - race.lastFlavor > 9 && rnd() < 0.5) { race.lastFlavor = simTime; say('c_dog', {}, 0.5); }
     const wd = race.sched.withdraw;
     if (wd && !race.withdrawn && e === wd.lastBefore) race.withdrawDue = true;
-    // табло обновляется сводками: каждые три бюллетеня или раз в 2,5 с; в последней пятёрке — по каждому, с паузой после броска
-    const lastFive = race.counted > totalBallots() - 5;
-    if (lastFive) race.flushDue = simTime + 0.45;
-    else if (race.counted - race.flushedAt >= 3) race.flushDue = simTime + 0.2;
-    else if (!race.flushDue) race.flushDue = race.lastFlush + 2.5;
-    if (race.counted >= totalBallots()) { race.flushDue = simTime + (lastFive ? 0.45 : 0.2); race.closeDue = true; }
+    // табло обновляется сразу по каждому бюллетеню (19.09: сводки с задержкой Максим отменил)
+    if (race.counted >= totalBallots()) race.closeDue = true;
+    flushTally();
   }
 
-  // Сводка: показанные голоса догоняют настоящие, табло перерисовывается, объявляются лидер и события
+  // Обновление табло: показанные голоса = настоящие, объявляются лидер и события
   function flushTally() {
     race.flushDue = null;
     race.lastFlush = simTime;
