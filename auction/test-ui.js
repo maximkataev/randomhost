@@ -1,0 +1,126 @@
+"use strict";
+
+/*
+ * UI-тест: открывает экраны доски и пульта в headless Chrome через DevTools-протокол, ждёт РЕАЛЬНОЕ время
+ * (без virtual-time, чтобы таймеры были честными), собирает исключения и console.error, снимает скриншоты.
+ *   node test-ui.js [http://localhost:3000] [папка для скриншотов]
+ * Нужен запущенный dev-сервер (npm run dev) и Google Chrome.
+ */
+
+const { spawn } = require("child_process");
+const fs = require("fs");
+const path = require("path");
+const WebSocket = require("ws");
+
+const BASE = (process.argv[2] || "http://localhost:3000").replace(/\/$/, "");
+const OUT = process.argv[3] || path.join(__dirname, "state", "ui");
+const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const PORT = 9400 + Math.floor(Math.random() * 100);
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+let failures = 0;
+const check = (ok, name) => { console.log((ok ? "  ✓ " : "  ✗ ") + name); if (!ok) failures++; };
+
+async function cdp(url) {
+  const targets = await (await fetch(`http://localhost:${PORT}/json/new?${encodeURIComponent(url)}`, { method: "PUT" })).json();
+  const ws = new WebSocket(targets.webSocketDebuggerUrl);
+  await new Promise((r) => ws.on("open", r));
+  let id = 0;
+  const pending = new Map();
+  const errors = [];
+  ws.on("message", (raw) => {
+    const m = JSON.parse(raw);
+    if (m.id && pending.has(m.id)) { pending.get(m.id)(m.result || m.error); pending.delete(m.id); }
+    if (m.method === "Runtime.exceptionThrown") errors.push("exception: " + (m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text).split("\n")[0]);
+    if (m.method === "Runtime.consoleAPICalled" && m.params.type === "error") errors.push("console.error: " + m.params.args.map((a) => a.value || a.description).join(" ").slice(0, 200));
+  });
+  const call = (method, params = {}) => new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params })); });
+  await call("Runtime.enable");
+  await call("Page.enable");
+  const evaluate = async (expr) => (await call("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true })).result?.value;
+  const shot = async (name) => { const r = await call("Page.captureScreenshot", { format: "png" }); fs.writeFileSync(path.join(OUT, name + ".png"), Buffer.from(r.data, "base64")); };
+  const close = () => fetch(`http://localhost:${PORT}/json/close/${targets.id}`);
+  return { call, evaluate, shot, errors, close };
+}
+
+(async () => {
+  fs.mkdirSync(OUT, { recursive: true });
+  const chrome = spawn(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--autoplay-policy=no-user-gesture-required", `--remote-debugging-port=${PORT}`, "--window-size=1440,900", "about:blank"], { stdio: "ignore" });
+  await wait(2500);
+  try {
+    const room = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "film" }) })).json();
+    console.log("room", room.code);
+
+    // --- стартовый экран пульта
+    const start = await cdp(`${BASE}/auction.html`);
+    await wait(3000);
+    check((await evaluateSafe(start, "document.body.innerText.length")) > 100, "стартовый экран отрисован");
+    await start.shot("ui_start");
+    check(start.errors.length === 0, "стартовый экран без JS-ошибок" + (start.errors.length ? ": " + start.errors[0] : ""));
+    await start.close();
+
+    // --- доска: лобби
+    const board = await cdp(`${BASE}/auction-board.html?r=${room.code}&t=${room.hostToken}`);
+    await wait(3000);
+    check(await evaluateSafe(board, "!!document.getElementById('start')"), "лобби доски: кнопка «Начать» есть");
+    await board.shot("ui_board_lobby");
+
+    // --- пульт: вход и лобби
+    const remote = await cdp(`${BASE}/auction.html?r=${room.code}`);
+    await remote.call("Emulation.setDeviceMetricsOverride", { width: 390, height: 780, deviceScaleFactor: 2, mobile: true });
+    await wait(2000);
+    check(await evaluateSafe(remote, "!!document.getElementById('name')"), "пульт: поле имени есть");
+    // печатаем имя как на телефоне
+    await remote.call("Runtime.evaluate", { expression: "document.getElementById('name').focus()" });
+    for (const ch of "Макс") await remote.call("Input.insertText", { text: ch });
+    check((await evaluateSafe(remote, "document.getElementById('name').value")) === "Макс", "пульт: имя вводится");
+    await remote.call("Runtime.evaluate", { expression: "document.getElementById('go').click()" });
+    await wait(2500);
+    check(/K|комнате|Ждём/i.test(await evaluateSafe(remote, "document.body.innerText")), "пульт: попал в лобби после входа");
+    await remote.shot("ui_remote_lobby");
+    await wait(500);
+    check(await evaluateSafe(board, "document.body.innerText.includes('Макс')"), "доска: игрок появился в лобби");
+
+    // --- боты и старт
+    await board.call("Runtime.evaluate", { expression: "sendMsg({type:'bots', n:3}); setTimeout(() => sendMsg({type:'start'}), 500)" });
+    await wait(6000);
+    const phase = await evaluateSafe(board, "state && state.phase");
+    check(["lot", "bidding", "sold", "unsold", "pickup", "taken"].includes(phase), "доска: игра идёт (" + phase + ")");
+    await board.call("Page.bringToFront"); // в фоновой вкладке headless не крутит requestAnimationFrame
+    let tnum = "";
+    for (let i = 0; i < 20 && !/^\d+$/.test(tnum); i++) { tnum = await evaluateSafe(board, "document.getElementById('tnum') && document.getElementById('tnum').textContent"); await wait(300); }
+    check(/^\d+$/.test(tnum || ""), "доска: таймер показывает секунды (" + tnum + ")");
+    await board.shot("ui_board_game");
+    await wait(1500);
+    const rtext = await evaluateSafe(remote, "document.body.innerText");
+    check(/Перебить|лидер|Ждём|Не хватает|Следующий|Забрать|На мели/i.test(rtext), "пульт: игровой экран");
+    const rnum = await evaluateSafe(remote, "document.getElementById('tnum') && document.getElementById('tnum').textContent");
+    check(/^\d*$/.test(rnum || ""), "пульт: таймер-кольцо есть (" + rnum + ")");
+    await remote.shot("ui_remote_game");
+    // ставка с пульта
+    await remote.call("Runtime.evaluate", { expression: "(document.getElementById('bid') || {click(){}}).click()" });
+    await wait(1200);
+    const leader = await evaluateSafe(board, "state && state.leaderId && state.players.find(p=>p.id===state.leaderId).name");
+    console.log("    лидер после клика на пульте:", leader);
+
+    // --- завершение и финал
+    await board.call("Runtime.evaluate", { expression: "sendMsg({type:'end'})" });
+    await wait(4000);
+    const fin = await evaluateSafe(board, "state && state.phase");
+    check(fin === "finished", "доска: завершение игры хостом");
+    await wait(20000); // судья или голосование
+    await board.shot("ui_board_final");
+    await remote.shot("ui_remote_final");
+    const ftext = await evaluateSafe(board, "document.body.innerText");
+    check(/Итоги|Голосование|Судья/i.test(ftext), "доска: экран финала");
+
+    check(board.errors.length === 0, "доска без JS-ошибок" + (board.errors.length ? ": " + board.errors.slice(0, 2).join(" | ") : ""));
+    check(remote.errors.length === 0, "пульт без JS-ошибок" + (remote.errors.length ? ": " + remote.errors.slice(0, 2).join(" | ") : ""));
+    await board.close(); await remote.close();
+  } finally {
+    chrome.kill();
+  }
+  console.log(failures ? `UI FAILURES: ${failures}` : "UI TESTS OK", "→", OUT);
+  process.exit(failures ? 1 : 0);
+})().catch((e) => { console.error("ERROR", e); process.exit(1); });
+
+async function evaluateSafe(page, expr) { try { return await page.evaluate(expr); } catch { return null; } }

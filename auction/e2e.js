@@ -14,6 +14,8 @@ const deadline = Date.now() + 8 * 60 * 1000;
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const fail = (m) => { console.error("FAIL:", m); process.exit(1); };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// ждём условие до ms (long-polling через прокси даёт ~1 с задержки на шаг)
+const until = async (cond, ms = 8000) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) return false; await wait(150); } return true; };
 
 // Транспорт как у страниц: WebSocket, а если прокси его не пропускает — SSE + POST.
 function connect(code, first) {
@@ -68,16 +70,13 @@ function connect(code, first) {
   log("joined", anya.me, max.me, "transport:", host.mode);
 
   host.send({ type: "settings", settings: { slots: 3, budget: 20, t1: 5000, t2: 3000 } });
-  await wait(300);
-  if (host.state.settings.slots !== 3) fail("settings not applied");
+  if (!(await until(() => host.state.settings.slots === 3))) fail("settings not applied");
   host.send({ type: "start" });
-  await wait(500);
-  if (host.state.phase !== "lot") fail("game did not start: " + host.state.phase);
+  if (!(await until(() => host.state.phase !== "lobby"))) fail("game did not start: " + host.state.phase);
   log("started, rounds", host.state.rounds);
   // устаревшая цена в ставке — сервер обязан ответить rejected/price_changed
   anya.send({ type: "bid", amount: 1, expectedPrice: 5 });
-  await wait(400);
-  if (!anya.rejected.some((r) => r.reason === "price_changed")) fail("stale bid was not rejected: " + JSON.stringify(anya.rejected));
+  if (!(await until(() => anya.rejected.some((r) => r.reason === "price_changed")))) fail("stale bid was not rejected: " + JSON.stringify(anya.rejected));
   log("stale bid rejected ✓");
 
   // Аня: агрессивно до $6; Макс: только открывающие $1, тратит всё, чтобы попасть в РАЗБОР
