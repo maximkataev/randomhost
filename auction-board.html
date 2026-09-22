@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Аукцион — доска</title>
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f528.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=Onest:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="auction-shared.css">
+<style>
+  /* ---------- раскладка доски ---------- */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) clamp(340px, 34%, 460px); gap: 20px; height: 100%; max-width: 1500px; margin: 0 auto; }
+  main, aside { display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 12px; }
+  .topbar { display: flex; align-items: center; gap: 18px; flex: none; }
+  .topbar .lotno { font: 700 12px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .topbar .phase { font: 900 22px/1 var(--display); letter-spacing: -.02em; text-transform: uppercase; }
+  .topbar .phase.bidding { color: var(--c1); }
+  .topbar .spacer { flex: 1; }
+  .timer { position: relative; width: 64px; height: 64px; flex: none; }
+  .timer svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .timer circle { fill: none; stroke-width: 5; }
+  .timer .track { stroke: rgba(255, 255, 255, .1); }
+  .timer .ring { stroke: var(--c1); stroke-linecap: round; transition: stroke .3s; }
+  .timer .num { position: absolute; inset: 0; display: grid; place-items: center; font: 900 22px/1 var(--display); }
+  .timer.urgent .ring { stroke: #ff6b6b; }
+  .timer.urgent .num { color: #ff6b6b; animation: pulse .5s ease-in-out infinite alternate; }
+  @keyframes pulse { to { transform: scale(1.18); } }
+
+  .frame { flex: 1 1 auto; min-height: 0; margin-top: 0; }
+  .card { overflow: hidden; }
+  @media (min-width: 1100px) {
+    .card.result { display: grid; grid-template-columns: 40% minmax(0, 1fr); grid-template-rows: 1fr auto; column-gap: 28px; }
+    .card.result > .hero { grid-column: 1; grid-row: 1; margin: -28px 0 14px -28px; height: auto; min-height: 200px; }
+    .card.result > .text { grid-column: 2; grid-row: 1 / span 2; }
+    .card.result > .player { grid-column: 1; grid-row: 2; margin-top: 0; align-self: end; }
+    .card.result > .hero:not(.gone) + .text > .emoji { margin-top: 0; font-size: 52px; }
+    .card.result:has(.hero.gone) { grid-template-columns: minmax(0, 1fr); }
+    .card.result:has(.hero.gone) > * { grid-column: 1; grid-row: auto; }
+    .card.result .name { font-size: clamp(28px, 2.6vw, 40px); }
+    .card.result .desc { font-size: 15px; }
+  }
+  .text { display: flex; flex-direction: column; min-width: 0; }
+  .text > * { flex: none; }
+  .hero:not(.gone) + .text > .emoji { margin-top: -62px; position: relative; z-index: 1; font-size: 64px; }
+
+  /* полоса ставок */
+  .bidbar { flex: none; display: flex; align-items: center; gap: 16px; padding: 14px 18px; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 18px; backdrop-filter: blur(20px); min-height: 72px; }
+  .bidbar .cap { font: 700 10.5px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .bidbar .lead { font: 900 26px/1 var(--display); letter-spacing: -.02em; }
+  .bidbar .lead b { color: var(--c1); }
+  .bidbar .tape { flex: 1; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  .bidbar .tape span { font-size: 13px; color: var(--muted); background: rgba(255, 255, 255, .05); border-radius: 999px; padding: 4px 10px; }
+  .bidbar .stamp { font: 900 12px/1 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--c1); border: 2px solid var(--c1); border-radius: 8px; padding: 6px 8px; transform: rotate(-6deg); animation: stamp .45s cubic-bezier(.3, 1.8, .5, 1) both; }
+  @keyframes stamp { from { opacity: 0; transform: rotate(-6deg) scale(2.2); } }
+
+  /* игроки */
+  .panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 24px; padding: 18px 18px 14px; backdrop-filter: blur(24px); }
+  .panel h2 { font: 900 18px/1 var(--display); letter-spacing: -.02em; text-transform: uppercase; margin: 0 0 12px; display: flex; justify-content: space-between; align-items: center; }
+  .panel h2 small { font: 500 12px var(--body); text-transform: none; letter-spacing: 0; color: var(--muted); }
+  .players { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; display: flex; flex-direction: column; gap: 8px; }
+  .p { background: rgba(255, 255, 255, .045); border: 1px solid var(--glass-line); border-radius: 16px; padding: 10px 14px; transition: border-color .3s, box-shadow .3s, opacity .3s; }
+  .p.leader { border-color: var(--c1); box-shadow: 0 0 0 1px var(--c1), 0 10px 30px -12px var(--c1); }
+  .p.full, .p.offline, .p.left { opacity: .55; }
+  .p-top { display: flex; align-items: baseline; gap: 8px; }
+  .p-name { font-weight: 600; font-size: 16px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .p-tag { font: 700 10px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--c1); }
+  .p-tag.dim { color: var(--muted); }
+  .p-left { font: 900 19px/1 var(--display); letter-spacing: -.02em; }
+  .p.broke .p-left { color: #ff8a8a; }
+  .p-bar { height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .08); margin: 8px 0 8px; overflow: hidden; }
+  .p-bar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--c1), var(--c2)); transition: width .6s cubic-bezier(.2, .8, .3, 1); }
+  .slots { display: flex; gap: 6px; flex-wrap: wrap; }
+  .slot-i { min-width: 28px; height: 28px; border-radius: 8px; border: 1px dashed var(--glass-line); display: flex; align-items: center; gap: 6px; padding: 0 6px; font-size: 13px; }
+  .slot-i.filled { border-style: solid; background: rgba(255, 255, 255, .06); }
+  .slot-i .n { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .players.compact .slot-i .n { max-width: 70px; font-size: 12px; }
+  .hostbar { flex: none; display: flex; gap: 8px; align-items: center; }
+  .hostbar .code { font: 700 12px/1 var(--display); letter-spacing: .14em; color: var(--muted); flex: 1; }
+  .btn { font: 700 11px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; color: #0a0a0f; background: linear-gradient(120deg, var(--c1), var(--c2)); border: 0; border-radius: 12px; padding: 12px 14px; cursor: pointer; }
+  .btn.ghost { background: rgba(255, 255, 255, .08); color: var(--text); border: 1px solid var(--glass-line); }
+  .btn:hover { filter: brightness(1.1); }
+
+  /* лобби */
+  .lobby { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: center; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 28px; padding: 32px; backdrop-filter: blur(24px); }
+  .lobby .qr { justify-self: center; text-align: center; }
+  .lobby .qr .box { background: #fff; padding: 14px; border-radius: 18px; display: inline-block; }
+  .lobby .qr .code { font: 900 clamp(40px, 6vw, 72px)/1 var(--display); letter-spacing: .12em; margin: 18px 0 6px; }
+  .lobby .qr .url { color: var(--muted); font-size: 14px; word-break: break-all; }
+  .lobby .qr .hint { margin-top: 10px; font-size: 14px; color: var(--muted); }
+  .field { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 14px; }
+  .field label { flex: 1; color: var(--muted); }
+  select, input[type=number] { font: 600 15px var(--body); color: var(--text); background: rgba(255, 255, 255, .06); border: 1px solid var(--glass-line); border-radius: 12px; padding: 9px 12px; outline: none; }
+  select option { color: #000; }
+  .rounds { font-size: 13px; color: var(--muted); margin: 4px 0 14px; }
+  .lobby-players { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 18px; min-height: 40px; }
+  .chip { background: rgba(255, 255, 255, .06); border: 1px solid var(--glass-line); border-radius: 999px; padding: 6px 14px; font-size: 14px; }
+  .chip.off { opacity: .5; }
+  .start { font: 900 18px/1 var(--display); text-transform: uppercase; letter-spacing: .04em; color: #0a0a0f; background: linear-gradient(100deg, var(--c1), var(--c2) 60%, var(--c3)); border: 0; border-radius: 16px; padding: 18px 26px; cursor: pointer; width: 100%; }
+  .start:disabled { opacity: .4; cursor: default; }
+
+  /* финал */
+  .final { flex: 1; overflow-y: auto; scrollbar-width: thin; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 28px; padding: 28px; backdrop-filter: blur(24px); }
+  .final h2 { font: 900 28px/1 var(--display); text-transform: uppercase; letter-spacing: -.02em; margin: 0 0 18px; }
+  .podium { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+  .pl { background: rgba(255, 255, 255, .05); border: 1px solid var(--glass-line); border-radius: 18px; padding: 16px; animation: rise .6s both; }
+  .pl.first { border-color: var(--c1); box-shadow: 0 0 0 1px var(--c1), 0 20px 50px -20px var(--c1); }
+  .pl .place { font-size: 34px; }
+  .pl .who { font: 900 20px/1.1 var(--display); margin: 6px 0; }
+  .pl .score { font: 900 30px/1 var(--display); color: var(--c1); }
+  .pl .verdict { margin: 8px 0; font-size: 14px; color: rgba(244, 242, 255, .85); }
+  .pl .lots { display: flex; flex-wrap: wrap; gap: 6px; }
+  .final .summary { margin: 18px 0 0; padding: 14px 16px; background: rgba(255, 255, 255, .05); border-left: 3px solid var(--c1); border-radius: 4px 14px 14px 4px; }
+  .final .actions { display: flex; gap: 10px; margin-top: 18px; }
+  .thinking { text-align: center; padding: 60px 0; }
+  .thinking .dice { font-size: 56px; display: inline-block; animation: roll .9s linear infinite; }
+  @keyframes roll { to { transform: rotate(360deg); } }
+
+  .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); backdrop-filter: blur(6px); display: none; place-items: center; z-index: 50; font: 900 40px var(--display); text-transform: uppercase; }
+  .overlay.on { display: grid; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #ff6b6b; color: #fff; padding: 10px 16px; border-radius: 12px; font-weight: 600; display: none; z-index: 60; }
+  .toast.on { display: block; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .lobby { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="bg"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div><div class="grain"></div></div>
+<div class="layout" id="app"></div>
+<div class="overlay" id="overlay"></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="auction-shared.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const CODE = (params.get("r") || "").toUpperCase();
+const TOKEN = params.get("t") || "";
+const app = document.getElementById("app");
+const overlay = document.getElementById("overlay");
+let state = null, kinds = [], ws, offset = 0, rendered = { round: -1, phase: null, kind: null }, hero = null, widget = null;
+
+if (!CODE || !TOKEN) { app.innerHTML = '<div class="lobby"><div>Нет кода комнаты. Открой <a href="auction.html" style="color:var(--c1)">auction.html</a> и создай комнату.</div></div>'; }
+else connect();
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/auction/ws?r=${CODE}`);
+  ws.onopen = () => ws.send(JSON.stringify({ type: "host", token: TOKEN }));
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === "hello") { kinds = msg.kinds; setState(msg.state); }
+    if (msg.type === "state") setState(msg.state);
+    if (msg.type === "event") onEvent(msg.event);
+    if (msg.type === "error") toast(msg.error);
+  };
+  ws.onclose = () => { overlay.textContent = "Нет связи — переподключаемся…"; overlay.classList.add("on"); setTimeout(connect, 2000); };
+}
+const sendMsg = (m) => ws && ws.readyState === 1 && ws.send(JSON.stringify(m));
+
+function setState(s) {
+  state = s;
+  offset = s.serverNow - Date.now();
+  document.body.dataset.kind = s.kind;
+  overlay.classList.toggle("on", !!s.paused);
+  if (s.paused) overlay.textContent = "Пауза";
+  render();
+}
+
+function toast(text) { const t = document.getElementById("toast"); t.textContent = text; t.classList.add("on"); setTimeout(() => t.classList.remove("on"), 2500); }
+const money = (n) => "$" + Number(n).toLocaleString("ru-RU");
+const nameOf = (id) => state.players.find((p) => p.id === id)?.name || "?";
+
+// ---------- звук ----------
+let actx;
+function beep(freq, ms = 90, type = "sine", gain = .08) {
+  try {
+    actx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq; g.gain.value = gain;
+    o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + ms / 1000);
+  } catch {}
+}
+function onEvent(e) {
+  if (e.type === "bid") beep(660, 70);
+  if (e.type === "sold") { beep(520, 120); setTimeout(() => beep(780, 160), 130); }
+  if (e.type === "taken") beep(440, 160, "triangle");
+  if (e.type === "finished") stopMusic();
+  if (e.type === "judging") render();
+  if (e.type === "judge_failed") toast("Судья не ответил — голосуем");
+}
+
+// ---------- рендер ----------
+function render() {
+  if (!state) return;
+  if (state.phase === "lobby") return renderLobby();
+  if (state.phase === "finished") return renderFinal();
+  renderGame();
+}
+
+function renderLobby() {
+  stopMusic();
+  rendered = { round: -1, phase: null, kind: null };
+  const s = state;
+  const url = `${location.origin}${location.pathname.replace(/auction-board\.html$/, "")}auction.html?r=${CODE}`;
+  const n = s.players.filter((p) => !p.left).length;
+  const rounds = Math.ceil(Math.max(n, 2) * s.settings.slots * 1.25);
+  const kindOpts = kinds.map((k) => `<option value="${k}" ${k === s.kind ? "selected" : ""}>${AUCTION_KINDS[k]?.icon || ""} ${AUCTION_KINDS[k]?.label || k}</option>`).join("");
+  app.style.display = "block";
+  app.innerHTML = `
+    <div class="lobby">
+      <div class="qr">
+        <div class="box"><div id="qr"></div></div>
+        <div class="code">${CODE}</div>
+        <div class="url">${url.replace(/^https?:\/\//, "")}</div>
+        <div class="hint">Сканируй QR или открой ссылку и введи имя</div>
+      </div>
+      <div>
+        <h2 style="font:900 28px/1 var(--display);text-transform:uppercase;margin:0 0 18px">Аукцион <small style="font:500 13px var(--body);text-transform:none;color:var(--muted)">лоты, ставки, ИИ-судья</small></h2>
+        <div class="field"><label>Категория</label><select id="kind">${kindOpts}</select></div>
+        <div class="field"><label>Бюджет каждого</label><input id="budget" type="number" min="10" max="200" value="${s.settings.budget}"></div>
+        <div class="field"><label>Слотов в лайнапе</label><input id="slots" type="number" min="3" max="8" value="${s.settings.slots}"></div>
+        <div class="field"><label>Судья</label><select id="judge"><option value="chatgpt" ${s.settings.judge === "chatgpt" ? "selected" : ""}>ChatGPT</option><option value="vote" ${s.settings.judge === "vote" ? "selected" : ""}>Голосование</option></select></div>
+        <div class="rounds">Лотов в игре: ${rounds} · таймер ${s.settings.t1 / 1000} с, после ставки ${s.settings.t2 / 1000} с</div>
+        <div style="font:700 11px/1 var(--display);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)">Игроки ${n}/8</div>
+        <div class="lobby-players">${s.players.map((p) => `<span class="chip ${p.online ? "" : "off"}">${p.name}</span>`).join("") || '<span style="color:var(--muted);font-size:14px">пока никого…</span>'}</div>
+        <button class="start" id="start" ${n < 2 ? "disabled" : ""}>Начать игру</button>
+        ${location.hostname === "localhost" || location.hostname === "127.0.0.1" ? '<button class="btn ghost" id="bots" style="margin-top:10px">+ 3 бота (dev)</button>' : ""}
+      </div>
+    </div>`;
+  new QRCode(document.getElementById("qr"), { text: url, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
+  const push = () => sendMsg({ type: "settings", kind: document.getElementById("kind").value, settings: { budget: document.getElementById("budget").value, slots: document.getElementById("slots").value, judge: document.getElementById("judge").value } });
+  ["kind", "budget", "slots", "judge"].forEach((id) => (document.getElementById(id).onchange = push));
+  document.getElementById("start").onclick = () => { unlockAudio(); sendMsg({ type: "start" }); };
+  document.getElementById("bots")?.addEventListener("click", () => sendMsg({ type: "bots", n: 3 }));
+}
+
+function renderGame() {
+  const s = state;
+  app.style.display = "grid";
+  if (!document.getElementById("topbar")) {
+    app.innerHTML = `
+      <main>
+        <div class="topbar" id="topbar"><span class="lotno" id="lotno"></span><span class="phase" id="phase"></span><span class="spacer"></span>
+          <div class="timer" id="timer"><svg viewBox="0 0 64 64"><circle class="track" cx="32" cy="32" r="28"/><circle class="ring" id="ring" cx="32" cy="32" r="28" stroke-dasharray="176" stroke-dashoffset="0"/></svg><div class="num" id="tnum"></div></div>
+        </div>
+        <section class="frame"><div class="card center" id="card"></div></section>
+        <div class="bidbar" id="bidbar"></div>
+      </main>
+      <aside>
+        <section class="panel"><h2>Игроки <small id="pcount"></small></h2><div class="players" id="players"></div></section>
+        <div class="hostbar"><span class="code">Комната ${CODE}</span><button class="btn ghost" id="pause">Пауза</button><button class="btn ghost" id="end">Завершить</button></div>
+      </aside>`;
+    document.getElementById("pause").onclick = () => sendMsg({ type: state.paused ? "resume" : "pause" });
+    document.getElementById("end").onclick = () => confirm("Завершить игру и перейти к судейству?") && sendMsg({ type: "end" });
+    requestAnimationFrame(tickTimer);
+  }
+  document.getElementById("pause").textContent = s.paused ? "Продолжить" : "Пауза";
+  document.getElementById("lotno").textContent = `Лот ${s.round + 1} из ${s.rounds}`;
+  const phaseEl = document.getElementById("phase");
+  phaseEl.className = "phase " + s.phase;
+  phaseEl.textContent = { lot: "Лот", bidding: "Торги", pickup: "Разбор", sold: "Продано", taken: "Забрали", unsold: "Никто не взял" }[s.phase] || "";
+
+  // карточка перерисовывается только на новом лоте
+  if (s.lot && (rendered.round !== s.round || rendered.kind !== s.kind)) {
+    rendered = { round: s.round, kind: s.kind };
+    renderCard(s.lot, s.kind);
+  }
+  renderBidbar();
+  renderPlayers();
+}
+
+function renderCard(lot, kind) {
+  const card = document.getElementById("card");
+  stopMusic();
+  const meta = el("div", "meta");
+  (lot.meta || []).forEach((m) => meta.append(el("span", null, m)));
+  const fact = el("p", "fact");
+  fact.append(el("b", null, "Факт"), document.createTextNode(lot.fact));
+  const text = el("div", "text");
+  text.append(el("div", "emoji", lot.emoji), el("div", "kind", AUCTION_KINDS[kind]?.label || kind), el("div", "name", lot.name), meta, el("p", "desc", lot.description), fact);
+  widget = kind === "artist" && state.settings.media ? playerWidget() : null;
+  card.className = "card result";
+  card.replaceChildren(state.settings.media ? heroWidget(lot, kind) : el("div", "hero gone"), text, ...(widget ? [widget.box] : []));
+  if (widget) startMusic(lot, widget);
+}
+
+function renderBidbar() {
+  const s = state, bar = document.getElementById("bidbar");
+  bar.replaceChildren();
+  if (s.phase === "sold" || s.phase === "taken") {
+    const t = el("div", "lead");
+    t.append(document.createTextNode("Ушло: "), el("b", null, nameOf(s.leaderId)), document.createTextNode(s.phase === "sold" ? ` за ${money(s.price)}` : " бесплатно"));
+    bar.append(el("div", "stamp", s.phase === "sold" ? "Продано" : "Забрали"), t);
+    return;
+  }
+  if (s.phase === "unsold") { bar.append(el("div", "lead", "Никто не взял — следующий лот")); return; }
+  if (s.phase === "pickup") {
+    const who = s.players.filter((p) => p.canTake).map((p) => p.name).join(", ");
+    bar.append(el("div", "lead", "Без ставок — забирает бесплатно: "), el("div", "tape", who || "никто"));
+    return;
+  }
+  if (!s.leaderId) {
+    const bidders = s.players.filter((p) => p.canBid).length;
+    bar.append(el("div", "cap", "Ставок пока нет"), el("div", "lead", bidders ? "Кто первый? Минимум $1" : "Торговаться некому"));
+    return;
+  }
+  const lead = el("div", "lead");
+  lead.append(el("b", null, nameOf(s.leaderId)), document.createTextNode(` ${money(s.price)}`));
+  const tape = el("div", "tape");
+  s.bids.slice(0, -1).reverse().forEach((b) => tape.append(el("span", null, `${nameOf(b.playerId)} ${money(b.amount)}`)));
+  bar.append(el("div", "cap", "Лидер"), lead, tape);
+}
+
+function renderPlayers() {
+  const s = state, box = document.getElementById("players");
+  document.getElementById("pcount").textContent = `${s.players.filter((p) => !p.left).length} · ${s.settings.slots} слотов`;
+  box.classList.toggle("compact", s.players.length > 4);
+  box.replaceChildren(...s.players.map((p) => {
+    const row = el("div", "p" + (p.id === s.leaderId && (s.phase === "bidding" || s.phase === "sold" || s.phase === "taken") ? " leader" : "") + (p.full ? " full" : "") + (!p.online ? " offline" : "") + (p.left ? " left" : "") + (p.money === 0 ? " broke" : ""));
+    const top = el("div", "p-top");
+    const tag = p.left ? "вышел" : !p.online ? "offline" : p.full ? "готов" : p.id === s.leaderId && s.phase === "bidding" ? "лидер" : p.money === 0 ? "на мели" : "";
+    top.append(el("div", "p-name", p.name), el("span", "p-tag" + (tag === "лидер" ? "" : " dim"), tag), el("div", "p-left", money(p.money)));
+    const bar = el("div", "p-bar"); const fill = el("i"); fill.style.width = Math.max(0, Math.min(100, (p.money / s.settings.budget) * 100)) + "%"; bar.append(fill);
+    const slots = el("div", "slots");
+    for (let i = 0; i < s.settings.slots; i++) {
+      const l = p.lots[i];
+      const sl = el("div", "slot-i" + (l ? " filled" : ""));
+      if (l) { sl.append(el("span", null, l.emoji), el("span", "n", l.name)); sl.title = `${l.name} — ${l.price ? money(l.price) : "бесплатно"}`; }
+      slots.append(sl);
+    }
+    row.append(top, bar, slots);
+    return row;
+  }));
+}
+
+function tickTimer() {
+  if (!state || state.phase === "lobby" || state.phase === "finished" || !document.getElementById("timer")) return requestAnimationFrame(tickTimer);
+  const s = state;
+  const total = { lot: s.settings.t1, bidding: s.settings.t2, pickup: 5000 }[s.phase] || 2000;
+  const left = s.paused ? total : Math.max(0, s.deadline - (Date.now() + offset));
+  const frac = Math.min(1, left / total);
+  document.getElementById("ring").setAttribute("stroke-dashoffset", String(176 * (1 - frac)));
+  document.getElementById("tnum").textContent = (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup") ? Math.ceil(left / 1000) : "";
+  document.getElementById("timer").classList.toggle("urgent", left < 3000 && (s.phase === "lot" || s.phase === "bidding"));
+  requestAnimationFrame(tickTimer);
+}
+
+function renderFinal() {
+  stopMusic();
+  const s = state;
+  app.style.display = "block";
+  const players = s.players.filter((p) => !p.left);
+  if (!s.results) {
+    if (s.voting) {
+      app.innerHTML = `<div class="final"><h2>Голосование</h2><p style="color:var(--muted)">Судья недоступен или выбрано голосование. Каждый голосует с телефона за чужой лайнап. Проголосовало: ${s.votes}/${players.filter((p) => p.lots.length).length}</p><div class="podium">${players.map((p) => lineupCard(p, null)).join("")}</div></div>`;
+    } else {
+      app.innerHTML = `<div class="final"><div class="thinking"><div class="dice">🎲</div><h2>Судья думает…</h2><p style="color:var(--muted)">ChatGPT читает лайнапы</p></div></div>`;
+    }
+    return;
+  }
+  const r = s.results;
+  const places = ["🥇", "🥈", "🥉"];
+  app.innerHTML = `<div class="final"><h2>Итоги</h2><div class="podium">${r.ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: places[i] || `${i + 1}.`, score: x.score, verdict: x.verdict, first: i === 0, mode: r.mode, delay: (r.ranking.length - 1 - i) * .5 })).join("")}</div>${r.summary ? `<div class="summary">${escapeHtml(r.summary)}</div>` : ""}<div class="actions"><button class="btn" id="again">Ещё раз (та же категория)</button><button class="btn ghost" id="another">Другая категория</button></div></div>`;
+  document.getElementById("again").onclick = () => sendMsg({ type: "next_game" });
+  document.getElementById("another").onclick = () => sendMsg({ type: "next_game" });
+}
+function lineupCard(p, res) {
+  if (!p) return "";
+  const lots = p.lots.map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("") || '<span style="color:var(--muted)">пусто</span>';
+  return `<div class="pl ${res?.first ? "first" : ""}" style="animation-delay:${res?.delay || 0}s">${res ? `<div class="place">${res.place}</div>` : ""}<div class="who">${escapeHtml(p.name)}</div>${res ? `<div class="score">${res.mode === "vote" ? res.score + " голос." : res.score}</div><div class="verdict">${escapeHtml(res.verdict || "")}</div>` : ""}<div class="lots">${lots}</div><div style="color:var(--muted);font-size:12px;margin-top:8px">потрачено ${money(p.spent)}</div></div>`;
+}
+function escapeHtml(t) { return String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+</script>
+</body>
+</html>

@@ -33,3 +33,9 @@
 ## Локальная правка
 - Всё в одном файле, без сборки. Достаточно редактировать HTML/CSS/JS.
 - Фавикон тянется по ссылке: `https://em-content.zobj.net/source/apple/391/sparkles_2728.png`.
+## Аукцион (`auction.html`, `auction-board.html`)
+Онлайн-игра: хост создаёт комнату на большом экране, игроки заходят по QR с телефонов, торгуются за лоты (артисты, фильмы, блюда… — 15 категорий, ~2000 карточек), в конце составы оценивает ChatGPT (или голосование). Первый бэкенд сайта — `auction/` (Node 22 + `ws`), в compose отдельный сервис `auction`; nginx проксирует в него `/auction/ws` и `/auction/api/`. Ключ OpenAI — в `.env` на сервере (`OPENAI_API_KEY`, `OPENAI_MODEL`), в git не хранится. Спека и ревью — в репозитории random-picker (`docs/SPEC.md`). На главной не публикуется.
+
+- Локально: `cd auction && npm install && npm run dev` → http://localhost:3000/auction.html (боты: кнопка «+ 3 бота» в лобби; `?bots`/ускорение только при `NODE_ENV=development`).
+- Симуляция партий: `node auction/sim.js 200 4`.
+- `auction-solo.html` — прежний локальный рандомайзер без сервера, данные в `auction-data/`.
