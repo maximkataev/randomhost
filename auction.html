@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="robots" content="noindex">
+<title>Аукцион</title>
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f528.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=Onest:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="auction-shared.css">
+<style>
+  html, body { width: 100%; max-width: 100vw; overflow-x: hidden; }
+  body { padding: calc(12px + env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; }
+  .screen, .screen > *, .lotbox > *, .actions > * { max-width: 100%; min-width: 0; }
+  .screen { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .status { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); flex: none; }
+  .status b { color: var(--text); font-weight: 600; }
+  .status .money { font: 900 18px/1 var(--display); color: var(--text); }
+  .status .spacer { flex: 1; }
+  .slots { display: flex; gap: 4px; }
+  .slots i { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--glass-line); }
+  .slots i.on { background: var(--c1); border-color: var(--c1); }
+
+  .lotbox { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 0; padding: 10px 0; }
+  .lotbox .thumb { width: 120px; height: 120px; border-radius: 22px; object-fit: cover; background: rgba(255, 255, 255, .06); margin-bottom: 10px; display: none; }
+  .lotbox .thumb.on { display: block; }
+  .lotbox .emoji { font-size: 44px; margin-bottom: 4px; }
+  .lotbox .kind { font: 700 10px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--c1); }
+  .lotbox .name { font: 900 clamp(22px, 7vw, 30px)/1.1 var(--display); letter-spacing: -.02em; margin: 6px 0; }
+  .lotbox .meta { justify-content: center; margin-bottom: 8px; }
+  .lotbox .short { font-size: 14px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 340px; }
+  .lotbox .more { font-size: 12px; color: var(--c1); margin-top: 4px; background: none; border: 0; }
+  .lotbox .lotno { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+  .bidinfo { display: flex; align-items: center; gap: 16px; justify-content: center; margin: 6px 0 12px; flex: none; }
+  .ring { position: relative; width: 62px; height: 62px; }
+  .ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 5; }
+  .ring .track { stroke: rgba(255, 255, 255, .1); }
+  .ring .arc { stroke: var(--c1); stroke-linecap: round; }
+  .ring .num { position: absolute; inset: 0; display: grid; place-items: center; font: 900 20px/1 var(--display); }
+  .ring.urgent .arc { stroke: #ff6b6b; }
+  .lead { text-align: left; }
+  .lead .cap { font: 700 10px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .lead .who { font: 900 22px/1.1 var(--display); }
+  .lead .who b { color: var(--c1); }
+
+  .actions { flex: none; display: flex; flex-direction: column; gap: 8px; }
+  .big { font: 900 clamp(18px, 5.5vw, 24px)/1 var(--display); letter-spacing: .04em; text-transform: uppercase; color: #0a0a0f; background: linear-gradient(100deg, var(--c1), var(--c2) 60%, var(--c3)); border: 0; border-radius: 18px; padding: 22px; width: 100%; box-shadow: 0 18px 50px -18px var(--c1); }
+  .big:active { transform: scale(.97); }
+  .big.flash { animation: flash .35s; }
+  @keyframes flash { 0%, 100% { filter: none; } 50% { filter: brightness(1.6) hue-rotate(-60deg); } }
+  .mid { font: 700 15px/1 var(--display); text-transform: uppercase; letter-spacing: .04em; color: var(--text); background: rgba(255, 255, 255, .08); border: 1px solid var(--glass-line); border-radius: 14px; padding: 16px; width: 100%; }
+  .plate { text-align: center; padding: 18px; border: 1px dashed var(--glass-line); border-radius: 18px; font-size: 16px; }
+  .plate b { font: 900 20px/1.2 var(--display); display: block; margin-bottom: 4px; }
+  .plate.lead-me { border-style: solid; border-color: var(--c1); background: color-mix(in srgb, var(--c1) 12%, transparent); }
+  .plate.err { color: #ff8a8a; }
+  .note { text-align: center; font-size: 13px; color: var(--muted); min-height: 18px; }
+
+  /* ===== стартовый экран: «аукционный зал» ===== */
+  body:has(.start) { height: auto; min-height: 100dvh; overflow-y: auto; }
+  .start {
+    flex: 1; width: 100%; max-width: 1260px; margin: 0 auto; padding: 8px 0 16px;
+    display: grid; align-content: start;
+    grid-template-areas: "head" "stage" "body";
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 20px;
+  }
+  .start-head { grid-area: head; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .stage { grid-area: stage; min-width: 0; }
+  .start-body { grid-area: body; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  @media (min-width: 900px) {
+    .start {
+      grid-template-areas: "head stage" "body stage";
+      grid-template-columns: minmax(0, 1fr) clamp(320px, 34%, 430px);
+      grid-template-rows: auto auto;
+      column-gap: clamp(26px, 4vw, 54px); row-gap: clamp(18px, 3.4vh, 32px);
+    }
+    .start-head, .start-body { max-width: 700px; }
+    .stage { align-self: center; }
+  }
+  /* центрируем только если экран заведомо выше контента — иначе верх уехал бы за край */
+  @media (min-width: 900px) and (min-height: 780px) {
+    .start { align-content: center; }
+  }
+
+  /* надзаголовок */
+  .start .eyebrow { font: 700 11px/1 var(--display); letter-spacing: .18em; text-transform: uppercase; color: rgba(244, 242, 255, .62); display: flex; align-items: center; gap: 10px; }
+  .start .eyebrow i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c1); box-shadow: 0 0 14px var(--c1); animation: glow 1.8s ease-in-out infinite alternate; }
+  @keyframes glow { to { opacity: .35; transform: scale(.7); } }
+
+  /* плакатный заголовок в две строки + молоток */
+  .start h1 {
+    position: relative; margin: 0; padding-right: .5em;
+    font: 900 clamp(46px, 12.5vw, 104px)/.84 var(--display);
+    letter-spacing: -.055em; text-transform: uppercase;
+    width: fit-content;
+  }
+  .start h1 span.w { display: block; }
+  .start h1 em { display: block; animation: hue 14s linear infinite; }
+  @keyframes hue { to { filter: hue-rotate(360deg); } }
+  .start h1 .gavel {
+    position: absolute; right: -.4em; bottom: .04em;
+    font-size: .46em; line-height: 1; transform: rotate(-32deg); transform-origin: 75% 85%;
+    filter: drop-shadow(0 10px 26px color-mix(in srgb, var(--c1) 70%, transparent));
+  }
+  .start h1 .gavel::after {
+    content: ""; position: absolute; left: 50%; top: 88%; width: 1.5em; height: 1.5em; margin: -.75em 0 0 -.75em;
+    border-radius: 50%; border: 2px solid var(--c1); opacity: 0;
+  }
+  .start h1 .gavel.hit { animation: strike .6s cubic-bezier(.3, 1.4, .5, 1); }
+  .start h1 .gavel.hit::after { animation: shock .6s ease-out; }
+  @keyframes strike { 0% { transform: rotate(-32deg); } 30% { transform: rotate(-58deg); } 52% { transform: rotate(6deg); } 70% { transform: rotate(-16deg); } 100% { transform: rotate(-32deg); } }
+  @keyframes shock { 0%, 45% { opacity: 0; transform: scale(.2); } 60% { opacity: .85; } 100% { opacity: 0; transform: scale(2.4); } }
+
+  .start .lede { font-size: clamp(15.5px, 1.45vw, 18px); line-height: 1.5; color: rgba(244, 242, 255, .78); max-width: 48ch; margin: 0; }
+  .start .lede b { color: var(--text); font-weight: 600; white-space: nowrap; }
+
+  /* выбор категории: лента «фишек» */
+  .pick-cap { margin-bottom: 11px; }
+  .pick-cap::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--glass-line), transparent); }
+  .tiles { display: flex; flex-wrap: wrap; gap: 7px; }
+  .tile {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 13px 8px 10px; border-radius: 999px;
+    border: 1px solid var(--glass-line); background: rgba(255, 255, 255, .045);
+    cursor: pointer; color: rgba(244, 242, 255, .88);
+    font: 700 11px/1 var(--display); text-transform: uppercase; letter-spacing: .01em;
+    transition: transform .18s cubic-bezier(.3, 1.6, .5, 1), border-color .2s, background .25s, box-shadow .3s, color .25s;
+    animation: rise .6s both;
+  }
+  .tile .ico { font-size: 15px; line-height: 1; }
+  .tile .n { font: 500 10.5px/1 var(--body); color: rgba(244, 242, 255, .6); text-transform: none; letter-spacing: 0; }
+  .tile:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--c1) 70%, transparent); background: rgba(255, 255, 255, .08); }
+  .tile.on {
+    color: #0a0a0f; border-color: transparent;
+    background: linear-gradient(100deg, var(--c1), var(--c2) 75%, var(--c3));
+    box-shadow: 0 12px 34px -14px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .4);
+  }
+  .tile.on .n { color: rgba(10, 10, 15, .62); }
+
+  /* главная кнопка */
+  .cta { display: flex; flex-direction: column; gap: 11px; }
+  .cta .big {
+    position: relative; overflow: hidden; border-radius: 20px;
+    padding: clamp(20px, 2.6vh, 26px) 24px;
+    font-size: clamp(17px, 2.1vw, 23px); letter-spacing: .05em;
+    box-shadow: 0 22px 60px -22px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .45);
+    cursor: pointer; transition: transform .2s cubic-bezier(.3, 1.6, .5, 1), box-shadow .3s;
+  }
+  .cta .big::before {
+    content: "→"; position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
+    width: 38px; height: 38px; border-radius: 50%; background: rgba(10, 10, 15, .16);
+    display: grid; place-items: center; font: 500 20px/1 var(--body);
+    transition: transform .25s cubic-bezier(.3, 1.6, .5, 1);
+  }
+  .cta .big:hover { transform: translateY(-2px); box-shadow: 0 30px 70px -20px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .45); }
+  .cta .big:hover::before { transform: translateY(-50%) translateX(4px); }
+  .cta .big:disabled { opacity: .6; transform: none; }
+  .cta .big::after { content: ""; position: absolute; top: 0; bottom: 0; left: -40%; width: 30%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .5), transparent); transform: skewX(-20deg); animation: shine 3.6s ease-in-out infinite; }
+  @keyframes shine { 0%, 55% { left: -40%; } 100% { left: 130%; } }
+  .cta .sub2 { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; color: rgba(244, 242, 255, .68); }
+  .cta .sub2 .link { flex: none; margin-left: auto; color: var(--text); text-decoration: none; font-weight: 500; border: 1px solid var(--glass-line); border-radius: 999px; padding: 7px 14px; transition: border-color .2s, background .2s; }
+  .cta .sub2 .link:hover { border-color: var(--c1); background: rgba(255, 255, 255, .06); }
+
+  /* три шага */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; border-top: 1px solid var(--glass-line); padding-top: 14px; }
+  .step { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; }
+  .step .k { grid-row: 1 / span 2; font: 900 24px/.95 var(--display); color: var(--c1); }
+  .step .t { font: 600 13.5px/1.3 var(--body); }
+  .step .d { font-size: 12.5px; line-height: 1.4; color: rgba(244, 242, 255, .68); }
+  @media (max-width: 560px) { .steps { grid-template-columns: 1fr; gap: 12px; } }
+
+  /* ===== живая лента лотов ===== */
+  .stage { display: flex; flex-direction: column; gap: 10px; pointer-events: none; user-select: none; }
+  .stage-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font: 700 10px/1 var(--display); letter-spacing: .16em; text-transform: uppercase; }
+  .stage-head .live { display: flex; align-items: center; gap: 8px; color: rgba(244, 242, 255, .7); }
+  .stage-head .live i { width: 7px; height: 7px; border-radius: 50%; background: var(--c1); box-shadow: 0 0 12px var(--c1); animation: glow 1.4s ease-in-out infinite alternate; }
+  .stage-head .stage-kind { color: var(--c1); }
+  .reel {
+    position: relative; overflow: hidden;
+    border-radius: 22px;
+    transition: opacity .3s;
+    -webkit-mask-image: linear-gradient(180deg, transparent, #000 9%, #000 88%, transparent);
+    mask-image: linear-gradient(180deg, transparent, #000 9%, #000 88%, transparent);
+  }
+  .reel.swap { opacity: .35; }
+  .reel-track { display: flex; flex-direction: column; animation: reelY 34s linear infinite; will-change: transform; }
+  @keyframes reelY { to { transform: translateY(-50%); } }
+  .lotcard {
+    flex: none; display: flex; align-items: center; gap: 11px;
+    margin-bottom: 10px; padding: 11px 13px;
+    border-radius: 18px; border: 1px solid var(--glass-line);
+    background: linear-gradient(120deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, .03));
+    backdrop-filter: blur(14px);
+    box-shadow: 0 18px 40px -30px #000;
+  }
+  .lotcard .lc-emoji { flex: none; font-size: 23px; line-height: 1; }
+  .lotcard .lc-text { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .lotcard .lc-name { font: 600 14.5px/1.2 var(--body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lotcard .lc-meta { font-size: 11.5px; color: rgba(244, 242, 255, .58); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lotcard .lc-bid { flex: none; font: 900 17px/1 var(--display); letter-spacing: -.02em; color: var(--c1); }
+  .lotcard .lc-stamp { flex: none; font: 900 9px/1 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--c3); border: 1.5px solid var(--c3); border-radius: 6px; padding: 5px 6px; transform: rotate(-7deg); }
+  .lotcard.hot { border-color: color-mix(in srgb, var(--c1) 75%, transparent); background: linear-gradient(120deg, color-mix(in srgb, var(--c1) 22%, transparent), rgba(255, 255, 255, .04)); box-shadow: 0 16px 44px -22px var(--c1); }
+  .lotcard.skel { height: 59px; background: rgba(255, 255, 255, .04); }
+  .lotcard.skel::after { content: ""; flex: 1; height: 100%; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, .07) 50%, transparent 70%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+  @media (min-width: 900px) { .reel { height: clamp(360px, 64vh, 620px); } }
+  @media (max-width: 899px) {
+    /* на телефоне лента едет вбок */
+    .reel { -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 92%, transparent); mask-image: linear-gradient(90deg, transparent, #000 6%, #000 92%, transparent); }
+    .reel-track { flex-direction: row; width: max-content; animation-name: reelX; animation-duration: 42s; }
+    .lotcard { width: 246px; margin: 0 10px 0 0; }
+    .lotcard.skel { height: 59px; }
+    @keyframes reelX { to { transform: translateX(-50%); } }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reel-track, .start h1 em, .start .eyebrow i, .stage-head .live i, .cta .big::after, .tile, .lotcard.skel::after, .start h1 .gavel.hit, .start h1 .gavel.hit::after { animation: none !important; }
+    .cta .big::after { display: none; }
+    .tile { opacity: 1; }
+  }
+
+  /* вход и лобби */
+  .center { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
+  h1 { font: 900 32px/1 var(--display); text-transform: uppercase; letter-spacing: -.03em; margin: 0 0 6px; }
+  h1 em { font-style: normal; background: linear-gradient(100deg, var(--c1), var(--c2) 55%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { color: var(--muted); margin: 0 0 12px; }
+  input[type=text] { font: 600 18px var(--body); color: var(--text); background: rgba(255, 255, 255, .06); border: 1px solid var(--glass-line); border-radius: 14px; padding: 14px 16px; outline: none; width: 100%; }
+  input:focus { border-color: var(--c1); }
+  select { font: 600 16px var(--body); color: var(--text); background: rgba(255, 255, 255, .06); border: 1px solid var(--glass-line); border-radius: 14px; padding: 12px 14px; width: 100%; }
+  select option { color: #000; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: rgba(255, 255, 255, .06); border: 1px solid var(--glass-line); border-radius: 999px; padding: 6px 12px; font-size: 14px; }
+  .chip.me { border-color: var(--c1); }
+  .link { color: var(--c1); }
+
+  /* финал */
+  .final { flex: 1; overflow-y: auto; }
+  .place { font: 900 64px/1 var(--display); text-align: center; }
+  .score { font: 900 40px/1 var(--display); color: var(--c1); text-align: center; }
+  .verdict { text-align: center; margin: 10px 0 14px; }
+  .lots { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  .vote { display: flex; flex-direction: column; gap: 8px; }
+  .vote .row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(255, 255, 255, .05); border: 1px solid var(--glass-line); border-radius: 14px; }
+  .vote .row .n { flex: 1; font-weight: 600; }
+  .vote .row small { color: var(--muted); display: block; font-weight: 400; }
+  .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .65); backdrop-filter: blur(6px); display: none; place-items: center; z-index: 50; font: 900 26px var(--display); text-transform: uppercase; text-align: center; padding: 20px; }
+  .overlay.on { display: grid; }
+  .sheet { position: fixed; inset: auto 0 0 0; background: #1a1822; border-radius: 22px 22px 0 0; padding: 20px 20px calc(24px + env(safe-area-inset-bottom)); max-height: 70vh; overflow-y: auto; transform: translateY(100%); transition: transform .3s; z-index: 40; }
+  .sheet.on { transform: none; }
+  .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 45; }
+</style>
+</head>
+<body>
+<div class="bg"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div><div class="grain"></div></div>
+<div class="screen" id="app"></div>
+<div class="overlay" id="overlay"></div>
+<div class="sheet" id="sheet"></div>
+<canvas class="confetti" id="confetti"></canvas>
+
+<script src="auction-shared.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const CODE = (params.get("r") || "").toUpperCase();
+const app = document.getElementById("app");
+const overlay = document.getElementById("overlay");
+let state = null, ws, offset = 0, me = null, token = null, lastLot = -1, thumbLot = -1;
+
+if (!CODE) renderCreate();
+else { try { token = localStorage.getItem("auction-token-" + CODE); } catch {} if (token) join(""); else if (params.get("name")) join(params.get("name")); else renderJoin(); }
+
+// ---------- стартовый экран (этот экран становится доской) ----------
+async function renderCreate() {
+  let counts = {};
+  try { counts = await (await fetch("/auction/api/kinds")).json(); } catch {}
+  const kinds = Object.keys(AUCTION_KINDS).filter((k) => !Object.keys(counts).length || counts[k]);
+  let kind = kinds[Math.floor(Math.random() * kinds.length)] || "artist";
+  document.body.dataset.kind = kind;
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  app.innerHTML = `<div class="start">
+    <div class="start-head">
+      <div class="eyebrow"><i></i>Игра для компании · телефоны + один экран</div>
+      <h1><span class="w">Аук</span><em>цион</em><span class="gavel" id="gavel" aria-hidden="true">🔨</span></h1>
+      <p class="lede">У каждого <b>$30</b> и <b>5 слотов</b>. Лоты выпадают по одному, торгуетесь в реальном времени, кто победил — забирает. В конце <b>ИИ-судья</b> разбирает составы и объявляет победителя.</p>
+    </div>
+    <div class="stage" aria-hidden="true">
+      <div class="stage-head"><span class="live"><i></i>Идут торги</span><span class="stage-kind" id="stagekind"></span></div>
+      <div class="reel" id="reel"><div class="reel-track" id="reeltrack"></div></div>
+    </div>
+    <div class="start-body">
+      <div class="picker">
+        <div class="eyebrow pick-cap">Выбери категорию${total ? ` · ${total.toLocaleString("ru-RU")} ${plural(total, "лот", "лота", "лотов")}` : ""}</div>
+        <div class="tiles" id="tiles">${kinds.map((k, i) => `<button class="tile ${k === kind ? "on" : ""}" data-kind="${k}" style="animation-delay:${i * 0.03}s"><span class="ico">${AUCTION_KINDS[k].icon}</span>${AUCTION_KINDS[k].button}${counts[k] ? `<span class="n">${counts[k]}</span>` : ""}</button>`).join("")}</div>
+      </div>
+      <div class="cta">
+        <button class="big" id="create">Создать комнату</button>
+        <div class="sub2"><span>Открывай на ноутбуке или ТВ — здесь будет доска</span><a class="link" href="#" id="havecode">У меня есть код →</a></div>
+      </div>
+      <div class="steps">
+        <div class="step"><div class="k">1</div><div class="t">Комната и QR</div><div class="d">Друзья сканируют код с экрана и заходят с телефонов</div></div>
+        <div class="step"><div class="k">2</div><div class="t">Торги</div><div class="d">10 секунд на лот, каждая ставка даёт ещё 5. Никто не перебил — лот твой</div></div>
+        <div class="step"><div class="k">3</div><div class="t">Судья</div><div class="d">ChatGPT оценивает лайнапы и выдаёт вердикт с юмором</div></div>
+      </div>
+    </div>
+  </div>`;
+  showKind(kind, counts[kind]);
+  document.getElementById("tiles").onclick = (e) => {
+    const t = e.target.closest(".tile"); if (!t) return;
+    if (t.dataset.kind === kind) return strikeGavel();
+    kind = t.dataset.kind;
+    document.querySelectorAll(".tile").forEach((x) => x.classList.toggle("on", x === t));
+    showKind(kind, counts[kind]);
+  };
+  document.getElementById("create").onclick = async () => {
+    const btn = document.getElementById("create"); btn.disabled = true; btn.textContent = "Создаём…";
+    try {
+      const res = await fetch("/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Не получилось создать комнату");
+      location.href = `auction-board.html?r=${data.code}&t=${data.hostToken}`;
+    } catch (err) { btn.disabled = false; btn.textContent = "Создать комнату"; alert(err.message); }
+  };
+  document.getElementById("havecode").onclick = (e) => { e.preventDefault(); const c = prompt("Код комнаты (4 буквы)"); if (c) location.href = `auction.html?r=${c.trim().toUpperCase()}`; };
+}
+
+// ---------- живая лента лотов на стартовом экране ----------
+// Витрина: показываем настоящие карточки выбранной категории с «ценой» и печатью «продано».
+// Данные лежат рядом с доской (auction-data/<kind>.js → window.CARDS[kind]) — грузим по одному файлу лениво.
+let reelToken = 0;
+const cardsLoading = {};
+const plural = (n, one, few, many) => (n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many);
+
+function loadCards(kind) {
+  if (window.CARDS?.[kind]) return Promise.resolve(window.CARDS[kind]);
+  cardsLoading[kind] ||= new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = `auction-data/${kind}.js`;
+    s.onload = () => res(window.CARDS?.[kind] || []);
+    s.onerror = () => { delete cardsLoading[kind]; rej(new Error("no data")); };
+    document.head.append(s);
+  });
+  return cardsLoading[kind];
+}
+
+function strikeGavel() {
+  const g = document.getElementById("gavel");
+  if (!g) return;
+  g.classList.remove("hit"); void g.offsetWidth; g.classList.add("hit");
+}
+
+function showKind(kind, count) {
+  document.body.dataset.kind = kind;
+  const cap = document.getElementById("stagekind");
+  if (cap) cap.textContent = `${AUCTION_KINDS[kind].button}${count ? ` · ${count} ${plural(count, "лот", "лота", "лотов")}` : ""}`;
+  strikeGavel();
+  fillReel(kind);
+}
+
+function fillReel(kind) {
+  const track = document.getElementById("reeltrack");
+  if (!track) return;
+  const my = ++reelToken, reel = track.parentElement;
+  if (!track.children.length) track.innerHTML = '<div class="lotcard skel"></div>'.repeat(8);
+  reel.classList.add("swap");
+  loadCards(kind).then((cards) => {
+    if (my !== reelToken) return;
+    const list = cards.slice().sort(() => Math.random() - .5).slice(0, 9);
+    if (!list.length) return reel.classList.remove("swap");
+    const html = list.map((c, i) => {
+      const sold = i % 4 === 2, hot = i % 5 === 1;
+      const tail = sold ? '<span class="lc-stamp">Продано</span>' : `<span class="lc-bid">$${2 + Math.floor(Math.random() * 26)}</span>`;
+      return `<div class="lotcard${hot ? " hot" : ""}"><span class="lc-emoji">${c.emoji || AUCTION_KINDS[kind].icon}</span>` +
+        `<span class="lc-text"><span class="lc-name">${escapeHtml(c.name)}</span><span class="lc-meta">${escapeHtml((c.meta || []).slice(0, 2).join(" · "))}</span></span>${tail}</div>`;
+    }).join("");
+    track.innerHTML = html + html; // две копии — для бесшовной прокрутки
+    reel.classList.remove("swap");
+  }).catch(() => { if (my === reelToken) reel.classList.remove("swap"); });
+}
+
+// ---------- вход ----------
+function renderJoin(error) {
+  app.innerHTML = `<div class="center"><h1>Аук<em>цион</em></h1><p class="sub">Комната <b>${CODE}</b>. Как тебя зовут?</p>
+    <input type="text" id="name" maxlength="24" placeholder="Имя" autocomplete="off" autofocus>
+    <button class="big" id="go">Войти</button><div class="note" id="err">${error || ""}</div></div>`;
+  const go = () => { const n = document.getElementById("name").value.trim(); if (n) join(n); };
+  document.getElementById("go").onclick = go;
+  document.getElementById("name").onkeydown = (e) => e.key === "Enter" && go();
+}
+
+function join(name) {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/auction/ws?r=${CODE}`);
+  ws.onopen = () => ws.send(JSON.stringify({ type: "join", name, token }));
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === "joined") { me = msg.playerId; token = msg.token; try { localStorage.setItem("auction-token-" + CODE, token); } catch {} }
+    if (msg.type === "hello" || msg.type === "state") setState(msg.state);
+    if (msg.type === "event") onEvent(msg.event);
+    if (msg.type === "rejected") onRejected(msg);
+    if (msg.type === "replaced") { ws.onclose = null; ws.close(); overlay.textContent = "Ты открыл игру на другом устройстве"; overlay.classList.add("on"); }
+    if (msg.type === "kicked") { ws.onclose = null; ws.close(); try { localStorage.removeItem("auction-token-" + CODE); } catch {} overlay.textContent = "Хост убрал тебя из игры"; overlay.classList.add("on"); }
+    if (msg.type === "error") {
+      if (msg.error === "game_started") { ws.onclose = null; renderJoin("Игра уже идёт — попроси хоста впустить тебя, или подожди следующую"); }
+      else if (msg.error === "room_full") { ws.onclose = null; renderJoin("Комната заполнена (8 игроков)"); }
+      else renderJoin(msg.error);
+    }
+  };
+  ws.onclose = () => { overlay.textContent = "Нет связи — переподключаемся…"; overlay.classList.add("on"); setTimeout(() => join(name), 2000); };
+  ws.onerror = () => {};
+}
+const sendMsg = (m) => ws && ws.readyState === 1 && ws.send(JSON.stringify(m));
+
+function setState(s) {
+  if (!me) return;
+  state = s;
+  offset = s.serverNow - Date.now();
+  document.body.dataset.kind = s.kind;
+  overlay.classList.toggle("on", !!s.paused);
+  if (s.paused) overlay.textContent = "Пауза";
+  render();
+}
+const money = (n) => "$" + Number(n).toLocaleString("ru-RU");
+const mine = () => state.players.find((p) => p.id === me);
+const nameOf = (id) => state.players.find((p) => p.id === id)?.name || "?";
+
+// ---------- звук ----------
+let actx;
+function beep(freq, ms = 90, type = "sine", gain = .1) {
+  try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.frequency.value = freq; g.gain.value = gain; o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + ms / 1000); } catch {}
+}
+function onEvent(e) {
+  if (e.type === "outbid" && e.playerId === me) { beep(220, 200, "square"); flashButton("Перебили!"); }
+  if (e.type === "sold" && e.playerId === me) { beep(520, 120); setTimeout(() => beep(780, 180), 130); confetti(); }
+  if (e.type === "taken" && e.playerId === me) { beep(440, 160, "triangle"); confetti(); }
+  if (e.type === "lot") beep(880, 40, "sine", .04);
+}
+function onRejected(r) {
+  const note = document.getElementById("note");
+  if (!note) return;
+  note.textContent = { price_changed: "Цена уже выросла", too_low: "Ставка ниже текущей", not_enough_money: "Не хватает денег", already_leader: "Ты и так лидер", closed: "Лот уже ушёл", cannot_bid: "Сейчас нельзя ставить" }[r.reason] || r.reason;
+  render();
+}
+function flashButton(text) { const b = document.getElementById("bid"); if (!b) return; b.classList.add("flash"); const note = document.getElementById("note"); if (note) note.textContent = text; setTimeout(() => b.classList.remove("flash"), 400); }
+
+// ---------- рендер ----------
+function render() {
+  if (!state) return;
+  if (state.phase === "lobby") return renderLobby();
+  if (state.phase === "finished") return renderFinal();
+  renderGame();
+}
+
+function renderLobby() {
+  lastLot = -1;
+  app.innerHTML = `<div class="center"><h1>Аук<em>цион</em></h1><p class="sub">Ты в комнате <b>${CODE}</b>. Ждём, пока хост начнёт.</p>
+    <div class="plate"><b>${AUCTION_KINDS[state.kind]?.icon || ""} ${AUCTION_KINDS[state.kind]?.label || state.kind}</b>У тебя ${money(state.settings.budget)} и ${state.settings.slots} слотов. Собери лучший набор — судить будет ${state.settings.judge === "vote" ? "голосование" : "ИИ"}.</div>
+    <div class="chips">${state.players.map((p) => `<span class="chip ${p.id === me ? "me" : ""}">${escapeHtml(p.name)}</span>`).join("")}</div></div>`;
+}
+
+function renderGame() {
+  const s = state, p = mine();
+  if (!p) return;
+  if (!document.getElementById("bidbox")) {
+    app.innerHTML = `<div class="status"><b id="myname"></b><span class="slots" id="myslots"></span><span class="spacer"></span><span id="lotno"></span><span class="money" id="mymoney"></span></div>
+      <div class="lotbox" id="lot"></div>
+      <div class="bidinfo"><div class="ring" id="ring"><svg viewBox="0 0 62 62"><circle class="track" cx="31" cy="31" r="27"/><circle class="arc" id="arc" cx="31" cy="31" r="27" stroke-dasharray="170" stroke-dashoffset="0"/></svg><div class="num" id="tnum"></div></div><div class="lead" id="lead"></div></div>
+      <div class="actions" id="bidbox"></div><div class="note" id="note"></div>`;
+    requestAnimationFrame(tickTimer);
+  }
+  document.getElementById("myname").textContent = p.name;
+  document.getElementById("mymoney").textContent = money(p.money);
+  document.getElementById("lotno").textContent = `лот ${s.round + 1}/${s.rounds}`;
+  const slots = document.getElementById("myslots");
+  slots.replaceChildren(...Array.from({ length: s.settings.slots }, (_, i) => { const d = el("i", i < p.lots.length ? "on" : null); return d; }));
+
+  if (s.lot && lastLot !== s.round) { lastLot = s.round; renderLot(s.lot, s.kind); }
+
+  const lead = document.getElementById("lead");
+  lead.replaceChildren();
+  if (s.phase === "lot" || s.phase === "bidding") {
+    const who = el("div", "who");
+    if (s.leaderId) { who.append(el("b", null, s.leaderId === me ? "Ты" : nameOf(s.leaderId)), document.createTextNode(` ${money(s.price)}`)); lead.append(el("div", "cap", "Лидер"), who); }
+    else { who.textContent = "Ставок нет"; lead.append(el("div", "cap", "Минимум $1"), who); }
+  } else if (s.phase === "pickup") lead.append(el("div", "cap", "Разбор"), el("div", "who", "Без ставок"));
+  else if (s.phase === "sold" || s.phase === "taken") { const who = el("div", "who"); who.append(el("b", null, s.leaderId === me ? "Твой!" : nameOf(s.leaderId)), document.createTextNode(s.phase === "sold" ? ` ${money(s.price)}` : " бесплатно")); lead.append(el("div", "cap", s.phase === "sold" ? "Продано" : "Забрали"), who); }
+  else lead.append(el("div", "cap", ""), el("div", "who", "Никто не взял"));
+
+  renderActions(p);
+}
+
+function renderLot(lot, kind) {
+  const box = document.getElementById("lot");
+  box.replaceChildren();
+  const img = el("img", "thumb"); img.alt = "";
+  const meta = el("div", "meta"); (lot.meta || []).forEach((m) => meta.append(el("span", null, m)));
+  const more = el("button", "more", "подробнее ▸");
+  more.onclick = () => openSheet(lot);
+  box.append(img, el("div", "emoji", lot.emoji), el("div", "kind", AUCTION_KINDS[kind]?.label || kind), el("div", "name", lot.name), meta, el("div", "short", lot.description), more);
+  document.getElementById("note").textContent = "";
+  // картинка: тот же поиск, что на доске, но маленькая
+  const round = state.round;
+  findImage(lot, kind).then((found) => { if (found && state.round === round) { img.src = found.src; img.classList.add("on"); } }).catch(() => {});
+}
+
+function renderActions(p) {
+  const s = state, box = document.getElementById("bidbox");
+  box.replaceChildren();
+  const plate = (cls, title, text) => { const d = el("div", "plate " + cls); if (title) d.append(el("b", null, title)); d.append(document.createTextNode(text || "")); return d; };
+  if (p.full) return box.append(plate("", "Готово!", "Лайнап собран — смотри на доску"));
+  if (s.phase === "pickup") {
+    if (p.canTake) { const b = el("button", "big", "Забрать бесплатно"); b.onclick = () => sendMsg({ type: "take" }); return box.append(b); }
+    return box.append(plate("", "", p.money === 0 ? "Кто-то уже забрал" : "Лот без ставок уходит тем, у кого $0"));
+  }
+  if (s.phase !== "lot" && s.phase !== "bidding") return box.append(plate("", "", "Следующий лот…"));
+  if (p.money === 0) return box.append(plate("", "На мели", "Ждём лот без ставок — его можно забрать бесплатно"));
+  if (s.leaderId === me) return box.append(plate("lead-me", "Ты лидер", `${money(s.price)} — ждём, перебьют ли`));
+  const next = s.price + 1;
+  if (next > p.money) return box.append(plate("err", "Не хватает", `У тебя ${money(p.money)}, нужно ${money(next)}`));
+  const big = el("button", "big", `Перебить ${money(next)}`); big.id = "bid";
+  big.onclick = () => { unlockAudio(); sendMsg({ type: "bid", amount: next, expectedPrice: s.price }); };
+  box.append(big);
+  const plus = s.price + 5;
+  if (plus <= p.money) { const m = el("button", "mid", `+$5 → ${money(plus)}`); let t = 0; m.onclick = () => { if (Date.now() - t < 300) return; t = Date.now(); sendMsg({ type: "bid", amount: plus, expectedPrice: s.price }); }; box.append(m); }
+}
+
+function tickTimer() {
+  const ring = document.getElementById("ring");
+  if (!state || !ring) return requestAnimationFrame(tickTimer);
+  const s = state;
+  const total = { lot: s.settings.t1, bidding: s.settings.t2, pickup: 5000 }[s.phase] || 2000;
+  const left = s.paused ? total : Math.max(0, s.deadline - (Date.now() + offset));
+  document.getElementById("arc").setAttribute("stroke-dashoffset", String(170 * (1 - Math.min(1, left / total))));
+  document.getElementById("tnum").textContent = (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup") ? Math.ceil(left / 1000) : "";
+  ring.classList.toggle("urgent", left < 3000 && s.phase !== "sold");
+  requestAnimationFrame(tickTimer);
+}
+
+function openSheet(lot) {
+  const sh = document.getElementById("sheet");
+  sh.innerHTML = `<div style="font:900 22px var(--display);margin-bottom:8px">${escapeHtml(lot.name)}</div><p>${escapeHtml(lot.description)}</p><p class="fact"><b>Факт</b>${escapeHtml(lot.fact)}</p><button class="mid" id="close">Закрыть</button>`;
+  sh.classList.add("on");
+  document.getElementById("close").onclick = () => sh.classList.remove("on");
+}
+
+function renderFinal() {
+  const s = state, p = mine();
+  lastLot = -1;
+  const players = s.players.filter((x) => !x.left);
+  if (!s.results) {
+    if (s.voting) {
+      const voted = !!s.myVote;
+      app.innerHTML = `<div class="final"><h1>Голо<em>суй</em></h1><p class="sub">За чужой лайнап, один голос. Проголосовало ${s.votes}/${players.filter((x) => x.lots.length).length}.</p><div class="vote" id="vote"></div></div>`;
+      const box = document.getElementById("vote");
+      players.filter((x) => x.id !== me && x.lots.length).forEach((x) => {
+        const row = el("div", "row"); const n = el("div", "n", x.name); n.append(el("small", null, x.lots.map((l) => l.emoji + " " + l.name).join(" · ")));
+        const b = el("button", "mid", "Голос"); b.style.width = "auto"; b.onclick = () => { sendMsg({ type: "vote", for: x.id }); box.querySelectorAll("button").forEach((q) => (q.disabled = true)); b.textContent = "✓"; };
+        row.append(n, b); box.append(row);
+      });
+      return;
+    }
+    app.innerHTML = `<div class="center" style="text-align:center"><div style="font-size:56px">🎲</div><h1>Судья <em>думает</em></h1><p class="sub">ChatGPT читает лайнапы</p></div>`;
+    return;
+  }
+  const idx = s.results.ranking.findIndex((r) => r.playerId === me);
+  const r = s.results.ranking[idx];
+  const places = ["🥇", "🥈", "🥉"];
+  app.innerHTML = `<div class="final"><div class="place">${idx >= 0 ? places[idx] || `${idx + 1}-е` : "—"}</div>${r ? `<div class="score">${s.results.mode === "vote" ? r.score + " голос." : r.score}</div><div class="verdict">${escapeHtml(r.verdict || "")}</div>` : '<p class="sub" style="text-align:center">Ты не участвовал в судействе</p>'}<div class="lots">${(p?.lots || []).map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("")}</div><p class="note" style="margin-top:18px">Результаты на доске. Хост может запустить ещё одну игру.</p></div>`;
+}
+
+function confetti() {
+  const c = document.getElementById("confetti"), ctx = c.getContext("2d");
+  c.width = innerWidth; c.height = innerHeight;
+  const cs = getComputedStyle(document.body);
+  const colors = [cs.getPropertyValue("--c1"), cs.getPropertyValue("--c2"), cs.getPropertyValue("--c3"), "#fff"];
+  const parts = Array.from({ length: 90 }, () => ({ x: Math.random() * c.width, y: -20 - Math.random() * 200, vy: 3 + Math.random() * 4, vx: -2 + Math.random() * 4, r: 4 + Math.random() * 5, col: colors[Math.floor(Math.random() * colors.length)] }));
+  let frames = 0;
+  (function draw() {
+    ctx.clearRect(0, 0, c.width, c.height);
+    for (const p of parts) { p.x += p.vx; p.y += p.vy; ctx.fillStyle = p.col; ctx.fillRect(p.x, p.y, p.r, p.r * 1.6); }
+    if (++frames < 110) requestAnimationFrame(draw); else ctx.clearRect(0, 0, c.width, c.height);
+  })();
+}
+function escapeHtml(t) { return String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+</script>
+</body>
+</html>

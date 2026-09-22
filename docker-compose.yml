@@ -21,3 +21,29 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    depends_on:
+      - auction
+
+  # сервер онлайн-аукциона (WebSocket + API); nginx проксирует в него /auction/ws и /auction/api/
+  auction:
+    build: ./auction
+    image: randomhostauction:latest
+    container_name: randomhost-auction
+    cpuset: "2-5"
+    restart: always
+    mem_limit: 256m
+    # ключ судьи берётся из /opt/randomhostwebsite/.env (compose подставляет его сам);
+    # файла нет — переменные пустые, судья работает через голосование, сайт не падает
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.4}
+    volumes:
+      - auction-state:/app/state
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  auction-state:
