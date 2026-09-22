@@ -210,9 +210,55 @@ function readJson(req) {
   });
 }
 
+// ---------- запасной транспорт: SSE + POST (когда прокси не пропускает WebSocket) ----------
+
+const sseClients = new Map(); // sid → client (тот же объект, что для ws, с шимом вместо сокета)
+
+function openSse(room, req, res) {
+  const sid = crypto.randomBytes(12).toString("base64url");
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no", // nginx (и контейнерный, и хостовый) не буферизует поток
+  });
+  res.write(`event: sid\ndata: ${sid}\n\n`);
+  const shim = {
+    readyState: 1,
+    send: (data) => { try { res.write(`data: ${data}\n\n`); } catch {} },
+    ping: () => { try { res.write(":ping\n\n"); } catch {} },
+    terminate: () => { try { res.end(); } catch {} },
+  };
+  const client = { ws: shim, playerId: null, host: false, alive: true, sse: true, room };
+  room.sockets.add(client);
+  sseClients.set(sid, client);
+  send(shim, { type: "hello", code: room.code, state: snapshotWithVoting(room), kinds: Object.keys(KINDS) });
+  req.on("close", () => {
+    shim.readyState = 3;
+    room.sockets.delete(client);
+    sseClients.delete(sid);
+    if (client.playerId && ![...room.sockets].some((c) => c.playerId === client.playerId)) {
+      room.game.setOnline(client.playerId, false);
+      afterChange(room, [{ type: "offline", playerId: client.playerId }]);
+    }
+  });
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json" }); res.end(JSON.stringify(obj)); };
+  if (url.pathname === "/auction/api/events") {
+    const room = rooms.get((url.searchParams.get("r") || "").toUpperCase());
+    if (!room) return json(404, { error: "no such room" });
+    return openSse(room, req, res);
+  }
+  if (url.pathname === "/auction/api/msg" && req.method === "POST") {
+    const body = await readJson(req);
+    const client = sseClients.get(String(body.sid || ""));
+    if (!client) return json(410, { error: "session gone" });
+    try { handle(client.room, client, body.msg || {}); } catch (err) { send(client.ws, { type: "error", error: err.message }); }
+    return json(200, { ok: true });
+  }
   if (url.pathname === "/auction/api/health") return json(200, { ok: true, rooms: rooms.size, judge: OPENAI_API_KEY ? "chatgpt" : "vote" });
   if (url.pathname === "/auction/api/kinds") return json(200, Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, v.length])));
   if (url.pathname === "/auction/api/rooms" && req.method === "POST") {
@@ -382,6 +428,7 @@ function handle(room, client, msg) {
 setInterval(() => {
   for (const room of rooms.values()) {
     for (const c of room.sockets) {
+      if (c.sse) { c.ws.ping(); continue; }
       if (!c.alive) { c.ws.terminate(); continue; }
       c.alive = false;
       c.ws.ping();

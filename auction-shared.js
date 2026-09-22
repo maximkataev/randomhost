@@ -222,3 +222,38 @@ async function startMusic(pick, widget) {
   }
 }
 
+
+// ---------- транспорт: WebSocket, а если прокси его не пропускает — SSE + POST ----------
+// openTransport({code, onMessage, onClose}) → { send(msg), close() }.
+// Сначала пробуем WebSocket; если он закрылся, не успев открыться, переключаемся на поток событий.
+function openTransport({ code, onMessage, onClose, onOpen }) {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  let closed = false, opened = false, es = null, sid = null, ws = null;
+  const api = {
+    send(msg) {
+      if (ws && ws.readyState === 1) return ws.send(JSON.stringify(msg));
+      if (sid) fetch("/auction/api/msg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid, msg }) }).catch(() => {});
+    },
+    close() { closed = true; try { ws?.close(); } catch {} try { es?.close(); } catch {} },
+    get mode() { return ws && ws.readyState === 1 ? "ws" : es ? "sse" : "none"; },
+  };
+  function startSse() {
+    if (closed) return;
+    es = new EventSource(`/auction/api/events?r=${encodeURIComponent(code)}`);
+    es.addEventListener("sid", (e) => { sid = e.data; opened = true; onOpen?.(); });
+    es.onmessage = (e) => onMessage(JSON.parse(e.data));
+    es.onerror = () => { if (closed) return; es.close(); es = null; sid = null; onClose?.(); };
+  }
+  try {
+    ws = new WebSocket(`${proto}://${location.host}/auction/ws?r=${encodeURIComponent(code)}`);
+    ws.onopen = () => { opened = true; onOpen?.(); };
+    ws.onmessage = (e) => onMessage(JSON.parse(e.data));
+    ws.onclose = () => {
+      if (closed) return;
+      if (!opened) { ws = null; startSse(); } // рукопожатие не прошло — прокси без WebSocket
+      else onClose?.();
+    };
+    ws.onerror = () => {};
+  } catch { startSse(); }
+  return api;
+}

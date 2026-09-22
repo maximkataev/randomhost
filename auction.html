@@ -390,27 +390,27 @@ function renderJoin(error) {
 }
 
 function join(name) {
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/auction/ws?r=${CODE}`);
-  ws.onopen = () => ws.send(JSON.stringify({ type: "join", name, token }));
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === "joined") { me = msg.playerId; token = msg.token; try { localStorage.setItem("auction-token-" + CODE, token); } catch {} }
-    if (msg.type === "hello" || msg.type === "state") setState(msg.state);
-    if (msg.type === "event") onEvent(msg.event);
-    if (msg.type === "rejected") onRejected(msg);
-    if (msg.type === "replaced") { ws.onclose = null; ws.close(); overlay.textContent = "Ты открыл игру на другом устройстве"; overlay.classList.add("on"); }
-    if (msg.type === "kicked") { ws.onclose = null; ws.close(); try { localStorage.removeItem("auction-token-" + CODE); } catch {} overlay.textContent = "Хост убрал тебя из игры"; overlay.classList.add("on"); }
-    if (msg.type === "error") {
-      if (msg.error === "game_started") { ws.onclose = null; renderJoin("Игра уже идёт — попроси хоста впустить тебя, или подожди следующую"); }
-      else if (msg.error === "room_full") { ws.onclose = null; renderJoin("Комната заполнена (8 игроков)"); }
-      else renderJoin(msg.error);
-    }
-  };
-  ws.onclose = () => { overlay.textContent = "Нет связи — переподключаемся…"; overlay.classList.add("on"); setTimeout(() => join(name), 2000); };
-  ws.onerror = () => {};
+  ws = openTransport({
+    code: CODE,
+    onOpen: () => sendMsg({ type: "join", name, token }),
+    onMessage: (msg) => {
+      if (msg.type === "joined") { me = msg.playerId; token = msg.token; try { localStorage.setItem("auction-token-" + CODE, token); } catch {} }
+      if (msg.type === "hello" || msg.type === "state") setState(msg.state);
+      if (msg.type === "event") onEvent(msg.event);
+      if (msg.type === "rejected") onRejected(msg);
+      if (msg.type === "replaced") { ws.close(); overlay.textContent = "Ты открыл игру на другом устройстве"; overlay.classList.add("on"); }
+      if (msg.type === "kicked") { ws.close(); try { localStorage.removeItem("auction-token-" + CODE); } catch {} overlay.textContent = "Хост убрал тебя из игры"; overlay.classList.add("on"); }
+      if (msg.type === "error") {
+        ws.close();
+        if (msg.error === "game_started") renderJoin("Игра уже идёт — попроси хоста впустить тебя, или подожди следующую");
+        else if (msg.error === "room_full") renderJoin("Комната заполнена (8 игроков)");
+        else renderJoin(msg.error);
+      }
+    },
+    onClose: () => { overlay.textContent = "Нет связи — переподключаемся…"; overlay.classList.add("on"); setTimeout(() => join(name), 2000); },
+  });
 }
-const sendMsg = (m) => ws && ws.readyState === 1 && ws.send(JSON.stringify(m));
+const sendMsg = (m) => ws && ws.send(m);
 
 function setState(s) {
   if (!me) return;

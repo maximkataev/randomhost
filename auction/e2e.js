@@ -15,13 +15,11 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const fail = (m) => { console.error("FAIL:", m); process.exit(1); };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Транспорт как у страниц: WebSocket, а если прокси его не пропускает — SSE + POST.
 function connect(code, first) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(WS + code);
-    const c = { ws, state: null, events: [], rejected: [], me: null, token: null, hostOk: false };
-    ws.on("open", () => { ws.send(JSON.stringify(first)); });
-    ws.on("message", (raw) => {
-      const m = JSON.parse(raw);
+    const c = { state: null, events: [], rejected: [], me: null, token: null, hostOk: false, mode: "ws" };
+    const onMsg = (m) => {
       if (m.type === "hello") c.state = m.state;
       if (m.type === "state") c.state = m.state;
       if (m.type === "event") c.events.push(m.event);
@@ -29,10 +27,33 @@ function connect(code, first) {
       if (m.type === "joined") { c.me = m.playerId; c.token = m.token; resolve(c); }
       if (m.type === "host_ok") { c.hostOk = true; resolve(c); }
       if (m.type === "error") reject(new Error(m.error));
-    });
-    ws.on("error", reject);
-    c.send = (m) => ws.send(JSON.stringify(m));
-    setTimeout(() => reject(new Error("connect timeout")), 10000);
+    };
+    if (process.env.TRANSPORT === "sse") { startSse(); return; } // принудительно проверить запасной транспорт
+    const ws = new WebSocket(WS + code);
+    let opened = false;
+    ws.on("open", () => { opened = true; c.send = (m) => ws.send(JSON.stringify(m)); ws.send(JSON.stringify(first)); });
+    ws.on("message", (raw) => onMsg(JSON.parse(raw)));
+    ws.on("error", () => {});
+    ws.on("close", () => { if (!opened) startSse(); });
+    async function startSse() {
+      c.mode = "sse";
+      const res = await fetch(BASE + "/auction/api/events?r=" + code);
+      if (!res.ok) return reject(new Error("sse " + res.status));
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+      (async () => {
+        for (;;) {
+          const { value, done } = await reader.read(); if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let i; while ((i = buf.indexOf("\n\n")) >= 0) {
+            const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+            const ev = /^event: (.*)$/m.exec(chunk)?.[1]; const data = chunk.split("\n").filter((l) => l.startsWith("data: ")).map((l) => l.slice(6)).join("\n");
+            if (ev === "sid") { const sid = data; c.send = (m) => fetch(BASE + "/auction/api/msg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid, msg: m }) }).catch(() => {}); c.send(first); }
+            else if (data) onMsg(JSON.parse(data));
+          }
+        }
+      })();
+    }
+    setTimeout(() => reject(new Error("connect timeout")), 15000);
   });
 }
 
@@ -49,7 +70,7 @@ function connect(code, first) {
   const host = await connect(room.code, { type: "host", token: room.hostToken });
   const anya = await connect(room.code, { type: "join", name: "Аня" });
   const max = await connect(room.code, { type: "join", name: "Макс" });
-  log("joined", anya.me, max.me);
+  log("joined", anya.me, max.me, "transport:", host.mode);
 
   host.send({ type: "settings", settings: { slots: 3, budget: 20, t1: 5000, t2: 3000 } });
   await wait(300);
