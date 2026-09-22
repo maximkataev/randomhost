@@ -24,9 +24,9 @@ const DEV = process.env.NODE_ENV === "development";
 const DUMP = process.env.DUMP_FILE || path.join(__dirname, "state", "rooms.json");
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.4";
-const ROOM_TTL = 2 * 3600 * 1000;
+const ROOM_TTL = 30 * 60 * 1000; // комната без активности 30 минут — удаляется
 const MAX_ROOMS = 200;
-const MAX_PLAYERS = 8;
+const MAX_PLAYERS = 100; // по сути без лимита; минимум для старта — 2
 const KINDS = {};
 for (const f of fs.readdirSync(path.join(__dirname, "data"))) {
   if (f.endsWith(".json")) KINDS[f.slice(0, -5)] = JSON.parse(fs.readFileSync(path.join(__dirname, "data", f), "utf8"));
@@ -331,6 +331,7 @@ function onConnection(room, ws) {
 function handle(room, client, msg) {
   const g = room.game;
   const t = now();
+  room.touched = t;
   const reply = (obj) => send(client.ws, obj);
 
   switch (msg.type) {
@@ -456,6 +457,8 @@ setInterval(() => {
     if (now() - room.touched > ROOM_TTL) {
       clearTimeout(room.timer);
       clearInterval(room.botTimer);
+      for (const c of room.sockets) { send(c.ws, { type: "error", error: "room_expired" }); try { c.ws.terminate(); } catch {} }
+      for (const [sid, c] of pollClients) if (c.room === room) pollClients.delete(sid);
       rooms.delete(room.code);
     }
   }
