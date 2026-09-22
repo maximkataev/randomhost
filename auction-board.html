@@ -145,19 +145,19 @@ if (!CODE || !TOKEN) { app.innerHTML = '<div class="lobby"><div>Нет кода 
 else connect();
 
 function connect() {
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/auction/ws?r=${CODE}`);
-  ws.onopen = () => ws.send(JSON.stringify({ type: "host", token: TOKEN }));
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === "hello") { kinds = msg.kinds; setState(msg.state); }
-    if (msg.type === "state") setState(msg.state);
-    if (msg.type === "event") onEvent(msg.event);
-    if (msg.type === "error") toast(msg.error);
-  };
-  ws.onclose = () => { overlay.textContent = "Нет связи — переподключаемся…"; overlay.classList.add("on"); setTimeout(connect, 2000); };
+  ws = openTransport({
+    code: CODE,
+    onOpen: () => sendMsg({ type: "host", token: TOKEN }),
+    onMessage: (msg) => {
+      if (msg.type === "hello") { kinds = msg.kinds; setState(msg.state); }
+      if (msg.type === "state") setState(msg.state);
+      if (msg.type === "event") onEvent(msg.event);
+      if (msg.type === "error") toast(msg.error);
+    },
+    onClose: () => { overlay.textContent = "Нет связи — переподключаемся…"; overlay.classList.add("on"); setTimeout(connect, 2000); },
+  });
 }
-const sendMsg = (m) => ws && ws.readyState === 1 && ws.send(JSON.stringify(m));
+const sendMsg = (m) => ws && ws.send(m);
 
 function setState(s) {
   state = s;
