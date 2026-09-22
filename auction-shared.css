@@ -3,7 +3,7 @@
   :root {
     --bg: #08080c;
     --text: #f4f2ff;
-    --muted: rgba(244, 242, 255, .55);
+    --muted: rgba(244, 242, 255, .68); /* .55 не читалось с дивана и на солнце */
     --glass: rgba(255, 255, 255, .06);
     --glass-line: rgba(255, 255, 255, .12);
     --c1: #8b5cf6;
@@ -30,6 +30,11 @@
   [data-kind="invention"]  { --c1: #67e8f9; --c2: #6366f1; --c3: #e0e7ff; }
 
   * { box-sizing: border-box; }
+  /* никаких системных контролов: ни спиннеров у number, ни системной стрелки у select */
+  input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  select { -webkit-appearance: none; appearance: none; }
   html { background: var(--bg); }
   body {
     margin: 0;
@@ -89,8 +94,36 @@
   .sale.shake { animation: shake .35s; }
   @keyframes shake { 25% { transform: translateX(-6px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-3px); } }
   .sale.sold { border-style: solid; border-color: color-mix(in srgb, var(--c1) 60%, transparent); background: color-mix(in srgb, var(--c1) 10%, transparent); }
-  .sold-stamp { font: 900 12px/1 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--c1); border: 2px solid var(--c1); border-radius: 8px; padding: 6px 8px; transform: rotate(-6deg); animation: stamp .45s cubic-bezier(.3, 1.8, .5, 1) both; }
-  @keyframes stamp { from { opacity: 0; transform: rotate(-6deg) scale(2.2); } }
+  /* «ПРОДАНО» — одна печать на все экраны (старт, доска, соло): рамка 1.5px, наклон -7°, цвет --c3 */
+  .sold-stamp { font: 900 12px/1 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--c3); border: 1.5px solid var(--c3); border-radius: 8px; padding: 6px 8px; transform: rotate(-7deg); animation: stamp .45s cubic-bezier(.3, 1.8, .5, 1) both; }
+  @keyframes stamp { from { opacity: 0; transform: rotate(-7deg) scale(2.2); } }
+
+  /* молоток-маркер события: тот же жест, что на стартовом экране */
+  .gavel-mark { font-size: 20px; line-height: 1; display: inline-block; transform: rotate(-32deg); transform-origin: 75% 85%; position: relative; animation: strike .6s cubic-bezier(.3, 1.4, .5, 1); }
+  .gavel-mark::after { content: ""; position: absolute; left: 50%; top: 88%; width: 1.5em; height: 1.5em; margin: -.75em 0 0 -.75em; border-radius: 50%; border: 2px solid var(--c1); opacity: 0; animation: shock .6s ease-out; }
+  @keyframes strike { 0% { transform: rotate(-32deg); } 30% { transform: rotate(-58deg); } 52% { transform: rotate(6deg); } 70% { transform: rotate(-16deg); } 100% { transform: rotate(-32deg); } }
+  @keyframes shock { 0%, 45% { opacity: 0; transform: scale(.2); } 60% { opacity: .85; } 100% { opacity: 0; transform: scale(2.4); } }
+
+  /* лента «фишек» — выбор категории; общая для стартового экрана и лобби доски */
+  .tiles { display: flex; flex-wrap: wrap; gap: 7px; }
+  .tile {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 13px 8px 10px; border-radius: 999px;
+    border: 1px solid var(--glass-line); background: rgba(255, 255, 255, .045);
+    cursor: pointer; color: rgba(244, 242, 255, .88);
+    font: 700 11px/1 var(--display); text-transform: uppercase; letter-spacing: .01em;
+    transition: transform .18s cubic-bezier(.3, 1.6, .5, 1), border-color .2s, background .25s, box-shadow .3s, color .25s;
+    animation: rise .6s both;
+  }
+  .tile .ico { font-size: 15px; line-height: 1; }
+  .tile .n { font: 500 10.5px/1 var(--body); color: rgba(244, 242, 255, .6); text-transform: none; letter-spacing: 0; }
+  .tile:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--c1) 70%, transparent); background: rgba(255, 255, 255, .08); }
+  .tile.on {
+    color: #0a0a0f; border-color: transparent;
+    background: linear-gradient(100deg, var(--c1), var(--c2) 75%, var(--c3));
+    box-shadow: 0 12px 34px -14px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .4);
+  }
+  .tile.on .n { color: rgba(10, 10, 15, .62); }
   .sold-text { flex: 1; font-size: 15px; }
   .sold-text b { font-weight: 600; }
   .sale.sold button.undo { font: 500 12px var(--body); color: var(--muted); background: none; border: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
@@ -311,7 +344,9 @@
   .kbd kbd { font: 600 11px var(--body); border: 1px solid var(--glass-line); border-bottom-width: 2px; border-radius: 6px; padding: 2px 7px; margin: 0 2px; }
 
 
-  /* доступность: уважаем «меньше движения» — фоновые пятна перестают плыть */
+  /* доступность: уважаем «меньше движения» — фон замирает, реакции на события остаются статичными */
   @media (prefers-reduced-motion: reduce) {
-    .blob { animation: none !important; }
+    .blob, .tile, .another::after, .hint .big, .gavel-mark, .gavel-mark::after,
+    .result > *, .result .text > *, .result .emoji, .sold-stamp { animation: none !important; }
+    .gavel-mark::after { display: none; }
   }

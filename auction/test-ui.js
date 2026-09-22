@@ -85,6 +85,7 @@ async function cdp(url) {
     await wait(6000);
     const phase = await evaluateSafe(board, "state && state.phase");
     check(["lot", "bidding", "sold", "unsold", "pickup", "taken"].includes(phase), "доска: игра идёт (" + phase + ")");
+    await board.call("Page.bringToFront"); // в фоновой вкладке headless не крутит requestAnimationFrame
     let tnum = "";
     for (let i = 0; i < 20 && !/^\d+$/.test(tnum); i++) { tnum = await evaluateSafe(board, "document.getElementById('tnum') && document.getElementById('tnum').textContent"); await wait(300); }
     check(/^\d+$/.test(tnum || ""), "доска: таймер показывает секунды (" + tnum + ")");
