@@ -223,26 +223,36 @@ async function startMusic(pick, widget) {
 }
 
 
-// ---------- транспорт: WebSocket, а если прокси его не пропускает — SSE + POST ----------
-// openTransport({code, onMessage, onClose}) → { send(msg), close() }.
-// Сначала пробуем WebSocket; если он закрылся, не успев открыться, переключаемся на поток событий.
+// ---------- транспорт: WebSocket, а если прокси его не пропускает — long-polling ----------
+// openTransport({code, onMessage, onClose, onOpen}) → { send(msg), close(), mode }.
+// Сначала пробуем WebSocket; если он закрылся, не успев открыться, переключаемся на опрос.
 function openTransport({ code, onMessage, onClose, onOpen }) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  let closed = false, opened = false, es = null, sid = null, ws = null;
+  let closed = false, opened = false, sid = null, ws = null, polling = false;
   const api = {
     send(msg) {
       if (ws && ws.readyState === 1) return ws.send(JSON.stringify(msg));
       if (sid) fetch("/auction/api/msg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid, msg }) }).catch(() => {});
     },
-    close() { closed = true; try { ws?.close(); } catch {} try { es?.close(); } catch {} },
-    get mode() { return ws && ws.readyState === 1 ? "ws" : es ? "sse" : "none"; },
+    close() { closed = true; try { ws?.close(); } catch {} sid = null; },
+    get mode() { return ws && ws.readyState === 1 ? "ws" : sid ? "poll" : "none"; },
   };
-  function startSse() {
-    if (closed) return;
-    es = new EventSource(`/auction/api/events?r=${encodeURIComponent(code)}`);
-    es.addEventListener("sid", (e) => { sid = e.data; opened = true; onOpen?.(); });
-    es.onmessage = (e) => onMessage(JSON.parse(e.data));
-    es.onerror = () => { if (closed) return; es.close(); es = null; sid = null; onClose?.(); };
+  async function startPolling() {
+    if (closed || polling) return;
+    polling = true;
+    try {
+      const res = await fetch(`/auction/api/session?r=${encodeURIComponent(code)}`);
+      if (!res.ok) throw new Error("session " + res.status);
+      const data = await res.json();
+      sid = data.sid; opened = true; onOpen?.();
+      for (const m of data.messages) onMessage(m);
+      while (!closed && sid) {
+        const r = await fetch(`/auction/api/poll?sid=${sid}`);
+        if (r.status === 410) throw new Error("session gone");
+        if (!r.ok) { await new Promise((z) => setTimeout(z, 1500)); continue; }
+        for (const m of (await r.json()).messages) onMessage(m);
+      }
+    } catch { if (!closed) { sid = null; polling = false; onClose?.(); } }
   }
   try {
     ws = new WebSocket(`${proto}://${location.host}/auction/ws?r=${encodeURIComponent(code)}`);
@@ -250,10 +260,10 @@ function openTransport({ code, onMessage, onClose, onOpen }) {
     ws.onmessage = (e) => onMessage(JSON.parse(e.data));
     ws.onclose = () => {
       if (closed) return;
-      if (!opened) { ws = null; startSse(); } // рукопожатие не прошло — прокси без WebSocket
+      if (!opened) { ws = null; startPolling(); } // рукопожатие не прошло — прокси без WebSocket
       else onClose?.();
     };
     ws.onerror = () => {};
-  } catch { startSse(); }
+  } catch { startPolling(); }
   return api;
 }

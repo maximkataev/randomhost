@@ -210,52 +210,72 @@ function readJson(req) {
   });
 }
 
-// ---------- запасной транспорт: SSE + POST (когда прокси не пропускает WebSocket) ----------
+// ---------- запасной транспорт: long-polling (когда прокси не пропускает WebSocket и буферизует потоки) ----------
+// GET /auction/api/session?r=CODE → {sid, hello}; GET /auction/api/poll?sid=… → ждёт до 20 с и отдаёт накопленные сообщения;
+// POST /auction/api/msg {sid, msg} — действие. Сессия умирает, если её не опрашивали 40 с.
 
-const sseClients = new Map(); // sid → client (тот же объект, что для ws, с шимом вместо сокета)
+const pollClients = new Map(); // sid → client
 
-function openSse(room, req, res) {
+function openPoll(room) {
   const sid = crypto.randomBytes(12).toString("base64url");
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream; charset=utf-8",
-    "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive",
-    "X-Accel-Buffering": "no", // nginx (и контейнерный, и хостовый) не буферизует поток
-  });
-  res.write(`event: sid\ndata: ${sid}\n\n`);
   const shim = {
     readyState: 1,
-    send: (data) => { try { res.write(`data: ${data}\n\n`); } catch {} },
-    ping: () => { try { res.write(":ping\n\n"); } catch {} },
-    terminate: () => { try { res.end(); } catch {} },
+    queue: [],
+    waiter: null,
+    send: (data) => { shim.queue.push(data); if (shim.waiter) { const w = shim.waiter; shim.waiter = null; w(); } },
+    ping: () => {},
+    terminate: () => closePoll(sid),
   };
-  const client = { ws: shim, playerId: null, host: false, alive: true, sse: true, room };
+  const client = { ws: shim, playerId: null, host: false, alive: true, poll: true, room, sid, lastSeen: now() };
   room.sockets.add(client);
-  sseClients.set(sid, client);
+  pollClients.set(sid, client);
   send(shim, { type: "hello", code: room.code, state: snapshotWithVoting(room), kinds: Object.keys(KINDS) });
-  req.on("close", () => {
-    shim.readyState = 3;
-    room.sockets.delete(client);
-    sseClients.delete(sid);
-    if (client.playerId && ![...room.sockets].some((c) => c.playerId === client.playerId)) {
-      room.game.setOnline(client.playerId, false);
-      afterChange(room, [{ type: "offline", playerId: client.playerId }]);
-    }
-  });
+  return client;
+}
+
+function closePoll(sid) {
+  const client = pollClients.get(sid);
+  if (!client) return;
+  const room = client.room;
+  client.ws.readyState = 3;
+  room.sockets.delete(client);
+  pollClients.delete(sid);
+  if (client.ws.waiter) { const w = client.ws.waiter; client.ws.waiter = null; w(); }
+  if (client.playerId && ![...room.sockets].some((c) => c.playerId === client.playerId)) {
+    room.game.setOnline(client.playerId, false);
+    afterChange(room, [{ type: "offline", playerId: client.playerId }]);
+  }
 }
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json" }); res.end(JSON.stringify(obj)); };
-  if (url.pathname === "/auction/api/events") {
+  if (url.pathname === "/auction/api/session") {
     const room = rooms.get((url.searchParams.get("r") || "").toUpperCase());
     if (!room) return json(404, { error: "no such room" });
-    return openSse(room, req, res);
+    const client = openPoll(room);
+    const first = client.ws.queue.splice(0);
+    return json(200, { sid: client.sid, messages: first.map((d) => JSON.parse(d)) });
+  }
+  if (url.pathname === "/auction/api/poll") {
+    const client = pollClients.get(String(url.searchParams.get("sid") || ""));
+    if (!client) return json(410, { error: "session gone" });
+    client.lastSeen = now();
+    const flush = () => json(200, { messages: client.ws.queue.splice(0).map((d) => JSON.parse(d)) });
+    if (client.ws.queue.length) return flush();
+    // ждём новых сообщений до 20 с (короче любых таймаутов прокси)
+    let done = false;
+    const finish = () => { if (done) return; done = true; clearTimeout(t); client.ws.waiter = null; flush(); };
+    const t = setTimeout(finish, 20000);
+    client.ws.waiter = finish;
+    req.on("close", () => { done = true; clearTimeout(t); if (client.ws.waiter === finish) client.ws.waiter = null; });
+    return;
   }
   if (url.pathname === "/auction/api/msg" && req.method === "POST") {
     const body = await readJson(req);
-    const client = sseClients.get(String(body.sid || ""));
+    const client = pollClients.get(String(body.sid || ""));
     if (!client) return json(410, { error: "session gone" });
+    client.lastSeen = now();
     try { handle(client.room, client, body.msg || {}); } catch (err) { send(client.ws, { type: "error", error: err.message }); }
     return json(200, { ok: true });
   }
@@ -428,7 +448,7 @@ function handle(room, client, msg) {
 setInterval(() => {
   for (const room of rooms.values()) {
     for (const c of room.sockets) {
-      if (c.sse) { c.ws.ping(); continue; }
+      if (c.poll) { if (now() - c.lastSeen > 40000) closePoll(c.sid); continue; }
       if (!c.alive) { c.ws.terminate(); continue; }
       c.alive = false;
       c.ws.ping();
