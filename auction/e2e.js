@@ -28,30 +28,25 @@ function connect(code, first) {
       if (m.type === "host_ok") { c.hostOk = true; resolve(c); }
       if (m.type === "error") reject(new Error(m.error));
     };
-    if (process.env.TRANSPORT === "sse") { startSse(); return; } // принудительно проверить запасной транспорт
+    if (process.env.TRANSPORT === "poll") { startSse(); return; } // принудительно проверить запасной транспорт
     const ws = new WebSocket(WS + code);
     let opened = false;
     ws.on("open", () => { opened = true; c.send = (m) => ws.send(JSON.stringify(m)); ws.send(JSON.stringify(first)); });
     ws.on("message", (raw) => onMsg(JSON.parse(raw)));
-    ws.on("error", () => {});
-    ws.on("close", () => { if (!opened) startSse(); });
-    async function startSse() {
-      c.mode = "sse";
-      const res = await fetch(BASE + "/auction/api/events?r=" + code);
-      if (!res.ok) return reject(new Error("sse " + res.status));
-      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
-      (async () => {
-        for (;;) {
-          const { value, done } = await reader.read(); if (done) break;
-          buf += dec.decode(value, { stream: true });
-          let i; while ((i = buf.indexOf("\n\n")) >= 0) {
-            const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
-            const ev = /^event: (.*)$/m.exec(chunk)?.[1]; const data = chunk.split("\n").filter((l) => l.startsWith("data: ")).map((l) => l.slice(6)).join("\n");
-            if (ev === "sid") { const sid = data; c.send = (m) => fetch(BASE + "/auction/api/msg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid, msg: m }) }).catch(() => {}); c.send(first); }
-            else if (data) onMsg(JSON.parse(data));
-          }
-        }
-      })();
+    let fell = false;
+    const fallback = () => { if (!opened && !fell) { fell = true; startSse(); } };
+    ws.on("error", fallback);
+    ws.on("close", fallback);
+    async function startSse() { // long-polling, как у страниц
+      c.mode = "poll";
+      const res = await fetch(BASE + "/auction/api/session?r=" + code);
+      if (!res.ok) return reject(new Error("session " + res.status));
+      const data = await res.json();
+      const sid = data.sid;
+      c.send = (m) => fetch(BASE + "/auction/api/msg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid, msg: m }) }).catch(() => {});
+      for (const m of data.messages) onMsg(m);
+      c.send(first);
+      (async () => { for (;;) { const r = await fetch(BASE + "/auction/api/poll?sid=" + sid); if (r.status === 410) return; if (!r.ok) { await wait(1000); continue; } for (const m of (await r.json()).messages) onMsg(m); } })().catch(() => {});
     }
     setTimeout(() => reject(new Error("connect timeout")), 15000);
   });
