@@ -37,12 +37,22 @@ jobs:
             -e "ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SERVER_PORT }}" \
             ./ ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/opt/randomhostwebsite/
 
+      # Сначала собираем образы, и только потом подменяем контейнеры. Раньше здесь стояло
+      # `docker rm -f randomhost && docker compose up -d --build`: сайт лежал всю сборку,
+      # а при ошибке сборки оставался лежать совсем — контейнер уже удалён, новый не поднялся.
       - name: Rebuild and restart randomhost
         run: |
           ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
-            'cd /opt/randomhostwebsite && docker rm -f randomhost 2>/dev/null || true && docker compose up -d --build'
+            'cd /opt/randomhostwebsite && docker compose build && docker compose up -d --force-recreate --remove-orphans'
 
+      # Проверка ждёт, пока контейнеры поднимутся, и падает, если сайт или аукцион не отвечают:
+      # молчаливый зелёный деплой при лежащем сайте — худший из возможных исходов.
       - name: Post-check
         run: |
           ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
-            'docker ps | grep randomhost; curl -I http://127.0.0.1:8080/ | head -n 5; curl -sf http://127.0.0.1:8080/auction/api/health'
+            'docker ps | grep randomhost
+             for i in $(seq 1 30); do
+               curl -sf http://127.0.0.1:8080/ -o /dev/null && curl -sf http://127.0.0.1:8080/auction/api/health && exit 0
+               sleep 2
+             done
+             echo "сайт или аукцион не отвечают после деплоя"; docker compose -f /opt/randomhostwebsite/docker-compose.yml logs --tail 40; exit 1'
