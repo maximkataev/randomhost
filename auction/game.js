@@ -104,7 +104,9 @@ class Game {
   addPlayer({ id, name }) {
     const s = this.s;
     if (s.players.some((p) => p.id === id)) return this.player(id);
-    const base = name.trim().slice(0, 24) || "Игрок";
+    // запасное имя тоже на языке партии: пустое имя клиент не пропускает, но по сети прийти может
+    const FALLBACK = { ru: "Игрок", en: "Player", el: "Παίκτης" };
+    const base = name.trim().slice(0, 24) || FALLBACK[s.settings.lang] || FALLBACK.ru;
     let final = base;
     for (let n = 2; s.players.some((p) => p.name === final); n++) final = `${base} ${n}`;
     const p = { id, name: final, money: s.settings.budget, spent: 0, lots: [], online: true, left: false };

@@ -211,6 +211,14 @@ function send(ws, msg) {
 
 // ---------- судья ----------
 
+// Единственный текст, который сервер пишет клиенту сам, — остальное приходит от модели уже
+// на языке партии. Без этой таблицы он оставался русским на английском и греческом экране.
+const NO_JUDGE_SUMMARY = {
+  ru: "Судить некого — играли не все.",
+  en: "Nothing to judge — not everyone played.",
+  el: "Δεν υπάρχει τι να κριθεί — δεν έπαιξαν όλοι.",
+};
+
 async function startJudging(room) {
   const g = room.game;
   const s = g.s;
@@ -218,7 +226,7 @@ async function startJudging(room) {
   const players = s.players.filter((p) => !p.left && p.lots.length);
   if (players.length < 2) {
     const r = players.map((p) => ({ playerId: p.id, score: 100, verdict: "" }));
-    afterChange(room, g.setJudgeResults(r, "Судить некого — играли не все."));
+    afterChange(room, g.setJudgeResults(r, NO_JUDGE_SUMMARY[s.settings.lang] || NO_JUDGE_SUMMARY.ru));
     room.judging = false;
     return;
   }
