@@ -489,3 +489,14 @@ test("язык: судья получает инструкцию отвечат�
   assert.match(buildPrompt("artist", lu, 3, "base", "en"), /empty/);
   assert.ok(!/пусто/.test(buildPrompt("artist", lu, 3, "base", "en")), "в английский промпт просочилось «пусто»");
 });
+
+test("имя комнаты: задаётся ведущим, чистится и не заменяет код", () => {
+  assert.equal(clampSettings({}).title, "", "по умолчанию имени нет");
+  assert.equal(clampSettings({ title: "  Днюха   Ани " }).title, "Днюха Ани", "пробелы схлопнуты");
+  assert.equal(clampSettings({ title: "x".repeat(200) }).title.length, 40, "длина ограничена");
+  for (const bad of [{}, [], 7, null, undefined]) assert.equal(clampSettings({ title: bad }).title, "", `мусор ${JSON.stringify(bad)}`);
+  // имя — только подпись: код комнаты генерируется сервером и от него не зависит
+  const g = Game.create({ kind: "test", cards, settings: { title: "Днюха" }, rng });
+  assert.equal(g.s.settings.title, "Днюха");
+  assert.equal(g.s.code, undefined, "код живёт в комнате на сервере, а не в настройках партии");
+});

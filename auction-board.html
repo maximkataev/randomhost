@@ -385,6 +385,12 @@
   .thinking .dice { font-size: 56px; display: inline-block; animation: roll .9s linear infinite; }
   @keyframes roll { to { transform: rotate(360deg); } }
 
+  /* Имя комнаты: ведущий набирает его прямо на плакате. Поле без рамки, чтобы не выглядело
+     анкетой; код под ним остаётся главным — по нему заходят. */
+  .roomtitle { width: 100%; background: none; border: 0; outline: none; text-align: center; color: var(--text);
+    font: 700 clamp(15px, 1.5vw, 22px)/1.2 var(--body); padding: 2px 6px 6px; border-radius: 10px; }
+  .roomtitle::placeholder { color: rgba(244, 242, 255, .35); font-weight: 500; }
+  .roomtitle:focus { background: rgba(255, 255, 255, .07); }
   .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); backdrop-filter: blur(6px); display: none; place-items: center; z-index: 50; font: 900 40px var(--display); text-transform: uppercase; pointer-events: none; }
   .overlay.on { display: grid; }
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #ff6b6b; color: #fff; padding: 10px 16px; border-radius: 12px; font-weight: 600; display: none; z-index: 60; }
@@ -442,6 +448,7 @@ window.I18N_DICT = {
     resume_game: `▶ Продолжить игру`,
     judge_failed: `Судья не ответил — голосуем`,
     /* лобби */
+    room_title_ph: `Назови комнату — например, «Днюха Ани»`,
     lobby_open: `Комната открыта`,
     lobby_hint: `Сканируй QR или открой ссылку и введи имя`,
     players: `Игроки`,
@@ -564,6 +571,7 @@ window.I18N_DICT = {
     paused: `Paused`,
     resume_game: `▶ Resume game`,
     judge_failed: `The judge went quiet — we vote`,
+    room_title_ph: `Name the room — like “Anna’s birthday”`,
     lobby_open: `Room is open`,
     lobby_hint: `Scan the QR or open the link and type your name`,
     players: `Players`,
@@ -682,6 +690,7 @@ window.I18N_DICT = {
     paused: `Παύση`,
     resume_game: `▶ Συνέχεια`,
     judge_failed: `Ο κριτής δεν απάντησε — ψηφίζουμε`,
+    room_title_ph: `Δώσε όνομα στο δωμάτιο — π.χ. «Γενέθλια της Άννας»`,
     lobby_open: `Το δωμάτιο άνοιξε`,
     lobby_hint: `Σκανάρετε το QR ή ανοίξτε το λινκ και γράψτε όνομα`,
     players: `Παίκτες`,
@@ -960,6 +969,7 @@ function buildLobby() {
       <div class="joincol">
       <section class="join card-l2">
         <div class="eyebrow"><i></i>${T("lobby_open")}</div>
+        <input class="roomtitle" id="roomtitle" maxlength="40" placeholder="${escapeHtml(T("room_title_ph"))}" autocomplete="off">
         <div class="code">${CODE}</div>
         <div class="qrbox"><div id="qr"></div></div>
         <div class="url">${escapeHtml(url.replace(/^https?:\/\//, ""))}</div>
@@ -1028,17 +1038,25 @@ function buildLobby() {
   // любое изменение контрола уходит хосту тем же сообщением settings
   const push = (patch) => {
     const s = state.settings;
-    const next = { kind: state.kind, budget: Number(s.budget), slots: Number(s.slots), judge: s.judge, mode: s.mode || "base", lang: lang(), ...patch };
+    const next = { kind: state.kind, budget: Number(s.budget), slots: Number(s.slots), judge: s.judge, mode: s.mode || "base", lang: lang(), title: s.title || "", ...patch };
     next.budget = Math.min(200, Math.max(10, next.budget));
     next.slots = Math.min(8, Math.max(3, next.slots));
     // задание живёт не во всех категориях: при смене категории недоступное сбрасываем на обычное
     if (window.auctionModesForKind && !auctionModesForKind(next.kind).some((m) => m.id === next.mode)) next.mode = "base";
     // оптимистично применяем локально — контрол реагирует мгновенно, сервер пришлёт подтверждение
-    state.kind = next.kind; state.settings.budget = next.budget; state.settings.slots = next.slots; state.settings.judge = next.judge; state.settings.mode = next.mode; state.settings.lang = next.lang;
+    state.kind = next.kind; state.settings.budget = next.budget; state.settings.slots = next.slots; state.settings.judge = next.judge; state.settings.mode = next.mode; state.settings.lang = next.lang; state.settings.title = next.title;
     document.body.dataset.kind = next.kind;
-    sendMsg({ type: "settings", kind: next.kind, settings: { budget: next.budget, slots: next.slots, judge: next.judge, mode: next.mode, lang: next.lang } });
+    sendMsg({ type: "settings", kind: next.kind, settings: { budget: next.budget, slots: next.slots, judge: next.judge, mode: next.mode, lang: next.lang, title: next.title } });
     syncLobby();
   };
+  // Имя комнаты уходит на сервер по потере фокуса и по Enter, а не на каждую букву:
+  // иначе каждое нажатие рассылало бы состояние всем телефонам.
+  var titleInput = document.getElementById("roomtitle");
+  if (titleInput) {
+    var pushTitle = function () { if (titleInput.value !== (state.settings.title || "")) push({ title: titleInput.value }); };
+    titleInput.addEventListener("blur", pushTitle);
+    titleInput.addEventListener("keydown", function (e) { if (e.key === "Enter") { titleInput.blur(); } });
+  }
   const pick = (box, key, cast) => document.getElementById(box).addEventListener("click", (e) => {
     const hit = e.target.closest("[data-v],[data-d]");
     if (!hit) return;
@@ -1082,6 +1100,10 @@ function syncLobby() {
   const players = s.players.filter((p) => !p.left);
   const n = players.length;
 
+  // Имя комнаты приходит в состоянии: так его видит вторая доска и оно переживает перерисовку.
+  // Пока ведущий печатает, поле не трогаем — иначе курсор прыгал бы на каждое обновление.
+  var ti = document.getElementById("roomtitle");
+  if (ti && document.activeElement !== ti && ti.value !== (s.settings.title || "")) ti.value = s.settings.title || "";
   markOn("kind", s.kind);
   const modes = window.auctionModesForKind ? auctionModesForKind(s.kind) : [];
   const current = modeT(s.settings.mode, s.kind) || { id: "base" };

@@ -28,6 +28,9 @@ const DEFAULTS = {
   // Язык партии: на нём приходят лоты и отвечает судья. Ставится один на комнату, а не на
   // устройство: все смотрят в один экран, и разноязычные карточки за одним столом бессмысленны.
   lang: "ru",
+  // Имя комнаты, которое ведущий может задать сам («Днюха Ани»). Код в ссылке при этом остаётся
+  // сгенерированным: он должен быть коротким и без коллизий, а набирать его руками никто не должен.
+  title: "",
   media: true,
 };
 
@@ -50,6 +53,7 @@ function clampSettings(input = {}, kind) {
   if (typeof input.mode === "string" && modeById(input.mode).id === input.mode) s.mode = input.mode;
   if (kind && !modesForKind(kind).some((m) => m.id === s.mode)) s.mode = "base";
   if (input.lang === "ru" || input.lang === "en" || input.lang === "el") s.lang = input.lang;
+  if (typeof input.title === "string") s.title = input.title.replace(/\s+/g, " ").trim().slice(0, 40);
   if (typeof input.media === "boolean") s.media = input.media;
   return s;
 }
