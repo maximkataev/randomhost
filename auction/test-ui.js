@@ -14,8 +14,15 @@ const WebSocket = require("ws");
 const { modeText } = require("./modes");
 // комната в тесте — категория film, у неё своё название задания («Худший киномарафон»)
 const WORST = modeText("worst", "film").title;
-const WORST_RE = new RegExp(WORST.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-const BASE_RE = new RegExp(modeText("base", "film").title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+const reOf = (s) => new RegExp(String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+const WORST_RE = reOf(WORST);
+const BASE_RE = reOf(modeText("base", "film").title);
+// Название и критерий задания тоже берём у страницы: auction-modes.js переводит их сам,
+// а на каком языке сейчас экран — знает его же i18n (см. i18nFrag ниже для словарных ключей).
+const modeTitle = (page, id, kind) => evaluateSafe(page,
+  `(window.auctionModeText && window.I18N) ? (auctionModeText(${JSON.stringify(id)}, ${JSON.stringify(kind)}, I18N.lang).title || "") : ""`);
+const modeJudge = (page, id, kind) => evaluateSafe(page,
+  `(window.auctionModeText && window.I18N) ? (auctionModeText(${JSON.stringify(id)}, ${JSON.stringify(kind)}, I18N.lang).judge || "") : ""`);
 
 const BASE = (process.argv[2] || "http://localhost:3000").replace(/\/$/, "");
 const OUT = process.argv[3] || path.join(__dirname, "state", "ui");
@@ -92,7 +99,7 @@ async function typeText(page, text) {
     check((await evaluateSafe(remote, "document.getElementById('name').value")) === "Макс", "пульт: имя вводится");
     await remote.call("Runtime.evaluate", { expression: "document.getElementById('go').click()" });
     await wait(2500);
-    check(/K|комнате|Ждём/i.test(await evaluateSafe(remote, "document.body.innerText")), "пульт: попал в лобби после входа");
+    check(hasFrag(await evaluateSafe(remote, "document.body.innerText"), await i18nFrag(remote, "lobby_sub")), "пульт: попал в лобби после входа");
     await remote.shot("ui_remote_lobby");
     await wait(500);
     check(await evaluateSafe(board, "document.body.innerText.includes('Макс')"), "доска: игрок появился в лобби");
@@ -101,7 +108,12 @@ async function typeText(page, text) {
     await board.call("Runtime.evaluate", { expression: `[...document.querySelectorAll("#mode .tile")].find(x => x.dataset.v === "worst").click()` });
     await wait(1200);
     check((await evaluateSafe(board, "state && state.settings.mode")) === "worst", "доска: выбранное задание дошло до сервера");
-    check(/нелеп|несочетаем/i.test(await evaluateSafe(board, "document.getElementById('modehint').textContent") || ""), "доска: подсказка объясняет, как судит ИИ");
+    // подсказка обязана пересказывать именно «что сделает судья» — сверяем с текстом задания на языке доски
+    const hintJudge = await modeJudge(board, "worst", "film");
+    const hintText = await evaluateSafe(board, "document.getElementById('modehint').textContent") || "";
+    check(!!hintJudge && hintText.includes(hintJudge), "доска: подсказка объясняет, как судит ИИ");
+    // задание на языке доски: её экраны сверяем с ним, а не с русской строкой из modes.js
+    const boardWorst = (await modeTitle(board, "worst", "film")) || WORST;
     check(WORST_RE.test(await evaluateSafe(remote, "document.body.innerText") || ""), "пульт: задание видно в лобби");
     // задание, которого нет в новой категории, откатывается на обычное
     // «Лига суперзлодеев» есть у персонажей, но не у городов — переключаемся туда, где она доступна
@@ -127,11 +139,11 @@ async function typeText(page, text) {
     const introPhase = await evaluateSafe(board, "state && state.phase");
     check(introPhase === "intro", "доска: партия открывается заставкой (" + introPhase + ")");
     const introText = await evaluateSafe(board, "(document.getElementById('intro') || {}).textContent || ''");
-    check(WORST_RE.test(introText), "доска: на заставке крупно показано задание");
+    check(hasFrag(introText, boardWorst), "доска: на заставке крупно показано задание");
     check(/ChatGPT|голосован/i.test(introText), "доска: на заставке сказано, кто выберет победителя");
     check(!(await evaluateSafe(board, "!!(state && state.lot)")), "доска: во время заставки лот не раскрыт");
     const rIntro = await evaluateSafe(remote, "document.body.innerText");
-    check(/большой экран/i.test(rIntro || ""), "пульт: на заставке отправляет смотреть на экран");
+    check(hasFrag(rIntro, await i18nFrag(remote, "intro_watch")), "пульт: на заставке отправляет смотреть на экран");
     // отсчёт появляется в последние 3 секунды
     let count = "";
     for (let i = 0; i < 30 && !/^[123]$/.test(count); i++) { count = (await evaluateSafe(board, "(document.getElementById('count') || {}).textContent || ''")).trim(); await wait(200); }
@@ -159,12 +171,16 @@ async function typeText(page, text) {
     check(/^\d+$/.test(tnum || ""), "доска: таймер показывает секунды (" + tnum + ")");
     await board.shot("ui_board_game");
     await wait(1500);
-    const rtext = await evaluateSafe(remote, "document.body.innerText");
-    check(/Перебить|лидер|Ждём|Не хватает|Следующий|Забрать|На мели/i.test(rtext), "пульт: игровой экран");
+    const rtext = await evaluateSafe(remote, "document.body.innerText") || "";
+    // на игровом экране в любой момент видно что-то одно из этого набора
+    const actionKeys = ["bid_btn", "lead_me_title", "next_lot", "take_free", "broke_title", "not_enough_title", "done_title"];
+    const actions = [];
+    for (const k of actionKeys) actions.push(await i18nFrag(remote, k));
+    check(actions.some((f) => hasFrag(rtext, f)), "пульт: игровой экран");
     const rnum = await evaluateSafe(remote, "document.getElementById('tnum') && document.getElementById('tnum').textContent");
     check(/^\d*$/.test(rnum || ""), "пульт: таймер-кольцо есть (" + rnum + ")");
     await remote.shot("ui_remote_game");
-    check(WORST_RE.test(await evaluateSafe(board, "document.getElementById('gtask') && document.getElementById('gtask').textContent") || ""), "доска: задание видно во время торгов");
+    check(hasFrag(await evaluateSafe(board, "document.getElementById('gtask') && document.getElementById('gtask').textContent") || "", boardWorst), "доска: задание видно во время торгов");
     check(WORST_RE.test(await evaluateSafe(remote, "document.getElementById('task') && document.getElementById('task').textContent") || ""), "пульт: задание видно во время торгов");
     // ставка с пульта
     await remote.call("Runtime.evaluate", { expression: "(document.getElementById('bid') || {click(){}}).click()" });
@@ -181,10 +197,12 @@ async function typeText(page, text) {
     await board.shot("ui_board_final");
     await remote.shot("ui_remote_final");
     const ftext = await evaluateSafe(board, "document.body.innerText");
-    check(/Итоги|Голосование|Судья/i.test(ftext), "доска: экран финала");
+    const finTitles = [];
+    for (const k of ["results_title", "vote_title", "judging"]) finTitles.push(await i18nFrag(board, k));
+    check(finTitles.some((f) => hasFrag(ftext, f)), "доска: экран финала");
     // на итогах задание подписано — иначе вердикты «за нелепость» выглядят как ошибка судьи
     const finTask = await evaluateSafe(board, "(document.querySelector('.final .ftask') || {}).textContent || ''");
-    check(!/Итоги/.test(ftext) || WORST_RE.test(finTask), "доска: задание подписано на итогах (" + finTask.slice(0, 60) + ")");
+    check(!hasFrag(ftext, finTitles[0]) || hasFrag(finTask, boardWorst), "доска: задание подписано на итогах (" + finTask.slice(0, 60) + ")");
 
     // --- экран голосования: без подписи задания игроки голосуют за лучший набор вместо худшего.
     // Состояние подставляем прямо в клиент: ветка voting иначе воспроизводится только через
@@ -194,7 +212,7 @@ async function typeText(page, text) {
       render();
       return document.body.innerText;
     })()`);
-    check(WORST_RE.test(boardVote || ""), "доска: задание подписано на экране голосования");
+    check(hasFrag(boardVote || "", boardWorst), "доска: задание подписано на экране голосования");
     const remoteVote = await evaluateSafe(remote, `(() => {
       state.phase = "finished"; state.results = null; state.votes = 0; state.voting = { deadline: Date.now() + 30000 };
       render();
@@ -242,7 +260,7 @@ async function typeText(page, text) {
     await noModes.call("Runtime.evaluate", { expression: "document.getElementById('go').click()" });
     await wait(2500);
     const noModesText = await evaluateSafe(noModes, "document.body.innerText") || "";
-    check(/комнате|Ждём/i.test(noModesText), "пульт без auction-modes.js: вход в лобби работает");
+    check(hasFrag(noModesText, await i18nFrag(noModes, "lobby_sub")), "пульт без auction-modes.js: вход в лобби работает");
     check(!(WORST_RE.test(noModesText) || BASE_RE.test(noModesText)), "пульт без auction-modes.js: не выдумывает задание (" + noModesText.replace(/\n/g, " ").slice(0, 70) + ")");
     check(noModes.errors.filter((e) => !/ERR_BLOCKED_BY_CLIENT/.test(e)).length === 0, "пульт без auction-modes.js: без JS-ошибок" + (noModes.errors.length ? ": " + noModes.errors[0] : ""));
     await noModes.close();
@@ -254,3 +272,19 @@ async function typeText(page, text) {
 })().catch((e) => { console.error("ERROR", e); process.exit(1); });
 
 async function evaluateSafe(page, expr) { try { return await page.evaluate(expr); } catch { return null; } }
+
+// Ожидаемые подписи пульта берём из его же словаря (window.I18N_DICT), а не хардкодим:
+// страница переведена на ru/en/el, и тест обязан быть зелёным на любом языке.
+// Из значения выкидываем HTML-теги и берём самый длинный кусок без {подстановок}.
+async function i18nFrag(page, key) {
+  const v = await evaluateSafe(page, `(() => {
+    const D = window.I18N_DICT || {}, d = D[(window.I18N || {}).lang || "ru"] || D.ru || {}, s = d[${JSON.stringify(key)}];
+    if (typeof s !== "string") return "";
+    return s.replace(/<[^>]*>/g, "").split(/\\{\\w+\\}/).map((x) => x.trim()).sort((a, b) => b.length - a.length)[0] || "";
+  })()`);
+  return v || "\u0000нет ключа " + key; // пустую строку includes() нашёл бы где угодно
+}
+// innerText отдаёт текст уже после text-transform: uppercase, а греческие заглавные теряют ударения.
+// Поэтому сравниваем без регистра и без диакритики.
+const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const hasFrag = (text, frag) => norm(text).includes(norm(frag));

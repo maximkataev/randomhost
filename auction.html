@@ -124,6 +124,12 @@
   /* ===== стартовый экран: «аукционный зал» ===== */
   body.m-start, body.m-enter, body.m-final { height: auto; min-height: 100vh; min-height: 100dvh; overflow-y: auto; }
 
+  /* Переключатель языка (его вставляет i18n.js) висит в правом верхнем углу — ровно там, где
+     во время торгов стоят номер лота и деньги. Свободного места в этой строке нет даже на 320px,
+     поэтому на игровом экране переключатель прячем: язык меняют на входе, в лобби или на финале,
+     а в торгах интерфейс и так почти весь из цифр. */
+  body.m-game .lang-switch { display: none; }
+
   /* служебная строка: назад в каталог + звук. Только на входных экранах — в игре руки заняты ставкой.
      Правый верхний угол оставлен пустым: туда i18n.js кладёт фиксированный .lang-switch. */
   .util { position: fixed; left: 14px; top: calc(10px + env(safe-area-inset-top)); z-index: 30; display: none; align-items: center; gap: 8px; }
@@ -288,7 +294,9 @@
   }
 
   /* вход и лобби: экран ожидания стоит ровно по центру по вертикали */
-  .center { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 12px; }
+  /* 52px сверху — зазор под переключателем языка: на 320px длинный заголовок («Δημοπρασία»)
+     иначе подлезал под него, когда содержимого много и центрирование упирается в верх экрана */
+  .center { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 12px; padding-top: 52px; }
   /* экран ввода имени: страница должна скроллиться, иначе мобильная клавиатура накрывает поле */
 
   /* 62px снизу — гарантированный зазор под служебной строкой «Все игры / звук» (в том числе в ландшафте) */
@@ -345,7 +353,7 @@
 </head>
 <body>
 <div class="bg"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div><div class="grain"></div></div>
-<div class="util"><a href="index.html">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
+<div class="util"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
 <div class="screen" id="app"></div>
 <div class="overlay" id="overlay"></div>
 <div class="sheet" id="sheet"></div>
@@ -354,56 +362,427 @@
 <script src="sound-toggle.js" defer></script>
 <script src="auction-modes.js"></script>
 <script src="auction-shared.js"></script>
+
+<!-- Словарь объявляем ДО i18n.js, а i18n.js — до основного скрипта (без defer):
+     основной скрипт строит экраны сразу при разборе страницы и уже спрашивает I18N.t(). -->
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Аукцион`,
+    nav_all_games: `← Все игры`,
+
+    /* стартовый экран */
+    start_eyebrow: `Игра для компании · телефоны + один экран`,
+    h1_a: `Аук`,
+    h1_b: `цион`,
+    start_lede: `У каждого <b>$30</b> и <b>5 слотов</b>. Лоты выпадают по одному, торгуетесь в реальном времени, кто победил — забирает. В конце <b>ИИ-судья</b> разбирает составы и объявляет победителя.`,
+    stage_live: `Идут торги`,
+    stage_foot: `Названия закрыты — откроются на торгах`,
+    pick_cap: `Выбери категорию`,
+    pick_cap_n: `Выбери категорию · {n} {w}`,
+    stage_kind_n: `{kind} · {n} {w}`,
+    plural_lot: [`лот`, `лота`, `лотов`],
+    plural_slot: [`слот`, `слота`, `слотов`],
+    plural_vote: [`голос`, `голоса`, `голосов`],
+    btn_create: `Создать комнату`,
+    btn_creating: `Создаём…`,
+    cta_sub: `Открывай на ноутбуке или ТВ — здесь будет доска`,
+    have_code: `У меня есть код →`,
+    step1_t: `Комната и QR`,
+    step1_d: `Друзья сканируют код с экрана и заходят с телефонов`,
+    step2_t: `Торги`,
+    step2_d: `20 секунд на лот, каждая ставка даёт ещё 5. Никто не перебил — лот твой`,
+    step3_t: `Судья`,
+    step3_d: `ChatGPT оценивает лайнапы и выдаёт вердикт с юмором`,
+    err_create: `Не получилось создать комнату`,
+    prompt_code: `Код комнаты (4 буквы)`,
+    stamp_sold: `Продано`,
+    lc_lot_no: `<b>лот</b>№&nbsp;{n}`,
+
+    /* вход */
+    join_room: `Комната <b>{code}</b>. Как тебя зовут?`,
+    join_label: `Имя, которое увидят на доске`,
+    ph_name: `Имя`,
+    btn_go: `Войти`,
+    err_started: `Игра уже идёт — попроси хоста впустить тебя, или подожди следующую`,
+    err_room_full: `Комната заполнена`,
+
+    /* оверлеи */
+    ov_replaced: `Ты открыл игру на другом устройстве`,
+    ov_kicked: `Хост убрал тебя из игры`,
+    ov_offline: `Нет связи — переподключаемся…`,
+    ov_paused: `Пауза — ждём ведущего`,
+
+    /* сообщения под кнопкой ставки */
+    note_send_fail: `Ставка не прошла — нажми ещё раз`,
+    note_outbid: `Перебили!`,
+    rej_price_changed: `Цена уже выросла`,
+    rej_too_low: `Ставка ниже текущей`,
+    rej_not_enough_money: `Не хватает денег`,
+    rej_already_leader: `Ты и так лидер`,
+    rej_closed: `Лот уже ушёл`,
+    rej_cannot_bid: `Сейчас нельзя ставить`,
+
+    /* заставка и лобби */
+    intro_watch: `Смотри на большой экран`,
+    intro_starting: `Начинаем…`,
+    task_eyebrow: `Задание партии`,
+    lobby_sub: `Ты в комнате <b>{code}</b>. Ждём, пока хост начнёт.`,
+    lobby_budget: `У тебя {money} и {slots} {w}.`,
+    lobby_judge_vote: `Победителя выбираете вы — голосованием`,
+    lobby_judge_ai: `Победителя выберет ChatGPT — он {how}`,
+
+    /* торги */
+    lot_counter: `лот {n}/{total}`,
+    cap_leader: `Лидер`,
+    you: `Ты`,
+    cap_min: `Минимум {money}`,
+    no_bids: `Ставок нет`,
+    cap_pickup: `Разбор`,
+    pickup_none: `Без ставок`,
+    cap_sold: `Продано`,
+    cap_taken: `Забрали`,
+    yours: `Твой!`,
+    for_free: `бесплатно`,
+    nobody_took: `Никто не взял`,
+    more_btn: `подробнее ▸`,
+    done_title: `Готово!`,
+    done_text: `Лайнап собран — смотри на доску`,
+    take_free: `Забрать бесплатно`,
+    already_taken: `Кто-то уже забрал`,
+    pickup_hint: `Лот без ставок уходит тем, у кого $0`,
+    next_lot: `Следующий лот…`,
+    broke_title: `На мели`,
+    broke_text: `Ждём лот без ставок — его можно забрать бесплатно`,
+    lead_me_title: `Ты лидер`,
+    lead_me_text: `{money} — ждём, перебьют ли`,
+    not_enough_title: `Не хватает`,
+    not_enough_text: `У тебя {have}, нужно {need}`,
+    bid_btn: `Перебить {money}`,
+    plus5_btn: `+$5 → {money}`,
+    sheet_fact: `Факт`,
+    sheet_close: `Закрыть`,
+
+    /* финал и голосование */
+    vote_h1_a: `Голо`,
+    vote_h1_b: `суй`,
+    vote_sub: `За чужой лайнап, один голос. Проголосовало {n}/{total}.`,
+    vote_btn: `Голос`,
+    judge_h1_a: `Судья `,
+    judge_h1_b: `думает`,
+    judge_sub: `ChatGPT читает лайнапы`,
+    place_n: `{n}-е`,
+    votes_score: `{n} {w}`,
+    final_no_judge: `Ты не участвовал в судействе`,
+    final_foot: `Результаты на доске. Хост может запустить ещё одну игру.`
+  },
+
+  en: {
+    _title: `Auction`,
+    nav_all_games: `← All games`,
+
+    start_eyebrow: `Party game · phones + one big screen`,
+    h1_a: `Auc`,
+    h1_b: `tion`,
+    start_lede: `Everyone gets <b>$30</b> and <b>5 slots</b>. Lots drop one at a time, you bid against each other live, and whoever wins keeps it. At the end an <b>AI judge</b> goes through the lineups and names the winner.`,
+    stage_live: `Live bidding`,
+    stage_foot: `Names stay hidden until the bidding starts`,
+    pick_cap: `Pick a category`,
+    pick_cap_n: `Pick a category · {n} {w}`,
+    stage_kind_n: `{kind} · {n} {w}`,
+    plural_lot: [`lot`, `lots`, `lots`],
+    plural_slot: [`slot`, `slots`, `slots`],
+    plural_vote: [`vote`, `votes`, `votes`],
+    btn_create: `Create a room`,
+    btn_creating: `Creating…`,
+    cta_sub: `Open this on a laptop or TV — that screen becomes the board`,
+    have_code: `I have a code →`,
+    step1_t: `Room and QR`,
+    step1_d: `Friends scan the code off the screen and join from their phones`,
+    step2_t: `Bidding`,
+    step2_d: `20 seconds per lot, every bid adds 5 more. Nobody outbids you — the lot is yours`,
+    step3_t: `The judge`,
+    step3_d: `ChatGPT rates the lineups and hands down a verdict with a wink`,
+    err_create: `Couldn't create the room`,
+    prompt_code: `Room code (4 letters)`,
+    stamp_sold: `Sold`,
+    lc_lot_no: `<b>lot</b>#&nbsp;{n}`,
+
+    join_room: `Room <b>{code}</b>. What's your name?`,
+    join_label: `The name everyone sees on the board`,
+    ph_name: `Name`,
+    btn_go: `Join`,
+    err_started: `The game is already running — ask the host to let you in, or wait for the next one`,
+    err_room_full: `The room is full`,
+
+    ov_replaced: `You opened the game on another device`,
+    ov_kicked: `The host removed you from the game`,
+    ov_offline: `No connection — reconnecting…`,
+    ov_paused: `Paused — waiting for the host`,
+
+    note_send_fail: `Bid didn't go through — tap again`,
+    note_outbid: `Outbid!`,
+    rej_price_changed: `The price already went up`,
+    rej_too_low: `Your bid is below the current one`,
+    rej_not_enough_money: `Not enough money`,
+    rej_already_leader: `You're already ahead`,
+    rej_closed: `That lot is gone`,
+    rej_cannot_bid: `You can't bid right now`,
+
+    intro_watch: `Look at the big screen`,
+    intro_starting: `Here we go…`,
+    task_eyebrow: `Your mission`,
+    lobby_sub: `You're in room <b>{code}</b>. Waiting for the host to start.`,
+    lobby_budget: `You've got {money} and {slots} {w}.`,
+    lobby_judge_vote: `You pick the winner yourselves — by vote`,
+    lobby_judge_ai: `ChatGPT picks the winner — it {how}`,
+
+    lot_counter: `lot {n}/{total}`,
+    cap_leader: `Leader`,
+    you: `You`,
+    cap_min: `Minimum {money}`,
+    no_bids: `No bids yet`,
+    cap_pickup: `Giveaway`,
+    pickup_none: `Nobody bid`,
+    cap_sold: `Sold`,
+    cap_taken: `Taken`,
+    yours: `Yours!`,
+    for_free: `for free`,
+    nobody_took: `Nobody took it`,
+    more_btn: `more ▸`,
+    done_title: `All set!`,
+    done_text: `Your lineup is full — watch the board`,
+    take_free: `Take it for free`,
+    already_taken: `Someone grabbed it already`,
+    pickup_hint: `A lot nobody bids on goes to players with $0`,
+    next_lot: `Next lot…`,
+    broke_title: `Broke`,
+    broke_text: `Wait for a lot nobody bids on — that one you can take for free`,
+    lead_me_title: `You're ahead`,
+    lead_me_text: `{money} — let's see if anyone outbids you`,
+    not_enough_title: `Short on cash`,
+    not_enough_text: `You have {have}, you need {need}`,
+    bid_btn: `Bid {money}`,
+    plus5_btn: `+$5 → {money}`,
+    sheet_fact: `Fact`,
+    sheet_close: `Close`,
+
+    vote_h1_a: `Vo`,
+    vote_h1_b: `te`,
+    vote_sub: `One vote each, and not for your own lineup. {n}/{total} have voted.`,
+    vote_btn: `Vote`,
+    judge_h1_a: `Judge is `,
+    judge_h1_b: `thinking`,
+    judge_sub: `ChatGPT is reading the lineups`,
+    place_n: `{n}th`,
+    votes_score: `{n} {w}`,
+    final_no_judge: `You weren't part of the judging`,
+    final_foot: `Full results are on the board. The host can start another game.`
+  },
+
+  el: {
+    _title: `Δημοπρασία`,
+    nav_all_games: `← Όλα τα παιχνίδια`,
+
+    start_eyebrow: `Παιχνίδι για παρέα · κινητά + μία οθόνη`,
+    h1_a: `Δημο`,
+    h1_b: `πρασία`,
+    start_lede: `Ο καθένας παίρνει <b>$30</b> και <b>5 θέσεις</b>. Τα λοτ βγαίνουν ένα-ένα, δίνετε προσφορές σε πραγματικό χρόνο και το παίρνει όποιος κερδίσει. Στο τέλος ένας <b>κριτής AI</b> ζυγίζει τις συνθέσεις και ανακοινώνει τον νικητή.`,
+    stage_live: `Ζωντανά τώρα`,
+    stage_foot: `Τα ονόματα είναι κρυφά — ανοίγουν στη δημοπρασία`,
+    pick_cap: `Διάλεξε κατηγορία`,
+    pick_cap_n: `Διάλεξε κατηγορία · {n} {w}`,
+    stage_kind_n: `{kind} · {n} {w}`,
+    plural_lot: [`λοτ`, `λοτ`, `λοτ`],
+    plural_slot: [`θέση`, `θέσεις`, `θέσεις`],
+    plural_vote: [`ψήφος`, `ψήφοι`, `ψήφοι`],
+    btn_create: `Νέο δωμάτιο`,
+    btn_creating: `Δημιουργία…`,
+    cta_sub: `Άνοιξέ το σε λάπτοπ ή τηλεόραση — αυτή η οθόνη γίνεται ο πίνακας`,
+    have_code: `Έχω κωδικό →`,
+    step1_t: `Δωμάτιο και QR`,
+    step1_d: `Οι φίλοι σκανάρουν τον κωδικό από την οθόνη και μπαίνουν από το κινητό`,
+    step2_t: `Προσφορές`,
+    step2_d: `20 δευτερόλεπτα το λοτ, κάθε προσφορά δίνει 5 ακόμα. Δεν σε χτύπησε κανείς — το λοτ είναι δικό σου`,
+    step3_t: `Ο κριτής`,
+    step3_d: `Το ChatGPT βαθμολογεί τις συνθέσεις και βγάζει ετυμηγορία με χιούμορ`,
+    err_create: `Δεν μπόρεσα να φτιάξω το δωμάτιο`,
+    prompt_code: `Κωδικός δωματίου (4 γράμματα)`,
+    stamp_sold: `Πουλήθηκε`,
+    lc_lot_no: `<b>λοτ</b>#&nbsp;{n}`,
+
+    join_room: `Δωμάτιο <b>{code}</b>. Πώς σε λένε;`,
+    join_label: `Το όνομα που θα βλέπουν στον πίνακα`,
+    ph_name: `Όνομα`,
+    btn_go: `Μπες`,
+    err_started: `Το παιχνίδι έχει ξεκινήσει — ζήτα από τον host να σε βάλει ή περίμενε το επόμενο`,
+    err_room_full: `Το δωμάτιο είναι γεμάτο`,
+
+    ov_replaced: `Άνοιξες το παιχνίδι σε άλλη συσκευή`,
+    ov_kicked: `Ο host σε έβγαλε από το παιχνίδι`,
+    ov_offline: `Χάθηκε η σύνδεση — επανασυνδέομαι…`,
+    ov_paused: `Παύση — περιμένουμε τον host`,
+
+    note_send_fail: `Η προσφορά δεν πέρασε — πάτα ξανά`,
+    note_outbid: `Σε χτύπησαν!`,
+    rej_price_changed: `Η τιμή ανέβηκε ήδη`,
+    rej_too_low: `Η προσφορά είναι κάτω από την τρέχουσα`,
+    rej_not_enough_money: `Δεν έχεις αρκετά λεφτά`,
+    rej_already_leader: `Είσαι ήδη μπροστά`,
+    rej_closed: `Το λοτ έφυγε ήδη`,
+    rej_cannot_bid: `Δεν μπορείς να δώσεις προσφορά τώρα`,
+
+    intro_watch: `Κοίτα τη μεγάλη οθόνη`,
+    intro_starting: `Ξεκινάμε…`,
+    task_eyebrow: `Η αποστολή σας`,
+    lobby_sub: `Είσαι στο δωμάτιο <b>{code}</b>. Περιμένουμε τον host να ξεκινήσει.`,
+    lobby_budget: `Έχεις {money} και {slots} {w}.`,
+    lobby_judge_vote: `Τον νικητή τον διαλέγετε εσείς — με ψηφοφορία`,
+    lobby_judge_ai: `Τον νικητή τον διαλέγει το ChatGPT — {how}`,
+
+    lot_counter: `λοτ {n}/{total}`,
+    cap_leader: `Μπροστά`,
+    you: `Εσύ`,
+    cap_min: `Ελάχιστο {money}`,
+    no_bids: `Καμία προσφορά`,
+    cap_pickup: `Δωρεάν`,
+    pickup_none: `Χωρίς προσφορές`,
+    cap_sold: `Πουλήθηκε`,
+    cap_taken: `Πάρθηκε`,
+    yours: `Δικό σου!`,
+    for_free: `δωρεάν`,
+    nobody_took: `Δεν το πήρε κανείς`,
+    more_btn: `περισσότερα ▸`,
+    done_title: `Έτοιμο!`,
+    done_text: `Η σύνθεσή σου γέμισε — κοίτα τον πίνακα`,
+    take_free: `Πάρ' το δωρεάν`,
+    already_taken: `Κάποιος το πήρε ήδη`,
+    pickup_hint: `Το λοτ χωρίς προσφορές πάει σε όποιον έχει $0`,
+    next_lot: `Επόμενο λοτ…`,
+    broke_title: `Άφραγκος`,
+    broke_text: `Περίμενε λοτ χωρίς προσφορές — αυτό το παίρνεις δωρεάν`,
+    lead_me_title: `Είσαι μπροστά`,
+    lead_me_text: `{money} — να δούμε αν σε χτυπήσει κανείς`,
+    not_enough_title: `Δεν φτάνουν`,
+    not_enough_text: `Έχεις {have}, χρειάζεσαι {need}`,
+    bid_btn: `Δώσε {money}`,
+    plus5_btn: `+$5 → {money}`,
+    sheet_fact: `Το ήξερες;`,
+    sheet_close: `Κλείσιμο`,
+
+    vote_h1_a: `Ψήφι`,
+    vote_h1_b: `σε`,
+    vote_sub: `Μία ψήφος ο καθένας, και όχι στη δική σου σύνθεση. Ψήφισαν {n}/{total}.`,
+    vote_btn: `Ψήφος`,
+    judge_h1_a: `Ο κριτής `,
+    judge_h1_b: `σκέφτεται`,
+    judge_sub: `Το ChatGPT διαβάζει τις συνθέσεις`,
+    place_n: `{n}ο`,
+    votes_score: `{n} {w}`,
+    final_no_judge: `Δεν πήρες μέρος στην κρίση`,
+    final_foot: `Τα αποτελέσματα είναι στον πίνακα. Ο host μπορεί να ξεκινήσει άλλο παιχνίδι.`
+  }
+};
+</script>
+<script src="i18n.js"></script>
+
 <script>
 // какой экран открыт: от этого зависит, скроллится ли страница (важно для мобильной клавиатуры)
 function screenMode(mode) {
   const b = document.body;
-  b.classList.remove("m-start", "m-enter", "m-final");
+  b.classList.remove("m-start", "m-enter", "m-final", "m-game");
   if (mode) b.classList.add("m-" + mode);
 }
 const params = new URLSearchParams(location.search);
 // код комнаты идёт в innerHTML — оставляем только буквы алфавита кодов, иначе ?r=<img onerror> даёт XSS
 const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 8);
+// Язык интерфейса — устройства, а не комнаты. Задание и название категории это подписи, а не
+// содержимое лота: игрок с английским телефоном должен читать их по-английски, даже если партия
+// идёт на русских карточках. От языка комнаты зависят только сами лоты и вердикты судьи —
+// они приходят с сервера и общие для всех за столом.
+const uiLang = () => (window.I18N && window.I18N.lang) || "ru";
 const app = document.getElementById("app");
 const overlay = document.getElementById("overlay");
 let state = null, ws, offset = 0, me = null, token = null, lastLot = -1, thumbLot = -1;
+// категорию и счётчики стартового экрана держим снаружи: при смене языка экран перерисовывается,
+// и выбор игрока не должен слетать, а счётчики — грузиться заново
+let startKind = null, startCounts = null;
+// ключ последней ошибки входа: при смене языка экран входа перерисовывается вместе с ней
+let joinErrKey = null;
+
+// ---------- язык ----------
+// Если i18n.js не доехал (блокировщик, сбой раздачи статики) — пульт обязан работать по-русски,
+// а не остаться белым экраном. Настоящий I18N, если он загрузился, эту заглушку не трогает.
+window.I18N = window.I18N || { t: function (k) { const d = (window.I18N_DICT || {}).ru || {}; return k in d ? d[k] : k; }, lang: "ru", setLang: function () {}, supported: ["ru"] };
+// Все подстановки идут через явные {плейсхолдеры}: в английском и греческом порядок слов свой,
+// поэтому склеивать строку из кусков нельзя.
+const tpl = (key, vars) => String(I18N.t(key)).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+const NUM_LOCALE = { ru: "ru-RU", en: "en-US", el: "el-GR" };
+const numFmt = (n) => Number(n).toLocaleString(NUM_LOCALE[I18N.lang] || "en-US");
+// формы слова: в русском их три (лот / лота / лотов), в английском и греческом хватает двух
+function pluralWord(n, key) {
+  const forms = I18N.t(key);
+  if (!Array.isArray(forms)) return String(forms);
+  if (I18N.lang === "ru") {
+    const i = n % 10 === 1 && n % 100 !== 11 ? 0 : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 1 : 2);
+    return forms[i] || forms[forms.length - 1];
+  }
+  return n === 1 ? forms[0] : (forms[1] || forms[0]);
+}
+// оверлей помнит свой ключ: при смене языка надпись обязана перевестись, а не застыть
+let overlayKey = null;
+function setOverlay(key) {
+  overlayKey = key || null;
+  overlay.textContent = overlayKey ? I18N.t(overlayKey) : "";
+  overlay.classList.toggle("on", !!overlayKey);
+}
 
 if (!CODE) renderCreate();
 else { try { token = localStorage.getItem("auction-token-" + CODE); } catch {} if (token) join(""); else if (params.get("name")) join(params.get("name")); else renderJoin(); }
 
+// Смена языка: статические узлы обновит сам i18n.js, но все экраны пульта строит JS — перерисовываем.
+window.addEventListener("langchange", () => {
+  if (overlayKey) setOverlay(overlayKey);
+  if (state) { app.innerHTML = ""; lastLot = -1; introShown = null; render(); return; }
+  const input = document.getElementById("name");
+  if (input) { const v = input.value; renderJoin(joinErrKey); const again = document.getElementById("name"); if (again) again.value = v; return; }
+  if (document.querySelector(".start")) renderCreate();
+});
+
 // ---------- стартовый экран (этот экран становится доской) ----------
 async function renderCreate() {
   screenMode("start");
-  let counts = {};
-  try { counts = await (await fetch("/auction/api/kinds")).json(); } catch {}
+  if (!startCounts) { let c = {}; try { c = await (await fetch("/auction/api/kinds")).json(); } catch {} startCounts = c; }
+  const counts = startCounts;
   const kinds = Object.keys(AUCTION_KINDS).filter((k) => !Object.keys(counts).length || counts[k]);
-  let kind = kinds[Math.floor(Math.random() * kinds.length)] || "artist";
+  if (!startKind || kinds.indexOf(startKind) === -1) startKind = kinds[Math.floor(Math.random() * kinds.length)] || "artist";
+  let kind = startKind;
   document.body.dataset.kind = kind;
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   app.innerHTML = `<div class="start">
     <div class="start-head">
-      <div class="eyebrow"><i></i>Игра для компании · телефоны + один экран</div>
-      <h1><span class="w">Аук</span><em>цион</em><span class="gavel" id="gavel" aria-hidden="true">🔨</span></h1>
-      <p class="lede">У каждого <b>$30</b> и <b>5 слотов</b>. Лоты выпадают по одному, торгуетесь в реальном времени, кто победил — забирает. В конце <b>ИИ-судья</b> разбирает составы и объявляет победителя.</p>
+      <div class="eyebrow"><i></i>${I18N.t("start_eyebrow")}</div>
+      <h1><span class="w">${I18N.t("h1_a")}</span><em>${I18N.t("h1_b")}</em><span class="gavel" id="gavel" aria-hidden="true">🔨</span></h1>
+      <p class="lede">${I18N.t("start_lede")}</p>
     </div>
     <div class="stage" aria-hidden="true">
-      <div class="stage-head"><span class="live"><i></i>Идут торги</span><span class="stage-kind" id="stagekind"></span></div>
+      <div class="stage-head"><span class="live"><i></i>${I18N.t("stage_live")}</span><span class="stage-kind" id="stagekind"></span></div>
       <div class="reel" id="reel"><div class="reel-track" id="reeltrack"></div></div>
-      <div class="stage-foot">Названия закрыты — откроются на торгах</div>
+      <div class="stage-foot">${I18N.t("stage_foot")}</div>
     </div>
     <div class="start-body">
       <div class="picker">
-        <div class="eyebrow pick-cap">Выбери категорию${total ? ` · ${total.toLocaleString("ru-RU")} ${plural(total, "лот", "лота", "лотов")}` : ""}</div>
-        <div class="tiles" id="tiles">${kinds.map((k, i) => `<button class="tile ${k === kind ? "on" : ""}" data-kind="${k}" style="animation-delay:${i * 0.03}s"><span class="ico">${AUCTION_KINDS[k].icon}</span>${AUCTION_KINDS[k].button}${counts[k] ? `<span class="n">${counts[k]}</span>` : ""}</button>`).join("")}</div>
+        <div class="eyebrow pick-cap">${total ? tpl("pick_cap_n", { n: numFmt(total), w: pluralWord(total, "plural_lot") }) : I18N.t("pick_cap")}</div>
+        <div class="tiles" id="tiles">${kinds.map((k, i) => `<button class="tile ${k === kind ? "on" : ""}" data-kind="${k}" style="animation-delay:${i * 0.03}s"><span class="ico">${AUCTION_KINDS[k].icon}</span>${auctionKind(k, uiLang()).button}${counts[k] ? `<span class="n">${counts[k]}</span>` : ""}</button>`).join("")}</div>
       </div>
       <div class="cta">
-        <button class="big" id="create">Создать комнату</button>
-        <div class="sub2"><span>Открывай на ноутбуке или ТВ — здесь будет доска</span><a class="link" href="#" id="havecode">У меня есть код →</a></div>
+        <button class="big" id="create">${I18N.t("btn_create")}</button>
+        <div class="sub2"><span>${I18N.t("cta_sub")}</span><a class="link" href="#" id="havecode">${I18N.t("have_code")}</a></div>
       </div>
       <div class="steps">
-        <div class="step"><div class="k">1</div><div class="t">Комната и QR</div><div class="d">Друзья сканируют код с экрана и заходят с телефонов</div></div>
-        <div class="step"><div class="k">2</div><div class="t">Торги</div><div class="d">20 секунд на лот, каждая ставка даёт ещё 5. Никто не перебил — лот твой</div></div>
-        <div class="step"><div class="k">3</div><div class="t">Судья</div><div class="d">ChatGPT оценивает лайнапы и выдаёт вердикт с юмором</div></div>
+        <div class="step"><div class="k">1</div><div class="t">${I18N.t("step1_t")}</div><div class="d">${I18N.t("step1_d")}</div></div>
+        <div class="step"><div class="k">2</div><div class="t">${I18N.t("step2_t")}</div><div class="d">${I18N.t("step2_d")}</div></div>
+        <div class="step"><div class="k">3</div><div class="t">${I18N.t("step3_t")}</div><div class="d">${I18N.t("step3_d")}</div></div>
       </div>
     </div>
   </div>`;
@@ -411,20 +790,20 @@ async function renderCreate() {
   document.getElementById("tiles").onclick = (e) => {
     const t = e.target.closest(".tile"); if (!t) return;
     if (t.dataset.kind === kind) return strikeGavel();
-    kind = t.dataset.kind;
+    kind = startKind = t.dataset.kind;
     document.querySelectorAll(".tile").forEach((x) => x.classList.toggle("on", x === t));
     showKind(kind, counts[kind]);
   };
   document.getElementById("create").onclick = async () => {
-    const btn = document.getElementById("create"); btn.disabled = true; btn.textContent = "Создаём…";
+    const btn = document.getElementById("create"); btn.disabled = true; btn.textContent = I18N.t("btn_creating");
     try {
       const res = await fetch("/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }) });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Не получилось создать комнату");
+      if (!res.ok) throw new Error(data.error || I18N.t("err_create"));
       location.href = `auction-board.html?r=${data.code}&t=${data.hostToken}`;
-    } catch (err) { btn.disabled = false; btn.textContent = "Создать комнату"; alert(err.message); }
+    } catch (err) { btn.disabled = false; btn.textContent = I18N.t("btn_create"); alert(err.message); }
   };
-  document.getElementById("havecode").onclick = (e) => { e.preventDefault(); const c = prompt("Код комнаты (4 буквы)"); if (c) location.href = `auction.html?r=${c.trim().toUpperCase()}`; };
+  document.getElementById("havecode").onclick = (e) => { e.preventDefault(); const c = prompt(I18N.t("prompt_code")); if (c) location.href = `auction.html?r=${c.trim().toUpperCase()}`; };
 }
 
 // ---------- живая лента лотов на стартовом экране ----------
@@ -432,7 +811,6 @@ async function renderCreate() {
 // Данные лежат рядом с доской (auction-data/<kind>.js → window.CARDS[kind]) — грузим по одному файлу лениво.
 let reelToken = 0;
 const cardsLoading = {};
-const plural = (n, one, few, many) => (n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many);
 
 function loadCards(kind) {
   if ((window.CARDS || {})[kind]) return Promise.resolve(window.CARDS[kind]);
@@ -455,7 +833,9 @@ function strikeGavel() {
 function showKind(kind, count) {
   document.body.dataset.kind = kind;
   const cap = document.getElementById("stagekind");
-  if (cap) cap.textContent = `${AUCTION_KINDS[kind].button}${count ? ` · ${count} ${plural(count, "лот", "лота", "лотов")}` : ""}`;
+  if (cap) cap.textContent = count
+    ? tpl("stage_kind_n", { kind: auctionKind(kind, uiLang()).button, n: numFmt(count), w: pluralWord(count, "plural_lot") })
+    : auctionKind(kind, uiLang()).button;
   strikeGavel();
   fillReel(kind);
 }
@@ -482,10 +862,10 @@ function fillReel(kind) {
     const html = list.map((item, i) => {
       const sold = i % 4 === 2, hot = i % 5 === 1;
       const card = item.star || item.c;
-      const tail = sold ? '<span class="lc-stamp">Продано</span>' : `<span class="lc-bid">$${2 + Math.floor(Math.random() * 26)}</span>`;
+      const tail = sold ? `<span class="lc-stamp">${I18N.t("stamp_sold")}</span>` : `<span class="lc-bid">$${2 + Math.floor(Math.random() * 26)}</span>`;
       const body = item.star
         ? `<span class="lc-name">${escapeHtml(card.name)}</span><span class="lc-meta">${escapeHtml((card.meta || []).slice(0, 2).join(" · "))}</span>`
-        : `<span class="lc-name closed"><b>лот</b>№&nbsp;${String(item.i + 1).padStart(3, "0")}</span><span class="lc-meta bars" aria-hidden="true">${maskBars(card.name)}</span>`;
+        : `<span class="lc-name closed">${tpl("lc_lot_no", { n: String(item.i + 1).padStart(3, "0") })}</span><span class="lc-meta bars" aria-hidden="true">${maskBars(card.name)}</span>`;
       return `<div class="lotcard${hot ? " hot" : ""}"><span class="lc-emoji">${card.emoji || AUCTION_KINDS[kind].icon}</span>` +
         `<span class="lc-text">${body}</span>${tail}</div>`;
     }).join("");
@@ -501,12 +881,14 @@ function maskBars(name) {
 }
 
 // ---------- вход ----------
+// error — ключ словаря (или сырая ошибка сервера: I18N.t вернёт её как есть)
 function renderJoin(error) {
   screenMode("enter");
-  app.innerHTML = `<div class="center enter"><h1>Аук<em>цион</em></h1><p class="sub">Комната <b>${CODE}</b>. Как тебя зовут?</p>
-    <label for="name" class="note" style="text-align:left;margin:0">Имя, которое увидят на доске</label>
-    <input type="text" id="name" maxlength="24" placeholder="Имя" autocomplete="nickname" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="go" inputmode="text">
-    <button class="big" id="go">Войти</button><div class="note" id="err">${error || ""}</div></div>`;
+  joinErrKey = error || null;
+  app.innerHTML = `<div class="center enter"><h1>${I18N.t("h1_a")}<em>${I18N.t("h1_b")}</em></h1><p class="sub">${tpl("join_room", { code: CODE })}</p>
+    <label for="name" class="note" style="text-align:left;margin:0">${I18N.t("join_label")}</label>
+    <input type="text" id="name" maxlength="24" placeholder="${escapeHtml(I18N.t("ph_name"))}" autocomplete="nickname" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="go" inputmode="text">
+    <button class="big" id="go">${I18N.t("btn_go")}</button><div class="note" id="err">${error ? escapeHtml(I18N.t(error)) : ""}</div></div>`;
   const input = document.getElementById("name");
   const go = () => { const n = input.value.trim(); if (n) join(n); };
   document.getElementById("go").onclick = go;
@@ -529,17 +911,17 @@ function join(name) {
       if (msg.type === "hello" || msg.type === "state") setState(msg.state);
       if (msg.type === "event") onEvent(msg.event);
       if (msg.type === "rejected") onRejected(msg);
-      if (msg.type === "replaced") { ws.close(); overlay.textContent = "Ты открыл игру на другом устройстве"; overlay.classList.add("on"); }
-      if (msg.type === "kicked") { ws.close(); try { localStorage.removeItem("auction-token-" + CODE); } catch {} overlay.textContent = "Хост убрал тебя из игры"; overlay.classList.add("on"); }
+      if (msg.type === "replaced") { ws.close(); setOverlay("ov_replaced"); }
+      if (msg.type === "kicked") { ws.close(); try { localStorage.removeItem("auction-token-" + CODE); } catch {} setOverlay("ov_kicked"); }
       if (msg.type === "error") {
         ws.close();
-        if (msg.error === "game_started") renderJoin("Игра уже идёт — попроси хоста впустить тебя, или подожди следующую");
-        else if (msg.error === "room_full") renderJoin("Комната заполнена");
+        if (msg.error === "game_started") renderJoin("err_started");
+        else if (msg.error === "room_full") renderJoin("err_room_full");
         else renderJoin(msg.error);
       }
     },
-    onClose: () => { overlay.textContent = "Нет связи — переподключаемся…"; overlay.classList.add("on"); setTimeout(() => join(name), 2000); },
-    onSendFail: (msg) => { const n = document.getElementById("note"); if (n && msg && msg.type === "bid") n.textContent = "Ставка не прошла — нажми ещё раз"; },
+    onClose: () => { setOverlay("ov_offline"); setTimeout(() => join(name), 2000); },
+    onSendFail: (msg) => { const n = document.getElementById("note"); if (n && msg && msg.type === "bid") n.textContent = I18N.t("note_send_fail"); },
   });
 }
 const sendMsg = (m) => ws && ws.send(m);
@@ -549,16 +931,15 @@ function setState(s) {
   state = s;
   offset = s.serverNow - Date.now();
   document.body.dataset.kind = s.kind;
-  overlay.classList.toggle("on", !!s.paused);
-  if (s.paused) overlay.textContent = "Пауза — ждём ведущего";
+  setOverlay(s.paused ? "ov_paused" : null);
   render();
 }
-const money = (n) => "$" + Number(n).toLocaleString("ru-RU");
+const money = (n) => "$" + numFmt(n);
 const mine = () => state.players.find((p) => p.id === me);
 // Если auction-modes.js не доехал (блокировщик, сбой раздачи статики), задание неизвестно.
 // Врать нельзя: показать «Лучший набор», когда сервер судит по «Худшему», хуже, чем не показать
 // ничего — доска-то задание знает, и игрок весь матч собирал бы обратное тому, что судят.
-const modeNow = () => (window.auctionModeText ? auctionModeText(state && state.settings && state.settings.mode, state && state.kind) : null);
+const modeNow = () => (window.auctionModeText ? auctionModeText(state && state.settings && state.settings.mode, state && state.kind, uiLang()) : null);
 const taskNow = () => { const m = modeNow(); return m && m.id !== "base" ? m : null; };
 const nameOf = (id) => (state.players.find(function (p) { return p.id === id; }) || {}).name || "?";
 
@@ -568,7 +949,7 @@ function beep(freq, ms = 90, type = "sine", gain = .1) {
   try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.frequency.value = freq; g.gain.value = gain; o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + ms / 1000); } catch {}
 }
 function onEvent(e) {
-  if (e.type === "outbid" && e.playerId === me) { beep(220, 200, "square"); flashButton("Перебили!"); }
+  if (e.type === "outbid" && e.playerId === me) { beep(220, 200, "square"); flashButton(I18N.t("note_outbid")); }
   if (e.type === "sold" && e.playerId === me) { beep(520, 120); setTimeout(() => beep(780, 180), 130); confetti(); }
   if (e.type === "taken" && e.playerId === me) { beep(440, 160, "triangle"); confetti(); }
   if (e.type === "lot") beep(880, 40, "sine", .04);
@@ -576,7 +957,9 @@ function onEvent(e) {
 function onRejected(r) {
   const note = document.getElementById("note");
   if (!note) return;
-  note.textContent = { price_changed: "Цена уже выросла", too_low: "Ставка ниже текущей", not_enough_money: "Не хватает денег", already_leader: "Ты и так лидер", closed: "Лот уже ушёл", cannot_bid: "Сейчас нельзя ставить" }[r.reason] || r.reason;
+  // причины известны заранее: незнакомую показываем как есть, а не ключом словаря
+  const known = ["price_changed", "too_low", "not_enough_money", "already_leader", "closed", "cannot_bid"];
+  note.textContent = known.indexOf(r.reason) !== -1 ? I18N.t("rej_" + r.reason) : r.reason;
   render();
 }
 function flashButton(text) { const b = document.getElementById("bid"); if (!b) return; b.classList.add("flash"); const note = document.getElementById("note"); if (note) note.textContent = text; setTimeout(() => b.classList.remove("flash"), 400); }
@@ -594,7 +977,7 @@ function render() {
 // на большой экран, где крупно показывают задание и отсчёт. Цифры дублируем, чтобы те,
 // кто всё-таки смотрит в телефон, не пропустили старт торгов.
 const COUNTDOWN_MS = 3000;
-let introShown = null;
+let introShown = null, introLoop = false, timerLoop = false;
 
 function renderIntro() {
   screenMode("");
@@ -602,12 +985,13 @@ function renderIntro() {
   const s = state, m = modeNow();
   if (!document.getElementById("introbox")) {
     app.innerHTML = `<div class="center intro" id="introbox">
-      <p class="sub">Смотри на большой экран</p>
-      ${m ? `<div class="plate task"><span class="eyebrow">Задание партии</span><b>${m.icon} ${escapeHtml(m.title)}</b>${escapeHtml(m.short || "")}.</div>` : ""}
-      <div class="icount" id="icount">Начинаем…</div>
+      <p class="sub">${I18N.t("intro_watch")}</p>
+      ${m ? `<div class="plate task"><span class="eyebrow">${I18N.t("task_eyebrow")}</span><b>${m.icon} ${escapeHtml(m.title)}</b>${escapeHtml(m.short || "")}.</div>` : ""}
+      <div class="icount" id="icount">${I18N.t("intro_starting")}</div>
     </div>`;
     introShown = null;
-    requestAnimationFrame(tickIntro);
+    // цикл заводим один раз: он живёт до конца страницы, а экран перерисовывается и при смене языка
+    if (!introLoop) { introLoop = true; requestAnimationFrame(tickIntro); }
   }
 }
 
@@ -625,14 +1009,15 @@ function tickIntro() {
 function renderLobby() {
   screenMode("");
   lastLot = -1;
-  app.innerHTML = `<div class="center"><h1>Аук<em>цион</em></h1><p class="sub">Ты в комнате <b>${CODE}</b>. Ждём, пока хост начнёт.</p>
-    <div class="plate"><b>${(AUCTION_KINDS[state.kind] || {}).icon || ""} ${(AUCTION_KINDS[state.kind] || {}).label || state.kind}</b>У тебя ${money(state.settings.budget)} и ${state.settings.slots} слотов.</div>
-    ${modeNow() ? `<div class="plate task"><span class="eyebrow">Задание партии</span><b>${modeNow().icon} ${escapeHtml(modeNow().title)}</b>${escapeHtml(modeNow().short || "")}.<span class="by">${state.settings.judge === "vote" ? "Победителя выбираете вы — голосованием" : "Победителя выберет ChatGPT — он " + escapeHtml(modeNow().judge || "")}</span></div>` : ""}
+  const m = modeNow(), slots = state.settings.slots;
+  app.innerHTML = `<div class="center"><h1>${I18N.t("h1_a")}<em>${I18N.t("h1_b")}</em></h1><p class="sub">${tpl("lobby_sub", { code: CODE })}</p>
+    <div class="plate"><b>${(AUCTION_KINDS[state.kind] || {}).icon || ""} ${auctionKind(state.kind, uiLang()).label || state.kind}</b>${tpl("lobby_budget", { money: money(state.settings.budget), slots: slots, w: pluralWord(slots, "plural_slot") })}</div>
+    ${m ? `<div class="plate task"><span class="eyebrow">${I18N.t("task_eyebrow")}</span><b>${m.icon} ${escapeHtml(m.title)}</b>${escapeHtml(m.short || "")}.<span class="by">${state.settings.judge === "vote" ? I18N.t("lobby_judge_vote") : tpl("lobby_judge_ai", { how: escapeHtml(m.judge || "") })}</span></div>` : ""}
     <div class="chips">${state.players.map((p) => `<span class="chip ${p.id === me ? "me" : ""}">${escapeHtml(p.name)}</span>`).join("")}</div></div>`;
 }
 
 function renderGame() {
-  screenMode("");
+  screenMode("game");
   const s = state, p = mine();
   if (!p) return;
   if (!document.getElementById("bidbox")) {
@@ -641,11 +1026,12 @@ function renderGame() {
       <div class="lotbox" id="lot"></div>
       <div class="bidinfo"><div class="ring" id="ring"><svg viewBox="0 0 62 62"><circle class="track" cx="31" cy="31" r="27"/><circle class="arc" id="arc" cx="31" cy="31" r="27" stroke-dasharray="170" stroke-dashoffset="0"/></svg><div class="num" id="tnum"></div></div><div class="lead" id="lead"></div></div>
       <div class="actions" id="bidbox"></div><div class="note" id="note"></div>`;
-    requestAnimationFrame(tickTimer);
+    // как и в заставке: один цикл на всю страницу, иначе смена языка удваивала бы кадры
+    if (!timerLoop) { timerLoop = true; requestAnimationFrame(tickTimer); }
   }
   document.getElementById("myname").textContent = p.name;
   document.getElementById("mymoney").textContent = money(p.money);
-  document.getElementById("lotno").textContent = `лот ${s.round + 1}/${s.rounds}`;
+  document.getElementById("lotno").textContent = tpl("lot_counter", { n: s.round + 1, total: s.rounds });
   const task = document.getElementById("task");
   if (task) {
     const custom = taskNow();
@@ -662,11 +1048,11 @@ function renderGame() {
   lead.className = "lead" + (s.phase === "sold" || s.phase === "taken" ? " sold" : "");
   if (s.phase === "lot" || s.phase === "bidding") {
     const who = el("div", "who");
-    if (s.leaderId) { who.append(el("b", null, s.leaderId === me ? "Ты" : nameOf(s.leaderId)), document.createTextNode(` ${money(s.price)}`)); lead.append(el("div", "cap", "Лидер"), who); }
-    else { who.textContent = "Ставок нет"; lead.append(el("div", "cap", "Минимум $1"), who); }
-  } else if (s.phase === "pickup") lead.append(el("div", "cap", "Разбор"), el("div", "who", "Без ставок"));
-  else if (s.phase === "sold" || s.phase === "taken") { const who = el("div", "who"); who.append(el("b", null, s.leaderId === me ? "Твой!" : nameOf(s.leaderId)), document.createTextNode(s.phase === "sold" ? ` ${money(s.price)}` : " бесплатно")); lead.append(el("div", "cap", s.phase === "sold" ? "Продано" : "Забрали"), who); }
-  else lead.append(el("div", "cap", ""), el("div", "who", "Никто не взял"));
+    if (s.leaderId) { who.append(el("b", null, s.leaderId === me ? I18N.t("you") : nameOf(s.leaderId)), document.createTextNode(` ${money(s.price)}`)); lead.append(el("div", "cap", I18N.t("cap_leader")), who); }
+    else { who.textContent = I18N.t("no_bids"); lead.append(el("div", "cap", tpl("cap_min", { money: money(1) })), who); }
+  } else if (s.phase === "pickup") lead.append(el("div", "cap", I18N.t("cap_pickup")), el("div", "who", I18N.t("pickup_none")));
+  else if (s.phase === "sold" || s.phase === "taken") { const who = el("div", "who"); who.append(el("b", null, s.leaderId === me ? I18N.t("yours") : nameOf(s.leaderId)), document.createTextNode(" " + (s.phase === "sold" ? money(s.price) : I18N.t("for_free")))); lead.append(el("div", "cap", I18N.t(s.phase === "sold" ? "cap_sold" : "cap_taken")), who); }
+  else lead.append(el("div", "cap", ""), el("div", "who", I18N.t("nobody_took")));
 
   renderActions(p);
 }
@@ -676,9 +1062,9 @@ function renderLot(lot, kind) {
   box.replaceChildren();
   const img = el("img", "thumb"); img.alt = "";
   const meta = el("div", "meta"); (lot.meta || []).forEach((m) => meta.append(el("span", null, m)));
-  const more = el("button", "more", "подробнее ▸");
+  const more = el("button", "more", I18N.t("more_btn"));
   more.onclick = () => openSheet(lot);
-  box.append(img, el("div", "emoji", lot.emoji), el("div", "kind", (AUCTION_KINDS[kind] || {}).label || kind), el("div", "name", lot.name), meta, el("div", "short", lot.description), more);
+  box.append(img, el("div", "emoji", lot.emoji), el("div", "kind", auctionKind(kind, uiLang()).label || kind), el("div", "name", lot.name), meta, el("div", "short", lot.description), more);
   document.getElementById("note").textContent = "";
   // картинка: тот же поиск, что на доске, но маленькая
   const round = state.round;
@@ -689,21 +1075,21 @@ function renderActions(p) {
   const s = state, box = document.getElementById("bidbox");
   box.replaceChildren();
   const plate = (cls, title, text) => { const d = el("div", "plate " + cls); if (title) d.append(el("b", null, title)); d.append(document.createTextNode(text || "")); return d; };
-  if (p.full) return box.append(plate("", "Готово!", "Лайнап собран — смотри на доску"));
+  if (p.full) return box.append(plate("", I18N.t("done_title"), I18N.t("done_text")));
   if (s.phase === "pickup") {
-    if (p.canTake) { const b = el("button", "big", "Забрать бесплатно"); b.onclick = () => sendMsg({ type: "take" }); return box.append(b); }
-    return box.append(plate("", "", p.money === 0 ? "Кто-то уже забрал" : "Лот без ставок уходит тем, у кого $0"));
+    if (p.canTake) { const b = el("button", "big", I18N.t("take_free")); b.onclick = () => sendMsg({ type: "take" }); return box.append(b); }
+    return box.append(plate("", "", I18N.t(p.money === 0 ? "already_taken" : "pickup_hint")));
   }
-  if (s.phase !== "lot" && s.phase !== "bidding") return box.append(plate("", "", "Следующий лот…"));
-  if (p.money === 0) return box.append(plate("", "На мели", "Ждём лот без ставок — его можно забрать бесплатно"));
-  if (s.leaderId === me) return box.append(plate("lead-me", "Ты лидер", `${money(s.price)} — ждём, перебьют ли`));
+  if (s.phase !== "lot" && s.phase !== "bidding") return box.append(plate("", "", I18N.t("next_lot")));
+  if (p.money === 0) return box.append(plate("", I18N.t("broke_title"), I18N.t("broke_text")));
+  if (s.leaderId === me) return box.append(plate("lead-me", I18N.t("lead_me_title"), tpl("lead_me_text", { money: money(s.price) })));
   const next = s.price + 1;
-  if (next > p.money) return box.append(plate("err", "Не хватает", `У тебя ${money(p.money)}, нужно ${money(next)}`));
-  const big = el("button", "big", `Перебить ${money(next)}`); big.id = "bid";
+  if (next > p.money) return box.append(plate("err", I18N.t("not_enough_title"), tpl("not_enough_text", { have: money(p.money), need: money(next) })));
+  const big = el("button", "big", tpl("bid_btn", { money: money(next) })); big.id = "bid";
   big.onclick = () => { unlockAudio(); sendMsg({ type: "bid", amount: next, expectedPrice: s.price }); };
   box.append(big);
   const plus = s.price + 5;
-  if (plus <= p.money) { const m = el("button", "mid", `+$5 → ${money(plus)}`); let t = 0; m.onclick = () => { if (Date.now() - t < 300) return; t = Date.now(); sendMsg({ type: "bid", amount: plus, expectedPrice: s.price }); }; box.append(m); }
+  if (plus <= p.money) { const m = el("button", "mid", tpl("plus5_btn", { money: money(plus) })); let t = 0; m.onclick = () => { if (Date.now() - t < 300) return; t = Date.now(); sendMsg({ type: "bid", amount: plus, expectedPrice: s.price }); }; box.append(m); }
 }
 
 function tickTimer() {
@@ -720,7 +1106,7 @@ function tickTimer() {
 
 function openSheet(lot) {
   const sh = document.getElementById("sheet");
-  sh.innerHTML = `<div style="font:900 22px var(--display);margin-bottom:8px">${escapeHtml(lot.name)}</div><p>${escapeHtml(lot.description)}</p><p class="fact"><b>Факт</b>${escapeHtml(lot.fact)}</p><button class="mid" id="close">Закрыть</button>`;
+  sh.innerHTML = `<div style="font:900 22px var(--display);margin-bottom:8px">${escapeHtml(lot.name)}</div><p>${escapeHtml(lot.description)}</p><p class="fact"><b>${I18N.t("sheet_fact")}</b>${escapeHtml(lot.fact)}</p><button class="mid" id="close">${I18N.t("sheet_close")}</button>`;
   sh.classList.add("on");
   document.getElementById("close").onclick = () => sh.classList.remove("on");
 }
@@ -735,16 +1121,16 @@ function renderFinal() {
       // Задание обязано быть на этом экране: голосование — единственный режим, где оно
       // больше ни на что не влияет, и без напоминания критерия «худший набор» голосуют за лучший.
       const vtask = taskNow();
-      app.innerHTML = `<div class="final"><h1>Голо<em>суй</em></h1>${vtask ? `<div class="taskbar on" style="justify-content:center"><b>${escapeHtml(vtask.icon + " " + vtask.title)}</b><span style="flex:none">${escapeHtml(vtask.short || "")}</span></div>` : ""}<p class="sub">За чужой лайнап, один голос. Проголосовало ${s.votes}/${players.filter((x) => x.lots.length).length}.</p><div class="vote" id="vote"></div></div>`;
+      app.innerHTML = `<div class="final"><h1>${I18N.t("vote_h1_a")}<em>${I18N.t("vote_h1_b")}</em></h1>${vtask ? `<div class="taskbar on" style="justify-content:center"><b>${escapeHtml(vtask.icon + " " + vtask.title)}</b><span style="flex:none">${escapeHtml(vtask.short || "")}</span></div>` : ""}<p class="sub">${tpl("vote_sub", { n: s.votes, total: players.filter((x) => x.lots.length).length })}</p><div class="vote" id="vote"></div></div>`;
       const box = document.getElementById("vote");
       players.filter((x) => x.id !== me && x.lots.length).forEach((x) => {
         const row = el("div", "row"); const n = el("div", "n", x.name); n.append(el("small", null, x.lots.map((l) => l.emoji + " " + l.name).join(" · ")));
-        const b = el("button", "mid", "Голос"); b.style.width = "auto"; b.onclick = () => { sendMsg({ type: "vote", for: x.id }); box.querySelectorAll("button").forEach((q) => (q.disabled = true)); b.textContent = "✓"; };
+        const b = el("button", "mid", I18N.t("vote_btn")); b.style.width = "auto"; b.onclick = () => { sendMsg({ type: "vote", for: x.id }); box.querySelectorAll("button").forEach((q) => (q.disabled = true)); b.textContent = "✓"; };
         row.append(n, b); box.append(row);
       });
       return;
     }
-    app.innerHTML = `<div class="center" style="text-align:center"><div style="font-size:56px">🎲</div><h1>Судья <em>думает</em></h1><p class="sub">ChatGPT читает лайнапы</p></div>`;
+    app.innerHTML = `<div class="center" style="text-align:center"><div style="font-size:56px">🎲</div><h1>${I18N.t("judge_h1_a")}<em>${I18N.t("judge_h1_b")}</em></h1><p class="sub">${I18N.t("judge_sub")}</p></div>`;
     return;
   }
   const idx = s.results.ranking.findIndex((r) => r.playerId === me);
@@ -752,7 +1138,8 @@ function renderFinal() {
   const places = ["🥇", "🥈", "🥉"];
   const custom = taskNow();
   const ftask = custom ? `<div class="taskbar on" style="justify-content:center"><b>${escapeHtml(custom.icon + " " + custom.title)}</b></div>` : "";
-  app.innerHTML = `<div class="final">${ftask}<div class="place${idx >= 0 ? "" : " none"}">${idx >= 0 ? places[idx] || `${idx + 1}-е` : "—"}</div>${r ? `<div class="score">${s.results.mode === "vote" ? r.score + " голос." : r.score}</div><div class="verdict">${escapeHtml(r.verdict || "")}</div>` : '<p class="sub" style="text-align:center">Ты не участвовал в судействе</p>'}<div class="lots">${((p && p.lots) || []).map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("")}</div><p class="note" style="margin-top:18px">Результаты на доске. Хост может запустить ещё одну игру.</p></div>`;
+  const score = r && s.results.mode === "vote" ? tpl("votes_score", { n: r.score, w: pluralWord(r.score, "plural_vote") }) : (r ? r.score : "");
+  app.innerHTML = `<div class="final">${ftask}<div class="place${idx >= 0 ? "" : " none"}">${idx >= 0 ? places[idx] || tpl("place_n", { n: idx + 1 }) : "—"}</div>${r ? `<div class="score">${score}</div><div class="verdict">${escapeHtml(r.verdict || "")}</div>` : `<p class="sub" style="text-align:center">${I18N.t("final_no_judge")}</p>`}<div class="lots">${((p && p.lots) || []).map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("")}</div><p class="note" style="margin-top:18px">${I18N.t("final_foot")}</p></div>`;
 }
 
 function confetti() {

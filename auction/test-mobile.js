@@ -84,6 +84,21 @@ async function typeText(page, text) {
   }
 }
 
+// Ожидаемые подписи берём из словаря самой страницы (window.I18N_DICT): пульт переведён на ru/en/el,
+// и тест обязан быть зелёным на любом языке. Из значения выкидываем HTML-теги и берём самый
+// длинный кусок без {подстановок}; сравниваем без регистра и диакритики — innerText отдаёт текст
+// уже после text-transform: uppercase, а греческие заглавные теряют ударения.
+async function i18nFrag(p, key) {
+  const v = await p.ev(`(() => {
+    const D = window.I18N_DICT || {}, d = D[(window.I18N || {}).lang || "ru"] || D.ru || {}, s = d[${JSON.stringify(key)}];
+    if (typeof s !== "string") return "";
+    return s.replace(/<[^>]*>/g, "").split(/\\{\\w+\\}/).map((x) => x.trim()).sort((a, b) => b.length - a.length)[0] || "";
+  })()`);
+  return v || "\u0000нет ключа " + key; // пустую строку includes() нашёл бы где угодно
+}
+const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const hasFrag = (text, frag) => norm(text).includes(norm(frag));
+
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   chrome = spawn(CHROME, ["--headless=new", "--disable-gpu", `--remote-debugging-port=${PORT}`, "about:blank"], { stdio: "ignore" });
@@ -107,7 +122,7 @@ async function typeText(page, text) {
       await p.shot(`${dev.name.replace(/\W+/g, "_")}_enter`);
       await p.tap("#go");
       await wait(2500);
-      check(/Ждём|комнате/i.test(await p.ev("document.body.innerText")), "вошёл в лобби");
+      check(hasFrag(await p.ev("document.body.innerText"), await i18nFrag(p, "lobby_sub")), "вошёл в лобби");
       await p.shot(`${dev.name.replace(/\W+/g, "_")}_lobby`);
 
       // второй игрок — ещё одна вкладка пульта (на проде ботов нет, а для старта нужно двое)
