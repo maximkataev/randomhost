@@ -110,6 +110,12 @@
   /* заголовок этого экрана — предложение, а не плакатное слово: плакатный кегль h1 обрезал
      «КОМНАТА ЗАКРЫТА» на 390px, а в греческом строки ещё длиннее */
   .expired h1 { font: 900 clamp(22px, 6.4vw, 32px)/1.1 var(--display); letter-spacing: -.02em; overflow-wrap: anywhere; }
+  .ownbid { display: flex; gap: 8px; }
+  .ownbid input { flex: 1; min-width: 0; font: 700 18px var(--body); color: var(--text); background: rgba(255, 255, 255, .06);
+    border: 1px solid var(--glass-line); border-radius: 16px; padding: 14px; outline: none; -webkit-appearance: none; appearance: none; text-align: center; }
+  .ownbid input:focus { border-color: var(--c1); }
+  .ownbid .mid { width: auto; flex: none; padding: 14px 18px; }
+  .linkbtn { background: none; border: 0; color: var(--c1); font: 600 13px var(--body); padding: 8px; min-height: 40px; text-decoration: underline; }
   .roomname { text-align: center; font: 700 17px/1.25 var(--body); color: var(--c1); margin: -4px 0 2px; overflow-wrap: anywhere; }
   .expired-new { display: block; text-align: center; text-decoration: none; }
   .plate.task .eyebrow { display: block; font: 700 10px/1 var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin-bottom: 9px; }
@@ -418,6 +424,11 @@ window.I18N_DICT = {
     err_room_full: `Комната заполнена`,
 
     /* оверлеи */
+    own_bid_open: `Своя сумма`,
+    own_bid_label: `Своя сумма ставки`,
+    own_bid_go: `Ставлю`,
+    own_bid_min: `Минимум {money}`,
+    own_bid_max: `У тебя только {money}`,
     expired_title: `Комната закрыта`,
     expired_text: `В этой комнате полчаса ничего не происходило, и она закрылась. Попроси ведущего создать новую.`,
     expired_new: `Создать свою комнату`,
@@ -528,6 +539,11 @@ window.I18N_DICT = {
     err_started: `The game is already running. Wait for it to end — the next one starts from the lobby and you can join`,
     err_room_full: `The room is full`,
 
+    own_bid_open: `Custom amount`,
+    own_bid_label: `Custom bid amount`,
+    own_bid_go: `Bid`,
+    own_bid_min: `At least {money}`,
+    own_bid_max: `You only have {money}`,
     expired_title: `Room closed`,
     expired_text: `Nothing happened in this room for half an hour, so it closed. Ask the host to start a new one.`,
     expired_new: `Create your own room`,
@@ -634,6 +650,11 @@ window.I18N_DICT = {
     err_started: `Το παιχνίδι έχει ξεκινήσει. Περίμενε να τελειώσει — το επόμενο ξεκινά από το λόμπι και μπαίνεις`,
     err_room_full: `Το δωμάτιο είναι γεμάτο`,
 
+    own_bid_open: `Δικό μου ποσό`,
+    own_bid_label: `Δικό μου ποσό προσφοράς`,
+    own_bid_go: `Δίνω`,
+    own_bid_min: `Τουλάχιστον {money}`,
+    own_bid_max: `Έχεις μόνο {money}`,
     expired_title: `Το δωμάτιο έκλεισε`,
     expired_text: `Μισή ώρα δεν έγινε τίποτα σε αυτό το δωμάτιο και έκλεισε. Ζήτα από τον host να φτιάξει καινούργιο.`,
     expired_new: `Φτιάξε δικό σου δωμάτιο`,
@@ -1127,6 +1148,35 @@ function renderActions(p) {
   box.append(big);
   const plus = s.price + 5;
   if (plus <= p.money) { const m = el("button", "mid", tpl("plus5_btn", { money: money(plus) })); let t = 0; m.onclick = () => { if (Date.now() - t < 300) return; t = Date.now(); sendMsg({ type: "bid", amount: plus, expectedPrice: s.price }); }; box.append(m); }
+
+  // Своя сумма: кнопками можно только шагать по $1 и $5, а перебить сразу на $12 нельзя было.
+  // Поле не ставим на экран само — оно бы отъело место у главной кнопки; открывается по ссылке.
+  if (next < p.money) {
+    const row = el("div", "ownbid");
+    const input = el("input");
+    input.type = "number"; input.id = "ownbid"; input.min = String(next); input.max = String(p.money);
+    input.inputMode = "numeric"; input.placeholder = String(next);
+    input.setAttribute("aria-label", I18N.t("own_bid_label"));
+    const go = el("button", "mid", I18N.t("own_bid_go"));
+    const err = el("div", "note", "");
+    const send = () => {
+      const v = Math.floor(Number(input.value));
+      // границы те же, что у сервера: он отклонит и сам, но человеку нужен ответ сразу
+      if (!Number.isFinite(v) || v < next) { err.textContent = tpl("own_bid_min", { money: money(next) }); return; }
+      if (v > p.money) { err.textContent = tpl("own_bid_max", { money: money(p.money) }); return; }
+      err.textContent = "";
+      unlockAudio();
+      sendMsg({ type: "bid", amount: v, expectedPrice: s.price });
+    };
+    go.onclick = send;
+    // тело блоком: стрелка `e.key === "Enter" && send()` вернула бы false на любой другой клавише,
+    // а DOM0-обработчик, вернувший false, отменяет ввод символа — так уже ломался ввод имени
+    input.onkeydown = (e) => { if (e.key === "Enter") send(); };
+    row.append(input, go);
+    const toggle = el("button", "linkbtn", I18N.t("own_bid_open"));
+    toggle.onclick = () => { toggle.remove(); box.append(row, err); input.focus(); };
+    box.append(toggle);
+  }
 }
 
 function tickTimer() {

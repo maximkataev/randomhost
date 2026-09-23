@@ -362,8 +362,14 @@
 
   /* финал */
   /* height, а не min-height: иначе экран итогов вырастал за пределы body{overflow:hidden} и низ обрезался */
-  .final { height: 100%; overflow-y: auto; scrollbar-width: thin; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 28px; padding: clamp(22px, 3vh, 32px); backdrop-filter: blur(24px); box-shadow: 0 30px 80px -50px #000; }
-  .final h2 { font: 900 clamp(30px, 3.4vw, 44px)/.95 var(--display); text-transform: uppercase; letter-spacing: -.045em; margin: 0 0 20px; }
+  /* Панель занимает экран целиком, но содержимое центрируется по вертикали: при коротких итогах
+     (один-два лайнапа) под ними оставалась половина экрана пустоты. `safe center` — чтобы при
+     длинном списке верх не срезало, а появилась обычная прокрутка. */
+  .final { height: 100%; display: flex; flex-direction: column; justify-content: safe center; gap: clamp(10px, 1.6vh, 20px);
+    overflow-y: auto; scrollbar-width: thin; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 28px;
+    padding: clamp(22px, 3vh, 32px); backdrop-filter: blur(24px); box-shadow: 0 30px 80px -50px #000; }
+  .final > * { flex: none; }
+  .final h2 { font: 900 clamp(30px, 3.4vw, 44px)/.95 var(--display); text-transform: uppercase; letter-spacing: -.045em; margin: 0; }
   /* подпись задания объясняет вердикты судьи — её читают с дивана вместе с «Итогами», не мельче 16px */
   .final .ftask { margin: -12px 0 18px; font-size: clamp(16px, 1.45vw, 22px); color: rgba(244, 242, 255, .78); }
   .final .ftask b { color: var(--c1); font-weight: 700; }
@@ -386,7 +392,12 @@
   .final .summary { margin: 20px 0 0; padding: 16px 18px; font-size: 16px; background: rgba(255, 255, 255, .05); border-left: 3px solid var(--c1); border-radius: 4px 16px 16px 4px; }
   .final .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
   /* «судья думает» — единственный блок на экране, ставим его по центру, а не под заголовок */
-  .thinking { text-align: center; padding: 40px 0; min-height: 100%; display: flex; flex-direction: column; justify-content: center; }
+  /* Раньше было min-height: 100% плюс свои отступы ВНУТРИ .final, у которого есть собственный
+     padding: содержимое всегда оказывалось выше контейнера, появлялась полоса прокрутки, меняла
+     ширину — и центрированный блок дёргался вместе с анимацией кубика. */
+  .thinking { text-align: center; padding: 0 0 clamp(16px, 3vh, 28px); display: flex; flex-direction: column; justify-content: center; }
+  /* Отдельных правил для экрана ожидания не нужно: общее .final уже центрирует содержимое и
+     скроллит только при переполнении. Своя прокрутка у списка давала вторую полосу рядом с первой. */
   .thinking .dice { font-size: 56px; display: inline-block; animation: roll .9s linear infinite; }
   @keyframes roll { to { transform: rotate(360deg); } }
 
@@ -1370,7 +1381,12 @@ function renderFinal() {
       const vtask = vmode && vmode.id !== "base" ? `<div class="ftask"><b>${escapeHtml(vmode.icon + " " + vmode.title)}</b> — ${escapeHtml(vmode.short || "")}</div>` : "";
       app.innerHTML = `<div class="final"><h2>${T("vote_title")}</h2>${vtask}<p style="color:var(--muted)">${escapeHtml(tf("vote_expl", { done: s.votes, total: players.filter((p) => p.lots.length).length }))}</p><div class="podium">${players.map((p) => lineupCard(p, null)).join("")}</div></div>`;
     } else {
-      app.innerHTML = `<div class="final"><div class="thinking"><div class="dice">🎲</div><h2>${T("judging")}</h2><p style="color:var(--muted)">${T("judging_sub")}</p></div></div>`;
+      // Пока судья думает, показываем сами лайнапы: экран с одним кубиком на телевизоре
+      // выглядел пустым, а людям как раз интересно посмотреть, кто что собрал.
+      const lineups = players.filter((p) => p.lots.length);
+      app.innerHTML = `<div class="final thinking-screen"><div class="thinking"><div class="dice">🎲</div><h2>${T("judging")}</h2>` +
+        `<p style="color:var(--muted)">${T("judging_sub")}</p></div>` +
+        (lineups.length ? `<div class="podium">${lineups.map((p) => lineupCard(p, null)).join("")}</div>` : "") + `</div>`;
     }
     return;
   }
