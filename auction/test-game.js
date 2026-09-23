@@ -4,9 +4,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { Game } = require("./game");
+const { Game, clampSettings } = require("./game");
 const { judge, buildPrompt } = require("./judge");
-const { modesForKind } = require("./modes");
+const { MODES, modesForKind } = require("./modes");
 
 const cards = Array.from({ length: 60 }, (_, i) => ({ name: `Лот ${i}`, emoji: "🎲", meta: ["a", "b"], description: "d", fact: "f", wiki_en: "x" }));
 const rng = () => 0.5;
@@ -303,11 +303,54 @@ test("задание: валидное принимается, мусорное 
   assert.equal(setup(2).s.settings.mode, "base");
 });
 
+// Раньше проверка задания на доступность категории жила только в обработчике settings, поэтому
+// «лига суперзлодеев» доезжала до судьи вместе с блюдами через POST /rooms и next_game.
+test("задание: недоступное категории задание сбрасывается при создании партии", () => {
+  const mk = (kind, mode) => Game.create({ kind, cards, settings: { mode }, rng }).s.settings.mode;
+  assert.equal(mk("character", "villains"), "villains");
+  assert.equal(mk("food", "villains"), "base", "villains недоступен блюдам");
+  assert.equal(mk("city", "villains"), "base", "villains недоступен городам");
+  assert.equal(mk("food", "worst"), "worst", "worst доступен везде");
+  assert.equal(clampSettings({ mode: "villains" }, "city").mode, "base");
+  assert.equal(clampSettings({ mode: "villains" }, "person").mode, "villains");
+  assert.equal(clampSettings({ mode: "villains" }).mode, "villains", "без категории проверять нечем");
+});
+
 test("задание: villains есть у персонажей и нет у городов", () => {
   const ids = (k) => modesForKind(k).map((m) => m.id);
   assert.ok(ids("character").includes("villains"));
   assert.ok(!ids("city").includes("villains"));
   for (const k of ["artist", "city", "film", "food"]) assert.ok(ids(k).includes("base"), `${k}: base должен быть везде`);
+});
+
+// Копия для статики делается вручную (npm run sync-modes), потому что .dockerignore не пускает
+// auction/ в образ nginx. Расхождение молча ломает страницы: сервер судит по одному заданию,
+// а игроки на экране видят другое (или задание вообще пропадает с плиток).
+test("задание: auction/modes.js и корневой auction-modes.js совпадают байт в байт", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const mine = fs.readFileSync(path.join(__dirname, "modes.js"), "utf8");
+  const copy = fs.readFileSync(path.join(__dirname, "..", "auction-modes.js"), "utf8");
+  assert.equal(copy, mine, "копия устарела — выполните npm run sync-modes");
+});
+
+test("задание: у каждого задания есть всё, что подставляют страницы и промпт", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const kinds = fs.readdirSync(path.join(__dirname, "data")).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5));
+  const ids = new Set();
+  for (const m of MODES) {
+    assert.ok(!ids.has(m.id), `дубль id задания: ${m.id}`);
+    ids.add(m.id);
+    for (const f of ["icon", "title", "short", "judge"]) assert.ok(m[f] && String(m[f]).trim(), `${m.id}: пустое поле ${f}`);
+    if (m.id !== "base") for (const f of ["what", "criteria", "prompt"]) assert.ok(m[f] && String(m[f]).trim(), `${m.id}: пустое поле ${f}`);
+    // опечатка в kinds/notKinds молча прячет задание из лобби и никак себя не проявляет
+    for (const k of m.kinds || []) assert.ok(kinds.includes(k), `${m.id}: неизвестная категория «${k}» в kinds`);
+    for (const k of m.notKinds || []) assert.ok(kinds.includes(k), `${m.id}: неизвестная категория «${k}» в notKinds`);
+    assert.ok(!(m.kinds && m.notKinds), `${m.id}: белый и чёрный список одновременно — что-то одно`);
+  }
+  assert.equal(MODES[0].id, "base", "обычное задание должно быть первой плиткой");
+  for (const k of kinds) assert.ok(modesForKind(k).length >= 2, `${k}: в категории нечего выбирать`);
 });
 
 test("судья: текст задания попадает в промпт, base его не добавляет", () => {

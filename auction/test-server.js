@@ -198,6 +198,47 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
     v1.ws.close(); v2.ws.close(); h4.ws.close();
   }
 
+  // ---------- задание и категория согласованы на всех путях, а не только в обработчике settings ----------
+  // Иначе «лига суперзлодеев» доезжала до промпта судьи вместе с блюдами и городами.
+  {
+    const r5 = await make({ mode: "worst" }, 1); // kind = animal
+    const h5 = await connect(r5.code, { type: "host", token: r5.hostToken });
+    await until(() => h5.state);
+    check(h5.state.settings.mode === "worst", "POST /rooms: доступное задание принято");
+
+    const r6 = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "food", settings: { mode: "villains" } }) })).json();
+    const h6 = await connect(r6.code, { type: "host", token: r6.hostToken });
+    await until(() => h6.state);
+    check(h6.state.settings.mode === "base", `POST /rooms: задание не из этой категории сброшено (${h6.state.settings.mode})`);
+
+    // смена категории без блока settings — задание обязано пересчитаться
+    h5.send({ type: "settings", kind: "character", settings: { mode: "villains" } });
+    await until(() => h5.state.settings.mode === "villains", 3000);
+    check(h5.state.settings.mode === "villains", "villains выбирается для персонажей");
+    h5.send({ type: "settings", kind: "city" });
+    await until(() => h5.state.kind === "city", 3000);
+    await wait(200);
+    check(h5.state.settings.mode === "base", `одна категория без настроек тоже сбрасывает задание (${h5.state.settings.mode})`);
+
+    // next_game с другой категорией
+    h5.send({ type: "settings", kind: "character", settings: { mode: "villains" } });
+    await until(() => h5.state.settings.mode === "villains", 3000);
+    const g1 = await connect(r5.code, { type: "join", name: "Злодей" });
+    const g2 = await connect(r5.code, { type: "join", name: "Подельник" });
+    await until(() => h5.state.players.length === 2);
+    h5.send({ type: "start" });
+    await until(() => h5.state.phase !== "lobby");
+    h5.send({ type: "end" });
+    await until(() => h5.state.phase === "finished");
+    h5.send({ type: "next_game", kind: "city" });
+    await until(() => h5.state.phase === "lobby", 3000);
+    check(h5.state.kind === "city" && h5.state.settings.mode === "base", `next_game со сменой категории сбрасывает задание (${h5.state.kind}/${h5.state.settings.mode})`);
+    h5.send({ type: "next_game" });
+    await until(() => h5.state.phase === "lobby", 3000);
+    check(h5.state.settings.mode === "base", "next_game без категории задание не портит");
+    g1.ws.close(); g2.ws.close(); h5.ws.close(); h6.ws.close();
+  }
+
   // health и неизвестная комната
   const h = await (await fetch(BASE + "/auction/api/health")).json();
   check(h.ok === true, "health ok");

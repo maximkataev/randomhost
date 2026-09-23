@@ -20,7 +20,10 @@
   .topbar .phase.bidding { color: var(--c1); }
   .topbar .spacer { flex: 1; }
   /* задание партии видно весь матч: игроки смотрят на экран, а не в телефон */
+  /* nowrap + предел ширины: самое длинное задание не должно разгонять топбар на вторую строку
+     (иначе карточка лота под ним теряет в высоте на 720p) */
   .topbar .gtask { display: none; font-size: clamp(14px, 1.15vw, 18px); padding: 8px 16px; border-radius: 999px;
+    flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     border: 1px solid color-mix(in srgb, var(--c1) 40%, transparent); background: color-mix(in srgb, var(--c1) 12%, transparent); color: rgba(244, 242, 255, .8); }
   .topbar .gtask.on { display: block; }
   .topbar .gtask b { color: var(--text); font-weight: 700; }
@@ -156,10 +159,19 @@
   .join .hint { font-size: clamp(13px, .95vw, 15px); color: var(--muted); max-width: 34ch; }
 
   /* --- настройки --- */
-  .setup { align-self: center; display: flex; flex-direction: column; gap: clamp(10px, 1.6vh, 18px); padding: clamp(18px, 2.6vh, 28px) clamp(18px, 2vw, 28px); max-height: 100%; overflow-y: auto; scrollbar-width: thin; }
+  /* Панель из двух зон: прокручиваемое тело и приклеенный низ с «Начать игру».
+     До этого кнопка жила в общем потоке и после появления блока задания уезжала
+     за нижнюю кромку панели на 1366×768 и 1280×720 — хост видел обрезанный список настроек
+     и ни одной кнопки. Теперь главное действие на экране всегда. */
+  .setup { align-self: center; display: flex; flex-direction: column; gap: 0; padding: clamp(18px, 2.6vh, 28px) clamp(18px, 2vw, 28px); max-height: 100%; overflow: hidden; }
+  .setup-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; display: flex; flex-direction: column; gap: clamp(10px, 1.6vh, 18px); }
+  .setup-foot { flex: none; display: flex; flex-direction: column; gap: 8px; padding-top: clamp(10px, 1.6vh, 18px); }
   .setup h2 { font: 900 clamp(24px, 2.4vw, 38px)/.95 var(--display); letter-spacing: -.04em; text-transform: uppercase; margin: 0; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
   .setup h2 small { font: 500 13px/1.3 var(--body); text-transform: none; letter-spacing: 0; color: var(--muted); }
   .set { display: flex; flex-direction: column; gap: 8px; }
+  /* бюджет и слоты — две одинаковые числовые настройки: держим их в одной строке,
+     чтобы они не отнимали у задания две полных полосы панели */
+  .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px clamp(14px, 1.6vw, 24px); }
   .set > .cap { font: 700 10.5px/1 var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 10px; }
   .set > .cap::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--glass-line), transparent); }
   .set > .cap b { color: var(--text); font-weight: 700; }
@@ -187,18 +199,33 @@
 
   /* сегмент-переключатель */
   .seg { align-self: flex-start; display: inline-flex; padding: 4px; gap: 4px; border-radius: 999px; border: 1px solid var(--glass-line); background: rgba(255, 255, 255, .045); }
-  .setup > .btn.ghost { align-self: flex-start; }
+  .setup .btn.ghost { align-self: flex-start; }
   .seg button { font: 700 11.5px/1 var(--display); text-transform: uppercase; letter-spacing: .04em; color: rgba(244, 242, 255, .8); background: none; border: 0; border-radius: 999px; padding: 10px 16px; cursor: pointer; transition: color .2s, background .25s, box-shadow .3s; }
   .seg button.on { color: #0a0a0f; background: linear-gradient(100deg, var(--c1), var(--c2) 80%); box-shadow: 0 10px 26px -14px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .4); }
   .seg button:not(.on):hover { color: var(--text); background: rgba(255, 255, 255, .07); }
 
-  .modes .tile { font-size: 9px; }
+  /* ЗАДАНИЕ — не такая же строчка настроек, как бюджет: оно меняет правило победы.
+     Поэтому блок поднят на третий уровень фона (как карточка лота) и обведён цветом категории,
+     а фишки заданий крупнее категорий, а не мельче (было 9px — с дивана не прочитать). */
+  .set.task { gap: 9px; padding: 13px 15px 14px; border-radius: 20px;
+    background: rgba(255, 255, 255, .055); border: 1px solid color-mix(in srgb, var(--c1) 30%, var(--glass-line));
+    box-shadow: 0 20px 46px -36px #000, inset 0 1px 0 rgba(255, 255, 255, .05); }
+  .set.task > .cap { color: var(--text); font-size: 11.5px; letter-spacing: .18em; }
+  .set.task > .cap::after { background: linear-gradient(90deg, color-mix(in srgb, var(--c1) 55%, transparent), transparent); }
+  .set.task > .cap em { flex: none; font: 500 12.5px/1 var(--body); font-style: normal; letter-spacing: 0; text-transform: none; color: var(--muted); }
+  .modes .tile { font-size: 11px; padding: 8px 12px 8px 9px; }
+  .modes .tile .ico { font-size: 14px; }
+  /* «кто судит» стоит рядом с самим заданием, а не отдельной настройкой ниже:
+     вместе они и отвечают на вопрос «как определится победитель» */
+  .judgerow { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 12px; }
+  .judgerow .seg { flex: none; align-self: center; }
+  .judgerow .modehint { flex: 1 1 240px; min-width: 0; }
   .modehint {
-    margin-top: 2px; padding: 10px 14px; font-size: 13.5px; line-height: 1.45;
-    color: rgba(244, 242, 255, .7); background: rgba(255, 255, 255, .04);
+    padding: 10px 14px; font-size: 14px; line-height: 1.4;
+    color: rgba(244, 242, 255, .78); background: rgba(255, 255, 255, .05);
     border: 1px solid var(--glass-line); border-left: 3px solid var(--c1); border-radius: 6px 14px 14px 6px;
   }
-  .modehint b { color: var(--text); font-weight: 600; }
+  .modehint b { color: var(--c1); font-weight: 700; }
   .rounds { font-size: 13.5px; color: var(--muted); }
   .rounds b { color: var(--text); font-weight: 600; }
 
@@ -259,7 +286,20 @@
   .seat.wait .nm { max-width: none; font-weight: 500; }
 
   /* ноутбук/ТВ пониже: вход ужимается, а места игроков становятся плотнее — список из 12 человек влезает */
+  /* Три шага правил были «заполнителем пустоты» под настройками. Пустоты больше нет:
+     её занял блок задания. Оставляем правила только там, где панель и так не переполнена. */
+  @media (max-height: 960px) { .rules { display: none; } }
   @media (max-height: 820px) {
+    .setup { padding: 14px 18px 16px; }
+    .setup h2 { font-size: 20px; }
+    .setup-body { gap: 9px; }
+    .set.task { padding: 10px 12px 11px; gap: 8px; }
+    .modehint { padding: 8px 12px; font-size: 13px; }
+    /* фишки категорий чуть плотнее: три ряда по 15 штук — самый дорогой блок панели */
+    #kind.tiles { gap: 6px; }
+    #kind .tile { padding: 6px 11px 6px 9px; }
+    .opt { padding: 9px 15px; }
+    .step button { width: 32px; height: 32px; }
     .join { gap: 8px; padding: 14px 20px 16px; }
     .join .url { font-size: 13px; }
     .join .hint { font-size: 12.5px; }
@@ -279,7 +319,8 @@
   /* height, а не min-height: иначе экран итогов вырастал за пределы body{overflow:hidden} и низ обрезался */
   .final { height: 100%; overflow-y: auto; scrollbar-width: thin; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 28px; padding: clamp(22px, 3vh, 32px); backdrop-filter: blur(24px); box-shadow: 0 30px 80px -50px #000; }
   .final h2 { font: 900 clamp(30px, 3.4vw, 44px)/.95 var(--display); text-transform: uppercase; letter-spacing: -.045em; margin: 0 0 20px; }
-  .final .ftask { margin: -12px 0 18px; font-size: clamp(14px, 1.2vw, 18px); color: rgba(244, 242, 255, .72); }
+  /* подпись задания объясняет вердикты судьи — её читают с дивана вместе с «Итогами», не мельче 16px */
+  .final .ftask { margin: -12px 0 18px; font-size: clamp(16px, 1.45vw, 22px); color: rgba(244, 242, 255, .78); }
   .final .ftask b { color: var(--c1); font-weight: 700; }
   .podium { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); align-items: start; gap: 14px; }
   .pl { background: rgba(255, 255, 255, .05); border: 1px solid var(--glass-line); border-radius: 22px; padding: 18px; backdrop-filter: blur(14px); box-shadow: 0 18px 40px -30px #000; animation: rise .6s both; }
@@ -315,6 +356,10 @@
     .lobby { height: auto; grid-template-columns: minmax(0, 1fr); align-items: start; }
     .joincol { max-height: none; overflow: visible; }
     .setup { max-height: none; overflow: visible; }
+    .setup-body { overflow: visible; min-height: auto; }
+    /* на узком экране страница и так прокручивается: правила уместны, а пары — в колонку */
+    .rules { display: grid; }
+    .pair { grid-template-columns: minmax(0, 1fr); }
     .start { margin-top: 6px; }
     .seats { flex-direction: column; align-items: stretch; overflow: visible; }
     .seatrow { overflow: visible; }
@@ -442,33 +487,35 @@ function buildLobby() {
       </section>
       </div>
       <section class="setup card-l2">
+        <div class="setup-body">
         <h2>Аукцион <small>лоты, ставки, ИИ-судья</small></h2>
         <div class="set">
           <div class="cap">Категория</div>
           <div class="tiles" id="kind">${list.map((k, i) => `<button class="tile" data-v="${k}" style="animation-delay:${i * 0.025}s"><span class="ico">${(AUCTION_KINDS[k] || {}).icon || "🎲"}</span>${(AUCTION_KINDS[k] || {}).button || k}</button>`).join("")}</div>
         </div>
-        <div class="set">
-          <div class="cap">Бюджет каждого · <b id="budgetVal"></b></div>
-          <div class="row" id="budget">
-            ${BUDGETS.map((v) => `<button class="opt" data-v="${v}">$${v}</button>`).join("")}
-            <span class="step"><button data-d="-5" aria-label="меньше">−</button><button data-d="5" aria-label="больше">+</button></span>
+        <div class="pair">
+          <div class="set">
+            <div class="cap">Бюджет каждого · <b id="budgetVal"></b></div>
+            <div class="row" id="budget">
+              ${BUDGETS.map((v) => `<button class="opt" data-v="${v}">$${v}</button>`).join("")}
+              <span class="step"><button data-d="-5" aria-label="меньше">−</button><button data-d="5" aria-label="больше">+</button></span>
+            </div>
+          </div>
+          <div class="set">
+            <div class="cap">Слотов в лайнапе · <b id="slotsVal"></b></div>
+            <div class="row" id="slots">
+              ${SLOTS.map((v) => `<button class="opt" data-v="${v}">${v}</button>`).join("")}
+              <span class="step"><button data-d="-1" aria-label="меньше">−</button><button data-d="1" aria-label="больше">+</button></span>
+            </div>
           </div>
         </div>
-        <div class="set">
-          <div class="cap">Слотов в лайнапе · <b id="slotsVal"></b></div>
-          <div class="row" id="slots">
-            ${SLOTS.map((v) => `<button class="opt" data-v="${v}">${v}</button>`).join("")}
-            <span class="step"><button data-d="-1" aria-label="меньше">−</button><button data-d="1" aria-label="больше">+</button></span>
-          </div>
-        </div>
-        <div class="set">
-          <div class="cap">Задание</div>
+        <div class="set task">
+          <div class="cap">Задание партии <em>меняет, кого судья объявит победителем</em></div>
           <div class="tiles modes" id="mode"></div>
-          <div class="modehint" id="modehint"></div>
-        </div>
-        <div class="set">
-          <div class="cap">Кто судит</div>
-          <div class="seg" id="judge"><button data-v="chatgpt">ChatGPT</button><button data-v="vote">Голосование</button></div>
+          <div class="judgerow">
+            <div class="seg" id="judge"><button data-v="chatgpt">ChatGPT</button><button data-v="vote">Голосование</button></div>
+            <div class="modehint" id="modehint"></div>
+          </div>
         </div>
         <div class="rounds" id="rounds"></div>
         <div class="rules">
@@ -476,9 +523,12 @@ function buildLobby() {
           <div class="rule"><div class="k">2</div><div class="t">Торги</div><div class="d">20 секунд на лот, каждая ставка даёт ещё 5</div></div>
           <div class="rule"><div class="k">3</div><div class="t">Судья</div><div class="d">Разбирает лайнапы и называет победителя</div></div>
         </div>
-        <button class="start" id="start">Начать игру</button>
-        <div class="start-note" id="startnote"></div>
-        ${location.hostname === "localhost" || location.hostname === "127.0.0.1" ? '<button class="btn ghost" id="bots">+ 3 бота (dev)</button>' : ""}
+        </div>
+        <div class="setup-foot">
+          <button class="start" id="start">Начать игру</button>
+          <div class="start-note" id="startnote"></div>
+          ${location.hostname === "localhost" || location.hostname === "127.0.0.1" ? '<button class="btn ghost" id="bots">+ 3 бота (dev)</button>' : ""}
+        </div>
       </section>
     </div>`;
   // библиотека QR лежит на cdnjs: если он недоступен, без try лобби осталось бы без обработчиков
@@ -547,8 +597,14 @@ function syncLobby() {
     }));
   }
   markOn("mode", current.id);
+  // подсказка отвечает ровно на вопрос хоста «что сделает судья при этом задании»
+  // и не пересказывает второй раз подпись плитки (раньше short и judge дублировали друг друга)
   const hint = document.getElementById("modehint");
-  hint.replaceChildren(el("b", null, current.short || ""), document.createTextNode(" — " + (current.judge || "")));
+  if (s.settings.judge === "vote") {
+    hint.replaceChildren(el("b", null, "Голосуют игроки"), document.createTextNode(" — ИИ не судит, задание остаётся темой набора: " + (current.short || "").toLowerCase() + "."));
+  } else {
+    hint.replaceChildren(el("b", null, "ChatGPT"), document.createTextNode(" " + (current.judge || "") + "."));
+  }
   markOn("judge", s.settings.judge);
   syncPills("budget", budget, BUDGETS, (v) => "$" + v);
   syncPills("slots", slots, SLOTS, (v) => String(v));
@@ -724,7 +780,11 @@ function renderFinal() {
   const players = s.players.filter((p) => !p.left);
   if (!s.results) {
     if (s.voting) {
-      app.innerHTML = `<div class="final"><h2>Голосование</h2><p style="color:var(--muted)">Судья недоступен или выбрано голосование. Каждый голосует с телефона за чужой лайнап. Проголосовало: ${s.votes}/${players.filter((p) => p.lots.length).length}</p><div class="podium">${players.map((p) => lineupCard(p, null)).join("")}</div></div>`;
+      // Задание нужно именно здесь: в голосовании оно больше ни на что не влияет, и без
+      // напоминания критерия «побеждает самый нелепый набор» игроки голосуют за лучший.
+      const vmode = window.auctionModeById ? auctionModeById(s.settings.mode) : null;
+      const vtask = vmode && vmode.id !== "base" ? `<div class="ftask"><b>${escapeHtml(vmode.icon + " " + vmode.title)}</b> — ${escapeHtml(vmode.short || "")}</div>` : "";
+      app.innerHTML = `<div class="final"><h2>Голосование</h2>${vtask}<p style="color:var(--muted)">Судья недоступен или выбрано голосование. Каждый голосует с телефона за чужой лайнап. Проголосовало: ${s.votes}/${players.filter((p) => p.lots.length).length}</p><div class="podium">${players.map((p) => lineupCard(p, null)).join("")}</div></div>`;
     } else {
       app.innerHTML = `<div class="final"><div class="thinking"><div class="dice">🎲</div><h2>Судья думает…</h2><p style="color:var(--muted)">ChatGPT читает лайнапы</p></div></div>`;
     }
@@ -733,7 +793,9 @@ function renderFinal() {
   const r = s.results;
   const places = ["🥇", "🥈", "🥉"];
   const fmode = window.auctionModeById ? auctionModeById(s.settings.mode) : null;
-  const ftask = fmode && fmode.id !== "base" ? `<div class="ftask"><b>${escapeHtml(fmode.icon + " " + fmode.title)}</b> — ${escapeHtml(fmode.judge || "")}</div>` : "";
+  // на итогах подпись задания объясняет вердикты: без неё «победил самый нелепый набор» читается как сбой судьи
+  const fby = r.mode === "vote" ? "голосование выбирало победителя" : "ChatGPT " + (fmode ? fmode.judge : "");
+  const ftask = fmode && fmode.id !== "base" ? `<div class="ftask"><b>${escapeHtml(fmode.icon + " " + fmode.title)}</b> — ${escapeHtml(fby)}</div>` : "";
   app.innerHTML = `<div class="final"><h2>Итоги</h2>${ftask}<div class="podium">${r.ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: places[i] || `${i + 1}.`, score: x.score, verdict: x.verdict, first: i === 0, mode: r.mode, delay: Math.min(1.4, (r.ranking.length - 1 - i) * .16) })).join("")}</div>${r.summary ? `<div class="summary">${escapeHtml(r.summary)}</div>` : ""}<div class="actions"><button class="btn" id="again">Ещё раз (та же категория)</button><button class="btn ghost" id="another">Другая категория</button></div></div>`;
   document.getElementById("again").onclick = () => sendMsg({ type: "next_game" });
   document.getElementById("another").onclick = () => sendMsg({ type: "next_game" });

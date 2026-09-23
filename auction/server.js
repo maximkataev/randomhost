@@ -16,7 +16,7 @@ const crypto = require("crypto");
 const { WebSocketServer } = require("ws");
 const { Game, clampSettings } = require("./game");
 const { judge } = require("./judge");
-const { modeById, modesForKind } = require("./modes");
+const { MODES } = require("./modes");
 const { decide, STRATEGIES } = require("./bots");
 
 const PORT = Number(process.env.PORT || 3000);
@@ -390,7 +390,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/auction/api/health") return json(200, { ok: true, rooms: rooms.size, judge: OPENAI_API_KEY ? "chatgpt" : "vote" });
   if (url.pathname === "/auction/api/kinds") return json(200, Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, v.length])));
-  if (url.pathname === "/auction/api/modes") return json(200, require("./modes").MODES);
+  if (url.pathname === "/auction/api/modes") return json(200, MODES);
   if (url.pathname === "/auction/api/rooms" && req.method === "POST") {
     const body = await readJson(req);
     try {
@@ -523,11 +523,13 @@ function handle(room, client, msg) {
       if (!client.host) return;
       if (g.s.phase !== "lobby") return reply({ type: "error", error: "game_started" });
       if (msg.kind && KINDS[msg.kind]) { g.s.kind = msg.kind; g.s.deck = Game.create({ kind: msg.kind, cards: KINDS[msg.kind] }).s.deck; }
+      // clampSettings знает категорию и сам сбрасывает задание, доступное только прежней;
+      // пересчитываем и когда пришла одна категория без настроек — иначе задание осталось бы чужим
       if (msg.settings) {
-        g.s.settings = clampSettings({ ...g.s.settings, ...msg.settings });
+        g.s.settings = clampSettings({ ...g.s.settings, ...msg.settings }, g.s.kind);
         for (const p of g.s.players) p.money = g.s.settings.budget;
-        // задание могло быть доступно только прежней категории
-        if (!modesForKind(g.s.kind).some((m) => m.id === g.s.settings.mode)) g.s.settings.mode = "base";
+      } else if (msg.kind) {
+        g.s.settings = clampSettings(g.s.settings, g.s.kind);
       }
       return afterChange(room, []);
     }

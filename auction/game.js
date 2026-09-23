@@ -1,6 +1,6 @@
 "use strict";
 
-const { modeById } = require("./modes");
+const { modeById, modesForKind } = require("./modes");
 
 /*
  * Движок аукциона: чистая логика без сети и таймеров.
@@ -26,7 +26,9 @@ const DEFAULTS = {
 
 const PHASES = ["lobby", "lot", "bidding", "pickup", "sold", "taken", "unsold", "finished"];
 
-function clampSettings(input = {}) {
+// `kind` обязателен всюду, где категория известна: задание живёт не во всех категориях,
+// и проверка id без категории пропускала «лигу суперзлодеев» в блюда (POST /rooms, next_game).
+function clampSettings(input = {}, kind) {
   const s = { ...DEFAULTS };
   const num = (k, min, max) => {
     const v = Number(input[k]);
@@ -38,6 +40,7 @@ function clampSettings(input = {}) {
   num("t2", 3000, 15000);
   if (input.judge === "vote" || input.judge === "chatgpt") s.judge = input.judge;
   if (typeof input.mode === "string" && modeById(input.mode).id === input.mode) s.mode = input.mode;
+  if (kind && !modesForKind(kind).some((m) => m.id === s.mode)) s.mode = "base";
   if (typeof input.media === "boolean") s.media = input.media;
   return s;
 }
@@ -59,7 +62,7 @@ class Game {
   static create({ kind, cards, settings, rng = Math.random }) {
     return new Game({
       kind,
-      settings: clampSettings(settings),
+      settings: clampSettings(settings, kind),
       phase: "lobby",
       players: [], // {id, name, money, lots: [card], online, left, spent}
       deck: shuffle(cards, rng),

@@ -142,6 +142,22 @@ async function cdp(url) {
     const finTask = await evaluateSafe(board, "(document.querySelector('.final .ftask') || {}).textContent || ''");
     check(!/Итоги/.test(ftext) || /Худший набор/.test(finTask), "доска: задание подписано на итогах (" + finTask.slice(0, 60) + ")");
 
+    // --- экран голосования: без подписи задания игроки голосуют за лучший набор вместо худшего.
+    // Состояние подставляем прямо в клиент: ветка voting иначе воспроизводится только через
+    // отказ судьи, а проверить надо именно рендер.
+    const boardVote = await evaluateSafe(board, `(() => {
+      state.phase = "finished"; state.results = null; state.votes = 0; state.voting = { deadline: Date.now() + 30000 };
+      render();
+      return document.body.innerText;
+    })()`);
+    check(/Худший набор/.test(boardVote || ""), "доска: задание подписано на экране голосования");
+    const remoteVote = await evaluateSafe(remote, `(() => {
+      state.phase = "finished"; state.results = null; state.votes = 0; state.voting = { deadline: Date.now() + 30000 };
+      render();
+      return document.body.innerText;
+    })()`);
+    check(/Худший набор/.test(remoteVote || ""), "пульт: задание подписано на экране голосования");
+
     check(board.errors.length === 0, "доска без JS-ошибок" + (board.errors.length ? ": " + board.errors.slice(0, 2).join(" | ") : ""));
     check(remote.errors.length === 0, "пульт без JS-ошибок" + (remote.errors.length ? ": " + remote.errors.slice(0, 2).join(" | ") : ""));
     await board.close(); await remote.close();
@@ -167,6 +183,23 @@ async function cdp(url) {
     check(netErrors.length === 0, "заблокированные картинки/музыка не дают JS-ошибок" + (netErrors.length ? ": " + netErrors[0] : ""));
     await offline.call("Runtime.evaluate", { expression: "sendMsg({type:'end'})" });
     await offline.close();
+
+    // --- пульт без auction-modes.js: задание неизвестно, и врать про него нельзя.
+    // Раньше фолбэк подставлял «🏆 Лучший набор» — игрок собирал бы обратное тому, что судят.
+    const room3 = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "artist", settings: { mode: "worst" } }) })).json();
+    const noModes = await cdp(`${BASE}/auction.html?r=${room3.code}`);
+    await noModes.block(["*auction-modes.js*"]);
+    await noModes.call("Page.reload");
+    await wait(3000);
+    await noModes.call("Runtime.evaluate", { expression: "document.getElementById('name').focus()" });
+    await noModes.call("Input.insertText", { text: "Без заданий" });
+    await noModes.call("Runtime.evaluate", { expression: "document.getElementById('go').click()" });
+    await wait(2500);
+    const noModesText = await evaluateSafe(noModes, "document.body.innerText") || "";
+    check(/комнате|Ждём/i.test(noModesText), "пульт без auction-modes.js: вход в лобби работает");
+    check(!/Лучший набор|Худший набор/.test(noModesText), "пульт без auction-modes.js: не выдумывает задание (" + noModesText.replace(/\n/g, " ").slice(0, 70) + ")");
+    check(noModes.errors.filter((e) => !/ERR_BLOCKED_BY_CLIENT/.test(e)).length === 0, "пульт без auction-modes.js: без JS-ошибок" + (noModes.errors.length ? ": " + noModes.errors[0] : ""));
+    await noModes.close();
   } finally {
     chrome.kill();
   }
