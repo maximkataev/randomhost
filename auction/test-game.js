@@ -451,7 +451,11 @@ test("задание: у категории своё название, и оно
   // общий текст — запасной: если у категории есть своя формулировка, показываем её
   assert.equal(modeText("base", "artist").title, "Лайнап фестиваля");
   assert.equal(modeText("worst", "food").title, "Худшее меню");
-  assert.equal(modeText("party", "invention").title, modeById("party").title, "категория без своей строки берёт общий текст");
+  // Запас проверяем на механизме, а не на реальной паре: привязка к конкретной категории
+  // запрещала копирайтеру дать ей своё название, хотя тест проверял не это.
+  const withKind = MODES.find((m) => m.byKind);
+  const noOwnLine = Object.keys(withKind.byKind).length && "категория-которой-нет";
+  assert.equal(modeText(withKind.id, noOwnLine).title, withKind.title, "категория без своей строки берёт общий текст");
   assert.equal(modeText("base", "нет-такой-категории").title, modeById("base").title);
   // byKind переопределяет только тексты для экрана; промптовые поля остаются общими
   for (const m of MODES) {
