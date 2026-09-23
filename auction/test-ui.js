@@ -44,6 +44,16 @@ async function cdp(url) {
   return { call, evaluate, shot, errors, close, block };
 }
 
+// Печатаем НАСТОЯЩИМИ нажатиями, а не Input.insertText: insertText не шлёт keydown и потому
+// проходил мимо бага, из-за которого обработчик клавиш отменял вставку символов и имя
+// вообще нельзя было ввести. Живой игрок печатает именно клавишами.
+async function typeText(page, text) {
+  for (const ch of text) {
+    await page.call("Input.dispatchKeyEvent", { type: "keyDown", text: ch, unmodifiedText: ch, key: ch });
+    await page.call("Input.dispatchKeyEvent", { type: "keyUp", key: ch });
+  }
+}
+
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const chrome = spawn(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--autoplay-policy=no-user-gesture-required", `--remote-debugging-port=${PORT}`, "--window-size=1440,900", "about:blank"], { stdio: "ignore" });
@@ -73,7 +83,7 @@ async function cdp(url) {
     check(await evaluateSafe(remote, "!!document.getElementById('name')"), "пульт: поле имени есть");
     // печатаем имя как на телефоне
     await remote.call("Runtime.evaluate", { expression: "document.getElementById('name').focus()" });
-    for (const ch of "Макс") await remote.call("Input.insertText", { text: ch });
+    await typeText(remote, "Макс");
     check((await evaluateSafe(remote, "document.getElementById('name').value")) === "Макс", "пульт: имя вводится");
     await remote.call("Runtime.evaluate", { expression: "document.getElementById('go').click()" });
     await wait(2500);
@@ -221,7 +231,7 @@ async function cdp(url) {
     await noModes.call("Page.reload");
     await wait(3000);
     await noModes.call("Runtime.evaluate", { expression: "document.getElementById('name').focus()" });
-    await noModes.call("Input.insertText", { text: "Без заданий" });
+    await typeText(noModes, "Без заданий");
     await noModes.call("Runtime.evaluate", { expression: "document.getElementById('go').click()" });
     await wait(2500);
     const noModesText = await evaluateSafe(noModes, "document.body.innerText") || "";

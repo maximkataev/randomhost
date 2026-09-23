@@ -74,6 +74,16 @@ async function page(url, dev) {
   return { call, ev, tap, shot, rotate, errors, close: () => fetch(`http://localhost:${PORT}/json/close/${t.id}`) };
 }
 
+// Печатаем НАСТОЯЩИМИ нажатиями, а не Input.insertText: insertText не шлёт keydown и потому
+// проходил мимо бага, из-за которого обработчик клавиш отменял вставку символов и имя
+// вообще нельзя было ввести. Живой игрок печатает именно клавишами.
+async function typeText(page, text) {
+  for (const ch of text) {
+    await page.call("Input.dispatchKeyEvent", { type: "keyDown", text: ch, unmodifiedText: ch, key: ch });
+    await page.call("Input.dispatchKeyEvent", { type: "keyUp", key: ch });
+  }
+}
+
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   chrome = spawn(CHROME, ["--headless=new", "--disable-gpu", `--remote-debugging-port=${PORT}`, "about:blank"], { stdio: "ignore" });
@@ -90,7 +100,7 @@ async function page(url, dev) {
       const tapped = await p.tap("#name");
       check(tapped, "по полю имени можно тапнуть");
       check(await p.ev("document.activeElement && document.activeElement.id === 'name'"), "тап ставит фокус в поле");
-      await p.call("Input.insertText", { text: "Аня" });
+      await typeText(p, "Аня");
       check((await p.ev("document.getElementById('name').value")) === "Аня", "имя вводится");
       // страница должна скроллиться, иначе клавиатура закроет поле
       check(await p.ev("document.documentElement.scrollHeight > innerHeight || getComputedStyle(document.body).overflowY === 'auto'"), "экран входа скроллится (место под клавиатуру)");
@@ -103,7 +113,7 @@ async function page(url, dev) {
       // второй игрок — ещё одна вкладка пульта (на проде ботов нет, а для старта нужно двое)
       const mate = await page(`${BASE}/auction.html?r=${room.code}`, DEVICES[2]);
       await mate.tap("#name");
-      await mate.call("Input.insertText", { text: "Боря" });
+      await typeText(mate, "Боря");
       await mate.tap("#go");
       await wait(2500);
       check(await board.ev('state && state.players.filter(x => !x.left).length >= 2'), "в лобби двое игроков");
