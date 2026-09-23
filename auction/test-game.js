@@ -4,15 +4,17 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { Game, clampSettings } = require("./game");
+const { Game, DEFAULTS, clampSettings } = require("./game");
 const { judge, buildPrompt } = require("./judge");
 const { MODES, modesForKind } = require("./modes");
 
 const cards = Array.from({ length: 60 }, (_, i) => ({ name: `Лот ${i}`, emoji: "🎲", meta: ["a", "b"], description: "d", fact: "f", wiki_en: "x" }));
 const rng = () => 0.5;
 
+// intro: 0 — заставка «задание + отсчёт» тут не нужна, партия должна начинаться с первого лота.
+// Её поведение проверяется отдельным тестом ниже.
 function setup(n = 3, settings = {}) {
-  const g = Game.create({ kind: "test", cards, settings, rng });
+  const g = Game.create({ kind: "test", cards, settings: { intro: 0, ...settings }, rng });
   for (let i = 0; i < n; i++) g.addPlayer({ id: `p${i}`, name: `P${i}` });
   g.start(0);
   return g;
@@ -368,4 +370,62 @@ test("судья: задание уходит в реальный вызов jud
   const fetchImpl = async (_u, opts) => { sent = opts.body; return judgeReply(full); };
   await judge({ kind: "artist", lineups: twoLineups, slots: 3, mode: "villains", apiKey: "k", model: "m", fetchImpl });
   assert.ok(sent.includes("суперзлодеев") || sent.includes("\\u0437\\u043b\\u043e\\u0434\\u0435"), "тело запроса без задания: " + sent.slice(0, 200));
+});
+
+// ---------- заставка перед первым лотом ----------
+
+test("заставка: старт уходит в intro, по дедлайну открывается первый лот", () => {
+  const g = Game.create({ kind: "test", cards, settings: {}, rng });
+  g.addPlayer({ id: "p0", name: "A" });
+  g.addPlayer({ id: "p1", name: "B" });
+  const ev = g.start(0);
+  assert.equal(g.s.phase, "intro", "старт должен показывать заставку");
+  assert.equal(g.s.deadline, DEFAULTS.intro, "дедлайн заставки = длительности intro");
+  assert.ok(ev.some((e) => e.type === "intro"), "событие intro не пришло");
+  assert.equal(g.s.lot, null, "во время заставки лота ещё нет");
+  assert.equal(g.s.round, -1, "раунды начинаются после заставки");
+  // раньше дедлайна ничего не происходит
+  assert.deepEqual(g.tick(DEFAULTS.intro - 1), []);
+  assert.equal(g.s.phase, "intro");
+  g.tick(DEFAULTS.intro);
+  assert.equal(g.s.phase, "lot", "после заставки начинается первый лот");
+  assert.equal(g.s.round, 0);
+  assert.ok(g.s.lot, "лот выдан");
+  assert.equal(g.s.deadline, DEFAULTS.intro + g.s.settings.t1, "первый лот получает полный T1, заставка его не съедает");
+});
+
+test("заставка: ставки и разбор во время заставки невозможны", () => {
+  const g = Game.create({ kind: "test", cards, settings: {}, rng });
+  g.addPlayer({ id: "p0", name: "A" });
+  g.addPlayer({ id: "p1", name: "B" });
+  g.start(0);
+  assert.equal(g.bid("p0", 1, 100).ok, false, "ставка на заставке должна отклоняться");
+  assert.equal(g.take("p0", 100).ok, false, "забрать лот на заставке нельзя");
+});
+
+test("заставка: ведущий может её оборвать, заставка выключается настройкой", () => {
+  const g = Game.create({ kind: "test", cards, settings: {}, rng });
+  g.addPlayer({ id: "p0", name: "A" });
+  g.addPlayer({ id: "p1", name: "B" });
+  g.start(0);
+  g.hostSkip(1000);
+  assert.equal(g.s.phase, "lot", "пропуск на заставке открывает первый лот");
+  assert.equal(g.s.deadline, 1000 + g.s.settings.t1, "оборванная заставка не укорачивает первый лот");
+
+  const g2 = setup(2); // setup ставит intro: 0
+  assert.equal(g2.s.phase, "lot", "с intro: 0 партия начинается сразу с лота");
+});
+
+test("заставка: пауза на заставке замораживает её, а не проглатывает", () => {
+  const g = Game.create({ kind: "test", cards, settings: {}, rng });
+  g.addPlayer({ id: "p0", name: "A" });
+  g.addPlayer({ id: "p1", name: "B" });
+  g.start(0);
+  g.pause(2000);
+  assert.deepEqual(g.tick(99999), [], "на паузе заставка не истекает");
+  assert.equal(g.s.phase, "intro");
+  g.resume(50000);
+  assert.equal(g.s.phase, "intro", "после снятия паузы заставка продолжается");
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "lot");
 });

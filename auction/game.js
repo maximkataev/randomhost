@@ -19,12 +19,16 @@ const DEFAULTS = {
   antiSnipeWindow: 2000,
   antiSnipeBonus: 3000,
   showDelay: 2000, // ПРОДАНО / ЗАБРАЛ перед следующим лотом
+  // Заставка перед первым лотом: задание крупно, потом отсчёт 3-2-1. Отдельная фаза, а не
+  // анимация поверх лота, — иначе игроки теряли бы секунды торгов, пока смотрят заставку.
+  // 0 — без заставки (тесты и симуляции стартуют сразу).
+  intro: 6000,
   judge: "chatgpt", // chatgpt | vote
   mode: "base", // задание: что собираем и как судят (auction/modes.js)
   media: true,
 };
 
-const PHASES = ["lobby", "lot", "bidding", "pickup", "sold", "taken", "unsold", "finished"];
+const PHASES = ["lobby", "intro", "lot", "bidding", "pickup", "sold", "taken", "unsold", "finished"];
 
 // `kind` обязателен всюду, где категория известна: задание живёт не во всех категориях,
 // и проверка id без категории пропускала «лигу суперзлодеев» в блюда (POST /rooms, next_game).
@@ -38,6 +42,7 @@ function clampSettings(input = {}, kind) {
   num("slots", 3, 8);
   num("t1", 5000, 60000);
   num("t2", 3000, 15000);
+  num("intro", 0, 15000);
   if (input.judge === "vote" || input.judge === "chatgpt") s.judge = input.judge;
   if (typeof input.mode === "string" && modeById(input.mode).id === input.mode) s.mode = input.mode;
   if (kind && !modesForKind(kind).some((m) => m.id === s.mode)) s.mode = "base";
@@ -158,6 +163,11 @@ class Game {
     if (n < 2) throw new Error("need at least 2 players");
     s.rounds = Math.min(s.deck.length, Math.ceil(n * s.settings.slots * 1.25));
     s.round = -1;
+    if (s.settings.intro > 0) {
+      s.phase = "intro";
+      s.deadline = now + s.settings.intro;
+      return [{ type: "started" }, { type: "intro" }];
+    }
     return [{ type: "started" }, ...this.nextLot(now)];
   }
 
@@ -237,6 +247,8 @@ class Game {
     if (s.paused || s.phase === "lobby" || s.phase === "finished") return [];
     if (now < s.deadline) return [];
     switch (s.phase) {
+      case "intro":
+        return this.nextLot(now);
       case "bidding": {
         const p = this.player(s.leaderId);
         // лидера не стало (кик/выход в ту же миллисекунду) — лот никому не уходит, но сервер не падает
@@ -283,7 +295,8 @@ class Game {
   hostSkip(now) {
     const s = this.s;
     if (s.paused || s.phase === "lobby" || s.phase === "finished") return [];
-    if (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "sold" || s.phase === "taken" || s.phase === "unsold") {
+    // заставку ведущий тоже вправе оборвать — компания уже смотрит на экран
+    if (s.phase === "intro" || s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "sold" || s.phase === "taken" || s.phase === "unsold") {
       s.deadline = now;
       return this.tick(now);
     }

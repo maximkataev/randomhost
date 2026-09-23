@@ -103,6 +103,12 @@
   .plate.err { color: #ff8a8a; }
   .plate.task { border-style: solid; border-color: color-mix(in srgb, var(--c1) 45%, transparent); background: color-mix(in srgb, var(--c1) 8%, transparent); }
   .plate.task .eyebrow { display: block; font: 700 10px/1 var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin-bottom: 9px; }
+  /* заставка: на телефоне главное — отправить взгляд на большой экран, поэтому крупно только цифра */
+  .intro { text-align: center; }
+  .icount { font: 500 15px/1 var(--body); color: var(--muted); min-height: 96px; display: flex; align-items: center; justify-content: center; }
+  .icount.go { font: 900 84px/1 var(--display); letter-spacing: -.05em; color: var(--text); animation: icount .9s cubic-bezier(.2, 1.4, .4, 1) both; }
+  @keyframes icount { 0% { opacity: 0; transform: scale(1.8); } 22% { opacity: 1; transform: scale(1); } 100% { opacity: .35; transform: scale(.85); } }
+  @media (prefers-reduced-motion: reduce) { .icount.go { animation: none; } }
   /* «кто судит» отделено от самого задания: раньше это был один слипшийся абзац из двух почти одинаковых фраз */
   .plate.task .by { display: block; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--glass-line); font-size: 13.5px; line-height: 1.35; color: var(--muted); }
   /* задание игры — отдельной строкой под статусом: в статусбаре оно обрезалось до пары букв */
@@ -576,8 +582,41 @@ function flashButton(text) { const b = document.getElementById("bid"); if (!b) r
 function render() {
   if (!state) return;
   if (state.phase === "lobby") return renderLobby();
+  if (state.phase === "intro") return renderIntro();
   if (state.phase === "finished") return renderFinal();
   renderGame();
+}
+
+// Заставка: на телефоне она нарочно почти пустая — смысл в том, чтобы игрок поднял голову
+// на большой экран, где крупно показывают задание и отсчёт. Цифры дублируем, чтобы те,
+// кто всё-таки смотрит в телефон, не пропустили старт торгов.
+const COUNTDOWN_MS = 3000;
+let introShown = null;
+
+function renderIntro() {
+  screenMode("");
+  lastLot = -1;
+  const s = state, m = modeNow();
+  if (!document.getElementById("introbox")) {
+    app.innerHTML = `<div class="center intro" id="introbox">
+      <p class="sub">Смотри на большой экран</p>
+      ${m ? `<div class="plate task"><span class="eyebrow">Задание партии</span><b>${m.icon} ${escapeHtml(m.title)}</b>${escapeHtml(m.short || "")}.</div>` : ""}
+      <div class="icount" id="icount">Начинаем…</div>
+    </div>`;
+    introShown = null;
+    requestAnimationFrame(tickIntro);
+  }
+}
+
+function tickIntro() {
+  const box = document.getElementById("icount");
+  if (!box || !state || state.phase !== "intro") { introShown = null; return requestAnimationFrame(tickIntro); }
+  const left = Math.max(0, state.deadline - (Date.now() + offset));
+  if (left <= COUNTDOWN_MS) {
+    const n = Math.max(1, Math.ceil(left / 1000));
+    if (introShown !== n) { introShown = n; box.textContent = String(n); box.className = "icount go"; }
+  }
+  requestAnimationFrame(tickIntro);
 }
 
 function renderLobby() {

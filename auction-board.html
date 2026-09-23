@@ -315,6 +315,33 @@
     .bidbar .stamp, .hero::before { animation: none !important; }
   }
 
+  /* заставка перед первым лотом: задание во весь экран, затем отсчёт */
+  .intro { height: 100%; display: grid; place-items: center; text-align: center; position: relative; }
+  .intro .itext { display: flex; flex-direction: column; align-items: center; gap: 10px; transition: transform .45s cubic-bezier(.3, 1.2, .4, 1), opacity .45s; }
+  .intro .icap { font: 700 12px/1 var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); animation: ifade .5s both; }
+  .intro .ibig { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .2em;
+    font: 900 clamp(46px, 7vw, 104px)/.92 var(--display); letter-spacing: -.045em; text-transform: uppercase;
+    animation: ipop .6s cubic-bezier(.2, 1.5, .4, 1) both; }
+  /* градиент только на буквах: под background-clip эмодзи теряет свои цвета и становится силуэтом */
+  .intro .ibig .iname { background: linear-gradient(100deg, var(--c1), var(--c2) 55%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .intro .ibig .iicon { font-size: .82em; line-height: 1; }
+  .intro .isub { font: 500 clamp(18px, 1.9vw, 28px)/1.25 var(--body); color: var(--text); max-width: 22ch; animation: ifade .6s .15s both; }
+  .intro .ijudge { font-size: clamp(14px, 1.3vw, 20px); color: var(--muted); max-width: 46ch; animation: ifade .6s .3s both; }
+  /* Отсчёт: задание сжимается в строку под верхний край, цифра остаётся на экране одна.
+     Без этого огромная цифра ложилась поверх текста и оба становились нечитаемы. */
+  .intro.counting .itext { position: absolute; top: 7vh; transform: scale(.52); transform-origin: top center; }
+  /* animation: ... both у появления держит свою opacity и перебивает обычное правило — гасим анимацию */
+  .intro.counting .isub, .intro.counting .ijudge, .intro.counting .icap { animation: none; opacity: 0; transition: opacity .3s; }
+  .intro .count { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+  .intro .count .num { font: 900 clamp(120px, 26vw, 360px)/1 var(--display); letter-spacing: -.06em; color: var(--text);
+    text-shadow: 0 0 80px color-mix(in srgb, var(--c1) 70%, transparent); animation: icount 1s cubic-bezier(.2, 1.4, .4, 1) both; }
+  @keyframes ipop { from { opacity: 0; transform: scale(.82); } to { opacity: 1; transform: none; } }
+  @keyframes ifade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes icount { 0% { opacity: 0; transform: scale(1.9); } 22% { opacity: 1; transform: scale(1); } 100% { opacity: .15; transform: scale(.82); } }
+  @media (prefers-reduced-motion: reduce) {
+    .intro .icap, .intro .ibig, .intro .isub, .intro .ijudge, .intro .count .num { animation: none; }
+  }
+
   /* финал */
   /* height, а не min-height: иначе экран итогов вырастал за пределы body{overflow:hidden} и низ обрезался */
   .final { height: 100%; overflow-y: auto; scrollbar-width: thin; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 28px; padding: clamp(22px, 3vh, 32px); backdrop-filter: blur(24px); box-shadow: 0 30px 80px -50px #000; }
@@ -446,6 +473,7 @@ function onEvent(e) {
 function render() {
   if (!state) return;
   if (state.phase === "lobby") return renderLobby();
+  if (state.phase === "intro") return renderIntro();
   if (state.phase === "finished") return renderFinal();
   renderGame();
 }
@@ -647,6 +675,54 @@ function syncPills(boxId, value, presets, fmt) {
     const next = value + Number(b.dataset.d);
     b.disabled = boxId === "budget" ? next < 10 || next > 200 : next < 3 || next > 8;
   });
+}
+
+// ---------- заставка перед первым лотом ----------
+// Задание крупно, потом «три, два, один» — чтобы компания подняла головы от телефонов
+// и поняла, что именно собирают. Своя фаза на сервере, поэтому время торгов не страдает.
+const COUNTDOWN_MS = 3000;
+
+function renderIntro() {
+  document.body.classList.remove("m-lobby");
+  stopMusic();
+  const s = state;
+  app.style.display = "block";
+  if (!document.getElementById("intro")) {
+    const m = window.auctionModeById ? auctionModeById(s.settings.mode) : null;
+    const kindLabel = (AUCTION_KINDS[s.kind] || {}).label || s.kind;
+    app.innerHTML = `<div class="intro" id="intro">
+      <div class="itext">
+        <div class="icap">Лотов в игре: ${s.rounds} · ${escapeHtml(String(kindLabel))}</div>
+        <div class="ibig"><span class="iicon">${m ? m.icon : "🔨"}</span><span class="iname">${m ? escapeHtml(m.title) : "Аукцион"}</span></div>
+        <div class="isub">${m ? escapeHtml(m.short || "") : ""}</div>
+        <div class="ijudge">${m ? escapeHtml((s.settings.judge === "vote" ? "Победителя выберете вы голосованием — " : "Победителя выберет ChatGPT — он ") + (m.judge || "")) : ""}</div>
+      </div>
+      <div class="count" id="count"></div>
+    </div>`;
+    requestAnimationFrame(tickIntro);
+  }
+}
+
+// отсчёт идёт по серверному дедлайну, а не по локальному таймеру: на всех экранах одни и те же цифры
+let countShown = null;
+function tickIntro() {
+  const box = document.getElementById("count");
+  if (!box || !state || state.phase !== "intro") { countShown = null; return requestAnimationFrame(tickIntro); }
+  const left = Math.max(0, state.deadline - (Date.now() + offset));
+  const intro = document.getElementById("intro");
+  if (left > COUNTDOWN_MS) {
+    if (countShown !== "task") { countShown = "task"; box.replaceChildren(); intro.classList.remove("counting"); }
+  } else {
+    const n = Math.max(1, Math.ceil(left / 1000));
+    if (countShown !== n) {
+      countShown = n;
+      intro.classList.add("counting");
+      const d = el("div", "num", String(n));
+      box.replaceChildren(d);
+      beep(n === 1 ? 880 : 520); // «три, два» глуше, «один» звонче — слышно, что сейчас старт
+    }
+  }
+  requestAnimationFrame(tickIntro);
 }
 
 function renderGame() {

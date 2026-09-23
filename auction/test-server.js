@@ -24,7 +24,7 @@ function connect(code, first) {
 const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type && pred(m));
 
 (async () => {
-  const room = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal" }) })).json();
+  const room = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings: { intro: 0 } }) })).json();
   console.log("room", room.code);
   const host = await connect(room.code, { type: "host", token: room.hostToken });
   const bad = await connect(room.code, { type: "host", token: "wrong" });
@@ -101,7 +101,7 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
 
   // ---------- гонки: одновременные ставки ----------
   const make = async (settings, speed) =>
-    (await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings, speed }) })).json());
+    (await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings: { intro: 0, ...settings }, speed }) })).json());
 
   {
     const r2 = await make({ slots: 5, budget: 30, t1: 20000, t2: 5000 });
@@ -196,6 +196,30 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
       check(has(v2, "rejected", (m) => m.reason === "closed"), "голос после подсчёта отклоняется");
     }
     v1.ws.close(); v2.ws.close(); h4.ws.close();
+  }
+
+  // ---------- заставка перед первым лотом ----------
+  // Игра с настройками по умолчанию обязана начинаться с заставки: иначе задание никто не увидит.
+  {
+    const ri = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings: { mode: "worst", intro: 2000 } }) })).json();
+    const hi = await connect(ri.code, { type: "host", token: ri.hostToken });
+    const i1 = await connect(ri.code, { type: "join", name: "И1" });
+    const i2 = await connect(ri.code, { type: "join", name: "И2" });
+    await until(() => hi.state && hi.state.players.length === 2);
+    hi.send({ type: "start" });
+    await until(() => hi.state.phase === "intro");
+    check(hi.state.phase === "intro", `старт показывает заставку (${hi.state.phase})`);
+    check(!hi.state.lot, "во время заставки лот не раскрыт — игроки не подглядят");
+    check(i1.state.phase === "intro" && i1.state.settings.mode === "worst", "заставка и задание видны игроку");
+    // ставка на заставке не проходит
+    i1.send({ type: "bid", amount: 1 });
+    await wait(300);
+    check(has(i1, "rejected") || !hi.state.price, "ставка во время заставки не принимается");
+    await until(() => hi.state.phase === "lot", 6000);
+    check(hi.state.phase === "lot" && !!hi.state.lot, `после заставки открывается первый лот (${hi.state.phase})`);
+    const left = hi.state.deadline - hi.state.serverNow;
+    check(left > hi.state.settings.t1 - 1500, `первый лот получает полный таймер, заставка его не съела (${Math.round(left / 1000)} с)`);
+    for (const c of [hi, i1, i2]) c.ws.close();
   }
 
   // ---------- задание и категория согласованы на всех путях, а не только в обработчике settings ----------

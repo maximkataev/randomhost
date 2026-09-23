@@ -74,6 +74,8 @@ function connect(code, first) {
   host.send({ type: "start" });
   if (!(await until(() => host.state.phase !== "lobby"))) fail("game did not start: " + host.state.phase);
   log("started, rounds", host.state.rounds);
+  // партия открывается заставкой «задание + отсчёт»: торги начинаются после неё
+  if (host.state.phase === "intro" && !(await until(() => host.state.phase === "lot", 12000))) fail("intro did not end: " + host.state.phase);
   // устаревшая цена в ставке — сервер обязан ответить rejected/price_changed
   anya.send({ type: "bid", amount: 1, expectedPrice: 5 });
   if (!(await until(() => anya.rejected.some((r) => r.reason === "price_changed")))) fail("stale bid was not rejected: " + JSON.stringify(anya.rejected));

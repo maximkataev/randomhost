@@ -106,6 +106,22 @@ async function cdp(url) {
 
     // --- боты и старт
     await board.call("Runtime.evaluate", { expression: "sendMsg({type:'bots', n:3}); setTimeout(() => sendMsg({type:'start'}), 500)" });
+    await wait(2500);
+    // заставка: задание во весь экран, затем отсчёт 3-2-1 — и только потом торги
+    await board.call("Page.bringToFront"); // отсчёт крутится на requestAnimationFrame
+    const introPhase = await evaluateSafe(board, "state && state.phase");
+    check(introPhase === "intro", "доска: партия открывается заставкой (" + introPhase + ")");
+    const introText = await evaluateSafe(board, "(document.getElementById('intro') || {}).textContent || ''");
+    check(/Худший набор/.test(introText), "доска: на заставке крупно показано задание");
+    check(/ChatGPT|голосован/i.test(introText), "доска: на заставке сказано, кто выберет победителя");
+    check(!(await evaluateSafe(board, "!!(state && state.lot)")), "доска: во время заставки лот не раскрыт");
+    const rIntro = await evaluateSafe(remote, "document.body.innerText");
+    check(/большой экран/i.test(rIntro || ""), "пульт: на заставке отправляет смотреть на экран");
+    // отсчёт появляется в последние 3 секунды
+    let count = "";
+    for (let i = 0; i < 30 && !/^[123]$/.test(count); i++) { count = (await evaluateSafe(board, "(document.getElementById('count') || {}).textContent || ''")).trim(); await wait(200); }
+    check(/^[123]$/.test(count), "доска: идёт отсчёт три-два-один (" + count + ")");
+
     await wait(6000);
     const phase = await evaluateSafe(board, "state && state.phase");
     check(["lot", "bidding", "sold", "unsold", "pickup", "taken"].includes(phase), "доска: игра идёт (" + phase + ")");
