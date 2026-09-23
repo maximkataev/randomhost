@@ -1376,8 +1376,14 @@ function renderFinal() {
   const fby = r.mode === "vote" ? T("by_vote") : tf("by_ai", { judge: fmode ? fmode.judge : "" });
   const ftask = fmode && fmode.id !== "base" ? `<div class="ftask"><b>${escapeHtml(fmode.icon + " " + fmode.title)}</b> — ${escapeHtml(fby)}</div>` : "";
   app.innerHTML = `<div class="final"><h2>${T("results_title")}</h2>${ftask}<div class="podium">${r.ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: places[i] || `${i + 1}.`, score: x.score, verdict: x.verdict, first: i === 0, mode: r.mode, delay: Math.min(1.4, (r.ranking.length - 1 - i) * .16) })).join("")}</div>${r.summary ? `<div class="summary">${escapeHtml(r.summary)}</div>` : ""}<div class="actions"><button class="btn" id="again">${T("btn_again")}</button><button class="btn ghost" id="another">${T("btn_another")}</button></div></div>`;
-  document.getElementById("again").onclick = () => sendMsg({ type: "next_game" });
-  document.getElementById("another").onclick = () => sendMsg({ type: "next_game" });
+  // Кнопки обязаны делать разное: раньше обе слали одно и то же, и «Другая категория»
+  // возвращала в лобби с той же самой категорией — то есть просто врала.
+  document.getElementById("again").onclick = () => sendMsg({ type: "next_game", kind: s.kind });
+  document.getElementById("another").onclick = () => {
+    const others = (kinds || []).filter((k) => k !== s.kind);
+    const pick = others.length ? others[Math.floor(Math.random() * others.length)] : s.kind;
+    sendMsg({ type: "next_game", kind: pick });
+  };
 }
 function lineupCard(p, res) {
   if (!p) return "";

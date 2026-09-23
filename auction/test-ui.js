@@ -214,6 +214,7 @@ async function typeText(page, text) {
     await wait(4000);
     const fin = await evaluateSafe(board, "state && state.phase");
     check(fin === "finished", "доска: завершение игры хостом");
+
     await wait(20000); // судья или голосование
     await board.shot("ui_board_final");
     await remote.shot("ui_remote_final");
@@ -240,6 +241,30 @@ async function typeText(page, text) {
       return document.body.innerText;
     })()`);
     check(WORST_RE.test(remoteVote || ""), "пульт: задание подписано на экране голосования");
+    // «Ещё раз» и «Другая категория» раньше слали одно и то же, и вторая кнопка просто врала.
+    // Комната своя: кнопки живут только на экране итогов, а в общем прогоне доска к этому моменту
+    // стоит на голосовании. Судья — голосование, чтобы итоги пришли без похода в OpenAI.
+    {
+      const r = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "film", settings: { intro: 0, judge: "vote", t1: 5000, t2: 3000 } }) })).json();
+      const b2 = await cdp(`${BASE}/auction-board.html?r=${r.code}&t=${r.hostToken}`);
+      await wait(2500);
+      await b2.call("Runtime.evaluate", { expression: "sendMsg({type:'bots', n:2}); setTimeout(() => sendMsg({type:'start'}), 400)" });
+      await wait(3000);
+      await b2.call("Runtime.evaluate", { expression: "sendMsg({type:'end'})" });
+      let hasBtn = false;
+      for (let i = 0; i < 60 && !hasBtn; i++) { hasBtn = await evaluateSafe(b2, `!!document.getElementById("another")`); await wait(500); }
+      check(hasBtn, "доска: на итогах есть кнопки следующей игры");
+      const kindBefore = await evaluateSafe(b2, "state && state.kind");
+      await b2.call("Runtime.evaluate", { expression: `document.getElementById("another").click()` });
+      await wait(1500);
+      const kindAfter = await evaluateSafe(b2, "state && state.kind");
+      check((await evaluateSafe(b2, "state && state.phase")) === "lobby", "доска: «Другая категория» открывает лобби");
+      check(kindAfter && kindAfter !== kindBefore, `доска: «Другая категория» действительно меняет категорию (${kindBefore} → ${kindAfter})`);
+      await b2.close();
+    }
+
+
 
     check(board.errors.length === 0, "доска без JS-ошибок" + (board.errors.length ? ": " + board.errors.slice(0, 2).join(" | ") : ""));
     check(remote.errors.length === 0, "пульт без JS-ошибок" + (remote.errors.length ? ": " + remote.errors.slice(0, 2).join(" | ") : ""));
