@@ -24,7 +24,8 @@ const DEV = process.env.NODE_ENV === "development";
 const DUMP = process.env.DUMP_FILE || path.join(__dirname, "state", "rooms.json");
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.4";
-const ROOM_TTL = 30 * 60 * 1000; // комната без активности 30 минут — удаляется
+const ROOM_TTL = Number(process.env.ROOM_TTL_MS || 30 * 60 * 1000); // комната без активности 30 минут — удаляется (короче — только для тестов)
+const SWEEP = Math.min(25000, Math.max(1000, Math.floor(ROOM_TTL / 4))); // ping/pong и уборка комнат
 const MAX_ROOMS = 200;
 const MAX_PLAYERS = 100; // по сути без лимита; минимум для старта — 2
 const KINDS = {};
@@ -57,8 +58,10 @@ function createRoom({ kind = "artist", settings = {}, speed = 1 } = {}) {
     tokens: {}, // playerToken → playerId
     sockets: new Set(), // {ws, playerId?, host?}
     timer: null,
+    voteTimer: null,
     touched: Date.now(),
     speed: DEV ? Math.max(1, Math.min(20, Number(speed) || 1)) : 1,
+    skew: 0,
     bots: [], // {playerId, strategy}
     botTimer: null,
     judging: false,
@@ -69,16 +72,24 @@ function createRoom({ kind = "artist", settings = {}, speed = 1 } = {}) {
 }
 
 const now = () => Date.now();
+// Часы комнаты. При speed > 1 (только в разработке) таймер просыпается раньше дедлайна,
+// поэтому комната держит свой сдвиг и «догоняет» дедлайн — иначе tick ничего не делал бы.
+const clock = (room) => now() + (room.skew || 0);
 
 // таймеры игры: после каждого изменения пересчитываем ближайший deadline
 function schedule(room) {
   clearTimeout(room.timer);
   const s = room.game.s;
   if (!s.deadline || s.paused || s.phase === "finished" || s.phase === "lobby") return;
-  const wait = Math.max(0, (s.deadline - now()) / room.speed);
+  const wait = Math.max(0, (s.deadline - clock(room)) / room.speed);
   room.timer = setTimeout(() => {
-    const events = room.game.tick(now());
-    afterChange(room, events);
+    try {
+      const deadline = room.game.s.deadline;
+      if (deadline) room.skew += Math.max(0, deadline - clock(room));
+      afterChange(room, room.game.tick(clock(room)));
+    } catch (err) {
+      console.error("[auction] шаг таймера упал:", err);
+    }
   }, wait);
 }
 
@@ -87,7 +98,8 @@ function afterChange(room, events = []) {
   const s = room.game.s;
   broadcast(room, { type: "state", state: snapshotWithVoting(room) });
   for (const e of events) broadcast(room, { type: "event", event: e });
-  if (s.phase === "finished" && !s.results && !room.judging) startJudging(room);
+  // судейство запускаем ровно один раз: пока идёт голосование или запрос к судье — не трогаем
+  if (s.phase === "finished" && !s.results && !s.voting && !room.judging) startJudging(room);
   schedule(room);
 }
 
@@ -120,10 +132,17 @@ async function startJudging(room) {
       const verdict = await judge({ kind: s.kind, lineups, slots: s.settings.slots, apiKey: OPENAI_API_KEY, model: OPENAI_MODEL });
       const byPid = Object.fromEntries(lineups.map((l) => [l.pid, l]));
       const names = Object.fromEntries(lineups.map((l) => [l.pid, g.player(l.playerId).name]));
-      const fix = (t) => t.replace(/\bp(\d+)\b/g, (m, n) => names[`p${n}`] || m);
+      // p1/{{p1}} → имена; выдуманный игрок (p9, которого нет) превращается в нейтральное «игрок»
+      const fix = (t) =>
+        String(t || "")
+          .replace(/\{\{\s*p(\d+)\s*\}\}/g, (m, n) => names[`p${n}`] || "игрок")
+          .replace(/\bp(\d+)\b/g, (m, n) => names[`p${n}`] || "игрок")
+          .slice(0, 400);
       const ranking = verdict.results
+        .filter((r) => byPid[r.player])
         .map((r) => ({ playerId: byPid[r.player].playerId, score: r.score, verdict: fix(r.verdict) }))
         .sort((a, b) => b.score - a.score || g.player(a.playerId).spent - g.player(b.playerId).spent);
+      if (ranking.length !== lineups.length) throw new Error("в вердикте не все игроки");
       afterChange(room, g.setJudgeResults(ranking, fix(verdict.summary)));
       room.judging = false;
       return;
@@ -134,20 +153,30 @@ async function startJudging(room) {
   }
   // голосование: 30 с, потом подсчёт
   s.results = null;
-  s.voting = { deadline: now() + 30000 };
-  broadcast(room, { type: "state", state: snapshotWithVoting(room) });
+  s.voting = { deadline: clock(room) + 30000 };
   room.judging = false;
-  clearTimeout(room.timer);
-  room.timer = setTimeout(() => finishVoting(room), 30000 / room.speed);
+  armVoting(room);
+  broadcast(room, { type: "state", state: snapshotWithVoting(room) });
+}
+
+// таймер голосования живёт отдельно от room.timer: любой afterChange (например, чужой голос)
+// зовёт schedule(), а тот гасит room.timer — раньше из-за этого голосование не закрывалось никогда.
+function armVoting(room) {
+  clearTimeout(room.voteTimer);
+  const v = room.game.s.voting;
+  if (!v) return;
+  const wait = Math.max(0, (v.deadline - clock(room)) / room.speed);
+  room.voteTimer = setTimeout(() => finishVoting(room), wait);
 }
 
 function snapshotWithVoting(room) {
-  const snap = room.game.snapshot(now());
+  const snap = room.game.snapshot(clock(room));
   snap.voting = room.game.s.voting || null;
   return snap;
 }
 
 function finishVoting(room) {
+  clearTimeout(room.voteTimer);
   const s = room.game.s;
   if (s.phase !== "finished" || s.results) return;
   s.voting = null;
@@ -168,17 +197,17 @@ function addBots(room, n) {
     room.botTimer = setInterval(() => {
       const s = room.game.s;
       if (s.phase === "lobby" || s.phase === "finished") return;
-      const snap = room.game.snapshot(now());
+      const snap = room.game.snapshot(clock(room));
       let changed = [];
       for (const b of room.bots) {
         const amount = decide(b.strategy, snap, b.playerId);
         if (amount != null) {
-          const r = room.game.bid(b.playerId, amount, now());
+          const r = room.game.bid(b.playerId, amount, clock(room));
           if (r.ok) changed.push(...r.events);
         }
         const me = snap.players.find((p) => p.id === b.playerId);
         if (snap.phase === "pickup" && me?.canTake && Math.random() < 0.8) {
-          const r = room.game.take(b.playerId, now());
+          const r = room.game.take(b.playerId, clock(room));
           if (r.ok) changed.push(...r.events);
         }
       }
@@ -330,8 +359,8 @@ function onConnection(room, ws) {
 
 function handle(room, client, msg) {
   const g = room.game;
-  const t = now();
-  room.touched = t;
+  const t = clock(room);
+  room.touched = now();
   const reply = (obj) => send(client.ws, obj);
 
   switch (msg.type) {
@@ -371,7 +400,10 @@ function handle(room, client, msg) {
       for (const c of room.sockets) if (c !== client && c.playerId === playerId) { c.playerId = null; send(c.ws, { type: "replaced" }); }
       client.playerId = playerId;
       g.setOnline(playerId, true);
-      return afterChange(room, [{ type: "online", playerId }]);
+      const events = [{ type: "online", playerId }];
+      // партия стояла на автопаузе «ждём игроков» — вернулся хотя бы один, продолжаем
+      if (g.s.paused && g.s.paused.auto) events.push(...g.resume(t));
+      return afterChange(room, events);
     }
     case "bid": {
       if (!client.playerId) return;
@@ -432,6 +464,10 @@ function handle(room, client, msg) {
       const kind = KINDS[msg.kind] ? msg.kind : g.s.kind;
       const fresh = Game.create({ kind, cards: KINDS[kind], settings: g.s.settings });
       for (const p of g.activePlayers()) fresh.addPlayer({ id: p.id, name: p.name });
+      // онлайн определяем по живым соединениям (боты считаются подключёнными всегда)
+      for (const p of fresh.s.players) p.online = room.bots.some((b) => b.playerId === p.id) || [...room.sockets].some((c) => c.playerId === p.id);
+      clearTimeout(room.voteTimer);
+      room.judging = false;
       room.game = fresh;
       return afterChange(room, [{ type: "new_game" }]);
     }
@@ -457,13 +493,14 @@ setInterval(() => {
     }
     if (now() - room.touched > ROOM_TTL) {
       clearTimeout(room.timer);
+      clearTimeout(room.voteTimer);
       clearInterval(room.botTimer);
       for (const c of room.sockets) { send(c.ws, { type: "error", error: "room_expired" }); try { c.ws.terminate(); } catch {} }
       for (const [sid, c] of pollClients) if (c.room === room) pollClients.delete(sid);
       rooms.delete(room.code);
     }
   }
-}, 25000);
+}, SWEEP);
 
 function dump() {
   try {
@@ -483,10 +520,16 @@ function restore() {
     if (!fs.existsSync(DUMP)) return;
     for (const r of JSON.parse(fs.readFileSync(DUMP, "utf8"))) {
       if (now() - r.touched > ROOM_TTL) continue;
-      const room = { code: r.code, hostToken: r.hostToken, game: Game.from(r.state), tokens: r.tokens, sockets: new Set(), timer: null, touched: r.touched, speed: 1, bots: [], botTimer: null, judging: false, thumbs: {} };
+      const room = { code: r.code, hostToken: r.hostToken, game: Game.from(r.state), tokens: r.tokens, sockets: new Set(), timer: null, voteTimer: null, touched: r.touched, speed: 1, skew: 0, bots: [], botTimer: null, judging: false, thumbs: {} };
       for (const p of room.game.s.players) p.online = false;
       rooms.set(room.code, room);
       schedule(room);
+      // партия успела закончиться до перезапуска: досудить или добрать голоса, иначе финал зависнет
+      const s = room.game.s;
+      if (s.phase === "finished" && !s.results) {
+        if (s.voting) armVoting(room);
+        else startJudging(room);
+      }
     }
     console.log(`[auction] восстановлено комнат: ${rooms.size}`);
   } catch (err) {

@@ -15,51 +15,82 @@
   body { padding: calc(12px + env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; }
   .screen, .screen > *, .lotbox > *, .actions > * { max-width: 100%; min-width: 0; }
   .screen { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-  .status { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); flex: none; }
-  .status b { color: var(--text); font-weight: 600; }
-  .status .money { font: 900 18px/1 var(--display); color: var(--text); }
+  /* строка статуса всегда одна: длинное имя обрезается многоточием, номер лота не переносится */
+  .status { display: flex; align-items: center; gap: 10px; min-height: 26px; font-size: 13px; color: var(--muted); flex: none; }
+  .status b { color: var(--text); font-weight: 600; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status .money { flex: none; font: 900 18px/1 var(--display); color: var(--text); }
+  .status #lotno { flex: none; white-space: nowrap; }
   .status .spacer { flex: 1; }
-  .slots { display: flex; gap: 4px; }
+  .slots { flex: none; display: flex; gap: 4px; }
   .slots i { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--glass-line); }
   .slots i.on { background: var(--c1); border-color: var(--c1); }
 
   /* карточка лота — верхний уровень фона: стекло поверх панели, панель поверх пятен */
   .lotbox {
-    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 0;
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: safe center; text-align: center; min-height: 0;
     margin: 10px 0; padding: 18px 16px;
     background: rgba(255, 255, 255, .055); border: 1px solid var(--glass-line); border-radius: 26px;
     backdrop-filter: blur(16px); box-shadow: 0 24px 60px -40px #000;
+    overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none;
   }
-  .lotbox .thumb { width: 120px; height: 120px; border-radius: 22px; object-fit: cover; background: rgba(255, 255, 255, .06); margin-bottom: 10px; display: none; }
+  .lotbox::-webkit-scrollbar { display: none; }
+  .lotbox > * { flex: none; max-width: 100%; }
+  /* картинка и подписи считают высоту экрана: на 568px и в ландшафте карточка не выдавливает соседей */
+  .lotbox .thumb { width: clamp(72px, 17vh, 120px); height: clamp(72px, 17vh, 120px); border-radius: 22px; object-fit: cover; background: rgba(255, 255, 255, .06); margin-bottom: 10px; display: none; }
   .lotbox .thumb.on { display: block; }
-  .lotbox .emoji { font-size: 44px; margin-bottom: 4px; }
+  .lotbox .emoji { font-size: clamp(30px, 6vh, 44px); line-height: 1.1; margin-bottom: 4px; }
+  .lotbox .thumb.on ~ .emoji { display: none; } /* фото уже показывает лот — эмодзи дублирует и съедает высоту */
   .lotbox .kind { font: 700 10px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--c1); }
-  .lotbox .name { font: 900 clamp(24px, 7.6vw, 32px)/1.05 var(--display); letter-spacing: -.035em; margin: 8px 0; }
-  .lotbox .meta { justify-content: center; margin-bottom: 8px; }
-  .lotbox .short { font-size: 14px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 340px; }
-  .lotbox .more { font: 600 12px var(--body); color: var(--c1); margin-top: 6px; background: none; border: 1px solid var(--glass-line); border-radius: 999px; padding: 5px 12px; }
+  .lotbox .name { font: 900 clamp(20px, min(7.6vw, 4.6vh), 32px)/1.08 var(--display); letter-spacing: -.035em; margin: 8px 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .lotbox .meta { justify-content: center; margin-bottom: 8px; max-height: 58px; overflow: hidden; }
+  .lotbox .short { font-size: 14px; line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 340px; }
+  .lotbox .more { min-height: 44px; display: inline-flex; align-items: center; font: 600 12.5px var(--body); color: var(--c1); margin-top: 8px; background: none; border: 1px solid var(--glass-line); border-radius: 999px; padding: 0 16px; }
   .lotbox .lotno { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  /* высокие экраны: места хватает — показываем имя лота и описание целиком */
+  @media (min-height: 800px) {
+    .lotbox .name { -webkit-line-clamp: 4; }
+    .lotbox .short { -webkit-line-clamp: 3; }
+  }
+  /* экраны вроде iPhone SE/8: имя в две строки, картинка меньше — «подробнее» остаётся на виду */
+  @media (max-height: 720px) {
+    .lotbox .thumb { width: clamp(64px, 14vh, 104px); height: clamp(64px, 14vh, 104px); }
+    .lotbox .name { -webkit-line-clamp: 2; }
+  }
+  /* низкие экраны: описание уходит в шторку «подробнее», чтобы имя лота осталось крупным */
+  @media (max-height: 640px) {
+    .lotbox { padding: 14px 14px; margin: 8px 0; }
+    .lotbox .short { display: none; }
+    .lotbox .meta { max-height: 30px; margin-bottom: 6px; }
+    .lotbox .thumb { width: clamp(64px, 13vh, 96px); height: clamp(64px, 13vh, 96px); margin-bottom: 8px; }
+    .lotbox .name { -webkit-line-clamp: 2; margin: 6px 0; }
+  }
 
-  .bidinfo { display: flex; align-items: center; gap: 16px; justify-content: center; margin: 6px 0 12px; flex: none; }
+  .bidinfo { display: flex; align-items: center; gap: 16px; justify-content: center; margin: 6px 0 12px; flex: none; min-height: 62px; }
   .ring { position: relative; width: 62px; height: 62px; }
   .ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
   .ring circle { fill: none; stroke-width: 5; }
   .ring .track { stroke: rgba(255, 255, 255, .1); }
   .ring .arc { stroke: var(--c1); stroke-linecap: round; }
   .ring .num { position: absolute; inset: 0; display: grid; place-items: center; font: 900 20px/1 var(--display); }
+  /* в фазах без отсчёта цифры нет — вместо «пустого» кольца ставим нейтральный прочерк */
+  .ring .num:empty::after { content: "—"; color: var(--muted); font-size: 15px; }
+  .ring { flex: none; }
   .ring.urgent .arc { stroke: #ff6b6b; }
-  .lead { text-align: left; }
+  .lead { min-width: 0; text-align: left; overflow-wrap: anywhere; }
   .lead .cap { font: 700 10px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
   .lead .who { font: 900 clamp(20px, 6vw, 24px)/1.05 var(--display); letter-spacing: -.03em; }
   .lead .who b { color: var(--c1); }
   /* продано: та же печать и тот же удар молотка, что на доске и на старте */
-  .lead.sold { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
-  .lead.sold .who { font-size: clamp(17px, 4.6vw, 22px); overflow-wrap: anywhere; }
-  .lead.sold .cap { order: 2; font: 900 11px/1 var(--display); letter-spacing: .1em; color: var(--c3); border: 1.5px solid var(--c3); border-radius: 7px; padding: 6px 7px; transform: rotate(-7deg); animation: stamp .45s cubic-bezier(.3, 1.8, .5, 1) both; }
-  .lead.sold::before { content: "🔨"; order: 1; font-size: 26px; line-height: 1; transform: rotate(-32deg); transform-origin: 75% 85%; animation: strike .6s cubic-bezier(.3, 1.4, .5, 1); }
+  /* nowrap + обрезка имени: строка «продано» занимает ту же высоту, что «лидер», — карточка лота не дёргается */
+  .lead.sold { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px 8px; }
+  .lead.sold .who { min-width: 0; font-size: clamp(17px, 4.6vw, 22px); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .lead.sold .cap { order: 2; flex: none; white-space: nowrap; font: 900 11px/1 var(--display); letter-spacing: .1em; color: var(--c3); border: 1.5px solid var(--c3); border-radius: 7px; padding: 6px 7px; transform: rotate(-7deg); animation: stamp .45s cubic-bezier(.3, 1.8, .5, 1) both; }
+  .lead.sold::before { content: "🔨"; order: 1; flex: none; font-size: 26px; line-height: 1; transform: rotate(-32deg); transform-origin: 75% 85%; animation: strike .6s cubic-bezier(.3, 1.4, .5, 1); }
   .lead.sold .who { order: 3; }
 
-  .actions { flex: none; display: flex; flex-direction: column; gap: 8px; }
+  /* высота блока действий постоянна: кнопка, плашка «ты лидер» и «следующий лот»
+     занимают один и тот же прямоугольник — карточка лота над ними не дёргается при смене фазы */
+  .actions { flex: none; display: flex; flex-direction: column; justify-content: center; gap: 8px; min-height: 124px; }
   .big { position: relative; font: 900 clamp(18px, 5.5vw, 24px)/1 var(--display); letter-spacing: .05em; text-transform: uppercase; color: #0a0a0f; background: linear-gradient(100deg, var(--c1), var(--c2) 60%, var(--c3)); border: 0; border-radius: 20px; padding: 22px; width: 100%; box-shadow: 0 22px 60px -22px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .45); }
   .big:active { transform: scale(.97); }
   .big.flash { animation: flash .35s; }
@@ -74,8 +105,22 @@
 
   /* ===== стартовый экран: «аукционный зал» ===== */
   body.m-start, body.m-enter, body.m-final { height: auto; min-height: 100vh; min-height: 100dvh; overflow-y: auto; }
+
+  /* служебная строка: назад в каталог + звук. Только на входных экранах — в игре руки заняты ставкой.
+     Правый верхний угол оставлен пустым: туда i18n.js кладёт фиксированный .lang-switch. */
+  .util { position: fixed; left: 14px; top: calc(10px + env(safe-area-inset-top)); z-index: 30; display: none; align-items: center; gap: 8px; }
+  body.m-start .util, body.m-enter .util { display: flex; }
+  .util a, .util button {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 44px; padding: 0 15px; border-radius: 999px;
+    border: 1px solid var(--glass-line); background: rgba(12, 10, 20, .5); backdrop-filter: blur(10px);
+    color: var(--muted); font: 500 13px/1 var(--body); text-decoration: none; cursor: pointer;
+  }
+  .util button { width: 44px; padding: 0; }
+  .util a:active, .util button:active { color: var(--text); border-color: var(--c1); }
+
   .start {
-    flex: 1; width: 100%; max-width: 1260px; margin: 0 auto; padding: 8px 0 16px;
+    flex: 1; width: 100%; max-width: 1260px; margin: 0 auto; padding: 50px 0 16px;
     display: grid; align-content: start;
     grid-template-areas: "head" "stage" "body";
     grid-template-columns: minmax(0, 1fr);
@@ -112,8 +157,9 @@
     width: fit-content;
   }
   .start h1 span.w { display: block; }
-  .start h1 em { display: block; animation: hue 14s linear infinite; }
-  @keyframes hue { to { filter: hue-rotate(360deg); } }
+  /* «дыхание» заголовка держим внутри палитры категории: полный оборот hue уводил его в чужие цвета */
+  .start h1 em { display: block; animation: hue 9s ease-in-out infinite; }
+  @keyframes hue { 50% { filter: hue-rotate(16deg) saturate(1.12); } }
   .start h1 .gavel {
     position: absolute; right: -.4em; bottom: .04em;
     font-size: .46em; line-height: 1; transform: rotate(-32deg); transform-origin: 75% 85%;
@@ -156,7 +202,7 @@
   .cta .big::after { content: ""; position: absolute; top: 0; bottom: 0; left: -40%; width: 30%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .5), transparent); transform: skewX(-20deg); animation: shine 3.6s ease-in-out infinite; }
   @keyframes shine { 0%, 55% { left: -40%; } 100% { left: 130%; } }
   .cta .sub2 { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; color: rgba(244, 242, 255, .68); }
-  .cta .sub2 .link { flex: none; margin-left: auto; color: var(--text); text-decoration: none; font-weight: 500; border: 1px solid var(--glass-line); border-radius: 999px; padding: 7px 14px; transition: border-color .2s, background .2s; }
+  .cta .sub2 .link { flex: none; margin-left: auto; display: inline-flex; align-items: center; min-height: 44px; color: var(--text); text-decoration: none; font-weight: 500; border: 1px solid var(--glass-line); border-radius: 999px; padding: 0 16px; transition: border-color .2s, background .2s; }
   .cta .sub2 .link:hover { border-color: var(--c1); background: rgba(255, 255, 255, .06); }
 
   /* три шага */
@@ -227,7 +273,8 @@
   .center { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 12px; }
   /* экран ввода имени: страница должна скроллиться, иначе мобильная клавиатура накрывает поле */
 
-  .center.enter { justify-content: flex-start; padding-top: clamp(24px, 12vh, 120px); padding-bottom: 40vh; }
+  /* 62px снизу — гарантированный зазор под служебной строкой «Все игры / звук» (в том числе в ландшафте) */
+  .center.enter { justify-content: flex-start; padding-top: clamp(62px, 12vh, 120px); padding-bottom: 40vh; }
   h1 { font: 900 32px/1 var(--display); text-transform: uppercase; letter-spacing: -.03em; margin: 0 0 6px; }
   h1 em { font-style: normal; background: linear-gradient(100deg, var(--c1), var(--c2) 55%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .sub { color: var(--muted); margin: 0 0 12px; }
@@ -246,24 +293,45 @@
   .verdict { text-align: center; margin: 10px 0 14px; }
   .lots { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
   .vote { display: flex; flex-direction: column; gap: 8px; }
-  .vote .row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(255, 255, 255, .05); border: 1px solid var(--glass-line); border-radius: 14px; }
-  .vote .row .n { flex: 1; font-weight: 600; }
+  .vote .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(255, 255, 255, .05); border: 1px solid var(--glass-line); border-radius: 14px; }
+  /* на 320px кнопка «Голос» выезжала за экран: имя теперь сжимается, а кнопка при нехватке места уходит на свою строку */
+  .vote .row .n { flex: 1 1 60%; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
   .vote .row small { color: var(--muted); display: block; font-weight: 400; }
+  .vote .row .mid { flex: 0 0 auto; margin-left: auto; min-height: 44px; padding: 12px 20px; }
   .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .65); backdrop-filter: blur(6px); display: none; place-items: center; z-index: 50; font: 900 26px var(--display); text-transform: uppercase; text-align: center; padding: 20px; }
   .overlay.on { display: grid; }
   /* закрытая шторка не должна перехватывать тапы (на телефоне это ломало ввод имени) */
-  .sheet { position: fixed; inset: auto 0 0 0; background: #1a1822; border-radius: 22px 22px 0 0; padding: 20px 20px calc(24px + env(safe-area-inset-bottom)); max-height: 70vh; overflow-y: auto; transform: translateY(100%); transition: transform .3s, visibility .3s; z-index: 40; visibility: hidden; pointer-events: none; }
+  .sheet { position: fixed; inset: auto 0 0 0; background: #1a1822; border-radius: 22px 22px 0 0; padding: 20px 20px calc(20px + env(safe-area-inset-bottom)); max-height: 78vh; max-height: 78dvh; overflow-y: auto; transform: translateY(100%); transition: transform .3s, visibility .3s; z-index: 40; visibility: hidden; pointer-events: none; }
   .sheet.on { transform: none; visibility: visible; pointer-events: auto; }
+  /* «Закрыть» всегда под рукой, даже если факт длинный и шторка прокручивается */
+  .sheet .mid { position: sticky; bottom: calc(-20px - env(safe-area-inset-bottom)); margin-top: 16px; background: #1a1822; box-shadow: 0 -12px 18px 6px #1a1822; }
   .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 45; }
+
+  /* ===== телефон боком: лот слева, ставка справа (иначе всё налезает друг на друга) ===== */
+  @media (orientation: landscape) and (max-height: 520px) {
+    .screen { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 38%); grid-template-rows: auto minmax(0, 1fr) auto auto; column-gap: 14px; }
+    /* экраны из одного блока (старт, вход, ожидание, финал) занимают всю сетку */
+    .screen > .start, .screen > .center, .screen > .final { grid-column: 1 / -1; grid-row: 1 / -1; }
+    .status { grid-column: 1 / -1; grid-row: 1; }
+    .lotbox { grid-column: 1; grid-row: 2 / -1; margin: 8px 0 0; }
+    .bidinfo { grid-column: 2; grid-row: 2; align-self: end; justify-content: flex-start; margin: 8px 0 10px; }
+    .actions { grid-column: 2; grid-row: 3; min-height: 0; }
+    .note { grid-column: 2; grid-row: 4; }
+    .big { padding: 16px; }
+    .mid { padding: 14px; }
+    .lotbox .name { -webkit-line-clamp: 2; }
+  }
 </style>
 </head>
 <body>
 <div class="bg"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div><div class="grain"></div></div>
+<div class="util"><a href="index.html">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
 <div class="screen" id="app"></div>
 <div class="overlay" id="overlay"></div>
 <div class="sheet" id="sheet"></div>
 <canvas class="confetti" id="confetti"></canvas>
 
+<script src="sound-toggle.js" defer></script>
 <script src="auction-shared.js"></script>
 <script>
 // какой экран открыт: от этого зависит, скроллится ли страница (важно для мобильной клавиатуры)
@@ -446,6 +514,7 @@ function join(name) {
       }
     },
     onClose: () => { overlay.textContent = "Нет связи — переподключаемся…"; overlay.classList.add("on"); setTimeout(() => join(name), 2000); },
+    onSendFail: (msg) => { const n = document.getElementById("note"); if (n && msg && msg.type === "bid") n.textContent = "Ставка не прошла — нажми ещё раз"; },
   });
 }
 const sendMsg = (m) => ws && ws.send(m);

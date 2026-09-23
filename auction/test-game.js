@@ -5,6 +5,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game } = require("./game");
+const { judge } = require("./judge");
 
 const cards = Array.from({ length: 60 }, (_, i) => ({ name: `Лот ${i}`, emoji: "🎲", meta: ["a", "b"], description: "d", fact: "f", wiki_en: "x" }));
 const rng = () => 0.5;
@@ -168,4 +169,127 @@ test("хост пропускает лот: без ставок — следую
   const ev = g.hostSkip(g.s.lotStartedAt + 200);
   assert.equal(ev[0].type, "sold");
   assert.equal(g.player("p0").lots.length, 1);
+});
+
+test("пропуск лота работает и в фазах ПРОДАНО/ОТБОЙ, но не на паузе", () => {
+  const g = setup(3);
+  g.bid("p0", 2, 100);
+  g.hostSkip(200); // → sold
+  assert.equal(g.s.phase, "sold");
+  const ev = g.hostSkip(300); // раньше кнопка в этой фазе была мертва и ждали 2 с
+  assert.equal(g.s.phase, "lot");
+  assert.equal(g.s.round, 1);
+  assert.ok(ev.some((e) => e.type === "lot"));
+  g.hostSkip(g.s.lotStartedAt + 100); // без ставок → unsold
+  assert.equal(g.s.phase, "unsold");
+  g.hostSkip(g.s.lotStartedAt + 150);
+  assert.equal(g.s.round, 2);
+  // на паузе пропуск ничего не делает и не сбивает таймер
+  g.pause(g.s.lotStartedAt + 200);
+  const before = g.s.deadline;
+  assert.deepEqual(g.hostSkip(g.s.lotStartedAt + 300), []);
+  assert.equal(g.s.deadline, before);
+  assert.equal(g.s.phase, "lot");
+});
+
+test("все отвалились → автопауза «ждём игроков», а не финал; возврат продолжает партию", () => {
+  const g = setup(2, { slots: 3 });
+  g.bid("p0", 1, 100);
+  g.tick(g.s.deadline); // sold
+  g.setOnline("p0", false);
+  g.setOnline("p1", false);
+  const ev = g.tick(g.s.deadline); // здесь раньше был finish("all_full")
+  assert.equal(g.s.phase, "sold");
+  assert.equal(g.s.paused.auto, true);
+  assert.ok(ev.some((e) => e.type === "paused"));
+  assert.equal(g.snapshot(0).pausedAuto, true);
+  assert.equal(g.s.round, 0, "раунд не сгорел");
+  // вернулся один игрок — сервер снимает автопаузу, лоты продолжаются
+  g.setOnline("p1", true);
+  g.resume(60000);
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "lot");
+  assert.equal(g.s.round, 1);
+  assert.equal(g.s.finishedReason, null);
+});
+
+test("после паузы в активной фазе остаётся не меньше 3 с", () => {
+  const g = setup(2);
+  g.bid("p0", 1, 1000);
+  g.pause(g.s.deadline - 400); // пауза за 0,4 с до конца торгов
+  const t = 90000;
+  g.resume(t);
+  assert.equal(g.s.deadline, t + 3000);
+  assert.ok(g.s.lotCapAt >= g.s.deadline, "кап не режет добавленные секунды");
+});
+
+test("лидер исчез в момент истечения таймера — лот в отбой, tick не падает", () => {
+  const g = setup(3);
+  g.bid("p0", 3, 100);
+  g.player("p0").left = true; // гонка: кик/выход обработан вне removePlayer
+  const ev = g.tick(g.s.deadline);
+  assert.equal(ev[0].type, "unsold");
+  assert.equal(g.player("p0").money, 30, "деньги не списались");
+  assert.equal(g.s.phase, "unsold");
+});
+
+test("голос после подсчёта итогов не принимается", () => {
+  const g = setup(3);
+  g.bid("p0", 1, 100); g.tick(g.s.deadline); g.tick(g.s.deadline);
+  g.bid("p1", 1, g.s.lotStartedAt + 100); g.tick(g.s.deadline); g.tick(g.s.deadline);
+  g.finish("host_ended");
+  assert.equal(g.vote("p0", "p1").ok, true);
+  g.closeVotes(rng);
+  assert.equal(g.vote("p1", "p0").reason, "closed");
+  assert.equal(Object.keys(g.s.votes).length, 1);
+});
+
+test("12 игроков: партия заканчивается, деньги и слоты не уходят в минус", () => {
+  const g = Game.create({ kind: "test", cards: Array.from({ length: 200 }, (_, i) => ({ name: `Л${i}`, emoji: "🎲", meta: ["m"] })), settings: { slots: 5 }, rng });
+  for (let i = 0; i < 12; i++) g.addPlayer({ id: `p${i}`, name: `P${i}` });
+  g.start(0);
+  assert.equal(g.s.rounds, Math.ceil(12 * 5 * 1.25));
+  let now = 0, guard = 0;
+  while (g.s.phase !== "finished" && guard++ < 20000) {
+    for (let i = 0; i < 12; i++) {
+      const p = g.player(`p${i}`);
+      if (g.s.phase === "pickup") g.take(p.id, now);
+      else if ((i + guard) % 3 === 0) g.bid(p.id, g.s.price + 1, now);
+    }
+    now += 700;
+    g.tick(now);
+  }
+  assert.equal(g.s.phase, "finished");
+  for (const p of g.s.players) {
+    assert.ok(p.money >= 0, `${p.name} с минусом на счету`);
+    assert.ok(p.lots.length <= 5, `${p.name} набрал больше слотов`);
+    assert.equal(p.spent + p.money, 30, `${p.name}: потрачено + остаток ≠ бюджет`);
+  }
+});
+
+// ---------- судья ----------
+
+const judgeReply = (obj) => ({ ok: true, json: async () => ({ output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(obj) }] }] }) });
+const twoLineups = [{ pid: "p1", playerId: "a", lots: [{ name: "X", meta: [] }] }, { pid: "p2", playerId: "b", lots: [] }];
+const full = { results: [{ player: "p1", score: 120, verdict: "норм" }, { player: "p2", score: 40, verdict: "так" }], summary: "итог" };
+
+test("судья: неполный ответ повторяется один раз, оценки прижимаются к 0–100", async () => {
+  let calls = 0;
+  const fetchImpl = async () => { calls++; return judgeReply(calls === 1 ? { results: [full.results[0]], summary: "нет второго" } : full); };
+  const v = await judge({ kind: "artist", lineups: twoLineups, slots: 3, apiKey: "k", model: "m", fetchImpl });
+  assert.equal(calls, 2);
+  assert.equal(v.results.length, 2);
+  assert.equal(v.results[0].score, 100);
+});
+
+test("судья: два кривых ответа подряд → ошибка (сервер уйдёт в голосование)", async () => {
+  let calls = 0;
+  const fetchImpl = async () => { calls++; return judgeReply({ results: [full.results[0], full.results[0]], summary: "дубль" }); };
+  await assert.rejects(() => judge({ kind: "artist", lineups: twoLineups, slots: 3, apiKey: "k", model: "m", fetchImpl }), /duplicate/);
+  assert.equal(calls, 2);
+});
+
+test("судья: HTTP-ошибка API не роняет сервер, а превращается в исключение", async () => {
+  const fetchImpl = async () => ({ ok: false, status: 401, json: async () => ({ error: { message: "bad key" } }) });
+  await assert.rejects(() => judge({ kind: "film", lineups: twoLineups, slots: 3, apiKey: "bad", model: "m", fetchImpl }), /bad key/);
 });

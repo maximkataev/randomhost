@@ -158,7 +158,13 @@ class Game {
     const s = this.s;
     s.round += 1;
     if (s.round >= s.rounds) return this.finish("rounds_over");
-    const everyoneFull = this.activePlayers().every((p) => p.lots.length >= s.settings.slots || !p.online);
+    // никого нет на связи (обрыв у всех, перезапуск сервера) — не заканчиваем партию, а ждём на паузе
+    const online = this.activePlayers().filter((p) => p.online);
+    if (!online.length) {
+      s.round -= 1;
+      return this.autoPause(now);
+    }
+    const everyoneFull = online.every((p) => p.lots.length >= s.settings.slots);
     if (everyoneFull) return this.finish("all_full");
     s.lot = s.deck[s.round];
     s.price = 0;
@@ -226,6 +232,14 @@ class Game {
     switch (s.phase) {
       case "bidding": {
         const p = this.player(s.leaderId);
+        // лидера не стало (кик/выход в ту же миллисекунду) — лот никому не уходит, но сервер не падает
+        if (!p || p.left) {
+          s.phase = "unsold";
+          s.price = 0;
+          s.leaderId = null;
+          s.deadline = now + Math.min(s.settings.showDelay, 1000);
+          return [{ type: "unsold", lot: s.lot.name }];
+        }
         p.money -= s.price;
         p.spent += s.price;
         p.lots.push(this.lotRecord(s.price));
@@ -257,26 +271,38 @@ class Game {
     }
   }
 
-  // хост пропускает лот: без ставок — сразу дальше, с ставками — немедленная продажа лидеру
+  // хост пропускает лот: без ставок — сразу дальше, со ставками — немедленная продажа лидеру.
+  // Работает во всех игровых фазах; на паузе и в лобби/финале — ничего не делает.
   hostSkip(now) {
     const s = this.s;
-    if (s.phase === "lot" || s.phase === "pickup") { s.deadline = now; return this.tick(now); }
-    if (s.phase === "bidding") { s.deadline = now; return this.tick(now); }
+    if (s.paused || s.phase === "lobby" || s.phase === "finished") return [];
+    if (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "sold" || s.phase === "taken" || s.phase === "unsold") {
+      s.deadline = now;
+      return this.tick(now);
+    }
     return [];
   }
 
-  pause(now) {
+  pause(now, auto = false) {
     const s = this.s;
     if (s.paused || s.phase === "lobby" || s.phase === "finished") return [];
-    s.paused = { at: now, remaining: s.deadline - now, capRemaining: s.lotCapAt - now };
-    return [{ type: "paused" }];
+    s.paused = { at: now, remaining: s.deadline - now, capRemaining: s.lotCapAt - now, auto };
+    return [{ type: "paused", auto }];
+  }
+
+  // автопауза «ждём игроков»: все отвалились (в том числе после перезапуска сервера)
+  autoPause(now) {
+    return this.pause(now, true);
   }
 
   resume(now) {
     const s = this.s;
     if (!s.paused) return [];
-    s.deadline = now + Math.max(0, s.paused.remaining);
-    s.lotCapAt = now + Math.max(0, s.paused.capRemaining);
+    let remaining = Math.max(0, s.paused.remaining);
+    // после паузы нельзя оставлять 0,4 с на реакцию: в активных фазах даём минимум 3 с
+    if (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup") remaining = Math.max(remaining, 3000);
+    s.deadline = now + remaining;
+    s.lotCapAt = now + Math.max(remaining, Math.max(0, s.paused.capRemaining));
     s.paused = null;
     return [{ type: "resumed" }];
   }
@@ -295,7 +321,8 @@ class Game {
   // голосование: каждый игрок с лотами — один голос за чужой лайнап
   vote(playerId, forId) {
     const s = this.s;
-    if (s.phase !== "finished" || s.results?.mode === "chatgpt") return { ok: false, reason: "closed" };
+    // голосование закрыто, когда итоги уже посчитаны (или судил ChatGPT)
+    if (s.phase !== "finished" || s.results) return { ok: false, reason: "closed" };
     const me = this.player(playerId);
     const target = this.player(forId);
     if (!me || !target || me.left || target.left || playerId === forId) return { ok: false, reason: "bad_vote" };
@@ -331,6 +358,7 @@ class Game {
       kind: s.kind,
       phase: s.phase,
       paused: !!s.paused,
+      pausedAuto: !!(s.paused && s.paused.auto), // «ждём игроков», а не пауза ведущего
       round: s.round,
       rounds: s.rounds,
       lot: s.lot && (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "sold" || s.phase === "taken" || s.phase === "unsold") ? s.lot : null,

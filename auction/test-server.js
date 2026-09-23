@@ -95,6 +95,109 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
   check(host2.state.phase === "lobby" && host2.state.kind === "food", "next_game → лобби с новой категорией");
   check(host2.state.players.every((p) => p.money === 50 && p.lots.length === 0), "деньги и лоты сброшены");
 
+  // новый игрок входит в лобби следующей игры
+  const vitya = await connect(room.code, { type: "join", name: "Витя" });
+  check(!!vitya.me, "в лобби после next_game входит новый игрок");
+
+  // ---------- гонки: одновременные ставки ----------
+  const make = async (settings, speed) =>
+    (await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings, speed }) })).json());
+
+  {
+    const r2 = await make({ slots: 5, budget: 30, t1: 20000, t2: 5000 });
+    const h2 = await connect(r2.code, { type: "host", token: r2.hostToken });
+    const crowd = [];
+    for (let i = 0; i < 10; i++) crowd.push(await connect(r2.code, { type: "join", name: "И" + i }));
+    await until(() => h2.state?.players.length === 10, 10000);
+    check(h2.state.players.length === 10, "10 игроков в комнате (лимит снят)");
+    h2.send({ type: "start" });
+    await until(() => h2.state.phase === "lot");
+    check(h2.state.rounds === Math.ceil(10 * 5 * 1.25), `раундов = ceil(10×5×1.25) (${h2.state.rounds})`);
+    // все десять ставят «$1» одновременно с одной и той же ожидаемой ценой
+    for (const c of crowd) c.send({ type: "bid", amount: 1, expectedPrice: 0 });
+    await until(() => h2.state.price === 1, 4000);
+    await wait(400);
+    check(h2.state.price === 1 && h2.state.bids.length === 1, `из десяти одновременных ставок принята одна (цена ${h2.state.price})`);
+    const rejects = crowd.filter((c) => has(c, "rejected", (m) => m.reason === "price_changed" || m.reason === "too_low")).length;
+    check(rejects === 9, `остальным девяти пришёл явный отказ (${rejects})`);
+    check(crowd.every((c) => !has(c, "error")), "лишние ставки не ломают протокол");
+    // ставка в момент истечения таймера: лот либо ушёл, либо ставка принята — но деньги списываются один раз
+    const leader = h2.state.players.find((p) => p.id === h2.state.leaderId);
+    await until(() => h2.state.phase === "sold" || h2.state.phase === "lot", 30000);
+    const after = h2.state.players.find((p) => p.id === leader.id);
+    check(after.money === 29 && after.lots.length === 1, `лот списан один раз ($${after.money}, лотов ${after.lots.length})`);
+    // пропуск лота ведущим в разных фазах
+    await until(() => h2.state.phase === "lot", 30000);
+    const round = h2.state.round;
+    crowd[0].send({ type: "bid", amount: 2 });
+    await until(() => h2.state.phase === "bidding");
+    h2.send({ type: "skip_lot" });
+    await until(() => h2.state.phase === "sold", 4000);
+    check(h2.state.phase === "sold", "skip_lot в ТОРГАХ отдаёт лот лидеру сразу");
+    h2.send({ type: "skip_lot" });
+    const moved = await until(() => h2.state.round === round + 1, 3000);
+    check(moved, "skip_lot в фазе ПРОДАНО сразу выводит следующий лот");
+    crowd[1].send({ type: "skip_lot" });
+    await wait(300);
+    check(h2.state.round === round + 1, "игрок не может пропустить лот");
+    h2.send({ type: "end" });
+    for (const c of crowd) c.ws.close();
+    h2.ws.close();
+  }
+
+  // ---------- автопауза, когда все отвалились ----------
+  {
+    const r3 = await make({ slots: 3, budget: 20, t1: 5000, t2: 3000 });
+    const h3 = await connect(r3.code, { type: "host", token: r3.hostToken });
+    const x = await connect(r3.code, { type: "join", name: "Икс" });
+    const y = await connect(r3.code, { type: "join", name: "Игрек" });
+    await until(() => h3.state?.players.length === 2);
+    h3.send({ type: "start" });
+    await until(() => h3.state.phase !== "lobby");
+    x.ws.close(); y.ws.close();
+    const paused = await until(() => h3.state.paused, 20000);
+    check(paused && h3.state.pausedAuto === true, "все игроки отвалились → автопауза, а не финал");
+    check(h3.state.phase !== "finished", "партия не завершилась сама");
+    const back = await connect(r3.code, { type: "join", name: "", token: x.token });
+    check(back.me === x.me, "возврат по токену в ту же партию");
+    const resumed = await until(() => !h3.state.paused, 6000);
+    check(resumed, "возврат игрока снимает автопаузу");
+    h3.send({ type: "end" });
+    back.ws.close(); h3.ws.close();
+  }
+
+  // ---------- голосование закрывается по таймауту (speed ускоряет 30 с) ----------
+  {
+    const r4 = await make({ slots: 3, budget: 20, t1: 10000, t2: 3000, judge: "vote" }, 6);
+    const h4 = await connect(r4.code, { type: "host", token: r4.hostToken });
+    const v1 = await connect(r4.code, { type: "join", name: "Один" });
+    const v2 = await connect(r4.code, { type: "join", name: "Два" });
+    await until(() => h4.state?.players.length === 2);
+    h4.send({ type: "start" });
+    await until(() => h4.state.phase !== "lobby");
+    for (const c of [v1, v2]) {
+      const mine = () => h4.state.players.find((p) => p.id === c.me);
+      await until(() => (h4.state.phase === "lot" || h4.state.phase === "bidding") && mine().canBid, 40000);
+      c.send({ type: "bid", amount: h4.state.price + 1 });
+      await until(() => mine().lots.length >= 1, 40000);
+    }
+    h4.send({ type: "end" });
+    await until(() => h4.state.phase === "finished");
+    check(await until(() => h4.state.voting, 5000), "судья = голосование → открылось голосование");
+    v1.send({ type: "vote", for: v2.me });
+    await until(() => h4.state.votes === 1, 4000);
+    const closed = await until(() => h4.state.results, 40000); // 30 с голосования (при speed=1 — без ускорения)
+    check(closed, "голосование закрывается по таймауту, даже если проголосовали не все");
+    if (closed) {
+      check(h4.state.results.mode === "vote" && h4.state.results.ranking.length === 2, "итоги голосования посчитаны для обоих");
+      check(h4.state.results.ranking[0].playerId === v2.me, "выше тот, за кого голосовали");
+      v2.send({ type: "vote", for: v1.me });
+      await until(() => has(v2, "rejected"), 3000);
+      check(has(v2, "rejected", (m) => m.reason === "closed"), "голос после подсчёта отклоняется");
+    }
+    v1.ws.close(); v2.ws.close(); h4.ws.close();
+  }
+
   // health и неизвестная комната
   const h = await (await fetch(BASE + "/auction/api/health")).json();
   check(h.ok === true, "health ok");

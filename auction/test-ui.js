@@ -36,10 +36,12 @@ async function cdp(url) {
   const call = (method, params = {}) => new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params })); });
   await call("Runtime.enable");
   await call("Page.enable");
+  await call("Network.enable");
+  const block = (urls) => call("Network.setBlockedURLs", { urls });
   const evaluate = async (expr) => (await call("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true })).result?.value;
   const shot = async (name) => { const r = await call("Page.captureScreenshot", { format: "png" }); fs.writeFileSync(path.join(OUT, name + ".png"), Buffer.from(r.data, "base64")); };
   const close = () => fetch(`http://localhost:${PORT}/json/close/${targets.id}`);
-  return { call, evaluate, shot, errors, close };
+  return { call, evaluate, shot, errors, close, block };
 }
 
 (async () => {
@@ -116,6 +118,28 @@ async function cdp(url) {
     check(board.errors.length === 0, "доска без JS-ошибок" + (board.errors.length ? ": " + board.errors.slice(0, 2).join(" | ") : ""));
     check(remote.errors.length === 0, "пульт без JS-ошибок" + (remote.errors.length ? ": " + remote.errors.slice(0, 2).join(" | ") : ""));
     await board.close(); await remote.close();
+
+    // --- сеть без Википедии и iTunes: партия обязана идти, карточка — рисоваться
+    const room2 = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "artist" }) })).json();
+    const offline = await cdp(`${BASE}/auction-board.html?r=${room2.code}&t=${room2.hostToken}`);
+    // заодно проверяем лобби без cdnjs: без библиотеки QR кнопка «Начать» раньше оставалась без обработчика
+    await offline.block(["*wikipedia.org*", "*itunes.apple.com*", "*wikimedia.org*", "*cdnjs.cloudflare.com*"]);
+    await offline.call("Page.reload");
+    await wait(3500);
+    check(await evaluateSafe(offline, "!!(document.getElementById('start') && document.getElementById('start').onclick)"), "лобби без cdnjs: кнопка «Начать игру» жива");
+    check(await evaluateSafe(offline, "!!document.querySelector('.join .code')"), "лобби без cdnjs: код комнаты на экране");
+    await offline.call("Runtime.evaluate", { expression: "sendMsg({type:'bots', n:3}); setTimeout(() => sendMsg({type:'start'}), 500)" });
+    await offline.call("Page.bringToFront");
+    await wait(9000);
+    const offPhase = await evaluateSafe(offline, "state && state.phase");
+    check(["lot", "bidding", "sold", "unsold", "pickup", "taken"].includes(offPhase), "без Википедии и iTunes партия идёт (" + offPhase + ")");
+    check((await evaluateSafe(offline, "(document.querySelector('#card .name') || {}).textContent || ''")).length > 0, "карточка лота рисуется без фото");
+    check((await evaluateSafe(offline, "(document.getElementById('tnum') || {}).textContent || ''")).length > 0, "таймер идёт без внешних сервисов");
+    await offline.shot("ui_board_no_media");
+    const netErrors = offline.errors.filter((e) => !/ERR_BLOCKED_BY_CLIENT|Failed to fetch|iTunes/i.test(e));
+    check(netErrors.length === 0, "заблокированные картинки/музыка не дают JS-ошибок" + (netErrors.length ? ": " + netErrors[0] : ""));
+    await offline.call("Runtime.evaluate", { expression: "sendMsg({type:'end'})" });
+    await offline.close();
   } finally {
     chrome.kill();
   }

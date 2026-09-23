@@ -19,7 +19,7 @@
   .topbar .phase { font: 900 clamp(22px, 2vw, 30px)/1 var(--display); letter-spacing: -.035em; text-transform: uppercase; }
   .topbar .phase.bidding { color: var(--c1); }
   .topbar .spacer { flex: 1; }
-  .timer { position: relative; width: 64px; height: 64px; flex: none; }
+  .timer { position: relative; width: 64px; height: 64px; flex: none; transition: opacity .35s; }
   .timer svg { position: absolute; inset: 0; transform: rotate(-90deg); }
   .timer circle { fill: none; stroke-width: 5; }
   .timer .track { stroke: rgba(255, 255, 255, .1); }
@@ -28,18 +28,20 @@
   .timer.urgent .ring { stroke: #ff6b6b; }
   .timer.urgent .num { color: #ff6b6b; animation: pulse .5s ease-in-out infinite alternate; }
   @keyframes pulse { to { transform: scale(1.18); } }
+  /* в фазах без обратного отсчёта цифра пустая — гасим кольцо, чтобы не висело «сломанным» таймером */
+  .phase.sold ~ .timer, .phase.taken ~ .timer, .phase.unsold ~ .timer { opacity: .16; }
 
   /* три уровня фона: пятна → стеклянные панели (.04) → карточка лота (.08) */
   .frame { flex: 1 1 auto; min-height: 0; margin-top: 0; background: rgba(255, 255, 255, .08); box-shadow: 0 34px 90px -44px #000, 0 0 0 1px rgba(255, 255, 255, .03); }
   .card { overflow: hidden; }
+  /* Две колонки — фото слева, текст справа. Без :has(): раскладка держится на flex,
+     и если фото не нашлось (.hero.gone → display:none), текст сам занимает всю ширину. */
   @media (min-width: 1100px) {
-    .card.result { display: grid; grid-template-columns: 40% minmax(0, 1fr); grid-template-rows: 1fr auto; column-gap: 28px; }
-    .card.result > .hero { grid-column: 1; grid-row: 1; margin: -28px 0 14px -28px; height: auto; min-height: 200px; }
-    .card.result > .text { grid-column: 2; grid-row: 1 / span 2; }
-    .card.result > .player { grid-column: 1; grid-row: 2; margin-top: 0; align-self: end; }
+    .card.result { display: flex; flex-direction: row; flex-wrap: wrap; align-items: stretch; column-gap: 28px; }
+    .card.result > .hero { flex: 0 0 40%; margin: -28px 0 14px -28px; height: auto; min-height: 200px; }
+    .card.result > .text { flex: 1 1 320px; min-width: 0; }
+    .card.result > .player { flex: 1 1 100%; align-self: end; }
     .card.result > .hero:not(.gone) + .text > .emoji { margin-top: 0; font-size: 52px; }
-    .card.result:has(.hero.gone) { grid-template-columns: minmax(0, 1fr); }
-    .card.result:has(.hero.gone) > * { grid-column: 1; grid-row: auto; }
     .card.result .name { font-size: clamp(28px, 2.6vw, 40px); }
     .card.result .desc { font-size: 15px; }
   }
@@ -47,13 +49,28 @@
   .text > * { flex: none; }
   .hero:not(.gone) + .text > .emoji { margin-top: -62px; position: relative; z-index: 1; font-size: 64px; }
 
+  /* ТВ и ноутбуки ниже 800px: карточка лота должна помещаться целиком, без внутренней прокрутки */
+  @media (max-height: 840px) {
+    .card { padding: 20px 22px 18px; }
+    .card.result > .hero { margin: -20px 0 12px -22px; }
+    .card.result .name { font-size: clamp(26px, 2.2vw, 34px); margin: 8px 0; }
+    .card.result .desc { font-size: 14.5px; margin-bottom: 12px; }
+    .card.result .meta { margin-bottom: 12px; }
+    .card.result .fact { padding: 11px 13px 11px 15px; font-size: 13.5px; }
+    .card.result > .hero:not(.gone) + .text > .emoji { font-size: 40px; margin-bottom: 10px; }
+  }
+
   /* полоса ставок */
-  .bidbar { flex: none; display: flex; align-items: center; gap: 16px; padding: 14px 20px; background: rgba(255, 255, 255, .045); border: 1px solid var(--glass-line); border-radius: 20px; backdrop-filter: blur(20px); min-height: 76px; }
+  /* высота полосы постоянна во всех фазах — карточка лота над ней не «прыгает» при смене состояния */
+  .bidbar { flex: none; display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: rgba(255, 255, 255, .045); border: 1px solid var(--glass-line); border-radius: 20px; backdrop-filter: blur(20px); height: clamp(84px, 9vh, 104px); overflow: hidden; }
   .bidbar .cap { flex: none; font: 700 10.5px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
-  .bidbar .lead { font: 900 clamp(24px, 2.2vw, 32px)/1.05 var(--display); letter-spacing: -.035em; }
+  .bidbar .lead { min-width: 0; font: 900 clamp(22px, 2vw, 30px)/1.1 var(--display); letter-spacing: -.035em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
   .bidbar .lead b { color: var(--c1); }
-  .bidbar .tape { flex: 1; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
-  .bidbar .tape span { font-size: 13.5px; color: var(--muted); background: rgba(255, 255, 255, .05); border: 1px solid var(--glass-line); border-radius: 999px; padding: 5px 12px; }
+  /* лента предыдущих ставок: одна строка, лишнее просто уезжает под маску — полоса не растёт */
+  .bidbar .tape { flex: 1 1 auto; min-width: 0; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: nowrap; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%); mask-image: linear-gradient(90deg, transparent, #000 12%); }
+  .bidbar .tape span { flex: none; max-width: 30ch; font-size: 13.5px; color: var(--muted); background: rgba(255, 255, 255, .05); border: 1px solid var(--glass-line); border-radius: 999px; padding: 5px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* «разбор» (в полосе только .lead и список имён) — не больше двух строк */
+  .bidbar > .lead:first-child + .tape { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 15px; line-height: 1.35; color: var(--muted); text-align: right; mask-image: none; -webkit-mask-image: none; }
   /* «ПРОДАНО» — та же печать, что на стартовом экране, плюс удар молотка */
   .bidbar .stamp { flex: none; font: 900 15px/1 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--c3); border: 1.5px solid var(--c3); border-radius: 9px; padding: 8px 10px; transform: rotate(-7deg); animation: stamp .45s cubic-bezier(.3, 1.8, .5, 1) both; }
   .bidbar .gavel-mark { font-size: 30px; margin-right: 4px; }
@@ -80,26 +97,40 @@
   .slot-i.filled { border-style: solid; background: rgba(255, 255, 255, .07); }
   .p.leader .slot-i.filled { border-color: transparent; background: linear-gradient(100deg, var(--c1), var(--c2) 85%); color: #0a0a0f; font-weight: 600; }
   .slot-i .n { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* больше четырёх игроков — строка сжимается, чтобы список из 10–12 человек влезал без прокрутки */
+  .players.compact { gap: 6px; }
+  .players.compact .p { padding: 7px 12px 8px; }
+  .players.compact .p-name { font-size: 15px; }
+  .players.compact .p-left { font-size: 17px; }
+  .players.compact .p-bar { margin: 6px 0; height: 3px; }
+  .players.compact .slots { flex-wrap: nowrap; overflow: hidden; gap: 5px; }
+  .players.compact .slot-i { min-width: 24px; height: 24px; padding: 0 7px; font-size: 12px; gap: 5px; }
   .players.compact .slot-i .n { max-width: 70px; font-size: 12px; }
-  .hostbar { flex: none; display: flex; gap: 8px; align-items: center; }
-  .hostbar .code { font: 700 12px/1 var(--display); letter-spacing: .14em; color: var(--muted); flex: 1; }
-  .btn { font: 700 11.5px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; color: #0a0a0f; background: linear-gradient(120deg, var(--c1), var(--c2)); border: 0; border-radius: 999px; padding: 13px 20px; cursor: pointer; box-shadow: 0 14px 34px -18px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .4); transition: transform .2s cubic-bezier(.3, 1.6, .5, 1), border-color .2s, background .2s, box-shadow .3s; }
+
+  /* панель хоста: код отдельной строкой, три кнопки делят ряд и никогда не вылезают за колонку */
+  .hostbar { flex: none; display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+  .hostbar .code { flex: 1 0 100%; font: 700 12px/1 var(--display); letter-spacing: .14em; color: var(--muted); }
+  .hostbar .btn { flex: 1 1 0; min-width: 0; padding: 12px 10px; }
+  .btn { min-height: 44px; font: 700 11.5px/1.25 var(--display); letter-spacing: .06em; text-transform: uppercase; color: #0a0a0f; background: linear-gradient(120deg, var(--c1), var(--c2)); border: 0; border-radius: 999px; padding: 13px 20px; cursor: pointer; box-shadow: 0 14px 34px -18px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .4); transition: transform .2s cubic-bezier(.3, 1.6, .5, 1), border-color .2s, background .2s, box-shadow .3s; }
   .btn.ghost { background: none; color: var(--text); border: 1px solid var(--glass-line); box-shadow: none; }
   .btn.ghost:disabled { opacity: .35; cursor: default; }
   .btn.accent { background: linear-gradient(120deg, var(--c1), var(--c2)); color: #0a0a0f; border-color: transparent; }
   .pausebox { display: flex; flex-direction: column; align-items: center; gap: 22px; }
   .pausebox .start { width: auto; padding: 18px 34px; }
+  .pausebox .start::before { content: none; } /* у кнопки уже есть свой знак ▶ — стрелка справа наезжала на текст */
   .btn:hover { transform: translateY(-2px); }
   .btn.ghost:hover { border-color: var(--c1); background: rgba(255, 255, 255, .06); }
 
   /* ===== лобби: слева «вход» (код + QR), справа настройки, снизу лента игроков ===== */
   .lobby {
-    flex: 1; min-height: 0; display: grid; align-items: center;
+    /* height, а не flex: .layout в лобби переключается в display:block, и без этого
+       проценты у колонок не разрешались — список игроков уезжал под нижний край */
+    height: 100%; min-height: 0; display: grid; align-items: center;
     grid-template-columns: minmax(320px, 36%) minmax(0, 1fr);
     gap: clamp(18px, 2.4vw, 34px);
   }
   /* левая колонка: код с QR и блок ожидания — вместе по центру экрана по вертикали */
-  .joincol { align-self: center; display: flex; flex-direction: column; gap: clamp(12px, 2vh, 20px); max-height: 100%; overflow-y: auto; scrollbar-width: thin; }
+  .joincol { align-self: center; display: flex; flex-direction: column; gap: clamp(12px, 2vh, 20px); max-height: 100%; min-height: 0; }
   .card-l2 { background: var(--glass); border: 1px solid var(--glass-line); border-radius: 26px; backdrop-filter: blur(24px); box-shadow: 0 30px 80px -50px #000; }
 
   /* --- вход --- */
@@ -108,13 +139,14 @@
   .join .eyebrow i { width: 8px; height: 8px; border-radius: 50%; background: var(--c1); box-shadow: 0 0 14px var(--c1); animation: glow 1.8s ease-in-out infinite alternate; }
   @keyframes glow { to { opacity: .35; transform: scale(.7); } }
   .join .code {
-    font: 900 clamp(56px, 7.4vw, 116px)/.9 var(--display); letter-spacing: .06em; text-transform: uppercase;
+    font: 900 clamp(48px, min(7.4vw, 13vh), 116px)/.9 var(--display); letter-spacing: .06em; text-transform: uppercase;
     background: linear-gradient(100deg, #fff 25%, color-mix(in srgb, var(--c2) 75%, white));
     -webkit-background-clip: text; background-clip: text; color: transparent;
     filter: drop-shadow(0 18px 44px color-mix(in srgb, var(--c1) 55%, transparent));
   }
-  .join .qrbox { background: #fff; padding: 12px; border-radius: 20px; line-height: 0; box-shadow: 0 24px 60px -28px #000; }
-  .join .qrbox img, .join .qrbox canvas { display: block; width: clamp(150px, 15vw, 210px) !important; height: auto !important; }
+  .join .qrbox { flex: none; background: #fff; padding: 12px; border-radius: 20px; line-height: 0; box-shadow: 0 24px 60px -28px #000; }
+  /* QR считает и высоту экрана: на 720p он не должен выдавливать список игроков за край */
+  .join .qrbox img, .join .qrbox canvas { display: block; width: clamp(132px, min(15vw, 23vh), 210px) !important; height: auto !important; }
   .join .url { font: 600 clamp(14px, 1.1vw, 17px)/1.3 var(--body); color: var(--text); word-break: break-all; }
   .join .hint { font-size: clamp(13px, .95vw, 15px); color: var(--muted); max-width: 34ch; }
 
@@ -141,6 +173,12 @@
   .step button { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--glass-line); background: rgba(255, 255, 255, .045); color: var(--text); font: 500 19px/1 var(--body); cursor: pointer; transition: border-color .2s, background .2s; }
   .step button:hover { border-color: var(--c1); background: rgba(255, 255, 255, .09); }
   .step button:disabled { opacity: .3; cursor: default; }
+  /* хост с планшета: пресеты и степперы дорастают до пальца */
+  @media (pointer: coarse) {
+    .opt { min-height: 44px; padding: 13px 18px; }
+    .seg button { min-height: 40px; }
+    .step button { width: 44px; height: 44px; }
+  }
 
   /* сегмент-переключатель */
   .seg { align-self: flex-start; display: inline-flex; padding: 4px; gap: 4px; border-radius: 999px; border: 1px solid var(--glass-line); background: rgba(255, 255, 255, .045); }
@@ -151,6 +189,21 @@
 
   .rounds { font-size: 13.5px; color: var(--muted); }
   .rounds b { color: var(--text); font-weight: 600; }
+
+  /* служебная строка: назад в каталог + звук. Живёт в лобби (в игре экран занят доской);
+     правый верхний угол оставлен пустым — туда i18n.js кладёт фиксированный .lang-switch. */
+  .util { position: fixed; left: 18px; top: 14px; z-index: 30; display: none; align-items: center; gap: 8px; }
+  body.m-lobby .util { display: flex; }
+  body.m-lobby .lobby { padding-top: 42px; }
+  .util a, .util button {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    min-height: 44px; padding: 0 15px; border-radius: 999px;
+    border: 1px solid var(--glass-line); background: rgba(255, 255, 255, .04);
+    color: var(--muted); font: 500 13px/1 var(--body); text-decoration: none; cursor: pointer;
+    transition: border-color .2s, background .2s, color .2s;
+  }
+  .util button { width: 44px; padding: 0; }
+  .util a:hover, .util button:hover { color: var(--text); border-color: var(--c1); background: rgba(255, 255, 255, .08); }
 
   /* правила — чтобы пустота под настройками работала на игроков, пока все собираются */
   .rules { margin-top: 4px; padding-top: 16px; border-top: 1px solid var(--glass-line); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(12px, 1.4vw, 20px); }
@@ -176,10 +229,11 @@
   .start-note { font-size: 13px; color: var(--muted); text-align: center; }
 
   /* --- лента игроков --- */
-  .seats { flex: none; display: flex; flex-direction: column; gap: 12px; padding: 16px clamp(16px, 2vw, 22px) 18px; }
-  .seats .cap { font: 900 14px/1.25 var(--display); letter-spacing: .06em; text-transform: uppercase; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  /* блок ожидания сжимается сам и отдаёт прокрутку ленте мест: 12 игроков не выталкивают карточку за экран */
+  .seats { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px clamp(16px, 2vw, 22px) 18px; overflow: hidden; }
+  .seats .cap { flex: none; font: 900 14px/1.25 var(--display); letter-spacing: .06em; text-transform: uppercase; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .seats .cap small { font: 500 12.5px var(--body); letter-spacing: 0; text-transform: none; color: var(--muted); }
-  .seatrow { min-width: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .seatrow { min-width: 0; min-height: 0; overflow-y: auto; scrollbar-width: thin; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; }
   .seat { display: inline-flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px; border-radius: 999px; border: 1px solid var(--glass-line); background: rgba(255, 255, 255, .05); }
   .seat .av { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font: 900 15px/1 var(--display); color: #0a0a0f; background: linear-gradient(140deg, var(--c1), var(--c2)); }
   .seat .nm { font: 600 16px/1 var(--body); max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -192,29 +246,47 @@
   .seat.wait .av { background: rgba(255, 255, 255, .08); color: var(--muted); font-size: 13px; }
   .seat.wait .nm { max-width: none; font-weight: 500; }
 
+  /* ноутбук/ТВ пониже: вход ужимается, а места игроков становятся плотнее — список из 12 человек влезает */
+  @media (max-height: 820px) {
+    .join { gap: 8px; padding: 14px 20px 16px; }
+    .join .url { font-size: 13px; }
+    .join .hint { font-size: 12.5px; }
+    .seats { gap: 8px; padding: 12px 16px 14px; }
+    .seat { padding: 5px 12px 5px 5px; gap: 8px; }
+    .seat .av { width: 26px; height: 26px; font-size: 13px; }
+    .seat .nm { font-size: 14px; max-width: 12ch; }
+    .seat.wait { padding: 5px 12px; font-size: 13px; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .join .eyebrow i, .seat.new, .seat.wait, .timer.urgent .num, .thinking .dice, .pl { animation: none !important; }
+    .join .eyebrow i, .seat.new, .seat.wait, .timer.urgent .num, .thinking .dice, .pl,
+    .bidbar .stamp, .hero::before { animation: none !important; }
   }
 
   /* финал */
-  .final { flex: 1; min-height: 100%; overflow-y: auto; scrollbar-width: thin; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 28px; padding: clamp(22px, 3vh, 32px); backdrop-filter: blur(24px); box-shadow: 0 30px 80px -50px #000; }
+  /* height, а не min-height: иначе экран итогов вырастал за пределы body{overflow:hidden} и низ обрезался */
+  .final { height: 100%; overflow-y: auto; scrollbar-width: thin; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 28px; padding: clamp(22px, 3vh, 32px); backdrop-filter: blur(24px); box-shadow: 0 30px 80px -50px #000; }
   .final h2 { font: 900 clamp(30px, 3.4vw, 44px)/.95 var(--display); text-transform: uppercase; letter-spacing: -.045em; margin: 0 0 20px; }
-  .podium { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .podium { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); align-items: start; gap: 14px; }
   .pl { background: rgba(255, 255, 255, .05); border: 1px solid var(--glass-line); border-radius: 22px; padding: 18px; backdrop-filter: blur(14px); box-shadow: 0 18px 40px -30px #000; animation: rise .6s both; }
   .pl.first { border-color: var(--c1); box-shadow: 0 0 0 1px var(--c1), 0 20px 50px -20px var(--c1); }
   .pl .place { font-size: 34px; line-height: 1; }
-  .pl .who { font: 900 clamp(20px, 1.7vw, 26px)/1.05 var(--display); letter-spacing: -.03em; margin: 8px 0 2px; }
+  .pl .who { font: 900 clamp(18px, 1.5vw, 24px)/1.08 var(--display); letter-spacing: -.03em; margin: 8px 0 2px; overflow-wrap: anywhere; }
   .pl .score { font: 900 clamp(30px, 2.8vw, 40px)/1 var(--display); letter-spacing: -.04em; color: var(--c1); }
-  .pl .verdict { margin: 10px 0 12px; font-size: 14.5px; line-height: 1.45; color: rgba(244, 242, 255, .86); }
+  /* вердикт и лайнап держат карточку в разумной высоте: призёрам — больше строк, остальным — короче */
+  .pl .verdict { margin: 10px 0 12px; font-size: 14.5px; line-height: 1.45; color: rgba(244, 242, 255, .86); display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+  .podium .pl:nth-child(n+4) .verdict { -webkit-line-clamp: 4; }
+  .pl .lots .chip { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pl .lots { display: flex; flex-wrap: wrap; gap: 6px; }
   .pl .spent { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
   /* пилюли: лоты в лайнапе; у победителя — залитые градиентом */
-  .chip { display: inline-flex; align-items: center; gap: 6px; background: rgba(255, 255, 255, .06); border: 1px solid var(--glass-line); border-radius: 999px; padding: 6px 13px; font-size: 14px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; background: rgba(255, 255, 255, .06); border: 1px solid var(--glass-line); border-radius: 999px; padding: 6px 13px; font-size: 14px; overflow-wrap: anywhere; }
   .chip.off { opacity: .5; }
   .pl.first .chip { color: #0a0a0f; border-color: transparent; background: linear-gradient(100deg, var(--c1), var(--c2) 80%); font-weight: 600; }
   .final .summary { margin: 20px 0 0; padding: 16px 18px; font-size: 16px; background: rgba(255, 255, 255, .05); border-left: 3px solid var(--c1); border-radius: 4px 16px 16px 4px; }
   .final .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
-  .thinking { text-align: center; padding: 60px 0; }
+  /* «судья думает» — единственный блок на экране, ставим его по центру, а не под заголовок */
+  .thinking { text-align: center; padding: 40px 0; min-height: 100%; display: flex; flex-direction: column; justify-content: center; }
   .thinking .dice { font-size: 56px; display: inline-block; animation: roll .9s linear infinite; }
   @keyframes roll { to { transform: rotate(360deg); } }
 
@@ -225,21 +297,25 @@
   @media (max-width: 1000px) {
     .layout { grid-template-columns: 1fr; }
     body.m-lobby { overflow-y: auto; height: auto; min-height: 100vh; min-height: 100dvh; }
-    .lobby { grid-template-columns: minmax(0, 1fr); }
-    .joincol { overflow: visible; }
-    .setup { overflow: visible; }
+    /* узкий экран — лобби в одну колонку и скроллится страница, а не отдельные блоки */
+    .lobby { height: auto; grid-template-columns: minmax(0, 1fr); align-items: start; }
+    .joincol { max-height: none; overflow: visible; }
+    .setup { max-height: none; overflow: visible; }
     .start { margin-top: 6px; }
-    .seats { flex-direction: column; align-items: stretch; }
+    .seats { flex-direction: column; align-items: stretch; overflow: visible; }
+    .seatrow { overflow: visible; }
   }
 </style>
 </head>
 <body>
 <div class="bg"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div><div class="grain"></div></div>
+<div class="util"><a href="index.html">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
 <div class="layout" id="app"></div>
 <div class="overlay" id="overlay"></div>
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="sound-toggle.js" defer></script>
 <script src="auction-shared.js"></script>
 <script>
 const params = new URLSearchParams(location.search);
@@ -384,7 +460,15 @@ function buildLobby() {
         ${location.hostname === "localhost" || location.hostname === "127.0.0.1" ? '<button class="btn ghost" id="bots">+ 3 бота (dev)</button>' : ""}
       </section>
     </div>`;
-  new QRCode(document.getElementById("qr"), { text: url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+  // библиотека QR лежит на cdnjs: если он недоступен, без try лобби осталось бы без обработчиков
+  // (кнопка «Начать игру» не работала бы вовсе). Код комнаты и ссылка на экране есть и без QR.
+  try {
+    new QRCode(document.getElementById("qr"), { text: url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+  } catch (err) {
+    console.warn("QR не нарисовался:", err.message);
+    const box = document.querySelector(".join .qrbox");
+    if (box) box.hidden = true;
+  }
 
   // любое изменение контрола уходит хосту тем же сообщением settings
   const push = (patch) => {
@@ -600,7 +684,7 @@ function renderFinal() {
   }
   const r = s.results;
   const places = ["🥇", "🥈", "🥉"];
-  app.innerHTML = `<div class="final"><h2>Итоги</h2><div class="podium">${r.ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: places[i] || `${i + 1}.`, score: x.score, verdict: x.verdict, first: i === 0, mode: r.mode, delay: (r.ranking.length - 1 - i) * .5 })).join("")}</div>${r.summary ? `<div class="summary">${escapeHtml(r.summary)}</div>` : ""}<div class="actions"><button class="btn" id="again">Ещё раз (та же категория)</button><button class="btn ghost" id="another">Другая категория</button></div></div>`;
+  app.innerHTML = `<div class="final"><h2>Итоги</h2><div class="podium">${r.ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: places[i] || `${i + 1}.`, score: x.score, verdict: x.verdict, first: i === 0, mode: r.mode, delay: Math.min(1.4, (r.ranking.length - 1 - i) * .16) })).join("")}</div>${r.summary ? `<div class="summary">${escapeHtml(r.summary)}</div>` : ""}<div class="actions"><button class="btn" id="again">Ещё раз (та же категория)</button><button class="btn ghost" id="another">Другая категория</button></div></div>`;
   document.getElementById("again").onclick = () => sendMsg({ type: "next_game" });
   document.getElementById("another").onclick = () => sendMsg({ type: "next_game" });
 }

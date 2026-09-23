@@ -41,7 +41,17 @@ function buildPrompt(kind, lineups, slots) {
   );
 }
 
-async function judge({ kind, lineups, slots, apiKey, model, timeoutMs = 60000, fetchImpl = fetch }) {
+// Один повтор при кривом ответе (§9 спеки): схема strict, но модель может отдать неполный список.
+async function judge(opts) {
+  try {
+    return await askJudge(opts);
+  } catch (err) {
+    if (err.name === "AbortError") throw err; // таймаут повторять нечем
+    return await askJudge(opts);
+  }
+}
+
+async function askJudge({ kind, lineups, slots, apiKey, model, timeoutMs = 60000, fetchImpl = fetch }) {
   const schema = {
     type: "object",
     additionalProperties: false,
@@ -100,4 +110,4 @@ async function judge({ kind, lineups, slots, apiKey, model, timeoutMs = 60000, f
   }
 }
 
-module.exports = { judge, buildPrompt, FRAMES };
+module.exports = { judge, askJudge, buildPrompt, FRAMES };

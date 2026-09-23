@@ -79,7 +79,8 @@ function connect(code, first) {
   if (!(await until(() => anya.rejected.some((r) => r.reason === "price_changed")))) fail("stale bid was not rejected: " + JSON.stringify(anya.rejected));
   log("stale bid rejected ✓");
 
-  // Аня: агрессивно до $6; Макс: только открывающие $1, тратит всё, чтобы попасть в РАЗБОР
+  // Аня берёт ровно один лот и дальше молчит; Макс на первом же лоте спускает весь бюджет,
+  // остаётся с $0 и свободными слотами — значит лоты без ставок обязаны уйти в РАЗБОР к нему.
   let lastRound = -1, sawPickup = false, sawTaken = false;
   while (Date.now() < deadline) {
     const s = host.state;
@@ -88,8 +89,8 @@ function connect(code, first) {
     if (s.phase === "pickup") sawPickup = true;
     if ((s.phase === "lot" || s.phase === "bidding")) {
       const a = s.players.find((p) => p.id === anya.me), m = s.players.find((p) => p.id === max.me);
-      if (a.canBid && s.leaderId !== anya.me && s.price < 6) anya.send({ type: "bid", amount: s.price + 1, expectedPrice: s.price });
-      if (m.canBid && s.leaderId !== max.me && s.price === 0) max.send({ type: "bid", amount: Math.min(m.money, 7), expectedPrice: 0 });
+      if (a.canBid && !a.lots.length && s.leaderId !== anya.me && s.price < 6) anya.send({ type: "bid", amount: s.price + 1, expectedPrice: s.price });
+      if (m.canBid && !m.lots.length && s.leaderId !== max.me && s.price === 0) max.send({ type: "bid", amount: m.money, expectedPrice: 0 });
     }
     if (s.phase === "pickup") { const m = s.players.find((p) => p.id === max.me); if (m.canTake) max.send({ type: "take" }); }
     if (host.events.some((e) => e.type === "taken")) sawTaken = true;
@@ -101,6 +102,11 @@ function connect(code, first) {
   log("pickup seen:", sawPickup, "free take:", sawTaken);
   const sold = host.events.filter((e) => e.type === "sold").length;
   if (!sold) fail("nothing sold");
+  if (!sawPickup) fail("РАЗБОР не случился, хотя игрок с $0 и свободными слотами был");
+  if (!sawTaken) fail("бесплатный лот не забрали");
+  const broke = s.players.find((p) => p.id === max.me);
+  if (broke.money < 0 || broke.lots.some((l) => l.price < 0)) fail("деньги ушли в минус");
+  if (!broke.lots.some((l) => l.price === 0)) fail("в лайнапе нет бесплатного лота из РАЗБОРА");
 
   // судейство: ChatGPT или голосование
   const t0 = Date.now();

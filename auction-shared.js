@@ -102,6 +102,16 @@ function heroWidget(pick, kind) {
 // ---------- музыка: 30-секундное превью хита из iTunes ----------
 
 const player = new Audio();
+// общий выключатель звука сайта (sound-toggle.js) ловит только Web Audio,
+// поэтому <audio> с превью хита гасим сами и следим за переключением
+function syncMuted() {
+  try { player.muted = localStorage.getItem("site-muted") === "1"; } catch (e) {}
+}
+syncMuted();
+window.addEventListener("storage", function (e) { if (!e || e.key === "site-muted") syncMuted(); });
+document.addEventListener("click", function (e) {
+  if (e.target && e.target.closest && e.target.closest(".sound-toggle-btn")) setTimeout(syncMuted, 0);
+}, true);
 player.loop = true;
 player.preload = "auto";
 const VOLUME = 0.45;
@@ -192,7 +202,7 @@ function playerWidget() {
     toggle.textContent = on ? "❚❚" : "▶";
   };
   toggle.onclick = () => {
-    if (player.paused) { player.volume = VOLUME; player.play().catch(() => {}); }
+    if (player.paused) { syncMuted(); player.volume = VOLUME; player.play().catch(() => {}); }
     else player.pause();
   };
   player.onplay = player.onpause = sync;
@@ -200,6 +210,7 @@ function playerWidget() {
 }
 
 async function startMusic(pick, widget) {
+  syncMuted();
   const token = ++musicToken;
   try {
     // у русских исполнителей в US-витрине имена транслитом (Kino, Zemfira), в RU — кириллицей, как в карточке
@@ -226,13 +237,26 @@ async function startMusic(pick, widget) {
 // ---------- транспорт: WebSocket, а если прокси его не пропускает — long-polling ----------
 // openTransport({code, onMessage, onClose, onOpen}) → { send(msg), close(), mode }.
 // Сначала пробуем WebSocket; если он закрылся, не успев открыться, переключаемся на опрос.
-function openTransport({ code, onMessage, onClose, onOpen }) {
+function openTransport({ code, onMessage, onClose, onOpen, onSendFail }) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   let closed = false, opened = false, sid = null, ws = null, polling = false;
   const api = {
-    send(msg) {
+    // по long-polling действие может не дойти (перегруз прокси, моргнувшая сеть) —
+    // молча терять ставку нельзя: повторяем пару раз и сообщаем наверх
+    send(msg, attempt) {
       if (ws && ws.readyState === 1) return ws.send(JSON.stringify(msg));
-      if (sid) fetch("/auction/api/msg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid, msg }) }).catch(() => {});
+      if (!sid) return;
+      const tries = attempt || 0;
+      fetch("/auction/api/msg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid, msg }) })
+        .then((r) => {
+          if (r.ok || r.status === 410) return;
+          if (tries < 2) setTimeout(() => api.send(msg, tries + 1), 400 * (tries + 1));
+          else if (onSendFail) onSendFail(msg);
+        })
+        .catch(() => {
+          if (tries < 2) setTimeout(() => api.send(msg, tries + 1), 400 * (tries + 1));
+          else if (onSendFail) onSendFail(msg);
+        });
     },
     close() { closed = true; try { if (ws) ws.close(); } catch (e) {} sid = null; },
     get mode() { return ws && ws.readyState === 1 ? "ws" : sid ? "poll" : "none"; },
