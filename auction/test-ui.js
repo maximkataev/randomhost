@@ -209,8 +209,10 @@ async function typeText(page, text) {
     // --- сеть без Википедии и iTunes: партия обязана идти, карточка — рисоваться
     const room2 = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "artist" }) })).json();
     const offline = await cdp(`${BASE}/auction-board.html?r=${room2.code}&t=${room2.hostToken}`);
-    // заодно проверяем лобби без cdnjs: без библиотеки QR кнопка «Начать» раньше оставалась без обработчика
-    await offline.block(["*wikipedia.org*", "*itunes.apple.com*", "*wikimedia.org*", "*cdnjs.cloudflare.com*"]);
+    // заодно проверяем лобби без cdnjs: без библиотеки QR кнопка «Начать» раньше оставалась без обработчика.
+    // Google Fonts блокируем здесь же: стили из <link> блокируют первую отрисовку, и если шрифты
+    // недоступны (в части сетей их режут), доска обязана нарисоваться системным шрифтом, а не остаться белой.
+    await offline.block(["*wikipedia.org*", "*itunes.apple.com*", "*wikimedia.org*", "*cdnjs.cloudflare.com*", "*fonts.googleapis.com*", "*fonts.gstatic.com*"]);
     await offline.call("Page.reload");
     await wait(3500);
     check(await evaluateSafe(offline, "!!(document.getElementById('start') && document.getElementById('start').onclick)"), "лобби без cdnjs: кнопка «Начать игру» жива");

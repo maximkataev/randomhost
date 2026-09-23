@@ -272,6 +272,12 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
   // ---------- лимиты против DoS (отдельный дочерний сервер с крошечными потолками) ----------
   await limitsSuite();
 
+  // ---------- дамп и восстановление партии (свой инстанс со своим файлом) ----------
+  await dumpSuite();
+
+  // ---------- TTL комнаты (свой инстанс с TTL 2 с) ----------
+  await ttlSuite();
+
   console.log(failures ? `FAILURES: ${failures}` : "SERVER TESTS OK");
   process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error("ERROR", e); process.exit(1); });
@@ -370,6 +376,106 @@ async function limitsSuite() {
     // 5) сервер жив после всех атак
     const alive = await (await fetch(B + "/auction/api/health")).json();
     check(alive.ok === true, "сервер жив после флуда комнат/сокетов");
+  } finally {
+    child.kill("SIGKILL");
+  }
+}
+
+// Дамп партии: колода уходит в файл номерами карт, а не карточками. Это не косметика — при
+// сохранении колод целиком дамп 100 комнат весил 30 МБ и разгонял RSS до 400 МБ при mem_limit 256m,
+// то есть контейнер убивало ядро, а restore поднимал то же состояние и убивало снова.
+// Тест держит три вещи: формат компактен, порядок лотов при перезапуске не меняется,
+// дамп прежнего формата (колода целиком) всё ещё читается — иначе деплой терял бы живые партии.
+async function dumpSuite() {
+  const { spawn } = require("child_process");
+  const fs = require("fs");
+  const path = require("path");
+  const os = require("os");
+  const PORT = 3700 + Math.floor(Math.random() * 200);
+  const B = `http://127.0.0.1:${PORT}`;
+  const DUMP = path.join(os.tmpdir(), `dump-suite-${PORT}.json`);
+  fs.rmSync(DUMP, { force: true });
+  const boot = () => spawn(process.execPath, [path.join(__dirname, "server.js")], {
+    env: { ...process.env, PORT: String(PORT), NODE_ENV: "production", DUMP_FILE: DUMP }, stdio: "ignore",
+  });
+  const up = async () => { for (let i = 0; i < 60; i++) { try { if ((await fetch(B + "/auction/api/health")).ok) return true; } catch {} await wait(100); } return false; };
+  let child = boot();
+  try {
+    if (!(await up())) return check(false, "дамп-сервер поднялся");
+    const r = await (await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "artist", settings: { judge: "vote" } }) })).json();
+    // дамп идёт раз в 5 с
+    const dumped = await until(() => fs.existsSync(DUMP) && fs.statSync(DUMP).size > 2, 9000);
+    if (!dumped) return check(false, "дамп записался");
+    await wait(300);
+    const one = JSON.parse(fs.readFileSync(DUMP, "utf8"))[0];
+    check(Array.isArray(one.state.deckIdx) && one.state.deck === null, "колода сохранена номерами карт, а не карточками");
+    const kb = fs.statSync(DUMP).size / 1024;
+    check(kb < 25, `дамп одной комнаты ${kb.toFixed(1)} КБ (колодой целиком было бы ~305 КБ)`);
+    const cards = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "artist.json"), "utf8"));
+    check(new Set(one.state.deckIdx).size === cards.length, `в колоде все ${cards.length} карт и без повторов`);
+    const orderBefore = one.state.deckIdx.join(",");
+
+    // перезапуск: комната и порядок лотов должны уцелеть
+    child.kill("SIGTERM");
+    await wait(1200);
+    child = boot();
+    if (!(await up())) return check(false, "дамп-сервер поднялся после перезапуска");
+    const h = await (await fetch(B + "/auction/api/health")).json();
+    check(h.rooms === 1, "комната пережила перезапуск");
+    const again = await until(() => { try { return JSON.parse(fs.readFileSync(DUMP, "utf8"))[0]?.state?.deckIdx; } catch { return false; } }, 9000);
+    check(again, "восстановленная комната снова дампится");
+    const two = JSON.parse(fs.readFileSync(DUMP, "utf8"))[0];
+    check(two.state.deckIdx.join(",") === orderBefore, "порядок лотов после перезапуска не изменился");
+    check(two.code === r.code, "код комнаты не изменился — QR на экране остаётся рабочим");
+
+    // дамп прежнего формата: колода карточками, без deckIdx
+    child.kill("SIGTERM");
+    await wait(1000);
+    const legacyState = { ...two.state, deck: two.state.deckIdx.map((i) => cards[i]) };
+    delete legacyState.deckIdx;
+    fs.writeFileSync(DUMP, JSON.stringify([{ code: "OLDF", ip: "", hostToken: "h", tokens: {}, touched: Date.now(), state: legacyState }]));
+    child = boot();
+    if (!(await up())) return check(false, "дамп-сервер поднялся на старом формате");
+    const h2 = await (await fetch(B + "/auction/api/health")).json();
+    check(h2.rooms === 1, "дамп прежнего формата читается — деплой не теряет идущую партию");
+  } finally {
+    child.kill("SIGKILL");
+    try { require("fs").rmSync(DUMP, { force: true }); } catch {}
+  }
+}
+
+// TTL комнаты не должен убивать комнату, на которой открыта доска. В лобби и финале игровых
+// событий нет, room.touched двигают только сообщения — и комната с кодом на большом экране
+// умирала через 30 минут ожидания гостей вместе с QR. Брошенные комнаты при этом обязаны убираться,
+// иначе лимит MAX_ROOMS запирается мусором. Здесь TTL 2 с, чтобы проверка шла секунды, а не полчаса.
+async function ttlSuite() {
+  const { spawn } = require("child_process");
+  const path = require("path");
+  const os = require("os");
+  const PORT = 3900 + Math.floor(Math.random() * 90);
+  const B = `http://127.0.0.1:${PORT}`;
+  const child = spawn(process.execPath, [path.join(__dirname, "server.js")], {
+    env: { ...process.env, PORT: String(PORT), NODE_ENV: "production", ROOM_TTL_MS: "2000",
+      DUMP_FILE: path.join(os.tmpdir(), `ttl-${PORT}.json`) },
+    stdio: "ignore",
+  });
+  try {
+    let up = false;
+    for (let i = 0; i < 60 && !up; i++) { try { up = (await fetch(B + "/auction/api/health")).ok; } catch { await wait(100); } }
+    if (!up) return check(false, "TTL-сервер поднялся");
+    const mk = async () => (await (await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal" }) })).json());
+    const held = await mk();
+    await mk(); // эту никто не открывает
+    const ws = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + held.code);
+    let expired = false;
+    ws.on("message", (raw) => { const m = JSON.parse(raw); if (m.type === "error" && m.error === "room_expired") expired = true; });
+    ws.on("error", () => {});
+    await new Promise((r) => { ws.on("open", () => { ws.send(JSON.stringify({ type: "host", token: held.hostToken })); r(); }); setTimeout(r, 3000); });
+    await wait(6500); // больше трёх TTL
+    check(!expired, "комната с открытой доской переживает TTL в лобби — код на экране остаётся живым");
+    const h = await (await fetch(B + "/auction/api/health")).json();
+    check(h.rooms === 1, `брошенная комната убрана по TTL, открытая осталась (комнат ${h.rooms})`);
+    ws.close();
   } finally {
     child.kill("SIGKILL");
   }

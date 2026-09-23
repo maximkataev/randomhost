@@ -40,19 +40,38 @@ jobs:
       # Сначала собираем образы, и только потом подменяем контейнеры. Раньше здесь стояло
       # `docker rm -f randomhost && docker compose up -d --build`: сайт лежал всю сборку,
       # а при ошибке сборки оставался лежать совсем — контейнер уже удалён, новый не поднялся.
+      #
+      # Без --force-recreate: compose сам пересоздаёт только то, у чего сменился образ или конфиг.
+      # С ним каждая правка любой html-страницы перезапускала и сервер аукциона, обрывая идущую
+      # партию на всех телефонах. Теперь правка статики трогает только контейнер web, а живая игра
+      # её не замечает. Подхват нового .env и изменений compose при этом сохраняется: они меняют
+      # хеш конфига сервиса, и compose пересоздаёт контейнер сам.
       - name: Rebuild and restart randomhost
         run: |
           ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
-            'cd /opt/randomhostwebsite && docker compose build && docker compose up -d --force-recreate --remove-orphans'
+            'cd /opt/randomhostwebsite && docker compose build --pull && docker compose up -d --remove-orphans'
 
       # Проверка ждёт, пока контейнеры поднимутся, и падает, если сайт или аукцион не отвечают:
       # молчаливый зелёный деплой при лежащем сайте — худший из возможных исходов.
+      # `docker ps | grep randomhost` раньше проходил, даже если из двух контейнеров работал один:
+      # grep доволен любой строкой. Проверяем каждый контейнер по имени, а потом уже ответы по HTTP.
       - name: Post-check
         run: |
           ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
-            'docker ps | grep randomhost
+            'for c in randomhost randomhost-auction; do
+               [ "$(docker inspect -f "{{.State.Running}}" $c 2>/dev/null)" = "true" ] || { echo "контейнер $c не запущен"; docker compose -f /opt/randomhostwebsite/docker-compose.yml logs --tail 40 $c; exit 1; }
+             done
              for i in $(seq 1 30); do
-               curl -sf http://127.0.0.1:8080/ -o /dev/null && curl -sf http://127.0.0.1:8080/auction/api/health && exit 0
+               curl -sf http://127.0.0.1:8080/ -o /dev/null && curl -sf http://127.0.0.1:8080/auction/api/health && ok=1 && break
                sleep 2
              done
-             echo "сайт или аукцион не отвечают после деплоя"; docker compose -f /opt/randomhostwebsite/docker-compose.yml logs --tail 40; exit 1'
+             [ -n "$ok" ] || { echo "сайт или аукцион не отвечают после деплоя"; docker compose -f /opt/randomhostwebsite/docker-compose.yml logs --tail 40; exit 1; }
+             # контейнер поднялся и сразу упал в цикл перезапусков — с одной проверки этого не видно
+             sleep 5
+             for c in randomhost randomhost-auction; do
+               [ "$(docker inspect -f "{{.State.Running}}" $c)" = "true" ] || { echo "контейнер $c перезапускается после деплоя"; docker logs --tail 40 $c; exit 1; }
+             done
+             # каждая сборка оставляет прежний образ висеть как <none>; на сервере их уже сотни.
+             # Чистим только осиротевшие слои: образы чужих сервисов -f dangling=true не трогает.
+             docker image prune -f >/dev/null 2>&1 || true
+             echo "деплой проверен: оба контейнера отвечают"'

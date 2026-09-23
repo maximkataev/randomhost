@@ -43,6 +43,17 @@ for (const f of fs.readdirSync(path.join(__dirname, "data"))) {
 }
 if (!OPENAI_API_KEY) console.warn("[auction] OPENAI_API_KEY не задан — судья будет через голосование");
 
+// Номера карт в колоде категории. Game.create тасует через slice, поэтому объекты в room.game.s.deck —
+// это те же объекты, что в KINDS[kind]: колоду можно дампить списком номеров вместо самих карточек.
+// Без этого в файл уходила вся колода на каждую комнату (305 КБ против 2,5 КБ), дамп 100 комнат
+// разгонял RSS до 400 МБ при mem_limit 256m, а restore делал каждой комнате свою глубокую копию колоды.
+const CARD_INDEX = {};
+for (const [kind, cards] of Object.entries(KINDS)) {
+  const m = new Map();
+  cards.forEach((c, i) => m.set(c, i));
+  CARD_INDEX[kind] = m;
+}
+
 // ---------- комнаты ----------
 
 const rooms = new Map(); // code → room
@@ -117,7 +128,6 @@ function createRoom({ kind = "artist", settings = {}, speed = 1, ip = "" } = {})
     botTimer: null,
     judging: false,
     judgeCalls: 0,
-    thumbs: {},
   };
   rooms.set(code, room);
   return room;
@@ -158,7 +168,10 @@ function afterChange(room, events = []) {
   broadcast(room, { type: "state", state: snapshotWithVoting(room) });
   for (const e of events) broadcast(room, { type: "event", event: e });
   // судейство запускаем ровно один раз: пока идёт голосование или запрос к судье — не трогаем
-  if (s.phase === "finished" && !s.results && !s.voting && !room.judging) startJudging(room);
+  // startJudging асинхронна: без catch любая её ошибка стала бы unhandledRejection и уронила процесс
+  if (s.phase === "finished" && !s.results && !s.voting && !room.judging) {
+    startJudging(room).catch((err) => { room.judging = false; console.error("[auction] судейство упало:", err.message); });
+  }
   schedule(room);
 }
 
@@ -582,16 +595,53 @@ setInterval(() => {
       c.alive = false;
       c.ws.ping();
     }
+    // Пока на комнате есть хоть одно соединение — она живая. Без этого доска, открытая в лобби,
+    // умирала по TTL через 30 минут вместе с кодом на экране: в лобби и финале игровых тиков нет,
+    // а room.touched двигают только сообщения. Полчаса ожидания гостей — обычное дело для вечеринки.
+    if (room.sockets.size) room.touched = now();
     if (now() - room.touched > ROOM_TTL) destroyRoom(room);
   }
+  // Одна строка в лог на каждый обход: по `docker logs randomhost-auction` видно, сколько комнат,
+  // соединений и памяти было в момент поломки. При лимите 256m рост RSS — единственный признак
+  // близкого OOM, и без этой строки после убийства контейнера не остаётся никаких следов.
+  const rssMb = Math.round(process.memoryUsage().rss / 1048576);
+  if (rooms.size) console.log(`[auction] комнат ${rooms.size}, соединений ${totalSockets()}, RSS ${rssMb} МБ`);
+  if (rssMb > 180) console.warn(`[auction] ВНИМАНИЕ: RSS ${rssMb} МБ при лимите контейнера 256 МБ, комнат ${rooms.size}`);
 }, SWEEP);
 
+// колода комнаты → список номеров карт; null, если карточки не из текущей колоды категории
+// (данные поменялись между сборками) — тогда дампим колоду как есть
+function deckIndexes(s) {
+  const idx = CARD_INDEX[s.kind];
+  if (!idx || !Array.isArray(s.deck)) return null;
+  const out = [];
+  for (const c of s.deck) {
+    const i = idx.get(c);
+    if (i === undefined) return null;
+    out.push(i);
+  }
+  return out;
+}
+
+let dumpWasEmpty = false;
 function dump() {
   try {
-    fs.mkdirSync(path.dirname(DUMP), { recursive: true });
     const data = [...rooms.values()]
       .filter((r) => !r.bots.length)
-      .map((r) => ({ code: r.code, ip: r.ip, hostToken: r.hostToken, tokens: r.tokens, touched: r.touched, state: r.game.s }));
+      .map((r) => {
+        const s = r.game.s;
+        const deckIdx = deckIndexes(s);
+        // judgeCalls тоже сохраняем: без него перезапуск обнулял счётчик платных запросов к судье,
+        // и в цикле падений каждая доигранная комната заказывала вердикт заново
+        return {
+          code: r.code, ip: r.ip, hostToken: r.hostToken, tokens: r.tokens, touched: r.touched, judgeCalls: r.judgeCalls,
+          state: deckIdx ? { ...s, deck: null, deckIdx } : s,
+        };
+      });
+    // нечего сохранять и в прошлый раз было нечего — не трогаем диск каждые 5 секунд
+    if (!data.length && dumpWasEmpty) return;
+    dumpWasEmpty = !data.length;
+    fs.mkdirSync(path.dirname(DUMP), { recursive: true });
     fs.writeFileSync(DUMP + ".tmp", JSON.stringify(data));
     fs.renameSync(DUMP + ".tmp", DUMP);
   } catch (err) {
@@ -604,7 +654,24 @@ function restore() {
     if (!fs.existsSync(DUMP)) return;
     for (const r of JSON.parse(fs.readFileSync(DUMP, "utf8"))) {
       if (now() - r.touched > ROOM_TTL) continue;
-      const room = { code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: Game.from(r.state), tokens: r.tokens, sockets: new Set(), timer: null, voteTimer: null, touched: r.touched, speed: 1, skew: 0, bots: [], botTimer: null, judging: false, judgeCalls: 0, thumbs: {} };
+      // колода сохранена номерами — поднимаем её теми же объектами, что в KINDS (общая память, не копия).
+      // Старый формат (колода целиком) читается как есть: дамп с прошлой версии не теряется.
+      if (Array.isArray(r.state.deckIdx)) {
+        const cards = KINDS[r.state.kind] || [];
+        const deck = r.state.deckIdx.map((i) => cards[i]);
+        if (deck.every(Boolean)) {
+          r.state.deck = deck;
+        } else {
+          // карточки категории изменились между сборками — номера ведут не туда. Партию не бросаем:
+          // берём свежую тасовку. Купленные лоты лежат у игроков, текущий лот сохранён отдельно,
+          // а будущих ещё никто не видел, поэтому подмена незаметна.
+          r.state.deck = Game.create({ kind: r.state.kind, cards }).s.deck;
+          r.state.rounds = Math.min(r.state.rounds, r.state.deck.length);
+          console.warn(`[auction] комната ${r.code}: колода категории изменилась, лоты перетасованы заново`);
+        }
+        delete r.state.deckIdx;
+      }
+      const room = { code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: Game.from(r.state), tokens: r.tokens, sockets: new Set(), timer: null, voteTimer: null, touched: r.touched, speed: 1, skew: 0, bots: [], botTimer: null, judging: false, judgeCalls: Number(r.judgeCalls) || 0 };
       for (const p of room.game.s.players) p.online = false;
       rooms.set(room.code, room);
       schedule(room);
@@ -612,7 +679,7 @@ function restore() {
       const s = room.game.s;
       if (s.phase === "finished" && !s.results) {
         if (s.voting) armVoting(room);
-        else startJudging(room);
+        else startJudging(room).catch((err) => console.error("[auction] судейство при восстановлении упало:", err.message));
       }
     }
     console.log(`[auction] восстановлено комнат: ${rooms.size}`);
