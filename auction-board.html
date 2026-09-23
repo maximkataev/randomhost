@@ -116,7 +116,8 @@
   .players.compact .slot-i .n { max-width: 70px; font-size: 12px; }
 
   /* панель хоста: код отдельной строкой, три кнопки делят ряд и никогда не вылезают за колонку */
-  .hostbar { flex: none; display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+  /* поверх оверлея паузы: иначе ведущий не может снять паузу, которую сам же поставил */
+  .hostbar { position: relative; z-index: 60; flex: none; display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
   .hostbar .code { flex: 1 0 100%; font: 700 12px/1 var(--display); letter-spacing: .14em; color: var(--muted); }
   .hostbar .btn { flex: 1 1 0; min-width: 0; padding: 12px 10px; }
   .btn { min-height: 44px; font: 700 11.5px/1.25 var(--display); letter-spacing: .06em; text-transform: uppercase; color: #0a0a0f; background: linear-gradient(120deg, var(--c1), var(--c2)); border: 0; border-radius: 999px; padding: 13px 20px; cursor: pointer; box-shadow: 0 14px 34px -18px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .4); transition: transform .2s cubic-bezier(.3, 1.6, .5, 1), border-color .2s, background .2s, box-shadow .3s; }
@@ -246,6 +247,11 @@
   }
   .util button { width: 44px; padding: 0; }
   .util a:hover, .util button:hover { color: var(--text); border-color: var(--c1); background: rgba(255, 255, 255, .08); }
+  /* Переключатель языка (его кладёт i18n.js) живёт только в лобби — как и вся служебная строка.
+     В партии правый верхний угол занят шапкой панели игроков, и фиксированная плашка легла бы
+     поверх счётчика мест. Язык всё равно выбирают до старта: сервер принимает настройки комнаты
+     (и язык колоды) только в лобби, а посреди партии доска разъехалась бы с телефонами. */
+  body:not(.m-lobby) .lang-switch { display: none !important; }
 
   /* правила — чтобы пустота под настройками работала на игроков, пока все собираются */
   .rules { margin-top: 4px; padding-top: 16px; border-top: 1px solid var(--glass-line); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(12px, 1.4vw, 20px); }
@@ -295,7 +301,9 @@
   @media (max-height: 820px) {
     .setup { padding: 14px 18px 16px; }
     .setup h2 { font-size: 20px; }
-    .setup-body { gap: 9px; }
+    /* 8px, а не 9: на 1280×720 у самой высокой категории (15 фишек + задание в три строки
+       подсказки) панели не хватало одного-двух пикселей и она получала внутреннюю прокрутку */
+    .setup-body { gap: 8px; }
     .set.task { padding: 10px 12px 11px; gap: 8px; }
     .modehint { padding: 8px 12px; font-size: 13px; }
     /* фишки категорий чуть плотнее: три ряда по 15 штук — самый дорогой блок панели */
@@ -377,7 +385,7 @@
   .thinking .dice { font-size: 56px; display: inline-block; animation: roll .9s linear infinite; }
   @keyframes roll { to { transform: rotate(360deg); } }
 
-  .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); backdrop-filter: blur(6px); display: none; place-items: center; z-index: 50; font: 900 40px var(--display); text-transform: uppercase; }
+  .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); backdrop-filter: blur(6px); display: none; place-items: center; z-index: 50; font: 900 40px var(--display); text-transform: uppercase; pointer-events: none; }
   .overlay.on { display: grid; }
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #ff6b6b; color: #fff; padding: 10px 16px; border-radius: 12px; font-weight: 600; display: none; z-index: 60; }
   .toast.on { display: block; }
@@ -400,7 +408,7 @@
 </head>
 <body>
 <div class="bg"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div><div class="grain"></div></div>
-<div class="util"><a href="index.html">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
+<div class="util"><a href="index.html" data-i18n="nav_all">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
 <div class="layout" id="app"></div>
 <div class="overlay" id="overlay"></div>
 <div class="toast" id="toast"></div>
@@ -410,15 +418,441 @@
 <script src="auction-modes.js"></script>
 <script src="auction-shared.js"></script>
 <script>
+/* Словарь доски. Объявлен до i18n.js (тот грузится с defer в конце body) и до основного скрипта:
+   первая же строка «нет кода комнаты» рисуется синхронно и берёт текст отсюда.
+
+   Ключи плоские. Подстановки — {name} в фигурных скобках, а не склейка: в английском и
+   греческом другой порядок слов («Лот 3 из 12» → «Λοτ 3 από 12»).
+
+   kind_* / kind_label_* — названия категорий. Основной их источник — auctionKind() из
+   auction-shared.js: этот файл читает и пульт, и одна категория обязана называться одинаково
+   на экране и в телефоне. Здешние ключи — запасной вариант (старый закешированный
+   auction-shared.js без переводов), после них остаётся русский оригинал AUCTION_KINDS.
+
+   Названий заданий здесь нет: auction-modes.js (его читают сервер и пульт) сам знает переводы
+   и отдаёт их третьим аргументом auctionModeText(id, kind, lang) — дублировать их тут значит
+   развести формулировки на экране и в телефоне. */
+window.I18N_DICT = {
+  ru: {
+    _title: `Аукцион — доска`,
+    nav_all: `← Все игры`,
+    no_room: `Нет кода комнаты. Открой <a href="auction.html" style="color:var(--c1)">auction.html</a> и создай комнату.`,
+    reconnecting: `Нет связи — переподключаемся…`,
+    paused: `Пауза`,
+    resume_game: `▶ Продолжить игру`,
+    judge_failed: `Судья не ответил — голосуем`,
+    /* лобби */
+    lobby_open: `Комната открыта`,
+    lobby_hint: `Сканируй QR или открой ссылку и введи имя`,
+    players: `Игроки`,
+    players_n: `Игроки · {n}`,
+    need_two: `нужно хотя бы двое`,
+    ready_to_start: `можно начинать`,
+    wait_more: `ждём ещё…`,
+    wait_none: `пока никого — заходите по коду`,
+    setup_title: `Аукцион`,
+    setup_sub: `лоты, ставки, ИИ-судья`,
+    cap_kind: `Категория`,
+    cap_budget: `Бюджет каждого`,
+    cap_slots: `Слотов в лайнапе`,
+    less: `меньше`,
+    more: `больше`,
+    cap_task: `Задание партии`,
+    task_hint: `меняет, кого судья объявит победителем`,
+    judge_vote: `Голосование`,
+    hint_vote_b: `Голосуют игроки`,
+    hint_vote: `{b} — победителя выбираете сами. Задание: {topic}.`,
+    hint_ai: `{b} {judge}.`,
+    rounds: `Лотов в игре: <b>{n}</b> · на лот <b>{t1} с</b>, после ставки <b>{t2} с</b>`,
+    rule1_t: `Заходите по коду`,
+    rule1_d: `QR с этого экрана или ссылка — и имя`,
+    rule2_t: `Торги`,
+    rule2_d: `20 секунд на лот, каждая ставка даёт ещё 5`,
+    rule3_t: `Судья`,
+    rule3_d: `Разбирает лайнапы и называет победителя`,
+    start_btn: `Начать игру`,
+    start_note_two: `Нужно хотя бы двое — пусть друзья зайдут по коду`,
+    bots_btn: `+ 3 бота (dev)`,
+    /* заставка */
+    intro_cap: `Лотов в игре: {n} · {kind}`,
+    auction: `Аукцион`,
+    intro_judge_vote: `Победителя выберете вы голосованием`,
+    intro_judge_ai: `Победителя выберет ChatGPT — он {judge}`,
+    /* игра */
+    lot_of: `Лот {n} из {total}`,
+    ph_lot: `Лот`,
+    ph_bidding: `Торги`,
+    ph_pickup: `Разбор`,
+    ph_sold: `Продано`,
+    ph_taken: `Забрали`,
+    ph_unsold: `Никто не взял`,
+    pcount: `{n} · {slots} слотов`,
+    room_code: `Комната {code}`,
+    btn_skip: `Пропустить лот`,
+    btn_pause: `Пауза`,
+    btn_resume: `▶ Продолжить`,
+    btn_end: `Завершить`,
+    end_confirm: `Завершить игру и перейти к судейству?`,
+    fact: `Факт`,
+    sold_to: `Ушло: {who} за {price}`,
+    taken_by: `Ушло: {who} бесплатно`,
+    unsold_line: `Никто не взял — следующий лот`,
+    pickup_line: `Без ставок — забирает бесплатно: `,
+    nobody: `никто`,
+    cap_nobids: `Ставок пока нет`,
+    first_bid: `Кто первый? Минимум {min}`,
+    nobody_to_bid: `Торговаться некому`,
+    cap_leader: `Лидер`,
+    tag_left: `вышел`,
+    tag_offline: `offline`,
+    tag_full: `готов`,
+    tag_leader: `лидер`,
+    tag_broke: `на мели`,
+    free: `бесплатно`,
+    slot_title: `{name} — {price}`,
+    /* итоги */
+    vote_title: `Голосование`,
+    vote_expl: `Судья недоступен или выбрано голосование. Каждый голосует с телефона за чужой лайнап. Проголосовало: {done}/{total}`,
+    judging: `Судья думает…`,
+    judging_sub: `ChatGPT читает лайнапы`,
+    results_title: `Итоги`,
+    by_vote: `голосование выбирало победителя`,
+    by_ai: `ChatGPT {judge}`,
+    btn_again: `Ещё раз (та же категория)`,
+    btn_another: `Другая категория`,
+    votes_short: `{n} голос.`,
+    votes_one: `1 голос`,
+    empty: `пусто`,
+    spent: `потрачено {sum}`,
+    /* категории: короткая подпись фишки и длинное имя на карточке лота */
+    kind_artist: `Артист`,
+    kind_film: `Фильм`,
+    kind_series: `Сериал`,
+    kind_person: `Личность`,
+    kind_character: `Персонаж`,
+    kind_food: `Еда`,
+    kind_city: `Город`,
+    kind_country: `Страна`,
+    kind_place: `Место`,
+    kind_animal: `Животное`,
+    kind_painting: `Картина`,
+    kind_company: `Компания`,
+    kind_club: `Клуб`,
+    kind_profession: `Профессия`,
+    kind_invention: `Открытие`,
+    kind_label_artist: `Музыкальный исполнитель`,
+    kind_label_film: `Фильм`,
+    kind_label_series: `Сериал`,
+    kind_label_person: `Личность`,
+    kind_label_character: `Персонаж`,
+    kind_label_food: `Еда`,
+    kind_label_city: `Город`,
+    kind_label_country: `Страна`,
+    kind_label_place: `Достопримечательность`,
+    kind_label_animal: `Животное`,
+    kind_label_painting: `Картина`,
+    kind_label_company: `Компания`,
+    kind_label_club: `Спортивный клуб`,
+    kind_label_profession: `Профессия`,
+    kind_label_invention: `Изобретение`
+  },
+  en: {
+    _title: `Auction — board`,
+    nav_all: `← All games`,
+    no_room: `No room code. Open <a href="auction.html" style="color:var(--c1)">auction.html</a> and create a room.`,
+    reconnecting: `Connection lost — reconnecting…`,
+    paused: `Paused`,
+    resume_game: `▶ Resume game`,
+    judge_failed: `The judge went quiet — we vote`,
+    lobby_open: `Room is open`,
+    lobby_hint: `Scan the QR or open the link and type your name`,
+    players: `Players`,
+    players_n: `Players · {n}`,
+    need_two: `two players minimum`,
+    ready_to_start: `ready to go`,
+    wait_more: `waiting for more…`,
+    wait_none: `nobody yet — join with the code`,
+    setup_title: `Auction`,
+    setup_sub: `lots, bids, AI judge`,
+    cap_kind: `Category`,
+    cap_budget: `Budget each`,
+    cap_slots: `Lineup slots`,
+    less: `less`,
+    more: `more`,
+    cap_task: `Game goal`,
+    task_hint: `changes who the judge crowns`,
+    judge_vote: `Vote`,
+    hint_vote_b: `Players vote`,
+    hint_vote: `{b} — you pick the winner yourselves. The goal: {topic}.`,
+    hint_ai: `{b} {judge}.`,
+    rounds: `Lots in game: <b>{n}</b> · <b>{t1}s</b> per lot, <b>{t2}s</b> after a bid`,
+    rule1_t: `Join with the code`,
+    rule1_d: `QR from this screen or the link — plus a name`,
+    rule2_t: `Bidding`,
+    rule2_d: `20 seconds per lot, every bid adds 5 more`,
+    rule3_t: `The judge`,
+    rule3_d: `Reads the lineups and names the winner`,
+    start_btn: `Start game`,
+    start_note_two: `Two players minimum — get friends in with the code`,
+    bots_btn: `+ 3 bots (dev)`,
+    intro_cap: `{n} lots · {kind}`,
+    auction: `Auction`,
+    intro_judge_vote: `You pick the winner by vote`,
+    intro_judge_ai: `ChatGPT picks the winner — it {judge}`,
+    lot_of: `Lot {n} of {total}`,
+    ph_lot: `Lot`,
+    ph_bidding: `Bidding`,
+    ph_pickup: `Free grab`,
+    ph_sold: `Sold`,
+    ph_taken: `Taken`,
+    ph_unsold: `No takers`,
+    pcount: `{n} · {slots} slots`,
+    room_code: `Room {code}`,
+    btn_skip: `Skip lot`,
+    btn_pause: `Pause`,
+    btn_resume: `▶ Resume`,
+    btn_end: `Finish`,
+    end_confirm: `Finish the game and go to judging?`,
+    fact: `Fact`,
+    sold_to: `Goes to {who} for {price}`,
+    taken_by: `{who} grabs it for free`,
+    unsold_line: `No takers — on to the next lot`,
+    pickup_line: `No bids — free for the taking: `,
+    nobody: `nobody`,
+    cap_nobids: `No bids yet`,
+    first_bid: `Who goes first? {min} minimum`,
+    nobody_to_bid: `Nobody left to bid`,
+    cap_leader: `Leader`,
+    tag_left: `left`,
+    tag_offline: `offline`,
+    tag_full: `full`,
+    tag_leader: `leader`,
+    tag_broke: `broke`,
+    free: `free`,
+    slot_title: `{name} — {price}`,
+    vote_title: `Voting`,
+    vote_expl: `No AI judge this time — you decide. Everyone votes from their phone for someone else's lineup. Voted: {done}/{total}`,
+    judging: `The judge is thinking…`,
+    judging_sub: `ChatGPT is reading the lineups`,
+    results_title: `Results`,
+    by_vote: `the vote picked the winner`,
+    by_ai: `ChatGPT {judge}`,
+    btn_again: `Again (same category)`,
+    btn_another: `Another category`,
+    votes_short: `{n} votes`,
+    votes_one: `1 vote`,
+    empty: `empty`,
+    spent: `spent {sum}`,
+    kind_artist: `Artist`,
+    kind_film: `Film`,
+    kind_series: `Series`,
+    kind_person: `Person`,
+    kind_character: `Character`,
+    kind_food: `Food`,
+    kind_city: `City`,
+    kind_country: `Country`,
+    kind_place: `Place`,
+    kind_animal: `Animal`,
+    kind_painting: `Painting`,
+    kind_company: `Company`,
+    kind_club: `Club`,
+    kind_profession: `Job`,
+    kind_invention: `Invention`,
+    kind_label_artist: `Musician`,
+    kind_label_film: `Film`,
+    kind_label_series: `Series`,
+    kind_label_person: `Person`,
+    kind_label_character: `Character`,
+    kind_label_food: `Food`,
+    kind_label_city: `City`,
+    kind_label_country: `Country`,
+    kind_label_place: `Landmark`,
+    kind_label_animal: `Animal`,
+    kind_label_painting: `Painting`,
+    kind_label_company: `Company`,
+    kind_label_club: `Sports club`,
+    kind_label_profession: `Profession`,
+    kind_label_invention: `Invention`
+  },
+  el: {
+    _title: `Δημοπρασία — οθόνη`,
+    nav_all: `← Όλα τα παιχνίδια`,
+    no_room: `Δεν υπάρχει κωδικός δωματίου. Άνοιξε το <a href="auction.html" style="color:var(--c1)">auction.html</a> και φτιάξε δωμάτιο.`,
+    reconnecting: `Χάθηκε η σύνδεση — επανασυνδεόμαστε…`,
+    paused: `Παύση`,
+    resume_game: `▶ Συνέχεια`,
+    judge_failed: `Ο κριτής δεν απάντησε — ψηφίζουμε`,
+    lobby_open: `Το δωμάτιο άνοιξε`,
+    lobby_hint: `Σκανάρετε το QR ή ανοίξτε το λινκ και γράψτε όνομα`,
+    players: `Παίκτες`,
+    players_n: `Παίκτες · {n}`,
+    need_two: `θέλει τουλάχιστον δύο`,
+    ready_to_start: `έτοιμοι`,
+    wait_more: `περιμένουμε κι άλλους…`,
+    wait_none: `κανείς ακόμα — μπείτε με τον κωδικό`,
+    setup_title: `Δημοπρασία`,
+    setup_sub: `λοτ, προσφορές, κριτής AI`,
+    cap_kind: `Κατηγορία`,
+    cap_budget: `Μπάτζετ ανά παίκτη`,
+    cap_slots: `Θέσεις στο λάιναπ`,
+    less: `λιγότερο`,
+    more: `περισσότερο`,
+    cap_task: `Στόχος παρτίδας`,
+    task_hint: `αλλάζει ποιον θα ανακηρύξει νικητή ο κριτής`,
+    judge_vote: `Ψηφοφορία`,
+    hint_vote_b: `Ψηφίζουν οι παίκτες`,
+    hint_vote: `{b} — τον νικητή τον διαλέγετε εσείς. Ο στόχος: {topic}.`,
+    hint_ai: `{b} {judge}.`,
+    rounds: `Λοτ στο παιχνίδι: <b>{n}</b> · <b>{t1} δλ</b> το λοτ, <b>{t2} δλ</b> μετά από προσφορά`,
+    rule1_t: `Μπείτε με τον κωδικό`,
+    rule1_d: `QR από την οθόνη ή το λινκ — και όνομα`,
+    rule2_t: `Προσφορές`,
+    rule2_d: `20 δλ το λοτ, κάθε προσφορά δίνει 5 ακόμα`,
+    rule3_t: `Ο κριτής`,
+    rule3_d: `Διαβάζει τα λάιναπ και ανακοινώνει τον νικητή`,
+    start_btn: `Έναρξη`,
+    start_note_two: `Θέλει τουλάχιστον δύο — βάλτε φίλους με τον κωδικό`,
+    bots_btn: `+ 3 μποτ (dev)`,
+    intro_cap: `{n} λοτ · {kind}`,
+    auction: `Δημοπρασία`,
+    intro_judge_vote: `Τον νικητή τον ψηφίζετε εσείς`,
+    intro_judge_ai: `Τον νικητή τον διαλέγει το ChatGPT — {judge}`,
+    lot_of: `Λοτ {n} από {total}`,
+    ph_lot: `Λοτ`,
+    ph_bidding: `Προσφορές`,
+    ph_pickup: `Τσάμπα`,
+    ph_sold: `Πουλήθηκε`,
+    ph_taken: `Το πήραν`,
+    ph_unsold: `Κανείς`,
+    pcount: `{n} · {slots} θέσεις`,
+    room_code: `Δωμάτιο {code}`,
+    btn_skip: `Παράλειψη`,
+    btn_pause: `Παύση`,
+    btn_resume: `▶ Συνέχεια`,
+    btn_end: `Τέλος`,
+    end_confirm: `Τέλος παιχνιδιού και πάμε στην κρίση;`,
+    fact: `Γεγονός`,
+    sold_to: `{who} το παίρνει για {price}`,
+    taken_by: `{who} το παίρνει τσάμπα`,
+    unsold_line: `Κανείς δεν το πήρε — επόμενο λοτ`,
+    pickup_line: `Καμία προσφορά — τσάμπα για: `,
+    nobody: `κανείς`,
+    cap_nobids: `Καμία προσφορά`,
+    first_bid: `Ποιος πρώτος; Από {min}`,
+    nobody_to_bid: `Δεν έμεινε κανείς να δώσει`,
+    cap_leader: `Πρώτος`,
+    tag_left: `έφυγε`,
+    tag_offline: `offline`,
+    tag_full: `γεμάτος`,
+    tag_leader: `πρώτος`,
+    tag_broke: `άφραγκος`,
+    free: `τσάμπα`,
+    slot_title: `{name} — {price}`,
+    vote_title: `Ψηφοφορία`,
+    vote_expl: `Χωρίς κριτή AI — αποφασίζετε εσείς. Ο καθένας ψηφίζει από το κινητό ένα ξένο λάιναπ. Ψήφισαν: {done}/{total}`,
+    judging: `Ο κριτής σκέφτεται…`,
+    judging_sub: `Το ChatGPT διαβάζει τα λάιναπ`,
+    results_title: `Αποτελέσματα`,
+    by_vote: `η ψηφοφορία διάλεξε τον νικητή`,
+    by_ai: `ChatGPT {judge}`,
+    btn_again: `Ξανά (ίδια κατηγορία)`,
+    btn_another: `Άλλη κατηγορία`,
+    votes_short: `{n} ψήφοι`,
+    votes_one: `1 ψήφος`,
+    empty: `άδειο`,
+    spent: `ξόδεψε {sum}`,
+    kind_artist: `Καλλιτέχνης`,
+    kind_film: `Ταινία`,
+    kind_series: `Σειρά`,
+    kind_person: `Πρόσωπο`,
+    kind_character: `Χαρακτήρας`,
+    kind_food: `Φαγητό`,
+    kind_city: `Πόλη`,
+    kind_country: `Χώρα`,
+    kind_place: `Μέρος`,
+    kind_animal: `Ζώο`,
+    kind_painting: `Πίνακας`,
+    kind_company: `Εταιρεία`,
+    kind_club: `Ομάδα`,
+    kind_profession: `Επάγγελμα`,
+    kind_invention: `Εφεύρεση`,
+    kind_label_artist: `Μουσικός`,
+    kind_label_film: `Ταινία`,
+    kind_label_series: `Σειρά`,
+    kind_label_person: `Πρόσωπο`,
+    kind_label_character: `Χαρακτήρας`,
+    kind_label_food: `Φαγητό`,
+    kind_label_city: `Πόλη`,
+    kind_label_country: `Χώρα`,
+    kind_label_place: `Αξιοθέατο`,
+    kind_label_animal: `Ζώο`,
+    kind_label_painting: `Πίνακας`,
+    kind_label_company: `Εταιρεία`,
+    kind_label_club: `Αθλητική ομάδα`,
+    kind_label_profession: `Επάγγελμα`,
+    kind_label_invention: `Εφεύρεση`
+  }
+};
+</script>
+<script>
 const params = new URLSearchParams(location.search);
 // код комнаты идёт в innerHTML — оставляем только буквы алфавита кодов, иначе ?r=<img onerror> даёт XSS
 const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 8);
 const TOKEN = params.get("t") || "";
 const app = document.getElementById("app");
 const overlay = document.getElementById("overlay");
+// Язык интерфейса — устройства, а не комнаты. Задание и название категории это подписи, а не
+// содержимое лота: игрок с английским телефоном должен читать их по-английски, даже если партия
+// идёт на русских карточках. От языка комнаты зависят только сами лоты и вердикты судьи —
+// они приходят с сервера и общие для всех за столом.
+const uiLang = () => (window.I18N && window.I18N.lang) || "ru";
 let state = null, kinds = [], ws, offset = 0, rendered = { round: -1, phase: null, kind: null }, hero = null, widget = null;
 
-if (!CODE || !TOKEN) { app.innerHTML = '<div class="lobby"><div>Нет кода комнаты. Открой <a href="auction.html" style="color:var(--c1)">auction.html</a> и создай комнату.</div></div>'; }
+// ---------- i18n ----------
+// Словарь объявлен выше, i18n.js грузится с defer — к первому state он уже на месте.
+// Эта же строка рисуется синхронно при разборе страницы, когда I18N ещё нет: тогда берём ru.
+const lang = () => (window.I18N ? I18N.lang : "ru");
+function T(key) {
+  if (window.I18N) return I18N.t(key);
+  const d = (window.I18N_DICT || {}).ru || {};
+  return key in d ? d[key] : key;
+}
+// "Лот {n} из {total}" + {n:3,total:12} — порядок слов задаёт словарь, а не склейка
+function tf(key, vars) {
+  return String(T(key)).replace(/\{(\w+)\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m));
+}
+// то же для строк с вставленным узлом: имя игрока остаётся textContent, а не innerHTML
+function tn(key, vars) {
+  const s = String(T(key)), out = [], re = /\{(\w+)\}/g;
+  let last = 0, m;
+  while ((m = re.exec(s))) {
+    if (m.index > last) out.push(document.createTextNode(s.slice(last, m.index)));
+    const v = vars ? vars[m[1]] : null;
+    out.push(v instanceof Node ? v : document.createTextNode(v == null ? m[0] : String(v)));
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) out.push(document.createTextNode(s.slice(last)));
+  return out;
+}
+const dictHas = (key) => { const d = (window.I18N_DICT || {})[lang()]; return !!(d && key in d); };
+// Названия категорий переводит auction-shared.js (auctionKind), их же показывает пульт — иначе
+// на экране и в телефоне категория называлась бы по-разному. Словарь страницы остаётся запасным
+// вариантом на случай старого закешированного auction-shared.js, а после него — русский оригинал.
+function kindField(k, field, key) {
+  const shared = window.auctionKind ? auctionKind(k, lang()) : null;
+  if (shared && shared[field] && (lang() === "ru" || shared[field] !== (AUCTION_KINDS[k] || {})[field])) return shared[field];
+  if (dictHas(key + k)) return T(key + k);
+  return (AUCTION_KINDS[k] || {})[field] || k;
+}
+const kindBtn = (k) => kindField(k, "button", "kind_");
+const kindLabel = (k) => kindField(k, "label", "kind_label_");
+// Текст задания переводит сам auction-modes.js — ему нужен язык, на котором сейчас доска.
+// Берём язык переключателя, а не state.settings.lang: подписи заданий обязаны совпадать
+// с остальным экраном (в лобби хост синхронизирует и настройку комнаты — см. push()).
+const modeT = (id, kind) => (window.auctionModeText ? auctionModeText(id, kind, lang()) : null);
+
+// data-i18n: строка рисуется до загрузки i18n.js (по-русски), а тот потом переставит её на язык гостя
+if (!CODE || !TOKEN) { app.innerHTML = '<div class="lobby"><div data-i18n="no_room">' + T("no_room") + '</div></div>'; }
 else connect();
 
 function connect() {
@@ -431,7 +865,7 @@ function connect() {
       if (msg.type === "event") onEvent(msg.event);
       if (msg.type === "error") toast(msg.error);
     },
-    onClose: () => { overlay.textContent = "Нет связи — переподключаемся…"; overlay.classList.add("on"); setTimeout(connect, 2000); },
+    onClose: () => { overlay.textContent = T("reconnecting"); overlay.classList.add("on"); setTimeout(connect, 2000); },
   });
 }
 const sendMsg = (m) => ws && ws.send(m);
@@ -441,18 +875,35 @@ function setState(s) {
   offset = s.serverNow - Date.now();
   document.body.dataset.kind = s.kind;
   overlay.classList.toggle("on", !!s.paused);
-  if (s.paused) {
-    const box = el("div", "pausebox");
-    const btn = el("button", "start", "▶ Продолжить игру");
-    btn.onclick = () => sendMsg({ type: "resume" });
-    box.append(el("div", null, "Пауза"), btn);
-    overlay.replaceChildren(box);
-  }
+  if (s.paused) showPause();
   render();
 }
 
+function showPause() {
+  const box = el("div", "pausebox");
+  const btn = el("button", "start", T("resume_game"));
+  btn.onclick = () => sendMsg({ type: "resume" });
+  box.append(el("div", null, T("paused")), btn);
+  overlay.replaceChildren(box);
+}
+
+// смена языка: каркасы лобби и доски строятся один раз, поэтому пересобираем их с нуля
+window.addEventListener("langchange", () => {
+  // до первого state рисовать нечего, а экран «нет кода комнаты» переведёт сам i18n.js по data-i18n:
+  // без этой проверки первое же событие (его шлёт i18n.js при старте) стирало бы эту строку
+  if (!state) return;
+  if (state.phase === "lobby") pushLang();
+  app.replaceChildren();
+  rendered = { round: -1, phase: null, kind: null };
+  seatsSeen = new Set();
+  if (state.paused) showPause();
+  render();
+});
+
 function toast(text) { const t = document.getElementById("toast"); t.textContent = text; t.classList.add("on"); setTimeout(() => t.classList.remove("on"), 2500); }
-const money = (n) => "$" + Number(n).toLocaleString("ru-RU");
+// разделитель тысяч у каждого языка свой: $20,000 против $20 000
+const NUM_LOCALE = { ru: "ru-RU", en: "en-US", el: "el-GR" };
+const money = (n) => "$" + Number(n).toLocaleString(NUM_LOCALE[lang()] || "en-US");
 const nameOf = (id) => (state.players.find(function (p) { return p.id === id; }) || {}).name || "?";
 
 // ---------- звук ----------
@@ -471,7 +922,7 @@ function onEvent(e) {
   if (e.type === "taken") beep(440, 160, "triangle");
   if (e.type === "finished") stopMusic();
   if (e.type === "judging") render();
-  if (e.type === "judge_failed") toast("Судья не ответил — голосуем");
+  if (e.type === "judge_failed") toast(T("judge_failed"));
 }
 
 // ---------- рендер ----------
@@ -508,59 +959,59 @@ function buildLobby() {
     <div class="lobby" id="lobby">
       <div class="joincol">
       <section class="join card-l2">
-        <div class="eyebrow"><i></i>Комната открыта</div>
+        <div class="eyebrow"><i></i>${T("lobby_open")}</div>
         <div class="code">${CODE}</div>
         <div class="qrbox"><div id="qr"></div></div>
         <div class="url">${escapeHtml(url.replace(/^https?:\/\//, ""))}</div>
-        <div class="hint">Сканируй QR или открой ссылку и введи имя</div>
+        <div class="hint">${T("lobby_hint")}</div>
       </section>
       <section class="seats card-l2">
-        <div class="cap"><span id="seatcap">Игроки</span><small id="seatcount"></small></div>
+        <div class="cap"><span id="seatcap">${T("players")}</span><small id="seatcount"></small></div>
         <div class="seatrow" id="seatrow"></div>
       </section>
       </div>
       <section class="setup card-l2">
         <div class="setup-body">
-        <h2>Аукцион <small>лоты, ставки, ИИ-судья</small></h2>
+        <h2>${T("setup_title")} <small>${T("setup_sub")}</small></h2>
         <div class="set">
-          <div class="cap">Категория</div>
-          <div class="tiles" id="kind">${list.map((k, i) => `<button class="tile" data-v="${k}" style="animation-delay:${i * 0.025}s"><span class="ico">${(AUCTION_KINDS[k] || {}).icon || "🎲"}</span>${(AUCTION_KINDS[k] || {}).button || k}</button>`).join("")}</div>
+          <div class="cap">${T("cap_kind")}</div>
+          <div class="tiles" id="kind">${list.map((k, i) => `<button class="tile" data-v="${k}" style="animation-delay:${i * 0.025}s"><span class="ico">${(AUCTION_KINDS[k] || {}).icon || "🎲"}</span>${escapeHtml(kindBtn(k))}</button>`).join("")}</div>
         </div>
         <div class="pair">
           <div class="set">
-            <div class="cap">Бюджет каждого · <b id="budgetVal"></b></div>
+            <div class="cap">${T("cap_budget")} · <b id="budgetVal"></b></div>
             <div class="row" id="budget">
               ${BUDGETS.map((v) => `<button class="opt" data-v="${v}">$${v}</button>`).join("")}
-              <span class="step"><button data-d="-5" aria-label="меньше">−</button><button data-d="5" aria-label="больше">+</button></span>
+              <span class="step"><button data-d="-5" aria-label="${escapeHtml(T("less"))}">−</button><button data-d="5" aria-label="${escapeHtml(T("more"))}">+</button></span>
             </div>
           </div>
           <div class="set">
-            <div class="cap">Слотов в лайнапе · <b id="slotsVal"></b></div>
+            <div class="cap">${T("cap_slots")} · <b id="slotsVal"></b></div>
             <div class="row" id="slots">
               ${SLOTS.map((v) => `<button class="opt" data-v="${v}">${v}</button>`).join("")}
-              <span class="step"><button data-d="-1" aria-label="меньше">−</button><button data-d="1" aria-label="больше">+</button></span>
+              <span class="step"><button data-d="-1" aria-label="${escapeHtml(T("less"))}">−</button><button data-d="1" aria-label="${escapeHtml(T("more"))}">+</button></span>
             </div>
           </div>
         </div>
         <div class="set task">
-          <div class="cap">Задание партии <em>меняет, кого судья объявит победителем</em></div>
+          <div class="cap">${T("cap_task")} <em>${T("task_hint")}</em></div>
           <div class="tiles modes" id="mode"></div>
           <div class="judgerow">
-            <div class="seg" id="judge"><button data-v="chatgpt">ChatGPT</button><button data-v="vote">Голосование</button></div>
+            <div class="seg" id="judge"><button data-v="chatgpt">ChatGPT</button><button data-v="vote">${T("judge_vote")}</button></div>
             <div class="modehint" id="modehint"></div>
           </div>
         </div>
         <div class="rounds" id="rounds"></div>
         <div class="rules">
-          <div class="rule"><div class="k">1</div><div class="t">Заходите по коду</div><div class="d">QR с этого экрана или ссылка — и имя</div></div>
-          <div class="rule"><div class="k">2</div><div class="t">Торги</div><div class="d">20 секунд на лот, каждая ставка даёт ещё 5</div></div>
-          <div class="rule"><div class="k">3</div><div class="t">Судья</div><div class="d">Разбирает лайнапы и называет победителя</div></div>
+          <div class="rule"><div class="k">1</div><div class="t">${T("rule1_t")}</div><div class="d">${T("rule1_d")}</div></div>
+          <div class="rule"><div class="k">2</div><div class="t">${T("rule2_t")}</div><div class="d">${T("rule2_d")}</div></div>
+          <div class="rule"><div class="k">3</div><div class="t">${T("rule3_t")}</div><div class="d">${T("rule3_d")}</div></div>
         </div>
         </div>
         <div class="setup-foot">
-          <button class="start" id="start">Начать игру</button>
+          <button class="start" id="start">${T("start_btn")}</button>
           <div class="start-note" id="startnote"></div>
-          ${location.hostname === "localhost" || location.hostname === "127.0.0.1" ? '<button class="btn ghost" id="bots">+ 3 бота (dev)</button>' : ""}
+          ${location.hostname === "localhost" || location.hostname === "127.0.0.1" ? '<button class="btn ghost" id="bots">' + T("bots_btn") + '</button>' : ""}
         </div>
       </section>
     </div>`;
@@ -577,15 +1028,15 @@ function buildLobby() {
   // любое изменение контрола уходит хосту тем же сообщением settings
   const push = (patch) => {
     const s = state.settings;
-    const next = { kind: state.kind, budget: Number(s.budget), slots: Number(s.slots), judge: s.judge, mode: s.mode || "base", ...patch };
+    const next = { kind: state.kind, budget: Number(s.budget), slots: Number(s.slots), judge: s.judge, mode: s.mode || "base", lang: lang(), ...patch };
     next.budget = Math.min(200, Math.max(10, next.budget));
     next.slots = Math.min(8, Math.max(3, next.slots));
     // задание живёт не во всех категориях: при смене категории недоступное сбрасываем на обычное
     if (window.auctionModesForKind && !auctionModesForKind(next.kind).some((m) => m.id === next.mode)) next.mode = "base";
     // оптимистично применяем локально — контрол реагирует мгновенно, сервер пришлёт подтверждение
-    state.kind = next.kind; state.settings.budget = next.budget; state.settings.slots = next.slots; state.settings.judge = next.judge; state.settings.mode = next.mode;
+    state.kind = next.kind; state.settings.budget = next.budget; state.settings.slots = next.slots; state.settings.judge = next.judge; state.settings.mode = next.mode; state.settings.lang = next.lang;
     document.body.dataset.kind = next.kind;
-    sendMsg({ type: "settings", kind: next.kind, settings: { budget: next.budget, slots: next.slots, judge: next.judge, mode: next.mode } });
+    sendMsg({ type: "settings", kind: next.kind, settings: { budget: next.budget, slots: next.slots, judge: next.judge, mode: next.mode, lang: next.lang } });
     syncLobby();
   };
   const pick = (box, key, cast) => document.getElementById(box).addEventListener("click", (e) => {
@@ -609,22 +1060,37 @@ function buildLobby() {
 
 function lobbyUrl() { return `${location.origin}${location.pathname.replace(/auction-board\.html$/, "")}auction.html?r=${CODE}`; }
 
+// Язык партии лежит в настройках комнаты: от него зависят колода на сервере и текст в телефонах.
+// Хост переключил язык на доске — комната идёт за ним. Сервер принимает settings только в лобби,
+// поэтому дальше в игре молчим: иначе в ответ прилетит ошибка «game_started».
+// langPushed: на каждый выбранный язык уходит ровно одно сообщение. Старый сервер (без языка
+// в настройках) вернул бы прежний язык, и синхронизация на каждом state зациклилась бы.
+let langPushed = null;
+function pushLang() {
+  if (!state || state.phase !== "lobby" || state.settings.lang === lang() || langPushed === lang()) return;
+  langPushed = lang();
+  state.settings.lang = lang();
+  sendMsg({ type: "settings", kind: state.kind, settings: { lang: lang() } });
+}
+
 function syncLobby() {
   const s = state, box = document.getElementById("lobby");
   if (!box) return;
+  // язык доски — язык всей комнаты: от него зависит и колода карточек на сервере
+  pushLang();
   const budget = Number(s.settings.budget), slots = Number(s.settings.slots);
   const players = s.players.filter((p) => !p.left);
   const n = players.length;
 
   markOn("kind", s.kind);
   const modes = window.auctionModesForKind ? auctionModesForKind(s.kind) : [];
-  const current = (window.auctionModeText ? auctionModeText(s.settings.mode, s.kind) : { id: "base" });
+  const current = modeT(s.settings.mode, s.kind) || { id: "base" };
   const modeBox = document.getElementById("mode");
-  if (modeBox.dataset.kind !== s.kind) {
-    modeBox.dataset.kind = s.kind;
+  if (modeBox.dataset.kind !== s.kind + "/" + lang()) {
+    modeBox.dataset.kind = s.kind + "/" + lang();
     // название плитки — на языке категории: у музыкантов «Лайнап фестиваля», у еды «Меню ужина»
     modeBox.replaceChildren(...modes.map((m) => {
-      const t = window.auctionModeText ? auctionModeText(m.id, s.kind) : m;
+      const t = modeT(m.id, s.kind) || m;
       const b = el("button", "tile");
       b.dataset.v = m.id;
       b.append(el("span", "ico", t.icon), document.createTextNode(t.title));
@@ -636,9 +1102,9 @@ function syncLobby() {
   // и не пересказывает второй раз подпись плитки (раньше short и judge дублировали друг друга)
   const hint = document.getElementById("modehint");
   if (s.settings.judge === "vote") {
-    hint.replaceChildren(el("b", null, "Голосуют игроки"), document.createTextNode(" — ИИ не судит, задание остаётся темой набора: " + (current.short || "").toLowerCase() + "."));
+    hint.replaceChildren(...tn("hint_vote", { b: el("b", null, T("hint_vote_b")), topic: (current.short || "").toLowerCase() }));
   } else {
-    hint.replaceChildren(el("b", null, "ChatGPT"), document.createTextNode(" " + (current.judge || "") + "."));
+    hint.replaceChildren(...tn("hint_ai", { b: el("b", null, "ChatGPT"), judge: current.judge || "" }));
   }
   markOn("judge", s.settings.judge);
   syncPills("budget", budget, BUDGETS, (v) => "$" + v);
@@ -646,10 +1112,10 @@ function syncLobby() {
   document.getElementById("budgetVal").textContent = money(budget);
   document.getElementById("slotsVal").textContent = slots;
   document.getElementById("rounds").innerHTML =
-    `Лотов в игре: <b>${Math.ceil(Math.max(n, 2) * slots * 1.25)}</b> · на лот <b>${s.settings.t1 / 1000} с</b>, после ставки <b>${s.settings.t2 / 1000} с</b>`;
+    tf("rounds", { n: Math.ceil(Math.max(n, 2) * slots * 1.25), t1: s.settings.t1 / 1000, t2: s.settings.t2 / 1000 });
 
-  document.getElementById("seatcap").textContent = n ? `Игроки · ${n}` : "Игроки";
-  document.getElementById("seatcount").textContent = n < 2 ? "нужно хотя бы двое" : "можно начинать";
+  document.getElementById("seatcap").textContent = n ? tf("players_n", { n: n }) : T("players");
+  document.getElementById("seatcount").textContent = n < 2 ? T("need_two") : T("ready_to_start");
   const row = document.getElementById("seatrow");
   const seats = players.map((p) => {
     const seat = el("div", "seat" + (p.online ? "" : " off") + (seatsSeen.has(p.id) ? "" : " new"));
@@ -658,13 +1124,13 @@ function syncLobby() {
     return seat;
   });
   const wait = el("div", "seat wait");
-  wait.append(el("div", "av", "+"), el("div", "nm", n ? "ждём ещё…" : "пока никого — заходите по коду"));
+  wait.append(el("div", "av", "+"), el("div", "nm", T(n ? "wait_more" : "wait_none")));
   seats.push(wait);
   row.replaceChildren(...seats);
 
   const start = document.getElementById("start");
   start.disabled = n < 2;
-  document.getElementById("startnote").textContent = n < 2 ? "Нужно хотя бы двое — пусть друзья зайдут по коду" : "";
+  document.getElementById("startnote").textContent = n < 2 ? T("start_note_two") : "";
 }
 
 // аватар: первая буква имени; у ботов имя начинается с эмодзи — берём её целиком, а не половину суррогатной пары
@@ -695,23 +1161,26 @@ function renderIntro() {
   const s = state;
   app.style.display = "block";
   if (!document.getElementById("intro")) {
-    const m = window.auctionModeText ? auctionModeText(s.settings.mode, s.kind) : null;
-    const kindLabel = (AUCTION_KINDS[s.kind] || {}).label || s.kind;
+    const m = modeT(s.settings.mode, s.kind);
+    // судью подписываем целиком из словаря: в голосовании придаточного «что делает судья» нет
+    const judgeLine = !m ? "" : s.settings.judge === "vote" ? T("intro_judge_vote") : tf("intro_judge_ai", { judge: m.judge || "" });
     app.innerHTML = `<div class="intro" id="intro">
       <div class="itext">
-        <div class="icap">Лотов в игре: ${s.rounds} · ${escapeHtml(String(kindLabel))}</div>
-        <div class="ibig"><span class="iicon">${m ? m.icon : "🔨"}</span><span class="iname">${m ? escapeHtml(m.title) : "Аукцион"}</span></div>
+        <div class="icap">${escapeHtml(tf("intro_cap", { n: s.rounds, kind: kindLabel(s.kind) }))}</div>
+        <div class="ibig"><span class="iicon">${m ? m.icon : "🔨"}</span><span class="iname">${escapeHtml(m ? m.title : T("auction"))}</span></div>
         <div class="isub">${m ? escapeHtml(m.short || "") : ""}</div>
-        <div class="ijudge">${m ? escapeHtml((s.settings.judge === "vote" ? "Победителя выберете вы голосованием — " : "Победителя выберет ChatGPT — он ") + (m.judge || "")) : ""}</div>
+        <div class="ijudge">${escapeHtml(judgeLine)}</div>
       </div>
       <div class="count" id="count"></div>
     </div>`;
-    requestAnimationFrame(tickIntro);
+    if (!introTicking) { introTicking = true; requestAnimationFrame(tickIntro); }
   }
 }
 
 // отсчёт идёт по серверному дедлайну, а не по локальному таймеру: на всех экранах одни и те же цифры
-let countShown = null;
+// introTicking/timerTicking: при смене языка каркас пересобирается, а второй цикл rAF
+// звучал бы вторым отсчётом — заводим петлю один раз за жизнь страницы
+let countShown = null, introTicking = false, timerTicking = false;
 function tickIntro() {
   const box = document.getElementById("count");
   if (!box || !state || state.phase !== "intro") { countShown = null; return requestAnimationFrame(tickIntro); }
@@ -732,6 +1201,9 @@ function tickIntro() {
   requestAnimationFrame(tickIntro);
 }
 
+// подпись фазы в топбаре: ключ словаря на каждую фазу сервера
+const PHASE_KEY = { lot: "ph_lot", bidding: "ph_bidding", pickup: "ph_pickup", sold: "ph_sold", taken: "ph_taken", unsold: "ph_unsold" };
+
 function renderGame() {
   document.body.classList.remove("m-lobby");
   const s = state;
@@ -746,29 +1218,29 @@ function renderGame() {
         <div class="bidbar" id="bidbar"></div>
       </main>
       <aside>
-        <section class="panel"><h2>Игроки <small id="pcount"></small></h2><div class="players" id="players"></div></section>
-        <div class="hostbar"><span class="code">Комната ${CODE}</span><button class="btn ghost" id="skip">Пропустить лот</button><button class="btn ghost" id="pause">Пауза</button><button class="btn ghost" id="end">Завершить</button></div>
+        <section class="panel"><h2>${T("players")} <small id="pcount"></small></h2><div class="players" id="players"></div></section>
+        <div class="hostbar"><span class="code">${escapeHtml(tf("room_code", { code: CODE }))}</span><button class="btn ghost" id="skip">${T("btn_skip")}</button><button class="btn ghost" id="pause">${T("btn_pause")}</button><button class="btn ghost" id="end">${T("btn_end")}</button></div>
       </aside>`;
     document.getElementById("pause").onclick = () => sendMsg({ type: state.paused ? "resume" : "pause" });
     document.getElementById("skip").onclick = () => sendMsg({ type: "skip_lot" });
-    document.getElementById("end").onclick = () => confirm("Завершить игру и перейти к судейству?") && sendMsg({ type: "end" });
-    requestAnimationFrame(tickTimer);
+    document.getElementById("end").onclick = () => confirm(T("end_confirm")) && sendMsg({ type: "end" });
+    if (!timerTicking) { timerTicking = true; requestAnimationFrame(tickTimer); }
   }
   const pauseBtn = document.getElementById("pause");
-  pauseBtn.textContent = s.paused ? "▶ Продолжить" : "Пауза";
+  pauseBtn.textContent = T(s.paused ? "btn_resume" : "btn_pause");
   pauseBtn.classList.toggle("accent", !!s.paused);
   document.getElementById("skip").disabled = s.paused || !(s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup");
-  document.getElementById("lotno").textContent = `Лот ${s.round + 1} из ${s.rounds}`;
+  document.getElementById("lotno").textContent = tf("lot_of", { n: s.round + 1, total: s.rounds });
   const gtask = document.getElementById("gtask");
   if (gtask) {
-    const m = window.auctionModeText ? auctionModeText(s.settings.mode, s.kind) : null;
+    const m = modeT(s.settings.mode, s.kind);
     const custom = m && m.id !== "base";
     gtask.className = "gtask" + (custom ? " on" : "");
     if (custom) gtask.replaceChildren(el("b", null, m.icon + " " + m.title), document.createTextNode(" — " + (m.short || "")));
   }
   const phaseEl = document.getElementById("phase");
   phaseEl.className = "phase " + s.phase;
-  phaseEl.textContent = { lot: "Лот", bidding: "Торги", pickup: "Разбор", sold: "Продано", taken: "Забрали", unsold: "Никто не взял" }[s.phase] || "";
+  phaseEl.textContent = PHASE_KEY[s.phase] ? T(PHASE_KEY[s.phase]) : "";
 
   // карточка перерисовывается только на новом лоте
   if (s.lot && (rendered.round !== s.round || rendered.kind !== s.kind)) {
@@ -785,9 +1257,9 @@ function renderCard(lot, kind) {
   const meta = el("div", "meta");
   (lot.meta || []).forEach((m) => meta.append(el("span", null, m)));
   const fact = el("p", "fact");
-  fact.append(el("b", null, "Факт"), document.createTextNode(lot.fact));
+  fact.append(el("b", null, T("fact")), document.createTextNode(lot.fact));
   const text = el("div", "text");
-  text.append(el("div", "emoji", lot.emoji), el("div", "kind", (AUCTION_KINDS[kind] || {}).label || kind), el("div", "name", lot.name), meta, el("p", "desc", lot.description), fact);
+  text.append(el("div", "emoji", lot.emoji), el("div", "kind", kindLabel(kind)), el("div", "name", lot.name), meta, el("p", "desc", lot.description), fact);
   widget = kind === "artist" && state.settings.media ? playerWidget() : null;
   card.className = "card result";
   card.replaceChildren(state.settings.media ? heroWidget(lot, kind) : el("div", "hero gone"), text, ...(widget ? [widget.box] : []));
@@ -799,43 +1271,45 @@ function renderBidbar() {
   bar.replaceChildren();
   if (s.phase === "sold" || s.phase === "taken") {
     const t = el("div", "lead");
-    t.append(document.createTextNode("Ушло: "), el("b", null, nameOf(s.leaderId)), document.createTextNode(s.phase === "sold" ? ` за ${money(s.price)}` : " бесплатно"));
-    bar.append(el("div", "gavel-mark", "🔨"), el("div", "stamp", s.phase === "sold" ? "Продано" : "Забрали"), t);
+    // имя игрока остаётся узлом, а порядок слов вокруг него задаёт словарь
+    t.append(...tn(s.phase === "sold" ? "sold_to" : "taken_by", { who: el("b", null, nameOf(s.leaderId)), price: money(s.price) }));
+    bar.append(el("div", "gavel-mark", "🔨"), el("div", "stamp", T(s.phase === "sold" ? "ph_sold" : "ph_taken")), t);
     return;
   }
-  if (s.phase === "unsold") { bar.append(el("div", "lead", "Никто не взял — следующий лот")); return; }
+  if (s.phase === "unsold") { bar.append(el("div", "lead", T("unsold_line"))); return; }
   if (s.phase === "pickup") {
     const who = s.players.filter((p) => p.canTake).map((p) => p.name).join(", ");
-    bar.append(el("div", "lead", "Без ставок — забирает бесплатно: "), el("div", "tape", who || "никто"));
+    bar.append(el("div", "lead", T("pickup_line")), el("div", "tape", who || T("nobody")));
     return;
   }
   if (!s.leaderId) {
     const bidders = s.players.filter((p) => p.canBid).length;
-    bar.append(el("div", "cap", "Ставок пока нет"), el("div", "lead", bidders ? "Кто первый? Минимум $1" : "Торговаться некому"));
+    bar.append(el("div", "cap", T("cap_nobids")), el("div", "lead", bidders ? tf("first_bid", { min: money(1) }) : T("nobody_to_bid")));
     return;
   }
   const lead = el("div", "lead");
   lead.append(el("b", null, nameOf(s.leaderId)), document.createTextNode(` ${money(s.price)}`));
   const tape = el("div", "tape");
   s.bids.slice(0, -1).reverse().forEach((b) => tape.append(el("span", null, `${nameOf(b.playerId)} ${money(b.amount)}`)));
-  bar.append(el("div", "cap", "Лидер"), lead, tape);
+  bar.append(el("div", "cap", T("cap_leader")), lead, tape);
 }
 
 function renderPlayers() {
   const s = state, box = document.getElementById("players");
-  document.getElementById("pcount").textContent = `${s.players.filter((p) => !p.left).length} · ${s.settings.slots} слотов`;
+  document.getElementById("pcount").textContent = tf("pcount", { n: s.players.filter((p) => !p.left).length, slots: s.settings.slots });
   box.classList.toggle("compact", s.players.length > 4);
   box.replaceChildren(...s.players.map((p) => {
     const row = el("div", "p" + (p.id === s.leaderId && (s.phase === "bidding" || s.phase === "sold" || s.phase === "taken") ? " leader" : "") + (p.full ? " full" : "") + (!p.online ? " offline" : "") + (p.left ? " left" : "") + (p.money === 0 ? " broke" : ""));
     const top = el("div", "p-top");
-    const tag = p.left ? "вышел" : !p.online ? "offline" : p.full ? "готов" : p.id === s.leaderId && s.phase === "bidding" ? "лидер" : p.money === 0 ? "на мели" : "";
-    top.append(el("div", "p-name", p.name), el("span", "p-tag" + (tag === "лидер" ? "" : " dim"), tag), el("div", "p-left", money(p.money)));
+    // сравниваем ключ, а не подпись: «лидер» на другом языке перестал бы подсвечиваться
+    const tagKey = p.left ? "tag_left" : !p.online ? "tag_offline" : p.full ? "tag_full" : p.id === s.leaderId && s.phase === "bidding" ? "tag_leader" : p.money === 0 ? "tag_broke" : "";
+    top.append(el("div", "p-name", p.name), el("span", "p-tag" + (tagKey === "tag_leader" ? "" : " dim"), tagKey ? T(tagKey) : ""), el("div", "p-left", money(p.money)));
     const bar = el("div", "p-bar"); const fill = el("i"); fill.style.width = Math.max(0, Math.min(100, (p.money / s.settings.budget) * 100)) + "%"; bar.append(fill);
     const slots = el("div", "slots");
     for (let i = 0; i < s.settings.slots; i++) {
       const l = p.lots[i];
       const sl = el("div", "slot-i" + (l ? " filled" : ""));
-      if (l) { sl.append(el("span", null, l.emoji), el("span", "n", l.name)); sl.title = `${l.name} — ${l.price ? money(l.price) : "бесплатно"}`; }
+      if (l) { sl.append(el("span", null, l.emoji), el("span", "n", l.name)); sl.title = tf("slot_title", { name: l.name, price: l.price ? money(l.price) : T("free") }); }
       slots.append(sl);
     }
     row.append(top, bar, slots);
@@ -865,30 +1339,31 @@ function renderFinal() {
     if (s.voting) {
       // Задание нужно именно здесь: в голосовании оно больше ни на что не влияет, и без
       // напоминания критерия «побеждает самый нелепый набор» игроки голосуют за лучший.
-      const vmode = window.auctionModeText ? auctionModeText(s.settings.mode, s.kind) : null;
+      const vmode = modeT(s.settings.mode, s.kind);
       const vtask = vmode && vmode.id !== "base" ? `<div class="ftask"><b>${escapeHtml(vmode.icon + " " + vmode.title)}</b> — ${escapeHtml(vmode.short || "")}</div>` : "";
-      app.innerHTML = `<div class="final"><h2>Голосование</h2>${vtask}<p style="color:var(--muted)">Судья недоступен или выбрано голосование. Каждый голосует с телефона за чужой лайнап. Проголосовало: ${s.votes}/${players.filter((p) => p.lots.length).length}</p><div class="podium">${players.map((p) => lineupCard(p, null)).join("")}</div></div>`;
+      app.innerHTML = `<div class="final"><h2>${T("vote_title")}</h2>${vtask}<p style="color:var(--muted)">${escapeHtml(tf("vote_expl", { done: s.votes, total: players.filter((p) => p.lots.length).length }))}</p><div class="podium">${players.map((p) => lineupCard(p, null)).join("")}</div></div>`;
     } else {
-      app.innerHTML = `<div class="final"><div class="thinking"><div class="dice">🎲</div><h2>Судья думает…</h2><p style="color:var(--muted)">ChatGPT читает лайнапы</p></div></div>`;
+      app.innerHTML = `<div class="final"><div class="thinking"><div class="dice">🎲</div><h2>${T("judging")}</h2><p style="color:var(--muted)">${T("judging_sub")}</p></div></div>`;
     }
     return;
   }
   const r = s.results;
   const places = ["🥇", "🥈", "🥉"];
-  const fmode = window.auctionModeText ? auctionModeText(s.settings.mode, s.kind) : null;
+  const fmode = modeT(s.settings.mode, s.kind);
   // на итогах подпись задания объясняет вердикты: без неё «победил самый нелепый набор» читается как сбой судьи
-  const fby = r.mode === "vote" ? "голосование выбирало победителя" : "ChatGPT " + (fmode ? fmode.judge : "");
+  const fby = r.mode === "vote" ? T("by_vote") : tf("by_ai", { judge: fmode ? fmode.judge : "" });
   const ftask = fmode && fmode.id !== "base" ? `<div class="ftask"><b>${escapeHtml(fmode.icon + " " + fmode.title)}</b> — ${escapeHtml(fby)}</div>` : "";
-  app.innerHTML = `<div class="final"><h2>Итоги</h2>${ftask}<div class="podium">${r.ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: places[i] || `${i + 1}.`, score: x.score, verdict: x.verdict, first: i === 0, mode: r.mode, delay: Math.min(1.4, (r.ranking.length - 1 - i) * .16) })).join("")}</div>${r.summary ? `<div class="summary">${escapeHtml(r.summary)}</div>` : ""}<div class="actions"><button class="btn" id="again">Ещё раз (та же категория)</button><button class="btn ghost" id="another">Другая категория</button></div></div>`;
+  app.innerHTML = `<div class="final"><h2>${T("results_title")}</h2>${ftask}<div class="podium">${r.ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: places[i] || `${i + 1}.`, score: x.score, verdict: x.verdict, first: i === 0, mode: r.mode, delay: Math.min(1.4, (r.ranking.length - 1 - i) * .16) })).join("")}</div>${r.summary ? `<div class="summary">${escapeHtml(r.summary)}</div>` : ""}<div class="actions"><button class="btn" id="again">${T("btn_again")}</button><button class="btn ghost" id="another">${T("btn_another")}</button></div></div>`;
   document.getElementById("again").onclick = () => sendMsg({ type: "next_game" });
   document.getElementById("another").onclick = () => sendMsg({ type: "next_game" });
 }
 function lineupCard(p, res) {
   if (!p) return "";
-  const lots = p.lots.map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("") || '<span style="color:var(--muted)">пусто</span>';
-  return `<div class="pl ${res && res.first ? "first" : ""}" style="animation-delay:${(res && res.delay) || 0}s">${res ? `<div class="place">${res.place}</div>` : ""}<div class="who">${escapeHtml(p.name)}</div>${res ? `<div class="score">${res.mode === "vote" ? res.score + " голос." : res.score}</div><div class="verdict">${escapeHtml(res.verdict || "")}</div>` : ""}<div class="lots">${lots}</div><div class="spent">потрачено ${money(p.spent)}</div></div>`;
+  const lots = p.lots.map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("") || `<span style="color:var(--muted)">${T("empty")}</span>`;
+  return `<div class="pl ${res && res.first ? "first" : ""}" style="animation-delay:${(res && res.delay) || 0}s">${res ? `<div class="place">${res.place}</div>` : ""}<div class="who">${escapeHtml(p.name)}</div>${res ? `<div class="score">${res.mode === "vote" ? escapeHtml(Number(res.score) === 1 ? T("votes_one") : tf("votes_short", { n: res.score })) : res.score}</div><div class="verdict">${escapeHtml(res.verdict || "")}</div>` : ""}<div class="lots">${lots}</div><div class="spent">${escapeHtml(tf("spent", { sum: money(p.spent) }))}</div></div>`;
 }
 function escapeHtml(t) { return String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 </script>
+<script src="i18n.js" defer></script>
 </body>
 </html>

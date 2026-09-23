@@ -160,8 +160,13 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
     check(h3.state.phase !== "finished", "партия не завершилась сама");
     const back = await connect(r3.code, { type: "join", name: "", token: x.token });
     check(back.me === x.me, "возврат по токену в ту же партию");
+    // партию продолжает ведущий, а не вернувшийся игрок: за столом сначала убеждаются,
+    // что все на месте, и только потом торги едут дальше
+    await wait(1500);
+    check(!!h3.state.paused, "возврат игрока сам по себе паузу не снимает");
+    h3.send({ type: "resume" });
     const resumed = await until(() => !h3.state.paused, 6000);
-    check(resumed, "возврат игрока снимает автопаузу");
+    check(resumed, "ведущий снимает паузу и партия продолжается");
     h3.send({ type: "end" });
     back.ws.close(); h3.ws.close();
   }

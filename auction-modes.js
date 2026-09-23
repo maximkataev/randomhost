@@ -15,6 +15,37 @@
  * Один и тот же файл читают сервер и обе страницы.
  */
 
+
+/*
+ * Чем торгуют в категории — в форме, которая встаёт после «набор …» / «a set of …».
+ * Нужно, чтобы подсказка говорила, ЧТО собирают: «выбирает самый бесполезный подарок»
+ * не отвечает на вопрос игрока, он видит эту строку раньше первого лота.
+ * Русский — родительный падеж множественного числа, английский — обычное множественное,
+ * греческий — винительный множественного (после «από»). Падежи в русском и греческом не дают
+ * собрать это шаблоном из одного слова, поэтому формы заданы явно.
+ */
+const KIND_ITEMS = {
+  ru: {
+    artist: "музыкантов", film: "фильмов", series: "сериалов", person: "известных людей",
+    character: "персонажей", food: "блюд", city: "городов", country: "стран", place: "мест",
+    animal: "животных", painting: "картин", company: "компаний", club: "клубов",
+    profession: "профессий", invention: "изобретений",
+  },
+  en: {
+    artist: "musicians", film: "films", series: "TV series", person: "famous people",
+    character: "characters", food: "dishes", city: "cities", country: "countries", place: "landmarks",
+    animal: "animals", painting: "paintings", company: "companies", club: "clubs",
+    profession: "jobs", invention: "inventions",
+  },
+  el: {
+    artist: "μουσικούς", film: "ταινίες", series: "σειρές", person: "διάσημους",
+    character: "ήρωες", food: "πιάτα", city: "πόλεις", country: "χώρες", place: "αξιοθέατα",
+    animal: "ζώα", painting: "πίνακες", company: "εταιρείες", club: "συλλόγους",
+    profession: "επαγγέλματα", invention: "εφευρέσεις",
+  },
+};
+const itemsFor = (kind, lang) => (KIND_ITEMS[lang] || KIND_ITEMS.ru)[kind] || (KIND_ITEMS[lang] || KIND_ITEMS.ru).artist;
+
 const MODES = [
   {
     id: "base",
@@ -90,13 +121,13 @@ const MODES = [
     id: "worst",
     icon: "🔥",
     title: "Худший набор",
-    short: "Победит тот, у кого всё сочетается хуже всех",
+    short: "Набор {items}, где не сочетается вообще ничего",
     what: "нарочно провальный набор",
     criteria: "несовместимость, нелепость сочетаний, полная безнадёжность затеи",
     prompt:
       "Победитель — тот, чей набор нелепее и безнадёжнее: элементы не сочетаются, вместе выглядят абсурдно. " +
       "Чем хуже подобрано — тем выше оценка. Скучный средний набор — плохой результат, его оценивай низко.",
-    judge: "ищет самый нелепый и несочетаемый набор",
+    judge: "ищет самый нелепый и несочетаемый набор {items}",
     byKind: {
       artist: { title: "Худший лайнап", short: "Фестиваль, с которого уходят после первой песни" },
       film: { title: "Худший киномарафон", short: "Вечер, который никто не досмотрит" },
@@ -117,8 +148,8 @@ const MODES = [
     t: {
       en: {
         title: "Worst Set",
-        short: "The prize goes to whatever fits together the worst",
-        judge: "looks for the most absurd, most mismatched set",
+        short: "A set of {items} where nothing fits anything",
+        judge: "looks for the most absurd, most mismatched set of {items}",
         byKind: {
           artist: { title: "Worst Line-up", short: "A festival people quit after the first song" },
           film: { title: "Worst Marathon", short: "A movie night nobody makes it through" },
@@ -139,8 +170,8 @@ const MODES = [
       },
       el: {
         title: "Χειρότερο σετ",
-        short: "Κερδίζει όποιος τα ταίριαξε όλα χειρότερα",
-        judge: "ψάχνει το πιο παράλογο και αταίριαστο σετ",
+        short: "Ένα σετ από {items} που δεν ταιριάζουν πουθενά",
+        judge: "ψάχνει το πιο παράλογο και αταίριαστο σετ από {items}",
         byKind: {
           artist: { title: "Χειρότερο λάιναπ", short: "Φεστιβάλ που το παρατάς στο πρώτο τραγούδι" },
           film: { title: "Χειρότερος μαραθώνιος", short: "Βραδιά που δεν τη βγάζει κανείς μέχρι το τέλος" },
@@ -165,24 +196,24 @@ const MODES = [
     id: "villains",
     icon: "😈",
     title: "Лига суперзлодеев",
-    short: "Собери команду для захвата мира",
+    short: "Собери банду из {items} для захвата мира",
     kinds: ["character", "person", "animal", "artist", "club", "company", "profession"],
     what: "команда суперзлодеев для захвата мира",
     criteria: "угроза миру, зловещая харизма, взаимное усиление участников банды",
     prompt:
       "Оцени, насколько набор годится в злодейскую лигу: кто наводит ужас, кто отвечает за коварный план, " +
       "кто просто харизматичный псих. Милые и безобидные участники — минус, если только они не пугают своей милотой.",
-    judge: "оценивает, чья банда страшнее и сработаннее",
+    judge: "оценивает, чья банда из {items} страшнее и сработаннее",
     t: {
       en: {
         title: "Supervillain League",
-        short: "Assemble a crew to take over the world",
-        judge: "judges whose gang is scarier and better drilled",
+        short: "Assemble a gang of {items} to take over the world",
+        judge: "judges whose gang of {items} is scarier and better drilled",
       },
       el: {
         title: "Λίγκα σούπερ κακών",
-        short: "Μάζεψε ομάδα για να κατακτήσεις τον κόσμο",
-        judge: "κρίνει ποια συμμορία είναι πιο τρομακτική και πιο δεμένη",
+        short: "Μάζεψε συμμορία από {items} για να κατακτήσεις τον κόσμο",
+        judge: "κρίνει ποια συμμορία από {items} είναι πιο τρομακτική",
       },
     },
   },
@@ -190,7 +221,7 @@ const MODES = [
     id: "apocalypse",
     icon: "☢️",
     title: "Пережить апокалипсис",
-    short: "Кто выживет, когда всё рухнет",
+    short: "Набор {items}, с которым переживёшь конец света",
     // Картины/музыканты/кино/сериалы для выживания бесполезны одинаково — судья ставит всем
     // низкие оценки и ранжирует ровно как в обычном задании, то есть выбор ни на что не влияет.
     // У профессий базовая цель и так «экипаж для выживания» — вышло бы два тайла с одной целью.
@@ -198,17 +229,17 @@ const MODES = [
     what: "набор для выживания после конца света",
     criteria: "практическая польза, живучесть, способность прокормить и защитить",
     prompt: "Оценивай холодно и практично: что реально поможет выжить, а что окажется бесполезным грузом.",
-    judge: "считает, чей набор дольше протянет после конца света",
+    judge: "считает, чей набор {items} дольше протянет после конца света",
     t: {
       en: {
         title: "Apocalypse Survival",
-        short: "Who is left standing when it all falls apart",
-        judge: "works out whose set lasts longest after the end of the world",
+        short: "A set of {items} that gets you through the end of the world",
+        judge: "works out whose set of {items} lasts longest after the end of the world",
       },
       el: {
         title: "Μετά την αποκάλυψη",
-        short: "Ποιος θα ζήσει όταν όλα καταρρεύσουν",
-        judge: "υπολογίζει ποιο σετ κρατάει περισσότερο μετά το τέλος του κόσμου",
+        short: "Ένα σετ από {items} που σε βγάζει από το τέλος του κόσμου",
+        judge: "υπολογίζει ποιο σετ από {items} κρατάει περισσότερο μετά το τέλος",
       },
     },
   },
@@ -216,21 +247,21 @@ const MODES = [
     id: "party",
     icon: "🎉",
     title: "Вечеринка года",
-    short: "Собери то, от чего будет весело",
+    short: "Вечеринка из {items}, от которой будет весело",
     what: "вечеринка, на которую все захотят попасть",
     criteria: "веселье, неожиданность, атмосфера, о чём будут вспоминать год",
     prompt: "Скучное — минус, даже если дорогое и статусное. Важнее всего, будет ли весело.",
-    judge: "выбирает, у кого вечеринка получилась веселее",
+    judge: "выбирает, у кого вечеринка из {items} получилась веселее",
     t: {
       en: {
         title: "Party of the Year",
-        short: "Put together whatever makes it fun",
-        judge: "picks whose party turned out more fun",
+        short: "A party of {items} that everyone wants in on",
+        judge: "picks whose party of {items} turned out more fun",
       },
       el: {
         title: "Πάρτι της χρονιάς",
-        short: "Μάζεψε ό,τι θα ανάψει το κέφι",
-        judge: "διαλέγει ποιανού το πάρτι έχει την πιο πολλή πλάκα",
+        short: "Ένα πάρτι από {items} που θα ανάψει το κέφι",
+        judge: "διαλέγει ποιανού το πάρτι από {items} έχει την πιο πολλή πλάκα",
       },
     },
   },
@@ -238,21 +269,21 @@ const MODES = [
     id: "museum",
     icon: "🏛️",
     title: "Музей странностей",
-    short: "Набор, на который придут поглазеть",
+    short: "Экспозиция из {items}, на которую придут поглазеть",
     what: "экспозиция музея странного и удивительного",
     criteria: "необычность, зрелищность, желание сфотографировать и показать друзьям",
     prompt: "Ценится странность и зрелищность, а не ценность или качество. Предсказуемое и обыденное — низкая оценка.",
-    judge: "ищет самую диковинную экспозицию",
+    judge: "ищет самую диковинную экспозицию из {items}",
     t: {
       en: {
         title: "Museum of Oddities",
-        short: "A set people show up just to gawk at",
-        judge: "hunts for the weirdest exhibition",
+        short: "An exhibition of {items} people show up just to gawk at",
+        judge: "hunts for the weirdest exhibition of {items}",
       },
       el: {
         title: "Μουσείο παραξενιών",
-        short: "Ένα σετ που θα έρθουν να το χαζέψουν",
-        judge: "ψάχνει την πιο αλλόκοτη έκθεση",
+        short: "Μια έκθεση από {items} που θα έρθουν να χαζέψουν",
+        judge: "ψάχνει την πιο αλλόκοτη έκθεση από {items}",
       },
     },
   },
@@ -260,24 +291,24 @@ const MODES = [
     id: "timemachine",
     icon: "⏳",
     title: "Отправить в прошлое",
-    short: "Что сильнее изменит историю",
+    short: "Набор {items}, который сильнее изменит историю",
     // У изобретений базовая цель и так «набор, который берём в прошлое» — дубль.
     // На музыкантах задание не различает составы: ранжирование выходит тем же, что в обычном.
     notKinds: ["invention", "artist"],
     what: "груз для машины времени в Средневековье",
     criteria: "насколько перевернёт ход истории, шок для современников, последствия",
     prompt: "Оценивай размах последствий: что произведёт эффект разорвавшейся бомбы, а что средневековье просто не заметит.",
-    judge: "измеряет, чей груз сильнее перекроит историю",
+    judge: "измеряет, чей набор {items} сильнее перекроит историю",
     t: {
       en: {
         title: "Send to the Past",
-        short: "Whose haul changes history the most",
-        judge: "measures whose cargo rewrites history hardest",
+        short: "A set of {items} that changes history the most",
+        judge: "measures whose set of {items} rewrites history hardest",
       },
       el: {
         title: "Στείλε στο παρελθόν",
-        short: "Ποιο φορτίο θα αλλάξει πιο πολύ την ιστορία",
-        judge: "μετράει ποιανού το φορτίο αλλάζει πιο δραστικά την ιστορία",
+        short: "Ένα φορτίο από {items} που θα αλλάξει την ιστορία",
+        judge: "μετράει ποιανού το φορτίο από {items} αλλάζει την ιστορία",
       },
     },
   },
@@ -285,21 +316,21 @@ const MODES = [
     id: "gift",
     icon: "🎁",
     title: "Подарок врагу",
-    short: "Чтобы он точно не обрадовался",
+    short: "Набор {items}, которому враг точно не обрадуется",
     what: "издевательский подарочный набор для недруга",
     criteria: "неловкость, бесполезность, способность испортить настроение, но без жестокости",
     prompt: "Оценивай изящество издёвки: подарок должен быть формально приличным, но обидно бесполезным. Прямая грубость — минус.",
-    judge: "выбирает самый изощрённо-бесполезный подарок",
+    judge: "выбирает самый изощрённо-бесполезный подарок из {items}",
     t: {
       en: {
         title: "Gift for an Enemy",
-        short: "Something they definitely will not enjoy",
-        judge: "picks the most elegantly useless gift",
+        short: "A set of {items} your enemy definitely will not enjoy",
+        judge: "picks the most elegantly useless gift made of {items}",
       },
       el: {
         title: "Δώρο στον εχθρό",
-        short: "Κάτι που σίγουρα δεν θα του αρέσει καθόλου",
-        judge: "διαλέγει το πιο επιδέξια άχρηστο δώρο",
+        short: "Ένα σετ από {items} που σίγουρα δεν θα του αρέσει",
+        judge: "διαλέγει το πιο επιδέξια άχρηστο δώρο από {items}",
       },
     },
   },
@@ -331,6 +362,9 @@ const modeText = (id, kind, lang) => {
   const tr = m.t && m.t[lang];
   put(tr);
   put(tr && tr.byKind && tr.byKind[kind]);
+  // {items} — чем торгуют в этой категории: «набор {items}» → «набор блюд»
+  const items = itemsFor(kind, lang);
+  for (const f of TEXT_FIELDS) if (typeof out[f] === "string") out[f] = out[f].split("{items}").join(items);
   out.id = m.id;
   return out;
 };

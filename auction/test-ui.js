@@ -188,6 +188,27 @@ async function typeText(page, text) {
     const leader = await evaluateSafe(board, "state && state.leaderId && state.players.find(p=>p.id===state.leaderId).name");
     console.log("    лидер после клика на пульте:", leader);
 
+    // Пауза и возобновление НАСТОЯЩИМ кликом мыши, а не .click(): оверлей паузы перекрывал
+    // кнопку «Продолжить», и партию нельзя было возобновить. Программный click() это не ловит —
+    // он бьёт прямо в элемент, минуя то, что лежит сверху.
+    const clickReal = async (page, sel) => {
+      const box = await evaluateSafe(page, `(() => { const b = document.querySelector(${JSON.stringify(sel)}); if (!b) return null;
+        const r = b.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`);
+      if (!box) return "нет кнопки";
+      const hit = await evaluateSafe(page, `(() => { const el = document.elementFromPoint(${box.x}, ${box.y}); return el ? (el.id || el.tagName) : "ничего"; })()`);
+      await page.call("Input.dispatchMouseEvent", { type: "mousePressed", x: box.x, y: box.y, button: "left", clickCount: 1 });
+      await page.call("Input.dispatchMouseEvent", { type: "mouseReleased", x: box.x, y: box.y, button: "left", clickCount: 1 });
+      return hit;
+    };
+    await clickReal(board, "#pause");
+    await wait(800);
+    check(await evaluateSafe(board, "!!(state && state.paused)"), "доска: пауза ставится кликом");
+    const onTop = await clickReal(board, "#pause");
+    await wait(900);
+    check(onTop === "pause", `доска: кнопку «Продолжить» ничем не перекрыло (сверху: ${onTop})`);
+    check(!(await evaluateSafe(board, "!!(state && state.paused)")), "доска: пауза снимается кликом по «Продолжить»");
+
+
     // --- завершение и финал
     await board.call("Runtime.evaluate", { expression: "sendMsg({type:'end'})" });
     await wait(4000);
