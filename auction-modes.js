@@ -147,12 +147,28 @@ const BY_ID = Object.fromEntries(MODES.map((m) => [m.id, m]));
 const modesForKind = (kind) =>
   MODES.filter((m) => (!m.kinds || m.kinds.includes(kind)) && !(m.notKinds && m.notKinds.includes(kind)));
 const modeById = (id) => BY_ID[id] || BY_ID.base;
-// Текст задания для конкретной категории: поверх общего кладём то, что переопределено в byKind.
-// Промптовые поля (what/criteria/prompt/kinds) не трогаем — они общие для всех категорий.
-const modeText = (id, kind) => {
+
+/*
+ * Текст задания для конкретной категории и языка.
+ * Слои накладываются снизу вверх: общий русский → русский byKind → перевод → перевод byKind.
+ * Русский лежит в корне задания, переводы — в `t.<lang>` с той же структурой (title/short/judge/byKind).
+ * Непереведённое место автоматически показывается по-русски, а не пустым: игра должна работать
+ * и с наполовину готовым переводом.
+ * Промптовые поля (what/criteria/prompt/kinds/notKinds) сюда не попадают — они общие и уходят
+ * в промпт судьи, который остаётся русским.
+ */
+const TEXT_FIELDS = ["icon", "title", "short", "judge"];
+const modeText = (id, kind, lang) => {
   const m = modeById(id);
-  const over = m.byKind && m.byKind[kind];
-  return over ? Object.assign({}, m, over) : m;
+  const out = {};
+  for (const f of TEXT_FIELDS) out[f] = m[f];
+  const put = (src) => { if (src) for (const f of TEXT_FIELDS) if (src[f]) out[f] = src[f]; };
+  put(m.byKind && m.byKind[kind]);
+  const tr = m.t && m.t[lang];
+  put(tr);
+  put(tr && tr.byKind && tr.byKind[kind]);
+  out.id = m.id;
+  return out;
 };
 
 if (typeof module !== "undefined" && module.exports) module.exports = { MODES, modeById, modeText, modesForKind };

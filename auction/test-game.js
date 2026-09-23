@@ -443,7 +443,11 @@ test("задание: у категории своё название, и оно
       assert.ok(FRAMES[k], `${m.id}: byKind ссылается на неизвестную категорию «${k}»`);
       const t = modeText(m.id, k);
       for (const f of ["icon", "title", "short", "judge"]) assert.ok(t[f] && String(t[f]).trim(), `${m.id}/${k}: пустое ${f}`);
-      for (const f of ["what", "criteria", "prompt"]) assert.equal(t[f], m[f], `${m.id}/${k}: byKind не должен менять промптовое поле ${f}`);
+      // modeText отдаёт только то, что показывают на экране: промптовые поля не должны просачиваться
+      // в интерфейс, иначе перевод байкинда начал бы менять условия судейства
+      for (const f of ["what", "criteria", "prompt", "kinds", "notKinds", "t", "byKind"]) {
+        assert.equal(t[f], undefined, `${m.id}/${k}: modeText отдал непоказываемое поле ${f}`);
+      }
       assert.ok(!(m.kinds && !m.kinds.includes(k)), `${m.id}: текст для «${k}», где задание недоступно`);
       assert.ok(!(m.notKinds && m.notKinds.includes(k)), `${m.id}: текст для «${k}», где задание недоступно`);
     }
