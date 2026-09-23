@@ -121,6 +121,19 @@ async function cdp(url) {
     let count = "";
     for (let i = 0; i < 30 && !/^[123]$/.test(count); i++) { count = (await evaluateSafe(board, "(document.getElementById('count') || {}).textContent || ''")).trim(); await wait(200); }
     check(/^[123]$/.test(count), "доска: идёт отсчёт три-два-один (" + count + ")");
+    // Читаемость отсчёта проверяем замерами во времени, а не скриншотом: один кадр её не ловит.
+    // Так был пропущен дефект, когда кадр анимации гасил цифру до 15% к концу каждой секунды.
+    const seen = [];
+    for (let i = 0; i < 22; i++) {
+      const s = await evaluateSafe(board, `(() => { const n = document.querySelector("#count .num"); if (!n) return null;
+        return n.textContent + ":" + Math.round(Number(getComputedStyle(n).opacity) * 100); })()`);
+      if (s) seen.push(s);
+      await wait(100);
+    }
+    const digits = new Set(seen.map((s) => s.split(":")[0]));
+    const faint = seen.filter((s) => Number(s.split(":")[1]) < 55).length;
+    check(digits.size >= 2, "доска: в отсчёте сменяется несколько цифр (" + [...digits].join(",") + ")");
+    check(seen.length > 0 && faint <= seen.length * 0.4, `доска: цифра отсчёта не тусклая большую часть секунды (тусклых ${faint} из ${seen.length})`);
 
     await wait(6000);
     const phase = await evaluateSafe(board, "state && state.phase");
