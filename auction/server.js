@@ -35,6 +35,13 @@ const MAX_SOCKETS_PER_ROOM = Number(process.env.MAX_SOCKETS_PER_ROOM || 200); //
 const MAX_TOTAL_SOCKETS = Number(process.env.MAX_TOTAL_SOCKETS || 3000); // сокетов+poll-сессий на процесс
 const MAX_JUDGE_CALLS = Number(process.env.MAX_JUDGE_CALLS || 12); // платных запросов к OpenAI на комнату
 const EVICT_GRACE_MS = Number(process.env.EVICT_GRACE_MS || 10000); // свежую пустую комнату не вытесняем — доска ещё подключается (0 — только для тестов)
+// Сколько ждём вернувшегося игрока, прежде чем считать его выпавшим. Моргнувший на телефоне
+// Wi-Fi — норма вечеринки, а не событие партии: без этой грации обрыв на две секунды ставил игру
+// на авто-паузу, снять которую мог только ведущий, — цена секундного моргания была минута ожидания.
+const OFFLINE_GRACE_MS = Number(process.env.OFFLINE_GRACE_MS || 8000);
+// Сколько подряд не отвеченных ping терпим. Раньше рвали после первого: подвисший на пару секунд
+// телефон (сборка мусора, переключение Wi-Fi→LTE) получал обрыв на ровном месте.
+const PONG_MISSES = Number(process.env.PONG_MISSES || 3);
 const MSG_RATE = Number(process.env.MSG_RATE || 40); // сообщений в секунду на один сокет
 const MAX_MSG_BYTES = 8192; // максимум на одно входящее сообщение
 // Карточки лотов по языкам: data/<kind>.json — русские, data/<lang>/<kind>.json — переводы.
@@ -104,6 +111,8 @@ function destroyRoom(room) {
   clearTimeout(room.timer);
   clearTimeout(room.voteTimer);
   clearInterval(room.botTimer);
+  for (const t of room.offlineTimers.values()) clearTimeout(t);
+  room.offlineTimers.clear();
   for (const c of room.sockets) { try { send(c.ws, { type: "error", error: "room_expired" }); c.ws.terminate(); } catch {} }
   for (const [sid, c] of pollClients) if (c.room === room) pollClients.delete(sid);
   rooms.delete(room.code);
@@ -144,6 +153,7 @@ function createRoom({ kind = "artist", settings = {}, speed = 1, ip = "" } = {})
     game: Game.create({ kind, cards: cardsFor(kind, clampSettings(settings, kind).lang), settings }),
     tokens: {}, // playerToken → playerId
     sockets: new Set(), // {ws, playerId?, host?}
+    offlineTimers: new Map(), // playerId → таймер «ещё ждём, не объявляем выпавшим»
     timer: null,
     voteTimer: null,
     touched: Date.now(),
@@ -189,6 +199,44 @@ function schedule(room) {
       console.error("[auction] шаг таймера упал:", err);
     }
   }, wait);
+}
+
+// Игрок пропал со связи. Не объявляем его выпавшим сразу: если он вернётся в пределах грации,
+// партия об обрыве даже не узнает. Объявляем — только когда он действительно не вернулся.
+function scheduleOffline(room, playerId) {
+  if (!playerId) return;
+  if ([...room.sockets].some((c) => c.playerId === playerId)) return; // открыт ещё один сокет того же игрока
+  if (room.offlineTimers.has(playerId)) return;
+  const name = room.game.player(playerId)?.name || playerId;
+  console.log(`[auction] ${room.code}: ${name} потерял связь, ждём ${OFFLINE_GRACE_MS} мс`);
+  const t = setTimeout(() => {
+    room.offlineTimers.delete(playerId);
+    if (!rooms.has(room.code)) return;
+    if ([...room.sockets].some((c) => c.playerId === playerId)) return; // успел вернуться
+    console.log(`[auction] ${room.code}: ${name} не вернулся — партия на авто-паузе`);
+    const ev = room.game.setOnline(playerId, false, clock(room));
+    afterChange(room, [{ type: "offline", playerId }, ...ev]);
+  }, OFFLINE_GRACE_MS);
+  if (t.unref) t.unref();
+  room.offlineTimers.set(playerId, t);
+}
+
+function cancelOffline(room, playerId) {
+  const t = room.offlineTimers.get(playerId);
+  if (!t) return;
+  clearTimeout(t);
+  room.offlineTimers.delete(playerId);
+  console.log(`[auction] ${room.code}: ${room.game.player(playerId)?.name || playerId} вернулся в пределах грации`);
+}
+
+// Авто-пауза «ждём игроков» снимается сама, как только все снова на связи. Ручную паузу ведущего
+// не трогаем: её ставили осознанно, и снимать её за ведущего нельзя.
+function autoResumeIfBack(room) {
+  const s = room.game.s;
+  if (!s.paused || !s.paused.auto) return [];
+  if (room.game.activePlayers().some((p) => !p.online)) return [];
+  console.log(`[auction] ${room.code}: все на связи — авто-пауза снята`);
+  return room.game.resume(clock(room));
 }
 
 function afterChange(room, events = []) {
@@ -406,10 +454,7 @@ function closePoll(sid) {
   room.sockets.delete(client);
   pollClients.delete(sid);
   if (client.ws.waiter) { const w = client.ws.waiter; client.ws.waiter = null; w(); }
-  if (client.playerId && ![...room.sockets].some((c) => c.playerId === client.playerId)) {
-    const ev = room.game.setOnline(client.playerId, false, clock(room));
-    afterChange(room, [{ type: "offline", playerId: client.playerId }, ...ev]);
-  }
+  scheduleOffline(room, client.playerId);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -481,9 +526,9 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 function onConnection(room, ws) {
-  const client = { ws, playerId: null, host: false, alive: true };
+  const client = { ws, playerId: null, host: false, misses: 0 };
   room.sockets.add(client);
-  ws.on("pong", () => (client.alive = true));
+  ws.on("pong", () => (client.misses = 0));
   send(ws, { type: "hello", code: room.code, state: snapshotWithVoting(room), kinds: Object.keys(KINDS) });
 
   ws.on("message", (raw) => {
@@ -495,10 +540,7 @@ function onConnection(room, ws) {
 
   ws.on("close", () => {
     room.sockets.delete(client);
-    if (client.playerId && ![...room.sockets].some((c) => c.playerId === client.playerId)) {
-      const ev = room.game.setOnline(client.playerId, false, clock(room));
-      afterChange(room, [{ type: "offline", playerId: client.playerId }, ...ev]);
-    }
+    scheduleOffline(room, client.playerId);
   });
 }
 
@@ -519,10 +561,14 @@ function handle(room, client, msg) {
     case "join": {
       let playerId = msg.token && room.tokens[msg.token];
       if (playerId && g.player(playerId)?.left) playerId = null;
-      // потерял localStorage, но игра идёт: то же имя, что у offline-игрока, — продолжаем его партию
+      // Потерял localStorage, но игра идёт: то же имя, что у никем не занятого игрока, — продолжаем
+      // его партию. Признак занятости — живой сокет с этим playerId, а НЕ флаг online: в пределах
+      // грации вернувшийся числится онлайн, и проверка по флагу запирала его снаружи с «game_started»
+      // ровно в том случае, ради которого грация и вводилась. Имена в комнате уникальны (addPlayer
+      // дописывает « 2» тёзке), так что перехватить чужую партию совпадением имени нельзя.
       if (!playerId && g.s.phase !== "lobby") {
         const name = String(msg.name || "").trim();
-        const ghost = g.s.players.find((p) => !p.online && !p.left && p.name === name && ![...room.sockets].some((c) => c.playerId === p.id));
+        const ghost = g.s.players.find((p) => !p.left && p.name === name && ![...room.sockets].some((c) => c.playerId === p.id));
         if (ghost) {
           playerId = ghost.id;
           const token = crypto.randomBytes(12).toString("base64url");
@@ -544,10 +590,13 @@ function handle(room, client, msg) {
       // второе устройство той же сессии заменяет первое
       for (const c of room.sockets) if (c !== client && c.playerId === playerId) { c.playerId = null; send(c.ws, { type: "replaced" }); }
       client.playerId = playerId;
+      cancelOffline(room, playerId);
       // события возврата важны: вернувшийся единственный добирающий снимает паузу сам (§7.4)
       const events = [{ type: "online", playerId }, ...g.setOnline(playerId, true, t)];
-      // Сама по себе паузу не снимаем: партию продолжает ведущий. Вернувшийся игрок не должен
-      // запускать торги в тот момент, когда за столом ещё разбираются, все ли на месте.
+      // Авто-паузу, которую поставил чей-то обрыв, снимаем сами, как только все вернулись: иначе
+      // цена моргнувшей сети — вся партия стоит, пока кто-нибудь не дойдёт до доски и не нажмёт
+      // «Продолжить». Ручную паузу ведущего это не трогает (см. autoResumeIfBack).
+      events.push(...autoResumeIfBack(room));
       return afterChange(room, events);
     }
     case "bid": {
@@ -649,8 +698,12 @@ setInterval(() => {
   for (const room of rooms.values()) {
     for (const c of room.sockets) {
       if (c.poll) { if (now() - c.lastSeen > 40000) closePoll(c.sid); continue; }
-      if (!c.alive) { c.ws.terminate(); continue; }
-      c.alive = false;
+      if (c.misses >= PONG_MISSES) {
+        console.log(`[auction] ${room.code}: сокет (${room.game.player(c.playerId)?.name || "без игрока"}) молчит ${PONG_MISSES} ping подряд — рвём`);
+        c.ws.terminate();
+        continue;
+      }
+      c.misses = (c.misses || 0) + 1;
       c.ws.ping();
     }
     // Идущая партия живёт, пока к ней кто-то подключён: на паузе и в разборе игровых тиков нет,
@@ -731,7 +784,7 @@ function restore() {
         }
         delete r.state.deckIdx;
       }
-      const room = { code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: Game.from(r.state), tokens: r.tokens, sockets: new Set(), timer: null, voteTimer: null, touched: r.touched, speed: 1, skew: 0, bots: [], botTimer: null, judging: false, judgeCalls: Number(r.judgeCalls) || 0 };
+      const room = { code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: Game.from(r.state), tokens: r.tokens, sockets: new Set(), offlineTimers: new Map(), timer: null, voteTimer: null, touched: r.touched, speed: 1, skew: 0, bots: [], botTimer: null, judging: false, judgeCalls: Number(r.judgeCalls) || 0 };
       for (const p of room.game.s.players) p.online = false;
       rooms.set(room.code, room);
       schedule(room);

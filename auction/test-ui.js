@@ -87,6 +87,15 @@ async function typeText(page, text) {
     await wait(3000);
     check(await evaluateSafe(board, "!!document.getElementById('start')"), "лобби доски: кнопка «Начать» есть");
     await board.shot("ui_board_lobby");
+    // Предупреждение о маленькой колоде (§5). Порог — игроки × слоты × 1.25 + 6 × слоты (запас на
+    // соло-добор), и у настоящих категорий он не срабатывает: подменяем размер колоды в состоянии.
+    check(!(await evaluateSafe(board, `!!document.querySelector(".rounds .warn")`)), "лобби: на полной колоде предупреждения нет");
+    const deckWarn = await evaluateSafe(board, `(() => {
+      const was = state.deckSize; state.deckSize = 5; render();
+      const t = (document.querySelector(".rounds .warn") || {}).textContent || "";
+      state.deckSize = was; render(); return t;
+    })()`);
+    check(hasFrag(deckWarn, await i18nFrag(board, "deck_warn")), `лобби: маленькая колода — предупреждение (${String(deckWarn).slice(0, 40)})`);
 
     // --- пульт: вход и лобби
     const remote = await cdp(`${BASE}/auction.html?r=${room.code}`);
@@ -270,6 +279,70 @@ async function typeText(page, text) {
     check(remote.errors.length === 0, "пульт без JS-ошибок" + (remote.errors.length ? ": " + remote.errors.slice(0, 2).join(" | ") : ""));
     await board.close(); await remote.close();
 
+    // --- соло-добор: свободные слоты остались у одного (§6.5).
+    // Экраны добора нигде больше не появляются, а живьём до них доходят в конце каждой партии.
+    {
+      const rd = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings: { intro: 0, slots: 3, t1: 4000, t2: 3000 } }) })).json();
+      // ведущий и второй игрок — обычными сокетами: смотрим мы на экраны первого
+      const sock = (first) => new Promise((res) => {
+        const ws = new WebSocket(BASE.replace(/^http/, "ws") + "/auction/ws?r=" + rd.code);
+        const c = { ws, state: null, me: null };
+        ws.on("open", () => ws.send(JSON.stringify(first)));
+        ws.on("message", (raw) => { const m = JSON.parse(raw); if (m.state) c.state = m.state; if (m.type === "joined") { c.me = m.playerId; res(c); } if (m.type === "host_ok") res(c); });
+      });
+      // ведущий — сама доска: вторая доска на том же токене отбирает права у первой
+      const dboard = await cdp(`${BASE}/auction-board.html?r=${rd.code}&t=${rd.hostToken}`);
+      const dremote = await cdp(`${BASE}/auction.html?r=${rd.code}`);
+      await dremote.call("Emulation.setDeviceMetricsOverride", { width: 390, height: 780, deviceScaleFactor: 2, mobile: true });
+      await wait(2500);
+      await dremote.call("Runtime.evaluate", { expression: "document.getElementById('name').focus()" });
+      await typeText(dremote, "Аня");
+      await dremote.call("Runtime.evaluate", { expression: "document.getElementById('go').click()" });
+      await wait(1500);
+      const guest = await sock({ type: "join", name: "Гость" });
+      await wait(600);
+      await dboard.call("Runtime.evaluate", { expression: "sendMsg({type:'start'})" });
+      await wait(1200);
+      guest.ws.close(); // остался один со свободными слотами → партия встаёт, ведущий продолжает
+      await wait(1500);
+      await dboard.call("Runtime.evaluate", { expression: "sendMsg({type:'resume'})" });
+      const draft = await untilPage(dremote, "state && state.phase === 'draft'", 25000);
+      check(draft, `соло-добор: пульт дождался фазы ДОБОР (${await evaluateSafe(dremote, "state && state.phase + '/' + state.players.length + '/' + state.paused")})`);
+      await wait(400);
+      const boardText = await evaluateSafe(dboard, "document.body.innerText") || "";
+      check(hasFrag(boardText, await i18nFrag(dboard, "ph_draft")), "доска: в верхней полосе ДОБОР");
+      check(hasFrag(await evaluateSafe(dboard, "(document.getElementById('draftline')||{}).textContent") || "", "Аня"), "доска: в полосе написано, кто добирает и какой слот");
+      check(hasFrag(boardText, await i18nFrag(dboard, "draft_bar")), "доска: полоса ставок объясняет «взять или скипнуть»");
+      const remoteText = await evaluateSafe(dremote, "document.body.innerText") || "";
+      check(hasFrag(remoteText, await i18nFrag(dremote, "draft_take")), "пульт: кнопка «Взять»");
+      check(hasFrag(remoteText, await i18nFrag(dremote, "draft_skip")), "пульт: кнопка «Скип» со счётчиком");
+      check(hasFrag(await evaluateSafe(dremote, "(document.getElementById('mymoney')||{}).textContent") || "", await i18nFrag(dremote, "draft_status")), "пульт: в статус-строке добор и номер слота вместо денег");
+      await dboard.shot("ui_board_draft");
+      await dremote.shot("ui_remote_draft");
+      // тратим все пять скипов: шестой лот обязан остаться без кнопки «Скип»
+      let skips = 0;
+      for (let i = 0; i < 5; i++) {
+        if (!(await untilPage(dremote, "state && state.phase === 'draft' && state.solo && state.solo.skips > 0", 20000))) break;
+        await dremote.call("Runtime.evaluate", { expression: `(document.querySelector('#bidbox .mid') || {click(){}}).click()` });
+        if (await untilPage(dremote, `state && state.solo === null || (state.solo && state.solo.skips === ${4 - i})`, 8000)) skips++;
+      }
+      check(skips === 5, `пульт: пять скипов ушли на сервер (${skips})`);
+      check(await untilPage(dremote, "state && state.phase === 'draft' && state.solo && state.solo.skips === 0", 20000), "соло-добор: дошли до обязательного лота");
+      await wait(400);
+      check(!(await evaluateSafe(dremote, "!!document.querySelector('#bidbox .mid')")), "пульт: на обязательном лоте кнопки «Скип» нет");
+      check(await evaluateSafe(dremote, "!!document.querySelector('#bidbox .big')"), "пульт: кнопка «Взять» осталась");
+      check(hasFrag(await evaluateSafe(dremote, "document.body.innerText") || "", await i18nFrag(dremote, "draft_must")), "пульт: подпись «скипы кончились — этот лот твой»");
+      check(hasFrag(await evaluateSafe(dboard, "document.body.innerText") || "", await i18nFrag(dboard, "draft_bar_must")), "доска: на обязательном лоте сказано, что лот уходит игроку");
+      await dremote.shot("ui_remote_draft_must");
+      await dboard.shot("ui_board_draft_must");
+      await dremote.call("Runtime.evaluate", { expression: `document.querySelector('#bidbox .big').click()` });
+      check(await untilPage(dremote, "state && state.players.some((p) => p.lots.length === 1)", 8000), "пульт: «Взять» отдаёт лот игроку");
+      check(dboard.errors.length === 0, "доска в доборе без JS-ошибок" + (dboard.errors.length ? ": " + dboard.errors.slice(0, 2).join(" | ") : ""));
+      check(dremote.errors.length === 0, "пульт в доборе без JS-ошибок" + (dremote.errors.length ? ": " + dremote.errors.slice(0, 2).join(" | ") : ""));
+      await dboard.call("Runtime.evaluate", { expression: "sendMsg({type:'end'})" });
+      await dboard.close(); await dremote.close();
+    }
+
     // --- сеть без Википедии и iTunes: партия обязана идти, карточка — рисоваться
     const room2 = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "artist" }) })).json();
     const offline = await cdp(`${BASE}/auction-board.html?r=${room2.code}&t=${room2.hostToken}`);
@@ -318,6 +391,13 @@ async function typeText(page, text) {
 })().catch((e) => { console.error("ERROR", e); process.exit(1); });
 
 async function evaluateSafe(page, expr) { try { return await page.evaluate(expr); } catch { return null; } }
+
+// ждём условие на странице (страница живёт своими сокетами — опрашиваем её же state)
+async function untilPage(page, expr, ms = 10000) {
+  const t = Date.now();
+  while (Date.now() - t < ms) { if (await evaluateSafe(page, `!!(${expr})`)) return true; await wait(200); }
+  return false;
+}
 
 // Ожидаемые подписи пульта берём из его же словаря (window.I18N_DICT), а не хардкодим:
 // страница переведена на ru/en/el, и тест обязан быть зелёным на любом языке.

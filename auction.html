@@ -476,6 +476,16 @@ window.I18N_DICT = {
     already_taken: `Кто-то уже забрал`,
     pickup_hint: `Лот без ставок достаётся тем, у кого $0`,
     next_lot: `Следующий лот…`,
+    /* соло-добор (§6.5): остался один со свободными слотами — торгов нет, лоты бесплатны */
+    draft_status: `добор · слот {n}/{total}`,
+    draft_cap: `Добор`,
+    draft_free: `Лот бесплатный`,
+    draft_take: `Взять`,
+    draft_skip: `Скип · {n}`,
+    draft_must: `Скипы кончились — этот лот твой`,
+    draft_other: `{name} добирает лайнап`,
+    rej_cannot_skip: `Скипать сейчас нечего`,
+    rej_must_take: `Скипы кончились — лот придётся взять`,
     broke_title: `На мели`,
     broke_text: `Ждём лот без ставок — его можно забрать даром`,
     lead_me_title: `Ты лидер`,
@@ -589,6 +599,16 @@ window.I18N_DICT = {
     already_taken: `Someone grabbed it already`,
     pickup_hint: `A lot nobody bids on goes to players with $0`,
     next_lot: `Next lot…`,
+    /* solo draft (§6.5): the last player with free slots takes lots for free */
+    draft_status: `draft · slot {n}/{total}`,
+    draft_cap: `Draft`,
+    draft_free: `The lot is free`,
+    draft_take: `Take`,
+    draft_skip: `Skip · {n}`,
+    draft_must: `No skips left — this lot is yours`,
+    draft_other: `{name} is filling the lineup`,
+    rej_cannot_skip: `Nothing to skip right now`,
+    rej_must_take: `No skips left — you have to take it`,
     broke_title: `Broke`,
     broke_text: `Wait for a lot nobody bids on — that one you can take for free`,
     lead_me_title: `You're ahead`,
@@ -701,6 +721,16 @@ window.I18N_DICT = {
     already_taken: `Κάποιος το πήρε ήδη`,
     pickup_hint: `Το λοτ χωρίς προσφορές πάει σε όποιον έχει $0`,
     next_lot: `Επόμενο λοτ…`,
+    /* συμπλήρωση μόνος (§6.5): έμεινε ένας με κενές θέσεις — χωρίς προσφορές, τα λοτ δωρεάν */
+    draft_status: `συμπλήρωση · θέση {n}/{total}`,
+    draft_cap: `Συμπλήρωση`,
+    draft_free: `Το λοτ είναι δωρεάν`,
+    draft_take: `Πάρ' το`,
+    draft_skip: `Πάσο · {n}`,
+    draft_must: `Τα πάσα τελείωσαν — αυτό το λοτ είναι δικό σου`,
+    draft_other: `{name} συμπληρώνει το λάιναπ`,
+    rej_cannot_skip: `Δεν υπάρχει τι να πασάρεις τώρα`,
+    rej_must_take: `Τα πάσα τελείωσαν — πρέπει να το πάρεις`,
     broke_title: `Άφραγκος`,
     broke_text: `Περίμενε λοτ χωρίς προσφορές — αυτό το παίρνεις τσάμπα`,
     lead_me_title: `Είσαι μπροστά`,
@@ -958,10 +988,58 @@ function renderJoin(error) {
   if (!matchMedia("(hover: none)").matches) input.focus();
 }
 
+// Переподключение. Первая попытка — немедленная: моргнувший Wi-Fi возвращается за доли секунды,
+// и фиксированная пауза в 2 с превращала незаметный обрыв в заметный простой. Дальше — рост
+// с разбросом, чтобы восемь телефонов после общего обрыва не ломились в сервер в одну миллисекунду.
+let lastName = "", retry = 0, retryTimer = null, offlineTimer = null;
+
+function scheduleRejoin() {
+  if (dead || retryTimer) return;
+  const delay = retry === 0 ? 0 : Math.min(8000, 500 * 2 ** (retry - 1)) + Math.floor(Math.random() * 400);
+  retry++;
+  retryTimer = setTimeout(() => { retryTimer = null; if (!dead) join(lastName); }, delay);
+}
+
+// Устройство само знает, когда связь вернулась и когда экран снова виден, — в этот момент ждать
+// очередного шага backoff незачем. Сюда же приходит возврат из фона: вкладку могли заморозить,
+// и событие close от мёртвого сокета дойдёт с опозданием или не дойдёт вовсе.
+function rejoinNow() {
+  if (dead || !lastName) return;
+  if (ws && ws.mode !== "none") return;
+  clearTimeout(retryTimer);
+  retryTimer = null;
+  retry = 0;
+  join(lastName);
+}
+addEventListener("online", rejoinNow);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) rejoinNow(); });
+
+// Погасший экран замораживает вкладку, сокет умирает, игрок выпадает из партии. Wake Lock держит
+// экран включённым, пока открыт пульт. Где его нет (iOS до 16.4) — просто ничего не происходит:
+// падать из-за отсутствия необязательной возможности нельзя.
+let wakeLock = null;
+async function keepAwake() {
+  try {
+    if (!navigator.wakeLock || document.hidden || wakeLock) return;
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => { wakeLock = null; });
+  } catch {}
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) keepAwake(); });
+keepAwake();
+
 function join(name) {
+  lastName = name;
   ws = openTransport({
     code: CODE,
-    onOpen: () => sendMsg({ type: "join", name, token }),
+    onOpen: () => {
+      retry = 0;
+      clearTimeout(offlineTimer);
+      offlineTimer = null;
+      // плашку снимаем сразу; если партия и правда на паузе, ближайший state вернёт «ov_paused»
+      if (overlayKey === "ov_offline") setOverlay(null);
+      sendMsg({ type: "join", name, token });
+    },
     onMessage: (msg) => {
       if (msg.type === "joined") { me = msg.playerId; token = msg.token; try { localStorage.setItem("auction-token-" + CODE, token); } catch {} }
       if (msg.type === "hello" || msg.type === "state") setState(msg.state);
@@ -979,7 +1057,13 @@ function join(name) {
         else renderJoin(msg.error);
       }
     },
-    onClose: () => { if (dead) return; setOverlay("ov_offline"); setTimeout(() => { if (!dead) join(name); }, 2000); },
+    onClose: () => {
+      if (dead) return;
+      // Плашку «нет связи» не показываем мгновенно: обрыв на 300 мс, который мы тут же и залечим,
+      // не должен мигать тревогой во весь экран посреди торгов.
+      if (!offlineTimer) offlineTimer = setTimeout(() => { offlineTimer = null; if (!dead) setOverlay("ov_offline"); }, 1200);
+      scheduleRejoin();
+    },
     onSendFail: (msg) => { const n = document.getElementById("note"); if (n && msg && msg.type === "bid") n.textContent = I18N.t("note_send_fail"); },
   });
 }
@@ -1001,6 +1085,8 @@ const mine = () => state.players.find((p) => p.id === me);
 const modeNow = () => (window.auctionModeText ? auctionModeText(state && state.settings && state.settings.mode, state && state.kind, uiLang()) : null);
 const taskNow = () => { const m = modeNow(); return m && m.id !== "base" ? m : null; };
 const nameOf = (id) => (state.players.find(function (p) { return p.id === id; }) || {}).name || "?";
+// соло-добор мой: сервер прислал фазу ДОБОР и в ней указан я (§6.5)
+const drafting = (p) => !!(state && state.solo && p && state.solo.playerId === p.id);
 
 // ---------- звук ----------
 let actx;
@@ -1017,7 +1103,7 @@ function onRejected(r) {
   const note = document.getElementById("note");
   if (!note) return;
   // причины известны заранее: незнакомую показываем как есть, а не ключом словаря
-  const known = ["price_changed", "too_low", "not_enough_money", "already_leader", "closed", "cannot_bid"];
+  const known = ["price_changed", "too_low", "not_enough_money", "already_leader", "closed", "cannot_bid", "cannot_skip", "must_take"];
   note.textContent = known.indexOf(r.reason) !== -1 ? I18N.t("rej_" + r.reason) : r.reason;
   render();
 }
@@ -1091,8 +1177,10 @@ function renderGame() {
     if (!timerLoop) { timerLoop = true; requestAnimationFrame(tickTimer); }
   }
   document.getElementById("myname").textContent = p.name;
-  document.getElementById("mymoney").textContent = money(p.money);
-  document.getElementById("lotno").textContent = tpl("lot_counter", { n: s.round + 1, total: s.rounds });
+  document.getElementById("mymoney").textContent = drafting(p)
+    ? tpl("draft_status", { n: Math.min(p.lots.length + 1, s.settings.slots), total: s.settings.slots })
+    : money(p.money);
+  document.getElementById("lotno").textContent = tpl("lot_counter", { n: s.round + 1, total: Math.max(s.rounds, s.round + 1) });
   const task = document.getElementById("task");
   if (task) {
     const custom = taskNow();
@@ -1112,6 +1200,7 @@ function renderGame() {
     if (s.leaderId) { who.append(el("b", null, s.leaderId === me ? I18N.t("you") : nameOf(s.leaderId)), document.createTextNode(` ${money(s.price)}`)); lead.append(el("div", "cap", I18N.t("cap_leader")), who); }
     else { who.textContent = I18N.t("no_bids"); lead.append(el("div", "cap", tpl("cap_min", { money: money(1) })), who); }
   } else if (s.phase === "pickup") lead.append(el("div", "cap", I18N.t("cap_pickup")), el("div", "who", I18N.t("pickup_none")));
+  else if (s.phase === "draft") lead.append(el("div", "cap", I18N.t("draft_cap")), el("div", "who", I18N.t("draft_free")));
   else if (s.phase === "sold" || s.phase === "taken") { const who = el("div", "who"); who.append(el("b", null, s.leaderId === me ? I18N.t("yours") : nameOf(s.leaderId)), document.createTextNode(" " + (s.phase === "sold" ? money(s.price) : I18N.t("for_free")))); lead.append(el("div", "cap", I18N.t(s.phase === "sold" ? "cap_sold" : "cap_taken")), who); }
   else lead.append(el("div", "cap", ""), el("div", "who", I18N.t("nobody_took")));
 
@@ -1140,6 +1229,22 @@ function renderActions(p) {
   if (s.phase === "pickup") {
     if (p.canTake) { const b = el("button", "big", I18N.t("take_free")); b.onclick = () => sendMsg({ type: "take" }); return box.append(b); }
     return box.append(plate("", "", I18N.t(p.money === 0 ? "already_taken" : "pickup_hint")));
+  }
+  // Соло-добор: две кнопки вместо ставок. Скипов не осталось — «Скип» не рисуем совсем,
+  // а не гасим серым: на этом лоте выбора действительно нет (§10.3).
+  if (s.phase === "draft") {
+    if (!drafting(p)) return box.append(plate("", "", s.solo ? tpl("draft_other", { name: nameOf(s.solo.playerId) }) : I18N.t("next_lot")));
+    const take = el("button", "big", I18N.t("draft_take"));
+    take.onclick = () => { unlockAudio(); sendMsg({ type: "take" }); };
+    box.append(take);
+    if (s.solo.skips > 0) {
+      const skip = el("button", "mid", tpl("draft_skip", { n: s.solo.skips }));
+      skip.onclick = () => sendMsg({ type: "skip" });
+      box.append(skip);
+    } else {
+      box.append(plate("", "", I18N.t("draft_must")));
+    }
+    return;
   }
   if (s.phase !== "lot" && s.phase !== "bidding") return box.append(plate("", "", I18N.t("next_lot")));
   if (p.money === 0) return box.append(plate("", I18N.t("broke_title"), I18N.t("broke_text")));
@@ -1188,10 +1293,10 @@ function tickTimer() {
   const ring = document.getElementById("ring");
   if (!state || !ring) return requestAnimationFrame(tickTimer);
   const s = state;
-  const total = { lot: s.settings.t1, bidding: s.settings.t2, pickup: 5000 }[s.phase] || 2000;
+  const total = { lot: s.settings.t1, bidding: s.settings.t2, pickup: 5000, draft: s.t4 || 10000 }[s.phase] || 2000;
   const left = s.paused ? total : Math.max(0, s.deadline - (Date.now() + offset));
   document.getElementById("arc").setAttribute("stroke-dashoffset", String(170 * (1 - Math.min(1, left / total))));
-  document.getElementById("tnum").textContent = (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup") ? Math.ceil(left / 1000) : "";
+  document.getElementById("tnum").textContent = (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "draft") ? Math.ceil(left / 1000) : "";
   ring.classList.toggle("urgent", left < 3000 && s.phase !== "sold");
   requestAnimationFrame(tickTimer);
 }

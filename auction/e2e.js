@@ -83,7 +83,7 @@ function connect(code, first) {
 
   // Аня берёт ровно один лот и дальше молчит; Макс на первом же лоте спускает весь бюджет,
   // остаётся с $0 и свободными слотами — значит лоты без ставок обязаны уйти в РАЗБОР к нему.
-  let lastRound = -1, sawPickup = false, sawTaken = false;
+  let lastRound = -1, sawPickup = false, sawTaken = false, sawDraft = false;
   while (Date.now() < deadline) {
     const s = host.state;
     if (s.phase === "finished") break;
@@ -95,13 +95,20 @@ function connect(code, first) {
       if (m.canBid && !m.lots.length && s.leaderId !== max.me && s.price === 0) max.send({ type: "bid", amount: m.money, expectedPrice: 0 });
     }
     if (s.phase === "pickup") { const m = s.players.find((p) => p.id === max.me); if (m.canTake) max.send({ type: "take" }); }
+    // соло-добор (§6.5): когда у Макса лайнап собран, свободные слоты остаются только у Ани —
+    // торгов больше нет, она добирает сама. Берём через раз, чтобы проверить и скип.
+    if (s.phase === "draft" && s.solo) {
+      sawDraft = true;
+      const c = s.solo.playerId === anya.me ? anya : s.solo.playerId === max.me ? max : null;
+      if (c) c.send({ type: s.round % 2 || !s.solo.skips ? "take" : "skip" });
+    }
     if (host.events.some((e) => e.type === "taken")) sawTaken = true;
     await wait(250);
   }
   const s = host.state;
   if (s.phase !== "finished") fail("game did not finish in time, phase=" + s.phase);
   log("finished:", s.finishedReason, "lots:", s.players.map((p) => `${p.name}=${p.lots.length}/$${p.money}`).join(" "));
-  log("pickup seen:", sawPickup, "free take:", sawTaken);
+  log("pickup seen:", sawPickup, "free take:", sawTaken, "solo draft:", sawDraft);
   const sold = host.events.filter((e) => e.type === "sold").length;
   if (!sold) fail("nothing sold");
   if (!sawPickup) fail("РАЗБОР не случился, хотя игрок с $0 и свободными слотами был");
@@ -109,6 +116,9 @@ function connect(code, first) {
   const broke = s.players.find((p) => p.id === max.me);
   if (broke.money < 0 || broke.lots.some((l) => l.price < 0)) fail("деньги ушли в минус");
   if (!broke.lots.some((l) => l.price === 0)) fail("в лайнапе нет бесплатного лота из РАЗБОРА");
+  // партия обязана дойти до полных лайнапов (или до конца колоды), а не оборваться на R
+  if (s.finishedReason === "rounds_over") fail("партия оборвалась по раундам — с v0.7 их не существует");
+  if (!sawDraft) log("ВНИМАНИЕ: соло-добор в этой партии не понадобился");
 
   // судейство: ChatGPT или голосование
   const t0 = Date.now();

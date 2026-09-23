@@ -119,16 +119,41 @@ test("offline-игрок не торгуется и не блокирует фи
   assert.ok(g.s.paused, "отвал игрока останавливает партию");
   g.resume(200); // ведущий продолжает без него
   assert.equal(g.bid("p1", 1, 100).reason, "cannot_bid");
-  for (let i = 0; i < 3; i++) { g.bid("p0", 1, g.s.lotStartedAt + 100); g.tick(g.s.deadline); g.tick(g.s.deadline); }
+  g.bid("p0", 1, g.s.lotStartedAt + 100);
+  g.tick(g.s.deadline); // продано
+  g.tick(g.s.deadline); // следующий лот
+  // со свободными слотами остался один подключённый игрок — дальше соло-добор (§6.5)
+  assert.equal(g.s.phase, "draft");
+  for (let i = 0; i < 2; i++) { g.take("p0", g.s.deadline - 1); g.tick(g.s.deadline); }
   assert.equal(g.s.phase, "finished");
   assert.equal(g.s.finishedReason, "all_full");
 });
 
-test("раунды кончились → финал даже с пустыми слотами", () => {
-  const g = setup(2, { slots: 3 });
-  for (let i = 0; i < g.s.rounds; i++) { g.tick(g.s.deadline); if (g.s.phase !== "finished") g.tick(g.s.deadline); }
+// v0.7: R больше не обрывает партию (§7.3). Единственный жёсткий предохранитель — колода:
+// когда карточки кончились, партия завершается с теми слотами, которые успели заполнить.
+test("раунды кончились — партия продолжается; конец только по исчерпанию колоды", () => {
+  const short = cards.slice(0, 4);
+  const g = Game.create({ kind: "test", cards: short, settings: { intro: 0, slots: 3 }, rng });
+  g.addPlayer({ id: "p0", name: "A" });
+  g.addPlayer({ id: "p1", name: "B" });
+  g.start(0);
+  assert.equal(g.s.rounds, 4, "прогноз не может быть длиннее колоды");
+  // никто не ставит: лоты уходят в отбой один за другим
+  for (let i = 0; i < 10 && g.s.phase !== "finished"; i++) g.tick(g.s.deadline);
   assert.equal(g.s.phase, "finished");
-  assert.equal(g.s.finishedReason, "rounds_over");
+  assert.equal(g.s.finishedReason, "deck_over");
+  assert.equal(g.s.round, 4, "колода отыграна целиком");
+  assert.ok(g.s.players.every((p) => p.lots.length === 0), "пустые слоты так и остались пустыми");
+});
+
+test("R исчерпан, а слоты пустые — лоты идут дальше", () => {
+  const g = setup(3, { slots: 3 });
+  assert.equal(g.s.rounds, Math.ceil(3 * 3 * 1.25)); // 12
+  // трое торгующихся со свободными слотами: соло-добор не включается, идёт обычный аукцион
+  for (let i = 0; i < g.s.rounds + 3 && g.s.phase !== "finished"; i++) { g.tick(g.s.deadline); g.tick(g.s.deadline); }
+  assert.notEqual(g.s.phase, "finished", "партия не обрывается на R");
+  assert.ok(g.s.round >= g.s.rounds, `лотов ушло больше прогноза (${g.s.round + 1} при R = ${g.s.rounds})`);
+  assert.equal(g.s.phase, "lot", "торги идут как раньше, пока добирающих двое и больше");
 });
 
 test("голосование: за себя нельзя, без лотов нельзя, ничья решается по потраченному", () => {
@@ -213,6 +238,7 @@ test("отвал игрока ставит партию на паузу; сни�
   // возвращение игрока партию НЕ продолжает: это делает ведущий
   assert.deepEqual(g.setOnline("p0", true, 400), []);
   assert.ok(g.s.paused, "вернувшийся игрок не снимает паузу сам");
+  g.setOnline("p1", true, 450); // оба на месте — значит и после паузы это обычный аукцион, а не добор
   g.resume(60000);
   g.tick(g.s.deadline);
   assert.equal(g.s.phase, "lot");
@@ -284,6 +310,154 @@ test("12 игроков: партия заканчивается, деньги �
     assert.ok(p.lots.length <= 5, `${p.name} набрал больше слотов`);
     assert.equal(p.spent + p.money, 30, `${p.name}: потрачено + остаток ≠ бюджет`);
   }
+});
+
+// ---------- соло-добор (§6.5) ----------
+
+// Партия, где свободные слоты остались ровно у p0: p1 уже собрал лайнап. Текущий лот
+// доигрывается по общим правилам, а следующий открывается уже ДОБОРОМ.
+function solo(settings = {}) {
+  const g = setup(2, { slots: 3, ...settings });
+  const other = g.player("p1");
+  for (let i = 0; i < g.s.settings.slots; i++) other.lots.push({ name: `Чужой ${i}`, emoji: "🎲", meta: [], price: 0, round: -1 });
+  g.hostSkip(100); // текущий лот в отбой
+  g.tick(g.s.deadline); // следующий лот
+  return g;
+}
+
+test("соло-добор: остался один со свободными слотами → ДОБОР, T4 = 10 с, лот бесплатный", () => {
+  const g = solo();
+  assert.equal(g.s.phase, "draft");
+  assert.equal(g.s.solo.playerId, "p0");
+  assert.equal(g.s.solo.skips, 5);
+  assert.equal(g.s.deadline - g.s.lotStartedAt, 10000, "T4 = 10 с");
+  const snap = g.snapshot(0);
+  assert.deepEqual(snap.solo, { playerId: "p0", skips: 5 });
+  assert.equal(snap.t4, 10000, "клиенту нужна длина фазы: T4 в настройках нет");
+  assert.ok(snap.lot, "карточка лота на экране");
+  assert.equal(g.bid("p0", 1, g.s.lotStartedAt + 10).ok, false, "торгов в доборе нет");
+  const money = g.player("p0").money;
+  assert.equal(g.take("p0", g.s.lotStartedAt + 20).ok, true);
+  assert.equal(g.s.phase, "taken");
+  assert.equal(g.player("p0").lots.length, 1);
+  assert.equal(g.player("p0").lots[0].price, 0);
+  assert.equal(g.player("p0").money, money, "деньги за лот в доборе не списываются");
+  assert.equal(g.player("p0").spent, 0);
+});
+
+test("соло-добор: счётчик свой на каждый слот — взял лот, снова 5", () => {
+  const g = solo();
+  g.skip("p0", g.s.lotStartedAt + 1);
+  g.tick(g.s.deadline);
+  g.skip("p0", g.s.lotStartedAt + 1);
+  g.tick(g.s.deadline);
+  assert.equal(g.s.solo.skips, 3, "два скипа списаны");
+  g.take("p0", g.s.lotStartedAt + 1);
+  g.tick(g.s.deadline); // следующий лот — это уже следующий слот
+  assert.equal(g.s.phase, "draft");
+  assert.equal(g.s.solo.skips, 5, "после взятия счётчик снова полный");
+});
+
+test("соло-добор: пять скипов подряд — шестой лот обязателен, таймер его берёт", () => {
+  const g = solo();
+  const seen = [];
+  for (let i = 0; i < 5; i++) {
+    assert.equal(g.s.solo.skips, 5 - i);
+    seen.push(g.s.lot.name);
+    assert.equal(g.skip("p0", g.s.lotStartedAt + 1).ok, true);
+    assert.equal(g.s.phase, "unsold", "скипнутый лот уходит в отбой");
+    g.tick(g.s.deadline);
+  }
+  assert.equal(g.s.phase, "draft");
+  assert.equal(g.s.solo.skips, 0);
+  assert.equal(g.skip("p0", g.s.lotStartedAt + 1).reason, "must_take", "шестой лот скипнуть нельзя");
+  const ev = g.tick(g.s.deadline); // истёкший таймер на обязательном лоте = взятие
+  assert.ok(ev.some((e) => e.type === "taken" && e.playerId === "p0" && e.auto), "лот взят за игрока");
+  assert.equal(g.player("p0").lots.length, 1);
+  const mine = g.player("p0").lots[0].name;
+  assert.ok(!seen.includes(mine), "скипнутые лоты не возвращаются");
+  assert.equal(new Set(seen).size, 5, "каждый лот показан один раз");
+});
+
+test("соло-добор: бездействие = скип и списывает счётчик", () => {
+  const g = solo();
+  const lot = g.s.lot.name;
+  const ev = g.tick(g.s.deadline);
+  assert.ok(ev.some((e) => e.type === "unsold" && e.lot === lot), "лот ушёл в отбой");
+  assert.equal(g.s.solo.skips, 4, "молчание стоит скипа");
+  assert.equal(g.player("p0").lots.length, 0);
+});
+
+test("соло-добор: кнопки только у добирающего, на паузе их нет", () => {
+  const g = solo();
+  assert.equal(g.skip("p1", g.s.lotStartedAt + 1).reason, "cannot_skip");
+  assert.equal(g.take("p1", g.s.lotStartedAt + 1).reason, "cannot_take");
+  const snap = g.snapshot(0);
+  assert.equal(snap.players.find((p) => p.id === "p0").canDraft, true);
+  assert.equal(snap.players.find((p) => p.id === "p1").canDraft, false);
+  g.pause(g.s.lotStartedAt + 2);
+  assert.equal(g.take("p0", g.s.lotStartedAt + 3).reason, "paused");
+  assert.equal(g.skip("p0", g.s.lotStartedAt + 3).reason, "paused");
+});
+
+test("соло-добор: включается уходом игрока и выключается его возвратом", () => {
+  const g = setup(2, { slots: 3 });
+  g.setOnline("p1", false, 100); // автопауза на отвале
+  g.resume(200);
+  g.hostSkip(300); // текущий лот в отбой
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "draft", "остался один подключённый со свободными слотами");
+  const ev = g.setOnline("p1", true, g.s.lotStartedAt + 1000);
+  assert.equal(g.s.phase, "lot", "добирающих снова двое — обычный аукцион");
+  assert.equal(g.s.solo, null);
+  assert.ok(ev.some((e) => e.type === "lot"), "клиентам сказано, что лот стал торговым");
+  assert.equal(g.s.deadline, g.s.lotStartedAt + g.s.settings.t1, "лот получает полный T1");
+  assert.equal(g.bid("p1", 1, g.s.lotStartedAt + 1100).ok, true, "торги снова работают");
+});
+
+test("соло-добор: ушёл единственный добирающий — ждём минуту, потом финал с пустыми слотами", () => {
+  const g = solo();
+  const ev = g.setOnline("p0", false, 1000);
+  assert.ok(ev.some((e) => e.type === "paused"), "партия встала");
+  assert.equal(g.s.paused.waitFor, "p0");
+  assert.equal(g.s.paused.waitUntil, 61000, "минута ожидания");
+  assert.equal(g.snapshot(1000).pausedFor, "p0", "доска знает, кого ждёт");
+  assert.deepEqual(g.tick(60999), [], "пока ждём — ничего не происходит");
+  const fin = g.tick(61000);
+  assert.ok(fin.some((e) => e.type === "finished"), "не вернулся — партия закончена");
+  assert.equal(g.s.finishedReason, "solo_gone");
+  assert.equal(g.player("p0").lots.length, 0, "его слоты так и остались пустыми");
+});
+
+test("соло-добор: вернулся за минуту — партия продолжается сама", () => {
+  const g = solo();
+  g.setOnline("p0", false, 1000);
+  const ev = g.setOnline("p0", true, 30000);
+  assert.ok(ev.some((e) => e.type === "resumed"), "снимать паузу больше некому — снимается сама");
+  assert.equal(g.s.paused, null);
+  assert.equal(g.s.phase, "draft");
+  assert.ok(g.s.deadline - 30000 >= 3000, "на решение остаётся не меньше 3 с");
+  assert.equal(g.take("p0", g.s.deadline - 1).ok, true);
+});
+
+test("соло-добор: на все слоты уходит не больше 6 × слоты лотов, даже если игрок молчит", () => {
+  const g = solo({ slots: 3 });
+  let shown = 1, guard = 0; // первый лот добора уже открыт
+  while (g.s.phase !== "finished" && guard++ < 200) shown += g.tick(g.s.deadline).filter((e) => e.type === "draft").length;
+  assert.equal(g.s.phase, "finished");
+  assert.equal(g.s.finishedReason, "all_full");
+  assert.equal(g.player("p0").lots.length, 3, "слоты заполнены обязательными лотами");
+  assert.equal(shown, 6 * 3, `на слот ровно 6 карточек, всего ${shown}`);
+});
+
+test("соло-добор: колода кончилась прямо в доборе — финал с тем, что собрано", () => {
+  const g = solo({ slots: 3 });
+  g.s.deck = g.s.deck.slice(0, g.s.round + 1); // этот лот в колоде последний
+  g.take("p0", g.s.lotStartedAt + 1);
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "finished");
+  assert.equal(g.s.finishedReason, "deck_over");
+  assert.equal(g.player("p0").lots.length, 1);
 });
 
 // ---------- судья ----------

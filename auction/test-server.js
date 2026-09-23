@@ -171,6 +171,76 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
     back.ws.close(); h3.ws.close();
   }
 
+  // ---------- соло-добор: свободные слоты остались у одного (§6.5) ----------
+  {
+    // speed=2: фаза ДОБОРА — фиксированные 10 с, без ускорения блок шёл бы минуты; сильнее ускорять
+    // нельзя — таймер начнёт срабатывать раньше, чем до сервера доедет нажатие, и тест станет гадать
+    const r7 = await make({ slots: 3, budget: 20, t1: 4000, t2: 3000 }, 2); // 3 — минимум слотов
+    const h7 = await connect(r7.code, { type: "host", token: r7.hostToken });
+    const one = await connect(r7.code, { type: "join", name: "Один" });
+    const two = await connect(r7.code, { type: "join", name: "Два" });
+    await until(() => h7.state?.players.length === 2);
+    h7.send({ type: "start" });
+    await until(() => h7.state.phase !== "lobby");
+    const lots = () => h7.state.players.find((p) => p.id === one.me).lots.length;
+    const toDraft = async (ms = 25000) => until(() => h7.state.phase === "draft", ms);
+
+    two.ws.close(); // второй ушёл — партия встала, ведущий продолжает без него
+    await until(() => h7.state.paused, 8000);
+    h7.send({ type: "resume" });
+    check(await toDraft(), `остался один со свободными слотами → фаза ДОБОР (${h7.state.phase})`);
+    check(!!h7.state.solo && h7.state.solo.playerId === one.me && h7.state.solo.skips === 5, "в снимке есть кто добирает и сколько скипов");
+    check(h7.state.t4 === 10000, `T4 = 10 с приходит в снимке (${h7.state.t4})`);
+    check(h7.state.players.find((p) => p.id === one.me).canDraft === true, "у добирающего есть canDraft");
+
+    one.send({ type: "skip" });
+    check(await until(() => h7.state.solo && h7.state.solo.skips === 4, 5000), "скип списывает счётчик и уводит лот в отбой");
+    await toDraft();
+    const before = h7.state.players.find((p) => p.id === one.me).money;
+    one.send({ type: "take" });
+    check(await until(() => lots() === 1, 5000), "«Взять» отдаёт лот бесплатно");
+    check(h7.state.players.find((p) => p.id === one.me).money === before, "деньги за лот в доборе не списались");
+    check(await toDraft(), "следующий лот добора");
+    check(h7.state.solo.skips === 5, `после взятия счётчик снова полный (${h7.state.solo.skips})`);
+
+    // вернулся второй игрок — соло-добор выключается прямо на этом лоте
+    const back = await connect(r7.code, { type: "join", name: "", token: two.token });
+    check(back.me === two.me, "второй вернулся по токену");
+    check(await until(() => h7.state.phase === "lot" && !h7.state.solo, 5000), `добирающих снова двое → обычный аукцион (${h7.state.phase})`);
+
+    // и снова уходит: добираем остаток через обязательный лот
+    back.ws.close();
+    await until(() => h7.state.paused, 8000);
+    h7.send({ type: "resume" });
+    check(await toDraft(), "после второго ухода добор включается заново");
+    // Скипаем, пока счётчик не обнулится. Считаем лоты, а не итерации: истёкший таймер — тоже
+    // скип, и на медленной машине счётчик может списать он, а не нажатие.
+    let lotsSeen = 0, must = false;
+    while (lotsSeen < 8) {
+      if (!(await toDraft())) break;
+      lotsSeen++;
+      const solo = h7.state.solo;
+      if (!solo) break;
+      if (solo.skips === 0) { must = true; break; } // это и есть обязательный лот
+      one.send({ type: "skip" });
+      await until(() => h7.state.phase !== "draft" || (h7.state.solo && h7.state.solo.skips < solo.skips), 6000);
+    }
+    check(must && lotsSeen === 6, `на слот ушло шесть лотов: пять скипов и обязательный (${lotsSeen})`);
+    one.send({ type: "skip" });
+    check(await until(() => has(one, "rejected", (m) => m.action === "skip" && m.reason === "must_take"), 4000), "шестой лот скипнуть нельзя — сервер отвечает must_take");
+    check(await until(() => lots() === 2, 20000), "истёкший таймер на обязательном лоте берёт лот за игрока");
+    // остаток слотов добираем руками — партия обязана закончиться сама, без «раундов»
+    for (let i = 0; i < 4 && lots() < h7.state.settings.slots; i++) {
+      if (!(await toDraft())) break;
+      const was = lots();
+      one.send({ type: "take" });
+      await until(() => lots() > was, 6000);
+    }
+    check(lots() === h7.state.settings.slots, `лайнап собран добором (${lots()}/${h7.state.settings.slots})`);
+    check(await until(() => h7.state.phase === "finished" && h7.state.finishedReason === "all_full", 15000), `лайнапы собраны → финал (${h7.state.phase}/${h7.state.finishedReason})`);
+    one.ws.close(); h7.ws.close();
+  }
+
   // ---------- голосование закрывается по таймауту (speed ускоряет 30 с) ----------
   {
     const r4 = await make({ slots: 3, budget: 20, t1: 10000, t2: 3000, judge: "vote" }, 6);
