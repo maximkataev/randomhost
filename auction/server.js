@@ -414,6 +414,7 @@ function handle(room, client, msg) {
       if (!client.host) return;
       return afterChange(room, g.start(t));
     }
+    case "skip_lot": return client.host ? afterChange(room, g.hostSkip(t)) : undefined;
     case "pause": return client.host ? afterChange(room, g.pause(t)) : undefined;
     case "resume": return client.host ? afterChange(room, g.resume(t)) : undefined;
     case "kick": {

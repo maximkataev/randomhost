@@ -73,7 +73,7 @@
   .note { text-align: center; font-size: 13px; color: var(--muted); min-height: 18px; }
 
   /* ===== стартовый экран: «аукционный зал» ===== */
-  body:has(.start) { height: auto; min-height: 100dvh; overflow-y: auto; }
+  body.m-start, body.m-enter, body.m-final { height: auto; min-height: 100vh; min-height: 100dvh; overflow-y: auto; }
   .start {
     flex: 1; width: 100%; max-width: 1260px; margin: 0 auto; padding: 8px 0 16px;
     display: grid; align-content: start;
@@ -226,7 +226,7 @@
   /* вход и лобби: экран ожидания стоит ровно по центру по вертикали */
   .center { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 12px; }
   /* экран ввода имени: страница должна скроллиться, иначе мобильная клавиатура накрывает поле */
-  body:has(.enter) { height: auto; min-height: 100dvh; overflow-y: auto; }
+
   .center.enter { justify-content: flex-start; padding-top: clamp(24px, 12vh, 120px); padding-bottom: 40vh; }
   h1 { font: 900 32px/1 var(--display); text-transform: uppercase; letter-spacing: -.03em; margin: 0 0 6px; }
   h1 em { font-style: normal; background: linear-gradient(100deg, var(--c1), var(--c2) 55%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -266,6 +266,12 @@
 
 <script src="auction-shared.js"></script>
 <script>
+// какой экран открыт: от этого зависит, скроллится ли страница (важно для мобильной клавиатуры)
+function screenMode(mode) {
+  const b = document.body;
+  b.classList.remove("m-start", "m-enter", "m-final");
+  if (mode) b.classList.add("m-" + mode);
+}
 const params = new URLSearchParams(location.search);
 const CODE = (params.get("r") || "").toUpperCase();
 const app = document.getElementById("app");
@@ -277,6 +283,7 @@ else { try { token = localStorage.getItem("auction-token-" + CODE); } catch {} i
 
 // ---------- стартовый экран (этот экран становится доской) ----------
 async function renderCreate() {
+  screenMode("start");
   let counts = {};
   try { counts = await (await fetch("/auction/api/kinds")).json(); } catch {}
   const kinds = Object.keys(AUCTION_KINDS).filter((k) => !Object.keys(counts).length || counts[k]);
@@ -305,7 +312,7 @@ async function renderCreate() {
       </div>
       <div class="steps">
         <div class="step"><div class="k">1</div><div class="t">Комната и QR</div><div class="d">Друзья сканируют код с экрана и заходят с телефонов</div></div>
-        <div class="step"><div class="k">2</div><div class="t">Торги</div><div class="d">10 секунд на лот, каждая ставка даёт ещё 5. Никто не перебил — лот твой</div></div>
+        <div class="step"><div class="k">2</div><div class="t">Торги</div><div class="d">20 секунд на лот, каждая ставка даёт ещё 5. Никто не перебил — лот твой</div></div>
         <div class="step"><div class="k">3</div><div class="t">Судья</div><div class="d">ChatGPT оценивает лайнапы и выдаёт вердикт с юмором</div></div>
       </div>
     </div>
@@ -338,11 +345,11 @@ const cardsLoading = {};
 const plural = (n, one, few, many) => (n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many);
 
 function loadCards(kind) {
-  if (window.CARDS?.[kind]) return Promise.resolve(window.CARDS[kind]);
-  cardsLoading[kind] ||= new Promise((res, rej) => {
+  if ((window.CARDS || {})[kind]) return Promise.resolve(window.CARDS[kind]);
+  cardsLoading[kind] = cardsLoading[kind] || new Promise((res, rej) => {
     const s = document.createElement("script");
     s.src = `auction-data/${kind}.js`;
-    s.onload = () => res(window.CARDS?.[kind] || []);
+    s.onload = () => res((window.CARDS || {})[kind] || []);
     s.onerror = () => { delete cardsLoading[kind]; rej(new Error("no data")); };
     document.head.append(s);
   });
@@ -405,6 +412,7 @@ function maskBars(name) {
 
 // ---------- вход ----------
 function renderJoin(error) {
+  screenMode("enter");
   app.innerHTML = `<div class="center enter"><h1>Аук<em>цион</em></h1><p class="sub">Комната <b>${CODE}</b>. Как тебя зовут?</p>
     <label for="name" class="note" style="text-align:left;margin:0">Имя, которое увидят на доске</label>
     <input type="text" id="name" maxlength="24" placeholder="Имя" autocomplete="nickname" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="go" inputmode="text">
@@ -448,17 +456,17 @@ function setState(s) {
   offset = s.serverNow - Date.now();
   document.body.dataset.kind = s.kind;
   overlay.classList.toggle("on", !!s.paused);
-  if (s.paused) overlay.textContent = "Пауза";
+  if (s.paused) overlay.textContent = "Пауза — ждём ведущего";
   render();
 }
 const money = (n) => "$" + Number(n).toLocaleString("ru-RU");
 const mine = () => state.players.find((p) => p.id === me);
-const nameOf = (id) => state.players.find((p) => p.id === id)?.name || "?";
+const nameOf = (id) => (state.players.find(function (p) { return p.id === id; }) || {}).name || "?";
 
 // ---------- звук ----------
 let actx;
 function beep(freq, ms = 90, type = "sine", gain = .1) {
-  try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.frequency.value = freq; g.gain.value = gain; o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + ms / 1000); } catch {}
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.frequency.value = freq; g.gain.value = gain; o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + ms / 1000); } catch {}
 }
 function onEvent(e) {
   if (e.type === "outbid" && e.playerId === me) { beep(220, 200, "square"); flashButton("Перебили!"); }
@@ -483,13 +491,15 @@ function render() {
 }
 
 function renderLobby() {
+  screenMode("");
   lastLot = -1;
   app.innerHTML = `<div class="center"><h1>Аук<em>цион</em></h1><p class="sub">Ты в комнате <b>${CODE}</b>. Ждём, пока хост начнёт.</p>
-    <div class="plate"><b>${AUCTION_KINDS[state.kind]?.icon || ""} ${AUCTION_KINDS[state.kind]?.label || state.kind}</b>У тебя ${money(state.settings.budget)} и ${state.settings.slots} слотов. Собери лучший набор — судить будет ${state.settings.judge === "vote" ? "голосование" : "ИИ"}.</div>
+    <div class="plate"><b>${(AUCTION_KINDS[state.kind] || {}).icon || ""} ${(AUCTION_KINDS[state.kind] || {}).label || state.kind}</b>У тебя ${money(state.settings.budget)} и ${state.settings.slots} слотов. Собери лучший набор — судить будет ${state.settings.judge === "vote" ? "голосование" : "ИИ"}.</div>
     <div class="chips">${state.players.map((p) => `<span class="chip ${p.id === me ? "me" : ""}">${escapeHtml(p.name)}</span>`).join("")}</div></div>`;
 }
 
 function renderGame() {
+  screenMode("");
   const s = state, p = mine();
   if (!p) return;
   if (!document.getElementById("bidbox")) {
@@ -528,7 +538,7 @@ function renderLot(lot, kind) {
   const meta = el("div", "meta"); (lot.meta || []).forEach((m) => meta.append(el("span", null, m)));
   const more = el("button", "more", "подробнее ▸");
   more.onclick = () => openSheet(lot);
-  box.append(img, el("div", "emoji", lot.emoji), el("div", "kind", AUCTION_KINDS[kind]?.label || kind), el("div", "name", lot.name), meta, el("div", "short", lot.description), more);
+  box.append(img, el("div", "emoji", lot.emoji), el("div", "kind", (AUCTION_KINDS[kind] || {}).label || kind), el("div", "name", lot.name), meta, el("div", "short", lot.description), more);
   document.getElementById("note").textContent = "";
   // картинка: тот же поиск, что на доске, но маленькая
   const round = state.round;
@@ -576,6 +586,7 @@ function openSheet(lot) {
 }
 
 function renderFinal() {
+  screenMode("final");
   const s = state, p = mine();
   lastLot = -1;
   const players = s.players.filter((x) => !x.left);
@@ -597,7 +608,7 @@ function renderFinal() {
   const idx = s.results.ranking.findIndex((r) => r.playerId === me);
   const r = s.results.ranking[idx];
   const places = ["🥇", "🥈", "🥉"];
-  app.innerHTML = `<div class="final"><div class="place${idx >= 0 ? "" : " none"}">${idx >= 0 ? places[idx] || `${idx + 1}-е` : "—"}</div>${r ? `<div class="score">${s.results.mode === "vote" ? r.score + " голос." : r.score}</div><div class="verdict">${escapeHtml(r.verdict || "")}</div>` : '<p class="sub" style="text-align:center">Ты не участвовал в судействе</p>'}<div class="lots">${(p?.lots || []).map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("")}</div><p class="note" style="margin-top:18px">Результаты на доске. Хост может запустить ещё одну игру.</p></div>`;
+  app.innerHTML = `<div class="final"><div class="place${idx >= 0 ? "" : " none"}">${idx >= 0 ? places[idx] || `${idx + 1}-е` : "—"}</div>${r ? `<div class="score">${s.results.mode === "vote" ? r.score + " голос." : r.score}</div><div class="verdict">${escapeHtml(r.verdict || "")}</div>` : '<p class="sub" style="text-align:center">Ты не участвовал в судействе</p>'}<div class="lots">${((p && p.lots) || []).map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("")}</div><p class="note" style="margin-top:18px">Результаты на доске. Хост может запустить ещё одну игру.</p></div>`;
 }
 
 function confetti() {

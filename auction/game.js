@@ -10,7 +10,7 @@
 const DEFAULTS = {
   budget: 30,
   slots: 5,
-  t1: 10000, // фаза ЛОТ
+  t1: 20000, // фаза ЛОТ: 20 с до пропуска лота
   t2: 5000, // после ставки
   t3: 5000, // РАЗБОР
   lotCap: 60000, // максимум на один лот
@@ -31,7 +31,7 @@ function clampSettings(input = {}) {
   };
   num("budget", 10, 200);
   num("slots", 3, 8);
-  num("t1", 5000, 30000);
+  num("t1", 5000, 60000);
   num("t2", 3000, 15000);
   if (input.judge === "vote" || input.judge === "chatgpt") s.judge = input.judge;
   if (typeof input.media === "boolean") s.media = input.media;
@@ -255,6 +255,14 @@ class Game {
       default:
         return [];
     }
+  }
+
+  // хост пропускает лот: без ставок — сразу дальше, с ставками — немедленная продажа лидеру
+  hostSkip(now) {
+    const s = this.s;
+    if (s.phase === "lot" || s.phase === "pickup") { s.deadline = now; return this.tick(now); }
+    if (s.phase === "bidding") { s.deadline = now; return this.tick(now); }
+    return [];
   }
 
   pause(now) {

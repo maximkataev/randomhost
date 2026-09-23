@@ -20,7 +20,7 @@ test("старт: раунды = ceil(n*slots*1.25), первая фаза lot, 
   const g = setup(3);
   assert.equal(g.s.rounds, Math.ceil(3 * 5 * 1.25));
   assert.equal(g.s.phase, "lot");
-  assert.equal(g.s.deadline, 10000);
+  assert.equal(g.s.deadline, 20000);
 });
 
 test("ставка: первая $1, ниже цены отклоняется, лидер не перебивает себя, expectedPrice", () => {
@@ -37,12 +37,12 @@ test("ставка: первая $1, ниже цены отклоняется, �
 
 test("таймер после ставки = max(остаток T1, T2); анти-снайп +3 с; кап 60 с", () => {
   const g = setup(2);
-  g.bid("p0", 1, 1000); // остаток T1 = 9 с > T2 → deadline остаётся 10000
-  assert.equal(g.s.deadline, 10000);
-  g.bid("p1", 2, 8500); // остаток 1.5 с < 2 с → анти-снайп: now + T2 + 3 с
-  assert.equal(g.s.deadline, 8500 + 5000 + 3000);
+  g.bid("p0", 1, 1000); // остаток T1 = 19 с > T2 → deadline остаётся 20000
+  assert.equal(g.s.deadline, 20000);
+  g.bid("p1", 2, 18500); // остаток 1.5 с < 2 с → анти-снайп: now + T2 + 3 с
+  assert.equal(g.s.deadline, 18500 + 5000 + 3000);
   // гонка до капа
-  let t = 16000;
+  let t = 26000;
   for (let i = 0; i < 40; i++) { g.bid(i % 2 ? "p1" : "p0", g.s.price + 1, t); t = g.s.deadline - 500; }
   assert.ok(g.s.deadline <= 60000, "deadline не выше капа");
 });
@@ -62,7 +62,7 @@ test("продажа списывает деньги и даёт лот; sold �
 
 test("без ставок и без игроков с $0 → unsold → следующий лот; T1 = 3 с когда торговаться некому", () => {
   const g = setup(2);
-  assert.equal(g.tick(10000)[0].type, "unsold");
+  assert.equal(g.tick(20000)[0].type, "unsold");
   g.tick(g.s.deadline);
   assert.equal(g.s.round, 1);
   // все на мели → T1 3 с
@@ -74,10 +74,10 @@ test("без ставок и без игроков с $0 → unsold → след
 test("РАЗБОР: игрок с $0 забирает бесплатно, остальные не могут", () => {
   const g = setup(3);
   g.player("p2").money = 0;
-  g.tick(10000);
+  g.tick(20000);
   assert.equal(g.s.phase, "pickup");
-  assert.equal(g.take("p0", 10001).reason, "cannot_take");
-  assert.equal(g.take("p2", 10001).ok, true);
+  assert.equal(g.take("p0", 20001).reason, "cannot_take");
+  assert.equal(g.take("p2", 20001).ok, true);
   assert.equal(g.player("p2").lots.length, 1);
   assert.equal(g.player("p2").lots[0].price, 0);
 });
@@ -106,7 +106,7 @@ test("пауза замораживает deadline и отклоняет ста�
   assert.equal(g.bid("p0", 1, 3500).reason, "paused");
   assert.deepEqual(g.tick(50000), []);
   g.resume(50000);
-  assert.equal(g.s.deadline, 57000);
+  assert.equal(g.s.deadline, 50000 + (20000 - 3000));
 });
 
 test("offline-игрок не торгуется и не блокирует финал", () => {
@@ -155,4 +155,17 @@ test("снимок не отдаёт колоду и содержит тольк
   assert.equal(snap.deck, undefined);
   assert.equal(snap.lot.name, g.s.deck[0].name);
   assert.ok(snap.players.every((p) => "canBid" in p));
+});
+
+test("хост пропускает лот: без ставок — следующий, с торгами — продажа лидеру", () => {
+  const g = setup(3);
+  g.hostSkip(500);
+  assert.ok(["unsold", "pickup"].includes(g.s.phase));
+  g.tick(g.s.deadline);
+  if (g.s.phase !== "lot") g.tick(g.s.deadline);
+  assert.equal(g.s.round, 1);
+  g.bid("p0", 4, g.s.lotStartedAt + 100);
+  const ev = g.hostSkip(g.s.lotStartedAt + 200);
+  assert.equal(ev[0].type, "sold");
+  assert.equal(g.player("p0").lots.length, 1);
 });

@@ -36,7 +36,7 @@ async function wikiImage(lang, params, { allowLogo = false, allowFlag = false } 
   const url = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1` +
     `&prop=pageimages|info&inprop=url&piprop=thumbnail&pithumbsize=1200&pilicense=any&${params}`;
   const data = await (await fetch(url)).json();
-  const pages = Object.values(data.query?.pages || {}).sort((x, y) => (x.index ?? 0) - (y.index ?? 0));
+  const pages = Object.values((data.query && data.query.pages) || {}).sort((x, y) => (x.index || 0) - (y.index || 0));
   // у городов заглавной картинкой бывает герб, флаг или карта — они нам не нужны
   const bad = /flag|coat_of_arms|\bcoa\b|escudo|bandera|wappen|герб|флаг|locator|location_map|_map[_.]/i;
   const usable = (src) => (allowFlag || !bad.test(src)) && (allowLogo || allowFlag || !/\.svg/i.test(src));
@@ -116,7 +116,7 @@ function fadeTo(target, ms, done) {
   fadeTimer = setInterval(() => {
     const t = Math.min(1, (performance.now() - started) / ms);
     player.volume = from + (target - from) * t;
-    if (t === 1) { clearInterval(fadeTimer); done?.(); }
+    if (t === 1) { clearInterval(fadeTimer); if (done) done(); }
   }, 40);
 }
 
@@ -234,7 +234,7 @@ function openTransport({ code, onMessage, onClose, onOpen }) {
       if (ws && ws.readyState === 1) return ws.send(JSON.stringify(msg));
       if (sid) fetch("/auction/api/msg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid, msg }) }).catch(() => {});
     },
-    close() { closed = true; try { ws?.close(); } catch {} sid = null; },
+    close() { closed = true; try { if (ws) ws.close(); } catch (e) {} sid = null; },
     get mode() { return ws && ws.readyState === 1 ? "ws" : sid ? "poll" : "none"; },
   };
   async function startPolling() {
@@ -244,7 +244,7 @@ function openTransport({ code, onMessage, onClose, onOpen }) {
       const res = await fetch(`/auction/api/session?r=${encodeURIComponent(code)}`);
       if (!res.ok) throw new Error("session " + res.status);
       const data = await res.json();
-      sid = data.sid; opened = true; onOpen?.();
+      sid = data.sid; opened = true; if (onOpen) onOpen();
       for (const m of data.messages) onMessage(m);
       while (!closed && sid) {
         const r = await fetch(`/auction/api/poll?sid=${sid}`);
@@ -252,16 +252,16 @@ function openTransport({ code, onMessage, onClose, onOpen }) {
         if (!r.ok) { await new Promise((z) => setTimeout(z, 1500)); continue; }
         for (const m of (await r.json()).messages) onMessage(m);
       }
-    } catch { if (!closed) { sid = null; polling = false; onClose?.(); } }
+    } catch { if (!closed) { sid = null; polling = false; if (onClose) onClose(); } }
   }
   try {
     ws = new WebSocket(`${proto}://${location.host}/auction/ws?r=${encodeURIComponent(code)}`);
-    ws.onopen = () => { opened = true; onOpen?.(); };
+    ws.onopen = () => { opened = true; if (onOpen) onOpen(); };
     ws.onmessage = (e) => onMessage(JSON.parse(e.data));
     ws.onclose = () => {
       if (closed) return;
       if (!opened) { ws = null; startPolling(); } // рукопожатие не прошло — прокси без WebSocket
-      else onClose?.();
+      else if (onClose) onClose();
     };
     ws.onerror = () => {};
   } catch { startPolling(); }
