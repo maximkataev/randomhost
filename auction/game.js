@@ -13,7 +13,7 @@ const DEFAULTS = {
   budget: 30,
   slots: 5,
   t1: 20000, // фаза ЛОТ: 20 с до пропуска лота
-  t2: 5000, // после ставки
+  t2: 10000, // после ставки: столько есть у остальных, чтобы перебить
   t3: 5000, // РАЗБОР
   lotCap: 60000, // максимум на один лот
   antiSnipeWindow: 2000,
@@ -112,9 +112,18 @@ class Game {
     return this.s.players.find((p) => p.id === id) || null;
   }
 
-  setOnline(id, online) {
+  // Отвал игрока останавливает партию: иначе лот уходит за него, пока он переподключается,
+  // а деньги и слот уже не вернуть. Снимает паузу только ведущий (resume — его команда),
+  // сам по себе возврат игрока игру не продолжает: за столом должны увидеть, что все на месте.
+  setOnline(id, online, now = Date.now()) {
     const p = this.player(id);
-    if (p) p.online = online;
+    if (!p) return [];
+    const was = p.online;
+    p.online = online;
+    const s = this.s;
+    if (online || was === false || p.left) return [];
+    if (s.phase === "lobby" || s.phase === "finished" || s.paused) return [];
+    return this.pause(now, true).concat([{ type: "dropped", playerId: id }]);
   }
 
   removePlayer(id) {

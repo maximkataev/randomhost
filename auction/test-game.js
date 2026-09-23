@@ -44,7 +44,7 @@ test("таймер после ставки = max(остаток T1, T2); ант�
   g.bid("p0", 1, 1000); // остаток T1 = 19 с > T2 → deadline остаётся 20000
   assert.equal(g.s.deadline, 20000);
   g.bid("p1", 2, 18500); // остаток 1.5 с < 2 с → анти-снайп: now + T2 + 3 с
-  assert.equal(g.s.deadline, 18500 + 5000 + 3000);
+  assert.equal(g.s.deadline, 18500 + DEFAULTS.t2 + 3000);
   // гонка до капа
   let t = 26000;
   for (let i = 0; i < 40; i++) { g.bid(i % 2 ? "p1" : "p0", g.s.price + 1, t); t = g.s.deadline - 500; }
@@ -116,6 +116,8 @@ test("пауза замораживает deadline и отклоняет ста�
 test("offline-игрок не торгуется и не блокирует финал", () => {
   const g = setup(2, { slots: 3 });
   g.setOnline("p1", false);
+  assert.ok(g.s.paused, "отвал игрока останавливает партию");
+  g.resume(200); // ведущий продолжает без него
   assert.equal(g.bid("p1", 1, 100).reason, "cannot_bid");
   for (let i = 0; i < 3; i++) { g.bid("p0", 1, g.s.lotStartedAt + 100); g.tick(g.s.deadline); g.tick(g.s.deadline); }
   assert.equal(g.s.phase, "finished");
@@ -195,25 +197,39 @@ test("пропуск лота работает и в фазах ПРОДАНО/�
   assert.equal(g.s.phase, "lot");
 });
 
-test("все отвалились → автопауза «ждём игроков», а не финал; возврат продолжает партию", () => {
+test("отвал игрока ставит партию на паузу; снимает её только ведущий", () => {
   const g = setup(2, { slots: 3 });
   g.bid("p0", 1, 100);
   g.tick(g.s.deadline); // sold
-  g.setOnline("p0", false);
-  g.setOnline("p1", false);
-  const ev = g.tick(g.s.deadline); // здесь раньше был finish("all_full")
-  assert.equal(g.s.phase, "sold");
-  assert.equal(g.s.paused.auto, true);
-  assert.ok(ev.some((e) => e.type === "paused"));
-  assert.equal(g.snapshot(0).pausedAuto, true);
+  const ev = g.setOnline("p0", false, 200);
+  assert.equal(g.s.paused.auto, true, "партия встала сама");
+  assert.ok(ev.some((e) => e.type === "paused"), "о паузе сообщено");
+  assert.ok(ev.some((e) => e.type === "dropped" && e.playerId === "p0"), "сказано, кто отвалился");
+  assert.equal(g.s.phase, "sold", "фаза не сгорела");
   assert.equal(g.s.round, 0, "раунд не сгорел");
-  // вернулся один игрок — сервер снимает автопаузу, лоты продолжаются
-  g.setOnline("p1", true);
+  assert.equal(g.snapshot(0).pausedAuto, true);
+  // второй отвал уже ничего не ломает — партия и так стоит
+  assert.deepEqual(g.setOnline("p1", false, 300), []);
+  // возвращение игрока партию НЕ продолжает: это делает ведущий
+  assert.deepEqual(g.setOnline("p0", true, 400), []);
+  assert.ok(g.s.paused, "вернувшийся игрок не снимает паузу сам");
   g.resume(60000);
   g.tick(g.s.deadline);
   assert.equal(g.s.phase, "lot");
   assert.equal(g.s.round, 1);
   assert.equal(g.s.finishedReason, null);
+});
+
+test("отвал в лобби и на финале партию не трогает", () => {
+  const lobby = Game.create({ kind: "test", cards, settings: {}, rng });
+  lobby.addPlayer({ id: "p0", name: "A" });
+  lobby.addPlayer({ id: "p1", name: "B" });
+  assert.deepEqual(lobby.setOnline("p0", false, 100), [], "в лобби паузы нет");
+  assert.equal(lobby.s.paused, null);
+
+  const g = setup(2, { slots: 3 });
+  g.finish("host_ended");
+  assert.deepEqual(g.setOnline("p0", false, 100), [], "на финале паузы нет");
 });
 
 test("после паузы в активной фазе остаётся не меньше 3 с", () => {

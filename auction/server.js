@@ -387,8 +387,8 @@ function closePoll(sid) {
   pollClients.delete(sid);
   if (client.ws.waiter) { const w = client.ws.waiter; client.ws.waiter = null; w(); }
   if (client.playerId && ![...room.sockets].some((c) => c.playerId === client.playerId)) {
-    room.game.setOnline(client.playerId, false);
-    afterChange(room, [{ type: "offline", playerId: client.playerId }]);
+    const ev = room.game.setOnline(client.playerId, false, clock(room));
+    afterChange(room, [{ type: "offline", playerId: client.playerId }, ...ev]);
   }
 }
 
@@ -476,8 +476,8 @@ function onConnection(room, ws) {
   ws.on("close", () => {
     room.sockets.delete(client);
     if (client.playerId && ![...room.sockets].some((c) => c.playerId === client.playerId)) {
-      room.game.setOnline(client.playerId, false);
-      afterChange(room, [{ type: "offline", playerId: client.playerId }]);
+      const ev = room.game.setOnline(client.playerId, false, clock(room));
+      afterChange(room, [{ type: "offline", playerId: client.playerId }, ...ev]);
     }
   });
 }
@@ -524,10 +524,10 @@ function handle(room, client, msg) {
       // второе устройство той же сессии заменяет первое
       for (const c of room.sockets) if (c !== client && c.playerId === playerId) { c.playerId = null; send(c.ws, { type: "replaced" }); }
       client.playerId = playerId;
-      g.setOnline(playerId, true);
+      g.setOnline(playerId, true, t);
       const events = [{ type: "online", playerId }];
-      // партия стояла на автопаузе «ждём игроков» — вернулся хотя бы один, продолжаем
-      if (g.s.paused && g.s.paused.auto) events.push(...g.resume(t));
+      // Сама по себе паузу не снимаем: партию продолжает ведущий. Вернувшийся игрок не должен
+      // запускать торги в тот момент, когда за столом ещё разбираются, все ли на месте.
       return afterChange(room, events);
     }
     case "bid": {
