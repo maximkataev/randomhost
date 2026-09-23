@@ -138,6 +138,9 @@ async function cdp(url) {
     await remote.shot("ui_remote_final");
     const ftext = await evaluateSafe(board, "document.body.innerText");
     check(/Итоги|Голосование|Судья/i.test(ftext), "доска: экран финала");
+    // на итогах задание подписано — иначе вердикты «за нелепость» выглядят как ошибка судьи
+    const finTask = await evaluateSafe(board, "(document.querySelector('.final .ftask') || {}).textContent || ''");
+    check(!/Итоги/.test(ftext) || /Худший набор/.test(finTask), "доска: задание подписано на итогах (" + finTask.slice(0, 60) + ")");
 
     check(board.errors.length === 0, "доска без JS-ошибок" + (board.errors.length ? ": " + board.errors.slice(0, 2).join(" | ") : ""));
     check(remote.errors.length === 0, "пульт без JS-ошибок" + (remote.errors.length ? ": " + remote.errors.slice(0, 2).join(" | ") : ""));
