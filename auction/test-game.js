@@ -6,7 +6,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, DEFAULTS, clampSettings } = require("./game");
 const { judge, buildPrompt } = require("./judge");
-const { MODES, modesForKind } = require("./modes");
+const { MODES, modeById, modeText, modesForKind } = require("./modes");
 
 const cards = Array.from({ length: 60 }, (_, i) => ({ name: `Лот ${i}`, emoji: "🎲", meta: ["a", "b"], description: "d", fact: "f", wiki_en: "x" }));
 const rng = () => 0.5;
@@ -428,4 +428,24 @@ test("заставка: пауза на заставке замораживае�
   assert.equal(g.s.phase, "intro", "после снятия паузы заставка продолжается");
   g.tick(g.s.deadline);
   assert.equal(g.s.phase, "lot");
+});
+
+test("задание: у категории своё название, и оно не расходится с рамкой судьи", () => {
+  const { FRAMES } = require("./judge");
+  // общий текст — запасной: если у категории есть своя формулировка, показываем её
+  assert.equal(modeText("base", "artist").title, "Лайнап фестиваля");
+  assert.equal(modeText("worst", "food").title, "Худшее меню");
+  assert.equal(modeText("party", "invention").title, modeById("party").title, "категория без своей строки берёт общий текст");
+  assert.equal(modeText("base", "нет-такой-категории").title, modeById("base").title);
+  // byKind переопределяет только тексты для экрана; промптовые поля остаются общими
+  for (const m of MODES) {
+    for (const k of Object.keys(m.byKind || {})) {
+      assert.ok(FRAMES[k], `${m.id}: byKind ссылается на неизвестную категорию «${k}»`);
+      const t = modeText(m.id, k);
+      for (const f of ["icon", "title", "short", "judge"]) assert.ok(t[f] && String(t[f]).trim(), `${m.id}/${k}: пустое ${f}`);
+      for (const f of ["what", "criteria", "prompt"]) assert.equal(t[f], m[f], `${m.id}/${k}: byKind не должен менять промптовое поле ${f}`);
+      assert.ok(!(m.kinds && !m.kinds.includes(k)), `${m.id}: текст для «${k}», где задание недоступно`);
+      assert.ok(!(m.notKinds && m.notKinds.includes(k)), `${m.id}: текст для «${k}», где задание недоступно`);
+    }
+  }
 });

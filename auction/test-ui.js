@@ -11,6 +11,11 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const WebSocket = require("ws");
+const { modeText } = require("./modes");
+// комната в тесте — категория film, у неё своё название задания («Худший киномарафон»)
+const WORST = modeText("worst", "film").title;
+const WORST_RE = new RegExp(WORST.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+const BASE_RE = new RegExp(modeText("base", "film").title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
 
 const BASE = (process.argv[2] || "http://localhost:3000").replace(/\/$/, "");
 const OUT = process.argv[3] || path.join(__dirname, "state", "ui");
@@ -97,7 +102,7 @@ async function typeText(page, text) {
     await wait(1200);
     check((await evaluateSafe(board, "state && state.settings.mode")) === "worst", "доска: выбранное задание дошло до сервера");
     check(/нелеп|несочетаем/i.test(await evaluateSafe(board, "document.getElementById('modehint').textContent") || ""), "доска: подсказка объясняет, как судит ИИ");
-    check(/Худший набор/.test(await evaluateSafe(remote, "document.body.innerText") || ""), "пульт: задание видно в лобби");
+    check(WORST_RE.test(await evaluateSafe(remote, "document.body.innerText") || ""), "пульт: задание видно в лобби");
     // задание, которого нет в новой категории, откатывается на обычное
     // «Лига суперзлодеев» есть у персонажей, но не у городов — переключаемся туда, где она доступна
     await board.call("Runtime.evaluate", { expression: `[...document.querySelectorAll("#kind .tile")].find(x => x.dataset.v === "character").click()` });
@@ -122,7 +127,7 @@ async function typeText(page, text) {
     const introPhase = await evaluateSafe(board, "state && state.phase");
     check(introPhase === "intro", "доска: партия открывается заставкой (" + introPhase + ")");
     const introText = await evaluateSafe(board, "(document.getElementById('intro') || {}).textContent || ''");
-    check(/Худший набор/.test(introText), "доска: на заставке крупно показано задание");
+    check(WORST_RE.test(introText), "доска: на заставке крупно показано задание");
     check(/ChatGPT|голосован/i.test(introText), "доска: на заставке сказано, кто выберет победителя");
     check(!(await evaluateSafe(board, "!!(state && state.lot)")), "доска: во время заставки лот не раскрыт");
     const rIntro = await evaluateSafe(remote, "document.body.innerText");
@@ -159,8 +164,8 @@ async function typeText(page, text) {
     const rnum = await evaluateSafe(remote, "document.getElementById('tnum') && document.getElementById('tnum').textContent");
     check(/^\d*$/.test(rnum || ""), "пульт: таймер-кольцо есть (" + rnum + ")");
     await remote.shot("ui_remote_game");
-    check(/Худший набор/.test(await evaluateSafe(board, "document.getElementById('gtask') && document.getElementById('gtask').textContent") || ""), "доска: задание видно во время торгов");
-    check(/Худший набор/.test(await evaluateSafe(remote, "document.getElementById('task') && document.getElementById('task').textContent") || ""), "пульт: задание видно во время торгов");
+    check(WORST_RE.test(await evaluateSafe(board, "document.getElementById('gtask') && document.getElementById('gtask').textContent") || ""), "доска: задание видно во время торгов");
+    check(WORST_RE.test(await evaluateSafe(remote, "document.getElementById('task') && document.getElementById('task').textContent") || ""), "пульт: задание видно во время торгов");
     // ставка с пульта
     await remote.call("Runtime.evaluate", { expression: "(document.getElementById('bid') || {click(){}}).click()" });
     await wait(1200);
@@ -179,7 +184,7 @@ async function typeText(page, text) {
     check(/Итоги|Голосование|Судья/i.test(ftext), "доска: экран финала");
     // на итогах задание подписано — иначе вердикты «за нелепость» выглядят как ошибка судьи
     const finTask = await evaluateSafe(board, "(document.querySelector('.final .ftask') || {}).textContent || ''");
-    check(!/Итоги/.test(ftext) || /Худший набор/.test(finTask), "доска: задание подписано на итогах (" + finTask.slice(0, 60) + ")");
+    check(!/Итоги/.test(ftext) || WORST_RE.test(finTask), "доска: задание подписано на итогах (" + finTask.slice(0, 60) + ")");
 
     // --- экран голосования: без подписи задания игроки голосуют за лучший набор вместо худшего.
     // Состояние подставляем прямо в клиент: ветка voting иначе воспроизводится только через
@@ -189,13 +194,13 @@ async function typeText(page, text) {
       render();
       return document.body.innerText;
     })()`);
-    check(/Худший набор/.test(boardVote || ""), "доска: задание подписано на экране голосования");
+    check(WORST_RE.test(boardVote || ""), "доска: задание подписано на экране голосования");
     const remoteVote = await evaluateSafe(remote, `(() => {
       state.phase = "finished"; state.results = null; state.votes = 0; state.voting = { deadline: Date.now() + 30000 };
       render();
       return document.body.innerText;
     })()`);
-    check(/Худший набор/.test(remoteVote || ""), "пульт: задание подписано на экране голосования");
+    check(WORST_RE.test(remoteVote || ""), "пульт: задание подписано на экране голосования");
 
     check(board.errors.length === 0, "доска без JS-ошибок" + (board.errors.length ? ": " + board.errors.slice(0, 2).join(" | ") : ""));
     check(remote.errors.length === 0, "пульт без JS-ошибок" + (remote.errors.length ? ": " + remote.errors.slice(0, 2).join(" | ") : ""));
@@ -236,7 +241,7 @@ async function typeText(page, text) {
     await wait(2500);
     const noModesText = await evaluateSafe(noModes, "document.body.innerText") || "";
     check(/комнате|Ждём/i.test(noModesText), "пульт без auction-modes.js: вход в лобби работает");
-    check(!/Лучший набор|Худший набор/.test(noModesText), "пульт без auction-modes.js: не выдумывает задание (" + noModesText.replace(/\n/g, " ").slice(0, 70) + ")");
+    check(!(WORST_RE.test(noModesText) || BASE_RE.test(noModesText)), "пульт без auction-modes.js: не выдумывает задание (" + noModesText.replace(/\n/g, " ").slice(0, 70) + ")");
     check(noModes.errors.filter((e) => !/ERR_BLOCKED_BY_CLIENT/.test(e)).length === 0, "пульт без auction-modes.js: без JS-ошибок" + (noModes.errors.length ? ": " + noModes.errors[0] : ""));
     await noModes.close();
   } finally {

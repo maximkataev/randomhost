@@ -211,7 +211,8 @@
     background: rgba(255, 255, 255, .055); border: 1px solid color-mix(in srgb, var(--c1) 30%, var(--glass-line));
     box-shadow: 0 20px 46px -36px #000, inset 0 1px 0 rgba(255, 255, 255, .05); }
   .set.task > .cap { color: var(--text); font-size: 11.5px; letter-spacing: .18em; }
-  .set.task > .cap::after { background: linear-gradient(90deg, color-mix(in srgb, var(--c1) 55%, transparent), transparent); }
+  /* панель задания уже обведена рамкой — черта под заголовком дублирует её и добавляет шума */
+  .set.task > .cap::after { display: none; }
   .set.task > .cap em { flex: none; font: 500 12.5px/1 var(--body); font-style: normal; letter-spacing: 0; text-transform: none; color: var(--muted); }
   .modes .tile { font-size: 11px; padding: 8px 12px 8px 9px; }
   .modes .tile .ico { font-size: 14px; }
@@ -220,10 +221,12 @@
   .judgerow { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 12px; }
   .judgerow .seg { flex: none; align-self: center; }
   .judgerow .modehint { flex: 1 1 240px; min-width: 0; }
+  /* Подсказка живёт внутри уже обведённой панели, поэтому своей рамки и фона не имеет:
+     коробка в коробке — главный источник визуального шума в этом блоке.
+     От текста её отделяет только цветная полоса слева. */
   .modehint {
-    padding: 10px 14px; font-size: 14px; line-height: 1.4;
-    color: rgba(244, 242, 255, .78); background: rgba(255, 255, 255, .05);
-    border: 1px solid var(--glass-line); border-left: 3px solid var(--c1); border-radius: 6px 14px 14px 6px;
+    padding: 2px 0 2px 12px; font-size: 14px; line-height: 1.4;
+    color: rgba(244, 242, 255, .78); border-left: 2px solid color-mix(in srgb, var(--c1) 70%, transparent);
   }
   .modehint b { color: var(--c1); font-weight: 700; }
   .rounds { font-size: 13.5px; color: var(--muted); }
@@ -615,14 +618,16 @@ function syncLobby() {
 
   markOn("kind", s.kind);
   const modes = window.auctionModesForKind ? auctionModesForKind(s.kind) : [];
-  const current = (window.auctionModeById ? auctionModeById(s.settings.mode) : { id: "base" });
+  const current = (window.auctionModeText ? auctionModeText(s.settings.mode, s.kind) : { id: "base" });
   const modeBox = document.getElementById("mode");
   if (modeBox.dataset.kind !== s.kind) {
     modeBox.dataset.kind = s.kind;
+    // название плитки — на языке категории: у музыкантов «Лайнап фестиваля», у еды «Меню ужина»
     modeBox.replaceChildren(...modes.map((m) => {
+      const t = window.auctionModeText ? auctionModeText(m.id, s.kind) : m;
       const b = el("button", "tile");
       b.dataset.v = m.id;
-      b.append(el("span", "ico", m.icon), document.createTextNode(m.title));
+      b.append(el("span", "ico", t.icon), document.createTextNode(t.title));
       return b;
     }));
   }
@@ -690,7 +695,7 @@ function renderIntro() {
   const s = state;
   app.style.display = "block";
   if (!document.getElementById("intro")) {
-    const m = window.auctionModeById ? auctionModeById(s.settings.mode) : null;
+    const m = window.auctionModeText ? auctionModeText(s.settings.mode, s.kind) : null;
     const kindLabel = (AUCTION_KINDS[s.kind] || {}).label || s.kind;
     app.innerHTML = `<div class="intro" id="intro">
       <div class="itext">
@@ -756,7 +761,7 @@ function renderGame() {
   document.getElementById("lotno").textContent = `Лот ${s.round + 1} из ${s.rounds}`;
   const gtask = document.getElementById("gtask");
   if (gtask) {
-    const m = window.auctionModeById ? auctionModeById(s.settings.mode) : null;
+    const m = window.auctionModeText ? auctionModeText(s.settings.mode, s.kind) : null;
     const custom = m && m.id !== "base";
     gtask.className = "gtask" + (custom ? " on" : "");
     if (custom) gtask.replaceChildren(el("b", null, m.icon + " " + m.title), document.createTextNode(" — " + (m.short || "")));
@@ -860,7 +865,7 @@ function renderFinal() {
     if (s.voting) {
       // Задание нужно именно здесь: в голосовании оно больше ни на что не влияет, и без
       // напоминания критерия «побеждает самый нелепый набор» игроки голосуют за лучший.
-      const vmode = window.auctionModeById ? auctionModeById(s.settings.mode) : null;
+      const vmode = window.auctionModeText ? auctionModeText(s.settings.mode, s.kind) : null;
       const vtask = vmode && vmode.id !== "base" ? `<div class="ftask"><b>${escapeHtml(vmode.icon + " " + vmode.title)}</b> — ${escapeHtml(vmode.short || "")}</div>` : "";
       app.innerHTML = `<div class="final"><h2>Голосование</h2>${vtask}<p style="color:var(--muted)">Судья недоступен или выбрано голосование. Каждый голосует с телефона за чужой лайнап. Проголосовало: ${s.votes}/${players.filter((p) => p.lots.length).length}</p><div class="podium">${players.map((p) => lineupCard(p, null)).join("")}</div></div>`;
     } else {
@@ -870,7 +875,7 @@ function renderFinal() {
   }
   const r = s.results;
   const places = ["🥇", "🥈", "🥉"];
-  const fmode = window.auctionModeById ? auctionModeById(s.settings.mode) : null;
+  const fmode = window.auctionModeText ? auctionModeText(s.settings.mode, s.kind) : null;
   // на итогах подпись задания объясняет вердикты: без неё «победил самый нелепый набор» читается как сбой судьи
   const fby = r.mode === "vote" ? "голосование выбирало победителя" : "ChatGPT " + (fmode ? fmode.judge : "");
   const ftask = fmode && fmode.id !== "base" ? `<div class="ftask"><b>${escapeHtml(fmode.icon + " " + fmode.title)}</b> — ${escapeHtml(fby)}</div>` : "";
