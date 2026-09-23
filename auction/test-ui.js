@@ -173,7 +173,7 @@ async function typeText(page, text) {
     await wait(1500);
     const rtext = await evaluateSafe(remote, "document.body.innerText") || "";
     // на игровом экране в любой момент видно что-то одно из этого набора
-    const actionKeys = ["bid_btn", "lead_me_title", "next_lot", "take_free", "broke_title", "not_enough_title", "done_title"];
+    const actionKeys = ["bid_btn", "bid_first_btn", "lead_me_title", "next_lot", "take_free", "broke_title", "not_enough_title", "done_title"];
     const actions = [];
     for (const k of actionKeys) actions.push(await i18nFrag(remote, k));
     check(actions.some((f) => hasFrag(rtext, f)), "пульт: игровой экран");

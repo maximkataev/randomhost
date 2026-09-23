@@ -34,7 +34,18 @@ const DEFAULTS = {
   media: true,
 };
 
-const PHASES = ["lobby", "intro", "lot", "bidding", "pickup", "sold", "taken", "unsold", "finished"];
+const PHASES = ["lobby", "intro", "lot", "bidding", "pickup", "draft", "sold", "taken", "unsold", "finished"];
+
+/*
+ * Соло-добор (§6.5). Когда свободные слоты остались ровно у одного подключённого игрока,
+ * торговаться уже не с кем: фаза ДОБОР заменяет ЛОТ/ТОРГИ/РАЗБОР, лоты бесплатны, а игрок
+ * решает «взять или скипнуть». Скипов пять на каждый слот, шестой лот обязателен — это и
+ * есть гарантия, что партия закончится: на все слоты уходит не больше 6 × слоты лотов.
+ * В настройки комнаты эти числа не выносятся: выбирать нечего, торговаться не с кем.
+ */
+const SOLO_T4 = 10000; // таймер ДОБОРА
+const SOLO_SKIPS = 5; // скипов на слот
+const SOLO_WAIT = 60000; // сколько ждём вернувшегося добирающего, прежде чем закончить партию (§7.4)
 
 // `kind` обязателен всюду, где категория известна: задание живёт не во всех категориях,
 // и проверка id без категории пропускала «лигу суперзлодеев» в блюда (POST /rooms, next_game).
@@ -88,6 +99,7 @@ class Game {
       deadline: null,
       lotStartedAt: null,
       lotCapAt: null,
+      solo: null, // соло-добор: {playerId, skips} (§6.5)
       paused: null, // {at, remaining}
       results: null, // {mode, ranking, summary} после судейства
       votes: {},
@@ -127,9 +139,24 @@ class Game {
     const was = p.online;
     p.online = online;
     const s = this.s;
-    if (online || was === false || p.left) return [];
+    if (online) {
+      // Партию ждали именно его: соло-добор продолжается сам. Снимать паузу тут больше некому —
+      // остальные уже собрали лайнапы или ушли, а ведущий мог уйти вместе с ними.
+      if (s.paused && s.paused.waitFor === id) return this.resume(now);
+      // добирающих снова двое и больше — соло-добор выключается, лот доигрывается торгами (§6.5)
+      if (s.phase === "draft" && !s.paused && this.drafters().length > 1) return this.soloOff(now);
+      return [];
+    }
+    if (was === false || p.left) return [];
     if (s.phase === "lobby" || s.phase === "finished" || s.paused) return [];
-    return this.pause(now, true).concat([{ type: "dropped", playerId: id }]);
+    const ev = this.pause(now, true).concat([{ type: "dropped", playerId: id }]);
+    // Ушёл в offline единственный добирающий: ждём его минуту («Ждём Аню») и заканчиваем
+    // партию с его пустыми слотами — иначе она висела бы вечно на одном человеке (§7.4).
+    if (s.phase === "draft" && s.solo && s.solo.playerId === id && s.paused) {
+      s.paused.waitFor = id;
+      s.paused.waitUntil = now + SOLO_WAIT;
+    }
+    return ev;
   }
 
   removePlayer(id) {
@@ -173,6 +200,12 @@ class Game {
     return this.s.players.filter((p) => this.canBid(p));
   }
 
+  // «Добирающие» — подключённые игроки со свободными слотами. Денег тут не спрашиваем: в доборе
+  // лоты бесплатны, а пока добирающих двое и больше, игрок с $0 и так ждёт РАЗБОРА.
+  drafters() {
+    return this.s.players.filter((p) => p.online && !p.left && p.lots.length < this.s.settings.slots);
+  }
+
   // ---------- старт и лоты ----------
 
   start(now) {
@@ -193,25 +226,51 @@ class Game {
   nextLot(now) {
     const s = this.s;
     s.round += 1;
-    if (s.round >= s.rounds) return this.finish("rounds_over");
+    // С v0.7 партия идёт, пока у всех не заполнены слоты: `rounds` — только прогноз и счётчик
+    // на доске (§7.3). Жёсткий предохранитель один — кончившаяся колода.
+    if (s.round >= s.deck.length) return this.finish("deck_over");
     // никого нет на связи (обрыв у всех, перезапуск сервера) — не заканчиваем партию, а ждём на паузе
     const online = this.activePlayers().filter((p) => p.online);
     if (!online.length) {
       s.round -= 1;
       return this.autoPause(now);
     }
-    const everyoneFull = online.every((p) => p.lots.length >= s.settings.slots);
-    if (everyoneFull) return this.finish("all_full");
+    const drafters = this.drafters();
+    if (!drafters.length) return this.finish("all_full");
     s.lot = s.deck[s.round];
     s.price = 0;
     s.leaderId = null;
     s.bids = [];
-    s.phase = "lot";
     s.lotStartedAt = now;
     s.lotCapAt = now + s.settings.lotCap;
+    // Свободные слоты остались у одного — торговаться не с кем: фаза ДОБОР (§6.5).
+    // Счётчик скипов свой на каждый слот: у нового добирающего он полный, у прежнего —
+    // тот, с которым он подошёл к этому лоту (обнуляется взятием, см. draftTake).
+    if (drafters.length === 1) {
+      const id = drafters[0].id;
+      s.solo = { playerId: id, skips: s.solo && s.solo.playerId === id ? s.solo.skips : SOLO_SKIPS };
+      s.phase = "draft";
+      s.deadline = now + SOLO_T4;
+      return [{ type: "draft", round: s.round, playerId: id }];
+    }
+    s.solo = null;
+    s.phase = "lot";
     // торговаться некому — не держим лот 10 секунд
     const t1 = this.bidders().length ? s.settings.t1 : 3000;
     s.deadline = now + t1;
+    return [{ type: "lot", round: s.round }];
+  }
+
+  // Соло-добор выключается посреди лота: игрок вернулся или ведущий впустил гостя, добирающих
+  // снова двое и больше. Карточка уже на экране, поэтому лот не меняем — он доигрывается торгами.
+  soloOff(now) {
+    const s = this.s;
+    if (s.phase !== "draft") return [];
+    s.solo = null;
+    s.phase = "lot";
+    s.lotStartedAt = now;
+    s.lotCapAt = now + s.settings.lotCap;
+    s.deadline = now + (this.bidders().length ? s.settings.t1 : 3000);
     return [{ type: "lot", round: s.round }];
   }
 
@@ -244,6 +303,7 @@ class Game {
   take(playerId, now) {
     const s = this.s;
     const p = this.player(playerId);
+    if (s.phase === "draft") return this.draftTake(playerId, now);
     if (s.phase !== "pickup") return { ok: false, reason: "closed" };
     if (s.paused) return { ok: false, reason: "paused" };
     if (!this.canTake(p)) return { ok: false, reason: "cannot_take" };
@@ -252,6 +312,39 @@ class Game {
     s.leaderId = playerId;
     s.deadline = now + s.settings.showDelay;
     return { ok: true, events: [{ type: "taken", playerId, lot: s.lot.name }] };
+  }
+
+  // ---------- соло-добор ----------
+
+  // «Взять»: лот бесплатно, счётчик скипов снова полный — он свой на каждый слот (§6.5).
+  // auto = взятие за истёкший таймер на обязательном лоте.
+  draftTake(playerId, now, auto = false) {
+    const s = this.s;
+    const p = this.player(playerId);
+    if (s.phase !== "draft") return { ok: false, reason: "closed" };
+    if (s.paused) return { ok: false, reason: "paused" };
+    if (!s.solo || s.solo.playerId !== playerId) return { ok: false, reason: "cannot_take" };
+    if (!p || p.left || p.lots.length >= s.settings.slots) return { ok: false, reason: "cannot_take" };
+    p.lots.push(this.lotRecord(0));
+    s.solo.skips = SOLO_SKIPS;
+    s.phase = "taken";
+    s.leaderId = playerId;
+    s.deadline = now + s.settings.showDelay;
+    return { ok: true, events: [{ type: "taken", playerId, lot: s.lot.name, auto }] };
+  }
+
+  // «Скип»: лот в отбой и не возвращается, счётчик −1. Скипов не осталось — лот обязателен.
+  skip(playerId, now) {
+    const s = this.s;
+    if (s.phase !== "draft") return { ok: false, reason: "closed" };
+    if (s.paused) return { ok: false, reason: "paused" };
+    if (!s.solo || s.solo.playerId !== playerId) return { ok: false, reason: "cannot_skip" };
+    if (s.solo.skips <= 0) return { ok: false, reason: "must_take" };
+    s.solo.skips -= 1;
+    s.phase = "unsold";
+    s.leaderId = null;
+    s.deadline = now + Math.min(s.settings.showDelay, 1000);
+    return { ok: true, events: [{ type: "unsold", lot: s.lot.name }] };
   }
 
   lotRecord(price) {
@@ -263,7 +356,12 @@ class Game {
 
   tick(now) {
     const s = this.s;
-    if (s.paused || s.phase === "lobby" || s.phase === "finished") return [];
+    if (s.paused) {
+      // единственное, что идёт на паузе, — минута ожидания добирающего (§7.4)
+      if (s.paused.waitUntil && now >= s.paused.waitUntil) return this.finish("solo_gone");
+      return [];
+    }
+    if (s.phase === "lobby" || s.phase === "finished") return [];
     if (now < s.deadline) return [];
     switch (s.phase) {
       case "intro":
@@ -300,6 +398,17 @@ class Game {
         s.deadline = now + Math.min(s.settings.showDelay, 1000);
         return [{ type: "unsold", lot: s.lot.name }];
       }
+      case "draft": {
+        // Бездействие = скип и списывает счётчик, иначе партия висела бы на неактивном игроке.
+        // На обязательном лоте истёкший таймер, наоборот, = взятие (§6.5).
+        const id = s.solo ? s.solo.playerId : null;
+        const r = s.solo && s.solo.skips > 0 ? this.skip(id, now) : this.draftTake(id, now, true);
+        if (r.ok) return r.events;
+        // добирающего не стало в ту же миллисекунду (кик/выход) — лот в отбой, следующий лот разберётся
+        s.phase = "unsold";
+        s.deadline = now + Math.min(s.settings.showDelay, 1000);
+        return [{ type: "unsold", lot: s.lot.name }];
+      }
       case "sold":
       case "taken":
       case "unsold":
@@ -315,7 +424,7 @@ class Game {
     const s = this.s;
     if (s.paused || s.phase === "lobby" || s.phase === "finished") return [];
     // заставку ведущий тоже вправе оборвать — компания уже смотрит на экран
-    if (s.phase === "intro" || s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "sold" || s.phase === "taken" || s.phase === "unsold") {
+    if (s.phase === "intro" || s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "draft" || s.phase === "sold" || s.phase === "taken" || s.phase === "unsold") {
       s.deadline = now;
       return this.tick(now);
     }
@@ -339,7 +448,7 @@ class Game {
     if (!s.paused) return [];
     let remaining = Math.max(0, s.paused.remaining);
     // после паузы нельзя оставлять 0,4 с на реакцию: в активных фазах даём минимум 3 с
-    if (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup") remaining = Math.max(remaining, 3000);
+    if (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "draft") remaining = Math.max(remaining, 3000);
     s.deadline = now + remaining;
     s.lotCapAt = now + Math.max(remaining, Math.max(0, s.paused.capRemaining));
     s.paused = null;
@@ -398,9 +507,15 @@ class Game {
       phase: s.phase,
       paused: !!s.paused,
       pausedAuto: !!(s.paused && s.paused.auto), // «ждём игроков», а не пауза ведущего
+      pausedFor: (s.paused && s.paused.waitFor) || null, // «ждём Аню»: минута соло-добора (§7.4)
       round: s.round,
       rounds: s.rounds,
-      lot: s.lot && (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "sold" || s.phase === "taken" || s.phase === "unsold") ? s.lot : null,
+      deckSize: s.deck.length, // предупреждение о маленькой колоде в лобби (§5)
+      // Соло-добор: кто добирает и сколько у него скипов. T4 в настройках нет — константа,
+      // но клиентам нужно знать длину фазы, чтобы нарисовать кольцо таймера.
+      solo: s.phase === "draft" && s.solo ? { playerId: s.solo.playerId, skips: s.solo.skips } : null,
+      t4: SOLO_T4,
+      lot: s.lot && (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "draft" || s.phase === "sold" || s.phase === "taken" || s.phase === "unsold") ? s.lot : null,
       price: s.price,
       leaderId: s.leaderId,
       bids: s.bids.slice(-6),
@@ -421,9 +536,10 @@ class Game {
         full: p.lots.length >= s.settings.slots,
         canBid: this.canBid(p),
         canTake: s.phase === "pickup" && this.canTake(p),
+        canDraft: s.phase === "draft" && !!s.solo && s.solo.playerId === p.id,
       })),
     };
   }
 }
 
-module.exports = { Game, DEFAULTS, PHASES, clampSettings };
+module.exports = { Game, DEFAULTS, PHASES, clampSettings, SOLO_T4, SOLO_SKIPS, SOLO_WAIT };

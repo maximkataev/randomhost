@@ -28,6 +28,29 @@ const STRATEGIES = {
   afk: () => null,
 };
 
+/*
+ * Соло-добор (§6.5): торговаться не с кем, решений всего два — «взять» или «скип».
+ * Бот отвечает не мгновенно: вызывают его раз в ~700 мс, поэтому вероятность на вызов небольшая —
+ * иначе добор пролетал бы за секунду и отлаживать по нему было бы нечего.
+ * Скипы кончились — скипнуть нельзя, остаётся только взять (иначе за него возьмёт таймер сервера).
+ */
+const DRAFT = {
+  aggressive: 0.5, // берёт почти всё подряд
+  frugal: 0.25,
+  passive: 0.12, // выбирает долго и часто доходит до обязательного лота
+  afk: 0, // не делает ничего: скипы спишет таймер, шестой лот сервер возьмёт сам
+};
+
+// Возвращает "take" | "skip" | null (ещё думает).
+function decideDraft(strategy, snap, playerId, rng = Math.random) {
+  if (snap.phase !== "draft" || !snap.solo || snap.solo.playerId !== playerId) return null;
+  const take = DRAFT[strategy] != null ? DRAFT[strategy] : DRAFT.frugal;
+  if (!take) return null;
+  if (!snap.solo.skips) return rng() < 0.5 ? "take" : null; // лот обязателен — скипа нет
+  if (rng() < take) return "take";
+  return rng() < 0.3 ? "skip" : null;
+}
+
 function decide(strategy, snap, playerId, rng = Math.random) {
   const me = snap.players.find((p) => p.id === playerId);
   if (!me || !me.canBid || snap.leaderId === playerId) return null;
@@ -38,4 +61,4 @@ function decide(strategy, snap, playerId, rng = Math.random) {
   return Math.min(amount, me.money);
 }
 
-module.exports = { STRATEGIES, decide };
+module.exports = { STRATEGIES, decide, decideDraft };

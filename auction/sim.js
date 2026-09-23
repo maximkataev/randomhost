@@ -8,7 +8,7 @@
 const fs = require("fs");
 const path = require("path");
 const { Game } = require("./game");
-const { decide } = require("./bots");
+const { decide, decideDraft } = require("./bots");
 
 function mulberry32(seed) {
   return function () {
@@ -26,7 +26,7 @@ const nPlayers = Number(process.argv[3] || 4);
 const strategies = ["aggressive", "frugal", "passive", "afk", "frugal", "aggressive", "passive", "frugal"].slice(0, nPlayers);
 
 const wins = {};
-const stats = { rounds: [], durationMs: [], unsold: 0, pickups: 0, sold: 0, emptySlots: 0, maxLotMs: 0 };
+const stats = { rounds: [], durationMs: [], unsold: 0, pickups: 0, sold: 0, drafts: 0, emptySlots: 0, maxLotMs: 0 };
 
 for (let g = 0; g < games; g++) {
   const rng = mulberry32(g + 1);
@@ -47,6 +47,10 @@ for (let g = 0; g < games; g++) {
         const me = snap.players[i];
         if (me.canTake && rng() < 0.8) game.take(`p${i}`, now);
       }
+      // соло-добор: последним со свободными слотами часто остаётся как раз бот
+      const draft = decideDraft(strategies[i], snap, `p${i}`, rng);
+      if (draft === "take") game.take(`p${i}`, now);
+      else if (draft === "skip") game.skip(`p${i}`, now);
     }
     now += 700;
     const events = game.tick(now);
@@ -54,7 +58,8 @@ for (let g = 0; g < games; g++) {
       if (e.type === "sold") stats.sold++;
       if (e.type === "taken") stats.pickups++;
       if (e.type === "unsold") stats.unsold++;
-      if (e.type === "lot") { stats.maxLotMs = Math.max(stats.maxLotMs, now - lotStart); lotStart = now; }
+      if (e.type === "lot" || e.type === "draft") { stats.maxLotMs = Math.max(stats.maxLotMs, now - lotStart); lotStart = now; }
+      if (e.type === "draft") stats.drafts++;
     }
   }
   if (game.s.phase !== "finished") throw new Error(`game ${g} did not finish`);
@@ -69,5 +74,5 @@ for (let g = 0; g < games; g++) {
 const avg = (a) => (a.reduce((x, y) => x + y, 0) / a.length).toFixed(1);
 console.log(`игр: ${games}, игроков: ${nPlayers} (${strategies.join(", ")})`);
 console.log(`все завершились; раундов в среднем ${avg(stats.rounds)}, длительность ${avg(stats.durationMs.map((x) => x / 60000))} мин, самый долгий лот ${(stats.maxLotMs / 1000).toFixed(0)} с`);
-console.log(`продано ${stats.sold}, забрано бесплатно ${stats.pickups}, не продано ${stats.unsold}, пустых слотов на игру ${(stats.emptySlots / games).toFixed(2)}`);
+console.log(`продано ${stats.sold}, забрано бесплатно ${stats.pickups}, не продано ${stats.unsold}, лотов в соло-доборе ${stats.drafts}, пустых слотов на игру ${(stats.emptySlots / games).toFixed(2)}`);
 console.log("побед по стратегиям (по числу лотов):", wins);

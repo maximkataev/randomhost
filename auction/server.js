@@ -17,7 +17,7 @@ const { WebSocketServer } = require("ws");
 const { Game, clampSettings } = require("./game");
 const { judge } = require("./judge");
 const { MODES } = require("./modes");
-const { decide, STRATEGIES } = require("./bots");
+const { decide, decideDraft, STRATEGIES } = require("./bots");
 
 const PORT = Number(process.env.PORT || 3000);
 const STATIC = process.env.STATIC ? path.resolve(process.env.STATIC) : null;
@@ -171,15 +171,19 @@ const now = () => Date.now();
 const clock = (room) => now() + (room.skew || 0);
 
 // таймеры игры: после каждого изменения пересчитываем ближайший deadline
+// ближайший момент, когда движку есть что сделать: обычный дедлайн фазы, а на паузе —
+// только минута ожидания единственного добирающего (§7.4), остальные таймеры заморожены
+const nextAt = (s) => (s.paused ? s.paused.waitUntil || 0 : s.deadline || 0);
+
 function schedule(room) {
   clearTimeout(room.timer);
   const s = room.game.s;
-  if (!s.deadline || s.paused || s.phase === "finished" || s.phase === "lobby") return;
-  const wait = Math.max(0, (s.deadline - clock(room)) / room.speed);
+  if (s.phase === "finished" || s.phase === "lobby" || !nextAt(s)) return;
+  const wait = Math.max(0, (nextAt(s) - clock(room)) / room.speed);
   room.timer = setTimeout(() => {
     try {
-      const deadline = room.game.s.deadline;
-      if (deadline) room.skew += Math.max(0, deadline - clock(room));
+      const at = nextAt(room.game.s);
+      if (at) room.skew += Math.max(0, at - clock(room));
       afterChange(room, room.game.tick(clock(room)));
     } catch (err) {
       console.error("[auction] шаг таймера упал:", err);
@@ -213,10 +217,11 @@ function send(ws, msg) {
 
 // Единственный текст, который сервер пишет клиенту сам, — остальное приходит от модели уже
 // на языке партии. Без этой таблицы он оставался русским на английском и греческом экране.
+// «играли не все» было неточно: причина не в явке, а в том, что ни у кого не набралось лотов
 const NO_JUDGE_SUMMARY = {
-  ru: "Судить некого — играли не все.",
-  en: "Nothing to judge — not everyone played.",
-  el: "Δεν υπάρχει τι να κριθεί — δεν έπαιξαν όλοι.",
+  ru: "Судить нечего — лоты никто не собрал.",
+  en: "Nothing to judge — nobody collected any lots.",
+  el: "Δεν έχει τι να κριθεί — κανείς δεν μάζεψε λοτ.",
 };
 
 async function startJudging(room) {
@@ -314,6 +319,13 @@ function addBots(room, n) {
         const me = snap.players.find((p) => p.id === b.playerId);
         if (snap.phase === "pickup" && me?.canTake && Math.random() < 0.8) {
           const r = room.game.take(b.playerId, clock(room));
+          if (r.ok) changed.push(...r.events);
+        }
+        // соло-добор: последним добирающим вполне может остаться бот — без этого отладка встаёт
+        // на 10 секунд на каждом лоте, пока за него решает таймер
+        const draft = decideDraft(b.strategy, snap, b.playerId);
+        if (draft) {
+          const r = draft === "take" ? room.game.take(b.playerId, clock(room)) : room.game.skip(b.playerId, clock(room));
           if (r.ok) changed.push(...r.events);
         }
       }
@@ -532,8 +544,8 @@ function handle(room, client, msg) {
       // второе устройство той же сессии заменяет первое
       for (const c of room.sockets) if (c !== client && c.playerId === playerId) { c.playerId = null; send(c.ws, { type: "replaced" }); }
       client.playerId = playerId;
-      g.setOnline(playerId, true, t);
-      const events = [{ type: "online", playerId }];
+      // события возврата важны: вернувшийся единственный добирающий снимает паузу сам (§7.4)
+      const events = [{ type: "online", playerId }, ...g.setOnline(playerId, true, t)];
       // Сама по себе паузу не снимаем: партию продолжает ведущий. Вернувшийся игрок не должен
       // запускать торги в тот момент, когда за столом ещё разбираются, все ли на месте.
       return afterChange(room, events);
@@ -548,6 +560,14 @@ function handle(room, client, msg) {
       if (!client.playerId) return;
       const r = g.take(client.playerId, t);
       if (!r.ok) return reply({ type: "rejected", action: "take", ...r });
+      return afterChange(room, r.events);
+    }
+    // соло-добор: «Скип». Отдельное действие, а не take с флагом, — пульт шлёт ровно то,
+    // что нажали, и отказ («скипы кончились») читается в логе без догадок
+    case "skip": {
+      if (!client.playerId) return;
+      const r = g.skip(client.playerId, t);
+      if (!r.ok) return reply({ type: "rejected", action: "skip", ...r });
       return afterChange(room, r.events);
     }
     case "vote": {
