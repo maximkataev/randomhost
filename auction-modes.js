@@ -39,6 +39,52 @@ const MODES = [
       profession: { title: "Экипаж для острова", short: "Кто вытащит вас с необитаемого острова", judge: "считает, выживет ли такой экипаж" },
       invention: { title: "Груз в прошлое", short: "Изобретения, которые перепишут историю", judge: "измеряет, насколько набор изменит историю" },
     },
+    t: {
+      en: {
+        title: "Best Set",
+        short: "The classic: assemble the strongest set you can",
+        judge: "looks for the strongest, most coherent set",
+        byKind: {
+          artist: { title: "Festival Line-up", short: "Build a festival people would show up to", judge: "checks the headliners and how well the line-up fits together" },
+          film: { title: "Movie Marathon", short: "A night nobody wants to pause", judge: "judges how the films play back to back" },
+          series: { title: "Binge Season", short: "A subscription you cannot quit", judge: "checks whether the picks hook you and keep the genres balanced" },
+          person: { title: "Dream Dinner", short: "Invite guests who keep the night alive", judge: "judges how the evening would go with all of them at one table" },
+          character: { title: "Hero Squad", short: "A team that wins the brawl", judge: "works out whose squad wins the fight" },
+          food: { title: "Dinner Menu", short: "Build a dinner that works as a whole", judge: "judges the culinary logic and the balance of the menu" },
+          city: { title: "Dream Trip", short: "A trip you would book all over again", judge: "looks at the experiences and whether the route actually works" },
+          country: { title: "Round the World", short: "Plot a route all the way around the globe", judge: "looks at the experiences and whether the route actually works" },
+          place: { title: "Wonders Tour", short: "Places worth getting on a plane for", judge: "judges the experiences and whether the tour holds up" },
+          animal: { title: "Dream Zoo", short: "Gather the animals people queue up for", judge: "judges how spectacular and varied the zoo is" },
+          painting: { title: "Private Gallery", short: "A collection worth bragging about", judge: "judges the value and the coherence of the collection" },
+          company: { title: "Investment Portfolio", short: "Build a portfolio that only goes up", judge: "weighs value, upside and diversification" },
+          club: { title: "Sports Empire", short: "Clubs that actually lift trophies", judge: "counts the trophies, the fanbase and the value of the clubs" },
+          profession: { title: "Island Crew", short: "Who gets you off a desert island", judge: "works out whether a crew like that survives" },
+          invention: { title: "Cargo to the Past", short: "Inventions that rewrite history", judge: "measures how much the set would change history" },
+        },
+      },
+      el: {
+        title: "Καλύτερο σετ",
+        short: "Το κλασικό: φτιάξε το πιο δυνατό σετ",
+        judge: "ψάχνει το πιο δυνατό και συνεπές σετ",
+        byKind: {
+          artist: { title: "Λάιναπ φεστιβάλ", short: "Φτιάξε ένα φεστιβάλ που θα πάει ο κόσμος", judge: "κοιτάζει τα headliners και πόσο δένει το λάιναπ" },
+          film: { title: "Μαραθώνιος ταινιών", short: "Μια βραδιά που δεν πατάς pause", judge: "κρίνει πώς δένουν οι ταινίες η μία μετά την άλλη" },
+          series: { title: "Σεζόν σειρών", short: "Μια συνδρομή που δεν την κλείνεις με τίποτα", judge: "βλέπει αν σε κολλάει η επιλογή και αν ισορροπεί τα είδη" },
+          person: { title: "Δείπνο των ονείρων", short: "Μάζεψε καλεσμένους που δεν τους βαριέσαι", judge: "κρίνει τι βραδιά θα βγει με όλους στο ίδιο τραπέζι" },
+          character: { title: "Ομάδα ηρώων", short: "Μια ομάδα που κερδίζει τη μάχη", judge: "υπολογίζει ποια ομάδα νικά στη σύγκρουση" },
+          food: { title: "Μενού δείπνου", short: "Φτιάξε ένα δείπνο που στέκει ολόκληρο", judge: "κρίνει τη γαστρονομική λογική και την ισορροπία του μενού" },
+          city: { title: "Ταξίδι των ονείρων", short: "Ένα ταξίδι που θα θες να το ξανακάνεις", judge: "κοιτάζει τις εμπειρίες και το αν βγαίνει η διαδρομή" },
+          country: { title: "Γύρος του κόσμου", short: "Φτιάξε μια διαδρομή γύρω από τον κόσμο", judge: "κοιτάζει τις εμπειρίες και το αν βγαίνει η διαδρομή" },
+          place: { title: "Τουρ στα θαύματα", short: "Μέρη που αξίζουν το αεροπλάνο", judge: "κρίνει τις εμπειρίες και το αν βγαίνει το τουρ" },
+          animal: { title: "Ιδανικός ζωολογικός", short: "Μάζεψε ζώα που αξίζουν την ουρά στο ταμείο", judge: "κρίνει το θέαμα και την ποικιλία του ζωολογικού" },
+          painting: { title: "Ιδιωτική γκαλερί", short: "Μια συλλογή για να καμαρώνεις", judge: "κρίνει την αξία και τη συνοχή της συλλογής" },
+          company: { title: "Χαρτοφυλάκιο", short: "Φτιάξε ένα χαρτοφυλάκιο που ανεβαίνει", judge: "ζυγίζει αξία, προοπτικές και διασπορά" },
+          club: { title: "Αθλητική αυτοκρατορία", short: "Σύλλογοι που σηκώνουν τρόπαια", judge: "μετράει τρόπαια, κοινό και αξία των συλλόγων" },
+          profession: { title: "Πλήρωμα για το νησί", short: "Ποιοι θα σε βγάλουν από το έρημο νησί", judge: "υπολογίζει αν επιβιώνει ένα τέτοιο πλήρωμα" },
+          invention: { title: "Φορτίο στο παρελθόν", short: "Εφευρέσεις που ξαναγράφουν την ιστορία", judge: "μετράει πόσο θα άλλαζε την ιστορία το σετ" },
+        },
+      },
+    },
   },
   {
     id: "worst",
@@ -68,6 +114,52 @@ const MODES = [
       profession: { title: "Экипаж обречённых", short: "С такими на острове не выжить" },
       invention: { title: "Груз бесполезного", short: "Прошлое даже не заметит эту посылку" },
     },
+    t: {
+      en: {
+        title: "Worst Set",
+        short: "The prize goes to whatever fits together the worst",
+        judge: "looks for the most absurd, most mismatched set",
+        byKind: {
+          artist: { title: "Worst Line-up", short: "A festival people quit after the first song" },
+          film: { title: "Worst Marathon", short: "A movie night nobody makes it through" },
+          series: { title: "Worst Subscription", short: "A season everyone drops on episode one" },
+          person: { title: "Dinner Disaster", short: "Guests who will be at each other by dessert" },
+          character: { title: "Doomed Squad", short: "A team that loses to itself" },
+          food: { title: "Worst Menu", short: "A dinner that stays on the plate" },
+          city: { title: "Trip from Hell", short: "A trip you will regret booking" },
+          country: { title: "Nightmare World Tour", short: "A route with everything working against you" },
+          place: { title: "Tour of Letdowns", short: "Places that were not worth the flight" },
+          animal: { title: "Flop Zoo", short: "A zoo everyone walks straight past" },
+          painting: { title: "Bad Taste Gallery", short: "A collection you would be ashamed to show" },
+          company: { title: "Bankrupt Portfolio", short: "The investments that burn first" },
+          club: { title: "League of Losers", short: "Clubs that will never win a thing" },
+          profession: { title: "Doomed Crew", short: "Nobody survives the island with this lot" },
+          invention: { title: "Useless Cargo", short: "The past will not even notice this parcel" },
+        },
+      },
+      el: {
+        title: "Χειρότερο σετ",
+        short: "Κερδίζει όποιος τα ταίριαξε όλα χειρότερα",
+        judge: "ψάχνει το πιο παράλογο και αταίριαστο σετ",
+        byKind: {
+          artist: { title: "Χειρότερο λάιναπ", short: "Φεστιβάλ που το παρατάς στο πρώτο τραγούδι" },
+          film: { title: "Χειρότερος μαραθώνιος", short: "Βραδιά που δεν τη βγάζει κανείς μέχρι το τέλος" },
+          series: { title: "Χειρότερη συνδρομή", short: "Σεζόν που την παρατάς στο πρώτο επεισόδιο" },
+          person: { title: "Δείπνο-καταστροφή", short: "Καλεσμένοι που θα τσακωθούν μέχρι το γλυκό" },
+          character: { title: "Ομάδα-καταστροφή", short: "Ομάδα που θα χάσει από τον εαυτό της" },
+          food: { title: "Χειρότερο μενού", short: "Δείπνο που θα μείνει στο πιάτο" },
+          city: { title: "Ταξίδι-εφιάλτης", short: "Ταξίδι που θα το μετανιώσεις" },
+          country: { title: "Γύρος-εφιάλτης", short: "Διαδρομή όπου όλα είναι εναντίον σου" },
+          place: { title: "Τουρ απογοητεύσεων", short: "Μέρη που δεν άξιζαν το αεροπλάνο" },
+          animal: { title: "Ζωολογικός-φιάσκο", short: "Ζωολογικός που τον προσπερνάς" },
+          painting: { title: "Γκαλερί κακογουστιάς", short: "Συλλογή που ντρέπεσαι να τη δείξεις" },
+          company: { title: "Σίγουρη χρεοκοπία", short: "Επενδύσεις που θα καούν πρώτες" },
+          club: { title: "Λίγκα των ουραγών", short: "Σύλλογοι που δεν θα κερδίσουν τίποτα" },
+          profession: { title: "Χαμένο πλήρωμα", short: "Με αυτούς δεν βγαίνει επιβίωση στο νησί" },
+          invention: { title: "Άχρηστο φορτίο", short: "Το παρελθόν δεν θα προσέξει καν αυτό το πακέτο" },
+        },
+      },
+    },
   },
   {
     id: "villains",
@@ -81,6 +173,18 @@ const MODES = [
       "Оцени, насколько набор годится в злодейскую лигу: кто наводит ужас, кто отвечает за коварный план, " +
       "кто просто харизматичный псих. Милые и безобидные участники — минус, если только они не пугают своей милотой.",
     judge: "оценивает, чья банда страшнее и сработаннее",
+    t: {
+      en: {
+        title: "Supervillain League",
+        short: "Assemble a crew to take over the world",
+        judge: "judges whose gang is scarier and better drilled",
+      },
+      el: {
+        title: "Λίγκα σούπερ κακών",
+        short: "Μάζεψε ομάδα για να κατακτήσεις τον κόσμο",
+        judge: "κρίνει ποια συμμορία είναι πιο τρομακτική και πιο δεμένη",
+      },
+    },
   },
   {
     id: "apocalypse",
@@ -95,6 +199,18 @@ const MODES = [
     criteria: "практическая польза, живучесть, способность прокормить и защитить",
     prompt: "Оценивай холодно и практично: что реально поможет выжить, а что окажется бесполезным грузом.",
     judge: "считает, чей набор дольше протянет после конца света",
+    t: {
+      en: {
+        title: "Apocalypse Survival",
+        short: "Who is left standing when it all falls apart",
+        judge: "works out whose set lasts longest after the end of the world",
+      },
+      el: {
+        title: "Μετά την αποκάλυψη",
+        short: "Ποιος θα ζήσει όταν όλα καταρρεύσουν",
+        judge: "υπολογίζει ποιο σετ κρατάει περισσότερο μετά το τέλος του κόσμου",
+      },
+    },
   },
   {
     id: "party",
@@ -105,6 +221,18 @@ const MODES = [
     criteria: "веселье, неожиданность, атмосфера, о чём будут вспоминать год",
     prompt: "Скучное — минус, даже если дорогое и статусное. Важнее всего, будет ли весело.",
     judge: "выбирает, у кого вечеринка получилась веселее",
+    t: {
+      en: {
+        title: "Party of the Year",
+        short: "Put together whatever makes it fun",
+        judge: "picks whose party turned out more fun",
+      },
+      el: {
+        title: "Πάρτι της χρονιάς",
+        short: "Μάζεψε ό,τι θα ανάψει το κέφι",
+        judge: "διαλέγει ποιανού το πάρτι έχει την πιο πολλή πλάκα",
+      },
+    },
   },
   {
     id: "museum",
@@ -115,6 +243,18 @@ const MODES = [
     criteria: "необычность, зрелищность, желание сфотографировать и показать друзьям",
     prompt: "Ценится странность и зрелищность, а не ценность или качество. Предсказуемое и обыденное — низкая оценка.",
     judge: "ищет самую диковинную экспозицию",
+    t: {
+      en: {
+        title: "Museum of Oddities",
+        short: "A set people show up just to gawk at",
+        judge: "hunts for the weirdest exhibition",
+      },
+      el: {
+        title: "Μουσείο παραξενιών",
+        short: "Ένα σετ που θα έρθουν να το χαζέψουν",
+        judge: "ψάχνει την πιο αλλόκοτη έκθεση",
+      },
+    },
   },
   {
     id: "timemachine",
@@ -128,6 +268,18 @@ const MODES = [
     criteria: "насколько перевернёт ход истории, шок для современников, последствия",
     prompt: "Оценивай размах последствий: что произведёт эффект разорвавшейся бомбы, а что средневековье просто не заметит.",
     judge: "измеряет, чей груз сильнее перекроит историю",
+    t: {
+      en: {
+        title: "Send to the Past",
+        short: "Whose haul changes history the most",
+        judge: "measures whose cargo rewrites history hardest",
+      },
+      el: {
+        title: "Στείλε στο παρελθόν",
+        short: "Ποιο φορτίο θα αλλάξει πιο πολύ την ιστορία",
+        judge: "μετράει ποιανού το φορτίο αλλάζει πιο δραστικά την ιστορία",
+      },
+    },
   },
   {
     id: "gift",
@@ -138,6 +290,18 @@ const MODES = [
     criteria: "неловкость, бесполезность, способность испортить настроение, но без жестокости",
     prompt: "Оценивай изящество издёвки: подарок должен быть формально приличным, но обидно бесполезным. Прямая грубость — минус.",
     judge: "выбирает самый изощрённо-бесполезный подарок",
+    t: {
+      en: {
+        title: "Gift for an Enemy",
+        short: "Something they definitely will not enjoy",
+        judge: "picks the most elegantly useless gift",
+      },
+      el: {
+        title: "Δώρο στον εχθρό",
+        short: "Κάτι που σίγουρα δεν θα του αρέσει καθόλου",
+        judge: "διαλέγει το πιο επιδέξια άχρηστο δώρο",
+      },
+    },
   },
 ];
 
