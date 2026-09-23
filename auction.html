@@ -102,6 +102,10 @@
   .plate.lead-me { border-style: solid; border-color: var(--c1); background: color-mix(in srgb, var(--c1) 12%, transparent); }
   .plate.err { color: #ff8a8a; }
   .plate.task { border-style: solid; border-color: color-mix(in srgb, var(--c1) 45%, transparent); background: color-mix(in srgb, var(--c1) 8%, transparent); }
+  /* заголовок этого экрана — предложение, а не плакатное слово: плакатный кегль h1 обрезал
+     «КОМНАТА ЗАКРЫТА» на 390px, а в греческом строки ещё длиннее */
+  .expired h1 { font: 900 clamp(22px, 6.4vw, 32px)/1.1 var(--display); letter-spacing: -.02em; overflow-wrap: anywhere; }
+  .expired-new { display: block; text-align: center; text-decoration: none; }
   .plate.task .eyebrow { display: block; font: 700 10px/1 var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin-bottom: 9px; }
   /* заставка: на телефоне главное — отправить взгляд на большой экран, поэтому крупно только цифра */
   .intro { text-align: center; }
@@ -408,6 +412,9 @@ window.I18N_DICT = {
     err_room_full: `Комната заполнена`,
 
     /* оверлеи */
+    expired_title: `Комната закрыта`,
+    expired_text: `В этой комнате полчаса ничего не происходило, и она закрылась. Попроси ведущего создать новую.`,
+    expired_new: `Создать свою комнату`,
     ov_replaced: `Ты открыл игру на другом устройстве`,
     ov_kicked: `Хост убрал тебя из игры`,
     ov_offline: `Нет связи — переподключаемся…`,
@@ -515,6 +522,9 @@ window.I18N_DICT = {
     err_started: `The game is already running — ask the host to let you in, or wait for the next one`,
     err_room_full: `The room is full`,
 
+    expired_title: `Room closed`,
+    expired_text: `Nothing happened in this room for half an hour, so it closed. Ask the host to start a new one.`,
+    expired_new: `Create your own room`,
     ov_replaced: `You opened the game on another device`,
     ov_kicked: `The host removed you from the game`,
     ov_offline: `No connection — reconnecting…`,
@@ -618,6 +628,9 @@ window.I18N_DICT = {
     err_started: `Το παιχνίδι έχει ξεκινήσει — ζήτα από τον host να σε βάλει ή περίμενε το επόμενο`,
     err_room_full: `Το δωμάτιο είναι γεμάτο`,
 
+    expired_title: `Το δωμάτιο έκλεισε`,
+    expired_text: `Μισή ώρα δεν έγινε τίποτα σε αυτό το δωμάτιο και έκλεισε. Ζήτα από τον host να φτιάξει καινούργιο.`,
+    expired_new: `Φτιάξε δικό σου δωμάτιο`,
     ov_replaced: `Άνοιξες το παιχνίδι σε άλλη συσκευή`,
     ov_kicked: `Ο host σε έβγαλε από το παιχνίδι`,
     ov_offline: `Χάθηκε η σύνδεση — επανασυνδέομαι…`,
@@ -731,6 +744,18 @@ function pluralWord(n, key) {
 }
 // оверлей помнит свой ключ: при смене языка надпись обязана перевестись, а не застыть
 let overlayKey = null;
+// Терминальное состояние: комнаты больше нет. Флаг гасит переподключение — без него onClose
+// каждые 2 секунды заново дёргал бы join() к несуществующей комнате и перерисовывал экран.
+let dead = false;
+function renderExpired() {
+  dead = true;
+  try { localStorage.removeItem("auction-token-" + CODE); } catch (e) {}
+  setOverlay(null);
+  screenMode("enter");
+  app.innerHTML = `<div class="center expired"><h1>${escapeHtml(I18N.t("expired_title"))}</h1><p class="sub">${escapeHtml(I18N.t("expired_text"))}</p>
+    <a class="big expired-new" href="auction.html">${escapeHtml(I18N.t("expired_new"))}</a></div>`;
+}
+
 function setOverlay(key) {
   overlayKey = key || null;
   overlay.textContent = overlayKey ? I18N.t(overlayKey) : "";
@@ -742,6 +767,7 @@ else { try { token = localStorage.getItem("auction-token-" + CODE); } catch {} i
 
 // Смена языка: статические узлы обновит сам i18n.js, но все экраны пульта строит JS — перерисовываем.
 window.addEventListener("langchange", () => {
+  if (dead) return renderExpired();
   if (overlayKey) setOverlay(overlayKey);
   if (state) { app.innerHTML = ""; lastLot = -1; introShown = null; render(); return; }
   const input = document.getElementById("name");
@@ -915,12 +941,15 @@ function join(name) {
       if (msg.type === "kicked") { ws.close(); try { localStorage.removeItem("auction-token-" + CODE); } catch {} setOverlay("ov_kicked"); }
       if (msg.type === "error") {
         ws.close();
-        if (msg.error === "game_started") renderJoin("err_started");
+        // Комната закрылась по неактивности — переподключаться некуда: возвращать игрока на ввод
+        // имени значит гонять его по кругу «нет связи → введи имя → нет связи».
+        if (msg.error === "room_expired") renderExpired();
+        else if (msg.error === "game_started") renderJoin("err_started");
         else if (msg.error === "room_full") renderJoin("err_room_full");
         else renderJoin(msg.error);
       }
     },
-    onClose: () => { setOverlay("ov_offline"); setTimeout(() => join(name), 2000); },
+    onClose: () => { if (dead) return; setOverlay("ov_offline"); setTimeout(() => { if (!dead) join(name); }, 2000); },
     onSendFail: (msg) => { const n = document.getElementById("note"); if (n && msg && msg.type === "bid") n.textContent = I18N.t("note_send_fail"); },
   });
 }

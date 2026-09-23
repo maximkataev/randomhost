@@ -467,15 +467,38 @@ async function ttlSuite() {
     const held = await mk();
     await mk(); // эту никто не открывает
     const ws = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + held.code);
-    let expired = false;
-    ws.on("message", (raw) => { const m = JSON.parse(raw); if (m.type === "error" && m.error === "room_expired") expired = true; });
+    let expired = false, expiredReason = null;
+    ws.on("message", (raw) => { const m = JSON.parse(raw); if (m.type === "error") { expiredReason = m.error; if (m.error === "room_expired") expired = true; } });
     ws.on("error", () => {});
     await new Promise((r) => { ws.on("open", () => { ws.send(JSON.stringify({ type: "host", token: held.hostToken })); r(); }); setTimeout(r, 3000); });
     await wait(6500); // больше трёх TTL
-    check(!expired, "комната с открытой доской переживает TTL в лобби — код на экране остаётся живым");
+    check(expired, "лобби, в котором ничего не происходит, закрывается по TTL даже с открытой доской");
+    check(/room_expired/.test(String(expiredReason || "")), `игроку сказано, почему комната закрылась (${expiredReason})`);
     const h = await (await fetch(B + "/auction/api/health")).json();
-    check(h.rooms === 1, `брошенная комната убрана по TTL, открытая осталась (комнат ${h.rooms})`);
+    check(h.rooms === 0, `брошенные и простаивающие комнаты убраны (комнат ${h.rooms})`);
     ws.close();
+
+    // а вот идущая партия по TTL умирать не должна: на паузе и в разборе игровых тиков нет,
+    // и без этого игра распадалась бы под людьми, которые просто задумались над ставкой
+    const live = await mk();
+    const hostWs = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + live.code);
+    let liveExpired = false;
+    hostWs.on("message", (raw) => { const m = JSON.parse(raw); if (m.type === "error" && m.error === "room_expired") liveExpired = true; });
+    hostWs.on("error", () => {});
+    await new Promise((r) => { hostWs.on("open", () => { hostWs.send(JSON.stringify({ type: "host", token: live.hostToken })); r(); }); setTimeout(r, 3000); });
+    const pl = [];
+    for (let i = 0; i < 2; i++) {
+      const w = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + live.code);
+      await new Promise((r) => { w.on("open", () => { w.send(JSON.stringify({ type: "join", name: "И" + i })); r(); }); w.on("error", r); setTimeout(r, 2000); });
+      pl.push(w);
+    }
+    await wait(300);
+    hostWs.send(JSON.stringify({ type: "start" }));
+    await wait(500);
+    hostWs.send(JSON.stringify({ type: "pause" }));
+    await wait(6500); // больше трёх TTL на паузе
+    check(!liveExpired, "партия на паузе с подключёнными игроками по TTL не закрывается");
+    hostWs.close(); for (const w of pl) w.close();
   } finally {
     child.kill("SIGKILL");
   }
