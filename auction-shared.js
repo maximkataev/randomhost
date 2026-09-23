@@ -18,6 +18,61 @@ const AUCTION_KINDS = {
   invention:  { icon: "💡", button: "Открытие",  label: "Изобретение",             another: "Другое" },
 };
 
+/*
+ * Названия категорий на английском и греческом. Русские лежат выше в самом объекте, переводы —
+ * отдельной таблицей: так форма AUCTION_KINDS не меняется и старый код продолжает работать.
+ * `another` — подпись кнопки «другой лот», в русском она согласуется с родом категории;
+ * в английском и греческом род другой, поэтому это отдельная строка, а не склейка.
+ * Категория без перевода показывается по-русски: игра должна работать и с неполным переводом.
+ */
+const AUCTION_KINDS_I18N = {
+  en: {
+    artist: { button: "Artist", label: "Musician", another: "Another" },
+    film: { button: "Film", label: "Film", another: "Another" },
+    series: { button: "Series", label: "TV series", another: "Another" },
+    person: { button: "People", label: "Public figure", another: "Another" },
+    character: { button: "Character", label: "Character", another: "Another" },
+    food: { button: "Food", label: "Dish", another: "Another" },
+    city: { button: "City", label: "City", another: "Another" },
+    country: { button: "Country", label: "Country", another: "Another" },
+    place: { button: "Place", label: "Landmark", another: "Another" },
+    animal: { button: "Animal", label: "Animal", another: "Another" },
+    painting: { button: "Painting", label: "Painting", another: "Another" },
+    company: { button: "Company", label: "Company", another: "Another" },
+    club: { button: "Club", label: "Sports club", another: "Another" },
+    profession: { button: "Job", label: "Profession", another: "Another" },
+    invention: { button: "Invention", label: "Invention", another: "Another" },
+  },
+  el: {
+    artist: { button: "Καλλιτέχνης", label: "Μουσικός", another: "Άλλος" },
+    film: { button: "Ταινία", label: "Ταινία", another: "Άλλη" },
+    series: { button: "Σειρά", label: "Σειρά", another: "Άλλη" },
+    person: { button: "Πρόσωπο", label: "Προσωπικότητα", another: "Άλλο" },
+    character: { button: "Ήρωας", label: "Ήρωας", another: "Άλλος" },
+    food: { button: "Φαγητό", label: "Πιάτο", another: "Άλλο" },
+    city: { button: "Πόλη", label: "Πόλη", another: "Άλλη" },
+    country: { button: "Χώρα", label: "Χώρα", another: "Άλλη" },
+    place: { button: "Μέρος", label: "Αξιοθέατο", another: "Άλλο" },
+    animal: { button: "Ζώο", label: "Ζώο", another: "Άλλο" },
+    painting: { button: "Πίνακας", label: "Πίνακας", another: "Άλλος" },
+    company: { button: "Εταιρεία", label: "Εταιρεία", another: "Άλλη" },
+    club: { button: "Σύλλογος", label: "Αθλητικός σύλλογος", another: "Άλλος" },
+    profession: { button: "Επάγγελμα", label: "Επάγγελμα", another: "Άλλο" },
+    invention: { button: "Εφεύρεση", label: "Εφεύρεση", another: "Άλλη" },
+  },
+};
+
+// категория на нужном языке: иконка и флаги берутся из базового объекта, подписи — из перевода
+function auctionKind(kind, lang) {
+  const base = AUCTION_KINDS[kind] || {};
+  const tr = (AUCTION_KINDS_I18N[lang] || {})[kind];
+  if (!tr) return base;
+  const out = {};
+  for (const k in base) out[k] = base[k];
+  for (const k in tr) out[k] = tr[k];
+  return out;
+}
+
 function el(tag, cls, text) {
   const node = document.createElement(tag);
   if (cls) node.className = cls;
