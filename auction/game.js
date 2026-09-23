@@ -25,6 +25,9 @@ const DEFAULTS = {
   intro: 6000,
   judge: "chatgpt", // chatgpt | vote
   mode: "base", // задание: что собираем и как судят (auction/modes.js)
+  // Язык партии: на нём приходят лоты и отвечает судья. Ставится один на комнату, а не на
+  // устройство: все смотрят в один экран, и разноязычные карточки за одним столом бессмысленны.
+  lang: "ru",
   media: true,
 };
 
@@ -46,6 +49,7 @@ function clampSettings(input = {}, kind) {
   if (input.judge === "vote" || input.judge === "chatgpt") s.judge = input.judge;
   if (typeof input.mode === "string" && modeById(input.mode).id === input.mode) s.mode = input.mode;
   if (kind && !modesForKind(kind).some((m) => m.id === s.mode)) s.mode = "base";
+  if (input.lang === "ru" || input.lang === "en" || input.lang === "el") s.lang = input.lang;
   if (typeof input.media === "boolean") s.media = input.media;
   return s;
 }

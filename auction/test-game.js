@@ -449,3 +449,23 @@ test("задание: у категории своё название, и оно
     }
   }
 });
+
+// ---------- язык партии ----------
+
+test("язык: валидный принимается, мусор откатывается к русскому", () => {
+  assert.equal(clampSettings({}).lang, "ru");
+  for (const l of ["ru", "en", "el"]) assert.equal(clampSettings({ lang: l }).lang, l);
+  for (const bad of ["xx", "EN", 1, null, {}]) assert.equal(clampSettings({ lang: bad }).lang, "ru", `мусор ${JSON.stringify(bad)}`);
+});
+
+test("язык: судья получает инструкцию отвечать на языке партии", () => {
+  const lu = [{ pid: "p1", playerId: "a", lots: [{ name: "X", meta: [] }] }, { pid: "p2", playerId: "b", lots: [] }];
+  assert.match(buildPrompt("artist", lu, 3, "base", "ru"), /по-русски/);
+  assert.match(buildPrompt("artist", lu, 3, "base", "en"), /Answer in English/);
+  assert.match(buildPrompt("artist", lu, 3, "base", "el"), /ελληνικά/);
+  // без языка ведём себя как раньше — русский
+  assert.equal(buildPrompt("artist", lu, 3, "base"), buildPrompt("artist", lu, 3, "base", "ru"));
+  // подпись пустого слота тоже на языке партии, иначе в английском вердикте всплывало бы «пусто»
+  assert.match(buildPrompt("artist", lu, 3, "base", "en"), /empty/);
+  assert.ok(!/пусто/.test(buildPrompt("artist", lu, 3, "base", "en")), "в английский промпт просочилось «пусто»");
+});

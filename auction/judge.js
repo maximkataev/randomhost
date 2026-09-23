@@ -34,15 +34,26 @@ const FRAMES = {
   invention: ["набор изобретений, который берём в прошлое", "насколько изменят историю"],
 };
 
-function buildPrompt(kind, lineups, slots, modeId) {
+// Язык партии. Сам промпт остаётся русским: модель многоязычная и инструкции понимает,
+// а три параллельных перевода промпта пришлось бы править синхронно при каждой правке задания.
+// Меняется только то, что видит игрок: язык ответа и подпись пустого слота.
+const LANGS = {
+  ru: { answer: "Отвечай по-русски.", empty: "пусто" },
+  en: { answer: "Answer in English.", empty: "empty" },
+  el: { answer: "Απάντησε στα ελληνικά. Answer in Greek.", empty: "κενό" },
+};
+const langPack = (lang) => LANGS[lang] || LANGS.ru;
+
+function buildPrompt(kind, lineups, slots, modeId, lang) {
   const mode = modeById(modeId);
   const base = FRAMES[kind] || ["набор", "качество и цельность"];
   const what = mode.what || base[0];
   const criteria = mode.criteria || base[1];
   const extra = mode.prompt ? mode.prompt + "\n" : "";
+  const L = langPack(lang);
   const lines = lineups.map((l) => {
     const items = l.lots.map((x) => `${x.name} (${(x.meta || []).join(", ")})`);
-    while (items.length < slots) items.push("пусто");
+    while (items.length < slots) items.push(L.empty);
     return `${l.pid}: ${items.join("; ")}`;
   });
   return (
@@ -53,7 +64,7 @@ function buildPrompt(kind, lineups, slots, modeId) {
     `Игроки обозначены p1, p2… — обращайся к ним ровно так, не выдумывай имён.\n\n` +
     lines.join("\n") +
     `\n\nДай каждому оценку 0–100 (без одинаковых оценок), одну фразу-вердикт с юмором, но по-доброму, ` +
-    `и общий итог в 1–2 предложения. Отвечай по-русски.`
+    `и общий итог в 1–2 предложения. ` + L.answer
   );
 }
 
@@ -67,7 +78,7 @@ async function judge(opts) {
   }
 }
 
-async function askJudge({ kind, lineups, slots, mode, apiKey, model, timeoutMs = 60000, fetchImpl = fetch }) {
+async function askJudge({ kind, lineups, slots, mode, lang, apiKey, model, timeoutMs = 60000, fetchImpl = fetch }) {
   const schema = {
     type: "object",
     additionalProperties: false,
@@ -98,7 +109,7 @@ async function askJudge({ kind, lineups, slots, mode, apiKey, model, timeoutMs =
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model,
-        input: [{ role: "user", content: buildPrompt(kind, lineups, slots, mode) }],
+        input: [{ role: "user", content: buildPrompt(kind, lineups, slots, mode, lang) }],
         reasoning: { effort: "low" },
         max_output_tokens: 1500,
         text: { format: { type: "json_schema", name: "auction_verdict", strict: true, schema } },
@@ -126,4 +137,4 @@ async function askJudge({ kind, lineups, slots, mode, apiKey, model, timeoutMs =
   }
 }
 
-module.exports = { judge, askJudge, buildPrompt, FRAMES, KIND_LABELS };
+module.exports = { judge, askJudge, buildPrompt, FRAMES, KIND_LABELS, LANGS };

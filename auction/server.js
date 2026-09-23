@@ -37,22 +37,47 @@ const MAX_JUDGE_CALLS = Number(process.env.MAX_JUDGE_CALLS || 12); // платн
 const EVICT_GRACE_MS = Number(process.env.EVICT_GRACE_MS || 10000); // свежую пустую комнату не вытесняем — доска ещё подключается (0 — только для тестов)
 const MSG_RATE = Number(process.env.MSG_RATE || 40); // сообщений в секунду на один сокет
 const MAX_MSG_BYTES = 8192; // максимум на одно входящее сообщение
-const KINDS = {};
+// Карточки лотов по языкам: data/<kind>.json — русские, data/<lang>/<kind>.json — переводы.
+// Категории, для которых перевода ещё нет, отдаются по-русски: игра должна работать и с неполным
+// переводом, а не падать на отсутствующем файле.
+const LANGS = ["ru", "en", "el"];
+const KINDS_BY_LANG = { ru: {} };
 for (const f of fs.readdirSync(path.join(__dirname, "data"))) {
-  if (f.endsWith(".json")) KINDS[f.slice(0, -5)] = JSON.parse(fs.readFileSync(path.join(__dirname, "data", f), "utf8"));
+  if (f.endsWith(".json")) KINDS_BY_LANG.ru[f.slice(0, -5)] = JSON.parse(fs.readFileSync(path.join(__dirname, "data", f), "utf8"));
 }
+for (const lang of LANGS.slice(1)) {
+  const dir = path.join(__dirname, "data", lang);
+  KINDS_BY_LANG[lang] = Object.assign({}, KINDS_BY_LANG.ru);
+  if (!fs.existsSync(dir)) continue;
+  for (const f of fs.readdirSync(dir)) {
+    if (!f.endsWith(".json")) continue;
+    const kind = f.slice(0, -5);
+    const cards = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+    // перевод обязан совпадать по длине с русским: иначе номера карт в дампе поедут
+    if (KINDS_BY_LANG.ru[kind] && cards.length === KINDS_BY_LANG.ru[kind].length) KINDS_BY_LANG[lang][kind] = cards;
+    else console.warn(`[auction] ${lang}/${f}: длина не совпадает с русской колодой, беру русскую`);
+  }
+}
+const KINDS = KINDS_BY_LANG.ru; // список категорий и запасная колода
+const cardsFor = (kind, lang) => (KINDS_BY_LANG[lang] || KINDS_BY_LANG.ru)[kind] || KINDS[kind];
 if (!OPENAI_API_KEY) console.warn("[auction] OPENAI_API_KEY не задан — судья будет через голосование");
 
 // Номера карт в колоде категории. Game.create тасует через slice, поэтому объекты в room.game.s.deck —
 // это те же объекты, что в KINDS[kind]: колоду можно дампить списком номеров вместо самих карточек.
 // Без этого в файл уходила вся колода на каждую комнату (305 КБ против 2,5 КБ), дамп 100 комнат
 // разгонял RSS до 400 МБ при mem_limit 256m, а restore делал каждой комнате свою глубокую копию колоды.
+// Индекс нужен на каждый язык: у перевода свои объекты карточек, и номер карты имеет смысл
+// только внутри колоды своего языка.
 const CARD_INDEX = {};
-for (const [kind, cards] of Object.entries(KINDS)) {
-  const m = new Map();
-  cards.forEach((c, i) => m.set(c, i));
-  CARD_INDEX[kind] = m;
+for (const lang of LANGS) {
+  CARD_INDEX[lang] = {};
+  for (const [kind, cards] of Object.entries(KINDS_BY_LANG[lang])) {
+    const m = new Map();
+    cards.forEach((c, i) => m.set(c, i));
+    CARD_INDEX[lang][kind] = m;
+  }
 }
+const langOf = (state) => (state && state.settings && state.settings.lang) || "ru";
 
 // ---------- комнаты ----------
 
@@ -116,7 +141,7 @@ function createRoom({ kind = "artist", settings = {}, speed = 1, ip = "" } = {})
     code,
     ip,
     hostToken: crypto.randomBytes(12).toString("base64url"),
-    game: Game.create({ kind, cards: KINDS[kind], settings }),
+    game: Game.create({ kind, cards: cardsFor(kind, clampSettings(settings, kind).lang), settings }),
     tokens: {}, // playerToken → playerId
     sockets: new Set(), // {ws, playerId?, host?}
     timer: null,
@@ -202,7 +227,7 @@ async function startJudging(room) {
     broadcast(room, { type: "event", event: { type: "judging" } });
     const lineups = players.map((p, i) => ({ pid: `p${i + 1}`, playerId: p.id, lots: p.lots }));
     try {
-      const verdict = await judge({ kind: s.kind, lineups, slots: s.settings.slots, mode: s.settings.mode, apiKey: OPENAI_API_KEY, model: OPENAI_MODEL });
+      const verdict = await judge({ kind: s.kind, lineups, slots: s.settings.slots, mode: s.settings.mode, lang: s.settings.lang, apiKey: OPENAI_API_KEY, model: OPENAI_MODEL });
       const byPid = Object.fromEntries(lineups.map((l) => [l.pid, l]));
       const names = Object.fromEntries(lineups.map((l) => [l.pid, g.player(l.playerId).name]));
       // p1/{{p1}} → имена; выдуманный игрок (p9, которого нет) превращается в нейтральное «игрок»
@@ -535,7 +560,8 @@ function handle(room, client, msg) {
     case "settings": {
       if (!client.host) return;
       if (g.s.phase !== "lobby") return reply({ type: "error", error: "game_started" });
-      if (msg.kind && KINDS[msg.kind]) { g.s.kind = msg.kind; g.s.deck = Game.create({ kind: msg.kind, cards: KINDS[msg.kind] }).s.deck; }
+      const wasKind = g.s.kind, wasLang = g.s.settings.lang;
+      if (msg.kind && KINDS[msg.kind]) g.s.kind = msg.kind;
       // clampSettings знает категорию и сам сбрасывает задание, доступное только прежней;
       // пересчитываем и когда пришла одна категория без настроек — иначе задание осталось бы чужим
       if (msg.settings) {
@@ -543,6 +569,10 @@ function handle(room, client, msg) {
         for (const p of g.s.players) p.money = g.s.settings.budget;
       } else if (msg.kind) {
         g.s.settings = clampSettings(g.s.settings, g.s.kind);
+      }
+      // колода зависит и от категории, и от языка: карточки на другом языке — другие объекты
+      if (g.s.kind !== wasKind || g.s.settings.lang !== wasLang) {
+        g.s.deck = Game.create({ kind: g.s.kind, cards: cardsFor(g.s.kind, g.s.settings.lang) }).s.deck;
       }
       return afterChange(room, []);
     }
@@ -566,7 +596,7 @@ function handle(room, client, msg) {
     case "next_game": {
       if (!client.host) return;
       const kind = KINDS[msg.kind] ? msg.kind : g.s.kind;
-      const fresh = Game.create({ kind, cards: KINDS[kind], settings: g.s.settings });
+      const fresh = Game.create({ kind, cards: cardsFor(kind, g.s.settings.lang), settings: g.s.settings });
       for (const p of g.activePlayers()) fresh.addPlayer({ id: p.id, name: p.name });
       // онлайн определяем по живым соединениям (боты считаются подключёнными всегда)
       for (const p of fresh.s.players) p.online = room.bots.some((b) => b.playerId === p.id) || [...room.sockets].some((c) => c.playerId === p.id);
@@ -612,7 +642,7 @@ setInterval(() => {
 // колода комнаты → список номеров карт; null, если карточки не из текущей колоды категории
 // (данные поменялись между сборками) — тогда дампим колоду как есть
 function deckIndexes(s) {
-  const idx = CARD_INDEX[s.kind];
+  const idx = (CARD_INDEX[langOf(s)] || CARD_INDEX.ru)[s.kind];
   if (!idx || !Array.isArray(s.deck)) return null;
   const out = [];
   for (const c of s.deck) {
@@ -657,7 +687,7 @@ function restore() {
       // колода сохранена номерами — поднимаем её теми же объектами, что в KINDS (общая память, не копия).
       // Старый формат (колода целиком) читается как есть: дамп с прошлой версии не теряется.
       if (Array.isArray(r.state.deckIdx)) {
-        const cards = KINDS[r.state.kind] || [];
+        const cards = cardsFor(r.state.kind, langOf(r.state)) || [];
         const deck = r.state.deckIdx.map((i) => cards[i]);
         if (deck.every(Boolean)) {
           r.state.deck = deck;
