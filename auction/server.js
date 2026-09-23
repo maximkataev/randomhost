@@ -16,6 +16,7 @@ const crypto = require("crypto");
 const { WebSocketServer } = require("ws");
 const { Game, clampSettings } = require("./game");
 const { judge } = require("./judge");
+const { modeById, modesForKind } = require("./modes");
 const { decide, STRATEGIES } = require("./bots");
 
 const PORT = Number(process.env.PORT || 3000);
@@ -26,8 +27,16 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.4";
 const ROOM_TTL = Number(process.env.ROOM_TTL_MS || 30 * 60 * 1000); // комната без активности 30 минут — удаляется (короче — только для тестов)
 const SWEEP = Math.min(25000, Math.max(1000, Math.floor(ROOM_TTL / 4))); // ping/pong и уборка комнат
-const MAX_ROOMS = 200;
+const MAX_ROOMS = Number(process.env.MAX_ROOMS || 200);
 const MAX_PLAYERS = 100; // по сути без лимита; минимум для старта — 2
+// ---- лимиты против исчерпания ресурсов ----
+const MAX_ROOMS_PER_IP = Number(process.env.MAX_ROOMS_PER_IP || 20); // сколько живых комнат на один адрес
+const MAX_SOCKETS_PER_ROOM = Number(process.env.MAX_SOCKETS_PER_ROOM || 200); // сокетов+poll-сессий на комнату
+const MAX_TOTAL_SOCKETS = Number(process.env.MAX_TOTAL_SOCKETS || 3000); // сокетов+poll-сессий на процесс
+const MAX_JUDGE_CALLS = Number(process.env.MAX_JUDGE_CALLS || 12); // платных запросов к OpenAI на комнату
+const EVICT_GRACE_MS = Number(process.env.EVICT_GRACE_MS || 10000); // свежую пустую комнату не вытесняем — доска ещё подключается (0 — только для тестов)
+const MSG_RATE = Number(process.env.MSG_RATE || 40); // сообщений в секунду на один сокет
+const MAX_MSG_BYTES = 8192; // максимум на одно входящее сообщение
 const KINDS = {};
 for (const f of fs.readdirSync(path.join(__dirname, "data"))) {
   if (f.endsWith(".json")) KINDS[f.slice(0, -5)] = JSON.parse(fs.readFileSync(path.join(__dirname, "data", f), "utf8"));
@@ -47,12 +56,54 @@ function newCode() {
   }
 }
 
-function createRoom({ kind = "artist", settings = {}, speed = 1 } = {}) {
-  if (rooms.size >= MAX_ROOMS) throw new Error("too many rooms");
+// суммарное число живых соединений (WebSocket + long-polling) по всем комнатам
+function totalSockets() {
+  let n = 0;
+  for (const r of rooms.values()) n += r.sockets.size;
+  return n;
+}
+
+// снести комнату целиком: погасить таймеры, оповестить и разорвать соединения, вычистить poll-сессии
+function destroyRoom(room) {
+  clearTimeout(room.timer);
+  clearTimeout(room.voteTimer);
+  clearInterval(room.botTimer);
+  for (const c of room.sockets) { try { send(c.ws, { type: "error", error: "room_expired" }); c.ws.terminate(); } catch {} }
+  for (const [sid, c] of pollClients) if (c.room === room) pollClients.delete(sid);
+  rooms.delete(room.code);
+}
+
+// вытеснить самую старую пустую (без соединений) комнату в лобби/финале — чтобы griefer,
+// набивший процесс пустыми комнатами, не блокировал создание новых игр всем остальным
+function evictOldestEmpty(ip) {
+  let victim = null;
+  const cutoff = now() - EVICT_GRACE_MS;
+  for (const r of rooms.values()) {
+    if (ip && r.ip !== ip) continue; // вытесняем только брошенные комнаты того же адреса
+    if (r.sockets.size === 0 && r.touched < cutoff && (r.game.s.phase === "lobby" || r.game.s.phase === "finished")) {
+      if (!victim || r.touched < victim.touched) victim = r;
+    }
+  }
+  if (!victim) return false;
+  destroyRoom(victim);
+  return true;
+}
+
+function createRoom({ kind = "artist", settings = {}, speed = 1, ip = "" } = {}) {
   if (!KINDS[kind]) throw new Error("unknown kind");
+  if (ip) {
+    let mine = 0;
+    for (const r of rooms.values()) if (r.ip === ip) mine++;
+    // Упёрлись в лимит — сначала пробуем освободить брошенную комнату этого же адреса.
+    // Отказ только если все его комнаты живые: так лимит не запирает того, кто просто переигрывает,
+    // и ошибка в проксировании адреса не превращается в отказ всему сайту.
+    if (mine >= MAX_ROOMS_PER_IP && !evictOldestEmpty(ip)) throw new Error("too many rooms from this address");
+  }
+  if (rooms.size >= MAX_ROOMS && !evictOldestEmpty()) throw new Error("too many rooms");
   const code = newCode();
   const room = {
     code,
+    ip,
     hostToken: crypto.randomBytes(12).toString("base64url"),
     game: Game.create({ kind, cards: KINDS[kind], settings }),
     tokens: {}, // playerToken → playerId
@@ -65,10 +116,18 @@ function createRoom({ kind = "artist", settings = {}, speed = 1 } = {}) {
     bots: [], // {playerId, strategy}
     botTimer: null,
     judging: false,
+    judgeCalls: 0,
     thumbs: {},
   };
   rooms.set(code, room);
   return room;
+}
+
+// частота входящих сообщений на один сокет: флуд по одному соединению не жжёт CPU всей комнаты
+function rateOk(client) {
+  const t = now();
+  if (!client.rl || t - client.rl.ts >= 1000) client.rl = { ts: t, n: 0 };
+  return ++client.rl.n <= MSG_RATE;
 }
 
 const now = () => Date.now();
@@ -125,11 +184,12 @@ async function startJudging(room) {
     room.judging = false;
     return;
   }
-  if (s.settings.judge === "chatgpt" && OPENAI_API_KEY) {
+  if (s.settings.judge === "chatgpt" && OPENAI_API_KEY && room.judgeCalls < MAX_JUDGE_CALLS) {
+    room.judgeCalls++;
     broadcast(room, { type: "event", event: { type: "judging" } });
     const lineups = players.map((p, i) => ({ pid: `p${i + 1}`, playerId: p.id, lots: p.lots }));
     try {
-      const verdict = await judge({ kind: s.kind, lineups, slots: s.settings.slots, apiKey: OPENAI_API_KEY, model: OPENAI_MODEL });
+      const verdict = await judge({ kind: s.kind, lineups, slots: s.settings.slots, mode: s.settings.mode, apiKey: OPENAI_API_KEY, model: OPENAI_MODEL });
       const byPid = Object.fromEntries(lineups.map((l) => [l.pid, l]));
       const names = Object.fromEntries(lineups.map((l) => [l.pid, g.player(l.playerId).name]));
       // p1/{{p1}} → имена; выдуманный игрок (p9, которого нет) превращается в нейтральное «игрок»
@@ -233,10 +293,28 @@ function serveStatic(req, res) {
 
 function readJson(req) {
   return new Promise((resolve) => {
-    let body = "";
-    req.on("data", (c) => { body += c; if (body.length > 10000) req.destroy(); });
-    req.on("end", () => { try { resolve(JSON.parse(body || "{}")); } catch { resolve({}); } });
+    let body = "", done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    // тело больше 10 КБ — обрываем и сразу отвечаем пустым (иначе промис висел бы вечно и держал соединение)
+    req.on("data", (c) => { body += c; if (body.length > 10000) { finish({}); req.destroy(); } });
+    req.on("end", () => { try { finish(JSON.parse(body || "{}")); } catch { finish({}); } });
+    req.on("error", () => finish({}));
   });
+}
+
+// адрес клиента похож на IP; всё остальное — подделка, её игнорируем
+const looksLikeIp = (s) => /^[0-9a-fA-F:.]{3,45}$/.test(s) && /[.:]/.test(s);
+
+function clientIp(req) {
+  // Главный источник — X-Real-IP: его ставит ВНЕШНИЙ nginx ($remote_addr) и затирает всё,
+  // что прислал клиент, а внутренний nginx пробрасывает как есть. Хвост X-Forwarded-For для
+  // этого не годится: при двух прокси там лежит адрес внешнего nginx, один на всех, и лимит
+  // комнат на адрес схлопнулся бы на весь сайт.
+  const real = String(req.headers["x-real-ip"] || "").trim();
+  if (looksLikeIp(real)) return real;
+  // Запасной путь для одного прокси: последний элемент цепочки дописал он сам, подделать его нельзя.
+  const chain = String(req.headers["x-forwarded-for"] || "").split(",").map((s) => s.trim()).filter(looksLikeIp);
+  return chain.length ? chain[chain.length - 1] : (req.socket.remoteAddress || "");
 }
 
 // ---------- запасной транспорт: long-polling (когда прокси не пропускает WebSocket и буферизует потоки) ----------
@@ -282,6 +360,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/auction/api/session") {
     const room = rooms.get((url.searchParams.get("r") || "").toUpperCase());
     if (!room) return json(404, { error: "no such room" });
+    if (room.sockets.size >= MAX_SOCKETS_PER_ROOM || totalSockets() >= MAX_TOTAL_SOCKETS) return json(503, { error: "busy" });
     const client = openPoll(room);
     const first = client.ws.queue.splice(0);
     return json(200, { sid: client.sid, messages: first.map((d) => JSON.parse(d)) });
@@ -305,15 +384,17 @@ const server = http.createServer(async (req, res) => {
     const client = pollClients.get(String(body.sid || ""));
     if (!client) return json(410, { error: "session gone" });
     client.lastSeen = now();
+    if (!rateOk(client)) return json(429, { error: "slow down" });
     try { handle(client.room, client, body.msg || {}); } catch (err) { send(client.ws, { type: "error", error: err.message }); }
     return json(200, { ok: true });
   }
   if (url.pathname === "/auction/api/health") return json(200, { ok: true, rooms: rooms.size, judge: OPENAI_API_KEY ? "chatgpt" : "vote" });
   if (url.pathname === "/auction/api/kinds") return json(200, Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, v.length])));
+  if (url.pathname === "/auction/api/modes") return json(200, require("./modes").MODES);
   if (url.pathname === "/auction/api/rooms" && req.method === "POST") {
     const body = await readJson(req);
     try {
-      const room = createRoom({ kind: body.kind, settings: body.settings, speed: body.speed });
+      const room = createRoom({ kind: body.kind, settings: body.settings, speed: body.speed, ip: clientIp(req) });
       return json(200, { code: room.code, hostToken: room.hostToken });
     } catch (err) {
       return json(400, { error: err.message });
@@ -326,13 +407,18 @@ const server = http.createServer(async (req, res) => {
 
 // ---------- WebSocket ----------
 
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MSG_BYTES });
 
 server.on("upgrade", (req, socket, head) => {
   const url = new URL(req.url, "http://x");
   if (url.pathname !== "/auction/ws") return socket.destroy();
   const room = rooms.get((url.searchParams.get("r") || "").toUpperCase());
   if (!room) { socket.write("HTTP/1.1 404 Not Found\r\n\r\n"); return socket.destroy(); }
+  // потолок соединений на комнату и на процесс: без него один клиент открывает тысячи сокетов
+  if (room.sockets.size >= MAX_SOCKETS_PER_ROOM || totalSockets() >= MAX_TOTAL_SOCKETS) {
+    socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
+    return socket.destroy();
+  }
   wss.handleUpgrade(req, socket, head, (ws) => onConnection(room, ws));
 });
 
@@ -343,6 +429,7 @@ function onConnection(room, ws) {
   send(ws, { type: "hello", code: room.code, state: snapshotWithVoting(room), kinds: Object.keys(KINDS) });
 
   ws.on("message", (raw) => {
+    if (!rateOk(client)) return; // флуд по одному сокету не тратит CPU всей комнаты
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     try { handle(room, client, msg); } catch (err) { send(ws, { type: "error", error: err.message }); }
@@ -439,6 +526,8 @@ function handle(room, client, msg) {
       if (msg.settings) {
         g.s.settings = clampSettings({ ...g.s.settings, ...msg.settings });
         for (const p of g.s.players) p.money = g.s.settings.budget;
+        // задание могло быть доступно только прежней категории
+        if (!modesForKind(g.s.kind).some((m) => m.id === g.s.settings.mode)) g.s.settings.mode = "base";
       }
       return afterChange(room, []);
     }
@@ -491,14 +580,7 @@ setInterval(() => {
       c.alive = false;
       c.ws.ping();
     }
-    if (now() - room.touched > ROOM_TTL) {
-      clearTimeout(room.timer);
-      clearTimeout(room.voteTimer);
-      clearInterval(room.botTimer);
-      for (const c of room.sockets) { send(c.ws, { type: "error", error: "room_expired" }); try { c.ws.terminate(); } catch {} }
-      for (const [sid, c] of pollClients) if (c.room === room) pollClients.delete(sid);
-      rooms.delete(room.code);
-    }
+    if (now() - room.touched > ROOM_TTL) destroyRoom(room);
   }
 }, SWEEP);
 
@@ -507,7 +589,7 @@ function dump() {
     fs.mkdirSync(path.dirname(DUMP), { recursive: true });
     const data = [...rooms.values()]
       .filter((r) => !r.bots.length)
-      .map((r) => ({ code: r.code, hostToken: r.hostToken, tokens: r.tokens, touched: r.touched, state: r.game.s }));
+      .map((r) => ({ code: r.code, ip: r.ip, hostToken: r.hostToken, tokens: r.tokens, touched: r.touched, state: r.game.s }));
     fs.writeFileSync(DUMP + ".tmp", JSON.stringify(data));
     fs.renameSync(DUMP + ".tmp", DUMP);
   } catch (err) {
@@ -520,7 +602,7 @@ function restore() {
     if (!fs.existsSync(DUMP)) return;
     for (const r of JSON.parse(fs.readFileSync(DUMP, "utf8"))) {
       if (now() - r.touched > ROOM_TTL) continue;
-      const room = { code: r.code, hostToken: r.hostToken, game: Game.from(r.state), tokens: r.tokens, sockets: new Set(), timer: null, voteTimer: null, touched: r.touched, speed: 1, skew: 0, bots: [], botTimer: null, judging: false, thumbs: {} };
+      const room = { code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: Game.from(r.state), tokens: r.tokens, sockets: new Set(), timer: null, voteTimer: null, touched: r.touched, speed: 1, skew: 0, bots: [], botTimer: null, judging: false, judgeCalls: 0, thumbs: {} };
       for (const p of room.game.s.players) p.online = false;
       rooms.set(room.code, room);
       schedule(room);

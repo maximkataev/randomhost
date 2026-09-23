@@ -1,5 +1,7 @@
 "use strict";
 
+const { modeById } = require("./modes");
+
 /*
  * Движок аукциона: чистая логика без сети и таймеров.
  * Всё состояние лежит в plain-объекте `this.s`, чтобы его можно было дампить в JSON и поднимать обратно.
@@ -18,6 +20,7 @@ const DEFAULTS = {
   antiSnipeBonus: 3000,
   showDelay: 2000, // ПРОДАНО / ЗАБРАЛ перед следующим лотом
   judge: "chatgpt", // chatgpt | vote
+  mode: "base", // задание: что собираем и как судят (auction/modes.js)
   media: true,
 };
 
@@ -34,6 +37,7 @@ function clampSettings(input = {}) {
   num("t1", 5000, 60000);
   num("t2", 3000, 15000);
   if (input.judge === "vote" || input.judge === "chatgpt") s.judge = input.judge;
+  if (typeof input.mode === "string" && modeById(input.mode).id === input.mode) s.mode = input.mode;
   if (typeof input.media === "boolean") s.media = input.media;
   return s;
 }

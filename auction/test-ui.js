@@ -82,6 +82,28 @@ async function cdp(url) {
     await wait(500);
     check(await evaluateSafe(board, "document.body.innerText.includes('Макс')"), "доска: игрок появился в лобби");
 
+    // --- задание партии: клик по плитке должен дойти до сервера и до пульта
+    await board.call("Runtime.evaluate", { expression: `[...document.querySelectorAll("#mode .tile")].find(x => x.dataset.v === "worst").click()` });
+    await wait(1200);
+    check((await evaluateSafe(board, "state && state.settings.mode")) === "worst", "доска: выбранное задание дошло до сервера");
+    check(/нелеп|несочетаем/i.test(await evaluateSafe(board, "document.getElementById('modehint').textContent") || ""), "доска: подсказка объясняет, как судит ИИ");
+    check(/Худший набор/.test(await evaluateSafe(remote, "document.body.innerText") || ""), "пульт: задание видно в лобби");
+    // задание, которого нет в новой категории, откатывается на обычное
+    // «Лига суперзлодеев» есть у персонажей, но не у городов — переключаемся туда, где она доступна
+    await board.call("Runtime.evaluate", { expression: `[...document.querySelectorAll("#kind .tile")].find(x => x.dataset.v === "character").click()` });
+    await wait(900);
+    const villainsClick = await evaluateSafe(board, `(() => { const b = [...document.querySelectorAll("#mode .tile")].find(x => x.dataset.v === "villains"); if (!b) return "нет плитки: " + [...document.querySelectorAll("#mode .tile")].map(x => x.dataset.v).join(","); b.click(); return "ok"; })()`);
+    await wait(900);
+    check(villainsClick === "ok" && (await evaluateSafe(board, "state && state.settings.mode")) === "villains", "доска: задание переключается повторно (" + villainsClick + ")");
+    await board.call("Runtime.evaluate", { expression: `[...document.querySelectorAll("#kind .tile")].find(x => x.dataset.v === "city").click()` });
+    await wait(1200);
+    const afterKind = await evaluateSafe(board, "(state && state.settings.mode) + '/' + (state && state.kind)");
+    check(afterKind === "base/city", "доска: недоступное задание сброшено при смене категории (" + afterKind + ")");
+    await board.call("Runtime.evaluate", { expression: `[...document.querySelectorAll("#kind .tile")].find(x => x.dataset.v === "film").click()` });
+    await wait(900);
+    await board.call("Runtime.evaluate", { expression: `[...document.querySelectorAll("#mode .tile")].find(x => x.dataset.v === "worst").click()` });
+    await wait(900);
+
     // --- боты и старт
     await board.call("Runtime.evaluate", { expression: "sendMsg({type:'bots', n:3}); setTimeout(() => sendMsg({type:'start'}), 500)" });
     await wait(6000);
@@ -98,6 +120,8 @@ async function cdp(url) {
     const rnum = await evaluateSafe(remote, "document.getElementById('tnum') && document.getElementById('tnum').textContent");
     check(/^\d*$/.test(rnum || ""), "пульт: таймер-кольцо есть (" + rnum + ")");
     await remote.shot("ui_remote_game");
+    check(/Худший набор/.test(await evaluateSafe(board, "document.getElementById('gtask') && document.getElementById('gtask').textContent") || ""), "доска: задание видно во время торгов");
+    check(/Худший набор/.test(await evaluateSafe(remote, "document.getElementById('task') && document.getElementById('task').textContent") || ""), "пульт: задание видно во время торгов");
     // ставка с пульта
     await remote.call("Runtime.evaluate", { expression: "(document.getElementById('bid') || {click(){}}).click()" });
     await wait(1200);

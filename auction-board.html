@@ -19,6 +19,11 @@
   .topbar .phase { font: 900 clamp(22px, 2vw, 30px)/1 var(--display); letter-spacing: -.035em; text-transform: uppercase; }
   .topbar .phase.bidding { color: var(--c1); }
   .topbar .spacer { flex: 1; }
+  /* задание партии видно весь матч: игроки смотрят на экран, а не в телефон */
+  .topbar .gtask { display: none; font-size: clamp(14px, 1.15vw, 18px); padding: 8px 16px; border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--c1) 40%, transparent); background: color-mix(in srgb, var(--c1) 12%, transparent); color: rgba(244, 242, 255, .8); }
+  .topbar .gtask.on { display: block; }
+  .topbar .gtask b { color: var(--text); font-weight: 700; }
   .timer { position: relative; width: 64px; height: 64px; flex: none; transition: opacity .35s; }
   .timer svg { position: absolute; inset: 0; transform: rotate(-90deg); }
   .timer circle { fill: none; stroke-width: 5; }
@@ -187,6 +192,13 @@
   .seg button.on { color: #0a0a0f; background: linear-gradient(100deg, var(--c1), var(--c2) 80%); box-shadow: 0 10px 26px -14px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .4); }
   .seg button:not(.on):hover { color: var(--text); background: rgba(255, 255, 255, .07); }
 
+  .modes .tile { font-size: 9px; }
+  .modehint {
+    margin-top: 2px; padding: 10px 14px; font-size: 13.5px; line-height: 1.45;
+    color: rgba(244, 242, 255, .7); background: rgba(255, 255, 255, .04);
+    border: 1px solid var(--glass-line); border-left: 3px solid var(--c1); border-radius: 6px 14px 14px 6px;
+  }
+  .modehint b { color: var(--text); font-weight: 600; }
   .rounds { font-size: 13.5px; color: var(--muted); }
   .rounds b { color: var(--text); font-weight: 600; }
 
@@ -267,6 +279,8 @@
   /* height, а не min-height: иначе экран итогов вырастал за пределы body{overflow:hidden} и низ обрезался */
   .final { height: 100%; overflow-y: auto; scrollbar-width: thin; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 28px; padding: clamp(22px, 3vh, 32px); backdrop-filter: blur(24px); box-shadow: 0 30px 80px -50px #000; }
   .final h2 { font: 900 clamp(30px, 3.4vw, 44px)/.95 var(--display); text-transform: uppercase; letter-spacing: -.045em; margin: 0 0 20px; }
+  .final .ftask { margin: -12px 0 18px; font-size: clamp(14px, 1.2vw, 18px); color: rgba(244, 242, 255, .72); }
+  .final .ftask b { color: var(--c1); font-weight: 700; }
   .podium { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); align-items: start; gap: 14px; }
   .pl { background: rgba(255, 255, 255, .05); border: 1px solid var(--glass-line); border-radius: 22px; padding: 18px; backdrop-filter: blur(14px); box-shadow: 0 18px 40px -30px #000; animation: rise .6s both; }
   .pl.first { border-color: var(--c1); box-shadow: 0 0 0 1px var(--c1), 0 20px 50px -20px var(--c1); }
@@ -316,10 +330,12 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="sound-toggle.js" defer></script>
+<script src="auction-modes.js"></script>
 <script src="auction-shared.js"></script>
 <script>
 const params = new URLSearchParams(location.search);
-const CODE = (params.get("r") || "").toUpperCase();
+// код комнаты идёт в innerHTML — оставляем только буквы алфавита кодов, иначе ?r=<img onerror> даёт XSS
+const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 8);
 const TOKEN = params.get("t") || "";
 const app = document.getElementById("app");
 const overlay = document.getElementById("overlay");
@@ -446,6 +462,11 @@ function buildLobby() {
           </div>
         </div>
         <div class="set">
+          <div class="cap">Задание</div>
+          <div class="tiles modes" id="mode"></div>
+          <div class="modehint" id="modehint"></div>
+        </div>
+        <div class="set">
           <div class="cap">Кто судит</div>
           <div class="seg" id="judge"><button data-v="chatgpt">ChatGPT</button><button data-v="vote">Голосование</button></div>
         </div>
@@ -473,13 +494,15 @@ function buildLobby() {
   // любое изменение контрола уходит хосту тем же сообщением settings
   const push = (patch) => {
     const s = state.settings;
-    const next = { kind: state.kind, budget: Number(s.budget), slots: Number(s.slots), judge: s.judge, ...patch };
+    const next = { kind: state.kind, budget: Number(s.budget), slots: Number(s.slots), judge: s.judge, mode: s.mode || "base", ...patch };
     next.budget = Math.min(200, Math.max(10, next.budget));
     next.slots = Math.min(8, Math.max(3, next.slots));
+    // задание живёт не во всех категориях: при смене категории недоступное сбрасываем на обычное
+    if (window.auctionModesForKind && !auctionModesForKind(next.kind).some((m) => m.id === next.mode)) next.mode = "base";
     // оптимистично применяем локально — контрол реагирует мгновенно, сервер пришлёт подтверждение
-    state.kind = next.kind; state.settings.budget = next.budget; state.settings.slots = next.slots; state.settings.judge = next.judge;
+    state.kind = next.kind; state.settings.budget = next.budget; state.settings.slots = next.slots; state.settings.judge = next.judge; state.settings.mode = next.mode;
     document.body.dataset.kind = next.kind;
-    sendMsg({ type: "settings", kind: next.kind, settings: { budget: next.budget, slots: next.slots, judge: next.judge } });
+    sendMsg({ type: "settings", kind: next.kind, settings: { budget: next.budget, slots: next.slots, judge: next.judge, mode: next.mode } });
     syncLobby();
   };
   const pick = (box, key, cast) => document.getElementById(box).addEventListener("click", (e) => {
@@ -494,6 +517,9 @@ function buildLobby() {
   pick("budget", "budget", Number);
   pick("slots", "slots", Number);
   pick("judge", "judge", String);
+  document.getElementById("mode").addEventListener("click", (e) => {
+    const hit = e.target.closest("[data-v]"); if (hit) push({ mode: hit.dataset.v });
+  });
   document.getElementById("start").onclick = () => { unlockAudio(); sendMsg({ type: "start" }); };
   var botsBtn = document.getElementById("bots"); if (botsBtn) botsBtn.addEventListener("click", () => sendMsg({ type: "bots", n: 3 }));
 }
@@ -508,6 +534,21 @@ function syncLobby() {
   const n = players.length;
 
   markOn("kind", s.kind);
+  const modes = window.auctionModesForKind ? auctionModesForKind(s.kind) : [];
+  const current = (window.auctionModeById ? auctionModeById(s.settings.mode) : { id: "base" });
+  const modeBox = document.getElementById("mode");
+  if (modeBox.dataset.kind !== s.kind) {
+    modeBox.dataset.kind = s.kind;
+    modeBox.replaceChildren(...modes.map((m) => {
+      const b = el("button", "tile");
+      b.dataset.v = m.id;
+      b.append(el("span", "ico", m.icon), document.createTextNode(m.title));
+      return b;
+    }));
+  }
+  markOn("mode", current.id);
+  const hint = document.getElementById("modehint");
+  hint.replaceChildren(el("b", null, current.short || ""), document.createTextNode(" — " + (current.judge || "")));
   markOn("judge", s.settings.judge);
   syncPills("budget", budget, BUDGETS, (v) => "$" + v);
   syncPills("slots", slots, SLOTS, (v) => String(v));
@@ -559,7 +600,7 @@ function renderGame() {
   if (!document.getElementById("topbar")) {
     app.innerHTML = `
       <main>
-        <div class="topbar" id="topbar"><span class="lotno" id="lotno"></span><span class="phase" id="phase"></span><span class="spacer"></span>
+        <div class="topbar" id="topbar"><span class="lotno" id="lotno"></span><span class="phase" id="phase"></span><span class="spacer"></span><span class="gtask" id="gtask"></span>
           <div class="timer" id="timer"><svg viewBox="0 0 64 64"><circle class="track" cx="32" cy="32" r="28"/><circle class="ring" id="ring" cx="32" cy="32" r="28" stroke-dasharray="176" stroke-dashoffset="0"/></svg><div class="num" id="tnum"></div></div>
         </div>
         <section class="frame"><div class="card center" id="card"></div></section>
@@ -579,6 +620,13 @@ function renderGame() {
   pauseBtn.classList.toggle("accent", !!s.paused);
   document.getElementById("skip").disabled = s.paused || !(s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup");
   document.getElementById("lotno").textContent = `Лот ${s.round + 1} из ${s.rounds}`;
+  const gtask = document.getElementById("gtask");
+  if (gtask) {
+    const m = window.auctionModeById ? auctionModeById(s.settings.mode) : null;
+    const custom = m && m.id !== "base";
+    gtask.className = "gtask" + (custom ? " on" : "");
+    if (custom) gtask.replaceChildren(el("b", null, m.icon + " " + m.title), document.createTextNode(" — " + (m.short || "")));
+  }
   const phaseEl = document.getElementById("phase");
   phaseEl.className = "phase " + s.phase;
   phaseEl.textContent = { lot: "Лот", bidding: "Торги", pickup: "Разбор", sold: "Продано", taken: "Забрали", unsold: "Никто не взял" }[s.phase] || "";
@@ -684,7 +732,9 @@ function renderFinal() {
   }
   const r = s.results;
   const places = ["🥇", "🥈", "🥉"];
-  app.innerHTML = `<div class="final"><h2>Итоги</h2><div class="podium">${r.ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: places[i] || `${i + 1}.`, score: x.score, verdict: x.verdict, first: i === 0, mode: r.mode, delay: Math.min(1.4, (r.ranking.length - 1 - i) * .16) })).join("")}</div>${r.summary ? `<div class="summary">${escapeHtml(r.summary)}</div>` : ""}<div class="actions"><button class="btn" id="again">Ещё раз (та же категория)</button><button class="btn ghost" id="another">Другая категория</button></div></div>`;
+  const fmode = window.auctionModeById ? auctionModeById(s.settings.mode) : null;
+  const ftask = fmode && fmode.id !== "base" ? `<div class="ftask"><b>${escapeHtml(fmode.icon + " " + fmode.title)}</b> — ${escapeHtml(fmode.judge || "")}</div>` : "";
+  app.innerHTML = `<div class="final"><h2>Итоги</h2>${ftask}<div class="podium">${r.ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: places[i] || `${i + 1}.`, score: x.score, verdict: x.verdict, first: i === 0, mode: r.mode, delay: Math.min(1.4, (r.ranking.length - 1 - i) * .16) })).join("")}</div>${r.summary ? `<div class="summary">${escapeHtml(r.summary)}</div>` : ""}<div class="actions"><button class="btn" id="again">Ещё раз (та же категория)</button><button class="btn ghost" id="another">Другая категория</button></div></div>`;
   document.getElementById("again").onclick = () => sendMsg({ type: "next_game" });
   document.getElementById("another").onclick = () => sendMsg({ type: "next_game" });
 }

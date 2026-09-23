@@ -5,7 +5,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game } = require("./game");
-const { judge } = require("./judge");
+const { judge, buildPrompt } = require("./judge");
+const { modesForKind } = require("./modes");
 
 const cards = Array.from({ length: 60 }, (_, i) => ({ name: `Лот ${i}`, emoji: "🎲", meta: ["a", "b"], description: "d", fact: "f", wiki_en: "x" }));
 const rng = () => 0.5;
@@ -292,4 +293,36 @@ test("судья: два кривых ответа подряд → ошибка
 test("судья: HTTP-ошибка API не роняет сервер, а превращается в исключение", async () => {
   const fetchImpl = async () => ({ ok: false, status: 401, json: async () => ({ error: { message: "bad key" } }) });
   await assert.rejects(() => judge({ kind: "film", lineups: twoLineups, slots: 3, apiKey: "bad", model: "m", fetchImpl }), /bad key/);
+});
+
+// ---------- задания ----------
+
+test("задание: валидное принимается, мусорное откатывается к base", () => {
+  assert.equal(setup(2, { mode: "worst" }).s.settings.mode, "worst");
+  assert.equal(setup(2, { mode: "нет-такого" }).s.settings.mode, "base");
+  assert.equal(setup(2).s.settings.mode, "base");
+});
+
+test("задание: villains есть у персонажей и нет у городов", () => {
+  const ids = (k) => modesForKind(k).map((m) => m.id);
+  assert.ok(ids("character").includes("villains"));
+  assert.ok(!ids("city").includes("villains"));
+  for (const k of ["artist", "city", "film", "food"]) assert.ok(ids(k).includes("base"), `${k}: base должен быть везде`);
+});
+
+test("судья: текст задания попадает в промпт, base его не добавляет", () => {
+  const worst = buildPrompt("artist", twoLineups, 5, "worst");
+  assert.ok(worst.includes("нарочно провальный набор"), "нет формулировки задания");
+  assert.ok(worst.includes("несовместимость"), "нет критериев задания");
+  assert.ok(worst.includes("Скучный средний набор"), "нет инструкции судье");
+  const base = buildPrompt("artist", twoLineups, 5, "base");
+  assert.ok(!base.includes("нарочно провальный"), "base подмешал чужое задание");
+  assert.equal(buildPrompt("artist", twoLineups, 5, "чушь"), base, "неизвестное задание должно вести себя как base");
+});
+
+test("судья: задание уходит в реальный вызов judge()", async () => {
+  let sent = "";
+  const fetchImpl = async (_u, opts) => { sent = opts.body; return judgeReply(full); };
+  await judge({ kind: "artist", lineups: twoLineups, slots: 3, mode: "villains", apiKey: "k", model: "m", fetchImpl });
+  assert.ok(sent.includes("суперзлодеев") || sent.includes("\\u0437\\u043b\\u043e\\u0434\\u0435"), "тело запроса без задания: " + sent.slice(0, 200));
 });

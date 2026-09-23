@@ -101,6 +101,13 @@
   .plate b { font: 900 20px/1.2 var(--display); letter-spacing: -.03em; color: var(--text); display: block; margin-bottom: 4px; }
   .plate.lead-me { border-style: solid; border-color: var(--c1); background: color-mix(in srgb, var(--c1) 12%, transparent); }
   .plate.err { color: #ff8a8a; }
+  .plate.task { border-style: solid; border-color: color-mix(in srgb, var(--c1) 45%, transparent); background: color-mix(in srgb, var(--c1) 8%, transparent); }
+  /* задание игры — отдельной строкой под статусом: в статусбаре оно обрезалось до пары букв */
+  .taskbar { display: none; align-items: baseline; gap: 6px; font-size: 13px; line-height: 1.25; padding: 7px 12px; margin: -2px 0 2px; border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--c1) 35%, transparent); background: color-mix(in srgb, var(--c1) 10%, transparent); color: rgba(244, 242, 255, .78); }
+  .taskbar.on { display: flex; }
+  .taskbar b { color: var(--text); font-weight: 700; white-space: nowrap; }
+  .taskbar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .note { text-align: center; font-size: 13px; color: var(--muted); min-height: 18px; }
 
   /* ===== стартовый экран: «аукционный зал» ===== */
@@ -332,6 +339,7 @@
 <canvas class="confetti" id="confetti"></canvas>
 
 <script src="sound-toggle.js" defer></script>
+<script src="auction-modes.js"></script>
 <script src="auction-shared.js"></script>
 <script>
 // какой экран открыт: от этого зависит, скроллится ли страница (важно для мобильной клавиатуры)
@@ -341,7 +349,8 @@ function screenMode(mode) {
   if (mode) b.classList.add("m-" + mode);
 }
 const params = new URLSearchParams(location.search);
-const CODE = (params.get("r") || "").toUpperCase();
+// код комнаты идёт в innerHTML — оставляем только буквы алфавита кодов, иначе ?r=<img onerror> даёт XSS
+const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 8);
 const app = document.getElementById("app");
 const overlay = document.getElementById("overlay");
 let state = null, ws, offset = 0, me = null, token = null, lastLot = -1, thumbLot = -1;
@@ -530,6 +539,7 @@ function setState(s) {
 }
 const money = (n) => "$" + Number(n).toLocaleString("ru-RU");
 const mine = () => state.players.find((p) => p.id === me);
+const modeNow = () => (window.auctionModeById ? auctionModeById(state && state.settings && state.settings.mode) : { icon: "🏆", title: "Лучший набор", short: "", judge: "" });
 const nameOf = (id) => (state.players.find(function (p) { return p.id === id; }) || {}).name || "?";
 
 // ---------- звук ----------
@@ -563,7 +573,8 @@ function renderLobby() {
   screenMode("");
   lastLot = -1;
   app.innerHTML = `<div class="center"><h1>Аук<em>цион</em></h1><p class="sub">Ты в комнате <b>${CODE}</b>. Ждём, пока хост начнёт.</p>
-    <div class="plate"><b>${(AUCTION_KINDS[state.kind] || {}).icon || ""} ${(AUCTION_KINDS[state.kind] || {}).label || state.kind}</b>У тебя ${money(state.settings.budget)} и ${state.settings.slots} слотов. Собери лучший набор — судить будет ${state.settings.judge === "vote" ? "голосование" : "ИИ"}.</div>
+    <div class="plate"><b>${(AUCTION_KINDS[state.kind] || {}).icon || ""} ${(AUCTION_KINDS[state.kind] || {}).label || state.kind}</b>У тебя ${money(state.settings.budget)} и ${state.settings.slots} слотов.</div>
+    <div class="plate task"><b>${modeNow().icon} ${escapeHtml(modeNow().title)}</b>${escapeHtml(modeNow().short || "")}. Судит ${state.settings.judge === "vote" ? "голосование" : "ИИ"}: ${escapeHtml(modeNow().judge || "")}</div>
     <div class="chips">${state.players.map((p) => `<span class="chip ${p.id === me ? "me" : ""}">${escapeHtml(p.name)}</span>`).join("")}</div></div>`;
 }
 
@@ -573,6 +584,7 @@ function renderGame() {
   if (!p) return;
   if (!document.getElementById("bidbox")) {
     app.innerHTML = `<div class="status"><b id="myname"></b><span class="slots" id="myslots"></span><span class="spacer"></span><span id="lotno"></span><span class="money" id="mymoney"></span></div>
+      <div class="taskbar" id="task"></div>
       <div class="lotbox" id="lot"></div>
       <div class="bidinfo"><div class="ring" id="ring"><svg viewBox="0 0 62 62"><circle class="track" cx="31" cy="31" r="27"/><circle class="arc" id="arc" cx="31" cy="31" r="27" stroke-dasharray="170" stroke-dashoffset="0"/></svg><div class="num" id="tnum"></div></div><div class="lead" id="lead"></div></div>
       <div class="actions" id="bidbox"></div><div class="note" id="note"></div>`;
@@ -581,6 +593,12 @@ function renderGame() {
   document.getElementById("myname").textContent = p.name;
   document.getElementById("mymoney").textContent = money(p.money);
   document.getElementById("lotno").textContent = `лот ${s.round + 1}/${s.rounds}`;
+  const task = document.getElementById("task");
+  if (task) {
+    const custom = s.settings.mode && s.settings.mode !== "base";
+    task.className = "taskbar" + (custom ? " on" : "");
+    if (custom) task.replaceChildren(el("b", null, modeNow().icon + " " + modeNow().title), el("span", null, modeNow().short || ""));
+  }
   const slots = document.getElementById("myslots");
   slots.replaceChildren(...Array.from({ length: s.settings.slots }, (_, i) => { const d = el("i", i < p.lots.length ? "on" : null); return d; }));
 
@@ -677,7 +695,9 @@ function renderFinal() {
   const idx = s.results.ranking.findIndex((r) => r.playerId === me);
   const r = s.results.ranking[idx];
   const places = ["🥇", "🥈", "🥉"];
-  app.innerHTML = `<div class="final"><div class="place${idx >= 0 ? "" : " none"}">${idx >= 0 ? places[idx] || `${idx + 1}-е` : "—"}</div>${r ? `<div class="score">${s.results.mode === "vote" ? r.score + " голос." : r.score}</div><div class="verdict">${escapeHtml(r.verdict || "")}</div>` : '<p class="sub" style="text-align:center">Ты не участвовал в судействе</p>'}<div class="lots">${((p && p.lots) || []).map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("")}</div><p class="note" style="margin-top:18px">Результаты на доске. Хост может запустить ещё одну игру.</p></div>`;
+  const custom = s.settings.mode && s.settings.mode !== "base";
+  const ftask = custom ? `<div class="taskbar on" style="justify-content:center"><b>${escapeHtml(modeNow().icon + " " + modeNow().title)}</b></div>` : "";
+  app.innerHTML = `<div class="final">${ftask}<div class="place${idx >= 0 ? "" : " none"}">${idx >= 0 ? places[idx] || `${idx + 1}-е` : "—"}</div>${r ? `<div class="score">${s.results.mode === "vote" ? r.score + " голос." : r.score}</div><div class="verdict">${escapeHtml(r.verdict || "")}</div>` : '<p class="sub" style="text-align:center">Ты не участвовал в судействе</p>'}<div class="lots">${((p && p.lots) || []).map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("")}</div><p class="note" style="margin-top:18px">Результаты на доске. Хост может запустить ещё одну игру.</p></div>`;
 }
 
 function confetti() {

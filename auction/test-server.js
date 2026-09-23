@@ -204,6 +204,108 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
   const nope = await fetch(BASE + "/auction/api/session?r=ZZZZ");
   check(nope.status === 404, "сессия для несуществующей комнаты → 404");
 
+  // ---------- лимиты против DoS (отдельный дочерний сервер с крошечными потолками) ----------
+  await limitsSuite();
+
   console.log(failures ? `FAILURES: ${failures}` : "SERVER TESTS OK");
   process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error("ERROR", e); process.exit(1); });
+
+// Поднимаем свой инстанс с маленькими лимитами, чтобы проверить защиту от исчерпания ресурсов
+// быстро и не засоряя общий dev-сервер сотнями комнат/сокетов.
+async function limitsSuite() {
+  const { spawn } = require("child_process");
+  const path = require("path");
+  const PORT = 3400 + Math.floor(Math.random() * 300);
+  const B = `http://127.0.0.1:${PORT}`;
+  const child = spawn(process.execPath, [path.join(__dirname, "server.js")], {
+    env: { ...process.env, PORT: String(PORT), NODE_ENV: "development",
+      MAX_ROOMS: "6", MAX_ROOMS_PER_IP: "3", MAX_SOCKETS_PER_ROOM: "4", EVICT_GRACE_MS: "0",
+      DUMP_FILE: path.join(require("os").tmpdir(), `limits-${PORT}.json`) },
+    stdio: "ignore",
+  });
+  try {
+    // ждём, пока поднимется
+    let up = false;
+    for (let i = 0; i < 50 && !up; i++) { try { up = (await fetch(B + "/auction/api/health")).ok; } catch { await wait(100); } }
+    check(up, "лимит-сервер поднялся");
+    const mk = (ip, headers = {}) => fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json", ...(ip ? { "X-Real-IP": ip } : {}), ...headers }, body: JSON.stringify({ kind: "animal" }) });
+    const wsUrl = (code) => B.replace(/^http/, "ws") + "/auction/ws?r=" + code;
+    const roomsOf = async (ip) => (await (await fetch(B + "/auction/api/health")).json()).rooms;
+
+    // 1) лимит комнат на адрес (потолок 3): создавать можно и дальше, но брошенные комнаты
+    //    этого же адреса вытесняются — griefer не копит комнаты, а игрок с переигровками не ловит отказ
+    const before = await roomsOf();
+    let ok = 0;
+    for (let i = 0; i < 6; i++) { const r = await mk("1.1.1.1"); if (r.ok) ok++; }
+    const grew = (await roomsOf()) - before;
+    check(ok === 6 && grew === 3, `адрес держит не больше 3 комнат (создано ${ok}, комнат прибавилось ${grew})`);
+
+    // 1b) если все комнаты адреса живые (есть соединение), вытеснять нечего — отказ
+    const live = [];
+    for (let i = 0; i < 3; i++) {
+      const r = await (await mk("5.5.5.5")).json();
+      if (r.code) { const ws = new WebSocket(wsUrl(r.code)); await new Promise((d) => { ws.on("open", d); ws.on("error", d); }); live.push(ws); }
+    }
+    await wait(150);
+    const refused = await mk("5.5.5.5");
+    check(!refused.ok && /this address/.test((await refused.json()).error || ""), "адрес с живыми комнатами получает отказ, а не вытесняет чужое");
+    for (const ws of live) ws.close();
+
+    // 1c-1d) подделка заголовков не обходит лимит. Меряем не числом комнат (в него вмешивается
+    //        общий потолок процесса), а отказом: занимаем лимит живыми комнатами и просим ещё одну,
+    //        каждый раз меняя тот заголовок, который клиент мог бы подделать.
+    const holdAndRetry = async (headersFor) => {
+      const held = [];
+      for (let i = 0; i < 3; i++) {
+        const r = await (await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json", ...headersFor(i) }, body: JSON.stringify({ kind: "animal" }) })).json();
+        if (r.code) { const ws = new WebSocket(wsUrl(r.code)); await new Promise((d) => { ws.on("open", d); ws.on("error", d); }); held.push(ws); }
+      }
+      await wait(150);
+      const extra = await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json", ...headersFor(99) }, body: JSON.stringify({ kind: "animal" }) });
+      const body = extra.ok ? {} : await extra.json();
+      for (const ws of held) ws.close();
+      await wait(150);
+      return { ok: extra.ok, error: body.error || "" };
+    };
+    // доверенный X-Real-IP один и тот же, подделан только X-Forwarded-For → лимит всё равно упирается
+    const spoofXff = await holdAndRetry((i) => ({ "X-Real-IP": "7.7.7.7", "X-Forwarded-For": `fake-${i}.evil, 9.1.1.${i}` }));
+    check(!spoofXff.ok && /this address/.test(spoofXff.error), "подделка X-Forwarded-For не обходит лимит при доверенном X-Real-IP");
+    // без X-Real-IP (один прокси перед нами) считаем по хвосту X-Forwarded-For — его дописывает прокси
+    const tailXff = await holdAndRetry((i) => ({ "X-Forwarded-For": `fake-${i}.evil, 8.8.8.8` }));
+    check(!tailXff.ok && /this address/.test(tailXff.error), "без X-Real-IP лимит считается по хвосту X-Forwarded-For");
+    // мусор вместо адреса не создаёт «новый адрес» на каждый запрос
+    const junk = await holdAndRetry(() => ({ "X-Real-IP": "not-an-ip", "X-Forwarded-For": "also-not-an-ip" }));
+    check(!junk.ok && /this address/.test(junk.error), "нечисловые заголовки не создают новый адрес на каждый запрос");
+
+    // 2) вытеснение самой старой пустой комнаты вместо отказа: добиваем до MAX_ROOMS с разных IP,
+    //    затем ещё одна с нового адреса — должна пройти (пустые комнаты без сокетов вытесняются)
+    for (let i = 0; i < 40; i++) { await mk("2.0.0." + i); } // каждый IP — своя комната, лимит на IP не мешает
+    const full = await (await fetch(B + "/auction/api/health")).json();
+    check(full.rooms === 6, `процесс упёрся в MAX_ROOMS (${full.rooms})`);
+    const evicted = await mk("9.9.9.9");
+    check(evicted.ok, "при переполнении новая комната вытесняет старую пустую, а не получает отказ");
+    const after = await (await fetch(B + "/auction/api/health")).json();
+    check(after.rooms === 6, `число комнат не превышает MAX_ROOMS (${after.rooms})`);
+
+    // 3) потолок соединений на комнату (=4): 8 WebSocket → лишние отклоняются
+    const rm = await (await mk("3.3.3.3")).json(); // 3.3.3.3 ещё не набрал лимит комнат
+    if (rm.code) {
+      let opened = 0, refused = 0;
+      await new Promise((done) => { let s = 0, N = 8; for (let i = 0; i < N; i++) { const ws = new WebSocket(wsUrl(rm.code)); ws.on("open", () => { opened++; if (++s >= N) done(); }); ws.on("error", () => { refused++; if (++s >= N) done(); }); } setTimeout(done, 4000); });
+      check(opened > 0 && opened <= 4 && refused >= 1, `на комнату не больше 4 сокетов (открыто ${opened}, отклонено ${refused})`);
+
+      // 4) слишком большое сообщение (>8 КБ) рвёт соединение, не попадая в обработчик
+      const closed = await new Promise((done) => { const ws = new WebSocket(wsUrl(rm.code)); ws.on("open", () => ws.send(JSON.stringify({ type: "join", name: "x".repeat(20000) }))); ws.on("close", () => done(true)); ws.on("error", () => {}); setTimeout(() => done(false), 3000); });
+      check(closed, "сообщение больше 8 КБ обрывает сокет");
+    } else {
+      check(false, "не удалось создать комнату для теста сокетов");
+    }
+
+    // 5) сервер жив после всех атак
+    const alive = await (await fetch(B + "/auction/api/health")).json();
+    check(alive.ok === true, "сервер жив после флуда комнат/сокетов");
+  } finally {
+    child.kill("SIGKILL");
+  }
+}
