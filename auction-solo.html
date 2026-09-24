@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, follow">
 <title>Рандомайзер</title>
 <!-- без своей иконки браузер просил /favicon.ico и получал 404 -->
 <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f528.svg" type="image/svg+xml">
@@ -119,7 +120,8 @@
   .btn:active { transform: scale(.96); }
   .players { display: flex; flex-direction: column; gap: 10px; }
   .players:empty { flex: 0 0 auto; }
-  .players:empty::before { content: "Пока никого. Добавь участников — у каждого будет стартовый бюджет."; color: var(--muted); font-size: 14px; }
+  /* текст пустого списка — из атрибута: его переводит i18n.js (data-i18n-attr) */
+  .players:empty::before { content: attr(data-empty); color: var(--muted); font-size: 14px; }
   .p {
     background: rgba(255, 255, 255, .045); border: 1px solid var(--glass-line); border-radius: 16px;
     padding: 12px 14px; transition: border-color .3s, box-shadow .3s;
@@ -158,7 +160,7 @@
   }
   .who button small { color: var(--muted); margin-left: 5px; font-size: 12px; }
   .who button:hover { border-color: var(--c1); }
-  .who button.on { background: linear-gradient(120deg, var(--c1), var(--c2)); color: #0a0a0f; border-color: transparent; font-weight: 600; }
+  .who button.on { background: linear-gradient(120deg, var(--c1), var(--c2)); color: #0a0a0f; border-color: transparent; background-origin: border-box; font-weight: 600; }
   .who button.on small { color: rgba(10, 10, 15, .65); }
   .sale-row { display: flex; gap: 8px; }
   .sale-row .money-input { flex: 1; }
@@ -177,6 +179,10 @@
   .sale.sold button.undo:hover { color: var(--text); }
 
   header { margin-bottom: 12px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  /* Справа сверху i18n.js кладёт фиксированный .lang-switch (~140px). В две колонки под ним шапка
+     панели аукциона — «новая игра» ставим рядом с заголовком; в одну колонку — шапка страницы. */
+  @media (min-width: 901px) { aside > .panel:first-child h2 { justify-content: flex-start; gap: 14px; padding-right: 130px; } }
+  @media (max-width: 900px) { header { padding-right: 150px; } }
   header .kbd { margin: 0; }
   h1 {
     font: 900 clamp(24px, 2.6vw, 34px)/1 var(--display);
@@ -487,39 +493,210 @@
 <div class="layout">
 <main>
   <header>
-    <h1>Рандо<em>майзер</em></h1>
-    <div class="kbd"><kbd>1</kbd>–<kbd>9</kbd> категории · <kbd>пробел</kbd> другой</div>
+    <h1 data-i18n="h1">Рандо<em>майзер</em></h1>
+    <div class="kbd" data-i18n="kbd"><kbd>1</kbd>–<kbd>9</kbd> категории · <kbd>пробел</kbd> другой</div>
   </header>
 
   <div class="buttons" id="buttons"></div>
 
   <section class="frame">
     <div class="card center" id="card">
-      <div class="hint"><span class="big">🎲</span>Выбери категорию — выпадет лот, и можно торговаться</div>
+      <div class="hint" data-i18n="hint"><span class="big">🎲</span>Выбери категорию — выпадет лот, и можно торговаться</div>
     </div>
   </section>
 </main>
 
 <aside>
   <section class="panel">
-    <h2>Аукцион <button id="newGame">новая игра</button></h2>
-    <div class="sale" id="sale"><div class="sale-cap">Торги</div><div class="sale-hint">Выпадет лот — здесь запишешь, кому он ушёл и за сколько.</div></div>
+    <h2><span data-i18n="auction_h">Аукцион</span> <button id="newGame" data-i18n="new_game">новая игра</button></h2>
+    <div class="sale" id="sale"><div class="sale-cap" data-i18n="sale_cap">Торги</div><div class="sale-hint" data-i18n="sale_hint">Выпадет лот — здесь запишешь, кому он ушёл и за сколько.</div></div>
     <div class="field">
-      <label for="budget">Стартовый бюджет каждого</label>
+      <label for="budget" data-i18n="budget_label">Стартовый бюджет каждого</label>
       <span class="money-input"><input id="budget" type="number" min="1" step="50" inputmode="numeric"></span>
     </div>
     <form class="add-player" id="addPlayer">
-      <input id="playerName" placeholder="Имя участника" maxlength="24" autocomplete="off">
-      <button class="btn" type="submit">Добавить</button>
+      <input id="playerName" placeholder="Имя участника" data-i18n-attr="placeholder:player_ph" maxlength="24" autocomplete="off">
+      <button class="btn" type="submit" data-i18n="add">Добавить</button>
     </form>
-    <div class="players" id="players"></div>
+    <div class="players" id="players" data-empty="Пока никого. Добавь участников — у каждого будет стартовый бюджет." data-i18n-attr="data-empty:players_empty"></div>
   </section>
   <section class="history" id="history" hidden>
-    <h2>Уже выпадало <button id="clear">очистить</button></h2>
+    <h2><span data-i18n="history_h">Уже выпадало</span> <button id="clear" data-i18n="clear">очистить</button></h2>
     <div class="chips" id="chips"></div>
   </section>
 </aside>
 </div>
+
+<!-- Словарь — до i18n.js, а i18n.js — до основного скрипта (без defer): кнопки категорий и
+     панель аукциона строятся сразу при разборе страницы и уже спрашивают T(). Сами лоты остаются
+     русскими: статическая колода auction-data/*.js есть только на русском. -->
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Рандомайзер`,
+    h1: `Рандо<em>майзер</em>`,
+    kbd: `<kbd>1</kbd>–<kbd>9</kbd> категории · <kbd>пробел</kbd> другой`,
+    hint: `<span class="big">🎲</span>Выбери категорию — выпадет лот, и можно торговаться`,
+    auction_h: `Аукцион`,
+    new_game: `новая игра`,
+    sale_cap: `Торги`,
+    sale_hint: `Выпадет лот — здесь запишешь, кому он ушёл и за сколько.`,
+    budget_label: `Стартовый бюджет каждого`,
+    player_ph: `Имя участника`,
+    add: `Добавить`,
+    players_empty: `Пока никого. Добавь участников — у каждого будет стартовый бюджет.`,
+    history_h: `Уже выпадало`,
+    clear: `очистить`,
+    toggle: `Пауза / играть`,
+    finding: `Ищу главный хит…`,
+    now_playing: `Сейчас играет`,
+    no_preview: `Превью не нашлось 🤷`,
+    no_music: `Музыка недоступна 🤷`,
+    remove_title: `Убрать участника`,
+    remove_confirm: `Убрать «{name}»? Его лоты ({n}) тоже пропадут.`,
+    spent_sub: `потрачено {money} · лотов: {n}`,
+    no_buys: `пока без покупок`,
+    undo_title: `Отменить продажу`,
+    sold_prefix: `Ушло: `,
+    sold_mid: ` за `,
+    undo: `отменить`,
+    stamp: `Продано`,
+    add_first: `Добавь участников ниже — и сможешь записать, кому ушёл лот.`,
+    price_ph: `сумма`,
+    sell: `Продано!`,
+    err_who: `Выбери, кому ушёл лот.`,
+    err_sum: `Впиши сумму — целое число больше нуля.`,
+    err_money: `Не хватает денег: у участника осталось {money}.`,
+    who_cap: `Кому ушёл и за сколько`,
+    new_confirm: `Начать новую игру? Все покупки сбросятся, участники и бюджет останутся.`,
+    spinning: `Кручу барабан…`,
+    fact: `Факт`,
+    failed: `Не получилось: {msg}`,
+    err_no_cards: `в файле нет карточек`,
+    err_no_file: `нет файла с карточками категории`,
+  },
+  en: {
+    _title: `Randomizer`,
+    h1: `Rando<em>mizer</em>`,
+    kbd: `<kbd>1</kbd>–<kbd>9</kbd> categories · <kbd>space</kbd> another`,
+    hint: `<span class="big">🎲</span>Pick a category — a lot drops, and the bidding can start`,
+    auction_h: `Auction`,
+    new_game: `new game`,
+    sale_cap: `Bidding`,
+    sale_hint: `When a lot drops, record here who got it and for how much.`,
+    budget_label: `Starting budget for each`,
+    player_ph: `Player name`,
+    add: `Add`,
+    players_empty: `Nobody yet. Add players — each gets the starting budget.`,
+    history_h: `Already drawn`,
+    clear: `clear`,
+    toggle: `Pause / play`,
+    finding: `Looking for the big hit…`,
+    now_playing: `Now playing`,
+    no_preview: `No preview found 🤷`,
+    no_music: `Music unavailable 🤷`,
+    remove_title: `Remove player`,
+    remove_confirm: `Remove “{name}”? Their lots ({n}) will be gone too.`,
+    spent_sub: `spent {money} · lots: {n}`,
+    no_buys: `no purchases yet`,
+    undo_title: `Undo sale`,
+    sold_prefix: `Sold to `,
+    sold_mid: ` for `,
+    undo: `undo`,
+    stamp: `Sold`,
+    add_first: `Add players below — then you can record who got the lot.`,
+    price_ph: `amount`,
+    sell: `Sold!`,
+    err_who: `Pick who got the lot.`,
+    err_sum: `Enter an amount — a whole number above zero.`,
+    err_money: `Not enough money: this player has {money} left.`,
+    who_cap: `Who got it and for how much`,
+    new_confirm: `Start a new game? All purchases are reset; players and budget stay.`,
+    spinning: `Spinning the reel…`,
+    fact: `Fact`,
+    failed: `Something went wrong: {msg}`,
+    err_no_cards: `no cards in the file`,
+    err_no_file: `category cards file is missing`,
+  },
+  el: {
+    _title: `Randomizer`,
+    h1: `Rando<em>mizer</em>`,
+    kbd: `<kbd>1</kbd>–<kbd>9</kbd> κατηγορίες · <kbd>space</kbd> άλλο`,
+    hint: `<span class="big">🎲</span>Διάλεξε κατηγορία — βγαίνει λοτ και ξεκινά η δημοπρασία`,
+    auction_h: `Δημοπρασία`,
+    new_game: `νέο παιχνίδι`,
+    sale_cap: `Προσφορές`,
+    sale_hint: `Όταν βγει λοτ, γράψε εδώ ποιος το πήρε και πόσο.`,
+    budget_label: `Αρχικός προϋπολογισμός για τον καθένα`,
+    player_ph: `Όνομα παίκτη`,
+    add: `Προσθήκη`,
+    players_empty: `Κανείς ακόμα. Πρόσθεσε παίκτες — ο καθένας παίρνει τον αρχικό προϋπολογισμό.`,
+    history_h: `Έχουν βγει`,
+    clear: `καθαρισμός`,
+    toggle: `Παύση / αναπαραγωγή`,
+    finding: `Ψάχνω τη μεγάλη επιτυχία…`,
+    now_playing: `Παίζει τώρα`,
+    no_preview: `Δεν βρέθηκε δείγμα 🤷`,
+    no_music: `Η μουσική δεν είναι διαθέσιμη 🤷`,
+    remove_title: `Αφαίρεση παίκτη`,
+    remove_confirm: `Να αφαιρεθεί ο/η «{name}»; Θα χαθούν και τα λοτ του/της ({n}).`,
+    spent_sub: `ξόδεψε {money} · λοτ: {n}`,
+    no_buys: `καμία αγορά ακόμα`,
+    undo_title: `Ακύρωση πώλησης`,
+    sold_prefix: `Πουλήθηκε σε: `,
+    sold_mid: ` για `,
+    undo: `ακύρωση`,
+    stamp: `Πουλήθηκε`,
+    add_first: `Πρόσθεσε παίκτες παρακάτω — και θα μπορείς να γράψεις ποιος πήρε το λοτ.`,
+    price_ph: `ποσό`,
+    sell: `Πουλήθηκε!`,
+    err_who: `Διάλεξε ποιος πήρε το λοτ.`,
+    err_sum: `Γράψε ποσό — ακέραιο αριθμό πάνω από το μηδέν.`,
+    err_money: `Δεν φτάνουν τα λεφτά: στον παίκτη έμειναν {money}.`,
+    who_cap: `Ποιος το πήρε και πόσο`,
+    new_confirm: `Νέο παιχνίδι; Όλες οι αγορές μηδενίζονται, οι παίκτες και ο προϋπολογισμός μένουν.`,
+    spinning: `Γυρίζει ο τροχός…`,
+    fact: `Γεγονός`,
+    failed: `Κάτι πήγε στραβά: {msg}`,
+    err_no_cards: `δεν υπάρχουν κάρτες στο αρχείο`,
+    err_no_file: `λείπει το αρχείο καρτών της κατηγορίας`,
+  },
+};
+</script>
+<script src="i18n.js"></script>
+<script>
+// i18n.js не доехал (блокировщик, сбой статики) — страница работает по-русски, а не падает
+window.I18N = window.I18N || { t: function (k) { const d = window.I18N_DICT.ru; return k in d ? d[k] : k; }, lang: "ru" };
+const T = (k) => I18N.t(k);
+// подстановка {плейсхолдеров}: в английском и греческом порядок слов свой
+const tpl = (key, vars) => String(T(key)).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+// Названия категорий на английском и греческом (те же, что в auction-shared.js). Русские — в KINDS ниже.
+const KINDS_I18N = {
+  en: {
+    artist: { button: "Artist", label: "Musician", another: "Another" }, film: { button: "Film", label: "Film", another: "Another" },
+    series: { button: "Series", label: "TV series", another: "Another" }, person: { button: "People", label: "Public figure", another: "Another" },
+    character: { button: "Character", label: "Character", another: "Another" }, food: { button: "Food", label: "Dish", another: "Another" },
+    city: { button: "City", label: "City", another: "Another" }, country: { button: "Country", label: "Country", another: "Another" },
+    place: { button: "Place", label: "Landmark", another: "Another" }, animal: { button: "Animal", label: "Animal", another: "Another" },
+    painting: { button: "Painting", label: "Painting", another: "Another" }, company: { button: "Company", label: "Company", another: "Another" },
+    club: { button: "Club", label: "Sports club", another: "Another" }, profession: { button: "Job", label: "Profession", another: "Another" },
+    invention: { button: "Invention", label: "Invention", another: "Another" },
+  },
+  el: {
+    artist: { button: "Καλλιτέχνης", label: "Μουσικός", another: "Άλλος" }, film: { button: "Ταινία", label: "Ταινία", another: "Άλλη" },
+    series: { button: "Σειρά", label: "Σειρά", another: "Άλλη" }, person: { button: "Πρόσωπο", label: "Προσωπικότητα", another: "Άλλο" },
+    character: { button: "Ήρωας", label: "Ήρωας", another: "Άλλος" }, food: { button: "Φαγητό", label: "Πιάτο", another: "Άλλο" },
+    city: { button: "Πόλη", label: "Πόλη", another: "Άλλη" }, country: { button: "Χώρα", label: "Χώρα", another: "Άλλη" },
+    place: { button: "Μέρος", label: "Αξιοθέατο", another: "Άλλο" }, animal: { button: "Ζώο", label: "Ζώο", another: "Άλλο" },
+    painting: { button: "Πίνακας", label: "Πίνακας", another: "Άλλος" }, company: { button: "Εταιρεία", label: "Εταιρεία", another: "Άλλη" },
+    club: { button: "Σύλλογος", label: "Αθλητικός σύλλογος", another: "Άλλος" }, profession: { button: "Επάγγελμα", label: "Επάγγελμα", another: "Άλλο" },
+    invention: { button: "Εφεύρεση", label: "Εφεύρεση", another: "Άλλη" },
+  },
+};
+// подпись категории на языке экрана; нет перевода — русская
+const kindT = (kind, field) => ((KINDS_I18N[I18N.lang] || {})[kind] || KINDS[kind])[field] || KINDS[kind][field];
+const NUM_LOCALE = { ru: "ru-RU", en: "en-US", el: "el-GR" };
+</script>
 
 <script>
 const pickFrom = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -553,8 +730,8 @@ function loadKind(kind) {
   loading[kind] ||= new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = `auction-data/${kind}.js`;
-    script.onload = () => (CARDS[kind]?.length ? resolve(CARDS[kind]) : reject(new Error("в файле нет карточек")));
-    script.onerror = () => { delete loading[kind]; reject(new Error(`нет файла data/${kind}.js — собери данные: python3 gen/build_data.py`)); };
+    script.onload = () => (CARDS[kind]?.length ? resolve(CARDS[kind]) : reject(new Error(T("err_no_cards"))));
+    script.onerror = () => { delete loading[kind]; reject(new Error(`${T("err_no_file")} (auction-data/${kind}.js)`)); };
     document.head.append(script);
   });
   return loading[kind];
@@ -572,7 +749,7 @@ const card = document.getElementById("card");
 const buttons = KIND_KEYS.map((kind) => {
   const btn = el("button", "pick");
   btn.dataset.kind = kind;
-  btn.append(el("span", "ico", KINDS[kind].icon), document.createTextNode(KINDS[kind].button));
+  btn.append(el("span", "ico", KINDS[kind].icon), document.createTextNode(kindT(kind, "button")));
   return btn;
 });
 document.getElementById("buttons").append(...buttons);
@@ -754,10 +931,10 @@ async function findPreview(artist, song, country) {
 function playerWidget() {
   const box = el("div", "player");
   const toggle = el("button", "toggle", "▶");
-  toggle.setAttribute("aria-label", "Пауза / играть");
+  toggle.setAttribute("aria-label", T("toggle"));
   const info = el("div", "info");
-  const song = el("div", "song", "Ищу главный хит…");
-  info.append(el("div", "cap", "Сейчас играет"), song);
+  const song = el("div", "song", T("finding"));
+  info.append(el("div", "cap", T("now_playing")), song);
   const eq = el("div", "eq");
   for (let i = 0; i < 4; i++) eq.append(el("i"));
   box.append(toggle, info, eq);
@@ -781,7 +958,7 @@ async function startMusic(pick, widget) {
     // у русских исполнителей в US-витрине имена транслитом (Kino, Zemfira), в RU — кириллицей, как в карточке
     const track = await findPreview(pick.name, pick.top_song || "", pick.ru ? "RU" : "US");
     if (token !== musicToken) return;
-    if (!track) { widget.song.textContent = "Превью не нашлось 🤷"; return; }
+    if (!track) { widget.song.textContent = T("no_preview"); return; }
     widget.song.textContent = `${track.trackName} — ${track.artistName}`;
     widget.song.title = widget.song.textContent;
     clearInterval(fadeTimer);
@@ -792,7 +969,7 @@ async function startMusic(pick, widget) {
   } catch (err) {
     if (token !== musicToken) return;
     // автоплей заблокирован или iTunes не ответил — трек (если нашёлся) запустится кнопкой ▶
-    if (!player.src || player.src === SILENCE) widget.song.textContent = "Музыка недоступна 🤷";
+    if (!player.src || player.src === SILENCE) widget.song.textContent = T("no_music");
   } finally {
     widget.sync();
   }
@@ -805,7 +982,7 @@ let game = { budget: 1000, players: [], sales: [] };
 try { game = { ...game, ...JSON.parse(localStorage.getItem(GAME_KEY) || "{}") }; } catch {}
 const saveGame = () => { try { localStorage.setItem(GAME_KEY, JSON.stringify(game)); } catch {} };
 
-const money = (n) => (n < 0 ? "−$" : "$") + Math.abs(n).toLocaleString("ru-RU");
+const money = (n) => (n < 0 ? "−$" : "$") + Math.abs(n).toLocaleString(NUM_LOCALE[I18N.lang] || "en-US");
 const spentBy = (id) => game.sales.filter((s) => s.playerId === id).reduce((sum, s) => sum + s.price, 0);
 const leftFor = (id) => game.budget - spentBy(id);
 let rollSeq = 0; // номер выпадения — чтобы повторно выпавший лот не считался уже проданным
@@ -823,9 +1000,9 @@ function renderPlayers(flashId) {
 
     const top = el("div", "p-top");
     const remove = el("button", "p-x", "✕");
-    remove.title = "Убрать участника";
+    remove.title = T("remove_title");
     remove.onclick = () => {
-      if (lots.length && !confirm(`Убрать «${p.name}»? Его лоты (${lots.length}) тоже пропадут.`)) return;
+      if (lots.length && !confirm(tpl("remove_confirm", { name: p.name, n: lots.length }))) return;
       game.players = game.players.filter((x) => x.id !== p.id);
       game.sales = game.sales.filter((s) => s.playerId !== p.id);
       saveGame(); renderPlayers(); refreshSale();
@@ -837,7 +1014,7 @@ function renderPlayers(flashId) {
     fill.style.width = Math.max(0, Math.min(100, (left / game.budget) * 100)) + "%";
     bar.append(fill);
 
-    const sub = el("div", "p-sub", lots.length ? `потрачено ${money(spentBy(p.id))} · лотов: ${lots.length}` : "пока без покупок");
+    const sub = el("div", "p-sub", lots.length ? tpl("spent_sub", { money: money(spentBy(p.id)), n: lots.length }) : T("no_buys"));
     row.append(top, bar, sub);
 
     if (lots.length) {
@@ -845,7 +1022,7 @@ function renderPlayers(flashId) {
       lots.forEach((s) => {
         const li = el("li");
         const undo = el("button", null, "✕");
-        undo.title = "Отменить продажу";
+        undo.title = T("undo_title");
         undo.onclick = () => { game.sales = game.sales.filter((x) => x !== s); saveGame(); renderPlayers(); refreshSale(); };
         li.append(el("span", null, s.emoji), el("span", "l-name", s.name), el("span", "l-price", money(s.price)), undo);
         list.append(li);
@@ -876,15 +1053,15 @@ function renderSale(kind, pick) {
       const winner = game.players.find((p) => p.id === sale.playerId);
       box.classList.add("sold");
       const text = el("div", "sold-text");
-      text.append("Ушло: ", el("b", null, winner?.name ?? "?"), " за ", el("b", null, money(sale.price)));
-      const undo = el("button", "undo", "отменить");
+      text.append(T("sold_prefix"), el("b", null, winner?.name ?? "?"), T("sold_mid"), el("b", null, money(sale.price)));
+      const undo = el("button", "undo", T("undo"));
       undo.onclick = () => { game.sales = game.sales.filter((s) => s !== sale); saveGame(); renderPlayers(); draw(); };
       box.replaceChildren(lotLine(), el("div", "sold-row"));
-      box.lastChild.append(el("div", "sold-stamp", "Продано"), text, undo);
+      box.lastChild.append(el("div", "sold-stamp", T("stamp")), text, undo);
       return;
     }
     if (!game.players.length) {
-      box.replaceChildren(lotLine(), el("div", "sale-hint", "Добавь участников ниже — и сможешь записать, кому ушёл лот."));
+      box.replaceChildren(lotLine(), el("div", "sale-hint", T("add_first")));
       return;
     }
 
@@ -907,9 +1084,9 @@ function renderSale(kind, pick) {
 
     const priceWrap = el("span", "money-input");
     const price = el("input");
-    price.type = "number"; price.min = "1"; price.step = "10"; price.inputMode = "numeric"; price.placeholder = "сумма";
+    price.type = "number"; price.min = "1"; price.step = "10"; price.inputMode = "numeric"; price.placeholder = T("price_ph");
     priceWrap.append(price);
-    const sell = el("button", "btn", "Продано!");
+    const sell = el("button", "btn", T("sell"));
     sell.type = "button";
     const err = el("div", "sale-err");
     const row = el("div", "sale-row");
@@ -921,17 +1098,17 @@ function renderSale(kind, pick) {
     };
     const submit = () => {
       const amount = Math.floor(Number(price.value));
-      if (!selected) return fail("Выбери, кому ушёл лот.");
-      if (!(amount > 0)) return fail("Впиши сумму — целое число больше нуля.");
+      if (!selected) return fail(T("err_who"));
+      if (!(amount > 0)) return fail(T("err_sum"));
       const left = leftFor(selected);
-      if (amount > left) return fail(`Не хватает денег: у участника осталось ${money(left)}.`);
+      if (amount > left) return fail(tpl("err_money", { money: money(left) }));
       game.sales.push({ lot: lotId(kind, pick.name), playerId: selected, kind, name: pick.name, emoji: pick.emoji, price: amount });
       saveGame(); renderPlayers(selected); draw();
     };
     sell.onclick = submit;
     price.onkeydown = (e) => { if (e.key === "Enter") submit(); };
 
-    box.replaceChildren(lotLine(), el("div", "sale-cap", "Кому ушёл и за сколько"), who, row, err);
+    box.replaceChildren(lotLine(), el("div", "sale-cap", T("who_cap")), who, row, err);
   }
 
   refreshSale = draw;
@@ -954,7 +1131,7 @@ document.getElementById("addPlayer").onsubmit = (e) => {
   saveGame(); renderPlayers(); refreshSale();
 };
 document.getElementById("newGame").onclick = () => {
-  if (game.sales.length && !confirm("Начать новую игру? Все покупки сбросятся, участники и бюджет останутся.")) return;
+  if (game.sales.length && !confirm(T("new_confirm"))) return;
   game.sales = [];
   saveGame(); renderPlayers(); refreshSale();
 };
@@ -962,7 +1139,8 @@ renderPlayers();
 
 function anotherButton(kind) {
   const btn = el("button", "another");
-  btn.append(el("span", "die", "🎲"), document.createTextNode(KINDS[kind].another));
+  btn.dataset.kind = kind;
+  btn.append(el("span", "die", "🎲"), document.createTextNode(kindT(kind, "another")));
   btn.onclick = () => roll(kind);
   return btn;
 }
@@ -971,7 +1149,7 @@ function showLoading(kind) {
   const names = CARDS[kind].map((c) => c.name);
   const slot = el("div", "slot", pickFrom(names));
   card.className = "card center";
-  card.replaceChildren(el("div", "slot-label", "Кручу барабан…"), slot, el("div", "bar"));
+  card.replaceChildren(el("div", "slot-label", T("spinning")), slot, el("div", "bar"));
   const timer = setInterval(() => { slot.textContent = pickFrom(names); }, 90);
   return () => clearInterval(timer);
 }
@@ -1000,14 +1178,14 @@ async function roll(kind) {
     const meta = el("div", "meta");
     pick.meta.forEach((part) => meta.append(el("span", null, part)));
     const fact = el("p", "fact");
-    fact.append(el("b", null, "Факт"), document.createTextNode(pick.fact));
+    fact.append(el("b", null, T("fact")), document.createTextNode(pick.fact));
     const widget = kind === "artist" ? playerWidget() : null;
     if (widget) startMusic(pick, widget);
 
     const text = el("div", "text");
     text.append(
       el("div", "emoji", pick.emoji),
-      el("div", "kind", KINDS[kind].label),
+      el("div", "kind", kindT(kind, "label")),
       el("div", "name", pick.name),
       meta,
       el("p", "desc", pick.description),
@@ -1018,7 +1196,7 @@ async function roll(kind) {
     renderSale(kind, pick);
   } catch (err) {
     card.className = "card center";
-    card.replaceChildren(el("div", "emoji", "😵"), el("div", "error", `Не получилось: ${err.message}`), anotherButton(kind));
+    card.replaceChildren(el("div", "emoji", "😵"), el("div", "error", tpl("failed", { msg: err.message })), anotherButton(kind));
   } finally {
     stopReel();
     busy = false;
@@ -1036,6 +1214,20 @@ document.addEventListener("keydown", (e) => {
   if (e.code === "Space" && currentKind) { e.preventDefault(); roll(currentKind); }
   const byDigit = /^Digit[1-9]$/.test(e.code) ? KIND_KEYS[e.code.slice(5) - 1] : null;
   if (byDigit) roll(byDigit);
+});
+
+// Смена языка: статику переводит i18n.js, а кнопки категорий, панель участников, блок продажи
+// и подписи открытой карточки строит JS — обновляем их на месте (открытый лот не перекручиваем)
+window.addEventListener("langchange", () => {
+  buttons.forEach((b) => { b.lastChild.textContent = kindT(b.dataset.kind, "button"); });
+  const k = card.querySelector(".kind");
+  if (k && currentKind) k.textContent = kindT(currentKind, "label");
+  const a = card.querySelector(".another");
+  if (a && a.dataset.kind) a.lastChild.textContent = kindT(a.dataset.kind, "another");
+  const f = card.querySelector(".fact b");
+  if (f) f.textContent = T("fact");
+  renderPlayers();
+  refreshSale();
 });
 
 document.getElementById("clear").onclick = () => {

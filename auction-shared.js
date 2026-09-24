@@ -364,7 +364,36 @@ function serverOffset(serverNow) {
   return auctionClock.offset != null ? Math.max(auctionClock.offset, byState) : byState;
 }
 
+// ---- state без повторов (M16) ----
+// Сервер клиенту с d=1 шлёт настройки, карточку лота и лоты игроков, только когда они изменились
+// (state.d === 1, недостающие части — из кэша). Полный снимок (hello, старый сервер) кэш обновляет.
+// Кэш — строки JSON: страница может править объект состояния, а кэш от этого не портится.
+// Функция самодостаточна (без window) — тесты берут её исходник отсюда же.
+/* merge:start */
+function auctionMergeState(cache, st) {
+  if (!st || typeof st !== "object") return st;
+  if (st.d !== 1) {
+    cache.settings = JSON.stringify(st.settings === undefined ? null : st.settings);
+    cache.lot = JSON.stringify(st.lot === undefined ? null : st.lot);
+    const lots = {};
+    (st.players || []).forEach(function (p) { lots[p.id] = p.lots || []; });
+    cache.lots = JSON.stringify(lots);
+    return st;
+  }
+  if ("settings" in st) cache.settings = JSON.stringify(st.settings); else st.settings = cache.settings ? JSON.parse(cache.settings) : null;
+  if ("lot" in st) cache.lot = JSON.stringify(st.lot); else st.lot = cache.lot ? JSON.parse(cache.lot) : null;
+  let lots;
+  if ("lots" in st) { lots = st.lots; cache.lots = JSON.stringify(lots); } else lots = cache.lots ? JSON.parse(cache.lots) : {};
+  (st.players || []).forEach(function (p) { p.lots = lots[p.id] || []; });
+  delete st.lots;
+  delete st.d;
+  return st;
+}
+/* merge:end */
+
 function openTransport({ code, onMessage, onClose, onOpen, onSendFail, onClock, onGone }) {
+  // свой кэш у каждого транспорта: новое соединение начинается с полного hello
+  const stateCache = {};
   const proto = location.protocol === "https:" ? "wss" : "ws";
   let closed = false, opened = false, sid = null, ws = null, polling = false, pollAbort = null;
   // Половина обрывов на телефоне — не закрытие, а тишина: сокет формально открыт, события close
@@ -395,6 +424,7 @@ function openTransport({ code, onMessage, onClose, onOpen, onSendFail, onClock, 
       if (typeof m.c === "number") { clockSample(m.t, m.c); if (onClock && auctionClock.offset != null) onClock(auctionClock.offset); }
       return;
     }
+    if (m && (m.type === "state" || m.type === "hello") && m.state) auctionMergeState(stateCache, m.state);
     onMessage(m);
   };
   const startBeat = () => {
@@ -463,7 +493,7 @@ function openTransport({ code, onMessage, onClose, onOpen, onSendFail, onClock, 
     if (closed || polling) return;
     polling = true;
     try {
-      const res = await timedFetch(`/auction/api/session?r=${encodeURIComponent(code)}`, 15000);
+      const res = await timedFetch(`/auction/api/session?r=${encodeURIComponent(code)}&d=1`, 15000);
       // комнаты нет вовсе (закрыта по TTL, сервер её не знает) — переподключаться некуда
       if (res.status === 404 && onGone) { closed = true; stopBeat(); polling = false; onGone(); return; }
       if (!res.ok) throw new Error("session " + res.status);
@@ -482,7 +512,7 @@ function openTransport({ code, onMessage, onClose, onOpen, onSendFail, onClock, 
   }
   if (wsBroken || typeof WebSocket !== "function") { startPolling(); return api; }
   try {
-    ws = new WebSocket(`${proto}://${location.host}/auction/ws?r=${encodeURIComponent(code)}`);
+    ws = new WebSocket(`${proto}://${location.host}/auction/ws?r=${encodeURIComponent(code)}&d=1`);
     // Рукопожатие повисло (корпоративный прокси держит upgrade и не отвечает): без таймера доска
     // оставалась пустой минутами — onclose приходил только по таймауту самого прокси.
     const handshake = setTimeout(() => {

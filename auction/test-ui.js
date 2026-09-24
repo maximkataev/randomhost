@@ -384,6 +384,88 @@ async function typeText(page, text) {
       await dboard.close(); await dremote.close();
     }
 
+    // --- M29: ведущий играет с телефона (§10.4). Хост-токен лежит в localStorage пульта — у него
+    // есть «Начать игру» в лобби, кнопка «Ведущий» в игре, шторка с паузой/пропуском/завершением/киком
+    // и «Продолжить» поверх паузы. Доска при этом остаётся в управлении. У обычного игрока кнопок нет.
+    {
+      const r = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings: { intro: 0 } }) })).json();
+      const hb = await cdp(`${BASE}/auction-board.html?r=${r.code}&t=${r.hostToken}`);
+      const hp = await cdp(`${BASE}/auction.html`);
+      await hp.call("Emulation.setDeviceMetricsOverride", { width: 375, height: 667, deviceScaleFactor: 2, mobile: true });
+      await hp.evaluate(`localStorage.setItem("auction-host-${r.code}", ${JSON.stringify(r.hostToken)}); true`);
+      await hp.call("Page.navigate", { url: `${BASE}/auction.html?r=${r.code}&name=${encodeURIComponent("Хост")}` });
+      check(await untilPage(hp, "isHostRemote && document.getElementById('hoststart')", 6000), "пульт ведущего: в лобби есть «Начать игру»");
+      check(await evaluateSafe(hp, "document.getElementById('hoststart').disabled"), "пульт ведущего: «Начать» неактивна, пока на связи один");
+      // Вкладки одного профиля делят localStorage: гость вошёл бы по токену ведущего и стал бы им.
+      // Ведущий уже на связи (токены у него в памяти) — убираем ключи перед открытием гостя.
+      await hp.evaluate(`localStorage.removeItem("auction-host-${r.code}"); localStorage.removeItem("auction-token-${r.code}"); true`);
+      const guest = await cdp(`${BASE}/auction.html?r=${r.code}&name=${encodeURIComponent("Гость")}`);
+      await guest.call("Emulation.setDeviceMetricsOverride", { width: 375, height: 667, deviceScaleFactor: 2, mobile: true });
+      const victim = new WebSocket(BASE.replace(/^http/, "ws") + "/auction/ws?r=" + r.code);
+      let kicked = false;
+      victim.on("message", (raw) => { if (JSON.parse(raw).type === "kicked") kicked = true; });
+      await new Promise((d) => victim.on("open", () => { victim.send(JSON.stringify({ type: "join", name: "Жертва" })); d(); }));
+      check(await untilPage(hp, "document.getElementById('hoststart') && !document.getElementById('hoststart').disabled", 6000), "пульт ведущего: «Начать» активна, когда двое на связи");
+      check(!(await evaluateSafe(guest, "!!document.getElementById('hoststart')")), "обычный пульт: кнопки старта нет");
+      await hp.shot("ui_remote_host_lobby");
+      await hp.evaluate("document.getElementById('hoststart').click()");
+      check(await untilPage(hb, "state && state.phase === 'lot'", 6000), "пульт ведущего: игра стартовала с телефона");
+      await untilPage(hp, "document.getElementById('hostbtn')", 4000);
+      check(await evaluateSafe(hp, "(() => { const b = document.getElementById('hostbtn'); return !!b && !b.hidden && b.offsetWidth > 0; })()"), "пульт ведущего: в статус-строке есть кнопка «Ведущий»");
+      check(await evaluateSafe(guest, "(() => { const b = document.getElementById('hostbtn'); return !b || b.hidden || b.offsetWidth === 0; })()"), "обычный пульт: кнопки «Ведущий» нет");
+      await hp.evaluate("document.getElementById('hostbtn').click()");
+      check(await untilPage(hp, "document.querySelector('#sheet.on.host #hs_pause')", 3000), "пульт ведущего: шторка управления открывается");
+      await wait(400);
+      await hp.shot("ui_remote_host_sheet");
+      await hp.evaluate("document.getElementById('hs_pause').click()");
+      check(await untilPage(hb, "state.paused", 3000), "пульт ведущего: пауза с телефона");
+      await hp.evaluate("closeHostSheet()");
+      await untilPage(hp, "document.getElementById('ovresume')", 3000);
+      // «Продолжить» не закрыт оверлеем: в центре кнопки — сама кнопка
+      check(await evaluateSafe(hp, "(() => { const b = document.getElementById('ovresume'); if (!b) return false; const q = b.getBoundingClientRect(); return document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2) === b; })()"), "пульт ведущего: на паузе доступна кнопка «Продолжить»");
+      await hp.shot("ui_remote_host_paused");
+      await hp.evaluate("document.getElementById('ovresume').click()");
+      check(await untilPage(hb, "!state.paused", 3000), "пульт ведущего: «Продолжить» снимает паузу");
+      // пропуск: отказ в подтверждении ничего не делает, согласие — пропускает
+      const round0 = await evaluateSafe(hb, "state.round");
+      await hp.evaluate("window.confirm = () => false; openHostSheet(); document.getElementById('hs_skip').click(); true");
+      await wait(600);
+      check((await evaluateSafe(hb, "state.round")) === round0 && (await evaluateSafe(hb, "state.phase")) === "lot", "пульт ведущего: «Пропустить» без подтверждения лот не трогает");
+      await hp.evaluate("window.confirm = () => true; document.getElementById('hs_skip').click(); true");
+      check(await untilPage(hb, `state.round !== ${round0} || state.phase === "unsold"`, 4000), "пульт ведущего: «Пропустить» с подтверждением пропускает лот");
+      await hp.evaluate(`(() => { fillHostSheet(); const b = [...document.querySelectorAll("#sheet [data-kick]")].find((x) => x.parentElement.textContent.includes("Жертва")); b.click(); return true; })()`);
+      check(await untilPage(hb, "state.players.some((p) => p.name === 'Жертва' && p.left)", 3000) && kicked, "пульт ведущего: кик игрока с подтверждением");
+      // M24: на узкой доске «Пропустить» — в два тапа
+      await hb.call("Emulation.setDeviceMetricsOverride", { width: 375, height: 700, deviceScaleFactor: 2, mobile: true });
+      await hb.call("Page.bringToFront");
+      await untilPage(hb, "state.phase === 'lot' && !document.getElementById('skip').disabled", 25000);
+      const round1 = await evaluateSafe(hb, "state.round");
+      await hb.evaluate("document.getElementById('skip').click()");
+      await wait(500);
+      check((await evaluateSafe(hb, "document.getElementById('skip').textContent === T('skip_sure')")) && (await evaluateSafe(hb, "state.round")) === round1 && (await evaluateSafe(hb, "state.phase")) === "lot", "узкая доска: первый тап по «Пропустить» только просит подтверждения");
+      await hb.shot("ui_board_skip_confirm");
+      await hb.evaluate("document.getElementById('skip').click()");
+      check(await untilPage(hb, `state.round !== ${round1} || state.phase !== "lot"`, 3000), "узкая доска: второй тап пропускает лот");
+      await hp.evaluate("window.confirm = () => true; openHostSheet(); document.getElementById('hs_end').click(); true");
+      check(await untilPage(hb, "state.phase === 'finished'", 4000), "пульт ведущего: «Завершить игру» с телефона");
+      check(!(await evaluateSafe(hb, "hostLost")), "доска после действий пульта ведущего осталась в управлении");
+      // M5: пульт объясняет, как решилась ничья, доска бросает монетку (и не бросает при reduced-motion)
+      const tieText = await evaluateSafe(hp, `(() => { setState(Object.assign({}, state, { phase: "finished", voting: null, results: { mode: "vote", ranking: [{ playerId: me, score: 1, verdict: "" }], tieBreak: "coin", votes: 2, summary: "" } })); return (document.getElementById("tie") || {}).textContent || ""; })()`);
+      check(!!tieText && tieText === await evaluateSafe(hp, "I18N.t('tie_coin')"), "пульт: на итогах сказано, что ничью решила монетка");
+      await hb.call("Emulation.clearDeviceMetricsOverride");
+      const fakeRes = `Object.assign({}, state, { phase: "finished", voting: null, results: { mode: "vote", ranking: state.players.filter((p) => !p.left).map((p) => ({ playerId: p.id, score: 1, verdict: "" })), tieBreak: "coin", votes: 2, summary: "" } })`;
+      check(await evaluateSafe(hb, `(() => { coinShown = ""; state = ${fakeRes}; render(); return !!document.getElementById("coinflip"); })()`), "доска: ничья по монетке — анимация броска");
+      await wait(300);
+      await hb.shot("ui_board_coin");
+      await hb.call("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+      const reduced = await evaluateSafe(hb, `(() => { const c = document.getElementById("coinflip"); if (c) c.remove(); coinShown = ""; state = ${fakeRes}; render(); return { coin: !!document.getElementById("coinflip"), text: document.body.innerText.includes(T("tie_coin").slice(0, 12)) }; })()`);
+      check(reduced && !reduced.coin && reduced.text, "доска: при reduced-motion без броска, но с пояснением");
+      await hb.call("Emulation.setEmulatedMedia", { features: [] });
+      check(hp.errors.length === 0 && hb.errors.length === 0 && guest.errors.length === 0, "ведущий с телефона: без JS-ошибок" + ([...hp.errors, ...hb.errors, ...guest.errors].length ? ": " + [...hp.errors, ...hb.errors, ...guest.errors][0] : ""));
+      victim.close();
+      await hp.close(); await hb.close(); await guest.close();
+    }
+
     // --- сеть без Википедии и iTunes: партия обязана идти, карточка — рисоваться
     const room2 = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "artist" }) })).json();
     const offline = await cdp(`${BASE}/auction-board.html?r=${room2.code}&t=${room2.hostToken}`);

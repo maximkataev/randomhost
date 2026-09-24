@@ -1,0 +1,2931 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+  <title>Биткоин-рандом — победителя выбирает свежий перевод биткоина</title>
+  <meta name="description" content="₿ Честный рандомайзер на живой сети биткоина: ловим первый перевод после нажатия, складываем номера букв в адресе кошелька-получателя — остаток от деления и есть победитель. С настройкой вероятностей." data-i18n-meta="meta_desc">
+  <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1">
+  <link rel="canonical" href="https://randomhost.online/bitcoin-random.html">
+
+  <!-- Open Graph -->
+  <meta property="og:locale" content="ru_RU">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Биткоин-рандом — победителя выбирает свежий перевод биткоина">
+  <meta property="og:description" content="Ловим первый биткоин-перевод после нажатия, складываем номера букв в адресе получателя: остаток от деления — номер победителя.">
+  <meta property="og:url" content="https://randomhost.online/bitcoin-random.html">
+  <meta property="og:site_name" content="Рандомайзер-игры">
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🪙</text></svg>" type="image/svg+xml">
+
+  <meta name="theme-color" content="#d9d3c7">
+
+  <style>
+    /* Биткоин-рандом — уличный биткоин-банкомат в торговом центре: графитовый корпус с оранжевой
+       рамкой, зелёный ЖК-экран с входящими переводами, большая кнопка и принтер,
+       из которого выезжает термочек с подсчётом и именем победителя.
+       Тени только у физических предметов: корпус, кнопка, чек. */
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+
+      /* оболочка: стена торгового центра и спокойная панель участников */
+      --page: #d9d3c7;
+      --paper: #fbfaf6;
+      --box: #f2eee6;
+      --head: #e6e0d4;
+      --ink: #1f1d1a;
+      --muted: #5b5750;
+      --faint: #827d72;
+      --rule: #bab3a4;
+      --rule-soft: #d9d3c6;
+      --hover: #ece6da;
+      --link: #1d5bb8;
+      --hl: rgba(247, 147, 26, 0.18);
+      --hl-edge: #f7931a;
+      --focus: #d46b00;
+      --err: #c62828;
+      --err-bg: #fde8e6;
+
+      /* банкомат */
+      --btc: #f7931a;
+      --btc-dark: #b8660a;
+      --case: #2a2c31;
+      --case-hi: #3a3d44;
+      --case-lo: #18191c;
+      --lcd: #0c1812;
+      --lcd-ink: #b9f3c9;
+      --lcd-dim: #5d8c6d;
+      --lcd-warn: #f2d27a;
+      /* термобумага */
+      --th: #f8f6f0;
+      --th-ink: #292826;
+      --th-faint: #8b877e;
+
+      --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      --mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+      --lang-switch-bg: #fbfaf6;
+      --lang-switch-border: #bab3a4;
+      --lang-switch-font: var(--sans);
+      --lang-switch-fg: #1f1d1a;
+      --lang-switch-fg-hover: #b8660a;
+      --lang-switch-hover-bg: #ece6da;
+      --lang-switch-active-bg: #2a2c31;
+      --lang-switch-active-fg: #ffffff;
+      --lang-switch-active-border: #2a2c31;
+    }
+
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      min-height: 100vh;
+      /* плитка стены торгового центра */
+      background:
+        linear-gradient(rgba(255,255,255,0.18) 1px, transparent 1px) 0 0 / 100% 64px,
+        linear-gradient(90deg, rgba(0,0,0,0.035) 1px, transparent 1px) 0 0 / 128px 100%,
+        var(--page);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.5;
+      padding: calc(12px + var(--safe-top)) calc(16px + var(--safe-right)) calc(40px + var(--safe-bottom)) calc(16px + var(--safe-left));
+      overflow-x: hidden;
+    }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    button { font-family: inherit; }
+    .mono { font-family: var(--mono); }
+
+    /* ── Меню ──────────────────────────────────────────── */
+    .menu-wrap { position: fixed; top: calc(10px + var(--safe-top)); left: calc(10px + var(--safe-left)); z-index: 1000; }
+    .menu-btn {
+      width: 40px; height: 40px;
+      border-radius: 6px;
+      background: var(--paper);
+      border: 1px solid var(--rule);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+      cursor: pointer;
+    }
+    .menu-btn span { width: 18px; height: 2px; background: var(--ink); transition: transform 0.2s ease, opacity 0.2s ease; }
+    .menu-btn:hover { background: var(--hover); }
+    .menu-btn.open span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+    .menu-btn.open span:nth-child(2) { opacity: 0; }
+    .menu-btn.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+    .menu-drop {
+      position: absolute; top: 46px; left: 0;
+      min-width: 280px;
+      padding: 8px 0;
+      background: var(--paper);
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.18);   /* меню лежит поверх страницы */
+      display: flex; flex-direction: column;
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+      opacity: 0; visibility: hidden;
+      transition: opacity 0.12s ease, visibility 0.12s;
+    }
+    .menu-drop.open { opacity: 1; visibility: visible; }
+    .menu-drop::before { content: attr(data-heading); display: block; padding: 2px 16px 6px; color: var(--faint); font-size: 12px; }
+    .menu-drop a { color: var(--ink); font-size: 14px; padding: 6px 16px; white-space: nowrap; }
+    .menu-drop a:hover { background: var(--hover); text-decoration: none; }
+
+    /* ── Шапка ─────────────────────────────────────────── */
+    .page { max-width: 1180px; margin: 0 auto; }
+    .masthead { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 150px 12px 52px; }
+    .wm-logo {
+      width: 30px; height: 30px; flex-shrink: 0;
+      border-radius: 50%;
+      background: var(--btc);
+      color: #fff; font-weight: 800; font-size: 19px;
+      display: flex; align-items: center; justify-content: center;
+      transform: rotate(-14deg);
+    }
+    .wordmark { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+    .wm-title { font-size: 18px; font-weight: 800; }
+    .wm-title b { color: var(--btc-dark); font-weight: 800; }
+    .wm-tag { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* участники всегда слева; правила — под ними, чтобы левая колонка не пустовала рядом со сценой */
+    .layout {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      grid-template-rows: auto 1fr;
+      grid-template-areas: "side main" "rules main";
+      column-gap: 24px;
+      row-gap: 12px;
+      align-items: start;
+    }
+    .main-col { grid-area: main; min-width: 0; overflow-x: clip; }
+    .people-card { grid-area: side; }
+    .rules {
+      grid-area: rules;
+      align-self: stretch;
+      min-width: 0;
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      background: var(--paper);
+      padding: 10px 14px 12px;
+      font-size: 13.5px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+    .rules b { color: var(--ink); }
+    .rules-title { font-size: 15px; font-weight: 800; color: var(--ink); margin-bottom: 4px; }
+    .rules ol { padding-left: 1.4em; }
+    .rules li { margin: 5px 0; }
+    .rules code {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      color: var(--ink);
+      background: var(--box);
+      border: 1px solid var(--rule-soft);
+      border-radius: 3px;
+      padding: 1px 4px;
+      white-space: nowrap;
+    }
+
+    /* ── Банкомат ──────────────────────────────────────── */
+    .kiosk {
+      position: relative;
+      background: linear-gradient(90deg, var(--case-lo), var(--case) 6%, var(--case-hi) 50%, var(--case) 94%, var(--case-lo));
+      border-radius: 18px 18px 8px 8px;
+      border-top: 10px solid var(--btc);
+      padding: 14px 18px 0;
+      box-shadow: 0 18px 30px -12px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08);   /* автомат стоит у стены */
+      color: #e9e6df;
+    }
+    /* винты корпуса */
+    .kiosk::before, .kiosk::after {
+      content: '';
+      position: absolute; top: 10px;
+      width: 7px; height: 7px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #8a8d94, #3d4046);
+    }
+    .kiosk::before { left: 10px; }
+    .kiosk::after { right: 10px; }
+    .kiosk-head { display: flex; align-items: center; gap: 10px; margin: 0 4px 12px; min-width: 0; }
+    .kiosk-logo {
+      width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
+      background: var(--btc); color: #fff; font-weight: 900; font-size: 21px;
+      display: flex; align-items: center; justify-content: center;
+      transform: rotate(-14deg);
+    }
+    .kiosk-brand { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; }
+    .kiosk-brand b { font-size: 17px; letter-spacing: 0.14em; font-weight: 900; white-space: nowrap; }
+    .kiosk-h1 { font-size: 12.5px; font-weight: 600; color: #b9b6ae; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .kiosk-sticker {
+      margin-left: auto; flex-shrink: 0;
+      font-size: 11px; font-weight: 800; line-height: 1.15; text-align: center;
+      color: var(--case-lo); background: var(--lcd-warn);
+      padding: 4px 7px; border-radius: 3px;
+      transform: rotate(3deg);
+    }
+
+    /* ЖК-экран */
+    .screen {
+      background:
+        repeating-linear-gradient(0deg, rgba(0,0,0,0.18) 0 1px, transparent 1px 3px),
+        var(--lcd);
+      border: 10px solid #101113;
+      border-radius: 8px;
+      box-shadow: inset 0 0 24px rgba(0,0,0,0.7);
+      color: var(--lcd-ink);
+      font-family: var(--mono);
+      padding: 8px 10px 6px;
+      min-width: 0;
+    }
+    .scr-bar {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11.5px; color: var(--lcd-dim);
+      white-space: nowrap; min-width: 0; height: 18px;
+    }
+    .feed-status-line { flex: 1 1 auto; min-width: 0; overflow: hidden; display: inline-flex; align-items: center; gap: 6px; }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--lcd-dim); flex-shrink: 0; }
+    .feed[data-state="live"] .live-dot { background: var(--lcd-ink); animation: livepulse 1.6s ease-in-out infinite; }
+    .feed[data-state="connecting"] .live-dot,
+    .feed[data-state="reconnecting"] .live-dot { background: var(--lcd-warn); animation: livepulse 0.7s steps(2) infinite; }
+    @keyframes livepulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .feed[data-state="live"] .feed-status { color: var(--lcd-ink); }
+    .feed[data-state="reconnecting"] .feed-status { color: var(--lcd-warn); }
+    .feed-status { overflow: hidden; text-overflow: ellipsis; }
+    .feed-rate { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .feed-rate:not(:empty)::before { content: '· '; }
+    .tip { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .tip:empty { visibility: hidden; }
+    .tip.fresh { animation: tipflash 1.8s steps(6); }
+    @keyframes tipflash { 0%, 50% { background: var(--lcd-ink); color: var(--lcd); } 100% { background: transparent; } }
+    .scr-title {
+      font-size: 15px; font-weight: 700; letter-spacing: 0.08em;
+      margin: 4px 0 4px; height: 24px;
+      border-bottom: 1px dashed var(--lcd-dim);
+      text-shadow: 0 0 6px rgba(185, 243, 201, 0.35);
+    }
+
+    .fr {
+      display: grid;
+      grid-template-columns: 62px minmax(0, 0.8fr) minmax(0, 1.2fr) 116px;
+      gap: 10px;
+      align-items: center;
+      white-space: nowrap;
+      height: 27px;
+      font-size: 12.5px;
+      padding: 0 4px;
+      text-shadow: 0 0 5px rgba(185, 243, 201, 0.3);
+    }
+    .fr > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .fr .amt { text-align: right; font-variant-numeric: tabular-nums; }
+    .fr .tm { color: var(--lcd-dim); font-variant-numeric: tabular-nums; }
+    .fr .to::before { content: '→ '; color: var(--lcd-dim); }
+    .fr .amt .z { color: var(--lcd-dim); }
+    .fr .amt .u { margin-left: 4px; }
+    .feed-list { list-style: none; height: calc(6 * 27px); overflow: hidden; }
+    .fr.enter { animation: rcin 0.2s steps(2); }
+    @keyframes rcin { 0% { opacity: 0.2; } 100% { opacity: 1; } }
+    .fr.ph .ph-bar { display: block; height: 7px; background: rgba(93, 140, 109, 0.25); }
+    .fr.rep, .fr.rep .tm, .fr.rep .amt .z { color: var(--lcd-dim); text-shadow: none; }
+    .fr.rep .to::after { content: ' ↻'; color: var(--lcd-warn); }
+    .fr.skip { color: var(--lcd-dim); text-shadow: none; }
+    .fr.skip .to { text-decoration: line-through; }
+    .fr.skip .amt { color: var(--lcd-warn); }
+    /* отметка нажатия — всё, что выше, пришло после неё */
+    .fr.mark {
+      display: block;
+      line-height: 27px;
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--lcd-warn);
+      border-top: 1px dashed var(--lcd-warn);
+      font-size: 12px;
+    }
+    /* выбранный перевод — инверсией, как выделение на ЖК */
+    .fr.picked { background: var(--lcd-ink); color: var(--lcd); text-shadow: none; }
+    .fr.picked .tm, .fr.picked .to::before, .fr.picked .amt .z { color: #2f5a3f; }
+    .feed.snap .feed-list { animation: jolt 0.25s steps(2); }
+    @keyframes jolt { 0% { transform: translateX(-2px); } 50% { transform: translateX(2px); } 100% { transform: none; } }
+
+    /* пульт: кнопка и щель принтера */
+    .console { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 16px 4px 14px; }
+    .go {
+      min-height: 52px;
+      white-space: nowrap;
+      padding: 8px 26px;
+      border: 0;
+      border-radius: 10px;
+      background: var(--btc);
+      color: #2a1600;
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      box-shadow: 0 5px 0 var(--btc-dark), 0 8px 12px rgba(0,0,0,0.45);   /* кнопка выступает из корпуса */
+      transition: transform 0.06s ease, box-shadow 0.06s ease;
+    }
+    .go:hover { background: #ffa033; }
+    .go:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--btc-dark), 0 2px 4px rgba(0,0,0,0.45); }
+    .go:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+    .go:disabled { background: #6b6a66; color: #d6d3cc; box-shadow: 0 1px 0 #3c3b39; transform: translateY(4px); cursor: default; }
+    .go.again { background: #e9e6df; color: var(--case-lo); box-shadow: 0 5px 0 #9c988f, 0 8px 12px rgba(0,0,0,0.45); }
+    .go.again:active { box-shadow: 0 1px 0 #9c988f; }
+    .go-hint { font-size: 13px; color: #a4a19a; }
+    .go-hint kbd { font-family: var(--mono); font-size: 12px; border: 1px solid #5a5d63; border-bottom-width: 2px; border-radius: 3px; background: var(--case-lo); padding: 0 5px; color: #d6d3cc; }
+
+    /* лоток: щель принтера сверху, чек выезжает из неё */
+    /* лоток по высоте чека, а у чека все строки постоянной высоты — ничего не прыгает */
+    .bay {
+      position: relative;
+      margin: 0 -18px;
+      padding: 16px 18px 18px;
+      background: linear-gradient(var(--case-lo), #222328 40px, #26282d);
+      border-radius: 0 0 8px 8px;
+      overflow: clip;
+    }
+    .bay-slot {
+      position: absolute; left: 50%; top: 10px; z-index: 2;
+      width: min(500px, calc(100% - 12px)); height: 12px;
+      transform: translateX(-50%);
+      background: #050506;
+      border-radius: 6px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.12), inset 0 3px 4px rgba(0,0,0,0.9);
+    }
+    .bay-label {
+      position: absolute; right: 22px; top: 26px;
+      font-size: 10.5px; letter-spacing: 0.12em; color: #7b7a76; font-weight: 700;
+    }
+    .receipt-clip { position: relative; width: min(476px, 100%); margin: 0 auto; padding-bottom: 8px; overflow: clip; }
+    .receipt {
+      position: relative;
+      background:
+        linear-gradient(90deg, rgba(0,0,0,0.03), transparent 8% 92%, rgba(0,0,0,0.03)),
+        var(--th);
+      color: var(--th-ink);
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.45;
+      padding: 16px 18px 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.35);   /* бумага лежит в лотке */
+    }
+    /* зубчатый край отрыва */
+    .receipt::after {
+      content: '';
+      position: absolute; left: 0; right: 0; bottom: -8px; height: 8px;
+      background:
+        linear-gradient(135deg, var(--th) 50%, transparent 50%) 0 0 / 12px 8px,
+        linear-gradient(225deg, var(--th) 50%, transparent 50%) 0 0 / 12px 8px;
+    }
+    .receipt.printing { animation: print 1.1s steps(22) both; }
+    @keyframes print { 0% { transform: translateY(-100%); } 100% { transform: none; } }
+
+    .r-head { text-align: center; line-height: 1.3; }
+    .r-head b { display: block; font-size: 15px; letter-spacing: 0.16em; font-weight: 800; }
+    .r-head span { display: block; font-size: 11.5px; color: var(--th-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .r-sep { height: 0; border-top: 1.5px dashed var(--th-faint); margin: 8px 0; }
+    .r-cap { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; height: 18px; white-space: nowrap; min-width: 0; }
+    .slot-tag {
+      margin-left: auto; flex-shrink: 0;
+      font-size: 10.5px; letter-spacing: 0.08em;
+      border: 1.5px solid currentColor;
+      padding: 0 5px; line-height: 15px;
+      transform: rotate(-3deg);
+      color: #b23a2b;
+    }
+    .slot-tag:empty { visibility: hidden; }
+    #stubTag { display: none; }   /* пометка у чека одна — в шапке разбора */
+
+    .caught {
+      height: var(--caught-h, 300px);
+      display: grid;
+      grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
+      min-width: 0;
+    }
+    .tx-id { font-size: 11px; line-height: 16px; height: 32px; overflow: hidden; word-break: break-all; color: var(--th-ink); }
+    .tx-id a { color: inherit; text-decoration: underline; text-decoration-color: var(--th-faint); }
+    .caught[data-mode="wait"] .tx-id a { color: #b23a2b; text-decoration: none; }
+    .caught[data-mode="wait"] .tx-id a::after { content: '▌'; animation: caret 0.8s steps(1) infinite; margin-left: 2px; }
+    @keyframes caret { 50% { opacity: 0; } }
+    .caught-meta { display: flex; gap: 4px 14px; font-size: 11.5px; color: var(--th-faint); white-space: nowrap; overflow: hidden; height: 18px; min-width: 0; }
+    .caught-meta > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .caught-meta > span:first-child { flex-shrink: 0; }
+    .caught-meta b { color: var(--th-ink); }
+    .caught-meta.fail, .caught-meta.fail b { color: #b23a2b; }
+    .tiles-box { overflow: hidden; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+    .tiles-box .tiles { flex: 0 0 auto; }
+    .caught[data-mode="example"] .tiles-box, .caught[data-mode="last"] .tiles-box { opacity: 0.7; }
+    .caught[data-mode="wait"] .tiles-box { opacity: 0.15; transition: opacity 0.2s linear; }
+
+    /* символ адреса, под ним — его число; как колонки на чеке */
+    .tiles { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: flex-start; }
+    .tiles .w { display: inline-flex; }
+    .tl { display: flex; flex-direction: column; min-width: calc(var(--tile, 24px) * 0.9); text-align: center; }
+    .tl b, .tl i { display: flex; align-items: center; justify-content: center; font-style: normal; font-variant-numeric: tabular-nums; }
+    .tl b { height: calc(var(--tile, 24px) * 1.05); font-weight: 800; font-size: calc(var(--tile, 24px) * 0.72); border-bottom: 1px dotted var(--th-faint); }
+    .tl i { height: calc(var(--tile, 24px) * 0.8); font-size: calc(var(--tile, 24px) * 0.44); color: transparent; }
+    .tl.on i { color: var(--th-ink); }
+    .tl.zero.on i { color: var(--th-faint); }
+    .tl.now b { background: var(--th-ink); color: var(--th); }   /* печать инверсией */
+    .tl.hd b, .tl.hd i { font-weight: 400; color: var(--th-faint); font-size: clamp(8px, calc(var(--tile, 24px) * 0.34), 10px); justify-content: flex-start; padding-right: 4px; }
+    .tl.hd i { color: var(--th-faint); }
+
+    .op {
+      font-size: clamp(15px, 2.6vw, 19px);
+      font-weight: 700;
+      flex: 0 0 1.6em;
+      height: 1.6em;
+      display: flex; flex-wrap: nowrap; white-space: nowrap; overflow: hidden;
+      align-items: center; gap: 0 0.4em;
+    }
+    .op .m, .op .mod, .op .arrow { color: var(--th-faint); font-weight: 400; }
+    .op .rr { background: var(--th-ink); color: var(--th); padding: 0 0.35em; }
+
+    /* ── Итог на чеке ──────────────────────────────────── */
+    .stub { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+    .stub-addr { font-size: 11px; color: var(--th-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 16px; }
+    .stub-row { display: flex; align-items: center; height: 62px; min-width: 0; }
+    .label {
+      display: flex; align-items: center; justify-content: center;
+      width: 100%; height: 56px; min-width: 0;
+      background: var(--th-ink); color: var(--th);
+      padding: 0 12px;
+    }
+    .winner { font-family: var(--sans); font-size: 34px; font-weight: 900; letter-spacing: 0.02em; text-transform: uppercase; line-height: 1; white-space: nowrap; overflow: hidden; min-width: 0; }
+    .stub-lede { font-size: 12px; line-height: 1.45; height: calc(2 * 1.45em); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+    .stub-ref { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--th-faint); height: 17px; }
+    .stub-ref a { color: var(--th-ink); text-decoration: underline; }
+    .barcode { display: flex; align-items: stretch; justify-content: center; gap: 0; height: 34px; overflow: hidden; margin-top: 2px; }
+    .barcode i { display: block; background: var(--th-ink); }
+    .r-foot { text-align: center; font-size: 11px; color: var(--th-faint); letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 16px; }
+    .r-foot b { color: var(--th-ink); font-weight: 700; }
+
+    .stub[data-mode="stale"] .stub-row, .stub[data-mode="stale"] .stub-lede, .stub[data-mode="stale"] .barcode { opacity: 0.6; }
+    .stub[data-mode="empty"] .label { background: transparent; color: var(--th-faint); outline: 1.5px dashed var(--th-faint); outline-offset: -2px; }
+    .stub[data-mode="empty"] .winner { font-weight: 400; font-size: 24px; text-transform: none; font-style: italic; }
+    .stub[data-mode="empty"] .stub-lede, .stub[data-mode="empty"] .stub-ref { font-style: italic; color: var(--th-faint); }
+    .stub[data-mode="empty"] .barcode { opacity: 0.25; }
+    .stub.on .label { animation: ink 0.5s steps(5) both; }
+    @keyframes ink { 0% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 0 0 0); } }
+
+    /* ── Инфобокс «Участники»: общая часть из Викирандома, ниже — поправки ── */
+    /* ── Инфобокс «Участники» ─────────────────────────── */
+    .people-card {
+      border: 1px solid var(--rule);
+      background: var(--box);
+      padding: 4px;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    /* сцена липкая: при длинном списке участников она не уезжает, и справа не остаётся пустоты */
+    @media (min-width: 761px) {
+      .main-col { position: sticky; top: calc(8px + var(--safe-top)); }
+    }
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 6px;
+      background: var(--head);
+      padding: 6px 8px;
+    }
+    .settings-title { font-size: 15px; font-weight: 700; font-family: var(--sans); }
+    .settings-title #countLabel { font-weight: 400; color: var(--muted); }
+    .settings-actions { display: flex; gap: 4px; margin-left: auto; }
+
+    /* тихие кнопки MediaWiki */
+    .equalize-btn, .collapse-btn, .prob-btn, .remove-btn, .away-btn, .hosts-page-btn {
+      min-width: 32px; min-height: 32px;
+      padding: 0 6px;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      background: transparent;
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .equalize-btn:hover, .collapse-btn:hover, .prob-btn:hover, .away-btn:hover, .hosts-page-btn:hover { background: var(--hover); border-color: var(--rule-soft); }
+    .remove-btn { color: var(--faint); font-size: 18px; }
+    .remove-btn:hover { color: var(--err); background: var(--err-bg); border-color: var(--err); }
+    .equalize-btn:disabled, .collapse-btn:disabled, .prob-btn:disabled, .remove-btn:disabled, .away-btn:disabled, .hosts-page-btn:disabled {
+      opacity: 0.35; cursor: default; background: transparent; border-color: transparent;
+    }
+    .collapse-btn span { display: inline-block; transition: transform 0.15s ease; font-size: 11px; }
+    .collapse-btn.closed span { transform: rotate(-90deg); }
+    .hosts-btn.active { background: var(--hover); border-color: var(--link); }
+    #equalizeBtn svg { display: block; }
+
+    .list-wrap { background: var(--paper); border: 1px solid var(--rule-soft); border-top: 0; padding: 6px; overflow: hidden; }
+    .list-wrap.closed { display: none; }
+
+    .headers-row, .prow {
+      display: grid;
+      grid-template-columns: 40px minmax(0, 1fr) 108px 32px 32px;
+      gap: 4px;
+      align-items: center;
+    }
+    .headers-row {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      padding: 2px 2px 5px;
+      border-bottom: 1px solid var(--rule-soft);
+      margin-bottom: 4px;
+    }
+    .headers-row .h-prob { text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .plist { display: flex; flex-direction: column; }
+    .prow { padding: 3px 2px; border-bottom: 1px solid var(--rule-soft); }
+    .prow:last-child { border-bottom: 0; }
+    .prow.win { background: var(--hl); box-shadow: inset 3px 0 0 var(--hl-edge); }
+
+    .pnum { display: flex; flex-direction: column; align-items: center; line-height: 1.15; font-variant-numeric: tabular-nums; }
+    .pnum .n { font-weight: 700; font-size: 13px; color: var(--muted); }
+    .pnum .rng { font-size: 10.5px; color: var(--faint); white-space: nowrap; }
+    .prow.win .pnum .n { color: var(--ink); }
+
+    .name-input, .prob-input {
+      height: 32px;
+      width: 100%;
+      min-width: 0;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 14px;
+      padding: 0 8px;
+      outline: none;
+    }
+    .name-input:focus, .prob-input:focus { border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
+    .name-input.error-state { border-color: var(--err); background: var(--err-bg); }
+    .name-input.error-state::placeholder { color: var(--err); }
+    .name-input:disabled { background: var(--box); color: var(--muted); }
+
+    .prob-controls { display: grid; grid-template-columns: 26px minmax(0, 1fr) 26px; align-items: center; gap: 1px; }
+    .prob-btn { min-width: 26px; padding: 0; font-size: 16px; color: var(--muted); }
+    .prob-input { padding: 0 2px; text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .prob-input.error { border-color: var(--err); color: var(--err); }
+    .prob-input.manual { font-weight: 700; background: var(--hl); }
+
+    .prow.is-away .name-input { color: var(--faint); font-style: italic; background: var(--box); }
+    .away-badge {
+      font-size: 12px;
+      color: var(--faint);
+      font-style: italic;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-align: center;
+      min-width: 0;
+    }
+
+    .add-row { display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 4px; margin-top: 8px; }
+    .add-btn {
+      height: 32px;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      background: var(--box);
+      color: var(--ink);
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .add-btn:hover { background: var(--paper); border-color: var(--link); color: var(--link); }
+    .add-btn:disabled { opacity: 0.4; cursor: default; }
+    .err { font-size: 12.5px; color: var(--err); min-height: 16px; margin-top: 4px; text-align: center; }
+
+    /* ── Ведущие ───────────────────────────────────────── */
+    .hosts-box[hidden] { display: none; }
+    .hosts-box { background: var(--paper); border: 1px solid var(--rule-soft); border-top: 0; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+    .hosts-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; }
+    .hosts-heading { font-weight: 700; }
+    .hosts-pager { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+    .hosts-range { min-width: 92px; font-size: 12.5px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .hosts-page-btn { font-size: 16px; min-width: 28px; min-height: 28px; }
+    .hosts-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-left: 1px solid var(--rule); border-top: 1px solid var(--rule); }
+    .host-day {
+      position: relative;
+      display: flex; flex-direction: column; align-items: center;
+      min-width: 0;
+      padding: 3px 1px 4px;
+      border-right: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+      background: var(--paper);
+    }
+    .host-day:hover { background: var(--hover); }
+    .host-day:focus-within { outline: 2px solid var(--focus); outline-offset: -2px; }
+    .host-day.weekend { background: var(--box); }
+    .host-day.today { box-shadow: inset 0 3px 0 var(--hl-edge); }
+    .host-day-wd { font-size: 10.5px; color: var(--faint); text-transform: uppercase; }
+    .host-day-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; color: var(--link); padding: 0 2px; }
+    .host-day.empty .host-day-name { color: var(--faint); font-weight: 400; }
+    .host-day-num { font-size: 10.5px; color: var(--faint); }
+    .host-day-select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+    .host-day-select:disabled { cursor: default; }
+    .host-rule { border-top: 1px solid var(--rule-soft); padding-top: 8px; }
+    .host-rule-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .host-switch {
+      position: relative; flex-shrink: 0;
+      width: 36px; height: 20px; padding: 0;
+      border: 1px solid var(--rule); border-radius: 10px;
+      background: var(--head); cursor: pointer;
+    }
+    .host-switch::after {
+      content: ''; position: absolute; top: 2px; left: 2px;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--paper); border: 1px solid var(--rule);
+      transition: transform 0.12s ease;
+    }
+    .host-switch[aria-checked="true"] { background: var(--link); border-color: var(--link); }
+    .host-switch[aria-checked="true"]::after { transform: translateX(16px); border-color: var(--link); }
+    .host-switch:disabled { opacity: 0.5; cursor: default; }
+
+    .name-field { position: relative; display: flex; min-width: 0; }
+    .name-field .name-input { flex: 1 1 auto; }
+    .plist:not(.chips-corner) .name-field.has-chip .name-input { padding-right: calc(var(--chip-w, 48px) + 12px); }
+    .host-chip {
+      position: absolute; top: 50%; right: 5px;
+      display: inline-flex; align-items: center; gap: 2px;
+      padding: 1px 5px;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      background: var(--box);            /* сплошной фон: буквы имени под меткой не просвечивают */
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+    .plist.chips-corner .host-chip { top: -6px; right: -2px; transform: none; padding: 0 4px; font-size: 10.5px; line-height: 1.3; }
+
+    .people-card { border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); padding: 4px; font-size: 14px; line-height: 1.4; }
+    /* сцена липкая: при длинном списке участников она не уезжает, и справа не остаётся пустоты */
+    @media (min-width: 761px) {
+      .main-col { position: sticky; top: calc(8px + var(--safe-top)); }
+    }
+    .settings-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; background: var(--head); padding: 6px 8px; border-radius: 4px; }
+    .settings-title { font-size: 15px; font-weight: 800; }
+    .settings-title #countLabel { font-weight: 400; color: var(--muted); }
+    .list-wrap { background: var(--paper); padding: 6px; overflow: hidden; border: 0; }
+    .name-input, .prob-input { border-radius: 4px; background: #fff; }
+    .prob-input { font-family: var(--mono); }
+    .prob-input.manual { font-weight: 700; background: var(--hl); border-color: var(--btc); }
+    .pnum { font-family: var(--mono); }
+    .prow.win .pnum .n { color: var(--btc-dark); }
+
+    /* ── Адаптив ───────────────────────────────────────── */
+    @media (max-width: 1000px) {
+      .layout { grid-template-columns: 316px minmax(0, 1fr); column-gap: 16px; }
+      .headers-row, .prow { grid-template-columns: 30px minmax(0, 1fr) 96px 30px 30px; gap: 3px; }
+      .prob-controls { grid-template-columns: 22px minmax(0, 1fr) 22px; }
+      .prob-btn { min-width: 22px; }
+      .equalize-btn, .collapse-btn, .remove-btn, .away-btn { min-width: 30px; }
+      .fr { grid-template-columns: 0 minmax(0, 0.8fr) minmax(0, 1.2fr) 108px; gap: 0 8px; }
+      .fr .tm { visibility: hidden; }
+      .kiosk { padding: 12px 12px 0; }
+      .bay { margin: 0 -12px; padding: 16px 12px 18px; }
+      .kiosk-sticker { display: none; }
+    }
+    /* телефон: левой колонки нет — участники первыми, потом банкомат, правила в конце */
+    @media (max-width: 760px) {
+      .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; grid-template-areas: "side" "main" "rules"; row-gap: 16px; }
+    }
+    @media (max-width: 600px) {
+      body { padding: calc(8px + var(--safe-top)) calc(8px + var(--safe-right)) calc(28px + var(--safe-bottom)) calc(8px + var(--safe-left)); }
+      .masthead { padding: 0 128px 10px 50px; min-height: 44px; }
+      .wm-logo { display: none; }
+      .menu-drop { min-width: calc(100vw - 20px - var(--safe-left) - var(--safe-right)); }
+      .kiosk { padding: 10px 8px 0; border-radius: 14px 14px 8px 8px; }
+      .bay { margin: 0 -8px; padding: 16px 8px 14px; }
+      .screen { border-width: 6px; padding: 6px 6px 4px; }
+      .fr { grid-template-columns: 0 0 minmax(0, 1fr) 100px; gap: 0 6px; font-size: 12px; }
+      .fr .tx { visibility: hidden; }
+      .fr.mark { font-size: 11px; }
+      .scr-title { font-size: 13px; }
+      .go { flex: 1 1 auto; }
+      .go-hint { display: none; }
+      .receipt { padding: 14px 12px 8px; }
+      .caught { --caught-h: 340px; }
+      .caught-meta > span.opt { display: none; }
+      .winner { font-size: 28px; }
+      .headers-row, .prow { grid-template-columns: 30px minmax(0, 1fr) 100px 32px 32px; gap: 3px; }
+      .host-chip-day { display: none; }
+    }
+    /* самые узкие: имя — первой строкой, шанс и кнопки — второй */
+    @media (max-width: 359px) {
+      .prow {
+        grid-template-columns: 30px 100px 1fr 32px 32px;
+        grid-template-areas: "num name name name name" ". prob . away rm";
+        row-gap: 3px;
+      }
+      .prow > :nth-child(1) { grid-area: num; }
+      .prow > :nth-child(2) { grid-area: name; }
+      .prow > :nth-child(3) { grid-area: prob; }
+      .prow > :nth-child(4) { grid-area: away; }
+      .prow > :nth-child(5) { grid-area: rm; }
+      .headers-row { grid-template-columns: 30px 1fr auto; }
+      .headers-row .header-away, .headers-row .header-remove { display: none; }
+    }
+    @media (hover: none) and (pointer: coarse) {
+      .equalize-btn, .collapse-btn, .prob-btn, .remove-btn, .away-btn { min-height: 38px; }
+      .name-input, .prob-input { height: 38px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.001s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0.01s !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="menu-wrap">
+    <button class="menu-btn" id="menuBtn" aria-label="Меню" aria-expanded="false" data-i18n-attr="aria-label:menu">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="menu-drop" id="menuDrop" data-heading="Рандомайзеры" data-i18n-attr="data-heading:menu_heading">
+      <a href="index.html" data-i18n="nav_home">🏠 Главная</a>
+      <a href="ai-judge.html" data-i18n="nav_ai">🤖 LLM-рандомайзер</a>
+      <a href="slack-roulette.html" data-i18n="nav_slack">🚨 Slack Рулетка</a>
+      <a href="gitlab-blame.html" data-i18n="nav_gitlab">🦊 GitLab Blame</a>
+      <a href="racing.html" data-i18n="nav_racing">🏁 Гонки</a>
+      <a href="wheel-of-fortune.html" data-i18n="nav_wheel">🎡 Колесо Фортуны</a>
+      <a href="bingo.html" data-i18n="nav_bingo">🎲 Бинго</a>
+      <a href="el-credito.html" data-i18n="nav_bank">🇲🇽 Банк</a>
+      <a href="plinko.html" data-i18n="nav_plinko">🎯 Плинко</a>
+      <a href="crystal-ball.html" data-i18n="nav_crystal">🔮 Магический Шар</a>
+      <a href="trading.html" data-i18n="nav_trading">📈 Трейдинг</a>
+      <a href="daisy.html" data-i18n="nav_daisy">🌼 Ромашка</a>
+      <a href="time-randomizer.html" data-i18n="nav_pseudo">⏱️ Псевдорандом</a>
+      <a href="wiki-random.html" data-i18n="nav_wiki">📖 Викирандом</a>
+      <a href="duck-race.html" data-i18n="nav_ducks">🦆 Утиные бега</a>
+      <a href="penguin-floe.html" data-i18n="nav_penguins">🐧 Пингвины на льдине</a>
+      <a href="elections.html" data-i18n="nav_elections">🗳️ Выборы</a>
+    </nav>
+  </div>
+
+  <div class="page">
+    <header class="masthead">
+      <span class="wm-logo" aria-hidden="true">₿</span>
+      <div class="wordmark">
+        <span class="wm-title" data-i18n="wm_title">Биткоин-<b>рандом</b></span>
+        <span class="wm-tag" data-i18n="wm_tag">банкомат, который выдаёт победителей</span>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="card people-card" aria-labelledby="peopleTitle">
+        <div class="settings-header">
+          <h2 class="settings-title" id="peopleTitle"><span data-i18n="participants">Участники</span> · <span id="countLabel">8</span></h2>
+          <div class="settings-actions">
+            <button class="collapse-btn sound-toggle-btn" id="soundToggleBtn"></button>
+            <button class="equalize-btn" id="equalizeBtn" title="Уравнять вероятности" aria-label="Уравнять вероятности" data-i18n-attr="title:equalize_title;aria-label:equalize_title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="8" width="16" height="3" rx="1.5" fill="currentColor"/><rect x="4" y="13" width="16" height="3" rx="1.5" fill="currentColor"/></svg></button>
+            <button class="collapse-btn" id="collapseBtn" data-i18n-attr="title:collapse_title" title="Свернуть список"><span id="collapseIcon">▼</span></button>
+            <button class="collapse-btn hosts-btn" id="hostsBtn" type="button" aria-expanded="false" aria-controls="hostsBox" title="Ведущие" aria-label="Ведущие" data-i18n-attr="title:hosts_title;aria-label:hosts_title">🎙</button>
+          </div>
+        </div>
+
+        <div class="hosts-box" id="hostsBox" hidden>
+          <div class="hosts-top">
+            <span class="hosts-heading" data-i18n="hosts_title">Ведущие</span>
+            <div class="hosts-pager">
+              <button class="hosts-page-btn host-ui" id="hostsPrev" type="button" aria-label="Неделя назад" data-i18n-attr="aria-label:hosts_prev">‹</button>
+              <span class="hosts-range" id="hostsRange"></span>
+              <button class="hosts-page-btn host-ui" id="hostsNext" type="button" aria-label="Неделя вперёд" data-i18n-attr="aria-label:hosts_next">›</button>
+            </div>
+          </div>
+          <div class="hosts-week" id="hostsWeek"></div>
+          <div class="host-rule">
+            <label class="host-rule-label">
+              <button class="host-switch host-ui" id="hostChipsSwitch" type="button" role="switch" aria-checked="true" aria-labelledby="hostChipsText"></button>
+              <span id="hostChipsText" data-i18n="host_chips">Метки у участников</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="list-wrap" id="listWrap">
+          <div class="headers-row">
+            <div data-i18n="col_num">№</div>
+            <div data-i18n="col_name">Имя</div>
+            <div class="h-prob" data-i18n="col_prob">📊 Вероятность</div>
+            <div class="header-away"></div>
+            <div class="header-remove"></div>
+          </div>
+          <div class="plist" id="plist"></div>
+
+          <div class="add-row">
+            <input type="text" class="name-input" id="newNameInput" maxlength="18" placeholder="Новый участник" data-i18n-attr="placeholder:ph_new">
+            <button class="add-btn" id="addBtn" data-i18n-attr="title:add_title" title="Добавить участника">＋</button>
+          </div>
+
+          <div class="err" id="errorMsg"></div>
+        </div>
+      </aside>
+
+
+      <main class="main-col">
+        <div class="kiosk">
+          <div class="kiosk-head">
+            <span class="kiosk-logo" aria-hidden="true">₿</span>
+            <div class="kiosk-brand"><b>BITCOIN ATM</b><h1 class="kiosk-h1" data-i18n="h1">Кому достанется биткоин?</h1></div>
+            <span class="kiosk-sticker" data-i18n="sticker">ЧЕСТНО<br>24/7</span>
+          </div>
+
+          <!-- ЖК-экран с живой лентой -->
+          <section class="screen feed" id="feed" data-state="connecting">
+            <div class="scr-bar">
+              <span class="feed-status-line"><span class="live-dot"></span><span class="feed-status" id="feedStatus" data-i18n="st_connecting">подключаемся к сети…</span><span class="feed-rate" id="feedRate"></span></span>
+              <span class="tip" id="tipHeight" title="Последний блок" data-i18n-attr="title:tip_title"></span>
+            </div>
+            <div class="scr-title" data-i18n="feed_title">ВХОДЯЩИЕ ПЕРЕВОДЫ</div>
+            <ul class="feed-list" id="feedList" aria-hidden="true"></ul>
+          </section>
+
+          <div class="console">
+            <button class="go" id="goBtn" data-i18n="btn">Поймать перевод</button>
+            <span class="go-hint" data-i18n="go_hint">или <kbd>Пробел</kbd></span>
+          </div>
+
+          <!-- Лоток принтера: чек постоянной высоты, в простое — прошлый чек или пример -->
+          <div class="bay" id="result" aria-live="polite">
+            <span class="bay-slot" aria-hidden="true"></span>
+            <div class="receipt-clip">
+              <div class="receipt" id="receipt">
+                <div class="r-head">
+                  <b>BITCOIN RANDOM</b>
+                  <span data-i18n="r_kind">квитанция о переводе</span>
+                  <span id="rcptTime"></span>
+                </div>
+                <div class="r-sep"></div>
+
+                <section class="caught" id="caught" data-mode="example">
+                  <div class="r-cap"><span>TXID</span><span class="slot-tag" id="txTag"></span></div>
+                  <div class="tx-id"><a id="txLink" target="_blank" rel="noopener"></a></div>
+                  <div class="caught-meta" id="caughtMeta"></div>
+                  <div class="r-sep"></div>
+                  <div class="r-cap" data-i18n="addr_cap">адрес получателя</div>
+                  <div class="tiles-box" id="tilesBox">
+                    <div class="tiles" id="tiles"></div>
+                    <div class="op" id="op"></div>
+                  </div>
+                </section>
+
+                <div class="r-sep"></div>
+
+                <article class="stub" id="stub" data-mode="empty">
+                  <div class="r-cap"><span data-i18n="addr_label">кошелёк принадлежит</span><span class="slot-tag" id="stubTag"></span></div>
+                  <div class="stub-addr" id="stubAddr"></div>
+                  <div class="stub-row"><span class="label"><span class="winner" id="winner"></span></span></div>
+                  <p class="stub-lede" id="stubLede"></p>
+                  <div class="stub-ref" id="stubRef"></div>
+                  <div class="barcode" id="barcode" aria-hidden="true"></div>
+                  <div class="r-foot" data-i18n="confirm"><b>0 подтверждений</b> · но решение окончательное</div>
+                </article>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <section class="rules" id="how">
+        <h2 class="rules-title" data-i18n="rules_title">Как это работает</h2>
+        <ol>
+          <li data-i18n="rules_1">Слушаем живой поток <b>биткоин-переводов</b>, которые прямо сейчас летят по сети, — около десяти в секунду.</li>
+          <li data-i18n="rules_2">После нажатия берём <b>первый</b> перевод, который придёт. Подобрать удобный не может никто — ни вы, ни мы, ни отправитель: он о розыгрыше не знает.</li>
+          <li data-i18n="rules_3">Смотрим адрес кошелька, куда ушли деньги. Кошельки бирж получают переводы каждую секунду — если адрес уже мелькал в ленте <code>↻</code>, пропускаем и ждём новый. Иначе у частых адресов было бы больше шансов.</li>
+          <li data-i18n="rules_4">Каждая буква адреса — её номер в алфавите <code>a=1 … z=26</code> (большая или маленькая — неважно), цифра — сама себе. Всё складываем.</li>
+          <li data-i18n="rules_5">Шансы равные — <code>сумма mod N</code>, остаток и есть номер победителя. Шансы разные — <code>сумма mod 100</code>: у каждого столько билетов, сколько процентов, диапазон виден рядом с номером.</li>
+          <li data-i18n="rules_6">Ссылка ведёт на сам перевод в <b>mempool.space</b> — адрес там тот же, сумму можно пересчитать.</li>
+        </ol>
+      </section>
+    </div>
+  </div>
+
+  <script>
+  // Заглушка до загрузки i18n.js (defer)
+  window.I18N = window.I18N || { t: (k) => k, lang: 'ru', setLang(){}, supported: ['ru','en','el'] };
+  </script>
+
+
+  <script>
+    const goBtn     = document.getElementById('goBtn');
+    const resultEl  = document.getElementById('result');
+    const opEl      = document.getElementById('op');
+    const winnerEl  = document.getElementById('winner');
+    const plist     = document.getElementById('plist');
+    const countLbl  = document.getElementById('countLabel');
+    const errorMsg  = document.getElementById('errorMsg');
+    const equalizeBtn = document.getElementById('equalizeBtn');
+    const collapseBtn = document.getElementById('collapseBtn');
+    const listWrap  = document.getElementById('listWrap');
+    const newNameInput = document.getElementById('newNameInput');
+    const addBtn    = document.getElementById('addBtn');
+
+    const MIN_PLAYERS = 2;
+    const MAX_PLAYERS = 20;
+    const MAX_NAME_LEN = 15;
+    const REVEAL_AT = 1000;                    // имя проявляется через секунду после остатка
+    const MIN_P = 0.01;                        // билетов 100 — меньше 1% дать нельзя
+    const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const DEFAULT_NAME_SETS = {
+      ru: ['Аня', 'Борис', 'Вика', 'Глеб', 'Даша', 'Егор', 'Женя', 'Захар'],
+      en: ['Anna', 'Boris', 'Vicky', 'Gleb', 'Dasha', 'Egor', 'Jane', 'Zach'],
+      el: ['Άννα', 'Μπόρις', 'Βίκυ', 'Γκλεμπ', 'Ντάσα', 'Έγκορ', 'Τζένη', 'Ζαχαρίας']
+    };
+
+    // Общий список участников со всеми остальными рандомайзерами сайта
+    const NAMES_KEY  = 'shared_names_v1';
+    const PROB_KEY   = 'shared_probabilities_v2';
+    const LOCKED_KEY = 'shared_locked_v1';
+    const AWAY_KEY   = 'shared_away_v1';
+    // Ведущие: общая история со всеми рандомайзерами. Правило «прошлому ведущему» (shared_host_rule_v1)
+    // здесь не действует и не записывается — победителя решает биткоин-перевод
+    const HOSTS_KEY       = 'shared_hosts_v1';
+    const HOSTS_OPEN_KEY  = 'hosts_panel_open_v1';
+    const HOSTS_CHIPS_KEY = 'hosts_chips_visible_v1';
+
+    const hostsBtn        = document.getElementById('hostsBtn');
+    const hostsBox        = document.getElementById('hostsBox');
+    const hostsWeek       = document.getElementById('hostsWeek');
+    const hostsRange      = document.getElementById('hostsRange');
+    const hostsPrev       = document.getElementById('hostsPrev');
+    const hostsNext       = document.getElementById('hostsNext');
+    const hostChipsSwitch = document.getElementById('hostChipsSwitch');
+
+    const guessLang = () => {
+      try {
+        const saved = localStorage.getItem('site-lang');
+        if (DEFAULT_NAME_SETS[saved]) return saved;
+      } catch (e) {}
+      const nav = (navigator.language || 'en').slice(0, 2).toLowerCase();
+      return DEFAULT_NAME_SETS[nav] ? nav : 'ru';
+    };
+
+    let names = DEFAULT_NAME_SETS[guessLang()].slice();
+    let probabilities = {};
+    let lockedParticipants = {};
+    let hasCustomProbabilities = false;
+    // «Отпуск / болеет»: [{ name, idx, p, locked }] — в names их нет, поэтому в розыгрыше они не участвуют
+    let awayList = [];
+    let truncatedFrom = 0;
+    let userEdited = false;
+    let running = false;
+    let done = false;
+    let timers = [];
+    // Ведущие: [{ name, t, host: true }] — одна запись на день: последний победитель (или правка через 🎙)
+    let hostLog = [];
+    let hostWeekPage = 0;
+    let hostChipsVisible = true; // метки 🎙 у участников — переключатель в блоке «Ведущие»
+
+    const t = (k) => I18N.t(k);
+    const fill = (k, map) => {
+      let s = t(k);
+      for (const key in map) s = s.split('{' + key + '}').join(map[key]);
+      return s;
+    };
+    const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+    const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+    const pad = (v, n) => String(v).padStart(n, '0');
+
+    /* ── ЗАГРУЗКА ИМЁН ───────────────────────────────── */
+    try {
+      const saved = JSON.parse(localStorage.getItem(NAMES_KEY) || '[]');
+      if (Array.isArray(saved) && saved.length) {
+        const list = saved.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim().slice(0, MAX_NAME_LEN));
+        if (list.length) {
+          names = list;
+          // один участник — добавляем второго, розыгрыш без пары бессмыслен
+          if (names.length < MIN_PLAYERS) names.push(DEFAULT_NAME_SETS[guessLang()][1]);
+          // длинный список показываем первыми 20 и обратно НЕ пишем
+          if (names.length > MAX_PLAYERS) { truncatedFrom = names.length; names = names.slice(0, MAX_PLAYERS); }
+        }
+      } else {
+        localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+      }
+    } catch (e) {}
+
+    const saveNames = () => {
+      truncatedFrom = 0;
+      try { localStorage.setItem(NAMES_KEY, JSON.stringify(names)); } catch (e) {}
+    };
+
+    try {
+      const savedAway = JSON.parse(localStorage.getItem(AWAY_KEY) || '[]');
+      if (Array.isArray(savedAway)) {
+        awayList = savedAway.filter((a) => a && typeof a.name === 'string' && a.name && !names.includes(a.name));
+      }
+    } catch (e) {}
+
+    const saveAway = () => {
+      try { localStorage.setItem(AWAY_KEY, JSON.stringify(awayList)); } catch (e) {}
+    };
+
+    // Имя занято, если оно есть среди активных (кроме строки exceptIdx) или среди отсутствующих
+    function isNameTaken(v, exceptIdx = -1) {
+      const low = v.toLowerCase();
+      return names.some((n, i) => i !== exceptIdx && n.toLowerCase() === low) ||
+        awayList.some((a) => a.name.toLowerCase() === low);
+    }
+
+    /* ── ВЕДУЩИЕ: ИСТОРИЯ ────────────────────────────── */
+    function loadHostLog() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(HOSTS_KEY) || '[]');
+        if (Array.isArray(saved)) {
+          hostLog = saved.filter((e) => e && typeof e.name === 'string' && e.name && Number.isFinite(e.t));
+        }
+      } catch (e) {}
+    }
+    loadHostLog();
+    try { hostChipsVisible = localStorage.getItem(HOSTS_CHIPS_KEY) !== '0'; } catch (e) {}
+
+    const saveHostLog = () => {
+      try {
+        hostLog = hostLog.filter((e) => e.host);
+        hostLog.sort((a, b) => a.t - b.t);
+        localStorage.setItem(HOSTS_KEY, JSON.stringify(hostLog));
+      } catch (e) {}
+    };
+
+    // Локальная дата вида 2026-09-14 — строки сравниваются как даты
+    function dayKey(ts) {
+      const d = new Date(ts);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    function hostEntryOn(key) {
+      return hostLog.find((e) => e.host && dayKey(e.t) === key) || null;
+    }
+
+    // Ведущие за последние 7 дней (включая сегодня): имя → самая свежая запись
+    function hostChips() {
+      const now = new Date();
+      const from = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime());
+      const map = {};
+      hostLog.forEach((e) => {
+        if (e.host && dayKey(e.t) >= from && (!map[e.name] || e.t > map[e.name].t)) map[e.name] = e;
+      });
+      return map;
+    }
+
+    // Чип 🎙 с днём, когда человек вёл, внутри уже созданного поля имени
+    function setHostChip(field, name, chips) {
+      field.dataset.hostName = name;
+      field.classList.remove('has-chip');
+      field.removeAttribute('title');
+      const old = field.querySelector('.host-chip');
+      if (old) old.remove();
+
+      const entry = chips[name];
+      if (!name || !entry || !hostChipsVisible) return;
+
+      const lang = I18N.lang || 'ru';
+      const d = new Date(entry.t);
+      field.classList.add('has-chip');
+      field.title = fill('host_chip_title', {
+        date: new Intl.DateTimeFormat(lang, { weekday: 'long', day: 'numeric', month: 'long' }).format(d)
+      });
+
+      const chip = document.createElement('span');
+      chip.className = 'host-chip';
+      chip.setAttribute('aria-hidden', 'true');
+      const day = document.createElement('span');
+      day.className = 'host-chip-day';
+      day.textContent = dayKey(entry.t) === dayKey(Date.now())
+        ? t('host_chip_today')
+        : new Intl.DateTimeFormat(lang, { weekday: 'short' }).format(d).replace(/\.$/, '');
+      chip.append('🎙', day);
+      field.appendChild(chip);
+    }
+
+    function buildHostNameField(input, name, chips) {
+      const field = document.createElement('div');
+      field.className = 'name-field';
+      field.appendChild(input);
+      setHostChip(field, name, chips);
+      return field;
+    }
+
+    // После записи победителя строки не перерисовываем (подсветка победителя и фокус остаются) — только чипы
+    function refreshHostChips() {
+      const chips = hostChips();
+      plist.querySelectorAll('.name-field').forEach((field) => setHostChip(field, field.dataset.hostName || '', chips));
+      syncHostChipPadding();
+    }
+
+    // Чип стоит внутри поля, пока имя помещается рядом с ним («сегодня» шире «пт»).
+    // Если хоть одно имя не влезает (или экран ≤480px) — все чипы списка переезжают на угол рамки.
+    const chipMeasureCtx = document.createElement('canvas').getContext('2d');
+    function syncHostChipPadding() {
+      plist.classList.remove('chips-corner');
+      let corner = window.matchMedia('(max-width: 480px)').matches;
+      plist.querySelectorAll('.name-field.has-chip').forEach((field) => {
+        const w = field.querySelector('.host-chip').offsetWidth;
+        if (!w) return;
+        field.style.setProperty('--chip-w', w + 'px');
+        const input = field.querySelector('.name-input');
+        const cs = getComputedStyle(input);
+        chipMeasureCtx.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+        const room = input.clientWidth - parseFloat(cs.paddingLeft) - (w + 14);
+        if (chipMeasureCtx.measureText(input.value).width > room) corner = true;
+      });
+      plist.classList.toggle('chips-corner', corner);
+    }
+
+    // Метки 🎙 пересчитываются на любое действие с участниками, а не только при добавлении/удалении:
+    // ввод или удаление символа в имени, нажатие любой кнопки в форме участников, запуск рандомайзера.
+    // Форма — ближайший общий предок списка и кнопки 🎙. Путь события берём из composedPath: кнопка строки
+    // к этому моменту может быть уже удалена перерисовкой списка.
+    const HOST_CHIP_START_BTNS = '#goBtn';
+    let hostChipsForm = null;
+    function recountHostChips() {
+      const list = document.getElementById('plist');
+      if (list && list.offsetWidth) syncHostChipPadding(); // скрытый список не меряем — ширины нулевые
+    }
+    document.addEventListener('input', (e) => {
+      if (e.target.matches && e.target.matches('#plist .name-input')) recountHostChips();
+    });
+    document.addEventListener('click', (e) => {
+      const path = e.composedPath();
+      const btn = path.find((el) => el instanceof Element && el.tagName === 'BUTTON');
+      if (!btn) return;
+      if (!hostChipsForm) {
+        hostChipsForm = document.getElementById('plist');
+        const hostsBtnEl = document.getElementById('hostsBtn');
+        while (hostChipsForm && !hostChipsForm.contains(hostsBtnEl)) hostChipsForm = hostChipsForm.parentElement;
+      }
+      if (btn.matches(HOST_CHIP_START_BTNS) || path.includes(hostChipsForm)) recountHostChips();
+    });
+
+    function renameInHostLog(from, to) {
+      if (!from || !to || from === to) return;
+      let changed = false;
+      hostLog.forEach((e) => { if (e.name === from) { e.name = to; changed = true; } });
+      if (changed) saveHostLog();
+    }
+
+    function renderHostsBox() {
+      const lang = I18N.lang || 'ru';
+      const now = new Date();
+      const todayKey = dayKey(now.getTime());
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - hostWeekPage * 7);
+      const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6);
+
+      const rangeFmt = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short' });
+      hostsRange.textContent = rangeFmt.formatRange
+        ? rangeFmt.formatRange(start, end)
+        : rangeFmt.format(start) + ' – ' + rangeFmt.format(end);
+
+      // пока ждём перевод, блок заблокирован вместе со списком
+      const earliest = hostLog.reduce((m, e) => Math.min(m, e.t), Infinity);
+      hostsBtn.disabled = running;
+      hostsBtn.classList.toggle('active', !hostsBox.hidden);
+      hostsPrev.disabled = running || !(earliest < start.getTime());
+      hostsNext.disabled = running || hostWeekPage === 0;
+      hostChipsSwitch.disabled = running;
+      hostChipsSwitch.setAttribute('aria-checked', String(hostChipsVisible));
+
+      const wdFmt = new Intl.DateTimeFormat(lang, { weekday: 'short' });
+      const longFmt = new Intl.DateTimeFormat(lang, { weekday: 'long', day: 'numeric', month: 'long' });
+      const candidates = [...new Set([...names, ...awayList.map((a) => a.name)].filter(Boolean))];
+
+      hostsWeek.textContent = '';
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+        const key = dayKey(d.getTime());
+        const entry = hostEntryOn(key);
+
+        const cell = document.createElement('div');
+        cell.className = 'host-day';
+        if (!entry) cell.classList.add('empty');
+        if (d.getDay() === 0 || d.getDay() === 6) cell.classList.add('weekend');
+        if (key === todayKey) cell.classList.add('today');
+
+        const label = fill('host_day_aria', { date: longFmt.format(d) });
+        cell.title = entry ? label + ' — ' + entry.name : label;
+
+        const wd = document.createElement('span');
+        wd.className = 'host-day-wd';
+        wd.textContent = wdFmt.format(d).replace(/\.$/, '');
+
+        const nm = document.createElement('span');
+        nm.className = 'host-day-name';
+        nm.textContent = entry ? entry.name : '—';
+
+        const num = document.createElement('span');
+        num.className = 'host-day-num';
+        num.textContent = d.getDate();
+
+        const select = document.createElement('select');
+        select.className = 'host-day-select';
+        select.setAttribute('aria-label', label);
+        select.disabled = running;
+        const options = entry && !candidates.includes(entry.name) ? [...candidates, entry.name] : candidates;
+        [['', t('host_nobody')], ...options.map((n) => [n, n])].forEach(([value, text]) => {
+          const opt = document.createElement('option');
+          opt.value = value;
+          opt.textContent = text;
+          select.appendChild(opt);
+        });
+        select.value = entry ? entry.name : '';
+        select.addEventListener('change', () => setDayHost(d, select.value));
+
+        cell.append(wd, nm, num, select);
+        hostsWeek.appendChild(cell);
+      }
+    }
+
+    // Ручная правка дня в полоске недели
+    function setDayHost(date, name) {
+      const key = dayKey(date.getTime());
+      hostLog = hostLog.filter((e) => dayKey(e.t) !== key);
+      if (name) {
+        const noon = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12).getTime();
+        hostLog.push({ name, t: noon, host: true });
+      }
+      commitHostChange();
+    }
+
+    // На шансы история здесь не влияет — обновляем только чипы и полоску недели
+    function commitHostChange() {
+      saveHostLog();
+      refreshHostChips();
+      renderHostsBox();
+    }
+
+    // Ведущий дня — последний победитель: каждая новая фиксация времени заменяет сегодняшнюю запись
+    function recordHostWin(name) {
+      if (!name) return;
+      const now = Date.now();
+      loadHostLog();
+      hostLog = hostLog.filter((e) => dayKey(e.t) !== dayKey(now));
+      hostLog.push({ name, t: now, host: true });
+      commitHostChange();
+    }
+
+    /* ── ВЕРОЯТНОСТИ (та же логика, что в колесе и гонках) ── */
+    function initProbabilities() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(PROB_KEY) || '{}');
+        const savedLocked = JSON.parse(localStorage.getItem(LOCKED_KEY) || '{}');
+
+        if (saved && saved.hasCustomProbabilities && saved.probabilities && Object.keys(saved.probabilities).length) {
+          probabilities = { ...saved.probabilities };
+          lockedParticipants = { ...savedLocked };
+          hasCustomProbabilities = true;
+
+          names.forEach((n) => { if (!(n in probabilities)) probabilities[n] = 1 / names.length; });
+          Object.keys(probabilities).forEach((n) => { if (!names.includes(n)) delete probabilities[n]; });
+          Object.keys(lockedParticipants).forEach((n) => { if (!names.includes(n)) delete lockedParticipants[n]; });
+
+          normalizeProbabilities();
+          if (!truncatedFrom) saveProbabilities();   // обрезанный список обратно не пишем
+        } else {
+          setEqualProbabilities();
+        }
+      } catch (_) {
+        setEqualProbabilities();
+      }
+    }
+
+    function setEqualProbabilities() {
+      const p = 1 / (names.length || 1);
+      probabilities = {};
+      names.forEach((nm) => probabilities[nm] = p);
+      lockedParticipants = {};
+      hasCustomProbabilities = false;
+      saveProbabilities();
+    }
+
+    function clampProbabilitiesMin(min = MIN_P) {
+      names.forEach((nm) => { if ((probabilities[nm] ?? 0) < min) probabilities[nm] = min; });
+    }
+
+    function normalizeProbabilities() {
+      const vals = names.map((n) => probabilities[n] ?? 0);
+      const uniq = [...new Set(vals.map((v) => +v.toFixed(6)))];
+      if (uniq.length === 1 && !hasCustomProbabilities) {
+        const exact = 1 / (names.length || 1);
+        names.forEach((nm) => probabilities[nm] = exact);
+        return;
+      }
+
+      clampProbabilitiesMin(MIN_P);
+
+      const sum = names.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
+      if (sum > 0 && Math.abs(sum - 1) > 1e-4) {
+        const k = 1 / sum;
+        names.forEach((nm) => probabilities[nm] = (probabilities[nm] || 0) * k);
+      }
+
+      clampProbabilitiesMin(MIN_P);
+    }
+
+    function saveProbabilities() {
+      try {
+        const cleanP = {};
+        names.forEach((nm) => cleanP[nm] = probabilities[nm] ?? 0);
+
+        const cleanLocked = {};
+        names.forEach((nm) => { if (lockedParticipants[nm]) cleanLocked[nm] = true; });
+
+        localStorage.setItem(PROB_KEY, JSON.stringify({
+          probabilities: cleanP,
+          hasCustomProbabilities
+        }));
+        localStorage.setItem(LOCKED_KEY, JSON.stringify(cleanLocked));
+      } catch (_) {}
+    }
+
+    function getProbabilityPercent(name) {
+      if (!hasCustomProbabilities && names.length) return (100 / names.length).toFixed(1);
+      return (((probabilities[name] || 0) * 100).toFixed(1));
+    }
+
+    function adjustProbability(name, delta) {
+      const cur = parseFloat(getProbabilityPercent(name)) || 0;
+      const maxPossible = 100 - (names.length - 1) * MIN_P * 100;
+      const next = Math.max(MIN_P * 100, Math.min(maxPossible, cur + delta));
+      setProbabilityManually(name, next);
+      renderList();
+    }
+
+    function setProbabilityManually(name, percentValue) {
+      if (isNaN(percentValue) || percentValue < 1 || percentValue > 99) return false;
+
+      hasCustomProbabilities = true;
+      const newProb = percentValue / 100;
+
+      const otherLocked = names.filter((n) => n !== name && lockedParticipants[n]);
+      const lockedTotal = otherLocked.reduce((s, n) => s + (probabilities[n] || 0), 0);
+      const minOthers = (names.length - 1) * MIN_P;
+
+      if (newProb + lockedTotal + minOthers > 1) {
+        lockedParticipants = {};
+        probabilities[name] = newProb;
+        lockedParticipants[name] = true;
+
+        const others = names.filter((n) => n !== name);
+        const remain = 1 - newProb;
+        const share = remain / (others.length || 1);
+        others.forEach((n) => probabilities[n] = share);
+
+        normalizeProbabilities();
+        saveProbabilities();
+        return true;
+      }
+
+      lockedParticipants[name] = true;
+
+      const free = names.filter((n) => n !== name && !lockedParticipants[n]);
+      const locked = names.filter((n) => n !== name && lockedParticipants[n]);
+
+      if (free.length) {
+        probabilities[name] = newProb;
+        const lockedSum = locked.reduce((s, n) => s + (probabilities[n] || 0), 0) + newProb;
+        let remain = Math.max(0, 1 - lockedSum);
+
+        const freeSum = free.reduce((s, n) => s + (probabilities[n] || 0), 0);
+        if (freeSum > 0) {
+          const k = remain / freeSum;
+          free.forEach((n) => probabilities[n] = (probabilities[n] || 0) * k);
+        } else {
+          free.forEach((n) => probabilities[n] = remain / free.length);
+        }
+
+        free.forEach((n) => { if (probabilities[n] < MIN_P) probabilities[n] = MIN_P; });
+      } else {
+        const others = names.filter((n) => n !== name).sort((a, b) => (probabilities[a] || 0) - (probabilities[b] || 0));
+        const victim = others[0];
+        delete lockedParticipants[victim];
+
+        probabilities[name] = newProb;
+        const stillLocked = names.filter((n) => n !== name && lockedParticipants[n]);
+        const lockedSum = stillLocked.reduce((s, n) => s + (probabilities[n] || 0), 0) + newProb;
+        const remain = 1 - lockedSum;
+
+        probabilities[victim] = Math.max(MIN_P, remain);
+      }
+
+      normalizeProbabilities();
+      saveProbabilities();
+      return true;
+    }
+
+    function equalizeProbabilities() {
+      setEqualProbabilities();
+      // отсутствующие вернутся уже с равным шансом
+      awayList.forEach((a) => { a.p = null; a.locked = false; });
+      saveAway();
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
+    /* ── БИЛЕТЫ: одна операция Σ mod T ───────────────── */
+    const shares = () => names.map(n => hasCustomProbabilities ? (probabilities[n] || 0) : 1 / names.length);
+    const equalOdds = () => !hasCustomProbabilities;
+
+    // Накликали одинаковые проценты — это то же самое, что нажать «Уравнять»:
+    // сбрасываем ручной режим, и делитель снова равен числу участников
+    function collapseIfEqual() {
+      if (!hasCustomProbabilities) return;
+      const shown = names.map(n => getProbabilityPercent(n));
+      if (shown.every(v => v === shown[0])) setEqualProbabilities();
+    }
+
+    // Уравнены — T = число участников, остаток и есть порядковый номер.
+    // Выставлены руками — 100 билетов по долям, у каждого свой диапазон номеров.
+    // (сумма символов адреса по модулю 100 распределена ровно, если адреса не повторяются, — см. «ПОВТОРЫ» ниже)
+    function ticketPlan() {
+      const n = names.length;
+      if (equalOdds()) return { T: n, ranges: names.map((_, i) => [i, i]), equal: true };
+
+      const exact = shares().map(p => p * 100);
+      const w = exact.map(v => Math.max(1, Math.floor(v)));
+      let diff = 100 - w.reduce((a, b) => a + b, 0);
+      const order = exact.map((v, i) => [v - Math.floor(v), i]).sort((a, b) => b[0] - a[0]).map(x => x[1]);
+      let k = 0;
+      while (diff > 0 && k < 5000) { w[order[k % order.length]]++; diff--; k++; }
+      while (diff < 0 && k < 5000) {
+        const i = order[order.length - 1 - (k % order.length)];
+        if (w[i] > 1) { w[i]--; diff++; }
+        k++;
+      }
+      const ranges = [];
+      let acc = 0;
+      for (const v of w) { ranges.push([acc, acc + v - 1]); acc += v; }
+      return { T: 100, ranges, equal: false };
+    }
+
+    const ownerOf = (r, ranges) => ranges.findIndex(([a, b]) => r >= a && r <= b);
+
+    /* ── СПИСОК УЧАСТНИКОВ ───────────────────────────── */
+    function flashHint(key) {
+      newNameInput.classList.add('error-state');
+      newNameInput.placeholder = t(key);
+      setTimeout(() => {
+        newNameInput.classList.remove('error-state');
+        newNameInput.placeholder = t('ph_new');
+      }, 2000);
+    }
+
+    function validateAllNames() {
+      let allValid = names.length >= MIN_PLAYERS;
+      plist.querySelectorAll('.prow:not(.is-away) .name-input').forEach(input => {
+        const v = input.value.trim();
+        if (!v || input.value.length > MAX_NAME_LEN || input.classList.contains('error-state')) allValid = false;
+      });
+      goBtn.disabled = !allValid || running;
+      return allValid;
+    }
+
+    function renderList() {
+      collapseIfEqual();
+      const plan = ticketPlan();
+      const chips = hostChips();
+      plist.innerHTML = '';
+
+      names.forEach((name, idx) => {
+        const row = document.createElement('div');
+        row.className = 'prow';
+        row.dataset.i = idx;
+
+        const num = document.createElement('div');
+        num.className = 'pnum';
+        const rng = plan.equal ? '' : '<span class="rng">' + plan.ranges[idx][0] + '–' + plan.ranges[idx][1] + '</span>';
+        num.innerHTML = '<span class="n">' + idx + '</span>' + rng;
+        row.appendChild(num);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'name-input';
+        input.maxLength = MAX_NAME_LEN;
+        input.value = name;
+        input.setAttribute('aria-label', t('col_name'));
+
+        input.addEventListener('input', () => {
+          const v = input.value.trim();
+          if (!v) { input.classList.add('error-state'); validateAllNames(); return; }
+
+          const dup = isNameTaken(v, idx);
+          input.classList.toggle('error-state', dup);
+          if (dup) { validateAllNames(); return; }
+
+          // переносим вероятность и ручную пометку на новое имя
+          // (то же имя — например, дописали пробел — ничего не переносим, иначе delete стёр бы шанс)
+          const oldName = names[idx];
+          if (v === oldName) { validateAllNames(); return; }
+          if (oldName in probabilities) { probabilities[v] = probabilities[oldName]; delete probabilities[oldName]; }
+          if (oldName in lockedParticipants) { lockedParticipants[v] = true; delete lockedParticipants[oldName]; }
+
+          names[idx] = v;
+          userEdited = true;
+          saveNames();
+          saveProbabilities();
+          // история ведущих переименовывается вместе с участником
+          renameInHostLog(oldName, v);
+          setHostChip(field, v, hostChips());
+          syncHostChipPadding();
+          if (done) softReset();
+          validateAllNames();
+        });
+
+        input.addEventListener('blur', () => {
+          const v = input.value.trim();
+          const dup = isNameTaken(v, idx);
+          if (!v || dup) { input.value = names[idx]; input.classList.remove('error-state'); validateAllNames(); }
+        });
+
+        const field = buildHostNameField(input, name, chips);
+        row.appendChild(field);
+
+        const controls = document.createElement('div');
+        controls.className = 'prob-controls';
+
+        const dec = document.createElement('button');
+        dec.className = 'prob-btn';
+        dec.textContent = '−';
+        dec.setAttribute('aria-label', t('aria_dec'));
+        dec.onclick = () => { userEdited = true; if (done) softReset(); adjustProbability(names[idx], -1); };
+        controls.appendChild(dec);
+
+        const probInput = document.createElement('input');
+        probInput.type = 'text';
+        probInput.inputMode = 'decimal';
+        probInput.className = 'prob-input' + (lockedParticipants[name] ? ' manual' : '');
+        probInput.value = getProbabilityPercent(name) + '%';
+        probInput.setAttribute('aria-label', t('aria_prob'));
+        let lastValid = getProbabilityPercent(name);
+
+        probInput.addEventListener('focus', () => {
+          probInput.value = probInput.value.replace('%', '');
+          lastValid = probInput.value;
+        });
+        probInput.addEventListener('input', () => {
+          const val = probInput.value.replace('%', '').trim();
+          const num2 = parseFloat(val);
+          probInput.classList.toggle('error', !(val === '' || (num2 >= 1 && num2 <= 99)));
+        });
+        probInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); probInput.blur(); }
+        });
+        probInput.addEventListener('blur', () => {
+          const val = probInput.value.replace('%', '').trim();
+          const num2 = parseFloat(val);
+          probInput.classList.remove('error');
+
+          if (val === '' || isNaN(num2) || num2 < 1 || num2 > 99) {
+            probInput.value = lastValid + '%';
+            return;
+          }
+          // фокус и уход без правки (или Enter) — не фиксация: шанс остаётся автоматическим
+          if (val === String(lastValid).trim()) {
+            probInput.value = lastValid + '%';
+            return;
+          }
+          userEdited = true;
+          if (done) softReset();
+          if (setProbabilityManually(names[idx], num2)) renderList();
+          else probInput.value = lastValid + '%';
+        });
+        controls.appendChild(probInput);
+
+        const inc = document.createElement('button');
+        inc.className = 'prob-btn';
+        inc.textContent = '+';
+        inc.setAttribute('aria-label', t('aria_inc'));
+        inc.onclick = () => { userEdited = true; if (done) softReset(); adjustProbability(names[idx], 1); };
+        controls.appendChild(inc);
+
+        row.appendChild(controls);
+
+        const rm = document.createElement('button');
+        rm.className = 'remove-btn';
+        rm.innerHTML = '×';
+        rm.title = t('aria_del');
+        rm.setAttribute('aria-label', t('aria_del'));
+        rm.onclick = () => removeParticipant(idx);
+
+        const awayBtn = document.createElement('button');
+        awayBtn.className = 'away-btn';
+        awayBtn.textContent = '🌴';
+        awayBtn.title = t('aria_away');
+        awayBtn.setAttribute('aria-label', t('aria_away'));
+        awayBtn.onclick = () => sendAway(idx);
+
+        row.appendChild(awayBtn);
+        row.appendChild(rm);
+
+        plist.appendChild(row);
+      });
+
+      // Отсутствующие идут после активных — индексы строк победителя не сдвигаются
+      awayList.forEach((a, i) => {
+        const row = document.createElement('div');
+        row.className = 'prow is-away';
+        row.appendChild(document.createElement('div'));   // номера у них нет
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'name-input';
+        input.value = a.name;
+        input.readOnly = true;
+        input.tabIndex = -1;
+        input.setAttribute('aria-label', t('col_name'));
+        row.appendChild(input);
+
+        const badge = document.createElement('div');
+        badge.className = 'away-badge';
+        badge.textContent = t('away_badge');
+        row.appendChild(badge);
+
+        const backBtn = document.createElement('button');
+        backBtn.className = 'away-btn';
+        backBtn.textContent = '↩';
+        backBtn.title = t('aria_back');
+        backBtn.setAttribute('aria-label', t('aria_back'));
+        backBtn.onclick = () => bringBack(i);
+        row.appendChild(backBtn);
+
+        const rm = document.createElement('button');
+        rm.className = 'remove-btn';
+        rm.innerHTML = '×';
+        rm.title = t('aria_del');
+        rm.setAttribute('aria-label', t('aria_del'));
+        rm.onclick = () => {
+          awayList.splice(i, 1);
+          saveAway();
+          // на розыгрыш это не влияет — подсветку победителя сохраняем
+          const winIdx = [...plist.children].findIndex(el => el.classList.contains('win'));
+          renderList();
+          if (winIdx >= 0) highlightWinner(winIdx);
+        };
+        row.appendChild(rm);
+
+        plist.appendChild(row);
+      });
+
+      countLbl.textContent = names.length;
+      errorMsg.textContent = truncatedFrom
+        ? fill('err_trunc', { n: MAX_PLAYERS, total: truncatedFrom })
+        : (names.length >= MAX_PLAYERS ? fill('err_max', { n: MAX_PLAYERS }) : '');
+
+      syncHostChipPadding();
+      renderHostsBox();
+      updateOpHint(plan);
+      validateAllNames();
+    }
+
+    function addNewParticipant() {
+      const v = newNameInput.value.trim();
+
+      if (names.length >= MAX_PLAYERS) { newNameInput.value = ''; flashHint('ph_max'); return; }
+      if (!v) { flashHint('ph_atleast1'); return; }
+      if (isNameTaken(v)) { newNameInput.value = ''; flashHint('ph_dup'); return; }
+
+      newNameInput.value = '';
+      newNameInput.placeholder = t('ph_new');
+
+      names.push(v);
+      saveNames();
+
+      probabilities[v] = 1 / names.length;
+      normalizeProbabilities();
+      saveProbabilities();
+
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
+    function removeParticipant(idx) {
+      if (names.length <= MIN_PLAYERS) { flashHint('ph_min2'); return; }
+
+      const removed = names[idx];
+      names.splice(idx, 1);
+      delete probabilities[removed];
+      delete lockedParticipants[removed];
+
+      saveNames();
+      normalizeProbabilities();
+      saveProbabilities();
+
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
+    // Временно убрать участника из розыгрыша, запомнив место в списке и его шанс
+    function sendAway(idx) {
+      if (names.length <= MIN_PLAYERS) { flashHint('ph_min2'); return; }
+
+      const name = names[idx];
+      // строка с пустым (редактируемым) именем подсвечена красным — в отпуск её не отправляем
+      if (!name || !name.trim()) return;
+      awayList.push({
+        name,
+        idx,
+        p: hasCustomProbabilities ? (probabilities[name] ?? null) : null,
+        locked: !!lockedParticipants[name]
+      });
+      names.splice(idx, 1);
+      delete probabilities[name];
+      delete lockedParticipants[name];
+
+      saveNames();
+      saveAway();
+      normalizeProbabilities();
+      saveProbabilities();
+
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
+    function bringBack(i) {
+      const a = awayList[i];
+      if (!a) return;
+
+      // С тем же именем участника могли уже добавить заново — тогда просто снимаем отметку
+      if (!names.includes(a.name)) {
+        if (names.length >= MAX_PLAYERS) { flashHint('ph_max'); return; }
+        // collapseIfEqual мог выключить ручной режим, пока человек отсутствовал (остальные стали равны),
+        // поэтому сохранённый шанс сам по себе признак ручного режима; «Уравнять» его стирает
+        if (a.p > 0 && a.p < 1) hasCustomProbabilities = true;
+        const p = hasCustomProbabilities && a.p > 0 && a.p < 1 ? a.p : 1 / (names.length + 1);
+        // Остальные делят оставшееся, чтобы вернувшийся получил ровно свой прежний шанс
+        names.forEach((n) => probabilities[n] = (probabilities[n] || 0) * (1 - p));
+        names.splice(Math.min(a.idx, names.length), 0, a.name);
+        probabilities[a.name] = p;
+        if (hasCustomProbabilities && a.locked) lockedParticipants[a.name] = true;
+        normalizeProbabilities();
+        saveNames();
+        saveProbabilities();
+      }
+      awayList.splice(i, 1);
+      saveAway();
+
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
+    addBtn.addEventListener('click', addNewParticipant);
+    newNameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addNewParticipant(); } });
+    equalizeBtn.addEventListener('click', equalizeProbabilities);
+
+    hostsBtn.addEventListener('click', () => {
+      hostsBox.hidden = !hostsBox.hidden;
+      hostsBtn.setAttribute('aria-expanded', String(!hostsBox.hidden));
+      hostsBtn.classList.toggle('active', !hostsBox.hidden);
+      try { localStorage.setItem(HOSTS_OPEN_KEY, hostsBox.hidden ? '0' : '1'); } catch (e) {}
+    });
+    hostsPrev.addEventListener('click', () => { hostWeekPage++; renderHostsBox(); });
+    hostsNext.addEventListener('click', () => { hostWeekPage = Math.max(0, hostWeekPage - 1); renderHostsBox(); });
+    hostChipsSwitch.addEventListener('click', () => {
+      hostChipsVisible = !hostChipsVisible;
+      try { localStorage.setItem(HOSTS_CHIPS_KEY, hostChipsVisible ? '1' : '0'); } catch (e) {}
+      refreshHostChips();
+      renderHostsBox();
+    });
+    // чип «внутри поля / на углу» зависит от ширины поля
+    window.addEventListener('resize', syncHostChipPadding);
+
+    collapseBtn.addEventListener('click', () => {
+      const closed = listWrap.classList.toggle('closed');
+      collapseBtn.classList.toggle('closed', closed);
+    });
+
+    /* ── АДРЕС → ЧИСЛА ───────────────────────────────── */
+    // a=1 … z=26 без учёта регистра (в старых адресах буквы бывают заглавными), цифра — сама себе
+    function charValue(ch) {
+      const c = ch.toLowerCase();
+      if (c >= 'a' && c <= 'z') return c.charCodeAt(0) - 96;
+      if (c >= '0' && c <= '9') return +c;
+      return 0;
+    }
+    const addrSum = (addr) => [...addr].reduce((s, ch) => s + charValue(ch), 0);
+
+    /* ── ПОТОК ПЕРЕВОДОВ ─────────────────────────────── */
+    // Публичный поток неподтверждённых транзакций blockchain.info (≈10 в секунду, ≈7 КБ/с).
+    // Если он недоступен — раз в три секунды спрашиваем последние транзакции у mempool.space.
+    const WS_URL = 'wss://ws.blockchain.info/inv';
+    const MEMPOOL = 'https://mempool.space';
+    const FEED_ROWS = 6;
+    const ROW_GAP = 450;                        // лента не быстрее двух строк в секунду — иначе её не прочитать
+    const IDLE_PAUSE = 5 * 60 * 1000;           // без действий пять минут — отключаемся
+    const SILENT_RECONNECT = 15000;             // ни одного сообщения 15 с — соединение зависло
+    const CATCH_TIMEOUT = 30000;
+    const POLL_EVERY = 3000;
+
+    /* ── ПОВТОРЫ ─────────────────────────────────────────
+       Кошельки бирж и сервисов получают переводы по несколько раз в секунду (один адрес набирал
+       12% всей ленты). Сумма у такого адреса всегда одна и та же, и его остаток выпадал бы чаще.
+       Поэтому считаем только кошельки, которых ещё не было в ленте: среди разных адресов
+       остатки распределены ровно (проверено на выборке живой ленты для N = 2…20 и 100).
+       Частые адреса запоминаем между визитами, чтобы они отсеивались с первой секунды. */
+    const SEEN_TTL = 30 * 60 * 1000;
+    const HOT_KEY = 'btc_hot_addrs_v1';
+    const HOT_MAX = 400;
+    const seen = new Map();                     // адрес → когда видели последний раз
+    let hot = [];
+    try {
+      const saved = JSON.parse(localStorage.getItem(HOT_KEY) || '[]');
+      if (Array.isArray(saved)) hot = saved.filter((a) => typeof a === 'string').slice(-HOT_MAX);
+    } catch (e) {}
+    const hotSet = new Set(hot);
+
+    const isRepeat = (addr) => hotSet.has(addr) || (seen.has(addr) && Date.now() - seen.get(addr) < SEEN_TTL);
+    function markSeen(addr) {
+      if (seen.has(addr) && !hotSet.has(addr)) {
+        hotSet.add(addr);
+        hot.push(addr);
+        if (hot.length > HOT_MAX) hotSet.delete(hot.shift());
+        try { localStorage.setItem(HOT_KEY, JSON.stringify(hot)); } catch (e) {}
+      }
+      seen.set(addr, Date.now());
+      if (seen.size > 30000) {
+        const cut = Date.now() - SEEN_TTL;
+        for (const [a, ts] of seen) if (ts < cut) seen.delete(a);
+      }
+    }
+
+    const feedEl     = document.getElementById('feed');
+    const feedList   = document.getElementById('feedList');
+    const feedStatus = document.getElementById('feedStatus');
+    const feedRate   = document.getElementById('feedRate');
+    const tipEl      = document.getElementById('tipHeight');
+    const caughtEl   = document.getElementById('caught');
+    const caughtMeta = document.getElementById('caughtMeta');
+    const tilesEl    = document.getElementById('tiles');
+    const tilesBox   = document.getElementById('tilesBox');
+    const txLink     = document.getElementById('txLink');
+    const txTag      = document.getElementById('txTag');
+    const stubEl     = document.getElementById('stub');
+    const stubTag    = document.getElementById('stubTag');
+    const stubAddr   = document.getElementById('stubAddr');
+    const stubLede   = document.getElementById('stubLede');
+    const stubRef    = document.getElementById('stubRef');
+    const receiptEl  = document.getElementById('receipt');
+    const rcptTime   = document.getElementById('rcptTime');
+    const barcodeEl  = document.getElementById('barcode');
+    const PRINT_MS   = REDUCED ? 0 : 1100;      // столько чек выезжает из принтера
+
+    let ws = null;
+    let source = 'ws';                          // ws | poll
+    let wsFails = 0;
+    let everLive = false;
+    let pollTimer = null;
+    let pollSeen = null;
+    let streamState = 'connecting';             // connecting | live | reconnecting | paused
+    let lastMsgAt = 0;
+    let lastRowAt = 0;
+    let lastActivity = Date.now();
+    let hits = [];                              // время прихода транзакций — для счётчика «в минуту»
+    let armed = false;                          // нажали — ждём первый перевод на новый кошелёк
+    let armPlan = null;
+    let catchTimer = null;
+    let feedFrozen = false;                     // после нажатия обычные строки в ленту не идут
+    let queue = [];
+    let pumping = false;
+    let tipHeight = 0;
+    let lastWin = null;                         // { idx, name, tx } — чтобы пересобрать карточку при смене языка
+
+    const signedSpan = (cls, text) => { const el = document.createElement('span'); el.className = cls; el.textContent = text; return el; };
+    const short = (s, a, b) => s.length > a + b + 1 ? s.slice(0, a) + '…' + s.slice(-b) : s;
+    const clock = (ts) => new Intl.DateTimeFormat(I18N.lang || 'ru', { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(new Date(ts));
+    const txUrl = (txid) => MEMPOOL + '/tx/' + txid;
+
+    // 0.00600000 → «0.006» + серые «00000», как в обозревателях
+    function btcParts(sats) {
+      const s = (sats / 1e8).toFixed(8);
+      const m = s.match(/^(.*?)(0*)$/);
+      let main = m[1], zeros = m[2];
+      if (main.endsWith('.')) { main = main.slice(0, -1); zeros = '.' + zeros; }
+      return [main, zeros];
+    }
+    const btcText = (sats) => {
+      const s = (sats / 1e8).toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
+      return s + ' BTC';
+    };
+
+    function setStreamState(s) {
+      streamState = s;
+      feedEl.dataset.state = s;
+      feedStatus.textContent = t('st_' + s) + (s === 'live' && source === 'poll' ? ' · mempool.space' : '');
+    }
+
+    function connect() {
+      if (ws || pollTimer) return;
+      setStreamState(lastMsgAt && streamState !== 'paused' ? 'reconnecting' : 'connecting');
+      if (source === 'poll') { startPoll(); return; }
+      try {
+        ws = new WebSocket(WS_URL);
+      } catch (e) {
+        ws = null;
+        onWsFail();
+        return;
+      }
+      lastMsgAt = Date.now();
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ op: 'unconfirmed_sub' }));
+        ws.send(JSON.stringify({ op: 'blocks_sub' }));
+      };
+      ws.onmessage = onWsMessage;
+      ws.onerror = () => {};
+      ws.onclose = () => { if (!ws) return; ws = null; onWsFail(); };
+    }
+
+    function onWsFail() {
+      if (streamState === 'paused') return;
+      setStreamState('reconnecting');
+      // поток ни разу не заработал — скорее всего, его режет сеть; переходим на опрос mempool.space
+      if (!everLive && ++wsFails >= 2) source = 'poll';
+      setTimeout(() => { if (streamState !== 'paused') connect(); }, 3000);
+    }
+
+    function disconnect(state) {
+      if (ws) { ws.onclose = null; ws.onmessage = null; ws.onopen = null; try { ws.close(); } catch (e) {} ws = null; }
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      if (state) setStreamState(state);
+    }
+
+    function resume() {
+      lastActivity = Date.now();
+      if (streamState === 'paused' && !document.hidden) { setStreamState('connecting'); connect(); }
+    }
+
+    function goLive() {
+      lastMsgAt = Date.now();
+      if (streamState !== 'live') { everLive = true; wsFails = 0; setStreamState('live'); }
+    }
+
+    function onWsMessage(msg) {
+      let m;
+      try { m = JSON.parse(msg.data); } catch (err) { return; }
+      goLive();
+      if (m.op === 'block' && m.x && Number.isFinite(m.x.height)) { setTip(m.x.height, true); return; }
+      if (m.op !== 'utx' || !m.x) return;
+      const x = m.x;
+      // первый получатель: первый выход с адресом (служебные выходы OP_RETURN адреса не имеют)
+      const out = (x.out || []).find((o) => o && typeof o.addr === 'string' && o.addr);
+      if (!out || typeof x.hash !== 'string') return;
+      onTx({ txid: x.hash, addr: out.addr, value: out.value || 0, ts: Date.now() });
+    }
+
+    /* запасной путь: последние транзакции мемпула; адрес получателя дозапрашиваем только для кандидатов */
+    function startPoll() {
+      pollSeen = null;
+      pollOnce();
+      pollTimer = setInterval(pollOnce, POLL_EVERY);
+    }
+
+    async function pollOnce() {
+      try {
+        const r = await fetch(MEMPOOL + '/api/mempool/recent', { cache: 'no-store' });
+        const list = await r.json();
+        if (!pollTimer || !Array.isArray(list)) return;
+        goLive();
+        const first = !pollSeen;
+        if (first) pollSeen = new Set();
+        // список — от новых к старым; в ленту и в розыгрыш идём от старых к новым
+        const fresh = list.filter((x) => x && x.txid && !pollSeen.has(x.txid)).reverse();
+        fresh.forEach((x) => pollSeen.add(x.txid));
+        if (pollSeen.size > 5000) pollSeen = new Set(list.map((x) => x.txid));
+        // то, что уже лежало в мемпуле при первом опросе, пришло до нажатия — только показываем
+        fresh.forEach((x) => {
+          const tx = { txid: x.txid, addr: null, value: x.value || 0, ts: Date.now() };
+          if (first) { if (!feedFrozen) addFeedRow(tx, ''); }
+          else onTx(tx);
+        });
+      } catch (e) {
+        if (streamState !== 'paused') setStreamState('reconnecting');
+      }
+    }
+
+    async function resolveAddr(tx) {
+      const r = await fetch(MEMPOOL + '/api/tx/' + tx.txid);
+      const d = await r.json();
+      const out = (d.vout || []).find((o) => o && o.scriptpubkey_address);
+      if (out) { tx.addr = out.scriptpubkey_address; tx.value = out.value || 0; }
+    }
+
+    async function fetchTip() {
+      try {
+        const r = await fetch(MEMPOOL + '/api/blocks/tip/height');
+        const h = parseInt(await r.text(), 10);
+        if (h > tipHeight) setTip(h, false);
+      } catch (e) {}
+    }
+
+    function setTip(h, fresh) {
+      if (!Number.isFinite(h) || h < tipHeight) return;
+      const isNew = tipHeight && h > tipHeight;
+      tipHeight = h;
+      tipEl.textContent = fill('tip', { h: new Intl.NumberFormat(I18N.lang || 'ru').format(h) });
+      if (fresh && isNew && !REDUCED) {
+        tipEl.classList.remove('fresh');
+        void tipEl.offsetWidth;
+        tipEl.classList.add('fresh');
+        playBlock();
+      }
+    }
+
+    function onTx(tx) {
+      hits.push(Date.now());
+      if (armed) { queue.push(tx); pump(); return; }
+      let kind = '';
+      if (tx.addr) {
+        if (isRepeat(tx.addr)) kind = 'rep';
+        markSeen(tx.addr);
+      }
+      const now = Date.now();
+      if (!feedFrozen && now - lastRowAt >= ROW_GAP) { lastRowAt = now; addFeedRow(tx, kind); }
+    }
+
+    // После нажатия разбираем переводы строго по порядку прихода: повторные кошельки пропускаем
+    // (они видны в ленте зачёркнутыми), первый новый кошелёк выигрывает
+    async function pump() {
+      if (pumping) return;
+      pumping = true;
+      while (armed && queue.length) {
+        const tx = queue.shift();
+        if (!tx.addr) {
+          try { await resolveAddr(tx); } catch (e) { continue; }
+          if (!armed) break;
+          if (!tx.addr) continue;
+        }
+        const rep = isRepeat(tx.addr);
+        markSeen(tx.addr);
+        if (rep || !addrSum(tx.addr)) {
+          // над отметкой держим не больше трёх пропусков, чтобы отметка не уехала из ленты
+          if (feedList.querySelector('.fr.mark') && [...feedList.children].indexOf(feedList.querySelector('.fr.mark')) < 3) addFeedRow(tx, 'skip');
+          continue;
+        }
+        armed = false;
+        queue = [];
+        onCaught(tx);
+      }
+      pumping = false;
+    }
+
+    function feedRow(tx, kind) {
+      const li = document.createElement('li');
+      li.className = 'fr' + (kind ? ' ' + kind : '');
+      const amt = document.createElement('span');
+      amt.className = 'amt';
+      if (kind === 'skip') {
+        amt.textContent = t('skip');
+      } else {
+        const [main, zeros] = btcParts(tx.value);
+        amt.append(main, signedSpan('z', zeros), signedSpan('u', '₿'));
+      }
+      li.append(
+        signedSpan('tm', clock(tx.ts)),
+        signedSpan('tx', short(tx.txid, 8, 4)),
+        signedSpan('to', tx.addr ? short(tx.addr, 12, 6) : '…'),
+        amt
+      );
+      return li;
+    }
+
+    // скелетные строки уходят вниз и отрезаются по одной — лента всегда из шести строк
+    function addFeedRow(tx, kind) {
+      const li = feedRow(tx, kind);
+      if (!REDUCED) li.classList.add('enter');
+      feedList.prepend(li);
+      while (feedList.children.length > FEED_ROWS) feedList.lastElementChild.remove();
+    }
+
+    function renderFeedPlaceholder() {
+      feedList.textContent = '';
+      for (let i = 0; i < FEED_ROWS; i++) {
+        const li = document.createElement('li');
+        li.className = 'fr ph';
+        li.innerHTML = '<span class="ph-bar"></span><span class="ph-bar"></span><span class="ph-bar"></span><span class="ph-bar"></span>';
+        feedList.appendChild(li);
+      }
+    }
+
+    function updateRate() {
+      const now = Date.now();
+      hits = hits.filter((h) => now - h < 60000);
+      // в режиме опроса видна только часть мемпула — счётчик врал бы, не показываем
+      feedRate.textContent = streamState === 'live' && source === 'ws' && hits.length >= 20
+        ? fill('rate', { n: hits.length })
+        : '';
+    }
+
+    setInterval(() => {
+      updateRate();
+      if (streamState === 'paused') return;
+      const now = Date.now();
+      if (!running && !done && now - lastActivity > IDLE_PAUSE) { disconnect('paused'); return; }
+      if ((ws || pollTimer) && now - lastMsgAt > SILENT_RECONNECT) { disconnect(); connect(); }
+    }, 1000);
+
+    ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach((ev) =>
+      document.addEventListener(ev, resume, { passive: true, capture: true }));
+    document.addEventListener('visibilitychange', () => {
+      // фоновая вкладка ленту не тянет; во время розыгрыша не рвём — перевод ещё ждём
+      if (document.hidden && !armed) disconnect('paused');
+      else if (!document.hidden) resume();
+    });
+
+    /* ── СЦЕНА: слоты постоянного размера ─────────────────
+       Разбор перевода (#caught) и карточка адреса (#stub) видны всегда и никогда не меняют высоту:
+       в простое разбор показывает пример — адрес Сатоши из первого блока, а карточка — прошлый
+       розыгрыш или скелет. Длинный адрес и длинное имя вписываются в бокс, а не растягивают его. */
+    const LAST_KEY = 'btc_last_win_v1';
+    // генезис-блок 3 января 2009 года: первые 50 BTC, кошелёк Сатоши Накамото
+    const EXAMPLE = {
+      txid: '4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b',
+      addr: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
+      value: 5000000000,
+      ts: Date.UTC(2009, 0, 3, 18, 15, 5)
+    };
+
+    function setCaughtMode(mode) { caughtEl.dataset.mode = mode; }
+    function setStubMode(mode) { stubEl.dataset.mode = mode; }
+
+    function formulaHtml(sum, T, r) {
+      return '<span class="m">Σ</span><span>=</span><span>' + sum + '</span>' +
+        '<span class="arrow">→</span>' +
+        '<span>' + sum + '</span><span class="mod">mod</span><span>' + T + '</span><span>=</span>' +
+        '<span class="rr">' + r + '</span>';
+    }
+
+    function metaSpans(items) {
+      caughtMeta.textContent = '';
+      items.forEach(([cls, html]) => {
+        const s = document.createElement('span');
+        if (cls) s.className = cls;
+        s.innerHTML = html;
+        caughtMeta.appendChild(s);
+      });
+    }
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    // Пример в простое: как считается адрес при текущем числе участников
+    // Время печати в шапке чека
+    function setReceiptTime(ts) {
+      rcptTime.textContent = new Intl.DateTimeFormat(I18N.lang || 'ru', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(new Date(ts));
+    }
+
+    // Штрихкод из символов адреса: число символа задаёт ширину полоски и просвета
+    function drawBarcode(addr) {
+      barcodeEl.textContent = '';
+      [...addr].forEach((ch) => {
+        const v = charValue(ch);
+        const bar = document.createElement('i');
+        bar.style.width = (1 + v % 3) + 'px';
+        bar.style.marginRight = (1 + (v >> 2) % 3) + 'px';
+        barcodeEl.appendChild(bar);
+      });
+    }
+
+    // В простое в лотке лежит чек прошлого розыгрыша, а до первого розыгрыша — пример:
+    // адрес Сатоши из первого блока, посчитанный для текущего числа участников
+    function updateOpHint(plan) {
+      if (running || done) return;
+      plan = plan || ticketPlan();
+      const last = lastWin && Number.isFinite(lastWin.T) ? lastWin : null;
+      const tx = last ? last.tx : EXAMPLE;
+      const sum = addrSum(tx.addr);
+      setCaughtMode(last ? 'last' : 'example');
+      txTag.textContent = t(last ? 'tag_last' : 'tag_example');
+      txLink.textContent = tx.txid;
+      txLink.href = txUrl(tx.txid);
+      setReceiptTime(tx.ts);
+      if (!caughtMeta.classList.contains('fail')) {
+        metaSpans(last
+          ? [['', esc(fill('caught_at', { time: clock(tx.ts) }))], ['', '<b>' + esc(btcText(tx.value)) + '</b>'], ['opt', esc(t('first_out'))]]
+          : [['', esc(t('example_meta'))], ['opt', '<b>50 BTC</b>']]);
+      }
+      const tiles = buildTiles(tx.addr);
+      tiles.forEach((x) => x.el.classList.add('on'));
+      opEl.innerHTML = last ? formulaHtml(sum, last.T, last.r) : formulaHtml(sum, plan.T, sum % plan.T);
+    }
+
+    function highlightWinner(i) {
+      for (const row of plist.children) row.classList.remove('win');
+      const el = plist.children[i];
+      if (el) el.classList.add('win');
+    }
+
+    function lockInputs(locked) {
+      plist.querySelectorAll('input, button').forEach(el => el.disabled = locked);
+      equalizeBtn.disabled = locked;
+      newNameInput.disabled = locked;
+      addBtn.disabled = locked;
+      if (locked) {
+        hostsBtn.disabled = true;
+        hostsBox.querySelectorAll('button, select').forEach((el) => el.disabled = true);
+      } else {
+        renderHostsBox();
+      }
+    }
+
+    // Кнопка шириной под самую длинную из своих надписей — текст меняется, соседи не сдвигаются
+    const goMeasure = document.createElement('canvas').getContext('2d');
+    function setGoWidth() {
+      const cs = getComputedStyle(goBtn);
+      goMeasure.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+      const w = Math.max(...['btn', 'btn_wait', 'btn_count', 'btn_again'].map((k) => goMeasure.measureText(t(k)).width));
+      goBtn.style.minWidth = Math.ceil(w + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + 6) + 'px';
+    }
+
+    function unfreezeFeed() {
+      feedFrozen = false;
+      feedList.querySelectorAll('.fr.mark').forEach((el) => el.remove());
+      feedList.querySelectorAll('.fr.picked').forEach((el) => el.classList.remove('picked'));
+    }
+
+    function softReset() {
+      clearTimers();
+      clearTimeout(catchTimer);
+      running = false; done = false; armed = false; queue = [];
+      unfreezeFeed();
+      feedEl.classList.remove('snap');
+      caughtMeta.classList.remove('fail');
+      if (stubEl.dataset.mode === 'on') setStubMode('stale');
+      stubEl.classList.remove('on');
+      for (const row of plist.children) row.classList.remove('win');
+      goBtn.textContent = t('btn');
+      goBtn.classList.remove('again');
+      lockInputs(false);
+      updateOpHint();
+      validateAllNames();
+    }
+
+    function run() {
+      if (running) return;
+      if (done) { softReset(); return; }
+      if (!validateAllNames()) return;
+
+      // Билеты фиксируются в момент нажатия; перевод — первый, что придёт после него
+      armPlan = ticketPlan();
+      running = true;
+      feedFrozen = true;
+      goBtn.disabled = true;
+      goBtn.textContent = t('btn_wait');
+      lockInputs(true);
+      caughtMeta.classList.remove('fail');
+      if (stubEl.dataset.mode === 'on') setStubMode('stale');
+      stubEl.classList.remove('on');
+      for (const row of plist.children) row.classList.remove('win');
+
+      // пример остаётся на месте, но гаснет; строка транзакции сообщает, что ждём
+      setCaughtMode('wait');
+      txTag.textContent = '';
+      txLink.textContent = t('tx_wait');
+      txLink.removeAttribute('href');
+      metaSpans([['', esc(t('wait_meta'))]]);
+
+      const mark = document.createElement('li');
+      mark.className = 'fr mark';
+      mark.textContent = t('mark');
+      feedList.prepend(mark);
+      while (feedList.children.length > FEED_ROWS) feedList.lastElementChild.remove();
+
+      playSnap();
+      resume();
+      if (!ws && !pollTimer && streamState !== 'paused') connect();
+      queue = [];
+      armed = true;
+
+      catchTimer = setTimeout(() => {
+        if (!armed) return;
+        armed = false;
+        queue = [];
+        running = false;
+        unfreezeFeed();
+        caughtMeta.classList.add('fail');
+        metaSpans([['', esc(t('timeout'))]]);
+        goBtn.textContent = t('btn');
+        lockInputs(false);
+        updateOpHint();
+        validateAllNames();
+      }, CATCH_TIMEOUT);
+    }
+
+    // Символы вписываются в бокс постоянной высоты: подбираем самый крупный размер, при котором всё влезает
+    function fitTiles() {
+      const H = tilesBox.clientHeight - opEl.offsetHeight - 10;
+      const W = tilesBox.clientWidth;
+      if (H <= 0 || W <= 0) return;
+      let lo = 10, hi = 44, best = 10;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        tilesEl.style.setProperty('--tile', mid + 'px');
+        if (tilesEl.offsetHeight <= H && tilesEl.scrollWidth <= W) { best = mid; lo = mid + 1; }
+        else hi = mid - 1;
+      }
+      tilesEl.style.setProperty('--tile', best + 'px');
+    }
+
+    // Адрес — группами по четыре символа; у первой группы колонка с подписями строк
+    function buildTiles(addr) {
+      tilesEl.textContent = '';
+      const tiles = [];
+      const chars = [...addr];
+      for (let g = 0; g < chars.length; g += 4) {
+        const word = document.createElement('span');
+        word.className = 'w';
+        if (g === 0) {
+          const hd = document.createElement('span');
+          hd.className = 'tl hd';
+          const b = document.createElement('b'); b.textContent = t('col_char');
+          const i = document.createElement('i'); i.textContent = t('col_value');
+          hd.append(b, i);
+          word.appendChild(hd);
+        }
+        chars.slice(g, g + 4).forEach((ch) => {
+          const v = charValue(ch);
+          const tl = document.createElement('span');
+          tl.className = 'tl' + (v ? '' : ' zero');
+          const b = document.createElement('b');
+          b.textContent = ch;
+          const i = document.createElement('i');
+          i.textContent = v;
+          tl.append(b, i);
+          word.appendChild(tl);
+          tiles.push({ el: tl, v });
+        });
+        tilesEl.appendChild(word);
+      }
+      fitTiles();
+      return tiles;
+    }
+
+    function onCaught(tx) {
+      clearTimeout(catchTimer);
+      addFeedRow(tx, 'picked');
+      feedEl.classList.remove('snap');
+      void feedEl.offsetWidth;
+      feedEl.classList.add('snap');
+      goBtn.textContent = t('btn_count');
+
+      // новый чек выезжает из принтера рывками; имя допечатается после подсчёта
+      setCaughtMode('real');
+      txTag.textContent = '';
+      txLink.textContent = tx.txid;
+      txLink.href = txUrl(tx.txid);
+      setReceiptTime(tx.ts);
+      renderStubPending(tx);
+      followReceipt();
+      if (!REDUCED) {
+        receiptEl.classList.remove('printing');
+        void receiptEl.offsetWidth;
+        receiptEl.classList.add('printing');
+        playPrinter();
+      }
+      metaSpans([
+        ['', esc(fill('caught_at', { time: clock(tx.ts) }))],
+        ['', '<b>' + esc(btcText(tx.value)) + '</b>'],
+        ['opt', esc(t('first_out'))]
+      ]);
+
+      const tiles = buildTiles(tx.addr);
+      const plan = armPlan;
+      const sum = addrSum(tx.addr);
+      const r = sum % plan.T;
+      const widx = ownerOf(r, plan.ranges);
+      // сумма набегает прямо в строке формулы, потом к ней дописывается mod и остаток
+      opEl.innerHTML = '<span class="m">Σ</span><span>=</span><span class="sum-live">0</span>';
+      const sumB = opEl.querySelector('.sum-live');
+
+      const finish = () => {
+        tiles.forEach((x) => x.el.classList.remove('now'));
+        opEl.innerHTML = formulaHtml(sum, plan.T, r);
+        playSnap();
+        const calc = { sum, T: plan.T, r };
+        if (REDUCED) reveal(widx, tx, calc);
+        else later(() => reveal(widx, tx, calc), REVEAL_AT);
+      };
+
+      if (REDUCED) { tiles.forEach((x) => x.el.classList.add('on')); finish(); return; }
+
+      // символы загораются по одному, сумма набегает; на весь адрес — около двух с половиной секунд
+      const step = Math.max(40, Math.min(110, Math.round(2500 / Math.max(1, tiles.length))));
+      let acc = 0;
+      tiles.forEach((x, k) => {
+        later(() => {
+          if (k > 0) tiles[k - 1].el.classList.remove('now');
+          x.el.classList.add('on', 'now');
+          acc += x.v;
+          sumB.textContent = acc;
+          if (x.v) playTick(x.v);
+        }, PRINT_MS + 250 + k * step);
+      });
+      later(finish, PRINT_MS + 250 + tiles.length * step + 400);
+    }
+
+    // Шаблон с {ключами} → узлы DOM: адреса и имена вставляем только как текст
+    function fillNodes(tpl, map) {
+      const out = [];
+      tpl.split(/(\{\w+\})/).forEach((part) => {
+        const m = part.match(/^\{(\w+)\}$/);
+        if (m && m[1] in map) out.push(map[m[1]]);
+        else if (part) out.push(document.createTextNode(part));
+      });
+      return out;
+    }
+
+    // Имя победителя вписывается в ярлык: длинное — мельче, ярлык не растёт
+    function fitWinner() {
+      winnerEl.style.fontSize = '';
+      let size = parseFloat(getComputedStyle(winnerEl).fontSize);
+      while (winnerEl.scrollWidth > winnerEl.clientWidth + 1 && size > 14) {
+        size -= 2;
+        winnerEl.style.fontSize = size + 'px';
+      }
+    }
+
+    // На невысоких экранах (ноутбук, телефон) чек оказывается ниже края окна — доезжаем до него,
+    // чтобы имя напечаталось на глазах. Меряем обёртку: сам чек в этот момент сдвинут анимацией печати
+    const receiptClip = document.querySelector('.receipt-clip');
+    function followReceipt() {
+      const dy = receiptClip.getBoundingClientRect().bottom - window.innerHeight + 12;
+      if (dy > 0) window.scrollBy({ top: dy, behavior: REDUCED ? 'auto' : 'smooth' });
+    }
+
+    // Пока чек печатается, строка с именем пустая — пунктирная рамка, как незаполненное поле
+    function renderStubPending(tx) {
+      setStubMode('empty');
+      stubEl.classList.remove('on');
+      stubAddr.textContent = tx.addr;
+      winnerEl.textContent = t('stub_pending_name');
+      stubLede.textContent = t('stub_pending');
+      stubRef.textContent = t('stub_empty_ref');
+      drawBarcode(tx.addr);
+      fitWinner();
+    }
+
+    function renderStub() {
+      if (!lastWin) {
+        setStubMode('empty');
+        stubTag.textContent = '';
+        drawBarcode(EXAMPLE.addr);
+        stubAddr.textContent = t('stub_empty_addr');
+        winnerEl.textContent = t('stub_empty_name');
+        stubLede.textContent = t('stub_empty');
+        stubRef.textContent = t('stub_empty_ref');
+        fitWinner();
+        return;
+      }
+      const { idx, name, tx } = lastWin;
+      stubTag.textContent = t('tag_last');
+      stubAddr.textContent = tx.addr;
+      drawBarcode(tx.addr);
+      winnerEl.textContent = name;
+      const b = document.createElement('b');
+      b.textContent = name;
+      const code = document.createElement('span');
+      code.className = 'mono';
+      code.textContent = short(tx.addr, 8, 6);
+      stubLede.textContent = '';
+      stubLede.append(...fillNodes(t('stub_lede'), {
+        addr: code,
+        name: b,
+        n: document.createTextNode(String(idx)),
+        amt: document.createTextNode(btcText(tx.value)),
+        time: document.createTextNode(clock(tx.ts))
+      }));
+      const link = document.createElement('a');
+      link.href = txUrl(tx.txid);
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = fill('ref_link', { tx: short(tx.txid, 8, 4) });
+      stubRef.textContent = '';
+      stubRef.append('↗ ', link, ' · ' + new Intl.DateTimeFormat(I18N.lang || 'ru', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(new Date(tx.ts)));
+      fitWinner();
+    }
+
+    function reveal(widx, tx, calc) {
+      highlightWinner(widx);                    // строка победителя в списке подсвечивается
+      lastWin = { idx: widx, name: names[widx], tx, sum: calc.sum, T: calc.T, r: calc.r };
+      try { localStorage.setItem(LAST_KEY, JSON.stringify(lastWin)); } catch (e) {}
+      renderStub();
+      setStubMode('on');
+      stubEl.classList.remove('on');
+      void stubEl.offsetWidth;
+      stubEl.classList.add('on');
+      playWin();
+
+      running = false;
+      done = true;
+      goBtn.textContent = t('btn_again');
+      goBtn.classList.add('again');
+      goBtn.disabled = false;
+      lockInputs(false);
+      recordHostWin(names[widx]);
+    }
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(LAST_KEY) || 'null');
+      if (saved && typeof saved.name === 'string' && saved.tx && typeof saved.tx.addr === 'string' && typeof saved.tx.txid === 'string') lastWin = saved;
+    } catch (e) {}
+
+    window.addEventListener('resize', () => { fitTiles(); fitWinner(); });
+
+    let audioCtx = null;
+    function playSound(f, d, v, type) {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = type || 'sine';
+        o.frequency.value = f;
+        const t = audioCtx.currentTime;
+        g.gain.setValueAtTime(v || 0.1, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + (d || 0.1));
+        o.connect(g);
+        g.connect(audioCtx.destination);
+        o.start(t);
+        o.stop(t + (d || 0.1));
+      } catch (e) {}
+    }
+    // звон монеты при победе, щелчок при поимке, короткий тик на каждый символ
+    const playSnap  = () => { playSound(880, 0.06, 0.16, 'square'); setTimeout(() => playSound(320, 0.10, 0.12, 'square'), 55); };
+    const playWin   = () => { [1568, 2093, 2637].forEach((f, i) => setTimeout(() => playSound(f, 0.5, 0.07, 'triangle'), i * 70)); };
+    const playTick  = (v) => playSound(380 + v * 16, 0.03, 0.03, 'square');
+    // принтер: частые глухие щелчки, пока чек выезжает
+    const playPrinter = () => { for (let i = 0; i < 18; i++) setTimeout(() => playSound(110 + (i % 3) * 30, 0.03, 0.05, 'square'), i * 58); };
+    const playBlock = () => { if (!running) playSound(196, 0.25, 0.06, 'triangle'); };
+
+    /* ── Меню ────────────────────────────────────────── */
+    const menuBtn = document.getElementById('menuBtn');
+    const menuDrop = document.getElementById('menuDrop');
+    const setMenu = (open) => {
+      menuBtn.classList.toggle('open', open);
+      menuDrop.classList.toggle('open', open);
+      menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    menuBtn.addEventListener('click', (e) => { e.stopPropagation(); setMenu(!menuDrop.classList.contains('open')); });
+    document.addEventListener('click', (e) => { if (!menuDrop.contains(e.target)) setMenu(false); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+
+    goBtn.addEventListener('click', run);
+
+    document.addEventListener('keydown', (e) => {
+      if (['INPUT', 'BUTTON', 'A', 'SELECT'].includes(e.target.tagName)) return;
+      if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); run(); }
+    });
+
+    /* ── ЯЗЫК ────────────────────────────────────────── */
+    window.addEventListener('langchange', () => {
+      if (!userEdited) {
+        const isDefault = Object.values(DEFAULT_NAME_SETS).some(set => set.join('|') === names.join('|'));
+        if (isDefault && names.join('|') !== DEFAULT_NAME_SETS[I18N.lang].join('|')) {
+          const wasEqual = !hasCustomProbabilities;
+          const prev = names;
+          names = DEFAULT_NAME_SETS[I18N.lang].slice();
+          // историю ведущих переносим по позиции — те же люди под локализованными именами
+          hostLog.forEach((e) => {
+            const i = prev.indexOf(e.name);
+            if (i !== -1) e.name = names[i];
+          });
+          saveHostLog();
+          saveNames();
+          if (wasEqual) setEqualProbabilities();
+          else { probabilities = {}; lockedParticipants = {}; setEqualProbabilities(); }
+        }
+      }
+      const wasDone = done;
+      const winIdx = wasDone ? [...plist.children].findIndex(el => el.classList.contains('win')) : -1;
+      renderList();
+      setStreamState(streamState);
+      if (tipHeight) setTip(tipHeight, false);
+      renderStub();
+      setGoWidth();
+      if (!running) goBtn.textContent = wasDone ? t('btn_again') : t('btn');
+      else if (armed) goBtn.textContent = t('btn_wait');
+      if (wasDone && winIdx >= 0) {
+        highlightWinner(winIdx);
+        winnerEl.textContent = names[winIdx];
+        goBtn.disabled = false;
+      }
+    });
+
+    try { hostsBox.hidden = localStorage.getItem(HOSTS_OPEN_KEY) !== '1'; } catch (e) {}
+    hostsBtn.setAttribute('aria-expanded', String(!hostsBox.hidden));
+
+    initProbabilities();
+    renderFeedPlaceholder();
+    renderList();
+    renderStub();
+    if (lastWin) setStubMode('stale');
+    setGoWidth();
+    connect();
+    fetchTip();
+    setInterval(() => { if (streamState !== 'paused') fetchTip(); }, 5 * 60 * 1000);
+  </script>
+
+ <!-- Yandex.Metrika counter -->
+  <script type="text/javascript">
+    (function(m,e,t,r,i,k,a){
+      m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+      m[i].l=1*new Date();
+      for (var j = 0; j < document.scripts.length; j++) {
+        if (document.scripts[j].src === r) { return; }
+      }
+      k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+    })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+
+    ym(104849796, 'init', {
+      clickmap:true,
+      trackLinks:true,
+      accurateTrackBounce:true,
+      webvisor:true
+    });
+  </script>
+  <noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+  <!-- /Yandex.Metrika counter -->
+
+  <script>
+  window.I18N_DICT = {
+    ru: {
+      stub_pending: `Считаем символы адреса — имя владельца допечатается внизу чека.`,
+      stub_pending_name: `печатается…`,
+      addr_cap: `адрес получателя`,
+      r_kind: `квитанция о переводе`,
+      sticker: `ЧЕСТНО<br>24/7`,
+      _title: `Биткоин-рандом — победителя выбирает свежий перевод биткоина`,
+      meta_desc: `₿ Честный рандомайзер на живой сети биткоина: ловим первый перевод после нажатия, складываем номера букв в адресе кошелька-получателя — остаток от деления и есть победитель. С настройкой вероятностей.`,
+      menu: `Меню`,
+      menu_heading: `Другие рандомайзеры`,
+      nav_home: `🏠 Главная`, nav_wiki: `📖 Викирандом`, nav_radar: `📡 Радар`, nav_ducks: `🦆 Утиные бега`, nav_penguins: `🐧 Пингвины на льдине`, nav_elections: `🗳️ Выборы`, nav_ai: `🤖 LLM-рандомайзер`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Рулетка`, nav_racing: `🏁 Гонки`, nav_wheel: `🎡 Колесо Фортуны`, nav_bingo: `🎲 Бинго`, nav_bank: `🇲🇽 Банк`, nav_plinko: `🎯 Плинко`, nav_loto: `🎱 Лототрон`, nav_crystal: `🔮 Магический Шар`, nav_trading: `📈 Трейдинг`, nav_pseudo: `⏱️ Псевдорандом`, nav_daisy: `🌼 Ромашка`, nav_btc: `🪙 Биткоин-рандом`,
+      wm_title: `Биткоин-<b>рандом</b>`,
+      wm_tag: `банкомат, который выдаёт победителей`,
+      h1: `Кому достанется биткоин?`,
+      sub: `Победителя выбирает первый биткоин-перевод после нажатия — по адресу кошелька, куда ушли деньги.`,
+      feed_title: `ВХОДЯЩИЕ ПЕРЕВОДЫ`,
+      tip_title: `Последний найденный блок`,
+      tip: `блок {h}`,
+      col_time: `время`, col_tx: `транзакция`, col_to: `получатель`, col_amt: `сумма`,
+      st_connecting: `подключаемся к сети…`,
+      st_live: `в реальном времени`,
+      st_reconnecting: `связь прервалась, переподключаемся…`,
+      st_paused: `лента на паузе — нажмите где угодно`,
+      rate: `{n} переводов/мин`,
+      skip: `повтор ↻`,
+      mark: `▲ вы нажали здесь — выигрывает первый новый кошелёк выше`,
+      btn: `Поймать перевод`,
+      btn_wait: `Ждём перевод…`,
+      btn_count: `Считаем адрес…`,
+      btn_again: `Ещё раз`,
+      go_hint: `или <kbd>Пробел</kbd>`,
+      tx_label: `Транзакция`,
+      tag_example: `пример`,
+      example_meta: `Кошелёк Сатоши из самого первого блока`,
+      tx_wait: `ждём первый перевод после нажатия`,
+      wait_meta: `Отметка в ленте показывает момент нажатия`,
+      timeout: `Сеть молчит — попробуйте ещё раз`,
+      caught_at: `пришёл в {time}`,
+      first_out: `первый получатель`,
+      col_char: `символ`,
+      col_value: `число`,
+      addr_label: `кошелёк принадлежит`,
+      tag_last: `прошлый розыгрыш`,
+      confirm: `<b>0 подтверждений</b> · но решение окончательное`,
+      stub_empty_addr: `bc1q… — здесь будет адрес получателя`,
+      stub_empty_name: `Имя победителя`,
+      stub_empty: `Автомат напечатает здесь, чей это кошелёк и сколько на него пришло.`,
+      stub_empty_ref: `Ссылка на перевод появится после розыгрыша.`,
+      stub_lede: `Кошелёк {addr} принадлежит участнику {name} — № {n} в списке. Получил {amt} в {time}.`,
+      ref_link: `Перевод {tx} на mempool.space`,
+      rules_title: `Как это работает`,
+      rules_1: `Слушаем живой поток <b>биткоин-переводов</b>, которые прямо сейчас летят по сети, — около десяти в секунду.`,
+      rules_2: `После нажатия берём <b>первый</b> перевод, который придёт. Подобрать удобный не может никто — ни вы, ни мы, ни отправитель: он о розыгрыше не знает.`,
+      rules_3: `Смотрим адрес кошелька, куда ушли деньги. Кошельки бирж получают переводы каждую секунду — если адрес уже мелькал в ленте <code>↻</code>, пропускаем и ждём новый. Иначе у частых адресов было бы больше шансов.`,
+      rules_4: `Каждая буква адреса — её номер в алфавите <code>a=1 … z=26</code> (большая или маленькая — неважно), цифра — сама себе. Всё складываем.`,
+      rules_5: `Шансы равные — <code>сумма mod N</code>, остаток и есть номер победителя. Шансы разные — <code>сумма mod 100</code>: у каждого столько билетов, сколько процентов, диапазон виден рядом с номером.`,
+      rules_6: `Ссылка ведёт на сам перевод в <b>mempool.space</b> — адрес там тот же, сумму можно пересчитать.`,
+      participants: `Участники`,
+      equalize: `Уравнять`,
+      equalize_title: `Уравнять вероятности`,
+      collapse_title: `Свернуть список`,
+      col_num: `№`,
+      col_name: `Имя`,
+      col_prob: `📊 Вероятность`,
+      ph_new: `Новый участник`,
+      add_title: `Добавить участника`,
+      new_name: `Участник {n}`,
+      aria_dec: `Уменьшить вероятность`,
+      aria_prob: `Вероятность в процентах`,
+      aria_inc: `Увеличить вероятность`,
+      aria_del: `Удалить участника`,
+      aria_away: `Отпуск / болеет — временно убрать`,
+      aria_back: `Вернуть в розыгрыш`,
+      away_badge: `🌴 нет на месте`,
+      hosts_title: `Ведущие`, hosts_prev: `Неделя назад`, hosts_next: `Неделя вперёд`, host_nobody: `— никто`,
+      host_day_aria: `Ведущий: {date}`, host_chip_title: `Ведущий: {date}`,
+      host_chip_today: `сегодня`, host_chips: `Метки у участников`,
+      err_min: `Нужно минимум 2 участника.`,
+      err_max: `Максимум {n} участников.`,
+      err_trunc: `Список общий с другими рандомайзерами: показаны первые {n} из {total}.`,
+      ph_dup: `Такое имя уже есть`,
+      ph_atleast1: `Введите имя`,
+      ph_min2: `Нужно минимум 2 участника`,
+      ph_max: `Максимум {n} участников`
+    },
+    en: {
+      stub_pending: `Counting the address characters — the owner's name will be printed at the bottom.`,
+      stub_pending_name: `printing…`,
+      addr_cap: `recipient address`,
+      r_kind: `transfer receipt`,
+      sticker: `FAIR<br>24/7`,
+      _title: `Bitcoin Random — a fresh bitcoin transfer picks the winner`,
+      meta_desc: `₿ An honest randomizer powered by the live bitcoin network: we catch the first transfer after your press and add up the letter numbers of the receiving wallet address — the remainder is the winner. With adjustable odds.`,
+      menu: `Menu`,
+      menu_heading: `Other randomizers`,
+      nav_home: `🏠 Home`, nav_wiki: `📖 Wikirandom`, nav_radar: `📡 Radar`, nav_ducks: `🦆 Duck Race`, nav_penguins: `🐧 Penguin Floe`, nav_elections: `🗳️ Elections`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Roulette`, nav_racing: `🏁 Racing`, nav_wheel: `🎡 Wheel of Fortune`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 The Bank`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Lottery Drum`, nav_crystal: `🔮 Magic Ball`, nav_trading: `📈 Trading`, nav_pseudo: `⏱️ Pseudorandom`, nav_daisy: `🌼 Daisy`, nav_btc: `🪙 Bitcoin Random`,
+      wm_title: `Bitcoin <b>Random</b>`,
+      wm_tag: `the ATM that dispenses winners`,
+      h1: `Who gets the bitcoin?`,
+      sub: `The winner is picked by the first bitcoin transfer after your press — by the address of the wallet the money went to.`,
+      feed_title: `INCOMING TRANSFERS`,
+      tip_title: `Latest block found`,
+      tip: `block {h}`,
+      col_time: `time`, col_tx: `transaction`, col_to: `recipient`, col_amt: `amount`,
+      st_connecting: `connecting to the network…`,
+      st_live: `live`,
+      st_reconnecting: `connection lost, reconnecting…`,
+      st_paused: `feed paused — tap anywhere`,
+      rate: `{n} transfers/min`,
+      skip: `repeat ↻`,
+      mark: `▲ you pressed here — the first new wallet above wins`,
+      btn: `Catch a transfer`,
+      btn_wait: `Waiting for a transfer…`,
+      btn_count: `Counting the address…`,
+      btn_again: `Run again`,
+      go_hint: `or <kbd>Space</kbd>`,
+      tx_label: `Transaction`,
+      tag_example: `example`,
+      example_meta: `Satoshi's wallet from the very first block`,
+      tx_wait: `waiting for the first transfer after your press`,
+      wait_meta: `The mark in the feed shows the moment you pressed`,
+      timeout: `The network went quiet — try again`,
+      caught_at: `arrived at {time}`,
+      first_out: `first recipient`,
+      col_char: `char`,
+      col_value: `number`,
+      addr_label: `wallet belongs to`,
+      tag_last: `previous draw`,
+      confirm: `<b>0 confirmations</b> · but the decision is final`,
+      stub_empty_addr: `bc1q… — the recipient address goes here`,
+      stub_empty_name: `Winner's name`,
+      stub_empty: `The machine will print whose wallet this is and how much it received.`,
+      stub_empty_ref: `A link to the transfer will appear after the draw.`,
+      stub_lede: `Wallet {addr} belongs to {name}, number {n} on the list. Received {amt} at {time}.`,
+      ref_link: `Transfer {tx} on mempool.space`,
+      rules_title: `How it works`,
+      rules_1: `We listen to the live stream of <b>bitcoin transfers</b> flying through the network right now — about ten per second.`,
+      rules_2: `After you press, we take the <b>first</b> transfer that arrives. Nobody can pick a convenient one — not you, not us, not the sender: they don't know about the draw.`,
+      rules_3: `We look at the address of the wallet the money went to. Exchange wallets receive transfers every second — if the address has already shown up in the feed <code>↻</code>, we skip it and wait for a new one. Otherwise frequent addresses would get better odds.`,
+      rules_4: `Every letter of the address is its number in the alphabet <code>a=1 … z=26</code> (upper or lower case doesn't matter), a digit is itself. Add it all up.`,
+      rules_5: `Equal odds — <code>sum mod N</code>, the remainder is the winner's index. Custom odds — <code>sum mod 100</code>: everyone gets as many tickets as their percentage, the range is shown next to the index.`,
+      rules_6: `The link leads to the transfer itself on <b>mempool.space</b> — same address, you can recount the sum.`,
+      participants: `Participants`,
+      equalize: `Equalize`,
+      equalize_title: `Equalize the odds`,
+      collapse_title: `Collapse the list`,
+      col_num: `#`,
+      col_name: `Name`,
+      col_prob: `📊 Odds`,
+      ph_new: `New participant`,
+      add_title: `Add a participant`,
+      new_name: `Participant {n}`,
+      aria_dec: `Decrease probability`,
+      aria_prob: `Probability in percent`,
+      aria_inc: `Increase probability`,
+      aria_del: `Remove participant`,
+      aria_away: `On leave / sick — take out for now`,
+      aria_back: `Bring back`,
+      away_badge: `🌴 away`,
+      hosts_title: `Hosts`, hosts_prev: `Previous week`, hosts_next: `Next week`, host_nobody: `— nobody`,
+      host_day_aria: `Host: {date}`, host_chip_title: `Hosted: {date}`,
+      host_chip_today: `today`, host_chips: `Labels on participants`,
+      err_min: `At least 2 participants are needed.`,
+      err_max: `{n} participants max.`,
+      err_trunc: `The roster is shared with the other randomizers: showing the first {n} of {total}.`,
+      ph_dup: `That name already exists`,
+      ph_atleast1: `Enter a name`,
+      ph_min2: `At least 2 participants`,
+      ph_max: `{n} participants max`
+    },
+    el: {
+      stub_pending: `Μετράμε τα σύμβολα της διεύθυνσης — το όνομα του κατόχου θα τυπωθεί στο κάτω μέρος.`,
+      stub_pending_name: `εκτυπώνεται…`,
+      addr_cap: `διεύθυνση παραλήπτη`,
+      r_kind: `απόδειξη μεταφοράς`,
+      sticker: `ΤΙΜΙΑ<br>24/7`,
+      _title: `Bitcoin κλήρωση — τον νικητή διαλέγει μια φρέσκια μεταφορά bitcoin`,
+      meta_desc: `₿ Τίμια κλήρωση με το ζωντανό δίκτυο του bitcoin: πιάνουμε την πρώτη μεταφορά μετά το πάτημα και προσθέτουμε τους αριθμούς των γραμμάτων της διεύθυνσης του παραλήπτη — το υπόλοιπο είναι ο νικητής. Με ρυθμιζόμενες πιθανότητες.`,
+      menu: `Μενού`,
+      menu_heading: `Άλλες κληρώσεις`,
+      nav_home: `🏠 Αρχική`, nav_wiki: `📖 Wikiτυχαίο`, nav_radar: `📡 Ραντάρ`, nav_ducks: `🦆 Αγώνας Παπιών`, nav_penguins: `🐧 Πιγκουίνοι στον πάγο`, nav_elections: `🗳️ Εκλογές`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Ρουλέτα`, nav_racing: `🏁 Αγώνες`, nav_wheel: `🎡 Τροχός της Τύχης`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 Η Τράπεζα`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Κληρωτίδα`, nav_crystal: `🔮 Μαγική Μπάλα`, nav_trading: `📈 Trading`, nav_pseudo: `⏱️ Ψευδοτυχαίο`, nav_daisy: `🌼 Μαργαρίτα`, nav_btc: `🪙 Bitcoin κλήρωση`,
+      wm_title: `Bitcoin <b>κλήρωση</b>`,
+      wm_tag: `το ΑΤΜ που βγάζει νικητές`,
+      h1: `Ποιος θα πάρει το bitcoin;`,
+      sub: `Τον νικητή τον διαλέγει η πρώτη μεταφορά bitcoin μετά το πάτημα — από τη διεύθυνση του πορτοφολιού όπου πήγαν τα χρήματα.`,
+      feed_title: `ΕΙΣΕΡΧΟΜΕΝΕΣ ΜΕΤΑΦΟΡΕΣ`,
+      tip_title: `Τελευταίο μπλοκ`,
+      tip: `μπλοκ {h}`,
+      col_time: `ώρα`, col_tx: `συναλλαγή`, col_to: `παραλήπτης`, col_amt: `ποσό`,
+      st_connecting: `σύνδεση με το δίκτυο…`,
+      st_live: `σε πραγματικό χρόνο`,
+      st_reconnecting: `η σύνδεση χάθηκε, επανασύνδεση…`,
+      st_paused: `η ροή σε παύση — πάτησε οπουδήποτε`,
+      rate: `{n} μεταφορές/λεπτό`,
+      skip: `επανάληψη ↻`,
+      mark: `▲ πάτησες εδώ — κερδίζει το πρώτο νέο πορτοφόλι από πάνω`,
+      btn: `Πιάσε μια μεταφορά`,
+      btn_wait: `Περιμένουμε μεταφορά…`,
+      btn_count: `Μετράμε τη διεύθυνση…`,
+      btn_again: `Ξανά`,
+      go_hint: `ή <kbd>Space</kbd>`,
+      tx_label: `Συναλλαγή`,
+      tag_example: `παράδειγμα`,
+      example_meta: `Το πορτοφόλι του Σατόσι από το πρώτο μπλοκ`,
+      tx_wait: `περιμένουμε την πρώτη μεταφορά μετά το πάτημα`,
+      wait_meta: `Το σημάδι στη ροή δείχνει τη στιγμή του πατήματος`,
+      timeout: `Το δίκτυο σώπασε — δοκίμασε ξανά`,
+      caught_at: `ήρθε στις {time}`,
+      first_out: `πρώτος παραλήπτης`,
+      col_char: `σύμβολο`,
+      col_value: `αριθμός`,
+      addr_label: `το πορτοφόλι ανήκει σε`,
+      tag_last: `προηγούμενη κλήρωση`,
+      confirm: `<b>0 επιβεβαιώσεις</b> · αλλά η απόφαση είναι οριστική`,
+      stub_empty_addr: `bc1q… — εδώ θα μπει η διεύθυνση του παραλήπτη`,
+      stub_empty_name: `Όνομα νικητή`,
+      stub_empty: `Το μηχάνημα θα τυπώσει εδώ σε ποιον ανήκει το πορτοφόλι και πόσα έλαβε.`,
+      stub_empty_ref: `Ο σύνδεσμος προς τη μεταφορά θα εμφανιστεί μετά την κλήρωση.`,
+      stub_lede: `Το πορτοφόλι {addr} ανήκει σε: {name} — αριθμός {n} στη λίστα. Έλαβε {amt}, ώρα {time}`,
+      ref_link: `Μεταφορά {tx} στο mempool.space`,
+      rules_title: `Πώς λειτουργεί`,
+      rules_1: `Ακούμε τη ζωντανή ροή <b>μεταφορών bitcoin</b> που ταξιδεύουν στο δίκτυο αυτή τη στιγμή — περίπου δέκα το δευτερόλεπτο.`,
+      rules_2: `Μετά το πάτημα παίρνουμε την <b>πρώτη</b> μεταφορά που θα έρθει. Κανείς δεν μπορεί να διαλέξει μια βολική — ούτε εσύ, ούτε εμείς, ούτε ο αποστολέας: δεν ξέρει για την κλήρωση.`,
+      rules_3: `Κοιτάμε τη διεύθυνση του πορτοφολιού όπου πήγαν τα χρήματα. Τα πορτοφόλια των ανταλλακτηρίων λαμβάνουν μεταφορές κάθε δευτερόλεπτο — αν η διεύθυνση έχει ήδη εμφανιστεί στη ροή <code>↻</code>, την προσπερνάμε και περιμένουμε νέα. Αλλιώς οι συχνές διευθύνσεις θα είχαν περισσότερες πιθανότητες.`,
+      rules_4: `Κάθε γράμμα της διεύθυνσης είναι ο αριθμός του στο λατινικό αλφάβητο <code>a=1 … z=26</code> (κεφαλαίο ή μικρό δεν έχει σημασία), ένα ψηφίο μετράει όσο η τιμή του. Τα προσθέτουμε όλα.`,
+      rules_5: `Ίσες πιθανότητες — <code>άθροισμα mod N</code>, το υπόλοιπο είναι ο αριθμός του νικητή. Διαφορετικές — <code>άθροισμα mod 100</code>: ο καθένας παίρνει τόσα εισιτήρια όσο το ποσοστό του, το εύρος φαίνεται δίπλα στον αριθμό.`,
+      rules_6: `Ο σύνδεσμος οδηγεί στην ίδια τη μεταφορά στο <b>mempool.space</b> — ίδια διεύθυνση, μπορείς να ξαναμετρήσεις το άθροισμα.`,
+      participants: `Συμμετέχοντες`,
+      equalize: `Εξίσωση`,
+      equalize_title: `Εξίσωση πιθανοτήτων`,
+      collapse_title: `Σύμπτυξη λίστας`,
+      col_num: `Αρ.`,
+      col_name: `Όνομα`,
+      col_prob: `📊 Πιθανότητα`,
+      ph_new: `Νέος συμμετέχων`,
+      add_title: `Προσθήκη συμμετέχοντα`,
+      new_name: `Συμμετέχων {n}`,
+      aria_dec: `Μείωση πιθανότητας`,
+      aria_prob: `Πιθανότητα σε ποσοστό`,
+      aria_inc: `Αύξηση πιθανότητας`,
+      aria_del: `Αφαίρεση συμμετέχοντα`,
+      aria_away: `Άδεια / ασθένεια — προσωρινή αφαίρεση`,
+      aria_back: `Επιστροφή στην κλήρωση`,
+      away_badge: `🌴 απών`,
+      hosts_title: `Παρουσιαστές`, hosts_prev: `Προηγούμενη εβδομάδα`, hosts_next: `Επόμενη εβδομάδα`, host_nobody: `— κανείς`,
+      host_day_aria: `Παρουσιαστής: {date}`, host_chip_title: `Παρουσίασε: {date}`,
+      host_chip_today: `σήμερα`, host_chips: `Ετικέτες στους συμμετέχοντες`,
+      err_min: `Χρειάζονται τουλάχιστον 2 συμμετέχοντες.`,
+      err_max: `Το πολύ {n} συμμετέχοντες.`,
+      err_trunc: `Η λίστα είναι κοινή με τους άλλους τυχαίους επιλογείς: εμφανίζονται οι πρώτοι {n} από {total}.`,
+      ph_dup: `Το όνομα υπάρχει ήδη`,
+      ph_atleast1: `Γράψε ένα όνομα`,
+      ph_min2: `Τουλάχιστον 2 συμμετέχοντες`,
+      ph_max: `Το πολύ {n} συμμετέχοντες`
+    }
+  };
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Биткоин-рандом",
+    "applicationCategory": "GameApplication",
+    "operatingSystem": "Web",
+    "url": "https://randomhost.online/bitcoin-random.html",
+    "description": "Рандомайзер на живой сети биткоина: первый перевод после нажатия, сумма номеров букв адреса получателя по модулю числа участников — порядковый номер победителя.",
+    "inLanguage": "ru",
+    "publisher": {
+      "@type": "Organization",
+      "name": "Рандомайзер-игры",
+      "url": "https://randomhost.online"
+    }
+  }
+  </script>
+
+  <script src="i18n.js" defer></script>
+  <script src="sound-toggle.js" defer></script>
+</body>
+</html>

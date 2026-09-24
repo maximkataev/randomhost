@@ -3,11 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<meta name="robots" content="noindex">
 <!-- тёмная тема своя: без этого Samsung Internet / Chrome с «принудительной тёмной темой» перекрашивали цвета -->
 <meta name="color-scheme" content="dark">
-<title>Аукцион</title>
 <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f528.svg" type="image/svg+xml">
+<title>Аукцион — игра для компании с ИИ-судьёй</title>
+<meta name="robots" content="index,follow">
+<meta name="description" content="🔨 Онлайн-аукцион для компании: у каждого бюджет и 5 слотов, торгуетесь вживую с телефонов, а ChatGPT в конце выбирает лучший набор. Вход по QR, 15 категорий." data-i18n-meta="_meta">
+<!-- ссылки на комнаты (?r=КОД) — та же страница: в выдаче должна быть одна, без кода -->
+<link rel="canonical" href="https://randomhost.online/auction.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Аукцион — игра для компании с ИИ-судьёй">
+<meta property="og:description" content="Торгуйтесь за лоты вживую с телефонов, а ChatGPT назовёт победителя.">
+<meta property="og:url" content="https://randomhost.online/auction.html">
+<meta property="og:site_name" content="Рандомайзер Онлайн">
+<meta property="og:locale" content="ru_RU">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Аукцион — игра для компании с ИИ-судьёй">
+<meta name="twitter:description" content="Торгуйтесь за лоты вживую с телефонов, а ChatGPT назовёт победителя.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- Шрифты грузятся НЕблокирующе. Обычный rel="stylesheet" задерживает первую отрисовку до
@@ -360,6 +372,26 @@
   .sheet.on { transform: none; visibility: visible; pointer-events: auto; }
   /* «Закрыть» всегда под рукой, даже если факт длинный и шторка прокручивается */
   .sheet .mid { position: sticky; bottom: calc(-20px - env(safe-area-inset-bottom)); margin-top: 16px; background: #1a1822; box-shadow: 0 -12px 18px 6px #1a1822; }
+  /* ведущий с телефона (§10.4): маленькая кнопка в статус-строке и шторка управления поверх паузы */
+  .hostpill { flex: none; min-height: 32px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--c1); background: rgba(12, 10, 20, .5); color: var(--c1); font: 700 11px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+  .hostpill[hidden] { display: none; }
+  .sheet.host { z-index: 60; }
+  .hostsheet h2 { font: 900 20px var(--display); margin: 0 0 12px; }
+  /* общее правило шторки делает каждую .mid липкой к низу — здесь липкой остаётся только «Закрыть» */
+  .sheet .hostsheet .mid { position: static; margin-top: 0; box-shadow: none; background: none; }
+  .sheet .hostsheet #hs_close { position: sticky; margin-top: 14px; background: #1a1822; box-shadow: 0 -12px 18px 6px #1a1822; }
+  .hostsheet .hrow { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .hostsheet .hrow .mid { flex: 1 1 130px; width: auto; min-height: 48px; }
+  .hostsheet .mid.warn { border-color: #ff5d6c; color: #ff8a95; }
+  .hostsheet .pl { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--glass-line); }
+  .hostsheet .pl span { flex: 1; min-width: 0; overflow-wrap: anywhere; unicode-bidi: isolate; }
+  .hostsheet .pl span.off { color: var(--muted); }
+  .hostsheet .pl .mid { flex: none; width: auto; min-height: 44px; padding: 10px 16px; }
+  .ovbox { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 360px; }
+  .ovbox .mid, .ovbox .big { font-size: 15px; text-transform: uppercase; }
+  .ovbox .big { padding: 16px; }
+  .hostlobby { display: flex; flex-direction: column; gap: 8px; }
+  .tie { margin-top: 10px; }
   .confetti { position: fixed; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 45; }
   /* Safari < 14.1 не знает gap у flex: без запасного отступа кнопки ставок слипались */
   @supports not (inset: 0) {
@@ -414,7 +446,8 @@
 <script>
 window.I18N_DICT = {
   ru: {
-    _title: `Аукцион`,
+    _title: `Аукцион — игра для компании с ИИ-судьёй`,
+    _meta: `🔨 Онлайн-аукцион для компании: у каждого бюджет и 5 слотов, торгуетесь вживую с телефонов, а ChatGPT в конце выбирает лучший набор. Вход по QR, 15 категорий.`,
     nav_all_games: `← Все игры`,
 
     /* стартовый экран */
@@ -552,11 +585,30 @@ window.I18N_DICT = {
     place_n: `{n}-е`,
     votes_score: `{n} {w}`,
     final_no_judge: `Ты остался без лотов — судить нечего`,
-    final_foot: `Результаты на доске. Ведущий может запустить ещё одну игру.`
+    final_foot: `Результаты на доске. Ведущий может запустить ещё одну игру.`,
+    /* как решилась ничья в голосовании (§9) — то же, что пишет доска */
+    tie_spent: `Ничья по голосам — выше тот, кто потратил меньше`,
+    tie_coin: `Ничья по голосам и по деньгам — решила монетка 🪙`,
+    no_votes: `Никто не проголосовал — места по потраченным деньгам`,
+    /* ведущий играет с телефона (§10.4) */
+    host_btn: `Ведущий`,
+    host_title: `Управление игрой`,
+    host_pause: `Пауза`,
+    host_resume: `Продолжить`,
+    host_skip: `Пропустить лот`,
+    host_end: `Завершить игру`,
+    host_start: `Начать игру`,
+    host_start_need: `Для старта нужны двое на связи`,
+    host_players: `Игроки`,
+    host_kick: `Убрать`,
+    host_kick_confirm: `Убрать {name} из игры?`,
+    host_skip_confirm: `Пропустить лот? Если ставки уже есть, лот уйдёт лидеру.`,
+    host_end_confirm: `Закончить игру и перейти к итогам?`,
   },
 
   en: {
-    _title: `Auction`,
+    _title: `Auction — a party game with an AI judge`,
+    _meta: `🔨 An online auction for your group: everyone gets a budget and 5 slots, you bid live from your phones, and ChatGPT picks the best set at the end. Join by QR, 15 categories.`,
     nav_all_games: `← All games`,
 
     start_eyebrow: `Party game · phones + one big screen`,
@@ -687,11 +739,28 @@ window.I18N_DICT = {
     place_n: `{n}th`,
     votes_score: `{n} {w}`,
     final_no_judge: `You ended up with no lots — nothing to judge`,
-    final_foot: `Full results are on the board. The host can start another game.`
+    final_foot: `Full results are on the board. The host can start another game.`,
+    tie_spent: `Tied on votes — whoever spent less ranks higher`,
+    tie_coin: `Tied on votes and money — a coin toss decided 🪙`,
+    no_votes: `Nobody voted — ranked by money spent`,
+    host_btn: `Host`,
+    host_title: `Game controls`,
+    host_pause: `Pause`,
+    host_resume: `Resume`,
+    host_skip: `Skip lot`,
+    host_end: `End game`,
+    host_start: `Start game`,
+    host_start_need: `Two players online are needed to start`,
+    host_players: `Players`,
+    host_kick: `Remove`,
+    host_kick_confirm: `Remove {name} from the game?`,
+    host_skip_confirm: `Skip this lot? If there are bids, it goes to the leader.`,
+    host_end_confirm: `Finish the game and go to the results?`,
   },
 
   el: {
-    _title: `Δημοπρασία`,
+    _title: `Δημοπρασία — παιχνίδι για παρέα με AI κριτή`,
+    _meta: `🔨 Online δημοπρασία για την παρέα: ο καθένας έχει budget και 5 θέσεις, δίνετε προσφορές ζωντανά από τα κινητά και στο τέλος το ChatGPT διαλέγει το καλύτερο σετ. Είσοδος με QR, 15 κατηγορίες.`,
     nav_all_games: `← Όλα τα παιχνίδια`,
 
     start_eyebrow: `Παιχνίδι για παρέα · κινητά + μία οθόνη`,
@@ -822,7 +891,23 @@ window.I18N_DICT = {
     place_n: `{n}ο`,
     votes_score: `{n} {w}`,
     final_no_judge: `Έμεινες χωρίς λοτ — δεν έχει τι να κριθεί`,
-    final_foot: `Τα αποτελέσματα είναι στον πίνακα. Ο host μπορεί να ξεκινήσει άλλο παιχνίδι.`
+    final_foot: `Τα αποτελέσματα είναι στον πίνακα. Ο host μπορεί να ξεκινήσει άλλο παιχνίδι.`,
+    tie_spent: `Ισοψηφία — πιο ψηλά όποιος ξόδεψε λιγότερα`,
+    tie_coin: `Ισοψηφία και στα λεφτά — αποφάσισε κέρμα 🪙`,
+    no_votes: `Δεν ψήφισε κανείς — κατάταξη με βάση τα λεφτά που ξοδεύτηκαν`,
+    host_btn: `Host`,
+    host_title: `Έλεγχος παιχνιδιού`,
+    host_pause: `Παύση`,
+    host_resume: `Συνέχεια`,
+    host_skip: `Παράλειψη λοτ`,
+    host_end: `Τέλος παιχνιδιού`,
+    host_start: `Έναρξη παιχνιδιού`,
+    host_start_need: `Για να ξεκινήσει χρειάζονται δύο συνδεδεμένοι παίκτες`,
+    host_players: `Παίκτες`,
+    host_kick: `Αφαίρεση`,
+    host_kick_confirm: `Να αφαιρεθεί ο/η {name} από το παιχνίδι;`,
+    host_skip_confirm: `Παράλειψη λοτ; Αν υπάρχουν ήδη προσφορές, πάει σε όποιον προηγείται.`,
+    host_end_confirm: `Τέλος παιχνιδιού και πάμε στα αποτελέσματα;`,
   }
 };
 </script>
@@ -846,6 +931,9 @@ const uiLang = () => (window.I18N && window.I18N.lang) || "ru";
 const app = document.getElementById("app");
 const overlay = document.getElementById("overlay");
 let state = null, ws, offset = 0, me = null, token = null, lastLot = -1, thumbLot = -1;
+// пульт ведущего: сервер признал хост-токен этого телефона (host_ok remote) — есть кнопки ведущего
+let isHostRemote = false;
+const hostToken = () => { try { return localStorage.getItem("auction-host-" + CODE); } catch (e) { return null; } };
 // категорию и счётчики стартового экрана держим снаружи: при смене языка экран перерисовывается,
 // и выбор игрока не должен слетать, а счётчики — грузиться заново
 let startKind = null, startCounts = null;
@@ -889,7 +977,19 @@ let overlayVars = null;
 function setOverlay(key, vars) {
   overlayKey = key || null;
   overlayVars = vars || null;
-  overlay.textContent = overlayKey ? (overlayVars ? tpl(overlayKey, overlayVars) : I18N.t(overlayKey)) : "";
+  const text = overlayKey ? (overlayVars ? tpl(overlayKey, overlayVars) : I18N.t(overlayKey)) : "";
+  // Пауза закрывает весь экран — у ведущего с телефона на ней должны остаться «Продолжить» и
+  // управление, иначе снять паузу можно было бы только с доски (§10.4)
+  if (isHostRemote && /^ov_(paused|wait_players|wait_player)$/.test(overlayKey || "")) {
+    const box = el("div", "ovbox");
+    const resume = el("button", "big", I18N.t("host_resume"));
+    resume.id = "ovresume";
+    resume.onclick = () => sendMsg({ type: "resume" });
+    const more = el("button", "mid", I18N.t("host_title"));
+    more.onclick = openHostSheet;
+    box.append(el("div", null, text), resume, more);
+    overlay.replaceChildren(box);
+  } else overlay.textContent = text;
   overlay.classList.toggle("on", !!overlayKey);
 }
 
@@ -968,20 +1068,26 @@ async function renderCreate() {
 
 // ---------- живая лента лотов на стартовом экране ----------
 // Витрина: показываем настоящие карточки выбранной категории с «ценой» и печатью «продано».
-// Данные лежат рядом с доской (auction-data/<kind>.js → window.CARDS[kind]) — грузим по одному файлу лениво.
+// Данные лежат рядом с доской: auction-data/<kind>.js → window.CARDS[kind] (русские),
+// auction-data/<lang>/<kind>.js → window.CARDS_BY_LANG[lang][kind] (переводы) — грузим по одному файлу лениво.
 let reelToken = 0;
 const cardsLoading = {};
+const CARD_LANGS = ["en", "el"];
 
-function loadCards(kind) {
-  if ((window.CARDS || {})[kind]) return Promise.resolve(window.CARDS[kind]);
-  cardsLoading[kind] = cardsLoading[kind] || new Promise((res, rej) => {
+function loadCards(kind, lang) {
+  if (CARD_LANGS.indexOf(lang) === -1) lang = "ru";
+  const pick = () => (lang === "ru" ? window.CARDS || {} : (window.CARDS_BY_LANG || {})[lang] || {})[kind];
+  if (pick()) return Promise.resolve(pick());
+  const key = lang + "/" + kind;
+  cardsLoading[key] = cardsLoading[key] || new Promise((res, rej) => {
     const s = document.createElement("script");
-    s.src = `auction-data/${kind}.js`;
-    s.onload = () => res((window.CARDS || {})[kind] || []);
-    s.onerror = () => { delete cardsLoading[kind]; rej(new Error("no data")); };
+    s.src = lang === "ru" ? `auction-data/${kind}.js` : `auction-data/${lang}/${kind}.js`;
+    s.onload = () => res(pick() || []);
+    s.onerror = () => { delete cardsLoading[key]; rej(new Error("no data")); };
     document.head.append(s);
   });
-  return cardsLoading[kind];
+  // перевода нет — лучше русская лента, чем пустая
+  return lang === "ru" ? cardsLoading[key] : cardsLoading[key].catch(() => loadCards(kind, "ru"));
 }
 
 function strikeGavel() {
@@ -1006,7 +1112,7 @@ function fillReel(kind) {
   const my = ++reelToken, reel = track.parentElement;
   if (!track.children.length) track.innerHTML = '<div class="lotcard skel"></div>'.repeat(8);
   reel.classList.add("swap");
-  loadCards(kind).then((cards) => {
+  loadCards(kind, uiLang()).then((cards) => {
     if (my !== reelToken) return;
     if (!cards.length) return reel.classList.remove("swap");
     // Интрига: колоду не раскрываем. Открытыми едут только две «звезды» — начало массива
@@ -1132,12 +1238,19 @@ function join(name) {
       // плашку снимаем сразу; если партия и правда на паузе, ближайший state вернёт «ov_paused»
       if (overlayKey === "ov_offline") setOverlay(null);
       sendMsg({ type: "join", name, token });
+      // хост-токен этой комнаты на телефоне — просим права ведущего на этом соединении (§10.4);
+      // права живут на соединении, поэтому просим заново после каждого переподключения
+      const ht = hostToken();
+      if (ht) sendMsg({ type: "host", token: ht, remote: true });
     },
     onMessage: (msg) => {
       settle();
       if (msg.type === "joined") { me = msg.playerId; token = msg.token; try { localStorage.setItem("auction-token-" + CODE, token); } catch {} }
       if (msg.type === "hello" || msg.type === "state") setState(msg.state);
       if (msg.type === "event") onEvent(msg.event);
+      if (msg.type === "host_ok" && msg.remote) { isHostRemote = true; if (overlayKey) setOverlay(overlayKey, overlayVars); render(); }
+      // токен не подошёл (комнату пересоздали с тем же кодом) — забываем его, кнопок ведущего нет
+      if (msg.type === "host_denied") { isHostRemote = false; try { localStorage.removeItem("auction-host-" + CODE); } catch (e) {} render(); }
       if (msg.type === "rejected") onRejected(msg);
       if (msg.type === "replaced") { halted = true; ws.close(); setOverlay("ov_replaced"); }
       if (msg.type === "kicked") { halted = true; ws.close(); try { localStorage.removeItem("auction-token-" + CODE); } catch {} token = null; setOverlay("ov_kicked"); }
@@ -1219,6 +1332,7 @@ function setState(s) {
   else setOverlay("ov_paused");
   if (s.phase !== "finished") myVote = null;
   render();
+  if (hostSheetOpen) fillHostSheet();
 }
 const money = (n) => "$" + numFmt(n);
 const mine = () => state.players.find((p) => p.id === me);
@@ -1302,7 +1416,77 @@ function renderLobby() {
   app.innerHTML = `<div class="center"><h1>${I18N.t("h1_a")}<em>${I18N.t("h1_b")}</em></h1>${roomTitle ? `<p class="roomname">${escapeHtml(roomTitle)}</p>` : ""}<p class="sub">${tpl("lobby_sub", { code: CODE })}</p>
     <div class="plate"><b>${(AUCTION_KINDS[state.kind] || {}).icon || ""} ${auctionKind(state.kind, uiLang()).label || state.kind}</b>${tpl("lobby_budget", { money: money(state.settings.budget), slots: slots, w: pluralWord(slots, "plural_slot") })}</div>
     ${m ? `<div class="plate task"><span class="eyebrow">${I18N.t("task_eyebrow")}</span><b>${m.icon} ${escapeHtml(m.title)}</b>${escapeHtml(m.short || "")}.<span class="by">${state.settings.judge === "vote" ? I18N.t("lobby_judge_vote") : tpl("lobby_judge_ai", { how: escapeHtml(m.judge || "") })}</span></div>` : ""}
-    <div class="chips">${state.players.map((p) => `<span class="chip ${p.id === me ? "me" : ""}">${escapeHtml(p.name)}</span>`).join("")}</div>${boardLink()}</div>`;
+    <div class="chips">${state.players.map((p) => `<span class="chip ${p.id === me ? "me" : ""}">${escapeHtml(p.name)}</span>`).join("")}</div>${hostLobby()}${boardLink()}</div>`;
+  const start = document.getElementById("hoststart");
+  if (start) start.onclick = () => { unlockAudio(); sendMsg({ type: "start" }); };
+  const more = document.getElementById("hostmore");
+  if (more) more.onclick = openHostSheet;
+}
+
+// Ведущий играет с телефона: старт и управление прямо из лобби пульта, доска может стоять далеко
+function hostLobby() {
+  if (!isHostRemote) return "";
+  const online = state.players.filter((p) => p.online && !p.left).length;
+  return `<div class="hostlobby"><button class="big" id="hoststart"${online < 2 ? " disabled" : ""}>${escapeHtml(I18N.t("host_start"))}</button>` +
+    (online < 2 ? `<div class="note">${escapeHtml(I18N.t("host_start_need"))}</div>` : "") +
+    `<button class="mid" id="hostmore">${escapeHtml(I18N.t("host_title"))}</button></div>`;
+}
+
+// ---------- шторка ведущего (§10.4): пауза, пропуск лота, завершение, кик ----------
+// Разрушительное (пропустить, завершить, убрать) — только через подтверждение: промах пальцем
+// посреди торгов не должен продавать лот или заканчивать вечер.
+let hostSheetOpen = false;
+function openHostSheet() {
+  hostSheetOpen = true;
+  const sh = document.getElementById("sheet");
+  sh.classList.add("on", "host");
+  fillHostSheet();
+}
+function closeHostSheet() {
+  hostSheetOpen = false;
+  const sh = document.getElementById("sheet");
+  sh.classList.remove("on", "host");
+}
+function fillHostSheet() {
+  const sh = document.getElementById("sheet");
+  if (!state || !isHostRemote) return closeHostSheet();
+  const s = state;
+  const box = el("div", "hostsheet");
+  box.append(el("h2", null, I18N.t("host_title")));
+  const row = el("div", "hrow");
+  const btn = (key, cls, fn, id) => { const b = el("button", "mid" + (cls ? " " + cls : ""), I18N.t(key)); if (id) b.id = id; b.onclick = fn; row.append(b); return b; };
+  const playing = s.phase !== "lobby" && s.phase !== "finished";
+  if (s.phase === "lobby") {
+    const online = s.players.filter((p) => p.online && !p.left).length;
+    btn("host_start", "", () => { closeHostSheet(); sendMsg({ type: "start" }); }, "hs_start").disabled = online < 2;
+  }
+  if (playing) {
+    btn(s.paused ? "host_resume" : "host_pause", "", () => sendMsg({ type: s.paused ? "resume" : "pause" }), "hs_pause");
+    const skippable = !s.paused && (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "draft");
+    const round = s.round;
+    // round: подтверждение могло провисеть до следующего лота — сервер тогда отказ, а не продажа
+    btn("host_skip", "", () => { if (confirm(I18N.t("host_skip_confirm"))) sendMsg({ type: "skip_lot", round }); }, "hs_skip").disabled = !skippable;
+    btn("host_end", "warn", () => { if (confirm(I18N.t("host_end_confirm"))) { closeHostSheet(); sendMsg({ type: "end" }); } }, "hs_end");
+  }
+  if (row.children.length) box.append(row);
+  const others = s.players.filter((p) => !p.left && p.id !== me);
+  if (others.length && s.phase !== "finished") {
+    box.append(el("div", "note", I18N.t("host_players")));
+    others.forEach((p) => {
+      const line = el("div", "pl");
+      line.append(el("span", p.online ? null : "off", p.name));
+      const k = el("button", "mid warn", I18N.t("host_kick"));
+      k.dataset.kick = p.id;
+      k.onclick = () => { if (confirm(tpl("host_kick_confirm", { name: p.name }))) sendMsg({ type: "kick", playerId: p.id }); };
+      line.append(k);
+      box.append(line);
+    });
+  }
+  const close = el("button", "mid", I18N.t("sheet_close"));
+  close.id = "hs_close";
+  close.onclick = closeHostSheet;
+  box.append(close);
+  sh.replaceChildren(box);
 }
 
 // Хост, играющий с того же телефона, может потерять вкладку доски — хост-токен сохранён при
@@ -1318,7 +1502,7 @@ function renderGame() {
   const s = state, p = mine();
   if (!p) return;
   if (!document.getElementById("bidbox")) {
-    app.innerHTML = `<div class="status"><b id="myname"></b><span class="slots" id="myslots"></span><span class="spacer"></span><span id="lotno"></span><span class="money" id="mymoney"></span></div>
+    app.innerHTML = `<div class="status"><button class="hostpill" id="hostbtn" hidden>${escapeHtml(I18N.t("host_btn"))}</button><b id="myname"></b><span class="slots" id="myslots"></span><span class="spacer"></span><span id="lotno"></span><span class="money" id="mymoney"></span></div>
       <div class="taskbar" id="task"></div>
       <div class="lotbox" id="lot"></div>
       <div class="bidinfo"><div class="ring" id="ring"><svg viewBox="0 0 62 62"><circle class="track" cx="31" cy="31" r="27"/><circle class="arc" id="arc" cx="31" cy="31" r="27" stroke-dasharray="170" stroke-dashoffset="0"/></svg><div class="num" id="tnum"></div></div><div class="lead" id="lead"></div></div>
@@ -1327,6 +1511,8 @@ function renderGame() {
     if (!timerLoop) { timerLoop = true; requestAnimationFrame(tickTimer); }
   }
   document.getElementById("myname").textContent = p.name;
+  const hb = document.getElementById("hostbtn");
+  if (hb) { hb.hidden = !isHostRemote; hb.onclick = openHostSheet; }
   document.getElementById("mymoney").textContent = drafting(p)
     ? tpl("draft_status", { n: Math.min(p.lots.length + 1, s.settings.slots), total: s.settings.slots })
     : money(p.money);
@@ -1490,6 +1676,8 @@ function tickTimer() {
 
 function openSheet(lot) {
   const sh = document.getElementById("sheet");
+  hostSheetOpen = false;
+  sh.classList.remove("host");
   sh.innerHTML = `<div style="font:900 22px var(--display);margin-bottom:8px">${escapeHtml(lot.name)}</div><p>${escapeHtml(lot.description)}</p><p class="fact"><b>${I18N.t("sheet_fact")}</b>${escapeHtml(lot.fact)}</p><button class="mid" id="close">${I18N.t("sheet_close")}</button>`;
   sh.classList.add("on");
   document.getElementById("close").onclick = () => sh.classList.remove("on");
@@ -1539,7 +1727,10 @@ function renderFinal() {
   const mode = s.results.mode;
   const score = r && mode === "vote" ? tpl("votes_score", { n: r.score, w: pluralWord(r.score, "plural_vote") }) : (r && r.score != null ? r.score : "");
   const verdict = r ? (r.verdict || (mode === "single" ? s.results.summary || "" : "")) : "";
-  app.innerHTML = `<div class="final">${ftask}<div class="place${idx >= 0 ? "" : " none"}">${idx >= 0 ? places[idx] || tpl("place_n", { n: idx + 1 }) : "—"}</div>${r ? `${score !== "" ? `<div class="score">${score}</div>` : ""}<div class="verdict">${escapeHtml(verdict)}</div>` : `<p class="sub" style="text-align:center">${I18N.t("final_no_judge")}</p>`}<div class="lots">${((p && p.lots) || []).map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("")}</div><p class="note" style="margin-top:18px">${I18N.t("final_foot")}</p></div>`;
+  // как решилась ничья и что значит «0 голосов» — то же пояснение, что на доске (§9)
+  const tieKey = mode !== "vote" ? "" : s.results.votes === 0 ? "no_votes" : s.results.tieBreak === "spent" ? "tie_spent" : s.results.tieBreak === "coin" ? "tie_coin" : "";
+  const tie = tieKey ? `<p class="note tie" id="tie">${escapeHtml(I18N.t(tieKey))}</p>` : "";
+  app.innerHTML = `<div class="final">${ftask}<div class="place${idx >= 0 ? "" : " none"}">${idx >= 0 ? places[idx] || tpl("place_n", { n: idx + 1 }) : "—"}</div>${r ? `${score !== "" ? `<div class="score">${score}</div>` : ""}<div class="verdict">${escapeHtml(verdict)}</div>` : `<p class="sub" style="text-align:center">${I18N.t("final_no_judge")}</p>`}${tie}<div class="lots">${((p && p.lots) || []).map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("")}</div><p class="note" style="margin-top:18px">${I18N.t("final_foot")}</p></div>`;
 }
 
 function confetti() {

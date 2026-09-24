@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="robots" content="noindex">
+<meta name="robots" content="noindex, follow">
 <!-- тёмная тема своя: без этого «принудительная тёмная тема» браузера перекрашивала доску -->
 <meta name="color-scheme" content="dark">
 <title>Аукцион — доска</title>
@@ -117,7 +117,7 @@
   .slots { display: flex; gap: 6px; flex-wrap: wrap; }
   .slot-i { min-width: 28px; height: 28px; border-radius: 999px; border: 1px dashed var(--glass-line); display: flex; align-items: center; gap: 6px; padding: 0 9px; font-size: 13px; }
   .slot-i.filled { border-style: solid; background: rgba(255, 255, 255, .07); }
-  .p.leader .slot-i.filled { border-color: transparent; background: linear-gradient(100deg, var(--c1), var(--c2) 85%); color: #0a0a0f; font-weight: 600; }
+  .p.leader .slot-i.filled { border-color: transparent; background: linear-gradient(100deg, var(--c1), var(--c2) 85%); background-origin: border-box; color: #0a0a0f; font-weight: 600; }
   .slot-i .n { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Плотность списка выбирается по доступной высоте, а не по числу игроков (renderPlayers):
      compact → dense → две колонки. Раньше одна ступень включалась с пятого игрока — названия
@@ -153,7 +153,7 @@
   .btn { min-height: 44px; font: 700 11.5px/1.25 var(--display); letter-spacing: .06em; text-transform: uppercase; color: #0a0a0f; background: linear-gradient(120deg, var(--c1), var(--c2)); border: 0; border-radius: 999px; padding: 13px 20px; cursor: pointer; box-shadow: 0 14px 34px -18px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .4); transition: transform .2s cubic-bezier(.3, 1.6, .5, 1), border-color .2s, background .2s, box-shadow .3s; }
   .btn.ghost { background: none; color: var(--text); border: 1px solid var(--glass-line); box-shadow: none; }
   .btn.ghost:disabled { opacity: .35; cursor: default; }
-  .btn.accent { background: linear-gradient(120deg, var(--c1), var(--c2)); color: #0a0a0f; border-color: transparent; }
+  .btn.accent { background: linear-gradient(120deg, var(--c1), var(--c2)); color: #0a0a0f; border-color: transparent; background-origin: border-box; }
   /* .overlay гасит pointer-events, поэтому кнопке «Продолжить игру» их надо вернуть — иначе клик не доходит */
   .pausebox { display: flex; flex-direction: column; align-items: center; gap: 22px; pointer-events: auto; }
   .pausebox .start { width: auto; padding: 18px 34px; }
@@ -218,7 +218,7 @@
     transition: transform .18s cubic-bezier(.3, 1.6, .5, 1), border-color .2s, background .25s, box-shadow .3s, color .25s;
   }
   .opt:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--c1) 70%, transparent); background: rgba(255, 255, 255, .08); }
-  .opt.on { color: #0a0a0f; border-color: transparent; background: linear-gradient(100deg, var(--c1), var(--c2) 75%, var(--c3)); box-shadow: 0 12px 34px -14px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .4); }
+  .opt.on { color: #0a0a0f; border-color: transparent; background: linear-gradient(100deg, var(--c1), var(--c2) 75%, var(--c3)); background-origin: border-box; box-shadow: 0 12px 34px -14px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .4); }
   .step { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; }
   .step button { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--glass-line); background: rgba(255, 255, 255, .045); color: var(--text); font: 500 19px/1 var(--body); cursor: pointer; transition: border-color .2s, background .2s; }
   .step button:hover { border-color: var(--c1); background: rgba(255, 255, 255, .09); }
@@ -364,6 +364,13 @@
     .bidbar .stamp, .bidbar .gavel-mark, .hero::before { animation: none !important; }
   }
 
+  /* монетка (§9): ничья по голосам и по деньгам — на доске видно, что решил жребий, а не сбой */
+  .coinflip { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 80; display: grid; place-items: center; align-content: center; gap: 18px; background: rgba(6, 5, 12, .72); pointer-events: none; animation: coinfade 2.4s ease forwards; }
+  .coinflip .coin { font-size: clamp(90px, 14vw, 180px); line-height: 1; animation: coinspin 1.7s cubic-bezier(.25, .8, .3, 1) forwards; }
+  .coinflip .ccap { font: 700 clamp(16px, 1.6vw, 24px)/1 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  @keyframes coinspin { 0% { transform: translateY(0) rotateX(0); } 45% { transform: translateY(-18vh) rotateX(1260deg); } 100% { transform: translateY(0) rotateX(2160deg); } }
+  @keyframes coinfade { 0%, 82% { opacity: 1; } 100% { opacity: 0; visibility: hidden; } }
+
   /* заставка перед первым лотом: задание во весь экран, затем отсчёт */
   .intro { height: 100%; display: grid; place-items: center; text-align: center; position: relative; }
   .intro .itext { display: flex; flex-direction: column; align-items: center; gap: 10px; transition: transform .45s cubic-bezier(.3, 1.2, .4, 1), opacity .45s; }
@@ -406,7 +413,10 @@
   /* подпись задания объясняет вердикты судьи — её читают с дивана вместе с «Итогами», не мельче 16px */
   .final .ftask { margin: -12px 0 18px; font-size: clamp(16px, 1.45vw, 22px); color: rgba(244, 242, 255, .78); }
   .final .ftask b { color: var(--c1); font-weight: 700; }
-  .podium { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); align-items: start; gap: 14px; }
+  /* Колонка не шире 460px (на ожидании судьи — 380px, там в карточке только лоты): у двух-трёх игроков
+     карточки растягивались на полэкрана, а лайнап занимал треть — остальное пустое стекло. */
+  .podium { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 460px)); align-items: start; gap: 14px; }
+  .thinking-screen .podium { grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 380px)); justify-content: center; }
   .pl { background: rgba(255, 255, 255, .05); border: 1px solid var(--glass-line); border-radius: 22px; padding: 18px; backdrop-filter: blur(14px); box-shadow: 0 18px 40px -30px #000; animation: rise .6s both; }
   .pl.first { border-color: var(--c1); box-shadow: 0 0 0 1px var(--c1), 0 20px 50px -20px var(--c1); }
   .pl .place { font-size: 34px; line-height: 1; }
@@ -421,7 +431,9 @@
   /* пилюли: лоты в лайнапе; у победителя — залитые градиентом */
   .chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; background: rgba(255, 255, 255, .06); border: 1px solid var(--glass-line); border-radius: 999px; padding: 6px 13px; font-size: 14px; overflow-wrap: anywhere; }
   .chip.off { opacity: .5; }
-  .pl.first .chip { color: #0a0a0f; border-color: transparent; background: linear-gradient(100deg, var(--c1), var(--c2) 80%); font-weight: 600; }
+  /* background-origin: border-box — у всех градиентов с прозрачной рамкой: иначе градиент считается от
+     внутренней области и повторяется под рамкой, по краю пилюли выходила светлая кайма другого цвета */
+  .pl.first .chip { color: #0a0a0f; border-color: transparent; background: linear-gradient(100deg, var(--c1), var(--c2) 80%); background-origin: border-box; font-weight: 600; }
   .final .summary { margin: 20px 0 0; padding: 16px 18px; font-size: 16px; background: rgba(255, 255, 255, .05); border-left: 3px solid var(--c1); border-radius: 4px 16px 16px 4px; }
   .final .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
   /* много игроков: итоги и голосование плотнее — карточки уже, вердикт короче, лоты мельче */
@@ -435,6 +447,30 @@
   .final.many .chip { font-size: 12px; padding: 3px 9px; }
   .final.many .pl .lots { gap: 4px; }
   .final.many .pl .spent { margin-top: 6px; }
+  /* Ступеньки плотнее «many» — их ставит fitFinal, пока итоги не влезут в панель без прокрутки:
+     полоса прокрутки на телевизоре выглядела сбоем, а листать доску с дивана некому. */
+  .final.tight { gap: 8px; }
+  .final.tight h2 { font-size: clamp(24px, 2.6vw, 34px); }
+  .final.tight .ftask { margin: -4px 0 6px; }
+  .final.tight .podium { grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr)); gap: 8px; }
+  .final.tight .pl { padding: 10px 12px; border-radius: 16px; }
+  .final.tight .pl .who { font-size: 15px; }
+  .final.tight .pl .verdict, .final.tight .podium .pl:nth-child(n+4) .verdict { -webkit-line-clamp: 2; font-size: 12.5px; margin: 4px 0 6px; }
+  .final.tight .chip { font-size: 11.5px; padding: 2px 8px; }
+  .final.tight .pl .spent { margin-top: 4px; font-size: 11.5px; }
+  .final.tight .summary { margin-top: 6px; padding: 10px 14px; font-size: 14px; }
+  .final.tight .actions { margin-top: 6px; }
+  .final.tight .thinking { padding-bottom: 4px; }
+  .final.tight .thinking .dice { font-size: 36px; }
+  .final.tiny .pl .verdict, .final.tiny .podium .pl:nth-child(n+4) .verdict { -webkit-line-clamp: 1; }
+  .final.tiny .pl .spent { display: none; }
+  .final.tiny .podium { grid-template-columns: repeat(auto-fill, minmax(min(128px, 100%), 1fr)); gap: 6px; }
+  .final.tiny .pl .lots { gap: 3px; }
+  .final.tiny .chip { font-size: 11px; padding: 1px 7px; }
+  .final.tiny .thinking .dice { font-size: 28px; }
+  .final.tiny .thinking h2 { font-size: 26px; }
+  /* на время замера карточки без «всплытия»: сдвиг анимации тоже считается переполнением */
+  .final.fitting .pl { animation: none; }
   /* «судья думает» — единственный блок на экране, ставим его по центру, а не под заголовок */
   /* Раньше было min-height: 100% плюс свои отступы ВНУТРИ .final, у которого есть собственный
      padding: содержимое всегда оказывалось выше контейнера, появлялась полоса прокрутки, меняла
@@ -530,7 +566,7 @@ window.I18N_DICT = {
     resume_game: `▶ Продолжить игру`,
     judge_failed: `Судья не ответил — голосуем`,
     /* лобби */
-    room_title_ph: `Назови комнату — например, «Днюха Ани»`,
+    room_title_ph: `Назови комнату — например, «Пятничный созвон»`,
     lobby_open: `Комната открыта`,
     lobby_hint: `Сканируй QR или открой ссылку и введи имя`,
     players: `Игроки`,
@@ -584,6 +620,8 @@ window.I18N_DICT = {
     btn_resume: `▶ Продолжить`,
     btn_end: `Завершить`,
     end_confirm: `Закончить игру и перейти к итогам?`,
+    skip_sure: `Точно?`,
+    coin_toss: `Бросаем монетку…`,
     fact: `Факт`,
     sold_to: `{who} забирает за {price}`,
     taken_by: `{who} забирает даром`,
@@ -670,7 +708,7 @@ window.I18N_DICT = {
     paused: `Paused`,
     resume_game: `▶ Resume game`,
     judge_failed: `The judge went quiet — we vote`,
-    room_title_ph: `Name the room — like “Anna’s birthday”`,
+    room_title_ph: `Name the room — like “Friday team call”`,
     lobby_open: `Room is open`,
     lobby_hint: `Scan the QR or open the link and type your name`,
     players: `Players`,
@@ -722,6 +760,8 @@ window.I18N_DICT = {
     btn_resume: `▶ Resume`,
     btn_end: `Finish`,
     end_confirm: `Finish the game and go to the results?`,
+    skip_sure: `Sure?`,
+    coin_toss: `Tossing a coin…`,
     fact: `Fact`,
     sold_to: `{who} takes it for {price}`,
     taken_by: `{who} takes it for free`,
@@ -806,7 +846,7 @@ window.I18N_DICT = {
     paused: `Παύση`,
     resume_game: `▶ Συνέχεια`,
     judge_failed: `Ο κριτής δεν απάντησε — ψηφίζουμε`,
-    room_title_ph: `Όνομα δωματίου, π.χ. «Γενέθλια Άννας»`,
+    room_title_ph: `Όνομα δωματίου, π.χ. «Παρασκευιάτικο call»`,
     lobby_open: `Το δωμάτιο άνοιξε`,
     lobby_hint: `Σκανάρετε το QR ή ανοίξτε το λινκ και γράψτε όνομα`,
     players: `Παίκτες`,
@@ -858,6 +898,8 @@ window.I18N_DICT = {
     btn_resume: `▶ Συνέχεια`,
     btn_end: `Τέλος`,
     end_confirm: `Τέλος παιχνιδιού και πάμε στα αποτελέσματα;`,
+    skip_sure: `Σίγουρα;`,
+    coin_toss: `Ρίχνουμε κέρμα…`,
     fact: `Το ήξερες;`,
     sold_to: `{who} το παίρνει για {price}`,
     taken_by: `{who} το παίρνει τσάμπα`,
@@ -1161,6 +1203,8 @@ function onEvent(e) {
 // ---------- рендер ----------
 function render() {
   if (!state) return;
+  // новая партия — монетка итогов снова может понадобиться
+  if (state.phase !== "finished") coinShown = "";
   if (state.phase === "lobby") return renderLobby();
   if (state.phase === "intro") return renderIntro();
   if (state.phase === "finished") return renderFinal();
@@ -1477,6 +1521,32 @@ function draftLine(s) {
   return tf(s.solo.skips ? "draft_line" : "draft_line_must", vars);
 }
 
+// «Пропустить» со ставками продаёт лот лидеру. На узкой (телефонной) доске и на сенсорном экране
+// кнопки стоят плотно, и промах пальцем продавал лот (M24): там нужен второй тап — кнопка на 3 с
+// превращается в «Точно пропустить?». На большом экране с мышью — как раньше, одним нажатием.
+var skipArmed = null;
+function onSkipClick() {
+  const btn = document.getElementById("skip");
+  const careful = matchMedia("(max-width: 760px), (pointer: coarse)").matches;
+  if (careful && (!skipArmed || skipArmed.round !== state.round)) {
+    clearTimeout(skipArmed && skipArmed.timer);
+    skipArmed = { round: state.round, timer: setTimeout(disarmSkip, 3000) };
+    btn.textContent = T("skip_sure");
+    btn.classList.add("accent");
+    return;
+  }
+  // round: запоздавшее нажатие (промах, медленная сеть) не должно продать уже следующий лот
+  const round = skipArmed ? skipArmed.round : state.round;
+  disarmSkip();
+  sendMsg({ type: "skip_lot", round });
+}
+function disarmSkip() {
+  if (skipArmed) clearTimeout(skipArmed.timer);
+  skipArmed = null;
+  const btn = document.getElementById("skip");
+  if (btn) { btn.textContent = T("btn_skip"); btn.classList.remove("accent"); }
+}
+
 function renderGame() {
   document.body.classList.remove("m-lobby");
   const s = state;
@@ -1496,7 +1566,7 @@ function renderGame() {
       </aside>`;
     document.getElementById("pause").onclick = () => sendMsg({ type: state.paused ? "resume" : "pause" });
     // round: запоздавшее нажатие (промах, медленная сеть) не должно продать уже следующий лот
-    document.getElementById("skip").onclick = () => sendMsg({ type: "skip_lot", round: state.round });
+    document.getElementById("skip").onclick = onSkipClick;
     document.getElementById("end").onclick = () => confirm(T("end_confirm")) && sendMsg({ type: "end" });
     if (!timerTicking) { timerTicking = true; requestAnimationFrame(tickTimer); }
   }
@@ -1504,6 +1574,8 @@ function renderGame() {
   pauseBtn.textContent = T(s.paused ? "btn_resume" : "btn_pause");
   pauseBtn.classList.toggle("accent", !!s.paused);
   document.getElementById("skip").disabled = s.paused || !(s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "draft");
+  // лот сменился, пока кнопка ждала второго тапа, — подтверждение относилось к прошлому лоту
+  if (skipArmed && (skipArmed.round !== s.round || document.getElementById("skip").disabled)) disarmSkip();
   document.getElementById("lotno").textContent = tf("lot_of", { n: s.round + 1, total: Math.max(s.rounds, s.round + 1) });
   const gtask = document.getElementById("gtask");
   if (gtask) {
@@ -1637,7 +1709,7 @@ function renderFinal() {
       // напоминания критерия «побеждает самый нелепый набор» игроки голосуют за лучший.
       const vmode = modeT(s.settings.mode, s.kind);
       const vtask = vmode && vmode.id !== "base" ? `<div class="ftask"><b>${escapeHtml(vmode.icon + " " + vmode.title)}</b> — ${escapeHtml(vmode.short || "")}</div>` : "";
-      app.innerHTML = `<div class="final${players.length > 6 ? " many" : ""}"><h2>${T("vote_title")}</h2>${vtask}<p style="color:var(--muted)">${escapeHtml(tf("vote_expl", { done: s.votes, total: players.filter((p) => p.lots.length).length }))}</p><div class="podium">${players.map((p) => lineupCard(p, null)).join("")}</div></div>`;
+      app.innerHTML = `<div class="final"><h2>${T("vote_title")}</h2>${vtask}<p style="color:var(--muted)">${escapeHtml(tf("vote_expl", { done: s.votes, total: players.filter((p) => p.lots.length).length }))}</p><div class="podium">${players.map((p) => lineupCard(p, null)).join("")}</div></div>`;
     } else {
       // Пока судья думает, показываем сами лайнапы: экран с одним кубиком на телевизоре
       // выглядел пустым, а людям как раз интересно посмотреть, кто что собрал.
@@ -1646,7 +1718,7 @@ function renderFinal() {
         `<p style="color:var(--muted)">${T("judging_sub")}</p></div>` +
         (lineups.length ? `<div class="podium">${lineups.map((p) => lineupCard(p, null)).join("")}</div>` : "") + `</div>`;
     }
-    return;
+    return fitFinal();
   }
   const r = s.results;
   const places = ["🥇", "🥈", "🥉"];
@@ -1659,9 +1731,11 @@ function renderFinal() {
   // голосование: как решилась ничья и что значит «0 голосов» — говорим вслух (§9, «монетка на доске»)
   const voteNote = r.mode !== "vote" ? "" : r.votes === 0 ? T("no_votes") : r.tieBreak === "spent" ? T("tie_spent") : r.tieBreak === "coin" ? T("tie_coin") : "";
   const summary = [r.summary, voteNote].filter(Boolean).join(" ");
-  app.innerHTML = `<div class="final${r.ranking.length > 6 ? " many" : ""}"><h2>${T("results_title")}</h2>${ftask}<div class="podium">${r.ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: places[i] || `${i + 1}.`, score: x.score, verdict: x.verdict, first: i === 0, mode: r.mode, delay: Math.min(1.4, (r.ranking.length - 1 - i) * .16) })).join("")}</div>${summary ? `<div class="summary">${escapeHtml(summary)}</div>` : ""}<div class="actions"><button class="btn" id="again">${T("btn_again")}</button><button class="btn ghost" id="another">${T("btn_another")}</button></div></div>`;
+  coinFlip(r);
+  app.innerHTML = `<div class="final"><h2>${T("results_title")}</h2>${ftask}<div class="podium">${r.ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: places[i] || `${i + 1}.`, score: x.score, verdict: x.verdict, first: i === 0, mode: r.mode, delay: Math.min(1.4, (r.ranking.length - 1 - i) * .16) })).join("")}</div>${summary ? `<div class="summary">${escapeHtml(summary)}</div>` : ""}<div class="actions"><button class="btn" id="again">${T("btn_again")}</button><button class="btn ghost" id="another">${T("btn_another")}</button></div></div>`;
   // Кнопки обязаны делать разное: раньше обе слали одно и то же, и «Другая категория»
   // возвращала в лобби с той же самой категорией — то есть просто врала.
+  fitFinal();
   document.getElementById("again").onclick = () => sendMsg({ type: "next_game", kind: s.kind });
   document.getElementById("another").onclick = () => {
     const others = (kinds || []).filter((k) => k !== s.kind);
@@ -1669,6 +1743,39 @@ function renderFinal() {
     sendMsg({ type: "next_game", kind: pick });
   };
 }
+// Монетку показываем один раз на итоги: финал перерисовывается на каждом state (вход, выход),
+// и бросок не должен повторяться. «Меньше движения» — без броска, пояснение и так в тексте итогов.
+var coinShown = "";
+function coinFlip(r) {
+  if (r.mode !== "vote" || r.tieBreak !== "coin") return;
+  const key = CODE + ":" + r.ranking.map((x) => x.playerId).join(",");
+  if (coinShown === key) return;
+  coinShown = key;
+  try { if (matchMedia("(prefers-reduced-motion: reduce)").matches) return; } catch (e) {}
+  const box = el("div", "coinflip");
+  box.id = "coinflip";
+  box.append(el("div", "coin", "🪙"), el("div", "ccap", T("coin_toss")));
+  document.body.append(box);
+  setTimeout(() => box.remove(), 2600);
+}
+// Плотность итогов — по месту, как у списка игроков (fitPlayers): пока всё влезает, карточки полные,
+// не влезает — ступенька плотнее. Раньше «many» ставилось по числу игроков (> 6), и уже при 5–6
+// лайнапах на экране 720–900px у панели вылезала полоса прокрутки. На узкой доске (телефон)
+// прокрутка остаётся: там лайнапы идут в одну колонку и в экран не лезут в принципе.
+const FINAL_DENSITY = [[], ["many"], ["many", "tight"], ["many", "tight", "tiny"]];
+function fitFinal() {
+  const box = app.querySelector(".final");
+  if (!box) return;
+  box.classList.add("fitting");
+  const levels = box.clientWidth >= 600 ? FINAL_DENSITY : FINAL_DENSITY.slice(0, 2);
+  for (const level of levels) {
+    box.classList.remove("many", "tight", "tiny");
+    level.forEach((c) => box.classList.add(c));
+    if (box.scrollHeight <= box.clientHeight + 1) break;
+  }
+  box.classList.remove("fitting");
+}
+addEventListener("resize", () => { if (state && state.phase === "finished") fitFinal(); });
 function lineupCard(p, res) {
   if (!p) return "";
   const lots = p.lots.map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("") || `<span style="color:var(--muted)">${T("empty")}</span>`;

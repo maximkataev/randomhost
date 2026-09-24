@@ -54,6 +54,13 @@ const MSG_RATE = Number(process.env.MSG_RATE || 40); // сообщений в с
 // получали 503. Свой маленький потолок и короткий срок жизни (poll-аноним без join дольше
 // ANON_TTL_MS закрывается при обходе).
 const MAX_ANON_PER_ROOM = Number(process.env.MAX_ANON_PER_ROOM || 30);
+const MAX_ANON_PER_IP = Number(process.env.MAX_ANON_PER_IP || 10); // из них — с одного адреса
+// Сжатие WebSocket (M15) — по умолчанию ВЫКЛЮЧЕНО, включается WS_DEFLATE=1. Замер (macOS, партии
+// со ставками, окна 2^10, memLevel 4, порог 1 КБ): трафик state меньше в 4 раза, но RSS 225 сокетов —
+// 161 МБ против 109 МБ без сжатия, 450 сокетов — 221 МБ против 112 МБ и продолжает расти (zlib-контекст
+// и фрагментация на каждый сокет). При mem_limit 256m и потолке 3000 соединений это прямой путь к OOM.
+// Трафик вместо этого срезан на уровне протокола (state без повторов, d=1) — ~55% от полного.
+const WS_DEFLATE = process.env.WS_DEFLATE === "1";
 const ANON_TTL_MS = Number(process.env.ANON_TTL_MS || 30000);
 // Сколько ждём следующий опрос после ответа на предыдущий, прежде чем считать poll-клиента ушедшим
 const POLL_GAP_MS = Number(process.env.POLL_GAP_MS || 12000);
@@ -131,7 +138,17 @@ function destroyRoom(room) {
   clearInterval(room.botTimer);
   for (const t of room.offlineTimers.values()) clearTimeout(t);
   room.offlineTimers.clear();
-  for (const c of room.sockets) { try { send(c.ws, { type: "error", error: "room_expired" }); c.ws.terminate(); } catch {} }
+  // Сначала дожидаемся, пока кадр «room_expired» уйдёт, и только потом рвём сокет: со сжатием
+  // (perMessageDeflate) terminate сразу после send терял кадр, и игрок видел «нет связи» вместо
+  // «комната закрылась». Предохранитель на 1 с — если сокет уже не пишет.
+  for (const c of room.sockets) {
+    try {
+      if (c.poll || c.ws.readyState !== 1) { send(c.ws, { type: "error", error: "room_expired" }); c.ws.terminate(); continue; }
+      const ws = c.ws;
+      const kill = setTimeout(() => { try { ws.terminate(); } catch {} }, 1000);
+      ws.send(JSON.stringify({ type: "error", error: "room_expired" }), () => { clearTimeout(kill); try { ws.close(4000, "room_expired"); } catch {} setTimeout(() => { try { ws.terminate(); } catch {} }, 1000).unref(); });
+    } catch {}
+  }
   for (const [sid, c] of pollClients) if (c.room === room) pollClients.delete(sid);
   rooms.delete(room.code);
 }
@@ -281,8 +298,38 @@ function afterChange(room, events = []) {
   schedule(room);
 }
 
+// ---- state без повторов (M16) ----
+// Снимок уходит всем на каждое событие, а тяжёлые его части — настройки, карточка лота, лоты
+// игроков — между событиями почти не меняются: ставка за ставкой гоняли одни и те же килобайты.
+// Клиент, открывший соединение с d=1, получает такие части, только когда они изменились для него
+// (сравниваем с тем, что ему уже отправили), остальное берёт из своего кэша (auctionMergeState в
+// auction-shared.js). Старые клиенты без d=1 получают полный снимок, как раньше; hello — всегда полный.
+const HEAVY = ["settings", "lot", "lots"];
+function packState(snap) {
+  const lots = {};
+  const players = snap.players.map(({ lots: l, ...p }) => { lots[p.id] = l; return p; });
+  const parts = { settings: JSON.stringify(snap.settings), lot: JSON.stringify(snap.lot), lots: JSON.stringify(lots) };
+  // settings/lot = undefined JSON выкидывает — в base их нет, дописываем по надобности
+  const base = JSON.stringify({ ...snap, settings: undefined, lot: undefined, players, d: 1 });
+  return { full: null, snap, base, parts };
+}
+function stateData(packed, c) {
+  if (!c.delta) return packed.full || (packed.full = JSON.stringify({ type: "state", state: packed.snap }));
+  const sent = c.sent || (c.sent = {});
+  let extra = "";
+  for (const k of HEAVY) if (sent[k] !== packed.parts[k]) { sent[k] = packed.parts[k]; extra += `,"${k}":${packed.parts[k]}`; }
+  return `{"type":"state","state":${packed.base.slice(0, -1)}${extra}}}`;
+}
+// hello несёт полный снимок: запоминаем, что у клиента теперь есть, — дальше шлём ему только разницу
+function sendHello(room, c) {
+  const snap = snapshotWithVoting(room);
+  if (c.delta) c.sent = packState(snap).parts;
+  send(c.ws, { type: "hello", code: room.code, state: snap, kinds: Object.keys(KINDS) });
+}
+
 function broadcast(room, msg) {
-  const data = JSON.stringify(msg);
+  const packed = msg.type === "state" ? packState(msg.state) : null;
+  const data = packed ? null : JSON.stringify(msg);
   for (const c of room.sockets) {
     if (c.ws.readyState !== 1) continue;
     // У poll-сессии буфера нет: её очередь ограничена сроком жизни сессии (40 с без опроса — снос).
@@ -291,7 +338,7 @@ function broadcast(room, msg) {
       c.ws.terminate();
       continue;
     }
-    c.ws.send(data);
+    c.ws.send(packed ? stateData(packed, c) : data);
   }
 }
 
@@ -494,7 +541,7 @@ function clientIp(req) {
 
 const pollClients = new Map(); // sid → client
 
-function openPoll(room) {
+function openPoll(room, opts = {}) {
   const sid = crypto.randomBytes(12).toString("base64url");
   const shim = {
     readyState: 1,
@@ -504,10 +551,10 @@ function openPoll(room) {
     ping: () => {},
     terminate: () => closePoll(sid),
   };
-  const client = { ws: shim, playerId: null, host: false, alive: true, poll: true, room, sid, lastSeen: now(), opened: now(), inflight: false };
+  const client = { ws: shim, playerId: null, host: false, alive: true, poll: true, room, sid, lastSeen: now(), opened: now(), inflight: false, ip: opts.ip || "", delta: !!opts.delta };
   room.sockets.add(client);
   pollClients.set(sid, client);
-  send(shim, { type: "hello", code: room.code, state: snapshotWithVoting(room), kinds: Object.keys(KINDS) });
+  sendHello(room, client);
   return client;
 }
 
@@ -528,8 +575,9 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/auction/api/session") {
     const room = rooms.get((url.searchParams.get("r") || "").toUpperCase());
     if (!room) return json(404, { error: "no such room" });
-    if (room.sockets.size >= MAX_SOCKETS_PER_ROOM || totalSockets() >= MAX_TOTAL_SOCKETS || anonCount(room) >= MAX_ANON_PER_ROOM) return json(503, { error: "busy" });
-    const client = openPoll(room);
+    const ip = clientIp(req);
+    if (!roomHasSpace(room, ip)) return json(503, { error: "busy" });
+    const client = openPoll(room, { ip, delta: url.searchParams.get("d") === "1" });
     const first = client.ws.queue.splice(0);
     return json(200, { sid: client.sid, messages: first.map((d) => JSON.parse(d)) });
   }
@@ -583,15 +631,34 @@ const server = http.createServer(async (req, res) => {
 });
 
 // анонимы — соединения, которые не стали ни игроком, ни доской (зритель после host_lost — не аноним)
-function anonCount(room) {
+const isAnon = (c) => !c.playerId && !c.host && !c.wasHost && !c.hostRemote;
+function anonCount(room, ip) {
   let n = 0;
-  for (const c of room.sockets) if (!c.playerId && !c.host && !c.wasHost) n++;
+  for (const c of room.sockets) if (isAnon(c) && (ip === undefined || c.ip === ip)) n++;
   return n;
+}
+// Место для нового соединения. Помимо общих потолков — потолок анонимов с одного адреса внутри
+// комнаты (M14): один клиент больше не забивает все анонимные места комнаты. Игроков и доски
+// по адресу не считаем — за NAT кафе или офиса вся компания сидит на одном IP.
+function roomHasSpace(room, ip) {
+  if (room.sockets.size >= MAX_SOCKETS_PER_ROOM || totalSockets() >= MAX_TOTAL_SOCKETS) return false;
+  if (anonCount(room) >= MAX_ANON_PER_ROOM) return false;
+  return !ip || anonCount(room, ip) < MAX_ANON_PER_IP;
 }
 
 // ---------- WebSocket ----------
 
-const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MSG_BYTES });
+const wss = new WebSocketServer({
+  noServer: true,
+  maxPayload: MAX_MSG_BYTES,
+  perMessageDeflate: WS_DEFLATE && {
+    threshold: 1024,
+    serverMaxWindowBits: 10,
+    clientMaxWindowBits: 10,
+    zlibDeflateOptions: { memLevel: 4, level: 6 },
+    concurrencyLimit: 4,
+  },
+});
 
 server.on("upgrade", (req, socket, head) => {
   const url = new URL(req.url, "http://x");
@@ -599,18 +666,19 @@ server.on("upgrade", (req, socket, head) => {
   const room = rooms.get((url.searchParams.get("r") || "").toUpperCase());
   if (!room) { socket.write("HTTP/1.1 404 Not Found\r\n\r\n"); return socket.destroy(); }
   // потолок соединений на комнату и на процесс: без него один клиент открывает тысячи сокетов
-  if (room.sockets.size >= MAX_SOCKETS_PER_ROOM || totalSockets() >= MAX_TOTAL_SOCKETS || anonCount(room) >= MAX_ANON_PER_ROOM) {
+  const ip = clientIp(req);
+  if (!roomHasSpace(room, ip)) {
     socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
     return socket.destroy();
   }
-  wss.handleUpgrade(req, socket, head, (ws) => onConnection(room, ws));
+  wss.handleUpgrade(req, socket, head, (ws) => onConnection(room, ws, { ip, delta: url.searchParams.get("d") === "1" }));
 });
 
-function onConnection(room, ws) {
-  const client = { ws, playerId: null, host: false, misses: 0 };
+function onConnection(room, ws, opts = {}) {
+  const client = { ws, playerId: null, host: false, misses: 0, ip: opts.ip || "", delta: !!opts.delta };
   room.sockets.add(client);
   ws.on("pong", () => (client.misses = 0));
-  send(ws, { type: "hello", code: room.code, state: snapshotWithVoting(room), kinds: Object.keys(KINDS) });
+  sendHello(room, client);
 
   ws.on("message", (raw) => {
     if (!rateOk(client)) return; // флуд по одному сокету не тратит CPU всей комнаты
@@ -624,6 +692,10 @@ function onConnection(room, ws) {
     scheduleOffline(room, client.playerId);
   });
 }
+
+// права ведущего: доска (host) или пульт ведущего с хост-токеном (hostRemote, §10.4).
+// Настройки, «ещё раз» и боты остаются за доской: это экран лобби и итогов, а не пульт.
+const isHost = (c) => !!(c.host || c.hostRemote);
 
 function handle(room, client, msg) {
   const g = room.game;
@@ -641,6 +713,14 @@ function handle(room, client, msg) {
 
   switch (msg.type) {
     case "host": {
+      // Ведущий, который играет с телефона (§10.4): пульт с сохранённым хост-токеном получает права
+      // ведущего на своём соединении, не отбирая их у доски, — доска остаётся на связи и в управлении,
+      // логика «вторая доска забирает управление» (H9) касается только досок.
+      if (msg.remote) {
+        if (msg.token !== room.hostToken) return reply({ type: "host_denied" });
+        client.hostRemote = true;
+        return reply({ type: "host_ok", remote: true });
+      }
       if (msg.token !== room.hostToken) return reply({ type: "error", error: "bad host token" });
       // Одна доска на комнату: предыдущая становится зрителем — и узнаёт об этом. Раньше права
       // отнимались молча: её кнопки просто переставали действовать, а локальные правки настроек
@@ -770,12 +850,12 @@ function handle(room, client, msg) {
       return afterChange(room, []);
     }
     case "start": {
-      if (!client.host) return;
+      if (!isHost(client)) return;
       return afterChange(room, g.start(t));
     }
     // пропуск ведущим тоже привязан к лоту: запоздавшее нажатие не должно продать следующий лот
-    case "skip_lot": return client.host && !stale(msg) ? afterChange(room, g.hostSkip(t)) : undefined;
-    case "pause": return client.host ? afterChange(room, g.pause(t)) : undefined;
+    case "skip_lot": return isHost(client) && !stale(msg) ? afterChange(room, g.hostSkip(t)) : undefined;
+    case "pause": return isHost(client) ? afterChange(room, g.pause(t)) : undefined;
     case "resume": {
       // Управляет партией ведущий, и это правильно. Но если доска умерла — ноутбук уснул, вкладку
       // закрыли, браузер убил страницу — снять паузу становится некому, и живые игроки сидят перед
@@ -783,12 +863,14 @@ function handle(room, client, msg) {
       // только пока не подключено ни одной доски. Пропуск лота и завершение партии остаются за ней:
       // они меняют исход, а «Продолжить» лишь возвращает то, что и так шло.
       const noBoard = ![...room.sockets].some((c) => c.host);
-      if (!client.host && !noBoard) return;
-      if (!client.host) console.log(`[auction] ${room.code}: доски нет — партию продолжил ${g.player(client.playerId)?.name || "игрок"}`);
+      if (!isHost(client) && !noBoard) return;
+      if (!isHost(client)) console.log(`[auction] ${room.code}: доски нет — партию продолжил ${g.player(client.playerId)?.name || "игрок"}`);
       return afterChange(room, g.resume(t));
     }
     case "kick": {
-      if (!client.host) return;
+      if (!isHost(client)) return;
+      // ведущий с пульта не выгоняет сам себя случайным тапом — для этого есть «Выйти»
+      if (client.hostRemote && !client.host && msg.playerId === client.playerId) return;
       const events = g.removePlayer(msg.playerId);
       for (const c of room.sockets) if (c.playerId === msg.playerId) { c.playerId = null; send(c.ws, { type: "kicked" }); }
       // выгнали отключённого — отключённых могло стать не больше половины (§7.4)
@@ -797,7 +879,7 @@ function handle(room, client, msg) {
       return maybeFinishVoting(room);
     }
     case "end": {
-      if (!client.host) return;
+      if (!isHost(client)) return;
       return afterChange(room, g.s.phase === "finished" ? [] : g.finish("host_ended"));
     }
     case "next_game": {

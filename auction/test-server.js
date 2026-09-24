@@ -437,6 +437,70 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
     for (const x of [h, ...vs]) x.ws.close();
   }
 
+  // ---------- M29: ведущий играет с телефона (§10.4) ----------
+  // Пульт с хост-токеном получает права ведущего на своём соединении, доска при этом остаётся
+  // в управлении (никакого host_lost), а игрок без токена управлять не может.
+  {
+    const r = await make({ slots: 3, budget: 20, t1: 20000, t2: 5000 });
+    const h = await connect(r.code, { type: "host", token: r.hostToken });
+    const a = await connect(r.code, { type: "join", name: "Ведущий" });
+    const b = await connect(r.code, { type: "join", name: "Боб" });
+    const c = await connect(r.code, { type: "join", name: "Кира" });
+    a.send({ type: "host", token: r.hostToken, remote: true });
+    b.send({ type: "host", token: "wrong", remote: true });
+    await until(() => has(a, "host_ok") && has(b, "host_denied"), 2000);
+    check(has(a, "host_ok", (m) => m.remote) && !has(h, "host_lost"), "пульт с хост-токеном получает права ведущего, доска их не теряет");
+    check(has(b, "host_denied") && !b.closed && !has(b, "error"), "чужой токен с пульта → host_denied, соединение игрока живо");
+    b.send({ type: "start" });
+    await wait(300);
+    check(h.state.phase === "lobby", "игрок без токена не стартует игру");
+    await until(() => h.state.players.every((p) => p.online));
+    a.send({ type: "start" });
+    check(await until(() => h.state.phase === "lot", 3000), "ведущий с пульта стартует игру");
+    b.send({ type: "pause" });
+    b.send({ type: "end" });
+    b.send({ type: "kick", playerId: c.me });
+    b.send({ type: "skip_lot", round: h.state.round });
+    await wait(400);
+    check(!h.state.paused && h.state.phase === "lot" && h.state.round === 0 && !h.state.players.find((p) => p.id === c.me).left, "пауза/завершение/кик/пропуск от игрока без прав игнорируются");
+    a.send({ type: "pause" });
+    await until(() => h.state.paused, 2000);
+    check(h.state.paused && !h.state.pausedAuto, "ведущий с пульта ставит паузу");
+    h.send({ type: "resume" });
+    await until(() => !h.state.paused, 2000);
+    check(!h.state.paused, "доска по-прежнему управляет (снимает паузу ведущего с пульта)");
+    a.send({ type: "skip_lot", round: h.state.round });
+    check(await until(() => h.state.round === 1 || h.state.phase === "unsold", 3000), "ведущий с пульта пропускает лот");
+    // H9 не сломан: вторая доска забирает управление у первой, пульт ведущего права сохраняет
+    const h2 = await connect(r.code, { type: "host", token: r.hostToken });
+    await until(() => has(h, "host_lost"), 2000);
+    check(has(h, "host_lost") && !has(a, "host_lost"), "вторая доска отбирает права у первой доски, но не у пульта ведущего");
+    a.send({ type: "kick", playerId: a.me });
+    await wait(300);
+    check(!h2.state.players.find((p) => p.id === a.me).left, "ведущий с пульта не выгоняет сам себя");
+    a.send({ type: "kick", playerId: c.me });
+    await until(() => has(c, "kicked"), 2000);
+    check(has(c, "kicked") && h2.state.players.find((p) => p.id === c.me).left, "ведущий с пульта выгоняет игрока");
+    // права живут на соединении: после переподключения без повторного host их нет
+    a.ws.close();
+    const a2 = await connect(r.code, { type: "join", name: "", token: a.token });
+    a2.send({ type: "end" });
+    await wait(300);
+    check(h2.state.phase !== "finished", "новое соединение без запроса host прав ведущего не имеет");
+    a2.send({ type: "host", token: r.hostToken, remote: true });
+    await until(() => has(a2, "host_ok"), 2000);
+    a2.send({ type: "end" });
+    check(await until(() => h2.state.phase === "finished", 3000), "ведущий с пульта завершает игру");
+    for (const x of [h, h2, a2, b, c]) x.ws.close();
+  }
+
+  // ---------- M16: state без повторов тяжёлых частей ----------
+  // Клиент с d=1 получает настройки/лот/лоты игроков только при изменении и собирает полный снимок
+  // сам (auctionMergeState из auction-shared.js). Проверяем, что собранное состояние совпадает
+  // с полным снимком на всём протяжении партии с ботами — по WebSocket, по long-polling и после
+  // переподключения, и что трафик действительно меньше.
+  await deltaSuite(make);
+
   // health и неизвестная комната
   const h = await (await fetch(BASE + "/auction/api/health")).json();
   check(h.ok === true, "health ok");
@@ -445,6 +509,7 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
 
   // ---------- лимиты против DoS (отдельный дочерний сервер с крошечными потолками) ----------
   await limitsSuite();
+  await anonIpSuite();
 
   // ---------- дамп и восстановление партии (свой инстанс со своим файлом) ----------
   await dumpSuite();
@@ -830,6 +895,130 @@ async function shutdownSuite() {
     child.kill("SIGTERM");
     await until(() => code !== null, 5000);
     check(code === 1012, `при перезапуске сокет закрывается кодом 1012 Service Restart (получено ${code})`);
+  } finally {
+    child.kill("SIGKILL");
+  }
+}
+
+// Каноническая строка: порядок ключей не важен (клиент дописывает части в другом порядке)
+function canon(v) {
+  if (Array.isArray(v)) return "[" + v.map(canon).join(",") + "]";
+  if (v && typeof v === "object") return "{" + Object.keys(v).filter((k) => v[k] !== undefined).sort().map((k) => JSON.stringify(k) + ":" + canon(v[k])).join(",") + "}";
+  return JSON.stringify(v);
+}
+function loadMerge() {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "..", "auction-shared.js"), "utf8");
+  const m = src.match(/\/\* merge:start \*\/([\s\S]*?)\/\* merge:end \*\//);
+  return new Function(m[1] + "; return auctionMergeState;")();
+}
+
+async function deltaSuite(make) {
+  const merge = loadMerge();
+  const r = await make({ slots: 3, budget: 20, judge: "vote" }, 12);
+  const full = [], fullSet = new Set();
+  let bytesFull = 0, bytesDelta = 0;
+  // эталон — клиент без d=1: получает полный снимок, как старые пульты
+  const ref = new WebSocket(WS + r.code);
+  ref.on("message", (raw) => { const m = JSON.parse(raw); if (m.type === "state") { bytesFull += raw.length; full.push(m.state); fullSet.add(canon(m.state)); } });
+  await new Promise((d) => ref.on("open", d));
+  const bad = [];
+  const mkDelta = (label) => {
+    const cache = {};
+    const x = { states: 0, ws: new WebSocket(WS + r.code + "&d=1") };
+    x.ws.on("message", (raw) => {
+      const m = JSON.parse(raw);
+      if (m.type !== "state" && m.type !== "hello") return;
+      if (m.type === "state") bytesDelta += raw.length;
+      const st = merge(cache, m.state);
+      x.states++;
+      x.last = st;
+      if (m.type === "state") x.pending = (x.pending || []).concat(canon(st));
+    });
+    x.label = label;
+    return x;
+  };
+  const d1 = mkDelta("ws");
+  await new Promise((d) => d1.ws.on("open", d));
+  // long-polling с d=1
+  const pollCache = {}, pollStates = [];
+  const ses = await (await fetch(BASE + "/auction/api/session?r=" + r.code + "&d=1")).json();
+  let polling = true;
+  const eat = (msgs) => { for (const m of msgs) if (m.type === "state" || m.type === "hello") { const st = merge(pollCache, m.state); if (m.type === "state") pollStates.push(canon(st)); } };
+  eat(ses.messages);
+  // анонимную poll-сессию сервер закрывает через 30 с — представляемся пультом ведущего
+  await fetch(BASE + "/auction/api/msg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid: ses.sid, msg: { type: "host", token: r.hostToken, remote: true } }) });
+  (async () => { while (polling) { try { const b = await (await fetch(BASE + "/auction/api/poll?sid=" + ses.sid)).json(); eat(b.messages || []); } catch { break; } } })();
+  const h = await connect(r.code, { type: "host", token: r.hostToken });
+  h.send({ type: "bots", n: 4 });
+  await until(() => h.state.players.length === 4);
+  h.send({ type: "start" });
+  // посреди партии пульт переподключается: новый hello, дальше опять разница
+  await until(() => h.state.round >= 2, 20000);
+  d1.ws.close();
+  const d2 = mkDelta("ws после переподключения");
+  await new Promise((d) => d2.ws.on("open", d));
+  await until(() => h.state.phase === "finished" && h.state.results, 60000);
+  await wait(500);
+  polling = false;
+  for (const x of [d1, d2]) for (const c of x.pending || []) if (!fullSet.has(c)) bad.push(x.label);
+  for (const c of pollStates) if (!fullSet.has(c)) bad.push("poll");
+  check(full.length > 20 && (d1.pending || []).length > 5 && (d2.pending || []).length > 5 && pollStates.length > 20, `delta-клиенты получили состояния (полных ${full.length}, ws ${(d1.pending || []).length}+${(d2.pending || []).length}, poll ${pollStates.length})`);
+  check(!bad.length, `собранное из разницы состояние совпадает с полным снимком (расхождений ${bad.length}: ${[...new Set(bad)].join(", ")})`);
+  check(canon(d2.last) === canon(full[full.length - 1]), "после переподключения итоговое состояние delta-клиента равно полному");
+  const ratio = bytesDelta / Math.max(1, bytesFull);
+  console.log(`    трафик state: полный ${bytesFull} Б, с d=1 ${bytesDelta} Б (${Math.round(ratio * 100)}%)`);
+  check(ratio < 0.75, `с d=1 state заметно легче (${Math.round(ratio * 100)}% от полного)`);
+  for (const x of [ref, d2.ws, h.ws]) x.close();
+}
+
+// ---------- M14: потолок анонимных соединений с одного адреса внутри комнаты ----------
+// Анонимы (без join/host) с одного IP не забивают все анонимные места комнаты; игроки за одним
+// NAT при этом не ограничены — считаются только анонимы.
+async function anonIpSuite() {
+  const { spawn } = require("child_process");
+  const path = require("path");
+  const PORT = 3700 + Math.floor(Math.random() * 90);
+  const B = `http://127.0.0.1:${PORT}`;
+  const child = spawn(process.execPath, [path.join(__dirname, "server.js")], {
+    env: { ...process.env, PORT: String(PORT), NODE_ENV: "production", MAX_ANON_PER_IP: "3", MAX_ANON_PER_ROOM: "30",
+      DUMP_FILE: path.join(require("os").tmpdir(), `anonip-${PORT}.json`) },
+    stdio: "ignore",
+  });
+  try {
+    let up = false;
+    for (let i = 0; i < 50 && !up; i++) { try { up = (await fetch(B + "/auction/api/health")).ok; } catch { await wait(100); } }
+    check(up, "сервер для лимита анонимов поднялся");
+    const room = await (await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal" }) })).json();
+    const url = B.replace(/^http/, "ws") + "/auction/ws?r=" + room.code;
+    const open = (ip, first) => new Promise((done) => {
+      const ws = new WebSocket(url, { headers: { "X-Real-IP": ip } });
+      ws.on("open", () => { if (first) ws.send(JSON.stringify(first)); done(ws); });
+      ws.on("error", () => done(null));
+      setTimeout(() => done(null), 3000);
+    });
+    const anonA = [];
+    for (let i = 0; i < 5; i++) anonA.push(await open("10.0.0.1"));
+    const okA = anonA.filter(Boolean).length;
+    check(okA === 3, `анонимов с одного адреса в комнате не больше 3 (открыто ${okA} из 5)`);
+    const other = await open("10.0.0.2");
+    check(!!other, "аноним с другого адреса проходит");
+    const sess = await fetch(B + "/auction/api/session?r=" + room.code, { headers: { "X-Real-IP": "10.0.0.1" } });
+    check(sess.status === 503, `poll-сессия сверх лимита адреса → 503 (${sess.status})`);
+    // подделка X-Forwarded-For при доверенном X-Real-IP не создаёт новый адрес
+    const spoof = await new Promise((done) => { const ws = new WebSocket(url, { headers: { "X-Real-IP": "10.0.0.1", "X-Forwarded-For": "1.2.3.4" } }); ws.on("open", () => done(ws)); ws.on("error", () => done(null)); });
+    check(!spoof, "подделанный X-Forwarded-For не обходит лимит адреса");
+    // NAT: игроки с того же адреса входят без ограничения — анонимами они остаются доли секунды
+    for (const ws of anonA) if (ws) ws.close();
+    await wait(200);
+    const players = [];
+    for (let i = 0; i < 8; i++) players.push(await open("10.0.0.1", { type: "join", name: "NAT" + i }));
+    await wait(300);
+    const okP = players.filter((w) => w && w.readyState === 1).length;
+    check(okP === 8, `8 игроков за одним NAT входят (вошло ${okP})`);
+    const anonAfter = [];
+    for (let i = 0; i < 3; i++) anonAfter.push(await open("10.0.0.1"));
+    check(anonAfter.filter(Boolean).length === 3, "вошедшие игроки не занимают места анонимов своего адреса");
+    for (const ws of [other, ...players, ...anonAfter]) if (ws) ws.close();
   } finally {
     child.kill("SIGKILL");
   }

@@ -1,0 +1,2681 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+  <title>Викирандом — победителя выбирает свежая правка Википедии</title>
+  <meta name="description" content="📖 Честный рандомайзер на живой Википедии: ловим первую правку после нажатия, складываем номера букв в заголовке статьи — остаток от деления и есть победитель. С настройкой вероятностей." data-i18n-meta="meta_desc">
+  <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1">
+  <link rel="canonical" href="https://randomhost.online/wiki-random.html">
+
+  <!-- Open Graph -->
+  <meta property="og:locale" content="ru_RU">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Викирандом — победителя выбирает свежая правка Википедии">
+  <meta property="og:description" content="Ловим первую правку Википедии после нажатия, складываем номера букв в заголовке статьи: остаток от деления — номер победителя.">
+  <meta property="og:url" content="https://randomhost.online/wiki-random.html">
+  <meta property="og:site_name" content="Рандомайзер-игры">
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>📖</text></svg>" type="image/svg+xml">
+
+  <meta name="theme-color" content="#f6f6f6">
+
+  <style>
+    /* Викирандом одет как служебная страница Википедии: бумага, антиква в заголовках,
+       серые линейки, синие ссылки. Скругления — 2px, как у кнопок MediaWiki; теней и свечений нет. */
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+
+      --paper: #ffffff;
+      --page: #f6f6f6;
+      --ink: #202122;
+      --muted: #54595d;
+      --faint: #72777d;
+      --rule: #a2a9b1;
+      --rule-soft: #c8ccd1;
+      --head: #eaecf0;
+      --box: #f8f9fa;
+      --link: #3366cc;
+      --link-visited: #795cb2;
+      --link-hover: #447ff5;
+      --link-active: #2a4b8d;
+      --plus: #006400;
+      --minus: #8b0000;
+      --hl: #fef6e7;          /* подсветка «только что сохранено» */
+      --hl-edge: #fc3;
+      --focus: #36c;
+      --err: #d73333;
+      --star: #d0a52b;
+
+      --serif: 'Linux Libertine', 'Georgia', 'Times', 'Source Serif Pro', serif;
+      --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Lato, 'Helvetica Neue', Arial, sans-serif;
+      --mono: Menlo, Consolas, 'Liberation Mono', 'Courier New', monospace;
+
+      --lang-switch-bg: #ffffff;
+      --lang-switch-border: #a2a9b1;
+      --lang-switch-font: var(--sans);
+      --lang-switch-fg: #202122;
+      --lang-switch-fg-hover: #3366cc;
+      --lang-switch-hover-bg: #eaf3ff;
+      --lang-switch-active-bg: #eaecf0;
+      --lang-switch-active-fg: #202122;
+      --lang-switch-active-border: #a2a9b1;
+    }
+
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      min-height: 100vh;
+      background: var(--page);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.6;
+      padding: calc(12px + var(--safe-top)) calc(16px + var(--safe-right)) calc(40px + var(--safe-bottom)) calc(16px + var(--safe-left));
+      overflow-x: hidden;
+    }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:visited { color: var(--link-visited); }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+    button { font-family: inherit; }
+
+    /* ── Меню разделов: гамбургер как в Vector ─────────── */
+    .menu-wrap {
+      position: fixed;
+      top: calc(10px + var(--safe-top));
+      left: calc(10px + var(--safe-left));
+      z-index: 1000;
+    }
+    .menu-btn {
+      width: 40px; height: 40px;
+      border-radius: 2px;
+      background: transparent;
+      border: 1px solid transparent;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+      cursor: pointer;
+    }
+    .menu-btn span { width: 18px; height: 2px; background: var(--ink); transition: transform 0.2s ease, opacity 0.2s ease; }
+    .menu-btn:hover { background: rgba(0,24,73,0.03); border-color: var(--rule-soft); }
+    .menu-btn.open span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+    .menu-btn.open span:nth-child(2) { opacity: 0; }
+    .menu-btn.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+    .menu-drop {
+      position: absolute;
+      top: 46px; left: 0;
+      min-width: 280px;
+      padding: 8px 0;
+      background: var(--paper);
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);   /* выпадающее меню действительно лежит поверх страницы */
+      display: flex; flex-direction: column;
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+      opacity: 0; visibility: hidden;
+      transition: opacity 0.12s ease, visibility 0.12s;
+    }
+    .menu-drop.open { opacity: 1; visibility: visible; }
+    .menu-drop::before {
+      content: attr(data-heading);
+      display: block;
+      padding: 2px 16px 6px;
+      color: var(--faint);
+      font-size: 13px;
+    }
+    .menu-drop a { color: var(--link); font-size: 14px; padding: 5px 16px; white-space: nowrap; }
+    .menu-drop a:visited { color: var(--link); }
+    .menu-drop a:hover { background: #eaf3ff; text-decoration: none; }
+
+    /* ── Шапка «сайта» ─────────────────────────────────── */
+    .page { max-width: 1180px; margin: 0 auto; }
+    .masthead {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 48px;
+      padding: 0 150px 10px 44px;
+    }
+    .wordmark { display: flex; flex-direction: column; line-height: 1.1; }
+    .wm-title { font-family: var(--serif); font-size: 21px; letter-spacing: 0.02em; color: var(--ink); }
+    .wm-tag { font-size: 11.5px; color: var(--faint); }
+    .wm-logo {
+      width: 36px; height: 36px; flex-shrink: 0;
+      border-radius: 50%;
+      border: 1px solid var(--rule);
+      background: var(--box);
+      font-family: var(--serif);
+      font-size: 20px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted);
+    }
+
+    /* ── Лист статьи ───────────────────────────────────── */
+    .sheet {
+      background: var(--paper);
+      border: 1px solid var(--rule-soft);
+      padding: 18px 28px 36px;
+    }
+    .tabs { display: flex; gap: 2px; margin: -18px -28px 18px; padding: 0 28px; border-bottom: 1px solid var(--rule); background: linear-gradient(#fff, #f8f9fa); }
+    .tab { font-size: 13px; padding: 8px 10px 6px; color: var(--link); }
+    .tab.sel { color: var(--ink); border-bottom: 2px solid var(--ink); margin-bottom: -1px; }
+
+    .firstHeading {
+      font-family: var(--serif);
+      font-weight: 400;
+      font-size: clamp(26px, 5vw, 32px);
+      line-height: 1.25;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--rule);
+      overflow-wrap: anywhere;
+    }
+    .firstHeading .ns { color: var(--faint); }
+    .siteSub { font-size: 13px; color: var(--muted); margin: 6px 0 14px; }
+
+    h2.sec {
+      font-family: var(--serif);
+      font-weight: 400;
+      font-size: 22px;
+      line-height: 1.3;
+      border-bottom: 1px solid var(--rule);
+      margin: 22px 0 10px;
+      padding-bottom: 2px;
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    h2.sec .sec-aside { font-family: var(--sans); font-size: 13px; color: var(--faint); }
+
+    /* участники всегда слева; правила — под ними, чтобы левая колонка не пустовала рядом со сценой */
+    .layout {
+      display: grid;
+      grid-template-columns: 372px minmax(0, 1fr);
+      grid-template-rows: auto 1fr;
+      grid-template-areas: "side main" "rules main";
+      column-gap: 24px;
+      row-gap: 12px;
+      align-items: start;
+    }
+    .main-col { grid-area: main; }
+    .people-card { grid-area: side; }
+    .rules {
+      grid-area: rules;
+      align-self: stretch;
+      min-width: 0;
+      border: 1px solid var(--rule);
+      background: var(--box);
+      padding: 8px 12px 10px;
+      font-size: 13.5px;
+      line-height: 1.5;
+    }
+    .rules-title { font-family: var(--serif); font-weight: 400; font-size: 18px; border-bottom: 1px solid var(--rule); margin-bottom: 6px; }
+    /* clip, а не hidden: «штамп» с именем на миг крупнее колонки и иначе раздвигал бы страницу */
+    .main-col { min-width: 0; overflow-x: clip; }
+    /* заголовки правок бывают длинными словами без пробелов */
+    .stub-lede, .fr .tt { overflow-wrap: anywhere; }
+    .lede { max-width: 70ch; }
+
+    /* ── Свежие правки (как Служебная:Свежие правки) ──── */
+    h2.sec.rc-head { flex-wrap: nowrap; }
+    .rc-status {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--sans);
+      font-size: 13px;
+      color: var(--faint);
+    }
+    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--rule); flex-shrink: 0; }
+    .feed[data-state="live"] .live-dot { background: #14866d; animation: livepulse 1.6s ease-in-out infinite; }
+    .feed[data-state="connecting"] .live-dot,
+    .feed[data-state="reconnecting"] .live-dot { background: #ac6600; animation: livepulse 0.7s steps(2) infinite; }
+    .feed[data-state="paused"] .live-dot { background: var(--rule); }
+    @keyframes livepulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .feed[data-state="live"] .feed-status { color: #14866d; }
+    .feed[data-state="reconnecting"] .feed-status { color: #ac6600; }
+    .feed-status { overflow: hidden; text-overflow: ellipsis; }
+    .feed-rate { color: var(--faint); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .feed-rate:not(:empty)::before { content: '· '; }
+
+    .rc-day { font-weight: 700; font-size: 14px; margin: 2px 0 4px; }
+    .feed-list {
+      list-style: none;
+      font-size: 14px;
+      line-height: 1.6;
+      height: calc(6 * 26px);
+      overflow: hidden;
+      border-left: 1px solid transparent;
+    }
+    .fr {
+      height: 26px;
+      display: flex;
+      align-items: baseline;
+      gap: 0;
+      white-space: nowrap;
+      padding: 1px 4px;
+      color: var(--ink);
+    }
+    .fr > * { flex-shrink: 0; }
+    .fr .rc-links { color: var(--faint); }
+    .fr .rc-links a { color: var(--link); }
+    .fr .sep { color: var(--faint); padding: 0 4px; }
+    .fr .lg { font-size: 11px; color: var(--faint); margin-right: 6px; font-variant: small-caps; letter-spacing: 0.04em; width: 22px; text-align: right; }
+    .fr .tt { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 700; color: var(--link); }
+    .fr .tm { color: var(--ink); }
+    .fr .df { font-variant-numeric: tabular-nums; }
+    .fr .df.plus { color: var(--plus); }
+    .fr .df.minus { color: var(--minus); }
+    .fr .df.zero { color: var(--faint); }
+    .fr .df.big { font-weight: 700; }
+    .fr.enter { animation: rcin 0.18s steps(3); }
+    @keyframes rcin { 0% { background: #eaf3ff; } 100% { background: transparent; } }
+    .fr.ph .ph-bar { display: inline-block; height: 9px; width: 60%; background: var(--head); vertical-align: middle; }
+    .fr.ph .ph-bar.s { width: 18%; margin-right: 10px; }
+
+    /* отметка нажатия — всё, что выше, пришло после неё */
+    .fr.mark {
+      justify-content: center;
+      font-size: 12.5px;
+      color: #ac6600;
+      border-top: 1px dashed #ac6600;
+      background: repeating-linear-gradient(90deg, transparent 0 6px, rgba(252,204,51,0.08) 6px 12px);
+    }
+    .fr.picked { background: var(--hl); box-shadow: inset 3px 0 0 var(--hl-edge); }
+
+    .feed.snap .feed-list { animation: jolt 0.25s steps(2); }
+    @keyframes jolt { 0% { transform: translateX(-2px); } 50% { transform: translateX(2px); } 100% { transform: none; } }
+
+    /* ── Кнопка: progressive button MediaWiki ─────────── */
+    .actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 16px 0 6px; }
+    .go {
+      min-height: 40px;
+      white-space: nowrap;
+      padding: 8px 20px;
+      border: 1px solid var(--link);
+      border-radius: 2px;
+      background: var(--link);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.1s ease, border-color 0.1s ease;
+    }
+    .go:hover { background: var(--link-hover); border-color: var(--link-hover); }
+    .go:active { background: var(--link-active); border-color: var(--link-active); }
+    .go:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--link), inset 0 0 0 2px #fff; }
+    .go:disabled { background: var(--rule-soft); border-color: var(--rule-soft); color: #fff; cursor: default; }
+    .go.again { background: var(--paper); color: var(--ink); border-color: var(--rule); }
+    .go.again:hover { background: var(--box); color: var(--ink); }
+    .go-hint { font-size: 13px; color: var(--faint); }
+    .go-hint kbd {
+      font-family: var(--mono); font-size: 12px;
+      border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 2px;
+      background: var(--box); padding: 0 5px;
+    }
+
+    /* ── Разбор правки ─────────────────────────────────── */
+    .result { display: flex; flex-direction: column; gap: 14px; margin-top: 4px; }
+    .slot-head { position: relative; display: flex; align-items: flex-end; border-bottom: 1px solid var(--rule); min-width: 0; }
+    /* подпись «пример» / «прошлый розыгрыш» плавает поверх строки и не отнимает у неё ширину */
+    .slot-tag {
+      position: absolute;
+      right: 0;
+      bottom: 5px;
+      font-size: 12px;
+      line-height: 1.2;
+      color: var(--faint);
+      background: var(--paper);
+      padding-left: 8px;
+      white-space: nowrap;
+    }
+    .stub .slot-tag { right: 40px; bottom: 9px; }
+    .stub[data-mode="on"] .slot-tag { visibility: hidden; }
+    .caught[data-mode="example"] .art-title { padding-right: 90px; }
+
+    .caught {
+      height: var(--caught-h, 250px);
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      min-width: 0;
+    }
+    .tiles-box { overflow: hidden; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+    .tiles-box .tiles { flex: 0 0 auto; }
+    .caught[data-mode="example"] .tiles-box, .caught[data-mode="example"] .op { opacity: 0.6; }
+    .caught[data-mode="wait"] .tiles-box, .caught[data-mode="wait"] .op { opacity: 0.2; transition: opacity 0.2s linear; }
+    .caught[data-mode="wait"] .art-title a { color: #ac6600; }
+    .caught[data-mode="wait"] .art-title a::after { content: '▌'; animation: caret 0.8s steps(1) infinite; margin-left: 2px; }
+    .caught[data-mode="example"] .art-title a { color: var(--muted); }
+    .art-title {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-family: var(--serif);
+      font-weight: 400;
+      font-size: clamp(20px, 4.2vw, 25px);
+      line-height: 1.3;
+      padding-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .art-title a { color: var(--ink); }
+    .art-title a:hover { color: var(--link); }
+    .caught-meta { font-size: 13px; color: var(--muted); margin: 2px 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .caught-meta.fail { color: var(--err); }
+    .caught-meta b { font-weight: 400; color: var(--link); }
+
+    /* каждое слово — маленькая wikitable: сверху буква, снизу её номер */
+    .tiles { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: flex-start; }
+    .tiles .w {
+      display: inline-flex;
+      flex-wrap: wrap;
+      max-width: 100%;
+      border-left: 1px solid var(--rule);
+      border-top: 1px solid var(--rule);
+    }
+    .tl {
+      display: flex;
+      flex-direction: column;
+      min-width: var(--tile, 28px);
+      border-right: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+      text-align: center;
+      transition: background-color 0.12s linear;
+    }
+    .tl b, .tl i { display: flex; align-items: center; justify-content: center; padding: 0 3px; font-style: normal; font-variant-numeric: tabular-nums; }
+    .tl b { height: calc(var(--tile, 28px) * 1.05); }
+    .tl i { height: calc(var(--tile, 28px) * 0.9); }
+    .tl b { background: var(--head); font-weight: 700; font-size: calc(var(--tile, 28px) * 0.56); border-bottom: 1px solid var(--rule); }
+    .tl i { font-size: calc(var(--tile, 28px) * 0.46); color: transparent; }
+    .tl.on i { color: var(--ink); }
+    .tl.zero.on i { color: var(--faint); }
+    .tl.now { background: var(--hl); }
+    .tl.now b { background: var(--hl-edge); }
+    .tl.hd b, .tl.hd i { font-weight: 400; color: var(--muted); font-size: clamp(10px, calc(var(--tile, 28px) * 0.4), 12px); justify-content: flex-start; background: var(--box); }
+    .tl.hd b { background: var(--head); }
+
+    /* формула — как <math> в статье */
+    .op {
+      font-family: var(--serif);
+      font-size: clamp(18px, 3.6vw, 22px);
+      font-variant-numeric: lining-nums;
+      margin: 0;
+      flex: 0 0 1.6em;
+      height: 1.6em;
+      display: flex;
+      flex-wrap: nowrap;
+      white-space: nowrap;
+      overflow: hidden;
+      align-items: baseline;
+      gap: 0 0.35em;
+    }
+    .op .hint { font-family: var(--sans); font-size: 14px; color: var(--faint); }
+    .op .hint i { font-family: var(--serif); font-size: 16px; }
+    .op .m { font-style: italic; }
+    .op .mod { font-family: var(--serif); font-style: normal; font-weight: 400; }
+    .op .arrow { color: var(--faint); padding: 0 0.3em; }
+    .op .rr { font-weight: 700; box-shadow: inset 0 -0.35em 0 var(--hl-edge); padding: 0 0.1em; }
+    .op .wait { font-family: var(--sans); font-size: 14px; color: #ac6600; }
+    .op .wait::after { content: '▌'; animation: caret 0.8s steps(1) infinite; margin-left: 2px; }
+    @keyframes caret { 50% { opacity: 0; } }
+    .op .fail { font-family: var(--sans); font-size: 14px; color: var(--err); }
+
+    /* ── Итог: заготовка статьи о победителе ─────────── */
+    .stub { display: flex; flex-direction: column; min-width: 0; }
+    .stub[data-mode="stale"] .stub-title, .stub[data-mode="stale"] .stub-lede, .stub[data-mode="stale"] .refs { opacity: 0.55; }
+    .stub[data-mode="empty"] .winner { color: var(--rule); font-style: italic; }
+    .stub[data-mode="empty"] .fa-star { color: transparent; -webkit-text-stroke: 1px var(--rule); }
+    .stub[data-mode="empty"] .stub-lede, .stub[data-mode="empty"] .refs li { color: var(--faint); font-style: italic; }
+    .stub-title {
+      flex: 1 1 auto;
+      min-width: 0;
+      height: 64px;
+      font-family: var(--serif);
+      font-weight: 400;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 4px;
+    }
+    .winner { font-size: clamp(34px, 8vw, 52px); line-height: 1.1; white-space: nowrap; overflow: hidden; min-width: 0; }
+    .fa-star { font-size: 28px; }
+    .fa-star {
+      flex-shrink: 0;
+      line-height: 1;
+      color: var(--star);
+      -webkit-text-stroke: 1px #9b7a1c;
+    }
+    .stub-lede {
+      margin-top: 8px;
+      font-size: 15.5px;
+      line-height: 1.5;
+      padding: 4px 8px;
+      height: calc(3 * 1.5em + 8px);   /* ровно три строки, длинный заголовок обрезается многоточием */
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+    }
+    .stub-lede sup { font-size: 11px; line-height: 0; }
+    .refs { margin-top: 10px; font-size: 13px; color: var(--muted); }
+    .refs li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .refs h3 { font-family: var(--serif); font-weight: 400; font-size: 18px; color: var(--ink); border-bottom: 1px solid var(--rule); margin-bottom: 6px; }
+    .refs ol { padding-left: 2em; }
+    .refs h3 { line-height: 1.4; }
+    .stub.on .winner { animation: stamp 0.34s cubic-bezier(0.2, 1.6, 0.4, 1); transform-origin: left bottom; }
+    @keyframes stamp { 0% { transform: scale(1.35); opacity: 0; } 100% { transform: none; opacity: 1; } }
+    .stub.on .fa-star { animation: star 0.5s cubic-bezier(0.2, 1.8, 0.4, 1) 0.28s both; }
+    @keyframes star { 0% { transform: scale(0) rotate(-90deg); } 100% { transform: none; } }
+    /* жёлтая подсветка «только что сохранено», которая медленно гаснет */
+    .stub.on .stub-lede { animation: saved 2.6s ease-out 0.2s both; }
+    @keyframes saved { 0% { background: var(--hl); box-shadow: inset 3px 0 0 var(--hl-edge); } 70% { background: var(--hl); box-shadow: inset 3px 0 0 var(--hl-edge); } 100% { background: transparent; box-shadow: none; } }
+
+    /* ── Как это работает ─────────────────────────────── */
+    .rules ol { padding-left: 1.6em; }
+    .rules li { margin: 4px 0; max-width: 72ch; }
+    .rules code, .lede code {
+      font-family: var(--mono);
+      font-size: 13px;
+      background: var(--box);
+      border: 1px solid #eaecf0;
+      border-radius: 2px;
+      padding: 1px 4px;
+      white-space: nowrap;
+    }
+
+    /* ── Инфобокс «Участники» ─────────────────────────── */
+    .people-card {
+      border: 1px solid var(--rule);
+      background: var(--box);
+      padding: 4px;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    /* сцена липкая: при длинном списке участников она не уезжает, и справа не остаётся пустоты */
+    @media (min-width: 761px) {
+      .main-col { position: sticky; top: calc(8px + var(--safe-top)); }
+    }
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 6px;
+      background: var(--head);
+      padding: 6px 8px;
+    }
+    .settings-title { font-size: 15px; font-weight: 700; font-family: var(--sans); }
+    .settings-title #countLabel { font-weight: 400; color: var(--muted); }
+    .settings-actions { display: flex; gap: 4px; margin-left: auto; }
+
+    /* тихие кнопки MediaWiki */
+    .equalize-btn, .collapse-btn, .prob-btn, .remove-btn, .away-btn, .hosts-page-btn {
+      min-width: 32px; min-height: 32px;
+      padding: 0 6px;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      background: transparent;
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .equalize-btn:hover, .collapse-btn:hover, .prob-btn:hover, .away-btn:hover, .hosts-page-btn:hover { background: rgba(0,24,73,0.05); border-color: var(--rule-soft); }
+    .remove-btn { color: var(--faint); font-size: 18px; }
+    .remove-btn:hover { color: var(--err); background: #fee7e6; border-color: #f9c9c9; }
+    .equalize-btn:disabled, .collapse-btn:disabled, .prob-btn:disabled, .remove-btn:disabled, .away-btn:disabled, .hosts-page-btn:disabled {
+      opacity: 0.35; cursor: default; background: transparent; border-color: transparent;
+    }
+    .collapse-btn span { display: inline-block; transition: transform 0.15s ease; font-size: 11px; }
+    .collapse-btn.closed span { transform: rotate(-90deg); }
+    .hosts-btn.active { background: #eaf3ff; border-color: var(--link); }
+    #equalizeBtn svg { display: block; }
+
+    .list-wrap { background: var(--paper); border: 1px solid var(--rule-soft); border-top: 0; padding: 6px; overflow: hidden; }
+    .list-wrap.closed { display: none; }
+
+    .headers-row, .prow {
+      display: grid;
+      grid-template-columns: 40px minmax(0, 1fr) 108px 32px 32px;
+      gap: 4px;
+      align-items: center;
+    }
+    .headers-row {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      padding: 2px 2px 5px;
+      border-bottom: 1px solid var(--rule-soft);
+      margin-bottom: 4px;
+    }
+    .headers-row .h-prob { text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .plist { display: flex; flex-direction: column; }
+    .prow { padding: 3px 2px; border-bottom: 1px solid #eaecf0; }
+    .prow:last-child { border-bottom: 0; }
+    .prow.win { background: var(--hl); box-shadow: inset 3px 0 0 var(--hl-edge); }
+
+    .pnum { display: flex; flex-direction: column; align-items: center; line-height: 1.15; font-variant-numeric: tabular-nums; }
+    .pnum .n { font-weight: 700; font-size: 13px; color: var(--muted); }
+    .pnum .rng { font-size: 10.5px; color: var(--faint); white-space: nowrap; }
+    .prow.win .pnum .n { color: var(--ink); }
+
+    .name-input, .prob-input {
+      height: 32px;
+      width: 100%;
+      min-width: 0;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 14px;
+      padding: 0 8px;
+      outline: none;
+    }
+    .name-input:focus, .prob-input:focus { border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
+    .name-input.error-state { border-color: var(--err); background: #fee7e6; }
+    .name-input.error-state::placeholder { color: var(--err); }
+    .name-input:disabled { background: var(--box); color: var(--muted); }
+
+    .prob-controls { display: grid; grid-template-columns: 26px minmax(0, 1fr) 26px; align-items: center; gap: 1px; }
+    .prob-btn { min-width: 26px; padding: 0; font-size: 16px; color: var(--muted); }
+    .prob-input { padding: 0 2px; text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .prob-input.error { border-color: var(--err); color: var(--err); }
+    .prob-input.manual { font-weight: 700; background: var(--hl); }
+
+    .prow.is-away .name-input { color: var(--faint); font-style: italic; background: var(--box); }
+    .away-badge {
+      font-size: 12px;
+      color: var(--faint);
+      font-style: italic;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-align: center;
+      min-width: 0;
+    }
+
+    .add-row { display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 4px; margin-top: 8px; }
+    .add-btn {
+      height: 32px;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      background: var(--box);
+      color: var(--ink);
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .add-btn:hover { background: var(--paper); border-color: var(--link); color: var(--link); }
+    .add-btn:disabled { opacity: 0.4; cursor: default; }
+    .err { font-size: 12.5px; color: var(--err); min-height: 16px; margin-top: 4px; text-align: center; }
+
+    /* ── Ведущие ───────────────────────────────────────── */
+    .hosts-box[hidden] { display: none; }
+    .hosts-box { background: var(--paper); border: 1px solid var(--rule-soft); border-top: 0; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+    .hosts-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; }
+    .hosts-heading { font-weight: 700; }
+    .hosts-pager { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+    .hosts-range { min-width: 92px; font-size: 12.5px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .hosts-page-btn { font-size: 16px; min-width: 28px; min-height: 28px; }
+    .hosts-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-left: 1px solid var(--rule); border-top: 1px solid var(--rule); }
+    .host-day {
+      position: relative;
+      display: flex; flex-direction: column; align-items: center;
+      min-width: 0;
+      padding: 3px 1px 4px;
+      border-right: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+      background: var(--paper);
+    }
+    .host-day:hover { background: #eaf3ff; }
+    .host-day:focus-within { outline: 2px solid var(--focus); outline-offset: -2px; }
+    .host-day.weekend { background: var(--box); }
+    .host-day.today { box-shadow: inset 0 3px 0 var(--hl-edge); }
+    .host-day-wd { font-size: 10.5px; color: var(--faint); text-transform: uppercase; }
+    .host-day-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; color: var(--link); padding: 0 2px; }
+    .host-day.empty .host-day-name { color: var(--faint); font-weight: 400; }
+    .host-day-num { font-size: 10.5px; color: var(--faint); }
+    .host-day-select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+    .host-day-select:disabled { cursor: default; }
+    .host-rule { border-top: 1px solid #eaecf0; padding-top: 8px; }
+    .host-rule-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .host-switch {
+      position: relative; flex-shrink: 0;
+      width: 36px; height: 20px; padding: 0;
+      border: 1px solid var(--rule); border-radius: 10px;
+      background: var(--head); cursor: pointer;
+    }
+    .host-switch::after {
+      content: ''; position: absolute; top: 2px; left: 2px;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--paper); border: 1px solid var(--rule);
+      transition: transform 0.12s ease;
+    }
+    .host-switch[aria-checked="true"] { background: var(--link); border-color: var(--link); }
+    .host-switch[aria-checked="true"]::after { transform: translateX(16px); border-color: var(--link); }
+    .host-switch:disabled { opacity: 0.5; cursor: default; }
+
+    .name-field { position: relative; display: flex; min-width: 0; }
+    .name-field .name-input { flex: 1 1 auto; }
+    .plist:not(.chips-corner) .name-field.has-chip .name-input { padding-right: calc(var(--chip-w, 48px) + 12px); }
+    .host-chip {
+      position: absolute; top: 50%; right: 5px;
+      display: inline-flex; align-items: center; gap: 2px;
+      padding: 1px 5px;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      background: var(--box);            /* сплошной фон: буквы имени под меткой не просвечивают */
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+    .plist.chips-corner .host-chip { top: -6px; right: -2px; transform: none; padding: 0 4px; font-size: 10.5px; line-height: 1.3; }
+
+    /* ── Адаптив ───────────────────────────────────────── */
+    @media (max-width: 1000px) {
+      .layout { grid-template-columns: 320px minmax(0, 1fr); column-gap: 18px; }
+      .headers-row, .prow { grid-template-columns: 30px minmax(0, 1fr) 96px 30px 30px; gap: 3px; }
+      .prob-controls { grid-template-columns: 22px minmax(0, 1fr) 22px; }
+      .prob-btn { min-width: 22px; }
+      .equalize-btn, .collapse-btn, .remove-btn, .away-btn { min-width: 30px; }
+    }
+    /* телефон: левой колонки нет — участники первыми, потом сцена, правила в конце */
+    @media (max-width: 760px) {
+      .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; grid-template-areas: "side" "main" "rules"; row-gap: 16px; }
+    }
+    @media (max-width: 600px) {
+      .result { --caught-h: 250px; }
+      .stub-lede { -webkit-line-clamp: 4; height: calc(4 * 1.5em + 8px); font-size: 15px; }
+      .stub-title { height: 54px; }
+      h2.sec.rc-head { flex-wrap: wrap; }
+      .rc-status { flex-basis: 100%; }
+      body { padding: calc(8px + var(--safe-top)) calc(8px + var(--safe-right)) calc(28px + var(--safe-bottom)) calc(8px + var(--safe-left)); }
+      .masthead { padding: 0 128px 8px 46px; min-height: 44px; }
+      .wm-logo { display: none; }
+      .sheet { padding: 14px 12px 28px; }
+      .tabs { margin: -14px -12px 14px; padding: 0 12px; }
+      .menu-drop { min-width: calc(100vw - 20px - var(--safe-left) - var(--safe-right)); }
+      .go { flex: 1 1 auto; }
+      .go-hint { display: none; }
+      /* строка правки на телефоне: время, заголовок, размер — служебные ссылки прячем */
+      .fr .rc-links, .fr .sep.s1 { display: none; }
+      .feed-list { font-size: 13.5px; }
+      .headers-row, .prow { grid-template-columns: 30px minmax(0, 1fr) 100px 32px 32px; gap: 3px; }
+      .host-chip-day { display: none; }
+    }
+    /* самые узкие: имя — первой строкой, шанс и кнопки — второй */
+    @media (max-width: 359px) {
+      .prow {
+        grid-template-columns: 30px 100px 1fr 32px 32px;
+        grid-template-areas: "num name name name name" ". prob . away rm";
+        row-gap: 3px;
+      }
+      .prow > :nth-child(1) { grid-area: num; }
+      .prow > :nth-child(2) { grid-area: name; }
+      .prow > :nth-child(3) { grid-area: prob; }
+      .prow > :nth-child(4) { grid-area: away; }
+      .prow > :nth-child(5) { grid-area: rm; }
+      .headers-row { grid-template-columns: 30px 1fr auto; }
+      .headers-row .header-away, .headers-row .header-remove { display: none; }
+    }
+    @media (hover: none) and (pointer: coarse) {
+      .equalize-btn, .collapse-btn, .prob-btn, .remove-btn, .away-btn { min-height: 38px; }
+      .name-input, .prob-input { height: 38px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.001s !important; animation-delay: 0s !important; transition-duration: 0.01s !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="menu-wrap">
+    <button class="menu-btn" id="menuBtn" aria-label="Меню" aria-expanded="false" data-i18n-attr="aria-label:menu">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="menu-drop" id="menuDrop" data-heading="Рандомайзеры" data-i18n-attr="data-heading:menu_heading">
+      <a href="index.html" data-i18n="nav_home">🏠 Главная</a>
+      <a href="ai-judge.html" data-i18n="nav_ai">🤖 LLM-рандомайзер</a>
+      <a href="slack-roulette.html" data-i18n="nav_slack">🚨 Slack Рулетка</a>
+      <a href="gitlab-blame.html" data-i18n="nav_gitlab">🦊 GitLab Blame</a>
+      <a href="racing.html" data-i18n="nav_racing">🏁 Гонки</a>
+      <a href="wheel-of-fortune.html" data-i18n="nav_wheel">🎡 Колесо Фортуны</a>
+      <a href="bingo.html" data-i18n="nav_bingo">🎲 Бинго</a>
+      <a href="el-credito.html" data-i18n="nav_bank">🇲🇽 Банк</a>
+      <a href="plinko.html" data-i18n="nav_plinko">🎯 Плинко</a>
+      <a href="crystal-ball.html" data-i18n="nav_crystal">🔮 Магический Шар</a>
+      <a href="trading.html" data-i18n="nav_trading">📈 Трейдинг</a>
+      <a href="daisy.html" data-i18n="nav_daisy">🌼 Ромашка</a>
+      <a href="time-randomizer.html" data-i18n="nav_pseudo">⏱️ Псевдорандом</a>
+      <a href="bitcoin-random.html" data-i18n="nav_btc">🪙 Биткоин-рандом</a>
+      <a href="duck-race.html" data-i18n="nav_ducks">🦆 Утиные бега</a>
+      <a href="penguin-floe.html" data-i18n="nav_penguins">🐧 Пингвины на льдине</a>
+      <a href="elections.html" data-i18n="nav_elections">🗳️ Выборы</a>
+    </nav>
+  </div>
+
+
+  <div class="page">
+    <header class="masthead">
+      <div class="wordmark">
+        <span class="wm-title" data-i18n="wm_title">Викирандом</span>
+        <span class="wm-tag" data-i18n="wm_tag">Свободный рандомайзер</span>
+      </div>
+    </header>
+
+    <main class="sheet">
+      <nav class="tabs" aria-label="Вкладки" data-i18n-attr="aria-label:tabs_aria">
+        <span class="tab sel" data-i18n="tab_special">Служебная страница</span>
+        <a class="tab" href="#how" data-i18n="tab_rules">Как это работает</a>
+      </nav>
+
+      <div class="layout">
+      <aside class="card people-card" aria-labelledby="peopleTitle">
+        <div class="settings-header">
+          <h2 class="settings-title" id="peopleTitle"><span data-i18n="participants">Участники</span> · <span id="countLabel">8</span></h2>
+          <div class="settings-actions">
+            <button class="collapse-btn sound-toggle-btn" id="soundToggleBtn"></button>
+            <button class="equalize-btn" id="equalizeBtn" title="Уравнять вероятности" aria-label="Уравнять вероятности" data-i18n-attr="title:equalize_title;aria-label:equalize_title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="8" width="16" height="3" rx="1.5" fill="currentColor"/><rect x="4" y="13" width="16" height="3" rx="1.5" fill="currentColor"/></svg></button>
+            <button class="collapse-btn" id="collapseBtn" data-i18n-attr="title:collapse_title" title="Свернуть список"><span id="collapseIcon">▼</span></button>
+            <button class="collapse-btn hosts-btn" id="hostsBtn" type="button" aria-expanded="false" aria-controls="hostsBox" title="Ведущие" aria-label="Ведущие" data-i18n-attr="title:hosts_title;aria-label:hosts_title">🎙</button>
+          </div>
+        </div>
+
+        <div class="hosts-box" id="hostsBox" hidden>
+          <div class="hosts-top">
+            <span class="hosts-heading" data-i18n="hosts_title">Ведущие</span>
+            <div class="hosts-pager">
+              <button class="hosts-page-btn host-ui" id="hostsPrev" type="button" aria-label="Неделя назад" data-i18n-attr="aria-label:hosts_prev">‹</button>
+              <span class="hosts-range" id="hostsRange"></span>
+              <button class="hosts-page-btn host-ui" id="hostsNext" type="button" aria-label="Неделя вперёд" data-i18n-attr="aria-label:hosts_next">›</button>
+            </div>
+          </div>
+          <div class="hosts-week" id="hostsWeek"></div>
+          <div class="host-rule">
+            <label class="host-rule-label">
+              <button class="host-switch host-ui" id="hostChipsSwitch" type="button" role="switch" aria-checked="true" aria-labelledby="hostChipsText"></button>
+              <span id="hostChipsText" data-i18n="host_chips">Метки у участников</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="list-wrap" id="listWrap">
+          <div class="headers-row">
+            <div data-i18n="col_num">№</div>
+            <div data-i18n="col_name">Имя</div>
+            <div class="h-prob" data-i18n="col_prob">📊 Вероятность</div>
+            <div class="header-away"></div>
+            <div class="header-remove"></div>
+          </div>
+          <div class="plist" id="plist"></div>
+
+          <div class="add-row">
+            <input type="text" class="name-input" id="newNameInput" maxlength="18" placeholder="Новый участник" data-i18n-attr="placeholder:ph_new">
+            <button class="add-btn" id="addBtn" data-i18n-attr="title:add_title" title="Добавить участника">＋</button>
+          </div>
+
+          <div class="err" id="errorMsg"></div>
+        </div>
+      </aside>
+        <div class="main-col">
+          <h1 class="firstHeading" data-i18n="h1"><span class="ns">Служебная:</span>Викирандом</h1>
+          <div class="siteSub" data-i18n="site_sub">Материал из Викирандома — свободного рандомайзера</div>
+
+          <!-- Лента правок -->
+          <section class="feed" id="feed" data-state="connecting">
+            <h2 class="sec rc-head">
+              <span data-i18n="rc_title">Свежие правки</span>
+              <span class="rc-status"><span class="live-dot"></span><span class="feed-status" id="feedStatus" data-i18n="st_connecting">Подключаемся к Википедии…</span><span class="feed-rate" id="feedRate"></span></span>
+            </h2>
+            <div class="rc-day" id="rcDay"></div>
+            <ul class="feed-list" id="feedList" aria-hidden="true"></ul>
+          </section>
+
+          <div class="actions">
+            <button class="go" id="goBtn" data-i18n="btn">Поймать правку</button>
+            <span class="go-hint" data-i18n="go_hint">или <kbd>Пробел</kbd></span>
+          </div>
+
+          <!-- Разбор правки и итог: оба блока видны всегда и постоянной высоты -->
+          <section class="result" id="result" aria-live="polite">
+            <div class="caught" id="caught" data-mode="example">
+              <div class="slot-head">
+                <h2 class="art-title"><a id="artLink" target="_blank" rel="noopener"></a></h2>
+                <span class="slot-tag" id="artTag"></span>
+              </div>
+              <div class="caught-meta" id="caughtMeta"></div>
+              <div class="tiles-box" id="tilesBox">
+                <div class="tiles" id="tiles"></div>
+                <div class="op" id="op"></div>
+              </div>
+            </div>
+            <article class="stub" id="stub" data-mode="empty">
+              <div class="slot-head">
+                <h2 class="stub-title"><span class="winner" id="winner"></span><span class="fa-star" role="img" aria-label="Избранная статья" title="Избранная статья" data-i18n-attr="aria-label:star_title;title:star_title">★</span></h2>
+                <span class="slot-tag" id="stubTag"></span>
+              </div>
+              <p class="stub-lede" id="stubLede"></p>
+              <div class="refs">
+                <h3 data-i18n="refs_title">Примечания</h3>
+                <ol><li id="refItem"></li></ol>
+              </div>
+            </article>
+          </section>
+        </div>
+
+
+        <section class="rules" id="how">
+          <h2 class="rules-title" data-i18n="rules_title">Как это работает</h2>
+          <ol>
+          <li data-i18n="rules_1">Слушаем живую ленту правок <b>Википедии</b> — русской, английской и греческой. Только статьи и только люди, без ботов.</li>
+          <li data-i18n="rules_2">После нажатия берём <b>первую</b> правку, которая придёт. Выбрать удобную не может никто — ни вы, ни мы.</li>
+          <li data-i18n="rules_3">Каждая буква заголовка — её номер в алфавите: <code>А=1 … Я=33</code> <code>A=1 … Z=26</code> <code>Α=1 … Ω=24</code>, цифра — сама себе, остальное — 0. Всё складываем.</li>
+          <li data-i18n="rules_4">Шансы равные — <code>сумма mod N</code>, остаток и есть номер победителя. Шансы разные — <code>сумма mod 100</code>: у каждого столько билетов, сколько процентов, диапазон виден рядом с номером.</li>
+          </ol>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+  // Заглушка до загрузки i18n.js (defer)
+  window.I18N = window.I18N || { t: (k) => k, lang: 'ru', setLang(){}, supported: ['ru','en','el'] };
+  </script>
+
+  <script>
+    const goBtn     = document.getElementById('goBtn');
+    const resultEl  = document.getElementById('result');
+    const opEl      = document.getElementById('op');
+    const winnerEl  = document.getElementById('winner');
+    const plist     = document.getElementById('plist');
+    const countLbl  = document.getElementById('countLabel');
+    const errorMsg  = document.getElementById('errorMsg');
+    const equalizeBtn = document.getElementById('equalizeBtn');
+    const collapseBtn = document.getElementById('collapseBtn');
+    const listWrap  = document.getElementById('listWrap');
+    const newNameInput = document.getElementById('newNameInput');
+    const addBtn    = document.getElementById('addBtn');
+
+    const MIN_PLAYERS = 2;
+    const MAX_PLAYERS = 20;
+    const MAX_NAME_LEN = 15;
+    const REVEAL_AT = 1000;                    // имя проявляется через секунду после остатка
+    const MIN_P = 0.01;                        // билетов 100 — меньше 1% дать нельзя
+    const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const DEFAULT_NAME_SETS = {
+      ru: ['Аня', 'Борис', 'Вика', 'Глеб', 'Даша', 'Егор', 'Женя', 'Захар'],
+      en: ['Anna', 'Boris', 'Vicky', 'Gleb', 'Dasha', 'Egor', 'Jane', 'Zach'],
+      el: ['Άννα', 'Μπόρις', 'Βίκυ', 'Γκλεμπ', 'Ντάσα', 'Έγκορ', 'Τζένη', 'Ζαχαρίας']
+    };
+
+    // Общий список участников со всеми остальными рандомайзерами сайта
+    const NAMES_KEY  = 'shared_names_v1';
+    const PROB_KEY   = 'shared_probabilities_v2';
+    const LOCKED_KEY = 'shared_locked_v1';
+    const AWAY_KEY   = 'shared_away_v1';
+    // Ведущие: общая история со всеми рандомайзерами. Правило «прошлому ведущему» (shared_host_rule_v1)
+    // здесь не действует и не записывается — победителя решает правка Википедии
+    const HOSTS_KEY       = 'shared_hosts_v1';
+    const HOSTS_OPEN_KEY  = 'hosts_panel_open_v1';
+    const HOSTS_CHIPS_KEY = 'hosts_chips_visible_v1';
+
+    const hostsBtn        = document.getElementById('hostsBtn');
+    const hostsBox        = document.getElementById('hostsBox');
+    const hostsWeek       = document.getElementById('hostsWeek');
+    const hostsRange      = document.getElementById('hostsRange');
+    const hostsPrev       = document.getElementById('hostsPrev');
+    const hostsNext       = document.getElementById('hostsNext');
+    const hostChipsSwitch = document.getElementById('hostChipsSwitch');
+
+    const guessLang = () => {
+      try {
+        const saved = localStorage.getItem('site-lang');
+        if (DEFAULT_NAME_SETS[saved]) return saved;
+      } catch (e) {}
+      const nav = (navigator.language || 'en').slice(0, 2).toLowerCase();
+      return DEFAULT_NAME_SETS[nav] ? nav : 'ru';
+    };
+
+    let names = DEFAULT_NAME_SETS[guessLang()].slice();
+    let probabilities = {};
+    let lockedParticipants = {};
+    let hasCustomProbabilities = false;
+    // «Отпуск / болеет»: [{ name, idx, p, locked }] — в names их нет, поэтому в розыгрыше они не участвуют
+    let awayList = [];
+    let truncatedFrom = 0;
+    let userEdited = false;
+    let running = false;
+    let done = false;
+    let timers = [];
+    // Ведущие: [{ name, t, host: true }] — одна запись на день: последний победитель (или правка через 🎙)
+    let hostLog = [];
+    let hostWeekPage = 0;
+    let hostChipsVisible = true; // метки 🎙 у участников — переключатель в блоке «Ведущие»
+
+    const t = (k) => I18N.t(k);
+    const fill = (k, map) => {
+      let s = t(k);
+      for (const key in map) s = s.split('{' + key + '}').join(map[key]);
+      return s;
+    };
+    const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+    const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+    const pad = (v, n) => String(v).padStart(n, '0');
+
+    /* ── ЗАГРУЗКА ИМЁН ───────────────────────────────── */
+    try {
+      const saved = JSON.parse(localStorage.getItem(NAMES_KEY) || '[]');
+      if (Array.isArray(saved) && saved.length) {
+        const list = saved.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim().slice(0, MAX_NAME_LEN));
+        if (list.length) {
+          names = list;
+          // один участник — добавляем второго, розыгрыш без пары бессмыслен
+          if (names.length < MIN_PLAYERS) names.push(DEFAULT_NAME_SETS[guessLang()][1]);
+          // длинный список показываем первыми 20 и обратно НЕ пишем
+          if (names.length > MAX_PLAYERS) { truncatedFrom = names.length; names = names.slice(0, MAX_PLAYERS); }
+        }
+      } else {
+        localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+      }
+    } catch (e) {}
+
+    const saveNames = () => {
+      truncatedFrom = 0;
+      try { localStorage.setItem(NAMES_KEY, JSON.stringify(names)); } catch (e) {}
+    };
+
+    try {
+      const savedAway = JSON.parse(localStorage.getItem(AWAY_KEY) || '[]');
+      if (Array.isArray(savedAway)) {
+        awayList = savedAway.filter((a) => a && typeof a.name === 'string' && a.name && !names.includes(a.name));
+      }
+    } catch (e) {}
+
+    const saveAway = () => {
+      try { localStorage.setItem(AWAY_KEY, JSON.stringify(awayList)); } catch (e) {}
+    };
+
+    // Имя занято, если оно есть среди активных (кроме строки exceptIdx) или среди отсутствующих
+    function isNameTaken(v, exceptIdx = -1) {
+      const low = v.toLowerCase();
+      return names.some((n, i) => i !== exceptIdx && n.toLowerCase() === low) ||
+        awayList.some((a) => a.name.toLowerCase() === low);
+    }
+
+    /* ── ВЕДУЩИЕ: ИСТОРИЯ ────────────────────────────── */
+    function loadHostLog() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(HOSTS_KEY) || '[]');
+        if (Array.isArray(saved)) {
+          hostLog = saved.filter((e) => e && typeof e.name === 'string' && e.name && Number.isFinite(e.t));
+        }
+      } catch (e) {}
+    }
+    loadHostLog();
+    try { hostChipsVisible = localStorage.getItem(HOSTS_CHIPS_KEY) !== '0'; } catch (e) {}
+
+    const saveHostLog = () => {
+      try {
+        hostLog = hostLog.filter((e) => e.host);
+        hostLog.sort((a, b) => a.t - b.t);
+        localStorage.setItem(HOSTS_KEY, JSON.stringify(hostLog));
+      } catch (e) {}
+    };
+
+    // Локальная дата вида 2026-09-14 — строки сравниваются как даты
+    function dayKey(ts) {
+      const d = new Date(ts);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    function hostEntryOn(key) {
+      return hostLog.find((e) => e.host && dayKey(e.t) === key) || null;
+    }
+
+    // Ведущие за последние 7 дней (включая сегодня): имя → самая свежая запись
+    function hostChips() {
+      const now = new Date();
+      const from = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime());
+      const map = {};
+      hostLog.forEach((e) => {
+        if (e.host && dayKey(e.t) >= from && (!map[e.name] || e.t > map[e.name].t)) map[e.name] = e;
+      });
+      return map;
+    }
+
+    // Чип 🎙 с днём, когда человек вёл, внутри уже созданного поля имени
+    function setHostChip(field, name, chips) {
+      field.dataset.hostName = name;
+      field.classList.remove('has-chip');
+      field.removeAttribute('title');
+      const old = field.querySelector('.host-chip');
+      if (old) old.remove();
+
+      const entry = chips[name];
+      if (!name || !entry || !hostChipsVisible) return;
+
+      const lang = I18N.lang || 'ru';
+      const d = new Date(entry.t);
+      field.classList.add('has-chip');
+      field.title = fill('host_chip_title', {
+        date: new Intl.DateTimeFormat(lang, { weekday: 'long', day: 'numeric', month: 'long' }).format(d)
+      });
+
+      const chip = document.createElement('span');
+      chip.className = 'host-chip';
+      chip.setAttribute('aria-hidden', 'true');
+      const day = document.createElement('span');
+      day.className = 'host-chip-day';
+      day.textContent = dayKey(entry.t) === dayKey(Date.now())
+        ? t('host_chip_today')
+        : new Intl.DateTimeFormat(lang, { weekday: 'short' }).format(d).replace(/\.$/, '');
+      chip.append('🎙', day);
+      field.appendChild(chip);
+    }
+
+    function buildHostNameField(input, name, chips) {
+      const field = document.createElement('div');
+      field.className = 'name-field';
+      field.appendChild(input);
+      setHostChip(field, name, chips);
+      return field;
+    }
+
+    // После записи победителя строки не перерисовываем (подсветка победителя и фокус остаются) — только чипы
+    function refreshHostChips() {
+      const chips = hostChips();
+      plist.querySelectorAll('.name-field').forEach((field) => setHostChip(field, field.dataset.hostName || '', chips));
+      syncHostChipPadding();
+    }
+
+    // Чип стоит внутри поля, пока имя помещается рядом с ним («сегодня» шире «пт»).
+    // Если хоть одно имя не влезает (или экран ≤480px) — все чипы списка переезжают на угол рамки.
+    const chipMeasureCtx = document.createElement('canvas').getContext('2d');
+    function syncHostChipPadding() {
+      plist.classList.remove('chips-corner');
+      let corner = window.matchMedia('(max-width: 480px)').matches;
+      plist.querySelectorAll('.name-field.has-chip').forEach((field) => {
+        const w = field.querySelector('.host-chip').offsetWidth;
+        if (!w) return;
+        field.style.setProperty('--chip-w', w + 'px');
+        const input = field.querySelector('.name-input');
+        const cs = getComputedStyle(input);
+        chipMeasureCtx.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+        const room = input.clientWidth - parseFloat(cs.paddingLeft) - (w + 14);
+        if (chipMeasureCtx.measureText(input.value).width > room) corner = true;
+      });
+      plist.classList.toggle('chips-corner', corner);
+    }
+
+    // Метки 🎙 пересчитываются на любое действие с участниками, а не только при добавлении/удалении:
+    // ввод или удаление символа в имени, нажатие любой кнопки в форме участников, запуск рандомайзера.
+    // Форма — ближайший общий предок списка и кнопки 🎙. Путь события берём из composedPath: кнопка строки
+    // к этому моменту может быть уже удалена перерисовкой списка.
+    const HOST_CHIP_START_BTNS = '#goBtn';
+    let hostChipsForm = null;
+    function recountHostChips() {
+      const list = document.getElementById('plist');
+      if (list && list.offsetWidth) syncHostChipPadding(); // скрытый список не меряем — ширины нулевые
+    }
+    document.addEventListener('input', (e) => {
+      if (e.target.matches && e.target.matches('#plist .name-input')) recountHostChips();
+    });
+    document.addEventListener('click', (e) => {
+      const path = e.composedPath();
+      const btn = path.find((el) => el instanceof Element && el.tagName === 'BUTTON');
+      if (!btn) return;
+      if (!hostChipsForm) {
+        hostChipsForm = document.getElementById('plist');
+        const hostsBtnEl = document.getElementById('hostsBtn');
+        while (hostChipsForm && !hostChipsForm.contains(hostsBtnEl)) hostChipsForm = hostChipsForm.parentElement;
+      }
+      if (btn.matches(HOST_CHIP_START_BTNS) || path.includes(hostChipsForm)) recountHostChips();
+    });
+
+    function renameInHostLog(from, to) {
+      if (!from || !to || from === to) return;
+      let changed = false;
+      hostLog.forEach((e) => { if (e.name === from) { e.name = to; changed = true; } });
+      if (changed) saveHostLog();
+    }
+
+    function renderHostsBox() {
+      const lang = I18N.lang || 'ru';
+      const now = new Date();
+      const todayKey = dayKey(now.getTime());
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - hostWeekPage * 7);
+      const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6);
+
+      const rangeFmt = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short' });
+      hostsRange.textContent = rangeFmt.formatRange
+        ? rangeFmt.formatRange(start, end)
+        : rangeFmt.format(start) + ' – ' + rangeFmt.format(end);
+
+      // пока часы фиксируют время, блок заблокирован вместе со списком
+      const earliest = hostLog.reduce((m, e) => Math.min(m, e.t), Infinity);
+      hostsBtn.disabled = running;
+      hostsBtn.classList.toggle('active', !hostsBox.hidden);
+      hostsPrev.disabled = running || !(earliest < start.getTime());
+      hostsNext.disabled = running || hostWeekPage === 0;
+      hostChipsSwitch.disabled = running;
+      hostChipsSwitch.setAttribute('aria-checked', String(hostChipsVisible));
+
+      const wdFmt = new Intl.DateTimeFormat(lang, { weekday: 'short' });
+      const longFmt = new Intl.DateTimeFormat(lang, { weekday: 'long', day: 'numeric', month: 'long' });
+      const candidates = [...new Set([...names, ...awayList.map((a) => a.name)].filter(Boolean))];
+
+      hostsWeek.textContent = '';
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+        const key = dayKey(d.getTime());
+        const entry = hostEntryOn(key);
+
+        const cell = document.createElement('div');
+        cell.className = 'host-day';
+        if (!entry) cell.classList.add('empty');
+        if (d.getDay() === 0 || d.getDay() === 6) cell.classList.add('weekend');
+        if (key === todayKey) cell.classList.add('today');
+
+        const label = fill('host_day_aria', { date: longFmt.format(d) });
+        cell.title = entry ? label + ' — ' + entry.name : label;
+
+        const wd = document.createElement('span');
+        wd.className = 'host-day-wd';
+        wd.textContent = wdFmt.format(d).replace(/\.$/, '');
+
+        const nm = document.createElement('span');
+        nm.className = 'host-day-name';
+        nm.textContent = entry ? entry.name : '—';
+
+        const num = document.createElement('span');
+        num.className = 'host-day-num';
+        num.textContent = d.getDate();
+
+        const select = document.createElement('select');
+        select.className = 'host-day-select';
+        select.setAttribute('aria-label', label);
+        select.disabled = running;
+        const options = entry && !candidates.includes(entry.name) ? [...candidates, entry.name] : candidates;
+        [['', t('host_nobody')], ...options.map((n) => [n, n])].forEach(([value, text]) => {
+          const opt = document.createElement('option');
+          opt.value = value;
+          opt.textContent = text;
+          select.appendChild(opt);
+        });
+        select.value = entry ? entry.name : '';
+        select.addEventListener('change', () => setDayHost(d, select.value));
+
+        cell.append(wd, nm, num, select);
+        hostsWeek.appendChild(cell);
+      }
+    }
+
+    // Ручная правка дня в полоске недели
+    function setDayHost(date, name) {
+      const key = dayKey(date.getTime());
+      hostLog = hostLog.filter((e) => dayKey(e.t) !== key);
+      if (name) {
+        const noon = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12).getTime();
+        hostLog.push({ name, t: noon, host: true });
+      }
+      commitHostChange();
+    }
+
+    // На шансы история здесь не влияет — обновляем только чипы и полоску недели
+    function commitHostChange() {
+      saveHostLog();
+      refreshHostChips();
+      renderHostsBox();
+    }
+
+    // Ведущий дня — последний победитель: каждая новая фиксация времени заменяет сегодняшнюю запись
+    function recordHostWin(name) {
+      if (!name) return;
+      const now = Date.now();
+      loadHostLog();
+      hostLog = hostLog.filter((e) => dayKey(e.t) !== dayKey(now));
+      hostLog.push({ name, t: now, host: true });
+      commitHostChange();
+    }
+
+    /* ── ВЕРОЯТНОСТИ (та же логика, что в колесе и гонках) ── */
+    function initProbabilities() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(PROB_KEY) || '{}');
+        const savedLocked = JSON.parse(localStorage.getItem(LOCKED_KEY) || '{}');
+
+        if (saved && saved.hasCustomProbabilities && saved.probabilities && Object.keys(saved.probabilities).length) {
+          probabilities = { ...saved.probabilities };
+          lockedParticipants = { ...savedLocked };
+          hasCustomProbabilities = true;
+
+          names.forEach((n) => { if (!(n in probabilities)) probabilities[n] = 1 / names.length; });
+          Object.keys(probabilities).forEach((n) => { if (!names.includes(n)) delete probabilities[n]; });
+          Object.keys(lockedParticipants).forEach((n) => { if (!names.includes(n)) delete lockedParticipants[n]; });
+
+          normalizeProbabilities();
+          if (!truncatedFrom) saveProbabilities();   // обрезанный список обратно не пишем
+        } else {
+          setEqualProbabilities();
+        }
+      } catch (_) {
+        setEqualProbabilities();
+      }
+    }
+
+    function setEqualProbabilities() {
+      const p = 1 / (names.length || 1);
+      probabilities = {};
+      names.forEach((nm) => probabilities[nm] = p);
+      lockedParticipants = {};
+      hasCustomProbabilities = false;
+      saveProbabilities();
+    }
+
+    function clampProbabilitiesMin(min = MIN_P) {
+      names.forEach((nm) => { if ((probabilities[nm] ?? 0) < min) probabilities[nm] = min; });
+    }
+
+    function normalizeProbabilities() {
+      const vals = names.map((n) => probabilities[n] ?? 0);
+      const uniq = [...new Set(vals.map((v) => +v.toFixed(6)))];
+      if (uniq.length === 1 && !hasCustomProbabilities) {
+        const exact = 1 / (names.length || 1);
+        names.forEach((nm) => probabilities[nm] = exact);
+        return;
+      }
+
+      clampProbabilitiesMin(MIN_P);
+
+      const sum = names.reduce((s, nm) => s + (probabilities[nm] || 0), 0);
+      if (sum > 0 && Math.abs(sum - 1) > 1e-4) {
+        const k = 1 / sum;
+        names.forEach((nm) => probabilities[nm] = (probabilities[nm] || 0) * k);
+      }
+
+      clampProbabilitiesMin(MIN_P);
+    }
+
+    function saveProbabilities() {
+      try {
+        const cleanP = {};
+        names.forEach((nm) => cleanP[nm] = probabilities[nm] ?? 0);
+
+        const cleanLocked = {};
+        names.forEach((nm) => { if (lockedParticipants[nm]) cleanLocked[nm] = true; });
+
+        localStorage.setItem(PROB_KEY, JSON.stringify({
+          probabilities: cleanP,
+          hasCustomProbabilities
+        }));
+        localStorage.setItem(LOCKED_KEY, JSON.stringify(cleanLocked));
+      } catch (_) {}
+    }
+
+    function getProbabilityPercent(name) {
+      if (!hasCustomProbabilities && names.length) return (100 / names.length).toFixed(1);
+      return (((probabilities[name] || 0) * 100).toFixed(1));
+    }
+
+    function adjustProbability(name, delta) {
+      const cur = parseFloat(getProbabilityPercent(name)) || 0;
+      const maxPossible = 100 - (names.length - 1) * MIN_P * 100;
+      const next = Math.max(MIN_P * 100, Math.min(maxPossible, cur + delta));
+      setProbabilityManually(name, next);
+      renderList();
+    }
+
+    function setProbabilityManually(name, percentValue) {
+      if (isNaN(percentValue) || percentValue < 1 || percentValue > 99) return false;
+
+      hasCustomProbabilities = true;
+      const newProb = percentValue / 100;
+
+      const otherLocked = names.filter((n) => n !== name && lockedParticipants[n]);
+      const lockedTotal = otherLocked.reduce((s, n) => s + (probabilities[n] || 0), 0);
+      const minOthers = (names.length - 1) * MIN_P;
+
+      if (newProb + lockedTotal + minOthers > 1) {
+        lockedParticipants = {};
+        probabilities[name] = newProb;
+        lockedParticipants[name] = true;
+
+        const others = names.filter((n) => n !== name);
+        const remain = 1 - newProb;
+        const share = remain / (others.length || 1);
+        others.forEach((n) => probabilities[n] = share);
+
+        normalizeProbabilities();
+        saveProbabilities();
+        return true;
+      }
+
+      lockedParticipants[name] = true;
+
+      const free = names.filter((n) => n !== name && !lockedParticipants[n]);
+      const locked = names.filter((n) => n !== name && lockedParticipants[n]);
+
+      if (free.length) {
+        probabilities[name] = newProb;
+        const lockedSum = locked.reduce((s, n) => s + (probabilities[n] || 0), 0) + newProb;
+        let remain = Math.max(0, 1 - lockedSum);
+
+        const freeSum = free.reduce((s, n) => s + (probabilities[n] || 0), 0);
+        if (freeSum > 0) {
+          const k = remain / freeSum;
+          free.forEach((n) => probabilities[n] = (probabilities[n] || 0) * k);
+        } else {
+          free.forEach((n) => probabilities[n] = remain / free.length);
+        }
+
+        free.forEach((n) => { if (probabilities[n] < MIN_P) probabilities[n] = MIN_P; });
+      } else {
+        const others = names.filter((n) => n !== name).sort((a, b) => (probabilities[a] || 0) - (probabilities[b] || 0));
+        const victim = others[0];
+        delete lockedParticipants[victim];
+
+        probabilities[name] = newProb;
+        const stillLocked = names.filter((n) => n !== name && lockedParticipants[n]);
+        const lockedSum = stillLocked.reduce((s, n) => s + (probabilities[n] || 0), 0) + newProb;
+        const remain = 1 - lockedSum;
+
+        probabilities[victim] = Math.max(MIN_P, remain);
+      }
+
+      normalizeProbabilities();
+      saveProbabilities();
+      return true;
+    }
+
+    function equalizeProbabilities() {
+      setEqualProbabilities();
+      // отсутствующие вернутся уже с равным шансом
+      awayList.forEach((a) => { a.p = null; a.locked = false; });
+      saveAway();
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
+    /* ── БИЛЕТЫ: одна операция Σ mod T ───────────────── */
+    const shares = () => names.map(n => hasCustomProbabilities ? (probabilities[n] || 0) : 1 / names.length);
+    const equalOdds = () => !hasCustomProbabilities;
+
+    // Накликали одинаковые проценты — это то же самое, что нажать «Уравнять»:
+    // сбрасываем ручной режим, и делитель снова равен числу участников
+    function collapseIfEqual() {
+      if (!hasCustomProbabilities) return;
+      const shown = names.map(n => getProbabilityPercent(n));
+      if (shown.every(v => v === shown[0])) setEqualProbabilities();
+    }
+
+    // Уравнены — T = число участников, остаток и есть порядковый номер.
+    // Выставлены руками — 100 билетов по долям, у каждого свой диапазон номеров.
+    // (сумма букв заголовка по модулю 100 распределена ровно — проверено на 6000 заголовков ru/en)
+    function ticketPlan() {
+      const n = names.length;
+      if (equalOdds()) return { T: n, ranges: names.map((_, i) => [i, i]), equal: true };
+
+      const exact = shares().map(p => p * 100);
+      const w = exact.map(v => Math.max(1, Math.floor(v)));
+      let diff = 100 - w.reduce((a, b) => a + b, 0);
+      const order = exact.map((v, i) => [v - Math.floor(v), i]).sort((a, b) => b[0] - a[0]).map(x => x[1]);
+      let k = 0;
+      while (diff > 0 && k < 5000) { w[order[k % order.length]]++; diff--; k++; }
+      while (diff < 0 && k < 5000) {
+        const i = order[order.length - 1 - (k % order.length)];
+        if (w[i] > 1) { w[i]--; diff++; }
+        k++;
+      }
+      const ranges = [];
+      let acc = 0;
+      for (const v of w) { ranges.push([acc, acc + v - 1]); acc += v; }
+      return { T: 100, ranges, equal: false };
+    }
+
+    const ownerOf = (r, ranges) => ranges.findIndex(([a, b]) => r >= a && r <= b);
+
+    /* ── СПИСОК УЧАСТНИКОВ ───────────────────────────── */
+    function flashHint(key) {
+      newNameInput.classList.add('error-state');
+      newNameInput.placeholder = t(key);
+      setTimeout(() => {
+        newNameInput.classList.remove('error-state');
+        newNameInput.placeholder = t('ph_new');
+      }, 2000);
+    }
+
+    function validateAllNames() {
+      let allValid = names.length >= MIN_PLAYERS;
+      plist.querySelectorAll('.prow:not(.is-away) .name-input').forEach(input => {
+        const v = input.value.trim();
+        if (!v || input.value.length > MAX_NAME_LEN || input.classList.contains('error-state')) allValid = false;
+      });
+      goBtn.disabled = !allValid || running;
+      return allValid;
+    }
+
+    function renderList() {
+      collapseIfEqual();
+      const plan = ticketPlan();
+      const chips = hostChips();
+      plist.innerHTML = '';
+
+      names.forEach((name, idx) => {
+        const row = document.createElement('div');
+        row.className = 'prow';
+        row.dataset.i = idx;
+
+        const num = document.createElement('div');
+        num.className = 'pnum';
+        const rng = plan.equal ? '' : '<span class="rng">' + plan.ranges[idx][0] + '–' + plan.ranges[idx][1] + '</span>';
+        num.innerHTML = '<span class="n">' + idx + '</span>' + rng;
+        row.appendChild(num);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'name-input';
+        input.maxLength = MAX_NAME_LEN;
+        input.value = name;
+        input.setAttribute('aria-label', t('col_name'));
+
+        input.addEventListener('input', () => {
+          const v = input.value.trim();
+          if (!v) { input.classList.add('error-state'); validateAllNames(); return; }
+
+          const dup = isNameTaken(v, idx);
+          input.classList.toggle('error-state', dup);
+          if (dup) { validateAllNames(); return; }
+
+          // переносим вероятность и ручную пометку на новое имя
+          // (то же имя — например, дописали пробел — ничего не переносим, иначе delete стёр бы шанс)
+          const oldName = names[idx];
+          if (v === oldName) { validateAllNames(); return; }
+          if (oldName in probabilities) { probabilities[v] = probabilities[oldName]; delete probabilities[oldName]; }
+          if (oldName in lockedParticipants) { lockedParticipants[v] = true; delete lockedParticipants[oldName]; }
+
+          names[idx] = v;
+          userEdited = true;
+          saveNames();
+          saveProbabilities();
+          // история ведущих переименовывается вместе с участником
+          renameInHostLog(oldName, v);
+          setHostChip(field, v, hostChips());
+          syncHostChipPadding();
+          if (done) softReset();
+          validateAllNames();
+        });
+
+        input.addEventListener('blur', () => {
+          const v = input.value.trim();
+          const dup = isNameTaken(v, idx);
+          if (!v || dup) { input.value = names[idx]; input.classList.remove('error-state'); validateAllNames(); }
+        });
+
+        const field = buildHostNameField(input, name, chips);
+        row.appendChild(field);
+
+        const controls = document.createElement('div');
+        controls.className = 'prob-controls';
+
+        const dec = document.createElement('button');
+        dec.className = 'prob-btn';
+        dec.textContent = '−';
+        dec.setAttribute('aria-label', t('aria_dec'));
+        dec.onclick = () => { userEdited = true; if (done) softReset(); adjustProbability(names[idx], -1); };
+        controls.appendChild(dec);
+
+        const probInput = document.createElement('input');
+        probInput.type = 'text';
+        probInput.inputMode = 'decimal';
+        probInput.className = 'prob-input' + (lockedParticipants[name] ? ' manual' : '');
+        probInput.value = getProbabilityPercent(name) + '%';
+        probInput.setAttribute('aria-label', t('aria_prob'));
+        let lastValid = getProbabilityPercent(name);
+
+        probInput.addEventListener('focus', () => {
+          probInput.value = probInput.value.replace('%', '');
+          lastValid = probInput.value;
+        });
+        probInput.addEventListener('input', () => {
+          const val = probInput.value.replace('%', '').trim();
+          const num2 = parseFloat(val);
+          probInput.classList.toggle('error', !(val === '' || (num2 >= 1 && num2 <= 99)));
+        });
+        probInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); probInput.blur(); }
+        });
+        probInput.addEventListener('blur', () => {
+          const val = probInput.value.replace('%', '').trim();
+          const num2 = parseFloat(val);
+          probInput.classList.remove('error');
+
+          if (val === '' || isNaN(num2) || num2 < 1 || num2 > 99) {
+            probInput.value = lastValid + '%';
+            return;
+          }
+          // фокус и уход без правки (или Enter) — не фиксация: шанс остаётся автоматическим
+          if (val === String(lastValid).trim()) {
+            probInput.value = lastValid + '%';
+            return;
+          }
+          userEdited = true;
+          if (done) softReset();
+          if (setProbabilityManually(names[idx], num2)) renderList();
+          else probInput.value = lastValid + '%';
+        });
+        controls.appendChild(probInput);
+
+        const inc = document.createElement('button');
+        inc.className = 'prob-btn';
+        inc.textContent = '+';
+        inc.setAttribute('aria-label', t('aria_inc'));
+        inc.onclick = () => { userEdited = true; if (done) softReset(); adjustProbability(names[idx], 1); };
+        controls.appendChild(inc);
+
+        row.appendChild(controls);
+
+        const rm = document.createElement('button');
+        rm.className = 'remove-btn';
+        rm.innerHTML = '×';
+        rm.title = t('aria_del');
+        rm.setAttribute('aria-label', t('aria_del'));
+        rm.onclick = () => removeParticipant(idx);
+
+        const awayBtn = document.createElement('button');
+        awayBtn.className = 'away-btn';
+        awayBtn.textContent = '🌴';
+        awayBtn.title = t('aria_away');
+        awayBtn.setAttribute('aria-label', t('aria_away'));
+        awayBtn.onclick = () => sendAway(idx);
+
+        row.appendChild(awayBtn);
+        row.appendChild(rm);
+
+        plist.appendChild(row);
+      });
+
+      // Отсутствующие идут после активных — индексы строк победителя не сдвигаются
+      awayList.forEach((a, i) => {
+        const row = document.createElement('div');
+        row.className = 'prow is-away';
+        row.appendChild(document.createElement('div'));   // номера у них нет
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'name-input';
+        input.value = a.name;
+        input.readOnly = true;
+        input.tabIndex = -1;
+        input.setAttribute('aria-label', t('col_name'));
+        row.appendChild(input);
+
+        const badge = document.createElement('div');
+        badge.className = 'away-badge';
+        badge.textContent = t('away_badge');
+        row.appendChild(badge);
+
+        const backBtn = document.createElement('button');
+        backBtn.className = 'away-btn';
+        backBtn.textContent = '↩';
+        backBtn.title = t('aria_back');
+        backBtn.setAttribute('aria-label', t('aria_back'));
+        backBtn.onclick = () => bringBack(i);
+        row.appendChild(backBtn);
+
+        const rm = document.createElement('button');
+        rm.className = 'remove-btn';
+        rm.innerHTML = '×';
+        rm.title = t('aria_del');
+        rm.setAttribute('aria-label', t('aria_del'));
+        rm.onclick = () => {
+          awayList.splice(i, 1);
+          saveAway();
+          // на розыгрыш это не влияет — подсветку победителя сохраняем
+          const winIdx = [...plist.children].findIndex(el => el.classList.contains('win'));
+          renderList();
+          if (winIdx >= 0) highlightWinner(winIdx);
+        };
+        row.appendChild(rm);
+
+        plist.appendChild(row);
+      });
+
+      countLbl.textContent = names.length;
+      errorMsg.textContent = truncatedFrom
+        ? fill('err_trunc', { n: MAX_PLAYERS, total: truncatedFrom })
+        : (names.length >= MAX_PLAYERS ? fill('err_max', { n: MAX_PLAYERS }) : '');
+
+      syncHostChipPadding();
+      renderHostsBox();
+      updateOpHint(plan);
+      validateAllNames();
+    }
+
+    function addNewParticipant() {
+      const v = newNameInput.value.trim();
+
+      if (names.length >= MAX_PLAYERS) { newNameInput.value = ''; flashHint('ph_max'); return; }
+      if (!v) { flashHint('ph_atleast1'); return; }
+      if (isNameTaken(v)) { newNameInput.value = ''; flashHint('ph_dup'); return; }
+
+      newNameInput.value = '';
+      newNameInput.placeholder = t('ph_new');
+
+      names.push(v);
+      saveNames();
+
+      probabilities[v] = 1 / names.length;
+      normalizeProbabilities();
+      saveProbabilities();
+
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
+    function removeParticipant(idx) {
+      if (names.length <= MIN_PLAYERS) { flashHint('ph_min2'); return; }
+
+      const removed = names[idx];
+      names.splice(idx, 1);
+      delete probabilities[removed];
+      delete lockedParticipants[removed];
+
+      saveNames();
+      normalizeProbabilities();
+      saveProbabilities();
+
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
+    // Временно убрать участника из розыгрыша, запомнив место в списке и его шанс
+    function sendAway(idx) {
+      if (names.length <= MIN_PLAYERS) { flashHint('ph_min2'); return; }
+
+      const name = names[idx];
+      // строка с пустым (редактируемым) именем подсвечена красным — в отпуск её не отправляем
+      if (!name || !name.trim()) return;
+      awayList.push({
+        name,
+        idx,
+        p: hasCustomProbabilities ? (probabilities[name] ?? null) : null,
+        locked: !!lockedParticipants[name]
+      });
+      names.splice(idx, 1);
+      delete probabilities[name];
+      delete lockedParticipants[name];
+
+      saveNames();
+      saveAway();
+      normalizeProbabilities();
+      saveProbabilities();
+
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
+    function bringBack(i) {
+      const a = awayList[i];
+      if (!a) return;
+
+      // С тем же именем участника могли уже добавить заново — тогда просто снимаем отметку
+      if (!names.includes(a.name)) {
+        if (names.length >= MAX_PLAYERS) { flashHint('ph_max'); return; }
+        // collapseIfEqual мог выключить ручной режим, пока человек отсутствовал (остальные стали равны),
+        // поэтому сохранённый шанс сам по себе признак ручного режима; «Уравнять» его стирает
+        if (a.p > 0 && a.p < 1) hasCustomProbabilities = true;
+        const p = hasCustomProbabilities && a.p > 0 && a.p < 1 ? a.p : 1 / (names.length + 1);
+        // Остальные делят оставшееся, чтобы вернувшийся получил ровно свой прежний шанс
+        names.forEach((n) => probabilities[n] = (probabilities[n] || 0) * (1 - p));
+        names.splice(Math.min(a.idx, names.length), 0, a.name);
+        probabilities[a.name] = p;
+        if (hasCustomProbabilities && a.locked) lockedParticipants[a.name] = true;
+        normalizeProbabilities();
+        saveNames();
+        saveProbabilities();
+      }
+      awayList.splice(i, 1);
+      saveAway();
+
+      userEdited = true;
+      if (done) softReset();
+      renderList();
+    }
+
+    addBtn.addEventListener('click', addNewParticipant);
+    newNameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addNewParticipant(); } });
+    equalizeBtn.addEventListener('click', equalizeProbabilities);
+
+    hostsBtn.addEventListener('click', () => {
+      hostsBox.hidden = !hostsBox.hidden;
+      hostsBtn.setAttribute('aria-expanded', String(!hostsBox.hidden));
+      hostsBtn.classList.toggle('active', !hostsBox.hidden);
+      try { localStorage.setItem(HOSTS_OPEN_KEY, hostsBox.hidden ? '0' : '1'); } catch (e) {}
+    });
+    hostsPrev.addEventListener('click', () => { hostWeekPage++; renderHostsBox(); });
+    hostsNext.addEventListener('click', () => { hostWeekPage = Math.max(0, hostWeekPage - 1); renderHostsBox(); });
+    hostChipsSwitch.addEventListener('click', () => {
+      hostChipsVisible = !hostChipsVisible;
+      try { localStorage.setItem(HOSTS_CHIPS_KEY, hostChipsVisible ? '1' : '0'); } catch (e) {}
+      refreshHostChips();
+      renderHostsBox();
+    });
+    // чип «внутри поля / на углу» зависит от ширины поля
+    window.addEventListener('resize', syncHostChipPadding);
+
+    collapseBtn.addEventListener('click', () => {
+      const closed = listWrap.classList.toggle('closed');
+      collapseBtn.classList.toggle('closed', closed);
+    });
+
+    /* ── ЧАСЫ ────────────────────────────────────────── */
+    /* ── БУКВЫ → ЧИСЛА ───────────────────────────────── */
+    // Номер буквы в своём алфавите. Ё и Й — отдельные буквы русского алфавита, поэтому
+    // сначала ищем символ как есть, и только потом снимаем диакритику (é → E, ά → Α)
+    const ALPHABETS = [
+      'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ',
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+      'ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ'
+    ];
+    function letterValue(ch) {
+      const up = ch.toUpperCase();
+      for (const a of ALPHABETS) { const i = a.indexOf(up); if (i >= 0 && up.length === 1) return i + 1; }
+      const base = up.normalize('NFD').replace(/[̀-ͯ]/g, '');
+      if (base !== up && base.length === 1) {
+        for (const a of ALPHABETS) { const i = a.indexOf(base); if (i >= 0) return i + 1; }
+      }
+      if (ch >= '0' && ch <= '9') return +ch;
+      return 0;
+    }
+    const titleSum = (title) => [...title].reduce((s, ch) => s + letterValue(ch), 0);
+
+    /* ── ЛЕНТА ПРАВОК ────────────────────────────────── */
+    // Публичный поток всех правок Викимедиа (≈35 событий в секунду, CORS открыт).
+    // Берём правки статей людьми в трёх Википедиях — это ≈1 правка в секунду.
+    const STREAM_URL = 'https://stream.wikimedia.org/v2/stream/recentchange';
+    const WIKIS = { 'ru.wikipedia.org': 'RU', 'en.wikipedia.org': 'EN', 'el.wikipedia.org': 'EL' };
+    const FEED_ROWS = 6;
+    const IDLE_PAUSE = 5 * 60 * 1000;          // без действий пять минут — отключаемся: поток весит ~100 МБ в час
+    const SILENT_RECONNECT = 15000;            // ни одного события 15 с — соединение зависло
+    const CATCH_TIMEOUT = 30000;
+
+    const feedEl     = document.getElementById('feed');
+    const feedList   = document.getElementById('feedList');
+    const feedStatus = document.getElementById('feedStatus');
+    const feedRate   = document.getElementById('feedRate');
+    const caughtEl   = document.getElementById('caught');
+    const caughtMeta = document.getElementById('caughtMeta');
+    const tilesEl    = document.getElementById('tiles');
+    const artLink    = document.getElementById('artLink');
+    const stubEl     = document.getElementById('stub');
+    const stubLede   = document.getElementById('stubLede');
+    const refItem    = document.getElementById('refItem');
+    const rcDay      = document.getElementById('rcDay');
+    let lastWin = null;                        // { idx, edit } — чтобы пересобрать заготовку при смене языка
+
+    let es = null;
+    let streamState = 'connecting';            // connecting | live | reconnecting | paused
+    let lastMsgAt = 0;
+    let lastActivity = Date.now();
+    let hits = [];                             // время прихода подходящих правок — для счётчика «в минуту»
+    let armed = false;                         // нажали — ждём первую подходящую правку
+    let armPlan = null;
+    let catchTimer = null;
+    let feedFrozen = false;                    // после поимки лента замирает до «Ещё раз»
+
+    function setStreamState(s) {
+      streamState = s;
+      feedEl.dataset.state = s;
+      feedStatus.textContent = t('st_' + s);
+    }
+
+    function connect() {
+      if (es) return;
+      // первое подключение — «подключаемся», любое следующее — «переподключаемся»
+      setStreamState(lastMsgAt && streamState !== 'paused' ? 'reconnecting' : 'connecting');
+      try {
+        es = new EventSource(STREAM_URL);
+      } catch (e) {
+        es = null;
+        setTimeout(connect, 3000);
+        return;
+      }
+      lastMsgAt = Date.now();
+      es.onmessage = onStreamMessage;
+      es.onerror = () => {
+        if (!es) return;
+        if (streamState !== 'paused') setStreamState('reconnecting');
+        // CLOSED — браузер сдался, переподключаемся сами
+        if (es.readyState === 2) { es = null; setTimeout(() => { if (streamState !== 'paused') connect(); }, 3000); }
+      };
+    }
+
+    function disconnect(state) {
+      if (es) { es.onmessage = null; es.onerror = null; es.close(); es = null; }
+      if (state) setStreamState(state);
+    }
+
+    function resume() {
+      lastActivity = Date.now();
+      if (streamState === 'paused' && !document.hidden) { setStreamState('connecting'); connect(); }
+    }
+
+    function onStreamMessage(msg) {
+      lastMsgAt = Date.now();
+      let e;
+      try { e = JSON.parse(msg.data); } catch (err) { return; }
+      if (streamState !== 'live') setStreamState('live');
+      const lang = WIKIS[e.server_name];
+      if (!lang || e.type !== 'edit' || e.namespace !== 0 || e.bot || typeof e.title !== 'string') return;
+      const sum = titleSum(e.title);
+      if (!sum) return;                        // в заголовке ни одной буквы и цифры — считать нечего
+
+      const edit = {
+        lang,
+        title: e.title,
+        sum,
+        diff: e.length && Number.isFinite(e.length.new) ? e.length.new - (e.length.old || 0) : null,
+        url: e.notify_url || e.meta && e.meta.uri || '',
+        page: e.title_url || e.meta && e.meta.uri || '',
+        ts: Number.isFinite(e.timestamp) ? e.timestamp * 1000 : Date.now()
+      };
+      hits.push(Date.now());
+
+      if (armed) { armed = false; onCaught(edit); return; }
+      if (!feedFrozen) addFeedRow(edit, false);
+    }
+
+    const signed = (d) => (d > 0 ? '+' : d < 0 ? '−' : '±') + Math.abs(d);
+    const clock = (ts, sec) => new Intl.DateTimeFormat(I18N.lang || 'ru',
+      sec ? { hour: '2-digit', minute: '2-digit', second: '2-digit' } : { hour: '2-digit', minute: '2-digit' }).format(new Date(ts));
+    const span = (cls, text) => { const el = document.createElement('span'); el.className = cls; el.textContent = text; return el; };
+
+    // (разн. | история) . . Заголовок; 23:03 . . (+409) — как на Служебная:Свежие правки
+    function feedRow(edit) {
+      const li = document.createElement('li');
+      li.className = 'fr';
+      li.append(
+        span('lg', edit.lang.toLowerCase()),
+        span('rc-links', '(' + t('rc_diff') + ' | ' + t('rc_hist') + ')'),
+        span('sep s1', '. .'),
+        span('tt', edit.title),
+        span('sep', ';'),
+        span('tm', clock(edit.ts)),
+        span('sep', '. .')
+      );
+      if (edit.diff !== null) {
+        const df = span('df ' + (edit.diff > 0 ? 'plus' : edit.diff < 0 ? 'minus' : 'zero'), '(' + signed(edit.diff) + ')');
+        if (Math.abs(edit.diff) >= 500) df.classList.add('big');   // крупные правки MediaWiki выделяет жирным
+        li.appendChild(df);
+      }
+      return li;
+    }
+
+    function addFeedRow(edit, picked) {
+      feedList.querySelectorAll('.fr.ph').forEach((el) => el.remove());
+      const li = feedRow(edit);
+      if (picked) li.classList.add('picked');
+      if (!REDUCED) li.classList.add('enter');
+      feedList.prepend(li);
+      while (feedList.children.length > FEED_ROWS) feedList.lastElementChild.remove();
+    }
+
+    function renderFeedPlaceholder() {
+      feedList.textContent = '';
+      for (let i = 0; i < FEED_ROWS; i++) {
+        const li = document.createElement('li');
+        li.className = 'fr ph';
+        li.innerHTML = '<span class="ph-bar s"></span><span class="ph-bar"></span>';
+        feedList.appendChild(li);
+      }
+    }
+
+    function renderDay() {
+      rcDay.textContent = new Intl.DateTimeFormat(I18N.lang || 'ru', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
+    }
+
+    function updateRate() {
+      const now = Date.now();
+      hits = hits.filter((h) => now - h < 60000);
+      // первые секунды после подключения счётчик врал бы — показываем его, когда набралось хоть что-то
+      feedRate.textContent = streamState === 'live' && hits.length >= 5
+        ? fill('rate', { n: hits.length })
+        : '';
+    }
+
+    setInterval(() => {
+      updateRate();
+      if (streamState === 'paused') return;
+      const now = Date.now();
+      if (!running && !done && now - lastActivity > IDLE_PAUSE) { disconnect('paused'); return; }
+      if (es && now - lastMsgAt > SILENT_RECONNECT) { disconnect(); connect(); }
+    }, 1000);
+
+    ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach((ev) =>
+      document.addEventListener(ev, resume, { passive: true, capture: true }));
+    document.addEventListener('visibilitychange', () => {
+      // фоновая вкладка ленту не тянет; во время розыгрыша не рвём — правку ещё ждём
+      if (document.hidden && !armed) disconnect('paused');
+      else if (!document.hidden) resume();
+    });
+
+    /* ── РОЗЫГРЫШ ────────────────────────────────────── */
+    /* ── СЦЕНА: слоты постоянного размера ─────────────────
+       Разбор правки (#caught) и заготовка статьи (#stub) видны всегда и никогда не меняют высоту:
+       в простое разбор показывает пример подсчёта, а заготовка — прошлый розыгрыш или скелет.
+       Переменный контент (длинный заголовок, длинное имя) вписывается в бокс, а не растягивает его. */
+    const LAST_KEY = 'wiki_last_win_v1';
+    const tilesBox = document.getElementById('tilesBox');
+    const artTag   = document.getElementById('artTag');
+    const stubTag  = document.getElementById('stubTag');
+
+    function setCaughtMode(mode) { caughtEl.dataset.mode = mode; }
+    function setStubMode(mode) { stubEl.dataset.mode = mode; }
+
+    function formulaHtml(sum, T, r) {
+      return '<span class="m">Σ</span> = <span>' + sum + '</span>' +
+        '<span class="arrow">⟹</span>' +
+        '<span>' + sum + '</span> <span class="mod">mod</span> <span>' + T + '</span> = ' +
+        '<span class="rr">' + r + '</span>';
+    }
+
+    // Пример в простое: как считается короткий заголовок при текущем числе участников
+    function updateOpHint(plan) {
+      if (running || done) return;
+      plan = plan || ticketPlan();
+      const title = t('example_title');
+      const sum = titleSum(title);
+      setCaughtMode('example');
+      artTag.textContent = t('tag_example');
+      artLink.textContent = title;
+      artLink.removeAttribute('href');
+      if (!caughtMeta.classList.contains('fail')) caughtMeta.textContent = t('example_meta');
+      const tiles = buildTiles(title);
+      tiles.forEach((x) => x.el.classList.add('on'));
+      opEl.innerHTML = formulaHtml(sum, plan.T, sum % plan.T);
+    }
+
+    function highlightWinner(i) {
+      for (const row of plist.children) row.classList.remove('win');
+      const el = plist.children[i];
+      if (el) el.classList.add('win');
+    }
+
+    function lockInputs(locked) {
+      plist.querySelectorAll('input, button').forEach(el => el.disabled = locked);
+      equalizeBtn.disabled = locked;
+      newNameInput.disabled = locked;
+      addBtn.disabled = locked;
+      if (locked) {
+        hostsBtn.disabled = true;
+        hostsBox.querySelectorAll('button, select').forEach((el) => el.disabled = true);
+      } else {
+        renderHostsBox();
+      }
+    }
+
+    // Кнопка шириной под самую длинную из своих надписей — текст меняется, соседи не сдвигаются
+    const goMeasure = document.createElement('canvas').getContext('2d');
+    function setGoWidth() {
+      const cs = getComputedStyle(goBtn);
+      goMeasure.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+      const w = Math.max(...['btn', 'btn_wait', 'btn_count', 'btn_again'].map((k) => goMeasure.measureText(t(k)).width));
+      goBtn.style.minWidth = Math.ceil(w + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + 4) + 'px';
+    }
+
+    function softReset() {
+      clearTimers();
+      clearTimeout(catchTimer);
+      running = false; done = false; armed = false; feedFrozen = false;
+      feedList.querySelectorAll('.fr.mark').forEach((el) => el.remove());
+      feedList.querySelectorAll('.fr.picked').forEach((el) => el.classList.remove('picked'));
+      feedEl.classList.remove('snap');
+      resultEl.classList.remove('on', 'waiting');
+      caughtMeta.classList.remove('fail');
+      if (stubEl.dataset.mode === 'on') setStubMode('stale');
+      stubEl.classList.remove('on');
+      for (const row of plist.children) row.classList.remove('win');
+      goBtn.textContent = t('btn');
+      goBtn.classList.remove('again');
+      lockInputs(false);
+      updateOpHint();
+      validateAllNames();
+    }
+
+    function run() {
+      if (running) return;
+      if (done) { softReset(); return; }
+      if (!validateAllNames()) return;
+
+      // Билеты фиксируются в момент нажатия; правка — первая, что придёт после него
+      armPlan = ticketPlan();
+      running = true;
+      feedFrozen = true;
+      goBtn.disabled = true;
+      goBtn.textContent = t('btn_wait');
+      lockInputs(true);
+      caughtMeta.classList.remove('fail');
+      if (stubEl.dataset.mode === 'on') setStubMode('stale');
+      stubEl.classList.remove('on');
+      resultEl.classList.remove('on');
+      resultEl.classList.add('waiting');
+      for (const row of plist.children) row.classList.remove('win');
+
+      // пример остаётся на месте, но гаснет; строка заголовка сообщает, что ждём
+      setCaughtMode('wait');
+      artTag.textContent = '';
+      artLink.textContent = t('op_wait');
+      caughtMeta.textContent = t('wait_meta');
+
+      const mark = document.createElement('li');
+      mark.className = 'fr mark';
+      mark.textContent = t('mark');
+      feedList.prepend(mark);
+      while (feedList.children.length > FEED_ROWS) feedList.lastElementChild.remove();
+
+      playSnap();
+      resume();
+      if (!es && streamState !== 'paused') connect();
+      armed = true;
+
+      catchTimer = setTimeout(() => {
+        if (!armed) return;
+        armed = false;
+        running = false;
+        feedFrozen = false;
+        feedList.querySelectorAll('.fr.mark').forEach((el) => el.remove());
+        resultEl.classList.remove('waiting');
+        caughtMeta.textContent = t('op_timeout');
+        caughtMeta.classList.add('fail');
+        goBtn.textContent = t('btn');
+        lockInputs(false);
+        updateOpHint();
+        validateAllNames();
+      }, CATCH_TIMEOUT);
+    }
+
+    // Плитки вписываются в бокс постоянной высоты: подбираем самый крупный размер, при котором всё влезает
+    function fitTiles() {
+      // формула стоит в том же слоте под таблицей — её строка и зазор вычитаются из высоты
+      const H = tilesBox.clientHeight - opEl.offsetHeight - 8, W = tilesBox.clientWidth;
+      if (!H || !W) return;
+      let lo = 11, hi = 58, best = 11;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        tilesEl.style.setProperty('--tile', mid + 'px');
+        if (tilesEl.offsetHeight <= H && tilesEl.scrollWidth <= W) { best = mid; lo = mid + 1; }
+        else hi = mid - 1;
+      }
+      tilesEl.style.setProperty('--tile', best + 'px');
+    }
+
+    function buildTiles(title) {
+      tilesEl.textContent = '';
+      const tiles = [];
+      let word = null;
+      [...title].forEach((ch) => {
+        if (/\s/.test(ch)) { word = null; return; }
+        if (!word) {
+          word = document.createElement('span');
+          word.className = 'w';
+          // у первого слова — колонка с подписями строк, как у wikitable
+          if (!tilesEl.children.length) {
+            const hd = document.createElement('span');
+            hd.className = 'tl hd';
+            const b = document.createElement('b'); b.textContent = t('col_letter');
+            const i = document.createElement('i'); i.textContent = t('col_value');
+            hd.append(b, i);
+            word.appendChild(hd);
+          }
+          tilesEl.appendChild(word);
+        }
+        const v = letterValue(ch);
+        const tl = document.createElement('span');
+        tl.className = 'tl' + (v ? '' : ' zero');
+        const b = document.createElement('b');
+        b.textContent = ch;
+        const i = document.createElement('i');
+        i.textContent = v || (ch === '0' ? '0' : '·');
+        tl.append(b, i);
+        word.appendChild(tl);
+        tiles.push({ el: tl, v });
+      });
+      fitTiles();
+      return tiles;
+    }
+
+    function onCaught(edit) {
+      clearTimeout(catchTimer);
+      addFeedRow(edit, true);
+      feedEl.classList.remove('snap');
+      void feedEl.offsetWidth;
+      feedEl.classList.add('snap');
+      goBtn.textContent = t('btn_count');
+
+      setCaughtMode('real');
+      artTag.textContent = '';
+      artLink.textContent = edit.title;
+      artLink.href = edit.page || edit.url || '#';
+      const bits = [edit.lang.toLowerCase() + '.wikipedia.org', clock(edit.ts, true)];
+      if (edit.diff !== null) bits.push(fill('bytes', { n: signed(edit.diff) }));
+      caughtMeta.textContent = fill('caught_src', { src: bits.join(' · ') });
+
+      const tiles = buildTiles(edit.title);
+      const plan = armPlan;
+      const r = edit.sum % plan.T;
+      const widx = ownerOf(r, plan.ranges);
+      // сумма набегает прямо в строке формулы, потом к ней дописывается mod и остаток
+      opEl.innerHTML = '<span class="m">Σ</span> = <span class="sum-live">0</span>';
+      const sumB = opEl.querySelector('.sum-live');
+
+      const finish = () => {
+        tiles.forEach((x) => x.el.classList.remove('now'));
+        opEl.innerHTML = formulaHtml(edit.sum, plan.T, r);
+        playSnap();
+        if (REDUCED) reveal(widx, edit);
+        else later(() => reveal(widx, edit), REVEAL_AT);
+      };
+
+      if (REDUCED) { tiles.forEach((x) => x.el.classList.add('on')); finish(); return; }
+
+      // буквы загораются по одной, сумма набегает; на весь заголовок — около двух секунд
+      const step = Math.max(45, Math.min(150, Math.round(2000 / Math.max(1, tiles.length))));
+      let acc = 0;
+      tiles.forEach((x, k) => {
+        later(() => {
+          if (k > 0) tiles[k - 1].el.classList.remove('now');
+          x.el.classList.add('on', 'now');
+          acc += x.v;
+          sumB.textContent = acc;
+          if (x.v) playTick(x.v);
+        }, 350 + k * step);
+      });
+      later(finish, 350 + tiles.length * step + 400);
+    }
+
+    // Шаблон с {ключами} → узлы DOM: заголовки правок приходят извне, поэтому только textContent
+    function fillNodes(tpl, map) {
+      const out = [];
+      tpl.split(/(\{\w+\})/).forEach((part) => {
+        const m = part.match(/^\{(\w+)\}$/);
+        if (m && m[1] in map) out.push(map[m[1]]);
+        else if (part) out.push(document.createTextNode(part));
+      });
+      return out;
+    }
+
+    // Имя победителя вписывается в строку заголовка: длинное — мельче, строка не растёт
+    function fitWinner() {
+      winnerEl.style.fontSize = '';
+      let size = parseFloat(getComputedStyle(winnerEl).fontSize);
+      while (winnerEl.scrollWidth > winnerEl.clientWidth + 1 && size > 16) {
+        size -= 2;
+        winnerEl.style.fontSize = size + 'px';
+      }
+    }
+
+    function renderStub() {
+      if (!lastWin) {
+        setStubMode('empty');
+        stubTag.textContent = '';
+        winnerEl.textContent = t('stub_empty_name');
+        stubLede.textContent = t('stub_empty');
+        refItem.textContent = t('stub_empty_ref');
+        fitWinner();
+        return;
+      }
+      const { idx, name, edit } = lastWin;
+      stubTag.textContent = t('tag_last');
+      winnerEl.textContent = name;
+      const b = document.createElement('b');
+      b.textContent = name;
+      const sup = document.createElement('sup');
+      const ref = document.createElement('a');
+      ref.href = '#cite-1';
+      ref.textContent = '[1]';
+      sup.appendChild(ref);
+      stubLede.textContent = '';
+      stubLede.append(...fillNodes(t('stub_lede'), {
+        name: b,
+        n: document.createTextNode(String(idx)),
+        title: document.createTextNode(edit.title),
+        ref: sup,
+        time: document.createTextNode(clock(edit.ts, true))
+      }));
+      const link = document.createElement('a');
+      link.href = edit.url || edit.page || '#';
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = fill('ref_link', { title: edit.title });
+      refItem.id = 'cite-1';
+      refItem.textContent = '';
+      refItem.append('↑ ', link, ' — ' + edit.lang.toLowerCase() + '.wikipedia.org, ' +
+        new Intl.DateTimeFormat(I18N.lang || 'ru', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(edit.ts)) + '.');
+      fitWinner();
+    }
+
+    function reveal(widx, edit) {
+      resultEl.classList.remove('waiting');
+      highlightWinner(widx);                    // строка победителя в инфобоксе подсвечивается
+      resultEl.classList.add('on');
+      lastWin = { idx: widx, name: names[widx], edit };
+      try { localStorage.setItem(LAST_KEY, JSON.stringify(lastWin)); } catch (e) {}
+      renderStub();
+      setStubMode('on');
+      stubEl.classList.remove('on');
+      void stubEl.offsetWidth;
+      stubEl.classList.add('on');
+      playWin();
+
+      running = false;
+      done = true;
+      goBtn.textContent = t('btn_again');
+      goBtn.classList.add('again');
+      goBtn.disabled = false;
+      lockInputs(false);
+      recordHostWin(names[widx]);
+    }
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(LAST_KEY) || 'null');
+      if (saved && typeof saved.name === 'string' && saved.edit && typeof saved.edit.title === 'string') lastWin = saved;
+    } catch (e) {}
+
+    window.addEventListener('resize', () => { fitTiles(); fitWinner(); });
+
+    let audioCtx = null;
+    function playSound(f, d, v, type) {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = type || 'sine';
+        o.frequency.value = f;
+        const t = audioCtx.currentTime;
+        g.gain.setValueAtTime(v || 0.1, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + (d || 0.1));
+        o.connect(g);
+        g.connect(audioCtx.destination);
+        o.start(t);
+        o.stop(t + (d || 0.1));
+      } catch (e) {}
+    }
+    const playSnap = () => { playSound(880, 0.06, 0.16, 'square'); setTimeout(() => playSound(320, 0.10, 0.12, 'square'), 55); };
+    const playWin  = () => { [660, 880, 1320].forEach((f, i) => setTimeout(() => playSound(f, 0.32, 0.09), i * 110)); };
+    const playTick = (v) => playSound(420 + v * 18, 0.035, 0.035, 'square');
+
+    /* ── Меню ────────────────────────────────────────── */
+    const menuBtn = document.getElementById('menuBtn');
+    const menuDrop = document.getElementById('menuDrop');
+    const setMenu = (open) => {
+      menuBtn.classList.toggle('open', open);
+      menuDrop.classList.toggle('open', open);
+      menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    menuBtn.addEventListener('click', (e) => { e.stopPropagation(); setMenu(!menuDrop.classList.contains('open')); });
+    document.addEventListener('click', (e) => { if (!menuDrop.contains(e.target)) setMenu(false); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+
+    goBtn.addEventListener('click', run);
+
+    document.addEventListener('keydown', (e) => {
+      if (['INPUT', 'BUTTON', 'A', 'SELECT'].includes(e.target.tagName)) return;
+      if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); run(); }
+    });
+
+    /* ── ЯЗЫК ────────────────────────────────────────── */
+    window.addEventListener('langchange', () => {
+      if (!userEdited) {
+        const isDefault = Object.values(DEFAULT_NAME_SETS).some(set => set.join('|') === names.join('|'));
+        if (isDefault && names.join('|') !== DEFAULT_NAME_SETS[I18N.lang].join('|')) {
+          const wasEqual = !hasCustomProbabilities;
+          const prev = names;
+          names = DEFAULT_NAME_SETS[I18N.lang].slice();
+          // историю ведущих переносим по позиции — те же люди под локализованными именами
+          hostLog.forEach((e) => {
+            const i = prev.indexOf(e.name);
+            if (i !== -1) e.name = names[i];
+          });
+          saveHostLog();
+          saveNames();
+          if (wasEqual) setEqualProbabilities();
+          else { probabilities = {}; lockedParticipants = {}; setEqualProbabilities(); }
+        }
+      }
+      const wasDone = done;
+      const winIdx = wasDone ? [...plist.children].findIndex(el => el.classList.contains('win')) : -1;
+      renderList();
+      setStreamState(streamState);
+      renderDay();
+      renderStub();
+      setGoWidth();
+      if (!running) goBtn.textContent = wasDone ? t('btn_again') : t('btn');
+      else if (armed) goBtn.textContent = t('btn_wait');
+      if (wasDone && winIdx >= 0) {
+        highlightWinner(winIdx);
+        winnerEl.textContent = names[winIdx];
+        goBtn.disabled = false;
+      }
+    });
+
+    try { hostsBox.hidden = localStorage.getItem(HOSTS_OPEN_KEY) !== '1'; } catch (e) {}
+    hostsBtn.setAttribute('aria-expanded', String(!hostsBox.hidden));
+
+    initProbabilities();
+    renderFeedPlaceholder();
+    renderDay();
+    renderList();
+    renderStub();
+    if (lastWin) setStubMode('stale');
+    setGoWidth();
+    connect();
+  </script>
+
+ <!-- Yandex.Metrika counter -->
+  <script type="text/javascript">
+    (function(m,e,t,r,i,k,a){
+      m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+      m[i].l=1*new Date();
+      for (var j = 0; j < document.scripts.length; j++) {
+        if (document.scripts[j].src === r) { return; }
+      }
+      k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+    })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+
+    ym(104849796, 'init', {
+      clickmap:true,
+      trackLinks:true,
+      accurateTrackBounce:true,
+      webvisor:true
+    });
+  </script>
+  <noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+  <!-- /Yandex.Metrika counter -->
+
+  <script>
+  window.I18N_DICT = {
+    ru: {
+      _title: `Викирандом — победителя выбирает свежая правка Википедии`,
+      meta_desc: `📖 Честный рандомайзер на живой Википедии: ловим первую правку после нажатия, складываем номера букв в заголовке статьи — остаток от деления и есть победитель. С настройкой вероятностей.`,
+      menu: `Меню`,
+      nav_home: `🏠 Главная`, nav_ducks: `🦆 Утиные бега`, nav_penguins: `🐧 Пингвины на льдине`, nav_elections: `🗳️ Выборы`, nav_ai: `🤖 LLM-рандомайзер`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Рулетка`, nav_racing: `🏁 Гонки`, nav_wheel: `🎡 Колесо Фортуны`, nav_bingo: `🎲 Бинго`, nav_bank: `🇲🇽 Банк`, nav_plinko: `🎯 Плинко`, nav_loto: `🎱 Лототрон`, nav_crystal: `🔮 Магический Шар`, nav_trading: `📈 Трейдинг`, nav_pseudo: `⏱️ Псевдорандом`, nav_daisy: `🌼 Ромашка`, nav_radar: `📡 Радар`, nav_btc: `🪙 Биткоин-рандом`,
+      h1: `<span class="ns">Служебная:</span>Викирандом`,
+      example_title: `Кот`,
+      tag_example: `пример`,
+      example_meta: `Так считается любой заголовок. Нажмите кнопку — и посчитаем настоящий.`,
+      wait_meta: `Отметка в ленте показывает момент нажатия`,
+      tag_last: `прошлый розыгрыш`,
+      stub_empty_name: `Имя победителя`,
+      stub_empty: `Здесь появится статья о победителе: номер в списке, правка, которая его выбрала, и ссылка на неё.`,
+      stub_empty_ref: `Ссылка на правку появится после розыгрыша.`,
+      wm_title: `Викирандом`,
+      wm_tag: `Свободный рандомайзер`,
+      menu_heading: `Другие рандомайзеры`,
+      tabs_aria: `Вкладки`,
+      tab_special: `Служебная страница`,
+      tab_rules: `Как это работает`,
+      site_sub: `Материал из Викирандома — свободного рандомайзера`,
+      lede: `Победителя выбирает <b>первая правка Википедии</b>, пришедшая после нажатия кнопки: буквы её заголовка превращаются в числа, а остаток от деления суммы — номер победителя.`,
+      rc_title: `Свежие правки`,
+      rc_diff: `разн.`,
+      rc_hist: `история`,
+      go_hint: `или <kbd>Пробел</kbd>`,
+      caught_src: `Правка из {src}`,
+      col_letter: `буква`,
+      col_value: `номер`,
+      stub_lede: `{name} — номер {n} в списке участников. Выбор сделала правка статьи «{title}»{ref}, пришедшая в {time}.`,
+      ref_link: `Правка статьи «{title}»`,
+      refs_title: `Примечания`,
+      star_title: `Избранная статья`,
+      btn: `Поймать правку`,
+      btn_wait: `Ждём правку…`,
+      btn_count: `Считаем буквы…`,
+      btn_again: `Ещё раз`,
+      op_hint: `Нажмите кнопку — <i>Σ</i> букв заголовка <i>mod</i> {T} назовёт победителя`,
+      op_wait: `ждём первую правку после нажатия`,
+      op_timeout: `Википедия молчит — попробуйте ещё раз`,
+      st_connecting: `подключаемся к Википедии…`,
+      st_live: `в реальном времени`,
+      st_reconnecting: `связь прервалась, переподключаемся…`,
+      st_paused: `лента на паузе — нажмите где угодно`,
+      rate: `{n} правок/мин`,
+      mark: `▲ вы нажали здесь — выигрывает первая правка выше`,
+      bytes: `{n} байт`,
+      participants: `Участники`,
+      equalize: `Уравнять`,
+      equalize_title: `Уравнять вероятности`,
+      collapse_title: `Свернуть список`,
+      col_num: `№`,
+      col_name: `Имя`,
+      col_prob: `📊 Вероятность`,
+      ph_new: `Новый участник`,
+      add_title: `Добавить участника`,
+      new_name: `Участник {n}`,
+      aria_dec: `Уменьшить вероятность`,
+      aria_prob: `Вероятность в процентах`,
+      aria_inc: `Увеличить вероятность`,
+      aria_del: `Удалить участника`,
+      aria_away: `Отпуск / болеет — временно убрать`,
+      aria_back: `Вернуть в розыгрыш`,
+      away_badge: `🌴 нет на месте`,
+      hosts_title: `Ведущие`, hosts_prev: `Неделя назад`, hosts_next: `Неделя вперёд`, host_nobody: `— никто`,
+      host_day_aria: `Ведущий: {date}`, host_chip_title: `Ведущий: {date}`,
+      host_chip_today: `сегодня`, host_chips: `Метки у участников`,
+      err_min: `Нужно минимум 2 участника.`,
+      err_max: `Максимум {n} участников.`,
+      err_trunc: `Список общий с другими рандомайзерами: показаны первые {n} из {total}.`,
+      ph_dup: `Такое имя уже есть`,
+      ph_atleast1: `Введите имя`,
+      ph_min2: `Нужно минимум 2 участника`,
+      ph_max: `Максимум {n} участников`,
+      rules_aria: `Правила`,
+      rules_title: `Как это работает`,
+      rules_1: `Слушаем живую ленту правок <b>Википедии</b> — русской, английской и греческой. Только статьи и только люди, без ботов.`,
+      rules_2: `После нажатия берём <b>первую</b> правку, которая придёт. Выбрать удобную не может никто — ни вы, ни мы.`,
+      rules_3: `Каждая буква заголовка — её номер в алфавите: <code>А=1 … Я=33</code> <code>A=1 … Z=26</code> <code>Α=1 … Ω=24</code>, цифра — сама себе, остальное — 0. Всё складываем.`,
+      rules_4: `Шансы равные — <code>сумма mod N</code>, остаток и есть номер победителя. Шансы разные — <code>сумма mod 100</code>: у каждого столько билетов, сколько процентов, диапазон виден рядом с номером.`
+    },
+    en: {
+      _title: `Wikirandom — a fresh Wikipedia edit picks the winner`,
+      meta_desc: `📖 An honest randomizer powered by live Wikipedia: we catch the first edit after your press, add up the letter numbers of the article title — the remainder is the winner. With adjustable odds.`,
+      menu: `Menu`,
+      nav_home: `🏠 Home`, nav_ducks: `🦆 Duck Race`, nav_penguins: `🐧 Penguin Floe`, nav_elections: `🗳️ Elections`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Roulette`, nav_racing: `🏁 Racing`, nav_wheel: `🎡 Wheel of Fortune`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 The Bank`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Lottery Drum`, nav_crystal: `🔮 Magic Ball`, nav_trading: `📈 Trading`, nav_pseudo: `⏱️ Pseudorandom`, nav_daisy: `🌼 Daisy`, nav_radar: `📡 Radar`, nav_btc: `🪙 Bitcoin Random`,
+      h1: `<span class="ns">Special:</span>Wikirandom`,
+      example_title: `Cat`,
+      tag_example: `example`,
+      example_meta: `This is how any title is counted. Press the button to count a real one.`,
+      wait_meta: `The mark in the feed shows the moment you pressed`,
+      tag_last: `previous draw`,
+      stub_empty_name: `Winner's name`,
+      stub_empty: `An article about the winner will appear here: their number on the list, the edit that picked them and a link to it.`,
+      stub_empty_ref: `A link to the edit will appear after the draw.`,
+      wm_title: `Wikirandom`,
+      wm_tag: `The free randomizer`,
+      menu_heading: `Other randomizers`,
+      tabs_aria: `Tabs`,
+      tab_special: `Special page`,
+      tab_rules: `How it works`,
+      site_sub: `From Wikirandom, the free randomizer`,
+      lede: `The winner is picked by <b>the first Wikipedia edit</b> that arrives after you press the button: the letters of its title turn into numbers, and the remainder of their sum is the winner's index.`,
+      rc_title: `Recent changes`,
+      rc_diff: `diff`,
+      rc_hist: `hist`,
+      go_hint: `or <kbd>Space</kbd>`,
+      caught_src: `Edit from {src}`,
+      col_letter: `letter`,
+      col_value: `number`,
+      stub_lede: `{name} is number {n} on the participant list. The choice was made by an edit to “{title}”{ref} that arrived at {time}.`,
+      ref_link: `Edit to “{title}”`,
+      refs_title: `References`,
+      star_title: `Featured article`,
+      btn: `Catch an edit`,
+      btn_wait: `Waiting for an edit…`,
+      btn_count: `Counting letters…`,
+      btn_again: `Run again`,
+      op_hint: `Press the button — <i>Σ</i> of title letters <i>mod</i> {T} names the winner`,
+      op_wait: `waiting for the first edit after your press`,
+      op_timeout: `Wikipedia went quiet — try again`,
+      st_connecting: `connecting to Wikipedia…`,
+      st_live: `live`,
+      st_reconnecting: `connection lost, reconnecting…`,
+      st_paused: `feed paused — tap anywhere`,
+      rate: `{n} edits/min`,
+      mark: `▲ you pressed here — the first edit above wins`,
+      bytes: `{n} bytes`,
+      participants: `Participants`,
+      equalize: `Equalize`,
+      equalize_title: `Equalize the odds`,
+      collapse_title: `Collapse the list`,
+      col_num: `#`,
+      col_name: `Name`,
+      col_prob: `📊 Odds`,
+      ph_new: `New participant`,
+      add_title: `Add a participant`,
+      new_name: `Participant {n}`,
+      aria_dec: `Decrease probability`,
+      aria_prob: `Probability in percent`,
+      aria_inc: `Increase probability`,
+      aria_del: `Remove participant`,
+      aria_away: `On leave / sick — take out for now`,
+      aria_back: `Bring back`,
+      away_badge: `🌴 away`,
+      hosts_title: `Hosts`, hosts_prev: `Previous week`, hosts_next: `Next week`, host_nobody: `— nobody`,
+      host_day_aria: `Host: {date}`, host_chip_title: `Hosted: {date}`,
+      host_chip_today: `today`, host_chips: `Labels on participants`,
+      err_min: `At least 2 participants are needed.`,
+      err_max: `{n} participants max.`,
+      err_trunc: `The roster is shared with the other randomizers: showing the first {n} of {total}.`,
+      ph_dup: `That name already exists`,
+      ph_atleast1: `Enter a name`,
+      ph_min2: `At least 2 participants`,
+      ph_max: `{n} participants max`,
+      rules_aria: `Rules`,
+      rules_title: `How it works`,
+      rules_1: `We listen to the live feed of <b>Wikipedia</b> edits — Russian, English and Greek. Articles only, humans only, no bots.`,
+      rules_2: `After you press, we take the <b>first</b> edit that arrives. Nobody can pick a convenient one — not you, not us.`,
+      rules_3: `Every letter of the title is its number in the alphabet: <code>А=1 … Я=33</code> <code>A=1 … Z=26</code> <code>Α=1 … Ω=24</code>, a digit is itself, anything else is 0. Add it all up.`,
+      rules_4: `Equal odds — <code>sum mod N</code>, the remainder is the winner's index. Custom odds — <code>sum mod 100</code>: everyone gets as many tickets as their percentage, the range is shown next to the index.`
+    },
+    el: {
+      _title: `Wikiτυχαίο — νικητή διαλέγει μια φρέσκια επεξεργασία της Βικιπαίδειας`,
+      meta_desc: `📖 Τίμια τυχαία επιλογή με τη ζωντανή Βικιπαίδεια: πιάνουμε την πρώτη επεξεργασία μετά το πάτημα, προσθέτουμε τους αριθμούς των γραμμάτων του τίτλου — το υπόλοιπο είναι ο νικητής. Με ρυθμιζόμενες πιθανότητες.`,
+      menu: `Μενού`,
+      nav_home: `🏠 Αρχική`, nav_ducks: `🦆 Αγώνας Παπιών`, nav_penguins: `🐧 Πιγκουίνοι στον πάγο`, nav_elections: `🗳️ Εκλογές`, nav_ai: `🤖 LLM Randomizer`, nav_gitlab: `🦊 GitLab Blame`, nav_slack: `🚨 Slack Ρουλέτα`, nav_racing: `🏁 Αγώνες`, nav_wheel: `🎡 Τροχός της Τύχης`, nav_bingo: `🎲 Bingo`, nav_bank: `🇲🇽 Η Τράπεζα`, nav_plinko: `🎯 Plinko`, nav_loto: `🎱 Κληρωτίδα`, nav_crystal: `🔮 Μαγική Μπάλα`, nav_trading: `📈 Trading`, nav_pseudo: `⏱️ Ψευδοτυχαίο`, nav_daisy: `🌼 Μαργαρίτα`, nav_radar: `📡 Ραντάρ`, nav_btc: `🪙 Bitcoin κλήρωση`,
+      h1: `<span class="ns">Ειδικό:</span>Wikiτυχαίο`,
+      example_title: `Γάτα`,
+      tag_example: `παράδειγμα`,
+      example_meta: `Έτσι μετράει κάθε τίτλος. Πάτα το κουμπί για να μετρήσουμε έναν αληθινό.`,
+      wait_meta: `Το σημάδι στη ροή δείχνει τη στιγμή του πατήματος`,
+      tag_last: `προηγούμενη κλήρωση`,
+      stub_empty_name: `Όνομα νικητή`,
+      stub_empty: `Εδώ θα εμφανιστεί ένα λήμμα για τον νικητή: ο αριθμός του στη λίστα, η επεξεργασία που τον διάλεξε και σύνδεσμος προς αυτήν.`,
+      stub_empty_ref: `Ο σύνδεσμος προς την επεξεργασία θα εμφανιστεί μετά την κλήρωση.`,
+      wm_title: `Wikiτυχαίο`,
+      wm_tag: `Η ελεύθερη κλήρωση`,
+      menu_heading: `Άλλες κληρώσεις`,
+      tabs_aria: `Καρτέλες`,
+      tab_special: `Ειδική σελίδα`,
+      tab_rules: `Πώς λειτουργεί`,
+      site_sub: `Από το Wikiτυχαίο, την ελεύθερη κλήρωση`,
+      lede: `Τον νικητή τον διαλέγει <b>η πρώτη επεξεργασία της Βικιπαίδειας</b> που φτάνει μετά το πάτημα: τα γράμματα του τίτλου γίνονται αριθμοί και το υπόλοιπο του αθροίσματος είναι ο αριθμός του νικητή.`,
+      rc_title: `Πρόσφατες αλλαγές`,
+      rc_diff: `διαφ.`,
+      rc_hist: `ιστ.`,
+      go_hint: `ή <kbd>Space</kbd>`,
+      caught_src: `Επεξεργασία από {src}`,
+      col_letter: `γράμμα`,
+      col_value: `αριθμός`,
+      stub_lede: `{name} — αριθμός {n} στη λίστα συμμετεχόντων. Την επιλογή έκανε μια επεξεργασία του άρθρου «{title}»{ref} που ήρθε στις {time}.`,
+      ref_link: `Επεξεργασία του «{title}»`,
+      refs_title: `Παραπομπές`,
+      star_title: `Προβεβλημένο λήμμα`,
+      btn: `Πιάσε μια επεξεργασία`,
+      btn_wait: `Περιμένουμε επεξεργασία…`,
+      btn_count: `Μετράμε γράμματα…`,
+      btn_again: `Ξανά`,
+      op_hint: `Πάτα το κουμπί — <i>Σ</i> γραμμάτων τίτλου <i>mod</i> {T} βγάζει τον νικητή`,
+      op_wait: `περιμένουμε την πρώτη επεξεργασία μετά το πάτημα`,
+      op_timeout: `Η Βικιπαίδεια σώπασε — δοκίμασε ξανά`,
+      st_connecting: `σύνδεση με τη Βικιπαίδεια…`,
+      st_live: `σε πραγματικό χρόνο`,
+      st_reconnecting: `η σύνδεση χάθηκε, επανασύνδεση…`,
+      st_paused: `η ροή σε παύση — πάτησε οπουδήποτε`,
+      rate: `{n} επεξ./λεπτό`,
+      mark: `▲ πάτησες εδώ — κερδίζει η πρώτη επεξεργασία από πάνω`,
+      bytes: `{n} bytes`,
+      participants: `Συμμετέχοντες`,
+      equalize: `Εξίσωση`,
+      equalize_title: `Εξίσωση πιθανοτήτων`,
+      collapse_title: `Σύμπτυξη λίστας`,
+      col_num: `Αρ.`,
+      col_name: `Όνομα`,
+      col_prob: `📊 Πιθανότητα`,
+      ph_new: `Νέος συμμετέχων`,
+      add_title: `Προσθήκη συμμετέχοντα`,
+      new_name: `Συμμετέχων {n}`,
+      aria_dec: `Μείωση πιθανότητας`,
+      aria_prob: `Πιθανότητα σε ποσοστό`,
+      aria_inc: `Αύξηση πιθανότητας`,
+      aria_del: `Αφαίρεση συμμετέχοντα`,
+      aria_away: `Άδεια / ασθένεια — προσωρινή αφαίρεση`,
+      aria_back: `Επιστροφή στην κλήρωση`,
+      away_badge: `🌴 απών`,
+      hosts_title: `Παρουσιαστές`, hosts_prev: `Προηγούμενη εβδομάδα`, hosts_next: `Επόμενη εβδομάδα`, host_nobody: `— κανείς`,
+      host_day_aria: `Παρουσιαστής: {date}`, host_chip_title: `Παρουσίασε: {date}`,
+      host_chip_today: `σήμερα`, host_chips: `Ετικέτες στους συμμετέχοντες`,
+      err_min: `Χρειάζονται τουλάχιστον 2 συμμετέχοντες.`,
+      err_max: `Το πολύ {n} συμμετέχοντες.`,
+      err_trunc: `Η λίστα είναι κοινή με τους άλλους τυχαίους επιλογείς: εμφανίζονται οι πρώτοι {n} από {total}.`,
+      ph_dup: `Το όνομα υπάρχει ήδη`,
+      ph_atleast1: `Γράψε ένα όνομα`,
+      ph_min2: `Τουλάχιστον 2 συμμετέχοντες`,
+      ph_max: `Το πολύ {n} συμμετέχοντες`,
+      rules_aria: `Κανόνες`,
+      rules_title: `Πώς λειτουργεί`,
+      rules_1: `Ακούμε τη ζωντανή ροή επεξεργασιών της <b>Βικιπαίδειας</b> — ρωσικής, αγγλικής και ελληνικής. Μόνο άρθρα, μόνο άνθρωποι, χωρίς bots.`,
+      rules_2: `Μετά το πάτημα παίρνουμε την <b>πρώτη</b> επεξεργασία που θα έρθει. Κανείς δεν μπορεί να διαλέξει μια βολική — ούτε εσύ, ούτε εμείς.`,
+      rules_3: `Κάθε γράμμα του τίτλου είναι ο αριθμός του στο αλφάβητο: <code>А=1 … Я=33</code> <code>A=1 … Z=26</code> <code>Α=1 … Ω=24</code>, ένα ψηφίο μετράει όσο η τιμή του, όλα τα άλλα 0. Τα προσθέτουμε όλα.`,
+      rules_4: `Ίσες πιθανότητες — <code>άθροισμα mod N</code>, το υπόλοιπο είναι ο αριθμός του νικητή. Διαφορετικές — <code>άθροισμα mod 100</code>: ο καθένας παίρνει τόσα εισιτήρια όσο το ποσοστό του, το εύρος φαίνεται δίπλα στον αριθμό.`
+    }
+  };
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Викирандом",
+    "applicationCategory": "GameApplication",
+    "operatingSystem": "Web",
+    "url": "https://randomhost.online/wiki-random.html",
+    "description": "Рандомайзер на живой Википедии: первая правка статьи после нажатия, сумма номеров букв заголовка по модулю числа участников — порядковый номер победителя.",
+    "inLanguage": "ru",
+    "publisher": {
+      "@type": "Organization",
+      "name": "Рандомайзер-игры",
+      "url": "https://randomhost.online"
+    }
+  }
+  </script>
+
+  <script src="i18n.js" defer></script>
+  <script src="sound-toggle.js" defer></script>
+</body>
+</html>
