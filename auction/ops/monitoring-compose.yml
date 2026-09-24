@@ -1,0 +1,116 @@
+# Стек мониторинга — копия compose для восстановления.
+#
+# Живёт на сервере: /srv/monitoring/compose.yml. Деплоем НЕ раскатывается.
+# Пароль Grafana подставляется из /srv/monitoring/.env (в git его нет).
+# Дата снятия: 2026-09-24.
+#
+# ---------------------------------------------------------------------------
+name: monitoring
+services:
+  victoria-metrics:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    image: victoriametrics/victoria-metrics:v1.106.1
+    cpuset: "2-5"
+    command:
+      - "-retentionPeriod=12"
+      - "-storageDataPath=/storage"
+    volumes:
+      - vm-data:/storage
+    networks:
+      - default
+      - shared
+    restart: unless-stopped
+
+  grafana:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    image: grafana/grafana-oss:11.4.0
+    cpuset: "2-5"
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      - GF_INSTALL_PLUGINS=victoriametrics-logs-datasource
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_SERVER_ROOT_URL=https://vpnbot.neverworks.dev/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      - GF_FEATURE_TOGGLES_ENABLE=publicDashboards
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana-dashboards/fleet-overview.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - grafana-provisioning:/etc/grafana/provisioning
+      - grafana-dashboards:/var/lib/grafana-dashboards
+    restart: unless-stopped
+
+  # Продуктовые события Mini App и бота (services/analytics.py). Сеть shared
+  # обязательна: писатели живут в другом compose-проекте (/srv/vpnbot).
+  victoria-logs:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    image: victoriametrics/victoria-logs:v1.52.0
+    cpuset: "2-5"
+    command:
+      - "-retentionPeriod=90d"
+      - "-storageDataPath=/vlogs"
+    volumes:
+      - vlogs-data:/vlogs
+    networks:
+      - default
+      - shared
+    restart: unless-stopped
+
+  # Сборщик логов всех контейнеров хоста. Читает их через docker API, а не подменяет драйвер:
+  # `docker logs` продолжает работать, а VictoriaLogs получает копию, которая переживает
+  # пересоздание контейнера при деплое. Настройки — в vector.yaml рядом.
+  vector:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    image: timberio/vector:0.58.0-alpine
+    # Ядра 0-1 зарезервированы под radio-encoder, как и у остальных служб на этом хосте.
+    cpuset: "2-5"
+    mem_limit: 256m
+    volumes:
+      # сокет только на чтение: нужно перечислять контейнеры и читать их вывод, не более
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./vector.yaml:/etc/vector/vector.yaml:ro
+      - vector-data:/vector-data-dir
+    networks:
+      - default
+    depends_on:
+      - victoria-logs
+    restart: unless-stopped
+
+volumes:
+  vlogs-data:
+  vector-data:
+  vm-data:
+    external: true
+    name: opt_vm-data
+  grafana-data:
+    external: true
+    name: opt_grafana-data
+  grafana-provisioning:
+    external: true
+    name: opt_grafana-provisioning
+  grafana-dashboards:
+    external: true
+    name: opt_grafana-dashboards
+
+networks:
+  shared:
+    external: true

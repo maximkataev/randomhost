@@ -1,0 +1,52 @@
+# Конфигурация сборщика логов — копия для восстановления.
+#
+# Живёт на сервере: /srv/monitoring/vector.yaml (стек мониторинга, compose-проект monitoring).
+# Деплоем НЕ раскатывается, обновляется руками. Здесь — чтобы не восстанавливать по памяти,
+# ровно по той же причине, что и nginx-host.conf рядом.
+#
+# Дата снятия: 2026-09-24. Проверить после правки:
+#   cd /srv/monitoring && docker compose config -q && docker compose up -d vector
+#
+# ---------------------------------------------------------------------------
+# Сборщик логов контейнеров → VictoriaLogs.
+#
+# Зачем: логи контейнера живут только в его json-file и исчезают вместе с ним. compose
+# пересоздаёт контейнер при каждой смене образа, то есть при каждом деплое, — и разбирать
+# вчерашний инцидент уже не по чему. 24.09.2026 вечер, когда у игроков рвалась связь,
+# пришлось раскапывать по логам хостового nginx: логи аукциона к тому моменту стёрли два
+# деплоя подряд. Здесь тот же вывод уезжает в VictoriaLogs с retention 90 дней и переживает
+# любые пересборки.
+#
+# Это не замена драйвера логов: контейнеры по-прежнему пишут в json-file, `docker logs`
+# работает как работал, а сборщик — дополнительный читатель через docker API.
+
+data_dir: /vector-data-dir
+
+sources:
+  containers:
+    type: docker_logs
+    # Себя не собираем. Сборщик, который пишет в лог о своей отправке и тут же читает
+    # собственный лог, кормит сам себя — на ошибке доставки это превращается в лавину.
+    exclude_containers:
+      - monitoring-vector
+
+sinks:
+  victoria_logs:
+    type: elasticsearch
+    inputs:
+      - containers
+    endpoints:
+      - "http://victoria-logs:9428/insert/elasticsearch/"
+    api_version: v8
+    compression: gzip
+    # Проверка доступности выключена намеренно: VictoriaLogs не отвечает на корневой путь
+    # так, как ждёт elasticsearch-приёмник, и Vector считал бы живой сток мёртвым.
+    healthcheck:
+      enabled: false
+    query:
+      _msg_field: message
+      _time_field: timestamp
+      # Поток — это контейнер и канал (stdout/stderr). Продуктовые события Mini App и бота
+      # лежат в этой же VictoriaLogs, но приходят без container_name, поэтому не смешиваются:
+      # логи контейнеров отбираются запросом container_name:*
+      _stream_fields: container_name,stream
