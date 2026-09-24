@@ -304,7 +304,9 @@ async function typeText(page, text) {
       await dboard.call("Runtime.evaluate", { expression: "sendMsg({type:'start'})" });
       await wait(1200);
       guest.ws.close(); // остался один со свободными слотами → партия встаёт, ведущий продолжает
-      await wait(1500);
+      // Ждём саму паузу, а не «примерно столько»: сервер даёт обрыву несколько секунд грации,
+      // и resume, посланный раньше паузы, ничего не снимает — партия так и стоит.
+      await untilPage(dboard, "state && state.paused", 25000);
       await dboard.call("Runtime.evaluate", { expression: "sendMsg({type:'resume'})" });
       const draft = await untilPage(dremote, "state && state.phase === 'draft'", 25000);
       check(draft, `соло-добор: пульт дождался фазы ДОБОР (${await evaluateSafe(dremote, "state && state.phase + '/' + state.players.length + '/' + state.paused")})`);
@@ -319,15 +321,21 @@ async function typeText(page, text) {
       check(hasFrag(await evaluateSafe(dremote, "(document.getElementById('mymoney')||{}).textContent") || "", await i18nFrag(dremote, "draft_status")), "пульт: в статус-строке добор и номер слота вместо денег");
       await dboard.shot("ui_board_draft");
       await dremote.shot("ui_remote_draft");
-      // тратим все пять скипов: шестой лот обязан остаться без кнопки «Скип»
-      let skips = 0;
-      for (let i = 0; i < 5; i++) {
-        if (!(await untilPage(dremote, "state && state.phase === 'draft' && state.solo && state.solo.skips > 0", 20000))) break;
+      // Дальше жмём кнопки минуту с лишним: фоновую вкладку Chrome подмораживает, и пульт
+      // успевает потерять связь. Живой игрок смотрит в свой экран — выводим её вперёд.
+      await dremote.call("Page.bringToFront");
+      // тратим все пять скипов: шестой лот обязан остаться без кнопки «Скип».
+      // Считаем лоты, а не нажатия: истёкший таймер — тоже скип, и на медленной машине
+      // счётчик может списать он.
+      let seen = 0, must = false;
+      while (seen < 8) {
+        if (!(await untilPage(dremote, "state && state.phase === 'draft'", 20000))) break;
+        seen++;
+        if ((await evaluateSafe(dremote, "state.solo ? state.solo.skips : -1")) === 0) { must = true; break; }
         await dremote.call("Runtime.evaluate", { expression: `(document.querySelector('#bidbox .mid') || {click(){}}).click()` });
-        if (await untilPage(dremote, `state && state.solo === null || (state.solo && state.solo.skips === ${4 - i})`, 8000)) skips++;
+        await untilPage(dremote, "state && state.phase !== 'draft'", 8000);
       }
-      check(skips === 5, `пульт: пять скипов ушли на сервер (${skips})`);
-      check(await untilPage(dremote, "state && state.phase === 'draft' && state.solo && state.solo.skips === 0", 20000), "соло-добор: дошли до обязательного лота");
+      check(must && seen === 6, `соло-добор: на слот ушло шесть лотов — пять скипов и обязательный (${seen})`);
       await wait(400);
       check(!(await evaluateSafe(dremote, "!!document.querySelector('#bidbox .mid')")), "пульт: на обязательном лоте кнопки «Скип» нет");
       check(await evaluateSafe(dremote, "!!document.querySelector('#bidbox .big')"), "пульт: кнопка «Взять» осталась");

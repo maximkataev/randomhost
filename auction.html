@@ -822,8 +822,8 @@ function setOverlay(key) {
   overlay.classList.toggle("on", !!overlayKey);
 }
 
-if (!CODE) renderCreate();
-else { try { token = localStorage.getItem("auction-token-" + CODE); } catch {} if (token) join(""); else if (params.get("name")) join(params.get("name")); else renderJoin(); }
+// Запуск экрана — в самом конце скрипта (см. boot() внизу): join() пишет в let-переменные,
+// объявленные ниже, и вызов отсюда падал с ReferenceError (TDZ) — пульт с токеном оставался пустым.
 
 // Смена языка: статические узлы обновит сам i18n.js, но все экраны пульта строит JS — перерисовываем.
 window.addEventListener("langchange", () => {
@@ -1013,6 +1013,12 @@ function rejoinNow() {
 }
 addEventListener("online", rejoinNow);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) rejoinNow(); });
+// bfcache: при уходе «назад» страница замораживается целиком, и браузер рвёт сокет — Chrome делает
+// это принудительно при попадании в bfcache. При восстановлении оттуда visibilitychange срабатывает
+// не всегда, надёжный хук — pageshow с persisted. А на pagehide закрываемся сами: уходя, честно
+// освобождаем место, вместо того чтобы сервер ещё грацию считал нас живыми.
+addEventListener("pageshow", (e) => { if (e.persisted) rejoinNow(); });
+addEventListener("pagehide", () => { try { if (ws) ws.close(); } catch (e) {} });
 
 // Погасший экран замораживает вкладку, сокет умирает, игрок выпадает из партии. Wake Lock держит
 // экран включённым, пока открыт пульт. Где его нет (iOS до 16.4) — просто ничего не происходит:
@@ -1353,6 +1359,10 @@ function confetti() {
   })();
 }
 function escapeHtml(t) { return String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+// Старт — последней строкой: к этому моменту объявлены все let/const, которые трогают join() и рендер.
+if (!CODE) renderCreate();
+else { try { token = localStorage.getItem("auction-token-" + CODE); } catch {} if (token) join(""); else if (params.get("name")) join(params.get("name")); else renderJoin(); }
 </script>
 </body>
 </html>

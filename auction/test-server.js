@@ -63,8 +63,11 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
   await until(() => host.state.price === 2);
   check(host.state.leaderId === a.me, "ставка принята, лидер Аня");
   b.ws.close();
-  await until(() => host.state.players.find((p) => p.id === b.me)?.online === false);
-  check(host.state.players.find((p) => p.id === b.me).online === false, "закрытый сокет → offline");
+  // Короткий обрыв больше не событие партии: в пределах грации игрок числится на связи, и вернувшийся
+  // телефон не оставляет следов. Раньше тут ждали немедленного offline — и любое моргание Wi-Fi
+  // ставило партию на авто-паузу, снять которую мог только ведущий. Полный цикл — в graceSuite().
+  await wait(1200);
+  check(host.state.players.find((p) => p.id === b.me).online === true, "короткий обрыв не выбрасывает игрока сразу");
 
   // повторный вход по имени без токена во время игры
   const b2 = await connect(room.code, { type: "join", name: "Аня 2" });
@@ -186,7 +189,7 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
     const toDraft = async (ms = 25000) => until(() => h7.state.phase === "draft", ms);
 
     two.ws.close(); // второй ушёл — партия встала, ведущий продолжает без него
-    await until(() => h7.state.paused, 8000);
+    await until(() => h7.state.paused, 20000); // сервер ещё несколько секунд ждёт возврата (грация)
     h7.send({ type: "resume" });
     check(await toDraft(), `остался один со свободными слотами → фаза ДОБОР (${h7.state.phase})`);
     check(!!h7.state.solo && h7.state.solo.playerId === one.me && h7.state.solo.skips === 5, "в снимке есть кто добирает и сколько скипов");
@@ -210,7 +213,7 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
 
     // и снова уходит: добираем остаток через обязательный лот
     back.ws.close();
-    await until(() => h7.state.paused, 8000);
+    await until(() => h7.state.paused, 20000);
     h7.send({ type: "resume" });
     check(await toDraft(), "после второго ухода добор включается заново");
     // Скипаем, пока счётчик не обнулится. Считаем лоты, а не итерации: истёкший таймер — тоже
@@ -352,6 +355,9 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
 
   // ---------- TTL комнаты (свой инстанс с TTL 2 с) ----------
   await ttlSuite();
+  await graceSuite();
+  await pingTtlSuite();
+  await shutdownSuite();
 
   console.log(failures ? `FAILURES: ${failures}` : "SERVER TESTS OK");
   process.exit(failures ? 1 : 0);
@@ -574,6 +580,158 @@ async function ttlSuite() {
     await wait(6500); // больше трёх TTL на паузе
     check(!liveExpired, "партия на паузе с подключёнными игроками по TTL не закрывается");
     hostWs.close(); for (const w of pl) w.close();
+  } finally {
+    child.kill("SIGKILL");
+  }
+}
+
+// ---------- грация обрыва и авто-снятие авто-паузы ----------
+// Вечеринка на восьми телефонах — это постоянные микрообрывы: Wi-Fi переключается, браузер
+// притормаживает. Пока игрока объявляли выпавшим мгновенно, каждый такой обрыв ставил партию
+// на авто-паузу, а снять её мог только ведущий с доски: две секунды сети стоили всем минуту.
+// Здесь грация 800 мс, чтобы проверка шла секунды.
+async function graceSuite() {
+  const { spawn } = require("child_process");
+  const path = require("path");
+  const os = require("os");
+  const PORT = 3700 + Math.floor(Math.random() * 90);
+  const B = `http://127.0.0.1:${PORT}`;
+  const child = spawn(process.execPath, [path.join(__dirname, "server.js")], {
+    env: { ...process.env, PORT: String(PORT), NODE_ENV: "production", OFFLINE_GRACE_MS: "800",
+      DUMP_FILE: path.join(os.tmpdir(), `grace-${PORT}.json`) },
+    stdio: "ignore",
+  });
+  const sock = (code, first) => new Promise((res) => {
+    const ws = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + code);
+    const c = { ws, send: (m) => ws.send(JSON.stringify(m)) };
+    ws.on("message", (raw) => { const m = JSON.parse(raw); if (m.state) c.state = m.state; if (m.type === "joined") { c.me = m.playerId; c.token = m.token; } });
+    ws.on("error", () => {});
+    ws.on("open", () => { ws.send(JSON.stringify(first)); setTimeout(() => res(c), 250); });
+  });
+  try {
+    let up = false;
+    for (let i = 0; i < 60 && !up; i++) { try { up = (await fetch(B + "/auction/api/health")).ok; } catch { await wait(100); } }
+    if (!up) return check(false, "сервер грации поднялся");
+    const room = await (await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings: { intro: 0 } }) })).json();
+    const h = await sock(room.code, { type: "host", token: room.hostToken });
+    const x = await sock(room.code, { type: "join", name: "Икс" });
+    const y = await sock(room.code, { type: "join", name: "Игрек" });
+    await until(() => h.state?.players.length === 2);
+    h.send({ type: "start" });
+    await until(() => h.state.phase !== "lobby");
+
+    // 1. Моргнувшая сеть: вернулся в пределах грации — партия даже не узнала
+    y.ws.close();
+    await wait(200);
+    const y2 = await sock(room.code, { type: "join", name: "Игрек", token: y.token });
+    await wait(1400); // заведомо больше грации: если бы таймер не сняли, пауза бы уже встала
+    check(y2.me === y.me, "возврат в пределах грации — та же партия");
+    check(!h.state.paused, "моргнувшая сеть не ставит партию на паузу");
+
+    // 2. Ушёл насовсем: после грации — offline и авто-пауза
+    y2.ws.close();
+    const dropped = await until(() => h.state.players.find((p) => p.id === y.me)?.online === false, 6000);
+    check(dropped, "не вернувшийся за грацию игрок объявлен offline");
+    check(!!h.state.paused && h.state.pausedAuto === true, "выпавший игрок ставит партию на авто-паузу");
+
+    // 3. Вернулся — авто-пауза снимается сама, без ведущего
+    const y3 = await sock(room.code, { type: "join", name: "Игрек", token: y.token });
+    const resumed = await until(() => !h.state.paused, 6000);
+    check(y3.me === y.me && resumed, "все вернулись — авто-пауза снялась сама, ведущий не нужен");
+
+    // 4. Ручную паузу ведущего возврат игрока не снимает: её ставили осознанно
+    h.send({ type: "pause" });
+    await until(() => h.state.paused);
+    y3.ws.close();
+    await until(() => h.state.players.find((p) => p.id === y.me)?.online === false, 6000);
+    const y4 = await sock(room.code, { type: "join", name: "Игрек", token: y.token });
+    await wait(1200);
+    check(!!h.state.paused, "ручную паузу ведущего возврат игрока не снимает");
+
+    // 5. Пока доска жива, управление принадлежит ей: игрок паузу ведущего не снимает
+    await until(() => x.state && x.state.paused);
+    y4.send({ type: "resume" });
+    await wait(700);
+    check(!!x.state.paused, "при живой доске игрок не может снять паузу ведущего");
+
+    // 6. Доска умерла — иначе партия застревает на паузе до самого TTL при живых игроках
+    h.ws.close();
+    await wait(500);
+    y4.send({ type: "resume" });
+    const rescued = await until(() => x.state && !x.state.paused, 5000);
+    check(rescued, "доски нет — паузу снимает любой игрок, партия не застревает навсегда");
+
+    for (const c of [h, x, y4]) c.ws.close();
+  } finally {
+    child.kill("SIGKILL");
+  }
+}
+
+// ---------- служебный ping не продлевает жизнь брошенной комнате ----------
+// Пульт раз в 20 с спрашивает сервер, жив ли сокет. Это проверка связи, а не действие в комнате:
+// если бы такой ping двигал room.touched, брошенное лобби с открытой доской никогда не закрылось бы
+// по TTL и висело бы, занимая лимит комнат, ровно до перезапуска процесса.
+async function pingTtlSuite() {
+  const { spawn } = require("child_process");
+  const path = require("path");
+  const os = require("os");
+  const PORT = 3800 + Math.floor(Math.random() * 90);
+  const B = `http://127.0.0.1:${PORT}`;
+  const child = spawn(process.execPath, [path.join(__dirname, "server.js")], {
+    env: { ...process.env, PORT: String(PORT), NODE_ENV: "production", ROOM_TTL_MS: "2000",
+      DUMP_FILE: path.join(os.tmpdir(), `pingttl-${PORT}.json`) },
+    stdio: "ignore",
+  });
+  try {
+    let up = false;
+    for (let i = 0; i < 60 && !up; i++) { try { up = (await fetch(B + "/auction/api/health")).ok; } catch { await wait(100); } }
+    if (!up) return check(false, "сервер ping/TTL поднялся");
+    const room = await (await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal" }) })).json();
+    const ws = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + room.code);
+    let expired = false, pongs = 0;
+    ws.on("message", (raw) => { const m = JSON.parse(raw); if (m.type === "pong") pongs++; if (m.type === "error" && m.error === "room_expired") expired = true; });
+    ws.on("error", () => {});
+    await new Promise((r) => { ws.on("open", () => { ws.send(JSON.stringify({ type: "host", token: room.hostToken })); r(); }); setTimeout(r, 3000); });
+    const beat = setInterval(() => { try { ws.send(JSON.stringify({ type: "ping" })); } catch {} }, 300);
+    await wait(6500); // больше трёх TTL, всё это время пульт исправно пингует
+    clearInterval(beat);
+    check(pongs > 5, `на служебный ping приходит pong (получено ${pongs})`);
+    check(expired, "служебный ping не продлевает жизнь брошенному лобби");
+    ws.close();
+  } finally {
+    child.kill("SIGKILL");
+  }
+}
+
+// ---------- мягкий перезапуск ----------
+// Деплой приходится на живую партию. Если процесс просто выйдет, клиент увидит обрыв 1006 —
+// «сеть пропала» — и будет отсиживать свой шаг backoff. Код 1012 (Service Restart) говорит прямо:
+// это перезапуск сервиса, возвращайся сразу.
+async function shutdownSuite() {
+  const { spawn } = require("child_process");
+  const path = require("path");
+  const os = require("os");
+  const PORT = 3600 + Math.floor(Math.random() * 90);
+  const B = `http://127.0.0.1:${PORT}`;
+  const child = spawn(process.execPath, [path.join(__dirname, "server.js")], {
+    env: { ...process.env, PORT: String(PORT), NODE_ENV: "production",
+      DUMP_FILE: path.join(os.tmpdir(), `shutdown-${PORT}.json`) },
+    stdio: "ignore",
+  });
+  try {
+    let up = false;
+    for (let i = 0; i < 60 && !up; i++) { try { up = (await fetch(B + "/auction/api/health")).ok; } catch { await wait(100); } }
+    if (!up) return check(false, "сервер перезапуска поднялся");
+    const room = await (await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal" }) })).json();
+    const ws = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + room.code);
+    let code = null;
+    ws.on("close", (c) => (code = c));
+    ws.on("error", () => {});
+    await new Promise((r) => { ws.on("open", () => { ws.send(JSON.stringify({ type: "join", name: "Икс" })); r(); }); setTimeout(r, 3000); });
+    await wait(300);
+    child.kill("SIGTERM");
+    await until(() => code !== null, 5000);
+    check(code === 1012, `при перезапуске сокет закрывается кодом 1012 Service Restart (получено ${code})`);
   } finally {
     child.kill("SIGKILL");
   }

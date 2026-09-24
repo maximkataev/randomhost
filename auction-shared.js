@@ -295,6 +295,30 @@ async function startMusic(pick, widget) {
 function openTransport({ code, onMessage, onClose, onOpen, onSendFail }) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   let closed = false, opened = false, sid = null, ws = null, polling = false;
+  // Половина обрывов на телефоне — не закрытие, а тишина: сокет формально открыт, события close
+  // нет, а сквозь него уже ничего не идёт. Браузер об этом не сообщает, и пульт может простоять
+  // так минуту, пока сервер не оборвёт его сам. Поэтому спрашиваем сами: раз в 20 с служебный
+  // ping, и если за 45 с не пришло вообще ничего — считаем соединение мёртвым и переподключаемся.
+  let lastSeen = 0, beat = null, notified = false;
+  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } };
+  // Наверх onClose уходит ровно один раз на транспорт: и сторож, и штатное закрытие сокета ведут
+  // в одну точку — иначе один обрыв запускал бы два переподключения сразу.
+  const fireClose = () => {
+    if (closed || notified) return;
+    notified = true;
+    stopBeat();
+    if (onClose) onClose();
+  };
+  const deliver = (m) => { lastSeen = Date.now(); if (m && m.type === "pong") return; onMessage(m); };
+  const startBeat = () => {
+    stopBeat();
+    lastSeen = Date.now();
+    beat = setInterval(() => {
+      if (closed) return stopBeat();
+      if (Date.now() - lastSeen > 45000) { try { if (ws) ws.close(); } catch (e) {} fireClose(); return; }
+      api.send({ type: "ping" });
+    }, 20000);
+  };
   const api = {
     // по long-polling действие может не дойти (перегруз прокси, моргнувшая сеть) —
     // молча терять ставку нельзя: повторяем пару раз и сообщаем наверх
@@ -313,8 +337,18 @@ function openTransport({ code, onMessage, onClose, onOpen, onSendFail }) {
           else if (onSendFail) onSendFail(msg);
         });
     },
-    close() { closed = true; try { if (ws) ws.close(); } catch (e) {} sid = null; },
-    get mode() { return ws && ws.readyState === 1 ? "ws" : sid ? "poll" : "none"; },
+    close() { closed = true; stopBeat(); try { if (ws) ws.close(); } catch (e) {} sid = null; },
+    // «connecting» существует ради того, кто спрашивает «жив ли транспорт, не открыть ли новый»:
+    // пока идёт рукопожатие, readyState ещё 0, и без этой ветки ответ был бы «none» — а значит,
+    // второе событие возврата (сеть появилась, вкладка показалась) открывало бы второй сокет
+    // поверх поднимающегося первого.
+    get mode() {
+      if (ws && ws.readyState === 1) return "ws";
+      if (ws && ws.readyState === 0) return "connecting";
+      if (sid) return "poll";
+      if (polling) return "connecting";
+      return "none";
+    },
   };
   async function startPolling() {
     if (closed || polling) return;
@@ -323,24 +357,24 @@ function openTransport({ code, onMessage, onClose, onOpen, onSendFail }) {
       const res = await fetch(`/auction/api/session?r=${encodeURIComponent(code)}`);
       if (!res.ok) throw new Error("session " + res.status);
       const data = await res.json();
-      sid = data.sid; opened = true; if (onOpen) onOpen();
-      for (const m of data.messages) onMessage(m);
+      sid = data.sid; opened = true; startBeat(); if (onOpen) onOpen();
+      for (const m of data.messages) deliver(m);
       while (!closed && sid) {
         const r = await fetch(`/auction/api/poll?sid=${sid}`);
         if (r.status === 410) throw new Error("session gone");
         if (!r.ok) { await new Promise((z) => setTimeout(z, 1500)); continue; }
-        for (const m of (await r.json()).messages) onMessage(m);
+        for (const m of (await r.json()).messages) deliver(m);
       }
-    } catch { if (!closed) { sid = null; polling = false; if (onClose) onClose(); } }
+    } catch { if (!closed) { sid = null; polling = false; fireClose(); } }
   }
   try {
     ws = new WebSocket(`${proto}://${location.host}/auction/ws?r=${encodeURIComponent(code)}`);
-    ws.onopen = () => { opened = true; if (onOpen) onOpen(); };
-    ws.onmessage = (e) => onMessage(JSON.parse(e.data));
+    ws.onopen = () => { opened = true; startBeat(); if (onOpen) onOpen(); };
+    ws.onmessage = (e) => deliver(JSON.parse(e.data));
     ws.onclose = () => {
       if (closed) return;
       if (!opened) { ws = null; startPolling(); } // рукопожатие не прошло — прокси без WebSocket
-      else if (onClose) onClose();
+      else fireClose();
     };
     ws.onerror = () => {};
   } catch { startPolling(); }

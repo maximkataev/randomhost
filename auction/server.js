@@ -42,6 +42,11 @@ const OFFLINE_GRACE_MS = Number(process.env.OFFLINE_GRACE_MS || 8000);
 // Сколько подряд не отвеченных ping терпим. Раньше рвали после первого: подвисший на пару секунд
 // телефон (сборка мусора, переключение Wi-Fi→LTE) получал обрыв на ровном месте.
 const PONG_MISSES = Number(process.env.PONG_MISSES || 3);
+// Потолок неотправленного на один сокет. Телефон на плохой сети читает медленнее, чем мы пишем,
+// и очередь на отправку растёт в памяти процесса без предела — при лимите контейнера 256 МБ это
+// та же дорога к OOM, что и раздутый дамп. Рвём такой сокет: клиент вернётся и получит снапшот
+// целиком, поэтому терять тут нечего — в отличие от систем, где клиент доигрывает пропущенное.
+const SEND_BUFFER_LIMIT = Number(process.env.SEND_BUFFER_LIMIT || 1048576);
 const MSG_RATE = Number(process.env.MSG_RATE || 40); // сообщений в секунду на один сокет
 const MAX_MSG_BYTES = 8192; // максимум на одно входящее сообщение
 // Карточки лотов по языкам: data/<kind>.json — русские, data/<lang>/<kind>.json — переводы.
@@ -154,6 +159,7 @@ function createRoom({ kind = "artist", settings = {}, speed = 1, ip = "" } = {})
     tokens: {}, // playerToken → playerId
     sockets: new Set(), // {ws, playerId?, host?}
     offlineTimers: new Map(), // playerId → таймер «ещё ждём, не объявляем выпавшим»
+    dropCounts: new Map(), // playerId → сколько раз за партию терял связь
     timer: null,
     voteTimer: null,
     touched: Date.now(),
@@ -201,6 +207,10 @@ function schedule(room) {
   }, wait);
 }
 
+// Сводка по обрывам за интервал уборки: без неё в логе видно только «сколько сейчас соединений»,
+// а нужен ответ на вопрос «рвётся ли у нас вообще и у скольких». Сбрасывается каждым обходом.
+let statBlips = 0, statBack = 0, statDrops = 0;
+
 // Игрок пропал со связи. Не объявляем его выпавшим сразу: если он вернётся в пределах грации,
 // партия об обрыве даже не узнает. Объявляем — только когда он действительно не вернулся.
 function scheduleOffline(room, playerId) {
@@ -208,11 +218,17 @@ function scheduleOffline(room, playerId) {
   if ([...room.sockets].some((c) => c.playerId === playerId)) return; // открыт ещё один сокет того же игрока
   if (room.offlineTimers.has(playerId)) return;
   const name = room.game.player(playerId)?.name || playerId;
-  console.log(`[auction] ${room.code}: ${name} потерял связь, ждём ${OFFLINE_GRACE_MS} мс`);
+  // Номер обрыва за партию: по нему из `docker logs` сразу видно, у кого именно рвётся,
+  // без воспроизведения и без опроса гостей «а у тебя как со связью?».
+  const nth = (room.dropCounts.get(playerId) || 0) + 1;
+  room.dropCounts.set(playerId, nth);
+  statBlips++;
+  console.log(`[auction] ${room.code}: ${name} потерял связь (обрыв №${nth} за партию), ждём ${OFFLINE_GRACE_MS} мс`);
   const t = setTimeout(() => {
     room.offlineTimers.delete(playerId);
     if (!rooms.has(room.code)) return;
     if ([...room.sockets].some((c) => c.playerId === playerId)) return; // успел вернуться
+    statDrops++;
     console.log(`[auction] ${room.code}: ${name} не вернулся — партия на авто-паузе`);
     const ev = room.game.setOnline(playerId, false, clock(room));
     afterChange(room, [{ type: "offline", playerId }, ...ev]);
@@ -226,6 +242,7 @@ function cancelOffline(room, playerId) {
   if (!t) return;
   clearTimeout(t);
   room.offlineTimers.delete(playerId);
+  statBack++;
   console.log(`[auction] ${room.code}: ${room.game.player(playerId)?.name || playerId} вернулся в пределах грации`);
 }
 
@@ -254,7 +271,16 @@ function afterChange(room, events = []) {
 
 function broadcast(room, msg) {
   const data = JSON.stringify(msg);
-  for (const c of room.sockets) if (c.ws.readyState === 1) c.ws.send(data);
+  for (const c of room.sockets) {
+    if (c.ws.readyState !== 1) continue;
+    // У poll-сессии буфера нет: её очередь ограничена сроком жизни сессии (40 с без опроса — снос).
+    if (!c.poll && c.ws.bufferedAmount > SEND_BUFFER_LIMIT) {
+      console.log(`[auction] ${room.code}: ${room.game.player(c.playerId)?.name || "сокет без игрока"} не читает, буфер ${Math.round(c.ws.bufferedAmount / 1024)} КБ — рвём`);
+      c.ws.terminate();
+      continue;
+    }
+    c.ws.send(data);
+  }
 }
 
 function send(ws, msg) {
@@ -547,6 +573,10 @@ function onConnection(room, ws) {
 function handle(room, client, msg) {
   const g = room.game;
   const t = clock(room);
+  // Служебный пинг пульта: им клиент проверяет, жив ли ещё сокет. Это не действие в комнате,
+  // поэтому room.touched здесь НЕ двигаем — иначе брошенное лобби с открытой доской, где никто
+  // ничего не делает, жило бы вечно и никогда не закрывалось по TTL.
+  if (msg.type === "ping") return send(client.ws, { type: "pong" });
   room.touched = now();
   const reply = (obj) => send(client.ws, obj);
 
@@ -659,7 +689,17 @@ function handle(room, client, msg) {
     }
     case "skip_lot": return client.host ? afterChange(room, g.hostSkip(t)) : undefined;
     case "pause": return client.host ? afterChange(room, g.pause(t)) : undefined;
-    case "resume": return client.host ? afterChange(room, g.resume(t)) : undefined;
+    case "resume": {
+      // Управляет партией ведущий, и это правильно. Но если доска умерла — ноутбук уснул, вкладку
+      // закрыли, браузер убил страницу — снять паузу становится некому, и живые игроки сидят перед
+      // замершей игрой до самого TTL. Предохранитель нарочно узкий: продолжить может любой игрок и
+      // только пока не подключено ни одной доски. Пропуск лота и завершение партии остаются за ней:
+      // они меняют исход, а «Продолжить» лишь возвращает то, что и так шло.
+      const noBoard = ![...room.sockets].some((c) => c.host);
+      if (!client.host && !noBoard) return;
+      if (!client.host) console.log(`[auction] ${room.code}: доски нет — партию продолжил ${g.player(client.playerId)?.name || "игрок"}`);
+      return afterChange(room, g.resume(t));
+    }
     case "kick": {
       if (!client.host) return;
       const events = g.removePlayer(msg.playerId);
@@ -718,7 +758,11 @@ setInterval(() => {
   // соединений и памяти было в момент поломки. При лимите 256m рост RSS — единственный признак
   // близкого OOM, и без этой строки после убийства контейнера не остаётся никаких следов.
   const rssMb = Math.round(process.memoryUsage().rss / 1048576);
-  if (rooms.size) console.log(`[auction] комнат ${rooms.size}, соединений ${totalSockets()}, RSS ${rssMb} МБ`);
+  if (rooms.size) {
+    const drops = statBlips ? `, обрывов ${statBlips} (вернулись ${statBack}, выпали ${statDrops})` : "";
+    console.log(`[auction] комнат ${rooms.size}, соединений ${totalSockets()}, RSS ${rssMb} МБ${drops}`);
+  }
+  statBlips = statBack = statDrops = 0;
   if (rssMb > 180) console.warn(`[auction] ВНИМАНИЕ: RSS ${rssMb} МБ при лимите контейнера 256 МБ, комнат ${rooms.size}`);
 }, SWEEP);
 
@@ -784,7 +828,7 @@ function restore() {
         }
         delete r.state.deckIdx;
       }
-      const room = { code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: Game.from(r.state), tokens: r.tokens, sockets: new Set(), offlineTimers: new Map(), timer: null, voteTimer: null, touched: r.touched, speed: 1, skew: 0, bots: [], botTimer: null, judging: false, judgeCalls: Number(r.judgeCalls) || 0 };
+      const room = { code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: Game.from(r.state), tokens: r.tokens, sockets: new Set(), offlineTimers: new Map(), dropCounts: new Map(), timer: null, voteTimer: null, touched: r.touched, speed: 1, skew: 0, bots: [], botTimer: null, judging: false, judgeCalls: Number(r.judgeCalls) || 0 };
       for (const p of room.game.s.players) p.online = false;
       rooms.set(room.code, room);
       schedule(room);
@@ -803,6 +847,28 @@ function restore() {
 
 restore();
 setInterval(dump, 5000);
-process.on("SIGTERM", () => { dump(); process.exit(0); });
+// Одно неожиданное исключение убивало разом все комнаты: процесс падал, restart: always поднимал
+// его, и партии возвращались из дампа пятисекундной давности — в лучшем случае. Дампим перед
+// выходом и выходим сами: падение становится морганием, а не потерянным вечером. Продолжать
+// работу после uncaughtException нельзя — состояние процесса уже неизвестно.
+function fatal(what, err) {
+  try { console.error(`[auction] ${what}:`, (err && err.stack) || err); } catch {}
+  try { dump(); } catch {}
+  process.exit(1);
+}
+process.on("uncaughtException", (err) => fatal("непойманное исключение", err));
+process.on("unhandledRejection", (err) => fatal("непойманный отказ промиса", err));
+
+// Деплой случается посреди партии. Если просто выйти, клиенты получат обрыв 1006 — «сеть пропала» —
+// и будут ждать свой шаг backoff. Код 1012 (Service Restart) говорит им прямо: это перезапуск,
+// возвращайся сразу. Полсекунды на отправку кадров, иначе они не успеют уйти из буфера.
+process.on("SIGTERM", () => {
+  dump();
+  try { server.close(); } catch {}
+  for (const room of rooms.values()) {
+    for (const c of room.sockets) { try { if (!c.poll) c.ws.close(1012, "restart"); } catch {} }
+  }
+  setTimeout(() => process.exit(0), 500);
+});
 
 server.listen(PORT, () => console.log(`[auction] порт ${PORT}, категорий ${Object.keys(KINDS).length}${STATIC ? ", статика из " + STATIC : ""}${DEV ? ", режим разработки (боты)" : ""}`));
