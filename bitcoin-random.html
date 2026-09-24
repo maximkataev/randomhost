@@ -1812,9 +1812,14 @@
     const addrSum = (addr) => [...addr].reduce((s, ch) => s + charValue(ch), 0);
 
     /* ── ПОТОК ПЕРЕВОДОВ ─────────────────────────────── */
-    // Публичный поток неподтверждённых транзакций blockchain.info (≈10 в секунду, ≈7 КБ/с).
-    // Если он недоступен — раз в три секунды спрашиваем последние транзакции у mempool.space.
+    // Два публичных потока неподтверждённых транзакций, слушаем оба сразу:
+    // blockchain.info (≈10 в секунду, ≈7 КБ/с) и mempool.space (≈30 в секунду, ≈60 КБ/с).
+    // Узлы у них разные, переводы почти не пересекаются, а затишья приходятся на разное время —
+    // с одним blockchain.info новый кошелёк ждали до 15 с, вместе — не дольше 4 с.
+    // Один перевод из обоих потоков берём по первому приходу. Если ни один поток не заработал —
+    // раз в три секунды спрашиваем последние транзакции у mempool.space.
     const WS_URL = 'wss://ws.blockchain.info/inv';
+    const MPS_WS_URL = 'wss://mempool.space/api/v1/ws';
     const MEMPOOL = 'https://mempool.space';
     const FEED_ROWS = 6;
     const ROW_GAP = 450;                        // лента не быстрее двух строк в секунду — иначе её не прочитать
@@ -1877,6 +1882,10 @@
     const PRINT_MS   = REDUCED ? 0 : 1100;      // столько чек выезжает из принтера
 
     let ws = null;
+    let ws2 = null;                             // поток mempool.space
+    let ws2Timer = null;
+    let wsAt = 0, ws2At = 0;                    // последнее сообщение каждого потока
+    const txSeen = new Set();                   // txid из обоих потоков — один перевод не считаем дважды
     let source = 'ws';                          // ws | poll
     let wsFails = 0;
     let everLive = false;
@@ -1923,7 +1932,7 @@
     function connect() {
       if (ws || pollTimer) return;
       setStreamState(lastMsgAt && streamState !== 'paused' ? 'reconnecting' : 'connecting');
-      if (source === 'poll') { startPoll(); return; }
+      if (source === 'poll') { startPoll(); connect2(); return; }
       try {
         ws = new WebSocket(WS_URL);
       } catch (e) {
@@ -1931,7 +1940,7 @@
         onWsFail();
         return;
       }
-      lastMsgAt = Date.now();
+      lastMsgAt = wsAt = Date.now();
       ws.onopen = () => {
         ws.send(JSON.stringify({ op: 'unconfirmed_sub' }));
         ws.send(JSON.stringify({ op: 'blocks_sub' }));
@@ -1939,6 +1948,25 @@
       ws.onmessage = onWsMessage;
       ws.onerror = () => {};
       ws.onclose = () => { if (!ws) return; ws = null; onWsFail(); };
+      connect2();
+    }
+
+    function connect2() {
+      if (ws2 || ws2Timer || streamState === 'paused') return;
+      try { ws2 = new WebSocket(MPS_WS_URL); } catch (e) { ws2 = null; retry2(); return; }
+      ws2At = Date.now();
+      ws2.onopen = () => {
+        ws2.send(JSON.stringify({ action: 'want', data: ['blocks'] }));
+        ws2.send(JSON.stringify({ 'track-mempool': true }));
+      };
+      ws2.onmessage = onMpsMessage;
+      ws2.onerror = () => {};
+      ws2.onclose = () => { if (!ws2) return; ws2 = null; retry2(); };
+    }
+
+    function retry2() {
+      if (streamState === 'paused') return;
+      ws2Timer = setTimeout(() => { ws2Timer = null; connect2(); }, 3000);
     }
 
     function onWsFail() {
@@ -1951,6 +1979,8 @@
 
     function disconnect(state) {
       if (ws) { ws.onclose = null; ws.onmessage = null; ws.onopen = null; try { ws.close(); } catch (e) {} ws = null; }
+      if (ws2) { ws2.onclose = null; ws2.onmessage = null; ws2.onopen = null; try { ws2.close(); } catch (e) {} ws2 = null; }
+      clearTimeout(ws2Timer); ws2Timer = null;
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       if (state) setStreamState(state);
     }
@@ -1968,6 +1998,7 @@
     function onWsMessage(msg) {
       let m;
       try { m = JSON.parse(msg.data); } catch (err) { return; }
+      wsAt = Date.now();
       goLive();
       if (m.op === 'block' && m.x && Number.isFinite(m.x.height)) { setTip(m.x.height, true); return; }
       if (m.op !== 'utx' || !m.x) return;
@@ -1976,6 +2007,21 @@
       const out = (x.out || []).find((o) => o && typeof o.addr === 'string' && o.addr);
       if (!out || typeof x.hash !== 'string') return;
       onTx({ txid: x.hash, addr: out.addr, value: out.value || 0, ts: Date.now() });
+    }
+
+    function onMpsMessage(msg) {
+      let m;
+      try { m = JSON.parse(msg.data); } catch (err) { return; }
+      ws2At = Date.now();
+      goLive();
+      if (m.block && Number.isFinite(m.block.height)) setTip(m.block.height, true);
+      const added = m['mempool-transactions'] && m['mempool-transactions'].added;
+      if (!Array.isArray(added)) return;
+      for (const x of added) {
+        const out = (x && x.vout || []).find((o) => o && typeof o.scriptpubkey_address === 'string' && o.scriptpubkey_address);
+        if (!out || typeof x.txid !== 'string') continue;
+        onTx({ txid: x.txid, addr: out.scriptpubkey_address, value: out.value || 0, ts: Date.now() });
+      }
     }
 
     /* запасной путь: последние транзакции мемпула; адрес получателя дозапрашиваем только для кандидатов */
@@ -2037,6 +2083,9 @@
     }
 
     function onTx(tx) {
+      if (txSeen.has(tx.txid)) return;
+      txSeen.add(tx.txid);
+      if (txSeen.size > 20000) txSeen.clear();
       hits.push(Date.now());
       if (armed) { queue.push(tx); pump(); return; }
       let kind = '';
@@ -2126,7 +2175,10 @@
       if (streamState === 'paused') return;
       const now = Date.now();
       if (!running && !done && now - lastActivity > IDLE_PAUSE) { disconnect('paused'); return; }
-      if ((ws || pollTimer) && now - lastMsgAt > SILENT_RECONNECT) { disconnect(); connect(); }
+      if ((ws || pollTimer) && now - lastMsgAt > SILENT_RECONNECT) { disconnect(); connect(); return; }
+      // потоки зависают по отдельности: молчащий переподключаем, второй не трогаем
+      if (ws && now - wsAt > SILENT_RECONNECT) { const w = ws; ws = null; w.onclose = null; try { w.close(); } catch (e) {} onWsFail(); }
+      if (ws2 && now - ws2At > SILENT_RECONNECT) { const w = ws2; ws2 = null; w.onclose = null; try { w.close(); } catch (e) {} retry2(); }
     }, 1000);
 
     ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach((ev) =>
