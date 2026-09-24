@@ -267,7 +267,8 @@
     }
     .fr > * { flex-shrink: 0; }
     .fr .rc-links { color: var(--faint); }
-    .fr .rc-links a { color: var(--link); }
+    .fr .rc-links a, .fr a.tt { color: var(--link); }
+    .fr .rc-links a:visited, .fr a.tt:visited { color: var(--link-visited); }
     .fr .sep { color: var(--faint); padding: 0 4px; }
     .fr .lg { font-size: 11px; color: var(--faint); margin-right: 6px; font-variant: small-caps; letter-spacing: 0.04em; width: 22px; text-align: right; }
     .fr .tt { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 700; color: var(--link); }
@@ -1895,6 +1896,8 @@
         diff: e.length && Number.isFinite(e.length.new) ? e.length.new - (e.length.old || 0) : null,
         url: e.notify_url || e.meta && e.meta.uri || '',
         page: e.title_url || e.meta && e.meta.uri || '',
+        hist: e.server_url ? e.server_url + (e.server_script_path || '/w') + '/index.php?title=' +
+          encodeURIComponent(e.title.replace(/ /g, '_')) + '&action=history' : '',
         ts: Number.isFinite(e.timestamp) ? e.timestamp * 1000 : Date.now()
       };
       hits.push(Date.now());
@@ -1907,6 +1910,15 @@
     const clock = (ts, sec) => new Intl.DateTimeFormat(I18N.lang || 'ru',
       sec ? { hour: '2-digit', minute: '2-digit', second: '2-digit' } : { hour: '2-digit', minute: '2-digit' }).format(new Date(ts));
     const span = (cls, text) => { const el = document.createElement('span'); el.className = cls; el.textContent = text; return el; };
+    // ссылка в Википедию (в новой вкладке); без адреса — просто текст
+    const extLink = (cls, text, href) => {
+      if (!href) return span(cls, text);
+      const a = document.createElement('a');
+      if (cls) a.className = cls;
+      a.href = href; a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = text;
+      return a;
+    };
 
     // (разн. | история) . . Заголовок; 23:03 . . (+409) — как на Служебная:Свежие правки
     function feedRow(edit) {
@@ -1914,9 +1926,9 @@
       li.className = 'fr';
       li.append(
         span('lg', edit.lang.toLowerCase()),
-        span('rc-links', '(' + t('rc_diff') + ' | ' + t('rc_hist') + ')'),
+        rcLinks(edit),
         span('sep s1', '. .'),
-        span('tt', edit.title),
+        extLink('tt', edit.title, edit.page || edit.url),
         span('sep', ';'),
         span('tm', clock(edit.ts)),
         span('sep', '. .')
@@ -1927,6 +1939,12 @@
         li.appendChild(df);
       }
       return li;
+    }
+
+    function rcLinks(edit) {
+      const el = span('rc-links', '(');
+      el.append(extLink('', t('rc_diff'), edit.url), ' | ', extLink('', t('rc_hist'), edit.hist), ')');
+      return el;
     }
 
     function addFeedRow(edit, picked) {
