@@ -101,7 +101,8 @@ const hasFrag = (text, frag) => norm(text).includes(norm(frag));
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
-  chrome = spawn(CHROME, ["--headless=new", "--disable-gpu", `--remote-debugging-port=${PORT}`, "about:blank"], { stdio: "ignore" });
+  const profile = fs.mkdtempSync(path.join(require("os").tmpdir(), "auction-mobile-"));
+  chrome = spawn(CHROME, ["--headless=new", "--disable-gpu", `--user-data-dir=${profile}`, `--remote-debugging-port=${PORT}`, "about:blank"], { stdio: "ignore" });
   await wait(2500);
   try {
     for (const dev of DEVICES) {

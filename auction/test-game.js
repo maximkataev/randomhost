@@ -116,8 +116,9 @@ test("пауза замораживает deadline и отклоняет ста�
 test("offline-игрок не торгуется и не блокирует финал", () => {
   const g = setup(2, { slots: 3 });
   g.setOnline("p1", false);
-  assert.ok(g.s.paused, "отвал игрока останавливает партию");
-  g.resume(200); // ведущий продолжает без него
+  // на связи остался один из двух — торгов нет, авто-пауза; ведущий решает продолжить без него
+  assert.ok(g.s.paused && g.s.paused.auto, "один отвал из двух — авто-пауза");
+  g.resume(50);
   assert.equal(g.bid("p1", 1, 100).reason, "cannot_bid");
   g.bid("p0", 1, g.s.lotStartedAt + 100);
   g.tick(g.s.deadline); // продано
@@ -125,8 +126,14 @@ test("offline-игрок не торгуется и не блокирует фи
   // со свободными слотами остался один подключённый игрок — дальше соло-добор (§6.5)
   assert.equal(g.s.phase, "draft");
   for (let i = 0; i < 2; i++) { g.take("p0", g.s.deadline - 1); g.tick(g.s.deadline); }
+  // слоты остались только у отключённого — это не «все собрали»: ждём его минуту (§7.4)…
+  assert.ok(g.s.paused && g.s.paused.waitFor === "p1", "ждём отключённого с пустыми слотами");
+  assert.notEqual(g.s.phase, "finished");
+  // …и заканчиваем с его пустыми слотами
+  g.tick(g.s.paused.waitUntil);
   assert.equal(g.s.phase, "finished");
-  assert.equal(g.s.finishedReason, "all_full");
+  assert.equal(g.s.finishedReason, "solo_gone");
+  assert.equal(g.s.paused, null, "финал снимает паузу");
 });
 
 // v0.7: R больше не обрывает партию (§7.3). Единственный жёсткий предохранитель — колода:
@@ -222,28 +229,108 @@ test("пропуск лота работает и в фазах ПРОДАНО/�
   assert.equal(g.s.phase, "lot");
 });
 
-test("отвал игрока ставит партию на паузу; снимает её только ведущий", () => {
-  const g = setup(2, { slots: 3 });
+test("§7.4: авто-пауза — только когда отвалилось больше половины; снимается сама при возврате", () => {
+  const g = setup(3, { slots: 3 });
   g.bid("p0", 1, 100);
   g.tick(g.s.deadline); // sold
-  const ev = g.setOnline("p0", false, 200);
-  assert.equal(g.s.paused.auto, true, "партия встала сама");
-  assert.ok(ev.some((e) => e.type === "paused"), "о паузе сообщено");
+  let ev = g.setOnline("p0", false, 200);
+  assert.equal(g.s.paused, null, "один из трёх — партия идёт");
   assert.ok(ev.some((e) => e.type === "dropped" && e.playerId === "p0"), "сказано, кто отвалился");
+  ev = g.setOnline("p1", false, 250);
+  assert.equal(g.s.paused.auto, true, "двое из трёх — авто-пауза");
+  assert.ok(ev.some((e) => e.type === "paused"), "о паузе сообщено");
   assert.equal(g.s.phase, "sold", "фаза не сгорела");
   assert.equal(g.s.round, 0, "раунд не сгорел");
   assert.equal(g.snapshot(0).pausedAuto, true);
-  // второй отвал уже ничего не ломает — партия и так стоит
-  assert.deepEqual(g.setOnline("p1", false, 300), []);
-  // возвращение игрока партию НЕ продолжает: это делает ведущий
-  assert.deepEqual(g.setOnline("p0", true, 400), []);
-  assert.ok(g.s.paused, "вернувшийся игрок не снимает паузу сам");
-  g.setOnline("p1", true, 450); // оба на месте — значит и после паузы это обычный аукцион, а не добор
-  g.resume(60000);
+  // вернулся один — отключённых снова не больше половины, пауза снимается сама
+  ev = g.setOnline("p0", true, 400);
+  assert.ok(ev.some((e) => e.type === "resumed"), "возврат снимает авто-паузу");
+  assert.equal(g.s.paused, null);
   g.tick(g.s.deadline);
   assert.equal(g.s.phase, "lot");
   assert.equal(g.s.round, 1);
   assert.equal(g.s.finishedReason, null);
+});
+
+test("§7.4: отвал игрока с полным лайнапом партию не останавливает; ручную паузу возврат не снимает", () => {
+  const g = setup(2, { slots: 3 });
+  g.player("p0").lots.push({ name: "x" }, { name: "y" }, { name: "z" }); // p0 собрал всё
+  g.setOnline("p0", false, 100);
+  assert.equal(g.s.paused, null, "полный лайнап не влияет на ход партии");
+  g.pause(200); // ручная пауза ведущего
+  g.setOnline("p0", true, 300);
+  assert.ok(g.s.paused && !g.s.paused.auto, "ручная пауза осталась");
+});
+
+test("партия на двоих: отвал одного ставит авто-паузу, возврат снимает", () => {
+  const g = setup(2, { slots: 3 });
+  const ev = g.setOnline("p1", false, 100);
+  assert.ok(g.s.paused && g.s.paused.auto, "один из двух — пауза, а не соло-добор");
+  assert.ok(ev.some((e) => e.type === "dropped" && e.playerId === "p1"));
+  g.setOnline("p1", true, 300);
+  assert.equal(g.s.paused, null, "вернулся — пауза снялась сама");
+  // у троих один отвал торги не ломает
+  const h = setup(3, { slots: 3 });
+  h.setOnline("p2", false, 100);
+  assert.equal(h.s.paused, null, "один из трёх — партия идёт");
+});
+
+test("финал из паузы снимает паузу (голосование не под оверлеем)", () => {
+  const g = setup(2);
+  g.pause(100);
+  g.finish("host_ended");
+  assert.equal(g.s.paused, null);
+  assert.equal(g.snapshot(200).paused, false);
+});
+
+test("старт требует двоих на связи, а не двоих в списке", () => {
+  const g = Game.create({ kind: "test", cards, settings: { intro: 0 }, rng });
+  g.addPlayer({ id: "a", name: "A" });
+  g.addPlayer({ id: "b", name: "B" });
+  g.setOnline("b", false, 0);
+  assert.throws(() => g.start(0));
+  g.setOnline("b", true, 0);
+  g.start(0);
+  assert.equal(g.s.phase, "lot");
+});
+
+test("кик лидера: лот возвращается к ставке того, кто ещё в игре; в ПРОДАНО покупатель не меняется", () => {
+  const g = setup(4);
+  g.bid("p1", 1, 100);
+  g.bid("p2", 2, 200);
+  g.removePlayer("p1"); // вышел раньше, его ставка в истории
+  g.bid("p3", 3, 300);
+  g.removePlayer("p3");
+  assert.equal(g.s.leaderId, "p2", "лидер — p2, а не вышедший p1");
+  assert.equal(g.s.price, 2);
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "sold");
+  g.removePlayer("p2");
+  assert.equal(g.s.leaderId, "p2", "в ПРОДАНО покупатель на экранах не подменяется");
+});
+
+test("голосование: голос выгнанного не считается и не закрывает голосование досрочно", () => {
+  const g = setup(3, { slots: 3 });
+  for (const id of ["p0", "p1", "p2"]) g.player(id).lots.push({ name: id });
+  g.finish("host_ended");
+  g.vote("p2", "p0");
+  g.removePlayer("p2");
+  assert.equal(g.allVoted(), false, "ушедший не в счёт");
+  assert.equal(g.snapshot(0).votes, 0);
+  g.vote("p0", "p1");
+  g.vote("p1", "p0");
+  assert.equal(g.allVoted(), true);
+  g.closeVotes(() => 0.5);
+  assert.equal(g.s.results.ranking.find((r) => r.playerId === "p0").score, 1, "голос выгнанного не засчитан");
+  assert.equal(g.s.results.tieBreak, "coin", "ничья 1:1 при равных тратах — монетка");
+});
+
+test("имя: bidi-символы вырезаются, эмодзи на границе не режется пополам", () => {
+  const g = Game.create({ kind: "test", cards, settings: {}, rng });
+  assert.equal(g.addPlayer({ id: "a", name: "\u202Eаня" }).name, "аня");
+  const long = "a".repeat(23) + "👨‍👩‍👧";
+  const n = g.addPlayer({ id: "b", name: long }).name;
+  assert.ok(!/\uFFFD/.test(n) && n.endsWith("👨‍👩‍👧"), "эмодзи целиком: " + n);
 });
 
 test("отвал в лобби и на финале партию не трогает", () => {

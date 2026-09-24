@@ -68,7 +68,9 @@ async function typeText(page, text) {
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
-  const chrome = spawn(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--autoplay-policy=no-user-gesture-required", `--remote-debugging-port=${PORT}`, "--window-size=1440,900", "about:blank"], { stdio: "ignore" });
+  // свой профиль на прогон: не трогаем профиль пользователя и не наследуем localStorage прошлых прогонов
+  const profile = fs.mkdtempSync(path.join(require("os").tmpdir(), "auction-ui-"));
+  const chrome = spawn(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--autoplay-policy=no-user-gesture-required", `--user-data-dir=${profile}`, `--remote-debugging-port=${PORT}`, "--window-size=1440,900", "about:blank"], { stdio: "ignore" });
   await wait(2500);
   try {
     const room = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "film" }) })).json();
@@ -119,6 +121,16 @@ async function typeText(page, text) {
     await remote.shot("ui_remote_lobby");
     await wait(500);
     check(await evaluateSafe(board, "document.body.innerText.includes('Макс')"), "доска: игрок появился в лобби");
+
+    // --- перезагрузка пульта: вход по токену обязан вернуть того же игрока. Раньше join() на
+    // верхнем уровне скрипта падал на TDZ (let lastName ниже) — пустой экран и авто-пауза партии.
+    const meBefore = await evaluateSafe(remote, "me");
+    await remote.call("Page.reload");
+    await wait(3000);
+    check(hasFrag(await evaluateSafe(remote, "document.body.innerText"), await i18nFrag(remote, "lobby_sub")), "пульт: после перезагрузки снова в лобби (вход по токену)");
+    check((await evaluateSafe(remote, "me")) === meBefore, "пульт: после перезагрузки — тот же игрок");
+    check(remote.errors.length === 0, "пульт: перезагрузка без JS-ошибок" + (remote.errors.length ? ": " + remote.errors[0] : ""));
+    check((await evaluateSafe(board, "state.players.filter(p => p.name.startsWith('Макс')).length")) === 1, "доска: после перезагрузки пульта игрок один, без «Макс 2»");
 
     // --- задание партии: клик по плитке должен дойти до сервера и до пульта
     await board.call("Runtime.evaluate", { expression: `[...document.querySelectorAll("#mode .tile")].find(x => x.dataset.v === "worst").click()` });
@@ -198,6 +210,20 @@ async function typeText(page, text) {
     await remote.shot("ui_remote_game");
     check(hasFrag(await evaluateSafe(board, "document.getElementById('gtask') && document.getElementById('gtask').textContent") || "", boardWorst), "доска: задание видно во время торгов");
     check(WORST_RE.test(await evaluateSafe(remote, "document.getElementById('task') && document.getElementById('task').textContent") || ""), "пульт: задание видно во время торгов");
+    // «Своя сумма» переживает чужие state: поле, набранное и фокус остаются (раньше закрывалось)
+    const ownbid = await evaluateSafe(remote, `(() => {
+      state.phase = "lot"; state.leaderId = null; state.price = 0; render();
+      const t = document.querySelector("#ownwrap .linkbtn"); if (!t) return "нет ссылки";
+      t.click();
+      const i = document.getElementById("ownbid"); if (!i) return "нет поля";
+      i.value = "7"; i.focus();
+      render(); render();
+      const j = document.getElementById("ownbid");
+      return j === i && j.value === "7" && document.activeElement === j ? "ok" : "поле пересоздано";
+    })()`);
+    check(ownbid === "ok", "пульт: «Своя сумма» не закрывается на новом state (" + ownbid + ")");
+    const frac = await evaluateSafe(remote, `(() => { const i = document.getElementById("ownbid"); if (!i) return ""; i.value = "7.5"; document.querySelector("#ownwrap .mid").click(); return document.querySelector("#ownwrap .note").textContent; })()`);
+    check(hasFrag(frac || "", await i18nFrag(remote, "own_bid_int")), "пульт: дробная сумма не округляется молча (" + frac + ")");
     // ставка с пульта
     await remote.call("Runtime.evaluate", { expression: "(document.getElementById('bid') || {click(){}}).click()" });
     await wait(1200);
@@ -310,12 +336,12 @@ async function typeText(page, text) {
       await wait(600);
       await dboard.call("Runtime.evaluate", { expression: "sendMsg({type:'start'})" });
       await wait(1200);
-      guest.ws.close(); // остался один со свободными слотами → партия встаёт, ведущий продолжает
-      // Ждём саму паузу, а не «примерно столько»: сервер даёт обрыву несколько секунд грации,
-      // и resume, посланный раньше паузы, ничего не снимает — партия так и стоит.
-      await untilPage(dboard, "state && state.paused", 25000);
+      // Остался один со свободными слотами. Выпал один из двух — авто-пауза; ведущий решает
+      // продолжить без него, и следующий лот уже соло-добор.
+      guest.ws.close();
+      check(await untilPage(dremote, "state && state.paused", 30000), "выпал один из двух — пульт на авто-паузе");
       await dboard.call("Runtime.evaluate", { expression: "sendMsg({type:'resume'})" });
-      const draft = await untilPage(dremote, "state && state.phase === 'draft'", 25000);
+      const draft = await untilPage(dremote, "state && state.phase === 'draft'", 40000);
       check(draft, `соло-добор: пульт дождался фазы ДОБОР (${await evaluateSafe(dremote, "state && state.phase + '/' + state.players.length + '/' + state.paused")})`);
       await wait(400);
       const boardText = await evaluateSafe(dboard, "document.body.innerText") || "";

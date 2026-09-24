@@ -163,15 +163,14 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
     check(h3.state.phase !== "finished", "партия не завершилась сама");
     const back = await connect(r3.code, { type: "join", name: "", token: x.token });
     check(back.me === x.me, "возврат по токену в ту же партию");
-    // партию продолжает ведущий, а не вернувшийся игрок: за столом сначала убеждаются,
-    // что все на месте, и только потом торги едут дальше
-    await wait(1500);
-    check(!!h3.state.paused, "возврат игрока сам по себе паузу не снимает");
-    h3.send({ type: "resume" });
+    // вернулся один из двух — торговаться ему не с кем, пауза держится; вернулись оба — снимается сама
+    await wait(1200);
+    check(!!h3.state.paused, "на связи один из двух — авто-пауза держится");
+    const back2 = await connect(r3.code, { type: "join", name: "", token: y.token });
     const resumed = await until(() => !h3.state.paused, 6000);
-    check(resumed, "ведущий снимает паузу и партия продолжается");
+    check(back2.me === y.me && resumed, "вернулись оба — авто-пауза снялась сама");
     h3.send({ type: "end" });
-    back.ws.close(); h3.ws.close();
+    back.ws.close(); back2.ws.close(); h3.ws.close();
   }
 
   // ---------- соло-добор: свободные слоты остались у одного (§6.5) ----------
@@ -188,8 +187,9 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
     const lots = () => h7.state.players.find((p) => p.id === one.me).lots.length;
     const toDraft = async (ms = 25000) => until(() => h7.state.phase === "draft", ms);
 
-    two.ws.close(); // второй ушёл — партия встала, ведущий продолжает без него
-    await until(() => h7.state.paused, 20000); // сервер ещё несколько секунд ждёт возврата (грация)
+    two.ws.close(); // второй ушёл — торговаться не с кем: авто-пауза, продолжать без него решает ведущий
+    await until(() => h7.state.players.find((p) => p.id === two.me).online === false, 20000); // грация
+    check(!!h7.state.paused && h7.state.pausedAuto, "отвал одного из двух ставит авто-паузу");
     h7.send({ type: "resume" });
     check(await toDraft(), `остался один со свободными слотами → фаза ДОБОР (${h7.state.phase})`);
     check(!!h7.state.solo && h7.state.solo.playerId === one.me && h7.state.solo.skips === 5, "в снимке есть кто добирает и сколько скипов");
@@ -213,9 +213,10 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
 
     // и снова уходит: добираем остаток через обязательный лот
     back.ws.close();
-    await until(() => h7.state.paused, 20000);
+    await until(() => h7.state.players.find((p) => p.id === two.me).online === false, 20000);
+    check(await until(() => h7.state.paused, 5000), "второй уход — снова авто-пауза");
     h7.send({ type: "resume" });
-    check(await toDraft(), "после второго ухода добор включается заново");
+    check(await toDraft(), "ведущий продолжил — добор включается заново");
     // Скипаем, пока счётчик не обнулится. Считаем лоты, а не итерации: истёкший таймер — тоже
     // скип, и на медленной машине счётчик может списать он, а не нажатие.
     let lotsSeen = 0, must = false;
@@ -240,7 +241,11 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
       await until(() => lots() > was, 6000);
     }
     check(lots() === h7.state.settings.slots, `лайнап собран добором (${lots()}/${h7.state.settings.slots})`);
-    check(await until(() => h7.state.phase === "finished" && h7.state.finishedReason === "all_full", 15000), `лайнапы собраны → финал (${h7.state.phase}/${h7.state.finishedReason})`);
+    // Свободные слоты остались только у отключённого «Два»: это не «все собрали» — ждём его (§7.4),
+    // а не заканчиваем с all_full, как раньше (M7). Ведущий может закончить сам.
+    check(await until(() => h7.state.paused && h7.state.pausedFor === two.me, 15000), `слоты остались у отключённого — «Ждём Два» (${h7.state.phase}/${h7.state.pausedFor})`);
+    h7.send({ type: "end" });
+    check(await until(() => h7.state.phase === "finished" && !h7.state.paused, 5000), "«Завершить» на паузе — финал без оверлея паузы (H5)");
     one.ws.close(); h7.ws.close();
   }
 
@@ -339,6 +344,97 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
     await until(() => h5.state.phase === "lobby", 3000);
     check(h5.state.settings.mode === "base", "next_game без категории задание не портит");
     g1.ws.close(); g2.ws.close(); h5.ws.close(); h6.ws.close();
+  }
+
+  // ---------- регрессии из QA-отчёта ----------
+  {
+    const r = await make({ slots: 3, budget: 20, t1: 20000, t2: 5000 });
+    const h = await connect(r.code, { type: "host", token: r.hostToken });
+    // H1: повторный join на том же соединении (ретрай POST, двойной тап) — тот же игрок, а не зомби
+    const a = await connect(r.code, { type: "join", name: "Дубль" });
+    a.send({ type: "join", name: "Дубль" });
+    a.send({ type: "join", name: "Другой", token: null });
+    await wait(400);
+    const joins = a.msgs.filter((m) => m.type === "joined");
+    check(h.state.players.length === 1 && joins.length === 3 && joins.every((m) => m.playerId === a.me && m.token === a.token), `повторный join на соединении не создаёт второго игрока (игроков ${h.state.players.length})`);
+    // M8: вход без токена с тем же именем после обрыва в лобби — тот же игрок, без «призрака»
+    const b = await connect(r.code, { type: "join", name: "Боря" });
+    b.ws.close();
+    await wait(300);
+    const b2 = await connect(r.code, { type: "join", name: "Боря" });
+    check(b2.me === b.me && h.state.players.length === 2, `в лобби вход по имени подхватывает отключённого, а не плодит «Боря 2» (${h.state.players.map((p) => p.name)})`);
+    // M9: токен выгнанного в лобби — не фантом, а на ввод имени
+    b2.ws.close();
+    h.send({ type: "kick", playerId: b2.me });
+    await until(() => h.state.players.length === 1);
+    const b3 = await connect(r.code, { type: "join", name: "", token: b2.token });
+    check(has(b3, "error", (m) => m.error === "token_gone") && !b3.me && h.state.players.length === 1, "токен выгнанного игрока → token_gone, фантом не входит");
+    // H9: вторая доска забирает управление — первая об этом узнаёт
+    const h2 = await connect(r.code, { type: "host", token: r.hostToken });
+    check(await until(() => has(h, "host_lost"), 2000), "прежняя доска получает host_lost");
+    const c = await connect(r.code, { type: "join", name: "Вера" });
+    await until(() => h2.state.players.length === 2);
+    h2.send({ type: "start" });
+    await until(() => h2.state.phase === "lot");
+    const round = h2.state.round;
+    // H7: действия с устаревшим round не применяются к новому лоту
+    a.send({ type: "bid", amount: 1, expectedPrice: 0, round: round + 1 });
+    await until(() => has(a, "rejected", (m) => m.action === "bid"), 2000);
+    check(has(a, "rejected", (m) => m.action === "bid" && m.reason === "closed") && h2.state.price === 0, "ставка на чужой (устаревший) лот отклоняется как closed");
+    c.send({ type: "take", round: round - 1 });
+    c.send({ type: "skip", round: round - 1 });
+    await until(() => has(c, "rejected", (m) => m.action === "skip"), 2000);
+    check(has(c, "rejected", (m) => m.action === "take" && m.reason === "closed") && has(c, "rejected", (m) => m.action === "skip" && m.reason === "closed"), "take/skip с чужим round → closed");
+    h2.send({ type: "skip_lot", round: round + 3 });
+    await wait(300);
+    check(h2.state.round === round && h2.state.phase === "lot", "устаревший skip_lot ведущего лот не трогает");
+    a.send({ type: "bid", amount: 1, expectedPrice: 0, round });
+    await until(() => h2.state.price === 1, 2000);
+    check(h2.state.leaderId === a.me, "ставка с верным round принимается");
+    // H5 + M4: «Завершить» на паузе → финал без паузы; лайнап у одного — режим single без «100»
+    h2.send({ type: "skip_lot", round });
+    await until(() => h2.state.phase === "sold", 3000);
+    h2.send({ type: "pause" });
+    await until(() => h2.state.paused);
+    h2.send({ type: "end" });
+    await until(() => h2.state.phase === "finished" && h2.state.results, 5000);
+    check(h2.state.paused === false, "финал снимает паузу — голосование и итоги не под оверлеем");
+    check(h2.state.results && h2.state.results.mode === "single" && h2.state.results.ranking.length === 1 && h2.state.results.ranking[0].score == null,
+      `один лайнап → режим single без очков (${JSON.stringify(h2.state.results && { m: h2.state.results.mode, s: h2.state.results.ranking.map((x) => x.score) })})`);
+    check(!h2.state.players.some((p) => p.lots.some((l) => "meta" in l)), "в снимке лоты игроков без meta — state легче");
+    for (const x of [h, h2, a, c]) x.ws.close();
+  }
+
+  // M3: голос выгнанного не считается; уход последнего непроголосовавшего закрывает голосование
+  {
+    const r = await make({ slots: 3, budget: 20, t1: 5000, t2: 3000, judge: "vote" }, 6);
+    const h = await connect(r.code, { type: "host", token: r.hostToken });
+    const vs = [];
+    for (const n of ["В1", "В2", "В3", "В4"]) vs.push(await connect(r.code, { type: "join", name: n }));
+    await until(() => h.state?.players.length === 4);
+    h.send({ type: "start" });
+    await until(() => h.state.phase !== "lobby");
+    for (const c of vs) {
+      const mine = () => h.state.players.find((p) => p.id === c.me);
+      await until(() => (h.state.phase === "lot" || h.state.phase === "bidding") && mine().canBid && !h.state.leaderId, 40000);
+      c.send({ type: "bid", amount: h.state.price + 1, round: h.state.round });
+      await until(() => mine().lots.length >= 1, 40000);
+    }
+    h.send({ type: "end" });
+    await until(() => h.state.voting, 8000);
+    vs[3].send({ type: "vote", for: vs[0].me });
+    await until(() => h.state.votes === 1, 3000);
+    check(vs[3].state.voted && vs[3].state.voted.includes(vs[3].me), "в снимке есть, кто уже проголосовал (пульт держит ✓)");
+    h.send({ type: "kick", playerId: vs[3].me });
+    await until(() => h.state.players.find((p) => p.id === vs[3].me).left, 3000);
+    check(h.state.votes === 0 && !h.state.results, `голос выгнанного не в счёт и голосование не закрылось (голосов ${h.state.votes})`);
+    vs[0].send({ type: "vote", for: vs[1].me });
+    vs[1].send({ type: "vote", for: vs[0].me });
+    await until(() => h.state.votes === 2, 3000);
+    check(!h.state.results, "двое из трёх проголосовали — ждём третьего");
+    h.send({ type: "kick", playerId: vs[2].me });
+    check(await until(() => !!h.state.results, 3000), "ушёл последний непроголосовавший — итоги сразу, без 30 с ожидания");
+    for (const x of [h, ...vs]) x.ws.close();
   }
 
   // health и неизвестная комната
@@ -628,16 +724,18 @@ async function graceSuite() {
     check(y2.me === y.me, "возврат в пределах грации — та же партия");
     check(!h.state.paused, "моргнувшая сеть не ставит партию на паузу");
 
-    // 2. Ушёл насовсем: после грации — offline и авто-пауза
+    // 2. Ушёл насовсем: после грации — offline. В партии на двоих торговаться больше не с кем —
+    // авто-пауза.
     y2.ws.close();
     const dropped = await until(() => h.state.players.find((p) => p.id === y.me)?.online === false, 6000);
     check(dropped, "не вернувшийся за грацию игрок объявлен offline");
-    check(!!h.state.paused && h.state.pausedAuto === true, "выпавший игрок ставит партию на авто-паузу");
+    check(!!h.state.paused && h.state.pausedAuto === true, "выпал один из двух — авто-пауза");
 
     // 3. Вернулся — авто-пауза снимается сама, без ведущего
     const y3 = await sock(room.code, { type: "join", name: "Игрек", token: y.token });
     const resumed = await until(() => !h.state.paused, 6000);
-    check(y3.me === y.me && resumed, "все вернулись — авто-пауза снялась сама, ведущий не нужен");
+    check(y3.me === y.me && resumed, "вернулся — авто-пауза снялась сама, ведущий не нужен");
+    const x2 = x;
 
     // 4. Ручную паузу ведущего возврат игрока не снимает: её ставили осознанно
     h.send({ type: "pause" });
@@ -649,19 +747,19 @@ async function graceSuite() {
     check(!!h.state.paused, "ручную паузу ведущего возврат игрока не снимает");
 
     // 5. Пока доска жива, управление принадлежит ей: игрок паузу ведущего не снимает
-    await until(() => x.state && x.state.paused);
+    await until(() => x2.state && x2.state.paused);
     y4.send({ type: "resume" });
     await wait(700);
-    check(!!x.state.paused, "при живой доске игрок не может снять паузу ведущего");
+    check(!!x2.state.paused, "при живой доске игрок не может снять паузу ведущего");
 
     // 6. Доска умерла — иначе партия застревает на паузе до самого TTL при живых игроках
     h.ws.close();
     await wait(500);
     y4.send({ type: "resume" });
-    const rescued = await until(() => x.state && !x.state.paused, 5000);
+    const rescued = await until(() => x2.state && !x2.state.paused, 5000);
     check(rescued, "доски нет — паузу снимает любой игрок, партия не застревает навсегда");
 
-    for (const c of [h, x, y4]) c.ws.close();
+    for (const c of [h, x2, y4]) c.ws.close();
   } finally {
     child.kill("SIGKILL");
   }

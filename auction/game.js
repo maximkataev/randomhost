@@ -69,6 +69,17 @@ function clampSettings(input = {}, kind) {
   return s;
 }
 
+// Имя игрока: без управляющих и bidi-символов (ZWJ U+200D не трогаем — он склеивает эмодзи-семьи) (U+202E переворачивал подписи на доске и в чужих
+// телефонах) и не длиннее 24 символов — считаем графемы, а не UTF-16: slice(0, 24) резал эмодзи
+// пополам, и на экранах появлялся «�».
+const BIDI_CTRL = /[\u0000-\u001f\u007f-\u009f\u061c\u200b\u200e\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
+function cleanName(name) {
+  const s = String(name || "").replace(BIDI_CTRL, "").replace(/\s+/g, " ").trim();
+  let parts;
+  try { parts = Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(s), (x) => x.segment); } catch { parts = Array.from(s); }
+  return parts.slice(0, 24).join("").trim();
+}
+
 function shuffle(arr, rng) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -118,7 +129,7 @@ class Game {
     if (s.players.some((p) => p.id === id)) return this.player(id);
     // запасное имя тоже на языке партии: пустое имя клиент не пропускает, но по сети прийти может
     const FALLBACK = { ru: "Игрок", en: "Player", el: "Παίκτης" };
-    const base = name.trim().slice(0, 24) || FALLBACK[s.settings.lang] || FALLBACK.ru;
+    const base = cleanName(name) || FALLBACK[s.settings.lang] || FALLBACK.ru;
     let final = base;
     for (let n = 2; s.players.some((p) => p.name === final); n++) final = `${base} ${n}`;
     const p = { id, name: final, money: s.settings.budget, spent: 0, lots: [], online: true, left: false };
@@ -130,9 +141,11 @@ class Game {
     return this.s.players.find((p) => p.id === id) || null;
   }
 
-  // Отвал игрока останавливает партию: иначе лот уходит за него, пока он переподключается,
-  // а деньги и слот уже не вернуть. Снимает паузу только ведущий (resume — его команда),
-  // сам по себе возврат игрока игру не продолжает: за столом должны увидеть, что все на месте.
+  // §7.4: offline-игрок просто не торгуется — партия его не ждёт. Авто-пауза «Ждём игроков» —
+  // только когда отключилось больше половины тех, кто ещё собирает лайнап, или на связи остался
+  // один из них (см. tooManyOffline); снимается она сама,
+  // как только условие перестаёт выполняться (см. autoResumeIfBack на сервере). Отдельный случай —
+  // единственный добирающий: его ждём минуту («Ждём Аню»).
   setOnline(id, online, now = Date.now()) {
     const p = this.player(id);
     if (!p) return [];
@@ -140,23 +153,55 @@ class Game {
     p.online = online;
     const s = this.s;
     if (online) {
-      // Партию ждали именно его: соло-добор продолжается сам. Снимать паузу тут больше некому —
-      // остальные уже собрали лайнапы или ушли, а ведущий мог уйти вместе с ними.
-      if (s.paused && s.paused.waitFor === id) return this.resume(now);
+      // Партию ждали именно его (или отключённых больше не больше половины) — авто-пауза снимается
+      // сама: ведущий мог уйти вместе с остальными, а ручную паузу это не трогает (§7.4).
+      if (s.paused) return this.autoResume(now);
       // добирающих снова двое и больше — соло-добор выключается, лот доигрывается торгами (§6.5)
-      if (s.phase === "draft" && !s.paused && this.drafters().length > 1) return this.soloOff(now);
+      if (s.phase === "draft" && this.drafters().length > 1) return this.soloOff(now);
       return [];
     }
     if (was === false || p.left) return [];
     if (s.phase === "lobby" || s.phase === "finished" || s.paused) return [];
-    const ev = this.pause(now, true).concat([{ type: "dropped", playerId: id }]);
     // Ушёл в offline единственный добирающий: ждём его минуту («Ждём Аню») и заканчиваем
     // партию с его пустыми слотами — иначе она висела бы вечно на одном человеке (§7.4).
-    if (s.phase === "draft" && s.solo && s.solo.playerId === id && s.paused) {
-      s.paused.waitFor = id;
-      s.paused.waitUntil = now + SOLO_WAIT;
+    if (s.phase === "draft" && s.solo && s.solo.playerId === id) return this.waitFor(id, now).concat([{ type: "dropped", playerId: id }]);
+    const ev = this.tooManyOffline() ? this.pause(now, true) : [];
+    return ev.concat([{ type: "dropped", playerId: id }]);
+  }
+
+  // Авто-пауза «Ждём Аню»: минута на возврат, потом партия заканчивается с его пустыми слотами (§7.4).
+  waitFor(id, now) {
+    const ev = this.pause(now, true);
+    if (this.s.paused) {
+      this.s.paused.waitFor = id;
+      this.s.paused.waitUntil = now + SOLO_WAIT;
     }
     return ev;
+  }
+
+  // Снять авто-паузу, если её причины больше нет. Ручную паузу ведущего не трогаем никогда.
+  autoResume(now) {
+    const s = this.s;
+    if (!s.paused || !s.paused.auto || this.tooManyOffline()) return [];
+    const ev = this.resume(now);
+    // пока стояли, вернулся второй добирающий — лот доигрывается торгами (§6.5)
+    if (s.phase === "draft" && this.drafters().length > 1) ev.push(...this.soloOff(now));
+    return ev;
+  }
+
+  // Кто ещё влияет на ход партии: не вышел и лайнап не собран. Обрыв игрока с полным лайнапом
+  // ничего не меняет — останавливать из-за него остальных незачем.
+  contenders() {
+    return this.s.players.filter((p) => !p.left && p.lots.length < this.s.settings.slots);
+  }
+
+  // §7.4: «отключилось больше половины» — повод для авто-паузы и условие, пока она держится.
+  // Плюс решение Максима: если на связи остался один из нескольких собирающих (партия на двоих,
+  // один отвалился), торгов не остаётся — не пускаем его добирать в одиночку, а ставим паузу.
+  tooManyOffline() {
+    const c = this.contenders();
+    const off = c.filter((p) => !p.online).length;
+    return c.length > 0 && (off * 2 > c.length || (c.length >= 2 && c.length - off < 2));
   }
 
   removePlayer(id) {
@@ -169,9 +214,11 @@ class Game {
     p.left = true;
     p.online = false;
     const ev = [{ type: "left", playerId: id }];
-    if (this.s.leaderId === id) {
-      // лидер ушёл — его ставка снимается, лот продолжается с предыдущей ставки чужого игрока
-      const others = this.s.bids.filter((b) => b.playerId !== id);
+    // В ПРОДАНО/ЗАБРАЛИ лот уже отдан — покупателя на экранах не подменяем.
+    if (this.s.leaderId === id && (this.s.phase === "lot" || this.s.phase === "bidding")) {
+      // лидер ушёл — его ставка снимается, лот продолжается с предыдущей ставки игрока, который
+      // ещё в партии (ставки вышедших раньше не в счёт: лот ушёл бы тому, кого уже нет)
+      const others = this.s.bids.filter((b) => b.playerId !== id && !this.player(b.playerId)?.left);
       const last = others[others.length - 1];
       this.s.bids = others;
       this.s.leaderId = last ? last.playerId : null;
@@ -212,7 +259,8 @@ class Game {
     const s = this.s;
     if (s.phase !== "lobby") throw new Error("already started");
     const n = this.activePlayers().length;
-    if (n < 2) throw new Error("need at least 2 players");
+    // считаем тех, кто на связи: иначе старт с одним живым игроком сразу уводил в соло-добор
+    if (this.activePlayers().filter((p) => p.online).length < 2) throw new Error("need at least 2 players");
     s.rounds = Math.min(s.deck.length, Math.ceil(n * s.settings.slots * 1.25));
     s.round = -1;
     if (s.settings.intro > 0) {
@@ -236,7 +284,16 @@ class Game {
       return this.autoPause(now);
     }
     const drafters = this.drafters();
-    if (!drafters.length) return this.finish("all_full");
+    if (!drafters.length) {
+      // Свободные слоты остались только у тех, кто offline: это не «все собрали» — ждём их минуту,
+      // как ждём единственного добирающего (§7.4), и только потом заканчиваем с пустыми слотами.
+      const away = this.contenders();
+      if (away.length) {
+        s.round -= 1;
+        return this.waitFor(away[0].id, now);
+      }
+      return this.finish("all_full");
+    }
     s.lot = s.deck[s.round];
     s.price = 0;
     s.leaderId = null;
@@ -459,6 +516,9 @@ class Game {
     const s = this.s;
     s.phase = "finished";
     s.finishedReason = reason;
+    // финал на паузе (solo_gone, «Завершить» на паузе) не должен оставлять оверлей «Пауза»
+    // поверх голосования: пауза относится к торгам, а они кончились
+    s.paused = null;
     s.deadline = null;
     s.lot = null;
     return [{ type: "finished", reason }];
@@ -479,17 +539,45 @@ class Game {
     return { ok: true, events: [{ type: "vote", playerId }] };
   }
 
+  // Голоса, которые считаются: голосующий ещё в партии и с лотами. Голос выгнанного или ушедшего
+  // не должен ни решать исход, ни закрывать голосование досрочно.
+  validVotes() {
+    const out = {};
+    for (const [voter, target] of Object.entries(this.s.votes)) {
+      const v = this.player(voter), t = this.player(target);
+      if (v && t && !v.left && !t.left && v.lots.length) out[voter] = target;
+    }
+    return out;
+  }
+
+  // кто вправе голосовать (§9): в партии и собрал хотя бы один лот
+  voters() {
+    return this.activePlayers().filter((p) => p.lots.length);
+  }
+
+  // все, кто вправе голосовать, проголосовали — ждать таймер незачем
+  allVoted() {
+    const n = this.voters().length;
+    return n > 0 && Object.keys(this.validVotes()).length >= n;
+  }
+
   closeVotes(rng = Math.random) {
     const s = this.s;
     const counts = {};
     for (const p of this.activePlayers()) counts[p.id] = 0;
-    for (const id of Object.values(s.votes)) if (id in counts) counts[id]++;
-    const ranking = this.activePlayers()
+    for (const id of Object.values(this.validVotes())) if (id in counts) counts[id]++;
+    const rows = this.activePlayers()
       .filter((p) => p.lots.length)
       .map((p) => ({ playerId: p.id, score: counts[p.id], verdict: "", tie: rng() }))
-      .sort((a, b) => b.score - a.score || this.player(a.playerId).spent - this.player(b.playerId).spent || a.tie - b.tie)
-      .map(({ tie, ...r }) => r);
-    s.results = { mode: "vote", ranking, summary: "" };
+      .sort((a, b) => b.score - a.score || this.player(a.playerId).spent - this.player(b.playerId).spent || a.tie - b.tie);
+    // Чем решилась ничья за первое место (§9): доска объясняет это вслух, а не молча
+    let tieBreak = null;
+    if (rows.length > 1 && rows[0].score === rows[1].score) {
+      tieBreak = this.player(rows[0].playerId).spent !== this.player(rows[1].playerId).spent ? "spent" : "coin";
+    }
+    const ranking = rows.map(({ tie, ...r }) => r);
+    const total = Object.keys(this.validVotes()).length;
+    s.results = { mode: "vote", ranking, summary: "", tieBreak, votes: total };
     return [{ type: "results" }];
   }
 
@@ -524,13 +612,18 @@ class Game {
       settings: s.settings,
       finishedReason: s.finishedReason,
       results: s.results,
-      votes: s.phase === "finished" ? Object.keys(s.votes).length : 0,
+      votes: s.phase === "finished" ? Object.keys(this.validVotes()).length : 0,
+      // кто уже проголосовал (без того, за кого: счёт открывается после закрытия, §9) — пульт
+      // по нему держит «✓ голос принят», а не забывает его на каждом новом состоянии
+      voted: s.phase === "finished" && !s.results ? Object.keys(this.validVotes()) : [],
       players: s.players.map((p) => ({
         id: p.id,
         name: p.name,
         money: p.money,
         spent: p.spent,
-        lots: p.lots,
+        // meta лотов в снимок не кладём: клиентам она не нужна, а состояние уходит всем на каждое
+        // событие и на слабой сети каждый килобайт — это задержка (у судьи лоты свои, полные)
+        lots: p.lots.map((l) => ({ name: l.name, emoji: l.emoji, price: l.price, round: l.round })),
         online: p.online,
         left: p.left,
         full: p.lots.length >= s.settings.slots,
@@ -542,4 +635,4 @@ class Game {
   }
 }
 
-module.exports = { Game, DEFAULTS, PHASES, clampSettings, SOLO_T4, SOLO_SKIPS, SOLO_WAIT };
+module.exports = { Game, DEFAULTS, PHASES, clampSettings, cleanName, SOLO_T4, SOLO_SKIPS, SOLO_WAIT };
