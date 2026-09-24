@@ -82,6 +82,13 @@ async function typeText(page, text) {
     check(start.errors.length === 0, "стартовый экран без JS-ошибок" + (start.errors.length ? ": " + start.errors[0] : ""));
     await start.close();
 
+    // --- забытая вкладка на закрытой комнате: внятный экран, а не вечное «переподключаемся…»
+    const gone = await cdp(`${BASE}/auction.html?r=ZZZZ&name=Тест`);
+    await wait(5000);
+    check(await evaluateSafe(gone, "!!document.querySelector('.expired')"), "закрытая комната: показан экран «комнаты нет», а не бесконечное переподключение");
+    await gone.shot("ui_room_gone");
+    await gone.close();
+
     // --- доска: лобби
     const board = await cdp(`${BASE}/auction-board.html?r=${room.code}&t=${room.hostToken}`);
     await wait(3000);

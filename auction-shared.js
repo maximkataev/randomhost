@@ -292,7 +292,7 @@ async function startMusic(pick, widget) {
 // ---------- транспорт: WebSocket, а если прокси его не пропускает — long-polling ----------
 // openTransport({code, onMessage, onClose, onOpen}) → { send(msg), close(), mode }.
 // Сначала пробуем WebSocket; если он закрылся, не успев открыться, переключаемся на опрос.
-function openTransport({ code, onMessage, onClose, onOpen, onSendFail }) {
+function openTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone }) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   let closed = false, opened = false, sid = null, ws = null, polling = false;
   // Половина обрывов на телефоне — не закрытие, а тишина: сокет формально открыт, события close
@@ -355,6 +355,13 @@ function openTransport({ code, onMessage, onClose, onOpen, onSendFail }) {
     polling = true;
     try {
       const res = await fetch(`/auction/api/session?r=${encodeURIComponent(code)}`);
+      // Комнаты нет — это конец истории, а не сбой связи: сервер закрыл её по неактивности или код
+      // устарел. Отличить это можно только здесь: код ответа на неудачном рукопожатии WebSocket
+      // браузер не показывает, поэтому 404 виден лишь на запасном транспорте. Пока он падал в общий
+      // catch, клиент уходил в переподключение и стучался в сервер каждые две секунды часами, показывая
+      // «нет связи» вместо внятного «комната закрыта»: в логах прода — 779 таких запросов за вечер
+      // с одного адреса в две давно закрытые комнаты.
+      if (res.status === 404) { closed = true; stopBeat(); if (onGone) onGone(); return; }
       if (!res.ok) throw new Error("session " + res.status);
       const data = await res.json();
       sid = data.sid; opened = true; startBeat(); if (onOpen) onOpen();

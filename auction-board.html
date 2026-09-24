@@ -920,14 +920,15 @@ else connect();
 
 // Доска висит на большом экране всю партию: её обрыв не ставит игру на паузу, но оставляет гостей
 // смотреть на замерший экран. Возвращаемся так же, как пульт: сразу, потом с растущей задержкой.
-let bRetry = 0, bRetryTimer = null;
+let bRetry = 0, bRetryTimer = null, boardDead = false;
 function scheduleReconnect() {
-  if (bRetryTimer) return;
+  if (boardDead || bRetryTimer) return;
   const delay = bRetry === 0 ? 0 : Math.min(8000, 500 * 2 ** (bRetry - 1)) + Math.floor(Math.random() * 400);
   bRetry++;
   bRetryTimer = setTimeout(() => { bRetryTimer = null; connect(); }, delay);
 }
 function reconnectNow() {
+  if (boardDead) return;
   if (ws && ws.mode !== "none") return;
   clearTimeout(bRetryTimer);
   bRetryTimer = null;
@@ -967,6 +968,14 @@ function connect() {
       if (msg.type === "error") toast(msg.error);
     },
     onClose: () => { overlay.textContent = T("reconnecting"); overlay.classList.add("on"); scheduleReconnect(); },
+    // комнаты нет: доска, забытая на экране после её закрытия, иначе стучится в сервер вечно
+    onGone: () => {
+      boardDead = true;
+      clearTimeout(bRetryTimer);
+      bRetryTimer = null;
+      overlay.classList.remove("on");
+      app.innerHTML = '<div class="lobby"><div data-i18n="no_room">' + T("no_room") + '</div></div>';
+    },
   });
 }
 const sendMsg = (m) => ws && ws.send(m);
