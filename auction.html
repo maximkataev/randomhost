@@ -139,7 +139,9 @@
   .ownbid input { flex: 1; min-width: 0; font: 700 18px var(--body); color: var(--text); background: rgba(255, 255, 255, .06);
     border: 1px solid var(--glass-line); border-radius: 16px; padding: 14px; outline: none; -webkit-appearance: none; appearance: none; text-align: center; }
   .ownbid input:focus { border-color: var(--c1); }
-  .ownbid .mid { width: auto; flex: none; padding: 14px 18px; }
+  .ownbid .mid { width: auto; flex: none; padding: 14px 16px; }
+  .ownbid .plus5[hidden] { display: none; }
+  .ownbid input::placeholder { color: var(--muted); font-weight: 600; font-size: 15px; }
   .linkbtn { background: none; border: 0; color: var(--c1); font: 600 13px var(--body); padding: 8px; min-height: 44px; text-decoration: underline; }
   .roomname { text-align: center; font: 700 17px/1.25 var(--body); color: var(--c1); margin: -4px 0 2px; overflow-wrap: anywhere; }
   .expired-new { display: block; text-align: center; text-decoration: none; }
@@ -533,7 +535,7 @@ window.I18N_DICT = {
     lobby_judge_ai: `Победителя выберет ChatGPT — он {how}`,
 
     /* торги */
-    lot_counter: `лот {n}/{total}`,
+    lot_counter: `лот {n}`,
     cap_leader: `Лидер`,
     you: `Ты`,
     cap_min: `Минимум {money}`,
@@ -552,13 +554,15 @@ window.I18N_DICT = {
     already_taken: `Кто-то уже забрал`,
     pickup_hint: `Лот без ставок достаётся тем, у кого $0`,
     next_lot: `Следующий лот…`,
-    /* соло-добор (§6.5): остался один со свободными слотами — торгов нет, лоты бесплатны */
-    draft_status: `добор · слот {n}/{total}`,
+    /* соло-добор (§6.5): остался один со свободными слотами — торгов нет, лот за $1 или скип; без денег — даром подряд */
+    draft_status: `добор · слот {n}/{total} · {money}`,
     draft_cap: `Добор`,
     draft_free: `Лот бесплатный`,
-    draft_take: `Взять`,
+    draft_take: `Взять за {money}`,
+    draft_take_free: `Забрать`,
     draft_skip: `Скип · {n}`,
     draft_must: `Скипы кончились — этот лот твой`,
+    draft_broke: `Денег нет — забираешь всё подряд, без скипов`,
     draft_other: `{name} добирает лайнап`,
     rej_cannot_skip: `Скипать сейчас нечего`,
     rej_must_take: `Скипы кончились — лот придётся взять`,
@@ -688,7 +692,7 @@ window.I18N_DICT = {
     lobby_judge_vote: `You pick the winner yourselves — by vote`,
     lobby_judge_ai: `ChatGPT picks the winner — it {how}`,
 
-    lot_counter: `lot {n}/{total}`,
+    lot_counter: `lot {n}`,
     cap_leader: `Leader`,
     you: `You`,
     cap_min: `Minimum {money}`,
@@ -708,12 +712,14 @@ window.I18N_DICT = {
     pickup_hint: `A lot nobody bids on goes to players with $0`,
     next_lot: `Next lot…`,
     /* solo draft (§6.5): the last player with free slots takes lots for free */
-    draft_status: `draft · slot {n}/{total}`,
+    draft_status: `draft · slot {n}/{total} · {money}`,
     draft_cap: `Draft`,
     draft_free: `The lot is free`,
-    draft_take: `Take`,
+    draft_take: `Take for {money}`,
+    draft_take_free: `Take it`,
     draft_skip: `Skip · {n}`,
     draft_must: `No skips left — this lot is yours`,
+    draft_broke: `Out of money — you take every lot, no skips`,
     draft_other: `{name} is filling the lineup`,
     rej_cannot_skip: `Nothing to skip right now`,
     rej_must_take: `No skips left — you have to take it`,
@@ -840,7 +846,7 @@ window.I18N_DICT = {
     lobby_judge_vote: `Τον νικητή τον διαλέγετε εσείς — με ψηφοφορία`,
     lobby_judge_ai: `Τον νικητή τον διαλέγει το ChatGPT — {how}`,
 
-    lot_counter: `λοτ {n}/{total}`,
+    lot_counter: `λοτ {n}`,
     cap_leader: `Μπροστά`,
     you: `Εσύ`,
     cap_min: `Ελάχιστο {money}`,
@@ -860,12 +866,14 @@ window.I18N_DICT = {
     pickup_hint: `Το λοτ χωρίς προσφορές πάει σε όποιον έχει $0`,
     next_lot: `Επόμενο λοτ…`,
     /* συμπλήρωση μόνος (§6.5): έμεινε ένας με κενές θέσεις — χωρίς προσφορές, τα λοτ δωρεάν */
-    draft_status: `συμπλήρωση · θέση {n}/{total}`,
+    draft_status: `συμπλήρωση · θέση {n}/{total} · {money}`,
     draft_cap: `Συμπλήρωση`,
     draft_free: `Το λοτ είναι δωρεάν`,
-    draft_take: `Πάρ' το`,
+    draft_take: `Πάρ' το με {money}`,
+    draft_take_free: `Πάρ' το`,
     draft_skip: `Πάσο · {n}`,
     draft_must: `Τα πάσα τελείωσαν — αυτό το λοτ είναι δικό σου`,
+    draft_broke: `Τέλος τα λεφτά — παίρνεις ό,τι έρθει, χωρίς πάσο`,
     draft_other: `{name} συμπληρώνει το λάιναπ`,
     rej_cannot_skip: `Δεν υπάρχει τι να πασάρεις τώρα`,
     rej_must_take: `Τα πάσα τελείωσαν — πρέπει να το πάρεις`,
@@ -1514,9 +1522,9 @@ function renderGame() {
   const hb = document.getElementById("hostbtn");
   if (hb) { hb.hidden = !isHostRemote; hb.onclick = openHostSheet; }
   document.getElementById("mymoney").textContent = drafting(p)
-    ? tpl("draft_status", { n: Math.min(p.lots.length + 1, s.settings.slots), total: s.settings.slots })
+    ? tpl("draft_status", { n: Math.min(p.lots.length + 1, s.settings.slots), total: s.settings.slots, money: money(p.money) })
     : money(p.money);
-  document.getElementById("lotno").textContent = tpl("lot_counter", { n: s.round + 1, total: Math.max(s.rounds, s.round + 1) });
+  document.getElementById("lotno").textContent = tpl("lot_counter", { n: s.round + 1 });
   const task = document.getElementById("task");
   if (task) {
     const custom = taskNow();
@@ -1559,8 +1567,7 @@ function renderLot(lot, kind) {
   more.onclick = () => openSheet(lot);
   box.append(img, el("div", "emoji", lot.emoji), el("div", "kind", auctionKind(kind, uiLang()).label || kind), el("div", "name", lot.name), meta, el("div", "short", lot.description), more);
   setNote("");
-  // новый лот — поле «своей суммы» закрываем: прежняя сумма относилась к другому лоту
-  ownOpen = false;
+  // новый лот — ряд «своей суммы» пересоздаём пустым: прежняя сумма относилась к другому лоту
   const wrap = document.getElementById("ownwrap"); if (wrap) wrap.replaceChildren();
   // Картинка: тот же поиск, что на доске, но превью 240px (показываем 120 CSS-пикселей) — 1200px
   // съедали до 10 МБ за партию. Ведущий выключил картинки — пульт их тоже не качает.
@@ -1589,7 +1596,8 @@ function renderActions(p) {
   // а не гасим серым: на этом лоте выбора действительно нет (§10.3).
   if (s.phase === "draft") {
     if (!drafting(p)) return box.append(plate("", "", s.solo ? tpl("draft_other", { name: nameOf(s.solo.playerId) }) : I18N.t("next_lot")));
-    const take = el("button", "big", I18N.t("draft_take"));
+    // лот в доборе стоит $1, пока есть деньги; без денег — даром и без скипов
+    const take = el("button", "big", s.solo.price ? tpl("draft_take", { money: money(s.solo.price) }) : I18N.t("draft_take_free"));
     take.onclick = () => { unlockAudio(); act({ type: "take", round: s.round }, take); };
     box.append(take);
     if (s.solo.skips > 0) {
@@ -1597,7 +1605,7 @@ function renderActions(p) {
       skip.onclick = () => act({ type: "skip", round: s.round }, skip);
       box.append(skip);
     } else {
-      box.append(plate("", "", I18N.t("draft_must")));
+      box.append(plate("", "", I18N.t(s.solo.price ? "draft_must" : "draft_broke")));
     }
     return;
   }
@@ -1610,55 +1618,60 @@ function renderActions(p) {
   const big = el("button", "big", tpl(s.leaderId ? "bid_btn" : "bid_first_btn", { money: money(next) })); big.id = "bid";
   big.onclick = () => { unlockAudio(); act({ type: "bid", amount: next, expectedPrice: s.price, round: s.round }, big); };
   box.append(big);
-  const plus = s.price + 5;
-  if (plus <= p.money) { const m = el("button", "mid", tpl("plus5_btn", { money: money(plus) })); let t = 0; m.onclick = () => { if (Date.now() - t < 300) return; t = Date.now(); act({ type: "bid", amount: plus, expectedPrice: s.price, round: s.round }, m); }; box.append(m); }
+  // «+$5» и своя сумма — в одном ряду под главной кнопкой (syncOwnBid): поле всегда на экране
 }
 
 // Своя сумма: кнопками можно только шагать по $1 и $5, а перебить сразу на $12 нельзя было.
-// Поле не ставим на экран само — оно бы отъело место у главной кнопки; открывается по ссылке.
-// Открытое поле переживает любые state: обновляем только его границы, фокус и набранное остаются.
-let ownOpen = false;
+// Поле всегда на экране, в одном ряду с «+$5»: раньше его открывала отдельная ссылка — два нажатия
+// до клавиатуры, пока лот тикает. Ряд переживает любые state: обновляем только границы и «+$5»,
+// фокус и набранное остаются.
 function syncOwnBid(p) {
   const wrap = document.getElementById("ownwrap");
   if (!wrap) return;
-  if (!p) { if (wrap.firstChild) wrap.replaceChildren(); ownOpen = false; return; }
-  const next = state.price + 1;
-  const existing = document.getElementById("ownbid");
-  if (ownOpen && existing) { existing.min = String(next); existing.max = String(p.money); existing.placeholder = String(next); return; }
-  if (!ownOpen && wrap.querySelector(".linkbtn")) return;
-  wrap.replaceChildren();
-  if (!ownOpen) {
-    const toggle = el("button", "linkbtn", I18N.t("own_bid_open"));
-    toggle.onclick = () => { ownOpen = true; syncOwnBid(mine()); const i = document.getElementById("ownbid"); if (i) i.focus(); };
-    return wrap.append(toggle);
+  if (!p) { if (wrap.firstChild) wrap.replaceChildren(); return; }
+  const next = state.price + 1, plus = state.price + 5;
+  let input = document.getElementById("ownbid");
+  if (!input) {
+    wrap.replaceChildren();
+    const row = el("div", "ownbid");
+    const m = el("button", "mid plus5"); m.id = "plus5";
+    let t = 0;
+    // сумма берётся на момент нажатия, из подписи: цена могла вырасти между state и тапом
+    m.onclick = () => { if (Date.now() - t < 300) return; t = Date.now(); const s = state; act({ type: "bid", amount: Number(m.dataset.amount), expectedPrice: s.price, round: s.round }, m); };
+    input = el("input");
+    input.type = "number"; input.id = "ownbid"; input.step = "1";
+    input.inputMode = "numeric"; input.enterKeyHint = "send";
+    input.setAttribute("aria-label", I18N.t("own_bid_label"));
+    const go = el("button", "mid go", I18N.t("own_bid_go"));
+    const err = el("div", "note", "");
+    const send = () => {
+      // границы — на момент нажатия: цена могла вырасти, пока набирали сумму. Они те же, что у
+      // сервера: он отклонит и сам, но человеку нужен ответ сразу
+      const s = state, self = mine(), low = s.price + 1;
+      const raw = String(input.value).trim().replace(",", ".");
+      const v = Number(raw);
+      if (!raw || !Number.isFinite(v) || v < low) { err.textContent = tpl("own_bid_min", { money: money(low) }); return; }
+      // 27.9 раньше молча превращалось в $27 — дробную сумму не угадываем, а просим целую
+      if (!Number.isInteger(v)) { err.textContent = I18N.t("own_bid_int"); return; }
+      if (!self || v > self.money) { err.textContent = tpl("own_bid_max", { money: money(self ? self.money : 0) }); return; }
+      err.textContent = "";
+      unlockAudio();
+      act({ type: "bid", amount: v, expectedPrice: s.price, round: s.round });
+      input.value = "";
+    };
+    go.onclick = send;
+    // тело блоком: стрелка `e.key === "Enter" && send()` вернула бы false на любой другой клавише,
+    // а DOM0-обработчик, вернувший false, отменяет ввод символа — так уже ломался ввод имени
+    input.onkeydown = (e) => { if (e.key === "Enter") send(); };
+    row.append(m, input, go);
+    wrap.append(row, err);
   }
-  const row = el("div", "ownbid");
-  const input = el("input");
-  input.type = "number"; input.id = "ownbid"; input.min = String(next); input.max = String(p.money); input.step = "1";
-  input.inputMode = "numeric"; input.placeholder = String(next);
-  input.setAttribute("aria-label", I18N.t("own_bid_label"));
-  const go = el("button", "mid", I18N.t("own_bid_go"));
-  const err = el("div", "note", "");
-  const send = () => {
-    // границы — на момент нажатия: цена могла вырасти, пока набирали сумму. Они те же, что у
-    // сервера: он отклонит и сам, но человеку нужен ответ сразу
-    const s = state, self = mine(), low = s.price + 1;
-    const raw = String(input.value).trim().replace(",", ".");
-    const v = Number(raw);
-    if (!raw || !Number.isFinite(v) || v < low) { err.textContent = tpl("own_bid_min", { money: money(low) }); return; }
-    // 27.9 раньше молча превращалось в $27 — дробную сумму не угадываем, а просим целую
-    if (!Number.isInteger(v)) { err.textContent = I18N.t("own_bid_int"); return; }
-    if (!self || v > self.money) { err.textContent = tpl("own_bid_max", { money: money(self ? self.money : 0) }); return; }
-    err.textContent = "";
-    unlockAudio();
-    act({ type: "bid", amount: v, expectedPrice: s.price, round: s.round });
-  };
-  go.onclick = send;
-  // тело блоком: стрелка `e.key === "Enter" && send()` вернула бы false на любой другой клавише,
-  // а DOM0-обработчик, вернувший false, отменяет ввод символа — так уже ломался ввод имени
-  input.onkeydown = (e) => { if (e.key === "Enter") send(); };
-  row.append(input, go);
-  wrap.append(row, err);
+  input.min = String(next); input.max = String(p.money);
+  input.placeholder = I18N.t("own_bid_open");
+  const m = document.getElementById("plus5");
+  m.hidden = plus > p.money;
+  m.dataset.amount = String(plus);
+  m.textContent = tpl("plus5_btn", { money: money(plus) });
 }
 
 function tickTimer() {

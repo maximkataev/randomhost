@@ -213,8 +213,8 @@ async function typeText(page, text) {
     // «Своя сумма» переживает чужие state: поле, набранное и фокус остаются (раньше закрывалось)
     const ownbid = await evaluateSafe(remote, `(() => {
       state.phase = "lot"; state.leaderId = null; state.price = 0; render();
-      const t = document.querySelector("#ownwrap .linkbtn"); if (!t) return "нет ссылки";
-      t.click();
+      // поле на экране сразу, без ссылки «Своя сумма»: лишнее нажатие, пока тикает лот
+      if (document.querySelector("#ownwrap .linkbtn")) return "поле спрятано за ссылкой";
       const i = document.getElementById("ownbid"); if (!i) return "нет поля";
       i.value = "7"; i.focus();
       render(); render();
@@ -222,7 +222,7 @@ async function typeText(page, text) {
       return j === i && j.value === "7" && document.activeElement === j ? "ok" : "поле пересоздано";
     })()`);
     check(ownbid === "ok", "пульт: «Своя сумма» не закрывается на новом state (" + ownbid + ")");
-    const frac = await evaluateSafe(remote, `(() => { const i = document.getElementById("ownbid"); if (!i) return ""; i.value = "7.5"; document.querySelector("#ownwrap .mid").click(); return document.querySelector("#ownwrap .note").textContent; })()`);
+    const frac = await evaluateSafe(remote, `(() => { const i = document.getElementById("ownbid"); if (!i) return ""; i.value = "7.5"; document.querySelector("#ownwrap .go").click(); return document.querySelector("#ownwrap .note").textContent; })()`);
     check(hasFrag(frac || "", await i18nFrag(remote, "own_bid_int")), "пульт: дробная сумма не округляется молча (" + frac + ")");
     // ставка с пульта
     await remote.call("Runtime.evaluate", { expression: "(document.getElementById('bid') || {click(){}}).click()" });

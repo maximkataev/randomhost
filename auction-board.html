@@ -25,13 +25,21 @@
   body.scaled { zoom: var(--z); height: calc(100vh / var(--z)); height: calc(100dvh / var(--z)); }
   main, aside { display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 12px; }
   .topbar { display: flex; align-items: center; gap: 18px; flex: none; }
-  .topbar .lotno { font: 700 12px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  /* «Лот 7» стоит после крупной фазы, дальше — растяжка: смена длины текста ничего не сдвигает */
+  .topbar .lotno { flex: none; white-space: nowrap; font: 700 12px/1 var(--display); font-variant-numeric: tabular-nums; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
   .topbar .phase { font: 900 clamp(22px, 2vw, 30px)/1 var(--display); letter-spacing: -.035em; text-transform: uppercase; }
   .topbar .phase.bidding { color: var(--c1); }
   .topbar .phase.draft { color: var(--c2); }
   /* соло-добор: кто добирает, какой слот и сколько скипов осталось (§10.2) */
   .topbar .draftline { display: none; font: 700 12px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
-  .topbar .draftline.on { display: block; }
+  /* длинное имя добирающего — не больше двух строк и не выталкивает таймер за край */
+  .topbar .draftline.on { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; flex: 0 1 auto; min-width: 0; line-height: 1.25; }
+  .topbar .phase { flex: none; }
+  /* телефон: строка добора — отдельной строкой под фазой, во всю ширину */
+  @media (max-width: 760px) {
+    .topbar { flex-wrap: wrap; row-gap: 8px; }
+    .topbar .draftline.on { order: 10; flex: 1 1 100%; }
+  }
   .topbar .spacer { flex: 1; }
   /* задание партии видно весь матч: игроки смотрят на экран, а не в телефон */
   /* nowrap + предел ширины: самое длинное задание не должно разгонять топбар на вторую строку
@@ -56,29 +64,55 @@
   /* три уровня фона: пятна → стеклянные панели (.04) → карточка лота (.08) */
   .frame { flex: 1 1 auto; min-height: 0; margin-top: 0; background: rgba(255, 255, 255, .08); box-shadow: 0 34px 90px -44px #000, 0 0 0 1px rgba(255, 255, 255, .03); }
   .card { overflow: hidden; }
-  /* Две колонки — фото слева, текст справа. Без :has(): раскладка держится на flex,
-     и если фото не нашлось (.hero.gone → display:none), текст сам занимает всю ширину. */
+  /* Две колонки — фото слева, текст справа. Без :has(): если фото не нашлось (.hero.gone → display:none),
+     текст и плеер растягиваются на обе колонки соседним селектором .hero.gone ~ (см. ниже). */
+  /* Фото — во всю высоту карточки (object-fit: cover уже в shared), текст и плеер — одним блоком
+     справа, по центру по вертикали. Раньше фото кончалось на 415px, а карточка тянулась до плеера:
+     под фото и между «фактом» и плеером висели пустые поля. Сетка вместо flex-wrap: четыре строки,
+     крайние — гибкие поровну, так что свободное место (если есть) делится сверху и снизу блока,
+     а не копится дырой в одном месте. Высота карточки задана рамкой — между лотами ничего не прыгает. */
   @media (min-width: 1100px) {
-    .card.result { display: flex; flex-direction: row; flex-wrap: wrap; align-items: stretch; column-gap: 28px; }
-    .card.result > .hero { flex: 0 0 40%; margin: -28px 0 14px -28px; height: auto; min-height: 200px; }
-    .card.result > .text { flex: 1 1 320px; min-width: 0; }
-    .card.result > .player { flex: 1 1 100%; align-self: end; }
+    .card.result { --pt: 28px; --pr: 28px; --pb: 24px; --pl: 28px; padding: var(--pt) var(--pr) var(--pb) var(--pl);
+      display: grid; grid-template-columns: 40% minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto minmax(0, 1fr);
+      column-gap: clamp(22px, 2.2vw, 34px); align-items: stretch; }
+    .card.result > .hero { grid-column: 1; grid-row: 1 / -1; height: auto; min-height: 0; margin: calc(-1 * var(--pt)) 0 calc(-1 * var(--pb)) calc(-1 * var(--pl)); }
+    /* фото теперь вертикальная полоса: градиент уводит его в карточку справа, а не снизу */
+    .card.result > .hero::after { inset: 0 0 0 auto; width: 38%; height: auto; background: linear-gradient(to left, rgba(18, 17, 24, .55), transparent); }
+    .card.result > .hero.poster::after, .card.result > .hero.logo::after { display: none; }
+    /* высокое фото в высокой колонке: кадрируем (cover, фокус сверху — там лицо), без размытых полос по бокам */
+    .card.result > .hero.poster img:not(.blur) { padding: 0; object-fit: cover; object-position: 50% 18%; filter: none; }
+    .card.result > .hero.poster img.blur { display: none; }
+    .card.result > .text { grid-column: 2; grid-row: 2; min-width: 0; }
+    .card.result > .player { grid-column: 2; grid-row: 3; margin-top: clamp(14px, 2.4vh, 24px); }
+    /* фото не нашлось — текст и плеер на всю ширину */
+    .card.result > .hero.gone ~ .text, .card.result > .hero.gone ~ .player { grid-column: 1 / -1; }
     .card.result > .hero:not(.gone) + .text > .emoji { margin-top: 0; font-size: 52px; }
-    .card.result .name { font-size: clamp(28px, 2.6vw, 40px); }
-    .card.result .desc { font-size: 15px; }
+    /* кегль растёт и с высотой экрана: на высоком экране текст занимает колонку, а не плавает в ней */
+    /* --k — множитель кегля, его подбирает fitCard: длинный текст ужимается целиком, а не режется */
+    .card.result .name { font-size: calc(clamp(28px, min(3vw, 6vh), 54px) * var(--k, 1)); }
+    .card.result .desc { font-size: calc(clamp(15px, min(1.15vw, 2.3vh), 19px) * var(--k, 1)); }
+    .card.result .fact { font-size: calc(clamp(14px, min(1vw, 2vh), 17px) * var(--k, 1)); }
+    /* длинное описание не влезло — fitCard ужимает: описание до 4 строк, факт до 3 */
+    /* крайний случай (не влезло и на минимальном кегле): обрезка только целыми строками. Кламп стоит на
+       строке без отступов — у .fact с padding недорезанная строка просвечивала в нижнем отступе */
+    .card.result.snug .desc, .card.result.snug .fact .ft { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+    .card.result.snug .desc { margin-bottom: 10px; }
+    .card.result.snug .meta { margin-bottom: 10px; }
   }
   .text { display: flex; flex-direction: column; min-width: 0; }
   .text > * { flex: none; }
   .hero:not(.gone) + .text > .emoji { margin-top: -62px; position: relative; z-index: 1; font-size: 64px; }
 
+  .card.fitting, .card.fitting * { animation: none !important; }
+
   /* ТВ и ноутбуки ниже 800px: карточка лота должна помещаться целиком, без внутренней прокрутки */
   @media (max-height: 840px) {
     .card { padding: 20px 22px 18px; }
-    .card.result > .hero { margin: -20px 0 12px -22px; }
-    .card.result .name { font-size: clamp(26px, 2.2vw, 34px); margin: 8px 0; }
-    .card.result .desc { font-size: 14.5px; margin-bottom: 12px; }
+    .card.result { --pt: 20px; --pr: 22px; --pb: 18px; --pl: 22px; }
+    .card.result .name { font-size: calc(clamp(26px, min(2.8vw, 5.4vh), 44px) * var(--k, 1)); margin: 8px 0; }
+    .card.result .desc { font-size: calc(clamp(14.5px, min(1.1vw, 2.1vh), 17px) * var(--k, 1)); margin-bottom: 12px; }
     .card.result .meta { margin-bottom: 12px; }
-    .card.result .fact { padding: 11px 13px 11px 15px; font-size: 13.5px; }
+    .card.result .fact { padding: 11px 13px 11px 15px; font-size: calc(clamp(13.5px, min(.95vw, 1.9vh), 15.5px) * var(--k, 1)); }
     .card.result > .hero:not(.gone) + .text > .emoji { font-size: 40px; margin-bottom: 10px; }
   }
 
@@ -102,45 +136,54 @@
   .panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; background: rgba(255, 255, 255, .04); border: 1px solid var(--glass-line); border-radius: 24px; padding: 18px 18px 14px; backdrop-filter: blur(24px); }
   .panel h2 { font: 900 20px/1 var(--display); letter-spacing: -.035em; text-transform: uppercase; margin: 0 0 12px; display: flex; justify-content: space-between; align-items: center; }
   .panel h2 small { font: 500 12px var(--body); text-transform: none; letter-spacing: 0; color: var(--muted); }
-  .players { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; display: flex; flex-direction: column; gap: 8px; }
-  .p { background: rgba(255, 255, 255, .045); border: 1px solid var(--glass-line); border-radius: 16px; padding: 10px 14px; transition: border-color .3s, box-shadow .3s, opacity .3s; }
+  /* Карточки игроков — по содержимому (никакой пустоты внутри), все размеры в em от кегля списка.
+     Кегль подбирает fitPlayers: самый крупный, при котором список влезает в панель, — так высоту панели
+     заполняют сами карточки, а не растянутые рамки. Ступени (roomy → обычная → dense → две колонки)
+     меняют устройство карточки, кегль — её масштаб. */
+  .players { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; display: flex; flex-direction: column; gap: .5em; font-size: 16px; }
+  .p { flex: none; background: rgba(255, 255, 255, .045); border: 1px solid var(--glass-line); border-radius: 1em; padding: .62em .88em; transition: border-color .3s, box-shadow .3s, opacity .3s; }
   .p.leader { border-color: var(--c1); box-shadow: 0 0 0 1px var(--c1), 0 10px 30px -12px var(--c1); }
   .p.full, .p.offline, .p.left { opacity: .55; }
-  .p-top { display: flex; align-items: baseline; gap: 8px; }
-  .p-name { font-weight: 600; font-size: 16px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .p-tag { font: 700 10px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--c1); }
+  .p-top { display: flex; align-items: baseline; gap: .5em; }
+  .p-name { font-weight: 600; font-size: 1em; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .p-tag { font: 700 .63em/1 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--c1); }
   .p-tag.dim { color: var(--muted); }
-  .p-left { font: 900 19px/1 var(--display); letter-spacing: -.02em; }
+  .p-left { font: 900 1.2em/1 var(--display); letter-spacing: -.02em; }
   .p.broke .p-left { color: #ff8a8a; }
-  .p-bar { height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .08); margin: 8px 0 8px; overflow: hidden; }
-  .p-bar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--c1), var(--c2)); transition: width .6s cubic-bezier(.2, .8, .3, 1); }
-  .slots { display: flex; gap: 6px; flex-wrap: wrap; }
-  .slot-i { min-width: 28px; height: 28px; border-radius: 999px; border: 1px dashed var(--glass-line); display: flex; align-items: center; gap: 6px; padding: 0 9px; font-size: 13px; }
-  .slot-i.filled { border-style: solid; background: rgba(255, 255, 255, .07); }
+  .p-bar { height: .25em; border-radius: .25em; background: rgba(255, 255, 255, .08); margin: .5em 0; overflow: hidden; }
+  .p-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--c1), var(--c2)); transition: width .6s cubic-bezier(.2, .8, .3, 1); }
+  /* слоты переносятся целыми пилюлями (названия не режутся); последний лот с пустыми кружками — одна группа */
+  .slots { display: flex; gap: .38em; flex-wrap: wrap; min-width: 0; }
+  .slots .tailgrp { display: inline-flex; gap: .38em; flex: none; max-width: 100%; }
+  .players.roomy .slots .tailgrp { display: contents; }
+  .slot-i { flex: none; min-width: 2.15em; height: 2.15em; border-radius: 999px; border: 1px dashed var(--glass-line); display: flex; align-items: center; gap: .45em; padding: 0 .7em; font-size: .82em; }
+  .slot-i.filled { flex: 0 1 auto; min-width: 2.15em; border-style: solid; background: rgba(255, 255, 255, .07); }
+  .slot-i.filled > :first-child { flex: none; }
   .p.leader .slot-i.filled { border-color: transparent; background: linear-gradient(100deg, var(--c1), var(--c2) 85%); background-origin: border-box; color: #0a0a0f; font-weight: 600; }
-  .slot-i .n { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* Плотность списка выбирается по доступной высоте, а не по числу игроков (renderPlayers):
-     compact → dense → две колонки. Раньше одна ступень включалась с пятого игрока — названия
-     резались до «Л…» даже на пустой панели, а 16 игроков на 1080p всё равно не влезали. */
-  .players.compact { gap: 6px; }
-  .players.compact .p { padding: 7px 12px 8px; }
-  .players.compact .p-name { font-size: 15px; }
-  .players.compact .p-left { font-size: 17px; }
-  .players.compact .p-bar { margin: 6px 0; height: 3px; }
-  .players.compact .slot-i { min-width: 24px; height: 24px; padding: 0 7px; font-size: 12px; gap: 5px; }
-  .players.compact .slot-i .n { max-width: 110px; font-size: 12px; }
-  /* плотно: без полосы денег, лоты — только эмодзи (название в подсказке), строка ~48px */
-  .players.dense { gap: 4px; }
-  .players.dense .p { padding: 5px 10px 6px; border-radius: 12px; }
+  .slot-i .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .slot-i .pr, .slot-i .no { display: none; }
+  /* плотно: без полосы денег, лоты — только эмодзи (название в подсказке) */
+  .players.dense { gap: .3em; }
+  .players.dense .p { padding: .35em .65em .4em; border-radius: .75em; }
   .players.dense .p-bar { display: none; }
-  .players.dense .p-top { margin-bottom: 4px; }
-  .players.dense .slots { flex-wrap: nowrap; overflow: hidden; gap: 4px; }
-  .players.dense .slot-i { min-width: 20px; height: 20px; padding: 0 5px; }
+  .players.dense .p-top { margin-bottom: .3em; }
+  .players.dense .slots, .players.dense .slots .tailgrp { flex-wrap: nowrap; overflow: hidden; gap: .25em; }
+  .players.dense .slot-i { padding: 0 .35em; }
   .players.dense .slot-i .n { display: none; }
+  /* просторно (мало игроков): каждый слот — строка «эмодзи · лот · цена», у пустого — номер */
+  .players.roomy { gap: .6em; }
+  .players.roomy .p { padding: .8em 1em .9em; border-radius: 1.2em; }
+  .players.roomy .p-name { font-size: 1.12em; }
+  .players.roomy .p-left { font-size: 1.5em; }
+  .players.roomy .p-bar { height: .3em; margin: .6em 0 .7em; }
+  .players.roomy .slots { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: 2.2em; gap: .3em; }
+  .players.roomy .slot-i { height: auto; min-width: 0; border-radius: .9em; padding: 0 .9em; gap: .7em; font-size: .92em; }
+  .players.roomy .slot-i > :first-child { flex: none; font-size: 1.15em; }
+  .players.roomy .slot-i .n { flex: 1 1 auto; font-weight: 600; }
+  .players.roomy .slot-i .pr { display: block; flex: none; font: 700 .82em/1 var(--display); letter-spacing: -.01em; opacity: .8; }
+  .players.roomy .slot-i .no { display: block; font: 700 .72em/1 var(--display); letter-spacing: .12em; color: rgba(244, 242, 255, .32); }
   /* и две колонки, если всё равно не влезает */
   .players.cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; }
-  .players.cols .p-name { font-size: 13.5px; }
-  .players.cols .p-left { font-size: 15px; }
   /* RTL-имя не переворачивает соседний текст («Лидер $5», «лот 3/8») */
   .p-name, .seat .nm, .pl .who, .bidbar .lead b, .bidbar .tape span, .chip { unicode-bidi: isolate; }
 
@@ -360,7 +403,7 @@
   @media (pointer: coarse) { .step button { width: 44px; height: 44px; } }
 
   @media (prefers-reduced-motion: reduce) {
-    .join .eyebrow i, .seat.new, .seat.wait, .timer.urgent .num, .thinking .dice, .pl,
+    .join .eyebrow i, .seat.new, .seat.wait, .timer.urgent .num, .pl,
     .bidbar .stamp, .bidbar .gavel-mark, .hero::before { animation: none !important; }
   }
 
@@ -401,85 +444,150 @@
   }
 
   /* финал */
-  /* height, а не min-height: иначе экран итогов вырастал за пределы body{overflow:hidden} и низ обрезался */
-  /* Панель занимает экран целиком, но содержимое центрируется по вертикали: при коротких итогах
-     (один-два лайнапа) под ними оставалась половина экрана пустоты. `safe center` — чтобы при
-     длинном списке верх не срезало, а появилась обычная прокрутка. */
-  .final { height: 100%; display: flex; flex-direction: column; justify-content: safe center; gap: clamp(10px, 1.6vh, 20px);
-    overflow-y: auto; scrollbar-width: thin; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 28px;
-    padding: clamp(22px, 3vh, 32px); backdrop-filter: blur(24px); box-shadow: 0 30px 80px -50px #000; }
+  /* height, а не min-height: иначе экран итогов вырастал за пределы body{overflow:hidden} и низ обрезался.
+     Прокрутки у панели нет вовсе (overflow: hidden): на телевизоре полоса выглядела сбоем, листать доску
+     с дивана некому. Всё обязано влезть — за это отвечает fitFinal (ступени плотности), а сами
+     карточки ограничены сеткой и клампами строк. На узкой доске (телефон) прокручивается страница. */
+  .final { height: 100%; display: flex; flex-direction: column; gap: clamp(10px, 1.6vh, 20px);
+    overflow: hidden; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 28px;
+    padding: clamp(18px, 2.6vh, 30px) clamp(18px, 2vw, 30px); backdrop-filter: blur(24px); box-shadow: 0 30px 80px -50px #000; }
   .final > * { flex: none; }
   .final h2 { font: 900 clamp(30px, 3.4vw, 44px)/.95 var(--display); text-transform: uppercase; letter-spacing: -.045em; margin: 0; }
   /* подпись задания объясняет вердикты судьи — её читают с дивана вместе с «Итогами», не мельче 16px */
-  .final .ftask { margin: -12px 0 18px; font-size: clamp(16px, 1.45vw, 22px); color: rgba(244, 242, 255, .78); }
+  .final .ftask { font-size: clamp(16px, 1.45vw, 22px); color: rgba(244, 242, 255, .78); }
   .final .ftask b { color: var(--c1); font-weight: 700; }
-  /* Колонка не шире 460px (на ожидании судьи — 380px, там в карточке только лоты): у двух-трёх игроков
-     карточки растягивались на полэкрана, а лайнап занимал треть — остальное пустое стекло. */
+
+  /* --- голосование: сетка лайнапов (как было) --- */
+  .final.voting { justify-content: safe center; }
+  .final.voting .ftask { margin: -8px 0 8px; }
   .podium { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 460px)); align-items: start; gap: 14px; }
-  .thinking-screen .podium { grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 380px)); justify-content: center; }
-  .pl { background: rgba(255, 255, 255, .05); border: 1px solid var(--glass-line); border-radius: 22px; padding: 18px; backdrop-filter: blur(14px); box-shadow: 0 18px 40px -30px #000; animation: rise .6s both; }
+  .pl { background: rgba(255, 255, 255, .05); border: 1px solid var(--glass-line); border-radius: 22px; padding: 18px; backdrop-filter: blur(14px); box-shadow: 0 18px 40px -30px #000; animation: settle .55s cubic-bezier(.2, .9, .3, 1) both; min-width: 0; }
+  /* появление без сдвига: scale(<1) не выходит за рамку карточки, translateY выходил — и давал полосу прокрутки */
+  @keyframes settle { from { opacity: 0; transform: scale(.965); } }
   .pl.first { border-color: var(--c1); box-shadow: 0 0 0 1px var(--c1), 0 20px 50px -20px var(--c1); }
   .pl .place { font-size: 34px; line-height: 1; }
   .pl .who { font: 900 clamp(18px, 1.5vw, 24px)/1.08 var(--display); letter-spacing: -.03em; margin: 8px 0 2px; overflow-wrap: anywhere; }
   .pl .score { font: 900 clamp(30px, 2.8vw, 40px)/1 var(--display); letter-spacing: -.04em; color: var(--c1); }
-  /* вердикт и лайнап держат карточку в разумной высоте: призёрам — больше строк, остальным — короче */
   .pl .verdict { margin: 10px 0 12px; font-size: 14.5px; line-height: 1.45; color: rgba(244, 242, 255, .86); display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
-  .podium .pl:nth-child(n+4) .verdict { -webkit-line-clamp: 4; }
   .pl .lots .chip { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pl .lots { display: flex; flex-wrap: wrap; gap: 6px; }
   .pl .spent { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
   /* пилюли: лоты в лайнапе; у победителя — залитые градиентом */
   .chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; background: rgba(255, 255, 255, .06); border: 1px solid var(--glass-line); border-radius: 999px; padding: 6px 13px; font-size: 14px; overflow-wrap: anywhere; }
   .chip.off { opacity: .5; }
+  .chip .cn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip { align-items: center; }
   /* background-origin: border-box — у всех градиентов с прозрачной рамкой: иначе градиент считается от
      внутренней области и повторяется под рамкой, по краю пилюли выходила светлая кайма другого цвета */
   .pl.first .chip { color: #0a0a0f; border-color: transparent; background: linear-gradient(100deg, var(--c1), var(--c2) 80%); background-origin: border-box; font-weight: 600; }
-  .final .summary { margin: 20px 0 0; padding: 16px 18px; font-size: 16px; background: rgba(255, 255, 255, .05); border-left: 3px solid var(--c1); border-radius: 4px 16px 16px 4px; }
-  .final .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
-  /* много игроков: итоги и голосование плотнее — карточки уже, вердикт короче, лоты мельче */
-  .final.many .podium { grid-template-columns: repeat(auto-fill, minmax(min(170px, 100%), 1fr)); gap: 10px; }
-  .final.many .pl { padding: 12px 14px; border-radius: 18px; }
-  .final.many .pl .place { font-size: 24px; }
-  .final.many .pl .who { font-size: 17px; margin-top: 4px; }
-  .final.many .pl .score { font-size: 24px; }
-  .final.many .pl .verdict { -webkit-line-clamp: 3; font-size: 13px; margin: 6px 0 8px; }
-  .final.many .podium .pl:nth-child(n+4) .verdict { -webkit-line-clamp: 2; }
-  .final.many .chip { font-size: 12px; padding: 3px 9px; }
-  .final.many .pl .lots { gap: 4px; }
-  .final.many .pl .spent { margin-top: 6px; }
-  /* Ступеньки плотнее «many» — их ставит fitFinal, пока итоги не влезут в панель без прокрутки:
-     полоса прокрутки на телевизоре выглядела сбоем, а листать доску с дивана некому. */
-  .final.tight { gap: 8px; }
-  .final.tight h2 { font-size: clamp(24px, 2.6vw, 34px); }
-  .final.tight .ftask { margin: -4px 0 6px; }
-  .final.tight .podium { grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr)); gap: 8px; }
-  .final.tight .pl { padding: 10px 12px; border-radius: 16px; }
-  .final.tight .pl .who { font-size: 15px; }
-  .final.tight .pl .verdict, .final.tight .podium .pl:nth-child(n+4) .verdict { -webkit-line-clamp: 2; font-size: 12.5px; margin: 4px 0 6px; }
-  .final.tight .chip { font-size: 11.5px; padding: 2px 8px; }
-  .final.tight .pl .spent { margin-top: 4px; font-size: 11.5px; }
-  .final.tight .summary { margin-top: 6px; padding: 10px 14px; font-size: 14px; }
-  .final.tight .actions { margin-top: 6px; }
-  .final.tight .thinking { padding-bottom: 4px; }
-  .final.tight .thinking .dice { font-size: 36px; }
-  .final.tiny .pl .verdict, .final.tiny .podium .pl:nth-child(n+4) .verdict { -webkit-line-clamp: 1; }
-  .final.tiny .pl .spent { display: none; }
-  .final.tiny .podium { grid-template-columns: repeat(auto-fill, minmax(min(128px, 100%), 1fr)); gap: 6px; }
-  .final.tiny .pl .lots { gap: 3px; }
-  .final.tiny .chip { font-size: 11px; padding: 1px 7px; }
-  .final.tiny .thinking .dice { font-size: 28px; }
-  .final.tiny .thinking h2 { font-size: 26px; }
-  /* на время замера карточки без «всплытия»: сдвиг анимации тоже считается переполнением */
-  .final.fitting .pl { animation: none; }
-  /* «судья думает» — единственный блок на экране, ставим его по центру, а не под заголовок */
-  /* Раньше было min-height: 100% плюс свои отступы ВНУТРИ .final, у которого есть собственный
-     padding: содержимое всегда оказывалось выше контейнера, появлялась полоса прокрутки, меняла
-     ширину — и центрированный блок дёргался вместе с анимацией кубика. */
-  .thinking { text-align: center; padding: 0 0 clamp(16px, 3vh, 28px); display: flex; flex-direction: column; justify-content: center; }
-  /* Отдельных правил для экрана ожидания не нужно: общее .final уже центрирует содержимое и
-     скроллит только при переполнении. Своя прокрутка у списка давала вторую полосу рядом с первой. */
-  .thinking .dice { font-size: 56px; display: inline-block; animation: roll .9s linear infinite; }
-  @keyframes roll { to { transform: rotate(360deg); } }
+  .final.voting.many .podium { grid-template-columns: repeat(auto-fill, minmax(min(170px, 100%), 1fr)); gap: 10px; }
+  .final.voting.many .pl { padding: 12px 14px; }
+  .final.voting.many .chip { font-size: 12px; padding: 3px 9px; }
+  .final.voting.tight .podium { grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr)); gap: 8px; }
+  .final.voting.tight .chip { font-size: 11.5px; padding: 2px 8px; }
+  .final.voting.tight .pl .spent { display: none; }
+
+  /* --- итоги: композиция по числу мест ---
+     duo (1–2): две большие карточки во всю высоту, у победителя шире;
+     stack (3–4): плакат победителя слева во всю высоту, остальные — карточки столбиком справа;
+     grid (5–8): плакат победителя слева, остальные — сетка 2 колонки справа.
+     Все размеры внутри карточки — в em от её кегля, а кегль подбирает fitFinal: самый крупный,
+     при котором карточка целиком влезает в свою клетку. Так свободная высота уходит в рост имени,
+     счёта и вердикта, а не в дыру под лотами и не в растянутые «бруски». Вердикты не режутся
+     многоточием: не влезло — меньше кегль, а не обрезка. У плиток один кегль на всех — имена в ряду
+     на одной высоте и одного размера. */
+  .fhead { display: flex; align-items: center; gap: 12px 20px; flex-wrap: wrap; min-width: 0; }
+  .fhead h2 { flex: none; }
+  .fhead .ftask { flex: 1 1 280px; min-width: 0; }
+  /* «Главная» — вторичная кнопка-пилюля (как «← Все игры» в лобби), слева вверху */
+  .homebtn { flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px 0 14px; border-radius: 999px;
+    border: 1px solid var(--glass-line); background: rgba(255, 255, 255, .05); color: var(--text); text-decoration: none;
+    font: 700 12px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; transition: border-color .2s, background .2s; }
+  .homebtn svg { width: 17px; height: 17px; flex: none; }
+  .homebtn:hover { border-color: var(--c1); background: rgba(255, 255, 255, .09); }
+  .fbody { flex: 1 1 auto; min-height: 0; display: grid; gap: clamp(10px, 1.4vh, 16px); }
+  .fbody > .pl { font-size: 16px; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-start; padding: 1em 1.15em; }
+  /* строки карточки не сжимаются: иначе текст молча срезался бы, а fitFinal не видел переполнения */
+  .fbody > .pl > * { flex-shrink: 0; }
+  /* место — медаль или номер в одинаковом круге, в одну строку с именем и счётом */
+  /* шапка — сетка: место | имя | счёт. Имя переносится внутри своей колонки, до счёта всегда зазор .6em */
+  .fbody .plhead { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: .6em; min-width: 0; }
+  .fbody .place { flex: none; display: grid; place-items: center; font-size: 1.55em; width: 1.35em; height: 1.35em; line-height: 1; }
+  .fbody .place.num { font: 900 .95em/1 var(--display); width: 2.2em; height: 2.2em; border-radius: 50%; border: 1.5px solid var(--glass-line); color: var(--muted); }
+  .fbody .who { min-width: 0; margin: 0; font: 900 1.3em/1.08 var(--display); letter-spacing: -.03em; overflow-wrap: break-word; }
+  .fbody .score { font: 900 1.9em/1 var(--display); letter-spacing: -.04em; color: var(--c1); }
+  .fbody .verdict { display: block; -webkit-line-clamp: unset; overflow: visible; margin: .6em 0 .75em; font-size: 1em; line-height: 1.45; }
+  .fbody .lots { display: flex; flex-wrap: wrap; gap: .4em; }
+  .fbody .pl .chip { font-size: .85em; padding: .35em .85em; }
+  .fbody .spent { margin-top: .75em; font-size: max(13px, .78em); color: var(--muted); }
+  /* «+N» вместо хвоста лотов — только у мест 5+ и только если иначе кегль ушёл бы ниже 14px */
+  .chip.more, .pl .lots .chip.more { display: none; }
+  .fbody.fold > .pl.minor .lots .chip:nth-child(n+3):not(.more),
+  .fbody.fold2 > .pl:not(.first) .lots .chip:nth-child(n+3):not(.more) { display: none; }
+  .fbody.fold > .pl.minor .lots .chip.more, .fbody.fold2 > .pl:not(.first) .lots .chip.more { display: inline-flex; color: var(--muted); }
+  /* последняя ступень перед аварийным кеглем: «потрачено» убираем у всех сразу, а не у части карточек */
+  .fbody.nospent .spent { display: none; }
+  /* плакат (победитель; в дуэли — обе карточки): имя крупнее, счёт отдельной строкой, лоты столбиком */
+  /* плакат: медаль и имя (с эмодзи, неразрывно) в одну строку, счёт — под ними на всю ширину */
+  .fbody > .pl.first .plhead, .fbody.duo > .pl .plhead { grid-template-columns: auto minmax(0, 1fr); row-gap: .1em; }
+  .fbody > .pl.first .who, .fbody.duo > .pl .who { font-size: 1.6em; }
+  .fbody > .pl.first .score, .fbody.duo > .pl .score { grid-column: 1 / -1; margin: .12em 0 0; font-size: 3.3em; }
+  /* лоты на плакате — обычные пилюли в строку (не растянутые бруски): место уходит в имя, счёт и вердикт */
+  .fbody > .pl.first .lots, .fbody.duo > .pl .lots { gap: .45em; }
+  .fbody > .pl.first .lots .chip, .fbody.duo > .pl .lots .chip { font-size: .85em; padding: .4em .95em; }
+  .fbody > .pl.first .place, .fbody.duo > .pl .place { font-size: 2.1em; }
+  .fbody > .pl.first .place.num, .fbody.duo > .pl .place.num { font-size: 1.3em; }
+
+  .fbody.empty { place-items: center; text-align: center; }
+  .fbody.empty .fempty { max-width: 18ch; font: 900 clamp(28px, min(4.6vw, 8vh), 72px)/1.02 var(--display); letter-spacing: -.04em; text-transform: uppercase; text-wrap: balance; color: rgba(244, 242, 255, .9); }
+  .fbody.duo { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+  .fbody.duo.one { grid-template-columns: minmax(0, 1fr); }
+  /* строка не ниже своего содержимого, остаток делится поровну: тесный ряд получает больше, просторный — меньше */
+  /* stack (3–4): строки поровну — каждая полоса подбирает свой кегль под свою клетку */
+  .fbody.stack { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); grid-template-rows: repeat(var(--rows), minmax(0, 1fr)); }
+  .fbody.grid { grid-template-columns: minmax(0, 1fr) repeat(2, minmax(0, .8fr)); grid-template-rows: repeat(var(--rows), minmax(min-content, 1fr)); }
+  /* contain: size — плакат не раздвигает строки плиток своим содержимым (Chrome считал вклад
+     растянутой на все строки карточки с запасом, и плакат переставал расти на половине высоты);
+     его переполнение fitFinal видит по scrollHeight самой карточки */
+  .fbody.stack > .pl.first, .fbody.grid > .pl.first { grid-column: 1; grid-row: 1 / -1; contain: size; }
+  /* нечётный остаток в сетке: последняя карточка на обе колонки — вместо пустой клетки; устроена так же, как соседние */
+  .fbody.grid:not(.g3) > .pl:last-child:nth-child(even) { grid-column: 2 / -1; }
+  /* запасная сетка, если в две колонки не влезло даже мелким кеглем (8 мест на 720p): плитки в три колонки,
+     плакат уже; хвост последнего ряда растягивает fitFinal (grid-column: span N) */
+  .fbody.grid.g3 { grid-template-columns: minmax(0, .85fr) repeat(3, minmax(0, .72fr)); }
+
+  /* низ: вывод судьи и кнопки в одну полосу. Вывод не режется: длинный — займёт больше строк,
+     а карточки над ним подберут кегль под оставшуюся высоту */
+  .ffoot { display: flex; align-items: center; gap: 14px 18px; flex-wrap: wrap; }
+  /* низ растёт вместе с экраном: на FHD сводка и кнопки не выглядят мелкими под огромными карточками */
+  .ffoot .btn { font-size: clamp(11.5px, min(.8vw, 1.5vh), 16px); padding: 1.1em 1.7em; }
+  .ffoot .summary { flex: 1 1 420px; min-width: 0; margin: 0; padding: 12px 16px; font-size: clamp(14.5px, min(1.15vw, 2.1vh), 24px); line-height: 1.45; background: rgba(255, 255, 255, .05); border-left: 3px solid var(--c1); border-radius: 4px 16px 16px 4px; }
+  .ffoot .actions { flex: none; display: flex; gap: 10px; flex-wrap: wrap; margin-left: auto; }
+
+  /* --- ChatGPT выбирает победителя: одна надпись на весь экран ---
+     Раньше тут были кубик, подзаголовок и лайнапы внутри панели с overflow:auto. Кубик крутился
+     (повёрнутый квадрат по диагонали шире себя), карточки при каждом новом state перерисовывались
+     и «всплывали» через translateY — scrollHeight качался вокруг clientHeight, и полоса прокрутки
+     то появлялась, то исчезала. Теперь прокручиваемого блока нет вовсе, надпись по размеру всегда
+     влезает, а анимации — только цвет по буквам и прозрачность точек: геометрию они не меняют. */
+  .judging { height: 100%; display: grid; place-items: center; text-align: center; overflow: hidden; position: relative; padding: 24px; }
+  /* кегль по ширине и высоте экрана: самое длинное слово («ПОБЕДИТЕЛЯ», «ΝΙΚΗΤΗ») целиком влезает и на телефоне,
+     поэтому переносов внутри слова нет (overflow-wrap: anywhere рвал «ПОБЕДИТЕЛ-Я») */
+  .judging .jtext { font: 900 clamp(24px, min(6.6vw, 12.5vh), 118px)/.98 var(--display); letter-spacing: -.045em; text-transform: uppercase;
+    max-width: 14ch; text-wrap: balance; color: #fff;
+    filter: drop-shadow(0 20px 60px color-mix(in srgb, var(--c1) 45%, transparent)); }
+  /* цветом выделено одно слово — «ChatGPT»; по нему медленно переливается палитра категории */
+  .judging .brand { background: linear-gradient(100deg, var(--c1), var(--c3) 30%, var(--c2) 60%, var(--c1)); background-size: 260% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent; animation: jsweep 3.2s ease-in-out infinite alternate; }
+  .judging .jdots { display: inline-flex; gap: .16em; margin-left: .12em; }
+  .judging .jdots i { width: .16em; height: .16em; border-radius: 50%; background: var(--c1); animation: jdot 1.4s ease-in-out infinite; }
+  .judging .jdots i:nth-child(2) { animation-delay: .2s; background: var(--c2); }
+  .judging .jdots i:nth-child(3) { animation-delay: .4s; background: var(--c3); }
+  @keyframes jsweep { from { background-position: 100% 0; } to { background-position: 0 0; } }
+  @keyframes jdot { 0%, 100% { opacity: .18; } 40% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .judging .brand, .judging .jdots i, .pl { animation: none; }
+  }
 
   /* Имя комнаты: ведущий набирает его прямо на плакате. Поле без рамки, чтобы не выглядело
      анкетой; код под ним остаётся главным — по нему заходят. */
@@ -496,6 +604,27 @@
     max-width: calc(100% - 32px); padding: 12px 16px; border-radius: 16px; background: #1a1822; border: 1px solid var(--c1); box-shadow: 0 20px 50px -20px #000; font-weight: 600; }
   .hostlost.on { display: flex; }
   .connecting { height: 100%; display: grid; place-items: center; color: var(--muted); font: 700 18px/1.3 var(--display); letter-spacing: .04em; text-transform: uppercase; }
+  /* Итоги на телефоне-доске: одна колонка, прокручивается страница (не панель — никакой второй полосы) */
+  @media (max-width: 760px) {
+    body.m-final { height: auto; min-height: 100vh; min-height: 100dvh; overflow-y: auto; }
+    body.m-final .layout { height: auto; }
+    body.m-final .final { height: auto; min-height: calc(100dvh - 36px); }
+    body.m-final .judging { height: calc(100dvh - 36px); }
+    body.m-final .fbody { display: flex; flex-direction: column; }
+    body.m-final .fbody > .pl { flex: none; overflow: visible; }
+    body.m-final .fbody > .pl { font-size: 15px; }
+    body.m-final .fbody > .pl.first { contain: none; } /* на телефоне карточки в столбик — высота по содержимому */
+    /* полоса ставок на телефоне: подпись сверху, фраза под ней во всю ширину и без обрезки
+       («Кто первый?…»); min-height держит одну высоту для обычных фаз, чтобы страница не прыгала */
+    body.m-game .bidbar { height: auto; min-height: 112px; flex-wrap: wrap; align-content: center; row-gap: 6px; padding: 14px 18px; }
+    body.m-game .bidbar .cap { flex: 1 0 100%; }
+    body.m-game .bidbar .lead { flex: 1 1 100%; display: block; -webkit-line-clamp: unset; font-size: 24px; }
+    body.m-game .bidbar .tape { flex: 1 1 100%; justify-content: flex-start; }
+    body.m-final .judging .jtext { font-size: min(8.4vw, 44px); }
+    /* кнопки — всегда столбиком во всю ширину: в полуширинной «Ещё раз (та же категория)» шла в три строки */
+    body.m-final .ffoot .actions { margin-left: 0; width: 100%; flex-direction: column; }
+    body.m-final .ffoot .actions .btn { width: 100%; }
+  }
   @media (max-width: 1000px) {
     .layout { grid-template-columns: 1fr; }
     body.m-lobby { overflow-y: auto; height: auto; min-height: 100vh; min-height: 100dvh; }
@@ -515,6 +644,25 @@
     .card { overflow-y: auto; }
     .card .hero { height: min(180px, 15vh); }
     .card .hero.poster { height: min(200px, 17vh); }
+    /* Торги на узкой доске: страница прокручивается целиком, карточка лота в полный рост.
+       Раньше всё жалось в 100dvh: карточка получала 220px и свою прокрутку, описание не было видно. */
+    body.m-game { height: auto; min-height: 100vh; min-height: 100dvh; overflow-y: auto; }
+    body.m-game .layout { height: auto; }
+    body.m-game .frame { flex: none; }
+    body.m-game .card { height: auto; overflow: visible; }
+    body.m-game .card .hero { height: min(260px, 32vh); }
+    body.m-game .card .hero.poster { height: min(300px, 36vh); }
+    /* высокое фото на телефоне — cover во всю ширину (фокус сверху, на лице), без тёмных полей по бокам */
+    body.m-game .card .hero.poster img:not(.blur) { object-fit: cover; object-position: 50% 18%; padding: 0; filter: none; }
+    body.m-game .card .hero.poster img.blur { display: none; }
+    body.m-game .panel { flex: none; }
+    body.m-game .players { overflow: visible; }
+    /* страница длиннее экрана: фон (пятна) — на всю высоту документа, а не только первого экрана */
+    body.m-game .bg, body.m-final .bg { position: absolute; }
+    /* эмодзи категории не наезжает на нижний край фото */
+    body.m-game .card .hero:not(.gone) + .text > .emoji { margin-top: 0; font-size: 44px; margin-bottom: 12px; }
+    /* «ПРОПУСТИ-ТЬ»: слово рвалось посередине — на узкой доске кнопки мельче и слова целые */
+    .hostbar .btn { overflow-wrap: normal; font-size: 10.5px; letter-spacing: .04em; padding: 12px 6px; }
     /* «Начать игру» на телефоне-доске всегда под рукой, а не в самом низу длинной страницы */
     .setup-foot { position: sticky; bottom: 0; z-index: 5; margin: 0 -18px -18px; padding: 12px 18px 16px; background: linear-gradient(to top, var(--bg) 70%, transparent); }
   }
@@ -566,7 +714,7 @@ window.I18N_DICT = {
     resume_game: `▶ Продолжить игру`,
     judge_failed: `Судья не ответил — голосуем`,
     /* лобби */
-    room_title_ph: `Назови комнату — например, «Пятничный созвон»`,
+    room_title_ph: `Назови комнату, например «Пятница»`,
     lobby_open: `Комната открыта`,
     lobby_hint: `Сканируй QR или открой ссылку и введи имя`,
     players: `Игроки`,
@@ -605,7 +753,7 @@ window.I18N_DICT = {
     intro_judge_vote: `Победителя выберете вы голосованием`,
     intro_judge_ai: `Победителя выберет ChatGPT — он {judge}`,
     /* игра */
-    lot_of: `Лот {n} из {total}`,
+    lot_of: `Лот {n}`,
     ph_lot: `Лот`,
     ph_bidding: `Торги`,
     ph_pickup: `Даром`,
@@ -628,8 +776,10 @@ window.I18N_DICT = {
     unsold_line: `Никто не взял — следующий лот`,
     draft_line: `{who} · слот {n} из {total} · скипов {k}`,
     draft_line_must: `{who} · слот {n} из {total} · скипы кончились`,
-    draft_bar: `Взять или скипнуть — лот бесплатный`,
+    draft_bar: `Взять за $1 или скипнуть`,
     draft_bar_must: `Скипы кончились — этот лот уходит {who}`,
+    draft_line_broke: `{who} · слот {n} из {total} · денег нет`,
+    draft_bar_broke: `Денег нет — {who} забирает всё подряд`,
     wait_player: `Ждём {who}`,
     pickup_line: `Без ставок — забирает даром: `,
     nobody: `никто`,
@@ -647,8 +797,8 @@ window.I18N_DICT = {
     /* итоги */
     vote_title: `Голосование`,
     vote_expl: `Победителя выбираете вы. Каждый берёт телефон и голосует за чужой лайнап — за себя нельзя. Проголосовали: {done}/{total}`,
-    judging: `Судья думает…`,
-    judging_sub: `ChatGPT читает лайнапы`,
+    judging: `ChatGPT выбирает победителя`,
+    home: `Главная`,
     results_title: `Итоги`,
     by_vote: `победителя выбрали голосованием`,
     by_ai: `ChatGPT {judge}`,
@@ -708,7 +858,7 @@ window.I18N_DICT = {
     paused: `Paused`,
     resume_game: `▶ Resume game`,
     judge_failed: `The judge went quiet — we vote`,
-    room_title_ph: `Name the room — like “Friday team call”`,
+    room_title_ph: `Name the room, like “Friday”`,
     lobby_open: `Room is open`,
     lobby_hint: `Scan the QR or open the link and type your name`,
     players: `Players`,
@@ -745,7 +895,7 @@ window.I18N_DICT = {
     auction: `Auction`,
     intro_judge_vote: `You pick the winner by vote`,
     intro_judge_ai: `ChatGPT picks the winner — it {judge}`,
-    lot_of: `Lot {n} of {total}`,
+    lot_of: `Lot {n}`,
     ph_lot: `Lot`,
     ph_bidding: `Bidding`,
     ph_pickup: `Free grab`,
@@ -768,8 +918,10 @@ window.I18N_DICT = {
     unsold_line: `No takers — on to the next lot`,
     draft_line: `{who} · slot {n} of {total} · {k} skips left`,
     draft_line_must: `{who} · slot {n} of {total} · no skips left`,
-    draft_bar: `Take it or skip — the lot is free`,
+    draft_bar: `Take it for $1 or skip`,
     draft_bar_must: `No skips left — this lot goes to {who}`,
+    draft_line_broke: `{who} · slot {n} of {total} · out of money`,
+    draft_bar_broke: `Out of money — {who} takes every lot`,
     wait_player: `Waiting for {who}`,
     pickup_line: `No bids — free for the taking: `,
     nobody: `nobody`,
@@ -786,8 +938,8 @@ window.I18N_DICT = {
     slot_title: `{name} — {price}`,
     vote_title: `Voting`,
     vote_expl: `You pick the winner. Everyone grabs their phone and votes for someone else's lineup — no voting for yourself. Voted: {done}/{total}`,
-    judging: `The judge is thinking…`,
-    judging_sub: `ChatGPT is reading the lineups`,
+    judging: `ChatGPT is picking the winner`,
+    home: `Home`,
     results_title: `Results`,
     by_vote: `the vote picked the winner`,
     by_ai: `ChatGPT {judge}`,
@@ -846,7 +998,7 @@ window.I18N_DICT = {
     paused: `Παύση`,
     resume_game: `▶ Συνέχεια`,
     judge_failed: `Ο κριτής δεν απάντησε — ψηφίζουμε`,
-    room_title_ph: `Όνομα δωματίου, π.χ. «Παρασκευιάτικο call»`,
+    room_title_ph: `Όνομα δωματίου, π.χ. «Παρασκευή»`,
     lobby_open: `Το δωμάτιο άνοιξε`,
     lobby_hint: `Σκανάρετε το QR ή ανοίξτε το λινκ και γράψτε όνομα`,
     players: `Παίκτες`,
@@ -883,7 +1035,7 @@ window.I18N_DICT = {
     auction: `Δημοπρασία`,
     intro_judge_vote: `Τον νικητή τον ψηφίζετε εσείς`,
     intro_judge_ai: `Τον νικητή τον διαλέγει το ChatGPT — {judge}`,
-    lot_of: `Λοτ {n} από {total}`,
+    lot_of: `Λοτ {n}`,
     ph_lot: `Λοτ`,
     ph_bidding: `Προσφορές`,
     ph_pickup: `Τσάμπα`,
@@ -906,8 +1058,10 @@ window.I18N_DICT = {
     unsold_line: `Κανείς δεν το πήρε — επόμενο λοτ`,
     draft_line: `{who} · θέση {n} από {total} · πάσα: {k}`,
     draft_line_must: `{who} · θέση {n} από {total} · τα πάσα τελείωσαν`,
-    draft_bar: `Πάρ' το ή πάσο — το λοτ είναι δωρεάν`,
+    draft_bar: `Πάρ' το με $1 ή πάσο`,
     draft_bar_must: `Τα πάσα τελείωσαν — αυτό το λοτ πάει σε: {who}`,
+    draft_line_broke: `{who} · θέση {n} από {total} · χωρίς λεφτά`,
+    draft_bar_broke: `Τέλος τα λεφτά — ο/η {who} τα παίρνει όλα`,
     wait_player: `Περιμένουμε: {who}`,
     pickup_line: `Καμία προσφορά — τσάμπα για: `,
     nobody: `κανείς`,
@@ -924,8 +1078,8 @@ window.I18N_DICT = {
     slot_title: `{name} — {price}`,
     vote_title: `Ψηφοφορία`,
     vote_expl: `Τον νικητή τον διαλέγετε εσείς. Ο καθένας παίρνει το κινητό και ψηφίζει ένα ξένο λάιναπ — όχι το δικό του. Ψήφισαν: {done}/{total}`,
-    judging: `Ο κριτής σκέφτεται…`,
-    judging_sub: `Το ChatGPT διαβάζει τα λάιναπ`,
+    judging: `Το ChatGPT διαλέγει τον νικητή`,
+    home: `Αρχική`,
     results_title: `Αποτελέσματα`,
     by_vote: `η ψηφοφορία διάλεξε τον νικητή`,
     by_ai: `ChatGPT {judge}`,
@@ -1205,6 +1359,9 @@ function render() {
   if (!state) return;
   // новая партия — монетка итогов снова может понадобиться
   if (state.phase !== "finished") coinShown = "";
+  // m-game / m-final: на узкой доске (телефон) экран торгов и итоги прокручиваются страницей
+  document.body.classList.toggle("m-game", !["lobby", "intro", "finished"].includes(state.phase));
+  document.body.classList.toggle("m-final", state.phase === "finished");
   if (state.phase === "lobby") return renderLobby();
   if (state.phase === "intro") return renderIntro();
   if (state.phase === "finished") return renderFinal();
@@ -1518,7 +1675,8 @@ function draftLine(s) {
   const p = s.players.find((x) => x.id === s.solo.playerId);
   if (!p) return "";
   const vars = { who: p.name, n: Math.min(p.lots.length + 1, s.settings.slots), total: s.settings.slots, k: s.solo.skips };
-  return tf(s.solo.skips ? "draft_line" : "draft_line_must", vars);
+  // price 0 — у игрока нет денег: скипов нет, лоты уходят ему даром подряд
+  return tf(s.solo.price === 0 ? "draft_line_broke" : s.solo.skips ? "draft_line" : "draft_line_must", vars);
 }
 
 // «Пропустить» со ставками продаёт лот лидеру. На узкой (телефонной) доске и на сенсорном экране
@@ -1554,7 +1712,7 @@ function renderGame() {
   if (!document.getElementById("topbar")) {
     app.innerHTML = `
       <main>
-        <div class="topbar" id="topbar"><span class="lotno" id="lotno"></span><span class="phase" id="phase"></span><span class="draftline" id="draftline"></span><span class="spacer"></span><span class="gtask" id="gtask"></span>
+        <div class="topbar" id="topbar"><span class="phase" id="phase"></span><span class="lotno" id="lotno"></span><span class="draftline" id="draftline"></span><span class="spacer"></span><span class="gtask" id="gtask"></span>
           <div class="timer" id="timer"><svg viewBox="0 0 64 64"><circle class="track" cx="32" cy="32" r="28"/><circle class="ring" id="ring" cx="32" cy="32" r="28" stroke-dasharray="176" stroke-dashoffset="0"/></svg><div class="num" id="tnum"></div></div>
         </div>
         <section class="frame"><div class="card center" id="card"></div></section>
@@ -1576,7 +1734,14 @@ function renderGame() {
   document.getElementById("skip").disabled = s.paused || !(s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "draft");
   // лот сменился, пока кнопка ждала второго тапа, — подтверждение относилось к прошлому лоту
   if (skipArmed && (skipArmed.round !== s.round || document.getElementById("skip").disabled)) disarmSkip();
-  document.getElementById("lotno").textContent = tf("lot_of", { n: s.round + 1, total: Math.max(s.rounds, s.round + 1) });
+  // только номер лота: общее число раундов — прогноз, и владелец просил его не показывать
+  // В фазе лота номер — часть крупного заголовка («ЛОТ 7»), мелкая подпись прячется: иначе читалось
+  // «ЛОТ 7 ЛОТ». В остальных фазах — крупная фаза и мелкий «Лот 7» после неё. Фаза стоит первой,
+  // поэтому левый край заголовка не сдвигается при смене фазы.
+  const lotLabel = tf("lot_of", { n: s.round + 1 });
+  const lotnoEl = document.getElementById("lotno");
+  lotnoEl.textContent = lotLabel;
+  lotnoEl.hidden = s.phase === "lot";
   const gtask = document.getElementById("gtask");
   if (gtask) {
     const m = modeT(s.settings.mode, s.kind);
@@ -1586,7 +1751,7 @@ function renderGame() {
   }
   const phaseEl = document.getElementById("phase");
   phaseEl.className = "phase " + s.phase;
-  phaseEl.textContent = PHASE_KEY[s.phase] ? T(PHASE_KEY[s.phase]) : "";
+  phaseEl.textContent = s.phase === "lot" ? lotLabel : PHASE_KEY[s.phase] ? T(PHASE_KEY[s.phase]) : "";
   const dl = document.getElementById("draftline");
   if (dl) { dl.textContent = draftLine(s); dl.classList.toggle("on", !!dl.textContent); }
 
@@ -1605,14 +1770,44 @@ function renderCard(lot, kind) {
   const meta = el("div", "meta");
   (lot.meta || []).forEach((m) => meta.append(el("span", null, m)));
   const fact = el("p", "fact");
-  fact.append(el("b", null, T("fact")), document.createTextNode(lot.fact));
+  fact.append(el("b", null, T("fact")), el("span", "ft", lot.fact));
   const text = el("div", "text");
   text.append(el("div", "emoji", lot.emoji), el("div", "kind", kindLabel(kind)), el("div", "name", lot.name), meta, el("p", "desc", lot.description), fact);
   widget = kind === "artist" && state.settings.media ? playerWidget() : null;
   card.className = "card result";
   card.replaceChildren(state.settings.media ? heroWidget(lot, kind) : el("div", "hero gone"), text, ...(widget ? [widget.box] : []));
   if (widget) startMusic(lot, widget);
+  fitCard(true);
 }
+// Длинное описание не должно уходить под нижний край карточки (у неё overflow: hidden):
+// не влезло — ступенька «snug» с обрезкой описания и факта по строкам. Замер без анимаций
+// появления: сдвиг translateY у ещё «всплывающих» строк тоже считался бы переполнением.
+// Длинный текст лота не должен уходить под нижний край карточки (у неё overflow: hidden) и не должен
+// резаться посреди строки: сначала пропорционально ужимаем кегль (--k до 0.72), и только если и этого
+// мало — «snug», обрезка описания и факта целыми строками. Замер без анимаций появления на новом лоте
+// (сдвиг translateY у «всплывающих» строк считался бы переполнением); на ресайзе анимации не трогаем,
+// иначе у уже показанного лота заново проигрывалось бы появление.
+function fitCard(fresh) {
+  const card = document.getElementById("card");
+  if (!card) return;
+  if (fresh) card.classList.add("fitting");
+  card.classList.remove("snug");
+  const fits = (k) => { card.style.setProperty("--k", String(k)); return card.scrollHeight <= card.clientHeight + 1; };
+  if (!fits(1)) {
+    if (!fits(.72)) card.classList.add("snug");
+    else {
+      let lo = .72, hi = 1;
+      for (let i = 0; i < 6; i++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
+      fits(Math.floor(lo * 100) / 100);
+    }
+  }
+  if (fresh) card.classList.remove("fitting");
+}
+addEventListener("resize", () => {
+  if (!state || !document.getElementById("players")) return;
+  fitCard();
+  fitPlayers(document.getElementById("players"));
+});
 
 function renderBidbar() {
   const s = state, bar = document.getElementById("bidbar");
@@ -1627,8 +1822,9 @@ function renderBidbar() {
   if (s.phase === "unsold") { bar.append(el("div", "lead", T("unsold_line"))); return; }
   // соло-добор: торговаться не с кем, полоса объясняет, что вообще происходит (§10.2)
   if (s.phase === "draft" && s.solo) {
-    if (s.solo.skips) bar.append(el("div", "cap", T("ph_draft")), el("div", "lead", T("draft_bar")));
-    else bar.append(el("div", "cap", T("ph_draft")), el("div", "lead", tf("draft_bar_must", { who: nameOf(s.solo.playerId) })));
+    const who = nameOf(s.solo.playerId);
+    const line = s.solo.price === 0 ? tf("draft_bar_broke", { who }) : s.solo.skips ? T("draft_bar") : tf("draft_bar_must", { who });
+    bar.append(el("div", "cap", T("ph_draft")), el("div", "lead", line));
     return;
   }
   if (s.phase === "pickup") {
@@ -1659,30 +1855,70 @@ function renderPlayers() {
     top.append(el("div", "p-name", p.name), el("span", "p-tag" + (tagKey === "tag_leader" ? "" : " dim"), tagKey ? T(tagKey) : ""), el("div", "p-left", money(p.money)));
     const bar = el("div", "p-bar"); const fill = el("i"); fill.style.width = Math.max(0, Math.min(100, (p.money / s.settings.budget) * 100)) + "%"; bar.append(fill);
     const slots = el("div", "slots");
+    const items = [];
     for (let i = 0; i < s.settings.slots; i++) {
       const l = p.lots[i];
       const sl = el("div", "slot-i" + (l ? " filled" : ""));
-      if (l) { sl.append(el("span", null, l.emoji), el("span", "n", l.name)); sl.title = tf("slot_title", { name: l.name, price: l.price ? money(l.price) : T("free") }); }
-      slots.append(sl);
+      // .pr (цена) и .no (номер пустого слота) видны только в просторной ступени, где слот — целая строка
+      if (l) { sl.append(el("span", null, l.emoji), el("span", "n", l.name), el("span", "pr", l.price ? money(l.price) : T("free"))); sl.title = tf("slot_title", { name: l.name, price: l.price ? money(l.price) : T("free") }); }
+      else sl.append(el("span", "no", String(i + 1)));
+      items.push(sl);
     }
+    // Последний лот и пустые кружки — одна неразрывная группа: при переносе строки пустой кружок
+    // не остаётся один в начале новой строки, а уезжает вместе с лотом перед ним
+    const k = p.lots.length;
+    if (k > 0 && k < items.length) {
+      const grp = el("span", "tailgrp");
+      grp.append(...items.slice(k - 1));
+      slots.append(...items.slice(0, k - 1), grp);
+    } else slots.append(...items);
     row.append(top, bar, slots);
     return row;
   }));
   fitPlayers(box);
 }
 
-// Плотность списка — по месту, а не по числу игроков: пока всё влезает, строки полные и названия
-// лотов видны; не влезает — ступенька плотнее, и так до двух колонок.
-const DENSITY = [[], ["compact"], ["compact", "dense"], ["compact", "dense", "cols"]];
+// Плотность списка — по месту, а не по числу игроков. Для каждой ступени (roomy → обычная → dense →
+// две колонки) ищем двоичным поиском самый крупный кегль, при котором список влезает в панель;
+// ступень берём первую, что влезает не мельче своего порога. Карточки — по содержимому, поэтому
+// пустоты внутри карточки нет ни при каком числе игроков: высоту панели заполняет рост кегля.
+const DENSITY = [
+  { c: ["roomy"], min: 14, max: 34 },
+  { c: [], min: 13, max: 26 },
+  { c: ["dense"], min: 12, max: 22 },
+  { c: ["dense", "cols"], min: 11, max: 20 },
+];
 function fitPlayers(box) {
-  let level = 0;
-  // две колонки — только если панель широкая: на телефоне-доске они давали строки по 130px
-  const max = box.clientWidth >= 420 ? DENSITY.length : DENSITY.length - 1;
-  for (; level < max; level++) {
-    box.classList.remove("compact", "dense", "cols");
-    DENSITY[level].forEach((c) => box.classList.add(c));
-    if (box.scrollHeight <= box.clientHeight + 1) break;
+  const set = (lv, fs) => {
+    box.classList.remove("roomy", "compact", "dense", "cols");
+    lv.c.forEach((c) => box.classList.add(c));
+    box.style.fontSize = fs + "px";
+  };
+  // узкая доска (телефон) прокручивается страницей — подбирать нечего
+  if (matchMedia("(max-width: 1000px)").matches) return set(DENSITY[1], 16);
+  // две колонки — только если панель широкая: на узкой они давали строки по 130px
+  const levels = box.clientWidth >= 420 ? DENSITY : DENSITY.slice(0, 3);
+  for (const lv of levels) {
+    set(lv, lv.min);
+    if (playersOverflow(box)) continue;
+    set(lv, lv.max);
+    if (!playersOverflow(box)) return;
+    let lo = lv.min, hi = lv.max;
+    for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; set(lv, mid); if (playersOverflow(box)) hi = mid; else lo = mid; }
+    return set(lv, Math.floor(lo * 4) / 4);
   }
+  // не влезло и в две колонки на минимуме — остаётся прокрутка списка
+  set(levels[levels.length - 1], levels[levels.length - 1].min);
+}
+// «Не влезло» — это и высота списка, и название лота, обрезанное многоточием (кроме плотных ступеней,
+// где названий нет вовсе): крупный кегль не должен покупаться ценой «Ка…» вместо «Каста».
+function playersOverflow(box) {
+  // строго, без допуска в 1px: у списка overflow-y: auto, и лишний пиксель давал полосу прокрутки
+  if (box.scrollHeight > box.clientHeight) return true;
+  if (box.classList.contains("dense")) return false;
+  // название длиннее целой строки режется при любом кегле — такое не считаем (пилюля и так во всю ширину)
+  return [...box.querySelectorAll(".slot-i .n")].some((n) => n.scrollWidth > n.clientWidth + 1 &&
+    n.parentNode.offsetWidth < n.closest(".slots").clientWidth - 4);
 }
 
 function tickTimer() {
@@ -1697,6 +1933,18 @@ function tickTimer() {
   requestAnimationFrame(tickTimer);
 }
 
+// Финал перерисовывается на каждом state (кто-то вышел, переподключился), а разметка при этом
+// та же. Пересобирать её незачем: каждая пересборка заново проигрывала появление карточек и
+// сбрасывала анимацию надписи судьи. Сравниваем готовую разметку с прошлой и выходим, если не менялась.
+let finalHtml = "";
+function putFinal(html) {
+  if (html === finalHtml && app.firstElementChild && app.firstElementChild.dataset.fin === "1") return false;
+  finalHtml = html;
+  app.innerHTML = html;
+  app.firstElementChild.dataset.fin = "1";
+  return true;
+}
+const HOME_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9v11h13V9"/><path d="M10 20v-6h4v6"/></svg>';
 function renderFinal() {
   document.body.classList.remove("m-lobby");
   stopMusic();
@@ -1709,16 +1957,13 @@ function renderFinal() {
       // напоминания критерия «побеждает самый нелепый набор» игроки голосуют за лучший.
       const vmode = modeT(s.settings.mode, s.kind);
       const vtask = vmode && vmode.id !== "base" ? `<div class="ftask"><b>${escapeHtml(vmode.icon + " " + vmode.title)}</b> — ${escapeHtml(vmode.short || "")}</div>` : "";
-      app.innerHTML = `<div class="final"><h2>${T("vote_title")}</h2>${vtask}<p style="color:var(--muted)">${escapeHtml(tf("vote_expl", { done: s.votes, total: players.filter((p) => p.lots.length).length }))}</p><div class="podium">${players.map((p) => lineupCard(p, null)).join("")}</div></div>`;
+      if (putFinal(`<div class="final voting"><h2>${T("vote_title")}</h2>${vtask}<p style="color:var(--muted);margin:0">${escapeHtml(tf("vote_expl", { done: s.votes, total: players.filter((p) => p.lots.length).length }))}</p><div class="podium">${players.map((p) => lineupCard(p, null)).join("")}</div></div>`)) fitFinal();
     } else {
-      // Пока судья думает, показываем сами лайнапы: экран с одним кубиком на телевизоре
-      // выглядел пустым, а людям как раз интересно посмотреть, кто что собрал.
-      const lineups = players.filter((p) => p.lots.length);
-      app.innerHTML = `<div class="final thinking-screen"><div class="thinking"><div class="dice">🎲</div><h2>${T("judging")}</h2>` +
-        `<p style="color:var(--muted)">${T("judging_sub")}</p></div>` +
-        (lineups.length ? `<div class="podium">${lineups.map((p) => lineupCard(p, null)).join("")}</div>` : "") + `</div>`;
+      // ChatGPT думает: одна крупная надпись и больше ничего. Лайнапы здесь были —
+      // но они же давали пустые панели и мерцающую полосу прокрутки (см. .judging в стилях).
+      putFinal(`<div class="judging" id="judging"><div class="jtext">${escapeHtml(T("judging")).replace("ChatGPT", '<span class="brand">ChatGPT</span>')}<span class="jdots" aria-hidden="true"><i></i><i></i><i></i></span></div></div>`);
     }
-    return fitFinal();
+    return;
   }
   const r = s.results;
   const places = ["🥇", "🥈", "🥉"];
@@ -1732,10 +1977,22 @@ function renderFinal() {
   const voteNote = r.mode !== "vote" ? "" : r.votes === 0 ? T("no_votes") : r.tieBreak === "spent" ? T("tie_spent") : r.tieBreak === "coin" ? T("tie_coin") : "";
   const summary = [r.summary, voteNote].filter(Boolean).join(" ");
   coinFlip(r);
-  app.innerHTML = `<div class="final"><h2>${T("results_title")}</h2>${ftask}<div class="podium">${r.ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: places[i] || `${i + 1}.`, score: x.score, verdict: x.verdict, first: i === 0, mode: r.mode, delay: Math.min(1.4, (r.ranking.length - 1 - i) * .16) })).join("")}</div>${summary ? `<div class="summary">${escapeHtml(summary)}</div>` : ""}<div class="actions"><button class="btn" id="again">${T("btn_again")}</button><button class="btn ghost" id="another">${T("btn_another")}</button></div></div>`;
+  // Композиция по числу мест: 1–2 — дуэль двух больших карточек, 3–4 — плакат победителя
+  // и полосы остальных, 5–8 — плакат и сетка в две колонки. Строки делят высоту поровну.
+  const ranking = r.ranking.filter((x) => s.players.some((p) => p.id === x.playerId));
+  const n = ranking.length, rest = Math.max(0, n - 1);
+  const lay = n <= 2 ? "duo" + (n <= 1 ? " one" : "") : n <= 4 ? "stack" : "grid";
+  const rows = n <= 2 ? 1 : n <= 4 ? rest : Math.ceil(rest / 2);
+  const cards = ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: places[i] || String(i + 1), score: x.score, verdict: x.verdict, first: i === 0, minor: i >= 4, mode: r.mode, delay: Math.min(1.2, (n - 1 - i) * .14) })).join("");
+  const html = `<div class="final res n${n}">` +
+    `<div class="fhead"><a class="homebtn" href="index.html">${HOME_ICON}<span>${escapeHtml(T("home"))}</span></a><h2>${T("results_title")}</h2>${ftask}</div>` +
+    // мест нет (лоты никто не собрал) — вывод судьи встаёт крупно на место карточек, а не пустое стекло над ним
+    (n ? `<div class="fbody ${lay}" style="--rows:${Math.max(1, rows)}">${cards}</div>` : `<div class="fbody empty"><div class="fempty">${escapeHtml(summary || T("by_none"))}</div></div>`) +
+    `<div class="ffoot">${summary && n ? `<div class="summary"><div class="st">${escapeHtml(summary)}</div></div>` : ""}<div class="actions"><button class="btn" id="again">${T("btn_again")}</button><button class="btn ghost" id="another">${T("btn_another")}</button></div></div></div>`;
+  if (!putFinal(html)) return;
+  fitFinal();
   // Кнопки обязаны делать разное: раньше обе слали одно и то же, и «Другая категория»
   // возвращала в лобби с той же самой категорией — то есть просто врала.
-  fitFinal();
   document.getElementById("again").onclick = () => sendMsg({ type: "next_game", kind: s.kind });
   document.getElementById("another").onclick = () => {
     const others = (kinds || []).filter((k) => k !== s.kind);
@@ -1763,23 +2020,128 @@ function coinFlip(r) {
 // лайнапах на экране 720–900px у панели вылезала полоса прокрутки. На узкой доске (телефон)
 // прокрутка остаётся: там лайнапы идут в одну колонку и в экран не лезут в принципе.
 const FINAL_DENSITY = [[], ["many"], ["many", "tight"], ["many", "tight", "tiny"]];
+// Не влезло — это и переполнение самой панели, и карточка, у которой низ срезан сеткой
+// (у карточек итогов overflow: hidden — лишнее не вылезает, а пропадает, поэтому проверяем их тоже).
+function finalOverflows(box) {
+  if (box.scrollHeight > box.clientHeight + 1) return true;
+  return [...box.querySelectorAll(".fbody > .pl")].some((c) => c.scrollHeight > c.clientHeight + 1);
+}
 function fitFinal() {
   const box = app.querySelector(".final");
   if (!box) return;
-  box.classList.add("fitting");
-  const levels = box.clientWidth >= 600 ? FINAL_DENSITY : FINAL_DENSITY.slice(0, 2);
-  for (const level of levels) {
-    box.classList.remove("many", "tight", "tiny");
-    level.forEach((c) => box.classList.add(c));
-    if (box.scrollHeight <= box.clientHeight + 1) break;
+  const narrow = matchMedia("(max-width: 760px)").matches;
+  // голосование — прежние ступени плотности
+  if (!box.classList.contains("res")) {
+    for (const level of narrow ? FINAL_DENSITY.slice(0, 1) : FINAL_DENSITY) {
+      box.classList.remove("many", "tight", "tiny");
+      level.forEach((c) => box.classList.add(c));
+      if (!finalOverflows(box)) break;
+    }
+    return;
   }
-  box.classList.remove("fitting");
+  // Итоги: кегль карточек подбираем двоичным поиском — самый крупный, при котором всё влезает в панель.
+  // Сначала плитки — один кегль на всех (имена в ряду одного размера), потом растянутая последняя плитка
+  // (свой кегль, чтобы не была полупустой), потом плакат победителя (у него своя колонка). Строки сетки не ниже своего
+  // содержимого, поэтому «не влезло» — это переполнение области карточек (или самой карточки в дуэли).
+  const cards = [...box.querySelectorAll(".fbody > .pl")];
+  cards.forEach((c) => { c.style.fontSize = ""; });
+  if (narrow || !cards.length) { fitNames(cards); return; } // телефон: страница прокручивается, кегль постоянный, но имя — по ширине
+  const body = box.querySelector(".fbody");
+  const duo = body.classList.contains("duo");
+  const rest = cards.filter((c) => !c.classList.contains("first"));
+  const ok = () => body.scrollHeight <= body.clientHeight + 1 && cards.every((c) => c.scrollHeight <= c.clientHeight + 1);
+  // двоичный поиск самого крупного кегля группы в [min, max], при котором всё влезает; 0 — не влезло и на min
+  const grow = (g, max, min) => {
+    const fits = (fs) => { g.forEach((c) => { c.style.fontSize = fs + "px"; }); return ok(); };
+    if (fits(max)) return max;
+    if (!fits(min)) return 0;
+    let lo = min, hi = max;
+    for (let i = 0; i < 9; i++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
+    const fs = Math.floor(lo * 4) / 4;
+    fits(fs);
+    return fs;
+  };
+  // порог читаемости с дивана: карточки не мельче 14px; 11px — только аварийный запас, если и «+N» не спас
+  const MIN = 14, LAST = 11;
+  const first = cards.filter((c) => c.classList.contains("first"));
+  body.classList.remove("fold", "fold2", "nospent");
+  if (duo) {
+    cards.forEach((c) => { c.style.fontSize = MIN + "px"; });
+    cards.forEach((c) => grow([c], 48, MIN) || grow([c], 48, LAST));
+    return;
+  }
+  first.forEach((c) => { c.style.fontSize = LAST + "px"; });
+  // сетка 5–8: плитки в две колонки или в три (шире строка — меньше переносов лотов) — берём ту,
+  // где кегль плиток крупнее. Хвост последнего ряда растягивается на пустые клетки (grid-column: span N).
+  const setCols = (three) => {
+    body.classList.toggle("g3", three);
+    body.style.setProperty("--rows", String(Math.ceil(rest.length / (three ? 3 : 2))));
+    rest.forEach((c) => { c.style.gridColumn = ""; });
+    const tail = rest.length % 3;
+    if (three && tail) rest[rest.length - 1].style.gridColumn = "span " + (4 - tail);
+  };
+  const layGrid = (min) => {
+    setCols(true);
+    const f3 = grow(rest, 28, min);
+    setCols(false);
+    const f2 = grow(rest, 28, min);
+    if (f3 > f2 + .5) { setCols(true); grow(rest, 28, min); }
+    return Math.max(f2, f3);
+  };
+  // 3–4 места: у каждой полосы своя клетка — свой кегль, но не крупнее, чем у места выше
+  const layStack = (min) => {
+    let cap = 28, okAll = true;
+    rest.forEach((c) => { c.style.fontSize = min + "px"; });
+    rest.forEach((c) => { const fs = grow([c], cap, min); if (fs) cap = fs; else okAll = false; });
+    return okAll;
+  };
+  const lay = body.classList.contains("grid") ? layGrid : layStack;
+  // не влезло на 14px — хвост лотов сворачивается в «+N»: сначала у мест 5+, потом у всех плиток,
+  // потом уходит «потрачено» (у всех сразу); и только если и это не помогло — аварийный кегль
+  const steps = ["fold", "fold2", "nospent"];
+  let fitted = lay(MIN);
+  for (let i = 0; !fitted && i < steps.length; i++) { body.classList.add(steps[i]); fitted = lay(MIN); }
+  if (!fitted) lay(LAST);
+  // растянутая на несколько клеток последняя плитка — свой кегль (иначе полупустая), не мельче общего
+  if (body.classList.contains("grid") && rest.length > 1) {
+    const tail = rest[rest.length - 1];
+    if (tail.getBoundingClientRect().width > rest[0].getBoundingClientRect().width * 1.3) {
+      const base = parseFloat(rest[0].style.fontSize) || MIN;
+      grow([tail], Math.min(34, base * 1.6), base);
+    }
+  }
+  // плакат победителя — последним: его колонка своя, он берёт всю оставшуюся высоту
+  grow(first, 48, MIN) || grow(first, 48, LAST);
+  fitNames(cards);
 }
+// Имя одним словом («🤖 aggressive») не переносится и на крупном кегле уходило за край карточки.
+// Ужимаем только само имя, ступенями до 55% от кегля карточки, — остальная карточка не мельчает.
+function fitNames(cards) {
+  cards.forEach((c) => {
+    const w = c.querySelector(".who");
+    if (!w) return;
+    w.style.fontSize = "";
+    const base = parseFloat(getComputedStyle(w).fontSize);
+    for (let k = .95; w.scrollWidth > w.clientWidth + 1 && k >= .55; k -= .05) w.style.fontSize = (base * k) + "px";
+  });
+}
+// фирменный шрифт доезжает после первой отрисовки и меняет ширину строк — перемеряем
+if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", () => {
+  if (!state) return;
+  if (state.phase === "finished") fitFinal();
+  else if (document.getElementById("card")) { fitCard(); if (document.getElementById("players")) fitPlayers(document.getElementById("players")); }
+});
 addEventListener("resize", () => { if (state && state.phase === "finished") fitFinal(); });
 function lineupCard(p, res) {
   if (!p) return "";
-  const lots = p.lots.map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("") || `<span style="color:var(--muted)">${T("empty")}</span>`;
-  return `<div class="pl ${res && res.first ? "first" : ""}" style="animation-delay:${(res && res.delay) || 0}s">${res ? `<div class="place">${res.place}</div>` : ""}<div class="who">${escapeHtml(p.name)}</div>${res ? `${res.score == null ? "" : `<div class="score">${res.mode === "vote" ? escapeHtml(tf("votes_score", { n: res.score, w: pluralWord(Number(res.score), "plural_vote") })) : escapeHtml(res.score)}</div>`}<div class="verdict">${escapeHtml(res.verdict || "")}</div>` : ""}<div class="lots">${lots}</div><div class="spent">${escapeHtml(tf("spent", { sum: money(p.spent) }))}</div></div>`;
+  const lots = (p.lots.map((l) => `<span class="chip"><span class="cn">${l.emoji} ${escapeHtml(l.name)}</span></span>`).join("") + (p.lots.length > 2 ? `<span class="chip more">+${p.lots.length - 2}</span>` : "")) || `<span style="color:var(--muted)">${T("empty")}</span>`;
+  const score = res && res.score != null ? `<div class="score">${res.mode === "vote" ? escapeHtml(tf("votes_score", { n: res.score, w: pluralWord(Number(res.score), "plural_vote") })) : escapeHtml(res.score)}</div>` : "";
+  // .plhead — место, имя и очки одним блоком: в полосах и плитках итогов они встают в строку/колонку
+  // эмодзи в начале имени («🤖 aggressive») держим неразрывно с самим именем: иначе он висел отдельной строкой
+  // и короткий хвост («aggressive 2», «Team A») тоже неразрывно — одна цифра не висит на второй строке
+  const who = escapeHtml(p.name).replace(/^(\S+) /u, "$1\u00a0").replace(/ (\S{1,3})$/u, "\u00a0$1");
+  const head = `<div class="plhead">${res ? `<div class="place${/^\d+$/.test(res.place) ? " num" : ""}">${res.place}</div>` : ""}<div class="who">${who}</div>${score}</div>`;
+  return `<div class="pl ${res && res.first ? "first" : ""}${res && res.minor ? " minor" : ""}" style="animation-delay:${(res && res.delay) || 0}s">${head}${res && res.verdict ? `<div class="verdict">${escapeHtml(res.verdict)}</div>` : ""}<div class="lots">${lots}</div><div class="spent">${escapeHtml(tf("spent", { sum: money(p.spent) }))}</div></div>`;
 }
 function escapeHtml(t) { return String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 </script>

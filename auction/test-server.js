@@ -201,8 +201,8 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
     await toDraft();
     const before = h7.state.players.find((p) => p.id === one.me).money;
     one.send({ type: "take" });
-    check(await until(() => lots() === 1, 5000), "«Взять» отдаёт лот бесплатно");
-    check(h7.state.players.find((p) => p.id === one.me).money === before, "деньги за лот в доборе не списались");
+    check(await until(() => lots() === 1, 5000), "«Взять» отдаёт лот");
+    check(h7.state.players.find((p) => p.id === one.me).money === before - 1, "за лот в доборе списан $1");
     check(await toDraft(), "следующий лот добора");
     check(h7.state.solo.skips === 5, `после взятия счётчик снова полный (${h7.state.solo.skips})`);
 

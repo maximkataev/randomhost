@@ -51,6 +51,36 @@ test("таймер после ставки = max(остаток T1, T2); ант�
   assert.ok(g.s.deadline <= 60000, "deadline не выше капа");
 });
 
+test("перебить некому — лот продаётся через 1,5 с, не дожидаясь T2", () => {
+  const g = setup(3);
+  g.player("p1").money = 0;
+  g.player("p2").money = 5;
+  g.bid("p0", 3, 1000); // p2 ещё может перебить — обычный таймер
+  assert.equal(g.s.deadline, 20000);
+  g.bid("p2", 5, 2000); // p2 поставил всё; у p0 $30 — может перебить, таймер обычный
+  assert.equal(g.s.deadline, 20000);
+  g.bid("p0", 6, 3000); // у p2 $5, у p1 $0 — перебить некому
+  assert.equal(g.s.deadline, 4500);
+  assert.equal(g.tick(4500)[0].type, "sold");
+  assert.equal(g.player("p0").lots.length, 1);
+});
+
+test("перебить некому по слотам — лот продаётся сразу", () => {
+  const g = setup(3, { slots: 3 });
+  g.player("p1").lots = [{}, {}, {}]; // деньги есть, но лайнап собран
+  g.player("p2").money = 0;
+  g.bid("p0", 2, 1000);
+  assert.equal(g.s.deadline, 2500);
+});
+
+test("отключившийся с деньгами ещё может перебить — таймер обычный", () => {
+  const g = setup(3);
+  g.player("p1").money = 0;
+  g.setOnline("p2", false, 500);
+  g.bid("p0", 2, 1000);
+  assert.equal(g.s.deadline, 20000);
+});
+
 test("продажа списывает деньги и даёт лот; sold → следующий лот", () => {
   const g = setup(2);
   g.bid("p0", 3, 100);
@@ -412,24 +442,42 @@ function solo(settings = {}) {
   return g;
 }
 
-test("соло-добор: остался один со свободными слотами → ДОБОР, T4 = 10 с, лот бесплатный", () => {
+test("соло-добор: остался один со свободными слотами → ДОБОР, T4 = 10 с, лот за $1", () => {
   const g = solo();
   assert.equal(g.s.phase, "draft");
   assert.equal(g.s.solo.playerId, "p0");
   assert.equal(g.s.solo.skips, 5);
   assert.equal(g.s.deadline - g.s.lotStartedAt, 10000, "T4 = 10 с");
   const snap = g.snapshot(0);
-  assert.deepEqual(snap.solo, { playerId: "p0", skips: 5 });
+  assert.deepEqual(snap.solo, { playerId: "p0", skips: 5, price: 1 });
   assert.equal(snap.t4, 10000, "клиенту нужна длина фазы: T4 в настройках нет");
   assert.ok(snap.lot, "карточка лота на экране");
   assert.equal(g.bid("p0", 1, g.s.lotStartedAt + 10).ok, false, "торгов в доборе нет");
   const money = g.player("p0").money;
   assert.equal(g.take("p0", g.s.lotStartedAt + 20).ok, true);
-  assert.equal(g.s.phase, "taken");
+  assert.equal(g.s.phase, "sold", "взятие за $1 — это продажа");
   assert.equal(g.player("p0").lots.length, 1);
-  assert.equal(g.player("p0").lots[0].price, 0);
-  assert.equal(g.player("p0").money, money, "деньги за лот в доборе не списываются");
-  assert.equal(g.player("p0").spent, 0);
+  assert.equal(g.player("p0").lots[0].price, 1);
+  assert.equal(g.player("p0").money, money - 1, "за лот в доборе списывается $1");
+  assert.equal(g.player("p0").spent, 1);
+});
+
+test("соло-добор: денег нет — скипов нет, берёт даром всё подряд", () => {
+  const g = solo();
+  g.player("p0").money = 1;
+  assert.equal(g.take("p0", g.s.lotStartedAt + 1).ok, true); // последний доллар
+  assert.equal(g.player("p0").money, 0);
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "draft");
+  assert.equal(g.s.solo.skips, 0, "без денег скипов нет");
+  assert.equal(g.snapshot(0).solo.price, 0);
+  assert.equal(g.skip("p0", g.s.lotStartedAt + 1).reason, "must_take");
+  const ev = g.tick(g.s.deadline); // таймер истёк — лот взят даром
+  assert.ok(ev.some((e) => e.type === "taken" && e.auto));
+  assert.equal(g.player("p0").lots[1].price, 0);
+  assert.equal(g.player("p0").money, 0);
+  g.tick(g.s.deadline);
+  assert.equal(g.s.solo.skips, 0, "и на следующем слоте скипов нет");
 });
 
 test("соло-добор: счётчик свой на каждый слот — взял лот, снова 5", () => {
@@ -459,7 +507,7 @@ test("соло-добор: пять скипов подряд — шестой �
   assert.equal(g.s.solo.skips, 0);
   assert.equal(g.skip("p0", g.s.lotStartedAt + 1).reason, "must_take", "шестой лот скипнуть нельзя");
   const ev = g.tick(g.s.deadline); // истёкший таймер на обязательном лоте = взятие
-  assert.ok(ev.some((e) => e.type === "taken" && e.playerId === "p0" && e.auto), "лот взят за игрока");
+  assert.ok(ev.some((e) => e.type === "sold" && e.playerId === "p0" && e.amount === 1 && e.auto), "лот взят за игрока за $1");
   assert.equal(g.player("p0").lots.length, 1);
   const mine = g.player("p0").lots[0].name;
   assert.ok(!seen.includes(mine), "скипнутые лоты не возвращаются");

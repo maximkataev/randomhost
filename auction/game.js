@@ -38,14 +38,18 @@ const PHASES = ["lobby", "intro", "lot", "bidding", "pickup", "draft", "sold", "
 
 /*
  * Соло-добор (§6.5). Когда свободные слоты остались ровно у одного подключённого игрока,
- * торговаться уже не с кем: фаза ДОБОР заменяет ЛОТ/ТОРГИ/РАЗБОР, лоты бесплатны, а игрок
+ * торговаться уже не с кем: фаза ДОБОР заменяет ЛОТ/ТОРГИ/РАЗБОР, лот стоит $1, а игрок
  * решает «взять или скипнуть». Скипов пять на каждый слот, шестой лот обязателен — это и
  * есть гарантия, что партия закончится: на все слоты уходит не больше 6 × слоты лотов.
+ * Деньги кончились — скипов больше нет: игрок забирает даром всё подряд (решение Максима 26.09:
+ * бесплатный добор с пятью скипами давал последнему собрать лучшее из колоды без гроша).
  * В настройки комнаты эти числа не выносятся: выбирать нечего, торговаться не с кем.
  */
 const SOLO_T4 = 10000; // таймер ДОБОРА
 const SOLO_SKIPS = 5; // скипов на слот
+const SOLO_PRICE = 1; // цена лота в ДОБОРЕ, пока у игрока есть деньги
 const SOLO_WAIT = 60000; // сколько ждём вернувшегося добирающего, прежде чем закончить партию (§7.4)
+const LAST_BID_DELAY = 1500; // ставку перебить некому — столько держим лот, прежде чем продать
 
 // `kind` обязателен всюду, где категория известна: задание живёт не во всех категориях,
 // и проверка id без категории пропускала «лигу суперзлодеев» в блюда (POST /rooms, next_game).
@@ -243,6 +247,12 @@ class Game {
     return p && p.online && !p.left && p.lots.length < this.s.settings.slots && p.money === 0;
   }
 
+  // Есть ли кто-то, кроме лидера, кто ещё может перебить текущую цену.
+  canBeOutbid() {
+    const s = this.s;
+    return this.contenders().some((p) => p.id !== s.leaderId && p.money > s.price);
+  }
+
   bidders() {
     return this.s.players.filter((p) => this.canBid(p));
   }
@@ -305,7 +315,7 @@ class Game {
     // тот, с которым он подошёл к этому лоту (обнуляется взятием, см. draftTake).
     if (drafters.length === 1) {
       const id = drafters[0].id;
-      s.solo = { playerId: id, skips: s.solo && s.solo.playerId === id ? s.solo.skips : SOLO_SKIPS };
+      s.solo = { playerId: id, skips: drafters[0].money < SOLO_PRICE ? 0 : s.solo && s.solo.playerId === id ? s.solo.skips : SOLO_SKIPS };
       s.phase = "draft";
       s.deadline = now + SOLO_T4;
       return [{ type: "draft", round: s.round, playerId: id }];
@@ -352,6 +362,10 @@ class Game {
     let deadline = Math.max(s.deadline, now + s.settings.t2);
     if (s.deadline - now <= s.settings.antiSnipeWindow) deadline = Math.max(deadline, now + s.settings.t2 + s.settings.antiSnipeBonus);
     s.deadline = Math.min(deadline, s.lotCapAt);
+    // Перебить больше некому — у остальных не хватает денег или слотов: ждать T2 незачем,
+    // лот уходит лидеру через короткую паузу (чтобы ставку успели увидеть). Отключившиеся
+    // с деньгами в счёт: они могут вернуться и перебить, пока идёт таймер.
+    if (!this.canBeOutbid()) s.deadline = Math.min(s.deadline, now + LAST_BID_DELAY);
     const events = [{ type: "bid", playerId, amount }];
     if (prevLeader && prevLeader !== playerId) events.push({ type: "outbid", playerId: prevLeader, by: playerId, amount });
     return { ok: true, events };
@@ -373,7 +387,8 @@ class Game {
 
   // ---------- соло-добор ----------
 
-  // «Взять»: лот бесплатно, счётчик скипов снова полный — он свой на каждый слот (§6.5).
+  // «Взять»: лот за $1 (это продажа — фаза ПРОДАНО), счётчик скипов снова полный — он свой на
+  // каждый слот (§6.5). Денег нет — лот даром (фаза ЗАБРАЛИ), и скипов больше не будет.
   // auto = взятие за истёкший таймер на обязательном лоте.
   draftTake(playerId, now, auto = false) {
     const s = this.s;
@@ -382,11 +397,16 @@ class Game {
     if (s.paused) return { ok: false, reason: "paused" };
     if (!s.solo || s.solo.playerId !== playerId) return { ok: false, reason: "cannot_take" };
     if (!p || p.left || p.lots.length >= s.settings.slots) return { ok: false, reason: "cannot_take" };
-    p.lots.push(this.lotRecord(0));
-    s.solo.skips = SOLO_SKIPS;
-    s.phase = "taken";
+    const price = p.money >= SOLO_PRICE ? SOLO_PRICE : 0;
+    p.money -= price;
+    p.spent += price;
+    p.lots.push(this.lotRecord(price));
+    s.solo.skips = p.money >= SOLO_PRICE ? SOLO_SKIPS : 0;
+    s.price = price;
+    s.phase = price ? "sold" : "taken";
     s.leaderId = playerId;
     s.deadline = now + s.settings.showDelay;
+    if (price) return { ok: true, events: [{ type: "sold", playerId, amount: price, lot: s.lot.name, auto }] };
     return { ok: true, events: [{ type: "taken", playerId, lot: s.lot.name, auto }] };
   }
 
@@ -396,7 +416,8 @@ class Game {
     if (s.phase !== "draft") return { ok: false, reason: "closed" };
     if (s.paused) return { ok: false, reason: "paused" };
     if (!s.solo || s.solo.playerId !== playerId) return { ok: false, reason: "cannot_skip" };
-    if (s.solo.skips <= 0) return { ok: false, reason: "must_take" };
+    const p = this.player(playerId);
+    if (s.solo.skips <= 0 || !p || p.money < SOLO_PRICE) return { ok: false, reason: "must_take" };
     s.solo.skips -= 1;
     s.phase = "unsold";
     s.leaderId = null;
@@ -601,7 +622,7 @@ class Game {
       deckSize: s.deck.length, // предупреждение о маленькой колоде в лобби (§5)
       // Соло-добор: кто добирает и сколько у него скипов. T4 в настройках нет — константа,
       // но клиентам нужно знать длину фазы, чтобы нарисовать кольцо таймера.
-      solo: s.phase === "draft" && s.solo ? { playerId: s.solo.playerId, skips: s.solo.skips } : null,
+      solo: s.phase === "draft" && s.solo ? { playerId: s.solo.playerId, skips: s.solo.skips, price: (this.player(s.solo.playerId)?.money || 0) >= SOLO_PRICE ? SOLO_PRICE : 0 } : null,
       t4: SOLO_T4,
       lot: s.lot && (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "draft" || s.phase === "sold" || s.phase === "taken" || s.phase === "unsold") ? s.lot : null,
       price: s.price,
@@ -635,4 +656,4 @@ class Game {
   }
 }
 
-module.exports = { Game, DEFAULTS, PHASES, clampSettings, cleanName, SOLO_T4, SOLO_SKIPS, SOLO_WAIT };
+module.exports = { Game, DEFAULTS, PHASES, clampSettings, cleanName, SOLO_T4, SOLO_SKIPS, SOLO_PRICE, SOLO_WAIT };

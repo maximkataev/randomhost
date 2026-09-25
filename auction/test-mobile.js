@@ -137,19 +137,19 @@ const hasFrag = (text, frag) => norm(text).includes(norm(frag));
       await wait(6000);
       check(await board.ev("state && state.phase !== 'lobby'"), "игра началась");
       await wait(1200);
-      // Своя сумма ставки: поле открывается по ссылке, принимает цифры НАСТОЯЩИМИ нажатиями
+      // Своя сумма ставки: поле сразу на экране (без ссылки), принимает цифры НАСТОЯЩИМИ нажатиями
       // и держит границы. Кнопками можно шагать только по $1 и $5.
-      const opened = await p.ev(`(() => { const b = document.querySelector(".linkbtn"); if (!b) return false; b.click(); return true; })()`);
+      const opened = await p.ev(`!!document.getElementById("ownbid")`);
       if (opened) {
         await p.ev(`document.getElementById("ownbid").focus()`);
         await typeText(p, "7");
         check((await p.ev(`document.getElementById("ownbid").value`)) === "7", "своя сумма: цифры вводятся с клавиатуры");
-        const small = await p.ev(`(() => { const i = document.getElementById("ownbid"); i.value = "0"; document.querySelector(".ownbid .mid").click();
+        const small = await p.ev(`(() => { const i = document.getElementById("ownbid"); i.value = "0"; document.querySelector(".ownbid .go").click();
           const n = [...document.querySelectorAll("#bidbox .note")].pop(); return n ? n.textContent : ""; })()`);
         check(!!small, "своя сумма: ставка ниже минимума не уходит и объясняет почему");
         check(await p.ev(`(() => { const i = document.getElementById("ownbid"); const r = i.getBoundingClientRect();
           return r.right <= innerWidth + 1 && r.height >= 40; })()`), "своя сумма: поле не уезжает за край и не мельче пальца");
-      } else check(false, "своя сумма: ссылка не найдена");
+      } else check(false, "своя сумма: поля нет на экране");
       // боты перебивают каждые ~0.7 с, поэтому проверяем не лидерство, а что НАША ставка дошла до сервера
       let mineBid = false, tries = 0;
       while (!mineBid && tries++ < 10) {
