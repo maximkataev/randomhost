@@ -210,9 +210,41 @@ function withCards(names = ["A", "B", "C"]) {
   const g = Game.create({ settings: { cards: true }, rnd: rig() });
   names.forEach((n) => g.addPlayer({ id: n, name: n }));
   g.start(0);
+  g.hostGo(0);
   for (const p of g.s.players) p.hand = [];
   return g;
 }
+
+test("знакомство с картами: старт ждёт «Готов» от всех на связи; ведущий может начать сам", () => {
+  const g = Game.create({ settings: { cards: true }, rnd: rig() });
+  for (const n of ["A", "B", "C"]) g.addPlayer({ id: n, name: n });
+  const r = g.start(0);
+  assert.ok(r.ok);
+  assert.strictEqual(g.s.phase, "briefing");
+  assert.ok(g.s.players.every((p) => p.hand.length === 1), "карты розданы до знакомства");
+  assert.deepStrictEqual(g.tick(1e9), [], "таймера у знакомства нет");
+  assert.strictEqual(g.bet("A", "red", 10).reason, "closed");
+  g.setReady("A", true, 10);
+  g.setReady("B", true, 20);
+  assert.strictEqual(g.s.phase, "briefing");
+  // C отвалился — ждать его не нужно
+  const ev = g.setOnline("C", false, 30);
+  assert.ok(ev.some((e) => e.type === "betting"));
+  assert.strictEqual(g.s.phase, "betting");
+  assert.strictEqual(g.s.spin, 1);
+  assert.ok(g.s.players.every((p) => !p.ready), "«Готов» знакомства не переносится в ставки");
+
+  const h = Game.create({ settings: { cards: true }, rnd: rig() });
+  for (const n of ["A", "B"]) h.addPlayer({ id: n, name: n });
+  h.start(0);
+  h.hostGo(5);
+  assert.strictEqual(h.s.phase, "betting");
+
+  const off = Game.create({ settings: { cards: false }, rnd: rig() });
+  for (const n of ["A", "B"]) off.addPlayer({ id: n, name: n });
+  off.start(0);
+  assert.strictEqual(off.s.phase, "betting", "без карт знакомства нет");
+});
 
 test("двойной риск: удваивает ставки цели из её стека", () => {
   const g = withCards();
@@ -301,6 +333,7 @@ test("раздача: по карте на уровень, в руке не бо
   const g = Game.create({ settings: { cards: true, pace: "fast" }, rnd: rig() });
   for (const n of "ABCDEFGHIJKL") g.addPlayer({ id: n, name: n });
   g.start(0);
+  g.hostGo(0);
   for (let i = 0; i < 12; i++) {
     for (const p of g.alive()) { p.stack = 1e9; g.bet(p.id, "red", g.minBet()); }
     spin(g, 1);
@@ -319,6 +352,7 @@ test("инвариант: фишки игроков = старт − выигр�
   const g = Game.create({ settings: { cards: true }, rnd });
   for (const n of ["A", "B", "C", "D", "E", "F"]) g.addPlayer({ id: n, name: n });
   g.start(0);
+  g.hostGo(0);
   const keys = Object.keys(BETS);
   let now = 0;
   for (let i = 0; i < 300 && g.s.phase !== "finished"; i++) {
@@ -374,6 +408,24 @@ test("выход игрока посреди партии: последний о
   g.removePlayer("B", 10);
   assert.strictEqual(g.s.winnerId, "A");
   assert.strictEqual(g.s.phase, "finished");
+});
+
+test("опоздавший — зритель: без ставок и мест, на «Ещё партию» садится за стол; эмодзи не режутся пополам", () => {
+  const g = game(["A", "B"]);
+  const r = g.addPlayer({ id: "L", name: "Late" });
+  assert.ok(r.ok);
+  const l = g.player("L");
+  assert.ok(l.spectator && l.out && l.stack === 0);
+  assert.strictEqual(g.bet("L", "red", 1).reason, "closed");
+  assert.ok(g.chat("L", "привет", 0).ok);
+  g.finishNow(10);
+  assert.strictEqual(l.place, null);
+  assert.deepStrictEqual(g.s.players.filter((p) => !p.spectator).map((p) => p.place).sort(), [1, 2]);
+  g.reset();
+  assert.ok(!g.player("L").spectator && !g.player("L").out && g.player("L").stack === 1000);
+  const e = Game.create({});
+  e.addPlayer({ id: "E", name: "a".repeat(15) + "😀x" });
+  assert.strictEqual(e.player("E").name, "a".repeat(15) + "😀");
 });
 
 test("чат: длина, частота, заглушка, скрытие; реакции только из набора", () => {

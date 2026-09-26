@@ -29,6 +29,7 @@ function play(seats, seed, { pace = "normal", cards = true, bonus = null } = {})
   const g = Game.create({ settings: { pace, cards }, rnd });
   seats.forEach((st, i) => g.addPlayer({ id: `p${i}`, name: `${st}${i}` }));
   g.start(0);
+    g.hostGo(0); // знакомство с картами на стенде не нужно
   if (bonus) g.s.players[bonus.seat].hand.push(bonus.card);
   const mem = {};
   let ms = 0;
@@ -145,6 +146,7 @@ function storyReport() {
     const seats = Array.from({ length: 6 }, (_, k) => STRATEGIES[(k + i) % STRATEGIES.length]);
     seats.forEach((st, k) => g.addPlayer({ id: `p${k}`, name: st }));
     g.start(0);
+    g.hostGo(0); // знакомство с картами на стенде не нужно
     const mem = {};
     let ms = 0;
     while (g.s.phase !== "finished" && g.s.spin < 400) {

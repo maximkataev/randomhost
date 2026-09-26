@@ -210,7 +210,7 @@ function scheduleOffline(room, playerId) {
     if ([...room.sockets].some((c) => c.playerId === playerId)) return;
     statDrops++;
     console.log(`${LOG} ${room.code}: ${name} не вернулся — offline`);
-    afterChange(room, [{ type: "offline", playerId }, ...room.game.setOnline(playerId, false)]);
+    afterChange(room, [{ type: "offline", playerId }, ...room.game.setOnline(playerId, false, clock(room))]);
   }, OFFLINE_GRACE_MS);
   if (t.unref) t.unref();
   room.offlineTimers.set(playerId, t);
@@ -282,6 +282,15 @@ function addBots(room, n) {
   if (!room.botTimer) {
     room.botTimer = setInterval(() => {
       const s = room.game.s;
+      // знакомство с картами: боты «прочитали» и готовы
+      if (s.phase === "briefing") {
+        const lazy = room.bots.filter((b) => { const p = g.player(b.playerId); return p && !p.ready && !p.out && !p.left; });
+        if (!lazy.length) return;
+        const ev = [];
+        for (const b of lazy) { const r = g.setReady(b.playerId, true, clock(room)); if (r.ok) ev.push(...r.events); }
+        afterChange(room, ev);
+        return;
+      }
       if (s.phase !== "betting") { room.botSpin = null; return; }
       if (room.botSpin === s.spin) return; // ставят один раз за спин, через пару секунд после начала
       room.botSpin = s.spin;
@@ -517,7 +526,9 @@ function handle(room, client, msg) {
       // потерял localStorage, но игра идёт: то же имя у никем не занятого игрока — продолжаем его партию
       if (!playerId) {
         const name = cleanName(msg.name);
-        const ghost = g.s.players.find((p) => !p.left && p.name === name && ![...room.sockets].some((c) => c.playerId === p.id));
+        // Только игрок, который уже числится офлайн (грация истекла): иначе любой, кто знает код комнаты,
+        // занимал место моргнувшего Wi-Fi, просто вписав его имя.
+        const ghost = g.s.players.find((p) => !p.left && !p.online && p.name === name && ![...room.sockets].some((c) => c.playerId === p.id));
         if (ghost) {
           playerId = ghost.id;
           const token = crypto.randomBytes(12).toString("base64url");
@@ -526,13 +537,13 @@ function handle(room, client, msg) {
         }
       }
       if (!playerId) {
-        if (client.newPlayerAt && now() - client.newPlayerAt < 3000) return;
+        if (client.newPlayerAt && now() - client.newPlayerAt < 3000) return reply({ type: "error", error: "too_fast" });
         client.newPlayerAt = now();
         // имена уникальны: тёзке дописываем номер, иначе подхват по имени перепутал бы игроков
         let name = cleanName(msg.name);
         if (!name) return reply({ type: "error", error: "bad_name" });
         const taken = new Set(g.s.players.filter((p) => !p.left).map((p) => p.name));
-        for (let i = 2; taken.has(name); i++) name = `${cleanName(msg.name).slice(0, 13)} ${i}`;
+        for (let i = 2; taken.has(name); i++) name = `${Array.from(cleanName(msg.name)).slice(0, 13).join("")} ${i}`;
         playerId = "u_" + crypto.randomBytes(5).toString("hex");
         const r = g.addPlayer({ id: playerId, name });
         if (!r.ok) return reply({ type: "error", error: r.reason });
@@ -584,6 +595,7 @@ function handle(room, client, msg) {
       if (!r.ok) return reply({ type: "rejected", action: "start", reason: r.reason });
       return afterChange(room, r.events);
     }
+    case "go": return client.host ? afterChange(room, g.hostGo(t)) : undefined;
     case "pause": return client.host ? afterChange(room, g.pause(t)) : undefined;
     case "resume": {
       // доска умерла — продолжить может любой игрок, но только пока ни одной доски нет
@@ -684,7 +696,7 @@ function restore() {
       for (const p of s.players) p.online = false;
       pruneTokens(room);
       if (s.phase === "betting" && !s.paused) room.game.pause(clock(room));
-      else if (s.phase !== "lobby" && s.phase !== "finished") {
+      else if (s.phase !== "lobby" && s.phase !== "finished" && s.phase !== "briefing") {
         const shift = Math.max(0, now() + 5000 - (s.deadline || 0));
         if (s.deadline) s.deadline += shift;
         if (s.result) { s.result.spinAt += shift; s.result.revealAt += shift; s.result.closedAt += shift; }

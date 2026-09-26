@@ -205,3 +205,35 @@ test("мусорный fakeFrom и крайние длительности не 
   }
   assert.throws(() => M.buildTrajectory({ number: 37, seed: 1, story: {}, spinMs: 10000 }));
 });
+
+/*
+ * Стыковка холостого хода со спином (жалоба «при раскрутке колесо чуть паузится»):
+ * раньше угол из сида догонялся кратчайшим путём ±π, и при минусе ротор тормозил до нуля
+ * и даже шёл назад прямо перед броском. Теперь — только вперёд и гладко.
+ */
+test("колесо при старте спина не тормозит, не разворачивается и не дёргается", async () => {
+  const M = await load();
+  const rnd = lcg(99);
+  for (let i = 0; i < 400; i++) {
+    const inp = makeInput(M, rnd);
+    const tr = M.buildTrajectory(inp);
+    const cur = rnd() * 40 - 20;
+    const tCall = -6000 + rnd() * 7400; // вызов spin() от «ставок больше нет» до переподключения в начале спина
+    const curSpeed = -M.IDLE_SPEED * (1 + rnd()); // после прошлого спина ротор мог ещё не сбросить скорость
+    const h = M.wheelHandoff(tr, cur, curSpeed, tCall);
+    const d = (((h.angle(tCall) - cur) % TAU) + TAU) % TAU;
+    assert.ok(Math.min(d, TAU - d) < 1e-6, "угол в момент вызова совпадает с текущим (с точностью до оборота)");
+    const step = 4;
+    let prevW = null;
+    for (let t = tCall + step; t < 5000; t += step) {
+      const w = (h.angle(t + 0.5) - h.angle(t - 0.5)) / 0.001; // рад/с
+      assert.ok(w < -0.15, `ротор почти встал или пошёл назад: ω=${w.toFixed(3)} при t=${t.toFixed(0)}`);
+      if (prevW != null) assert.ok(Math.abs(w - prevW) / (step / 1000) < 14, `рывок ускорения ${((w - prevW) / (step / 1000)).toFixed(1)} рад/с² при t=${t.toFixed(0)}`);
+      prevW = w;
+    }
+    // скорость в момент вызова равна текущей (нет скачка), а к 3 с угол — ровно из сида
+    const w0 = (h.angle(tCall + 1) - h.angle(tCall)) / 0.001;
+    assert.ok(Math.abs(w0 - curSpeed) < 0.05, `скачок скорости при вызове: ${w0.toFixed(3)} vs ${curSpeed.toFixed(3)}`);
+    assert.ok(Math.abs(h.angle(h.until + 10) - tr.wheelAngle(h.until + 10)) < 1e-9);
+  }
+});

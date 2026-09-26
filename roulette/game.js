@@ -124,11 +124,13 @@ function clampSettings(input = {}) {
 }
 
 // имя игрока: без управляющих символов, без лишних пробелов, до 16 символов
+// режем по символам, а не по единицам UTF-16: иначе эмодзи на 16-й позиции разрезался пополам
+const cut = (str, n) => Array.from(str).slice(0, n).join("");
 function cleanName(name) {
-  return String(name || "").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "").replace(/\s+/g, " ").trim().slice(0, 16);
+  return cut(String(name || "").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "").replace(/\s+/g, " ").trim(), 16);
 }
 function cleanText(text) {
-  return String(text || "").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, " ").replace(/\s+/g, " ").trim().slice(0, CHAT_LEN);
+  return cut(String(text || "").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, " ").replace(/\s+/g, " ").trim(), CHAT_LEN);
 }
 
 function shuffle(arr, rnd) {
@@ -187,11 +189,15 @@ class Game {
     return this.s.players.filter((p) => !p.out && !p.left);
   }
 
+  /*
+   * Опоздавший посреди партии садится зрителем: чат и реакции есть, ставок нет, в местах финала его нет.
+   * На «Ещё партию» зритель становится игроком. Без этого пришедший к 5-й минуте ждал 20 минут у экрана.
+   */
   addPlayer({ id, name }) {
     const s = this.s;
     const have = this.player(id);
     if (have) return { ok: true, player: have };
-    if (s.phase !== "lobby") return { ok: false, reason: "game_started" };
+    const spectator = s.phase !== "lobby";
     if (s.players.filter((p) => !p.left).length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
     name = cleanName(name);
     if (!name) return { ok: false, reason: "bad_name" };
@@ -200,14 +206,15 @@ class Game {
       id,
       name,
       color: COLORS.find((c) => !used.has(c)) || COLORS[s.players.length % COLORS.length],
-      stack: s.settings.stack,
+      stack: spectator ? 0 : s.settings.stack,
       bets: {}, // key → сумма
       lastBets: {}, // ставки прошлого спина — для «Повторить»
       ready: false,
       hand: [],
       frozen: false, // заморожен на текущий спин
-      out: false,
+      out: spectator,
       outSpin: null,
+      spectator,
       place: null, // итоговое место
       online: true,
       left: false,
@@ -235,13 +242,15 @@ class Game {
     p.ready = false;
     const ev = [{ type: "left", playerId: id }];
     if (s.phase !== "finished" && this.alive().length <= 1) ev.push(...this.finish("last", now));
+    else ev.push(...this.briefingDone(now));
     return ev;
   }
 
-  setOnline(id, online) {
+  setOnline(id, online, now) {
     const p = this.player(id);
     if (p) p.online = online;
-    return [];
+    // ушёл последний, кого ждали на знакомстве с картами, — начинаем без него
+    return !online && now != null ? this.briefingDone(now) : [];
   }
 
   // ---------- ход партии ----------
@@ -280,7 +289,31 @@ class Game {
       p.hand = [];
       if (s.settings.cards) this.deal(p);
     }
+    // С картами — сначала знакомство: каждый читает свои карты на телефоне и жмёт «Готов».
+    // Без этого первая карта прилетала в спин, где половина стола ещё не поняла, что у неё в руке.
+    if (s.settings.cards) {
+      s.phase = "briefing";
+      s.deadline = null;
+      for (const p of s.players) p.ready = false;
+      return { ok: true, events: [{ type: "started" }, { type: "briefing" }] };
+    }
     return { ok: true, events: [{ type: "started" }, ...this.beginSpin(now)] };
+  }
+
+  // знакомство закончено, когда готовы все живые игроки на связи; офлайн не держит стол
+  briefingDone(now) {
+    const s = this.s;
+    if (s.phase !== "briefing") return [];
+    const alive = this.alive();
+    if (!alive.length || alive.some((p) => p.online && !p.ready)) return [];
+    if (!alive.some((p) => p.online)) return []; // все отвалились — ждём, а не начинаем в пустоту
+    return this.beginSpin(now);
+  }
+
+  // ведущий начинает, не дожидаясь зависших
+  hostGo(now) {
+    if (this.s.phase !== "briefing") return [];
+    return this.beginSpin(now);
   }
 
   deal(p) {
@@ -373,6 +406,10 @@ class Game {
   setReady(id, ready, now) {
     const s = this.s;
     const p = this.player(id);
+    if (p && !p.out && !p.left && s.phase === "briefing") {
+      p.ready = !!ready;
+      return { ok: true, events: this.briefingDone(now) };
+    }
     if (!p || p.out || p.left || s.phase !== "betting") return { ok: false, reason: "closed" };
     p.ready = !!ready;
     // все живые и подключённые нажали «Готово» — не ждём таймер (§2)
@@ -624,7 +661,7 @@ class Game {
     s.winnerId = winner ? winner.id : null;
     s.finishedReason = reason;
     // места: победитель, затем живые по фишкам, затем выбывшие — кто позже вылетел, тот выше
-    const order = s.players.slice().sort((a, b) => {
+    const order = s.players.filter((p) => !p.spectator).sort((a, b) => {
       if (a === winner) return -1;
       if (b === winner) return 1;
       if (!a.out && !b.out) return b.stack - a.stack;
@@ -705,7 +742,7 @@ class Game {
     const fresh = Game.create({ settings: s.settings, rnd: this.rnd }).s;
     fresh.chat = s.chat;
     fresh.chatSeq = s.chatSeq;
-    fresh.players = players.map((p) => ({ ...p, stack: s.settings.stack, bets: {}, lastBets: {}, ready: false, hand: [], frozen: false, freezeNext: false, out: false, outSpin: null, place: null }));
+    fresh.players = players.map((p) => ({ ...p, spectator: false, stack: s.settings.stack, bets: {}, lastBets: {}, ready: false, hand: [], frozen: false, freezeNext: false, out: false, outSpin: null, place: null }));
     this.s = fresh;
     return [{ type: "new_game" }];
   }
@@ -787,7 +824,7 @@ class Game {
       overtime: this.overtime(),
       nextMinBet: this.minBet(this.levelFor(s.spin + 1)),
       nextOvertime: this.overtime(this.levelFor(s.spin + 1)),
-      spinsToLevel: s.phase === "lobby" ? null : PACE[s.settings.pace] - ((s.spin - 1) % PACE[s.settings.pace]) - 1,
+      spinsToLevel: s.phase === "lobby" || s.phase === "briefing" ? null : PACE[s.settings.pace] - ((s.spin - 1) % PACE[s.settings.pace]) - 1,
       deadline: s.deadline,
       serverNow: now,
       settings: s.settings,
@@ -816,6 +853,7 @@ class Game {
         freezeNext: cardsOpen ? !!p.freezeNext : false,
         out: p.out,
         outSpin: p.outSpin,
+        spectator: !!p.spectator,
         place: s.phase === "finished" ? p.place : null,
         online: p.online,
         left: p.left,

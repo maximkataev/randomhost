@@ -150,6 +150,20 @@ test("отказы приходят только автору и не роняю
   for (const c of [a, p, b]) c.close();
 });
 
+test("сообщение больше лимита рвёт только свой сокет, сервер живёт", async () => {
+  const { code, hostToken } = await createRoom();
+  const b = await board(code, hostToken);
+  const a = await player(code, "Аня");
+  const closed = new Promise((r) => a.ws.once("close", r));
+  a.ws.send(JSON.stringify({ type: "chat", text: "y".repeat(9000) }));
+  await closed;
+  const res = await fetch(`http://127.0.0.1:${port}/roulette/api/health`);
+  assert.strictEqual((await res.json()).ok, true);
+  b.send({ type: "ping", c: 1 });
+  await b.wait((m) => m.type === "pong");
+  b.close();
+});
+
 test("чат и реакции: доска видит ленту, телефоны — нет; ведущий скрывает и глушит", async () => {
   const { code, hostToken } = await createRoom();
   const b = await board(code, hostToken);
@@ -169,7 +183,7 @@ test("чат и реакции: доска видит ленту, телефон
   for (const c of [a, b]) c.close();
 });
 
-test("возврат по токену посреди партии; чужое имя без токена в идущую партию не пускает", async () => {
+test("возврат по токену посреди партии; опоздавший — зритель; место по имени не угнать", async () => {
   const { code, hostToken } = await createRoom();
   const b = await board(code, hostToken);
   const a = await player(code, "Аня");
@@ -182,11 +196,20 @@ test("возврат по токену посреди партии; чужое �
   const a2 = await player(code, "", a.token);
   assert.strictEqual(a2.id, a.id);
   assert.strictEqual(a2.state.players.find((x) => x.id === a.id).betTotal, 30);
-  const x = client(code);
-  await x.open;
-  x.send({ type: "join", name: "Чужой" });
-  await x.wait((m) => m.type === "error" && m.error === "game_started");
-  for (const c of [a2, p, b, x]) c.close();
+  // опоздавший садится зрителем, а не получает отказ
+  const x = await player(code, "Чужой");
+  const sx = (await x.wait(statePred((st) => st.players.some((q) => q.id === x.id)))).state;
+  const me = sx.players.find((q) => q.id === x.id);
+  assert.ok(me && me.spectator && me.out);
+  x.send({ type: "bet", key: "red", amount: 10 });
+  await x.wait((m) => m.type === "rejected");
+  // занять место игрока по имени нельзя, пока он на связи
+  const y = client(code);
+  await y.open;
+  y.send({ type: "join", name: "Петя" });
+  const jy = await y.wait((m) => m.type === "joined");
+  assert.notStrictEqual(jy.playerId, p.id);
+  for (const c of [a2, p, b, x, y]) c.close();
 });
 
 test("перезапуск посреди вращения: спин доигрывается с тем же числом, игроки возвращаются по токену", async () => {
@@ -219,6 +242,33 @@ test("перезапуск посреди вращения: спин доигр�
   const next = await b.wait(statePred((s) => s.phase === "betting"), 15000);
   assert.ok(next.state.paused);
   for (const c of [a, p, b]) c.close();
+});
+
+test("знакомство с картами: первый спин — когда все нажали «Готов»; ведущий может начать сам", async () => {
+  const { code, hostToken } = await createRoom({ cards: true });
+  const b = await board(code, hostToken);
+  const a = await player(code, "Аня");
+  const p = await player(code, "Петя");
+  b.send({ type: "start" });
+  const br = await a.wait(statePred((s) => s.phase === "briefing"));
+  assert.strictEqual(br.state.me.hand.length, 1, "свою карту видно на знакомстве");
+  assert.strictEqual(br.state.players.find((x) => x.id === p.id).cards, 1);
+  a.send({ type: "ready" });
+  await b.wait(statePred((s) => s.players.find((x) => x.id === a.id)?.ready));
+  assert.strictEqual(b.state.phase, "briefing");
+  p.send({ type: "ready" });
+  await b.wait(statePred((s) => s.phase === "betting" && s.spin === 1));
+
+  const r2 = await createRoom({ cards: true });
+  const b2 = await board(r2.code, r2.hostToken);
+  const c = await player(r2.code, "Оля");
+  const d = await player(r2.code, "Дима");
+  b2.send({ type: "start" });
+  await b2.wait(statePred((s) => s.phase === "briefing"));
+  c.send({ type: "go" }); // не ведущий — игнор
+  b2.send({ type: "go" });
+  await b2.wait(statePred((s) => s.phase === "betting"));
+  for (const x of [a, p, b, b2, c, d]) x.close();
 });
 
 test("боты в режиме разработки доигрывают партию до победителя", async () => {

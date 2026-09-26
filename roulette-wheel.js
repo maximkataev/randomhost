@@ -15,7 +15,7 @@
  */
 
 import * as THREE from "./vendor/three.module.min.js";
-import { buildTrajectory, GEOM, WHEEL, PA, POCKETS, RED, statorY, ringY } from "./roulette-trajectory.js";
+import { buildTrajectory, wheelHandoff, IDLE_SPEED, GEOM, WHEEL, PA, POCKETS, RED, statorY, ringY } from "./roulette-trajectory.js";
 
 const TAU = Math.PI * 2;
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -90,6 +90,18 @@ function betPos(key) {
   let x = 0, z = 0;
   for (const n of nums) { const p = cellCenter(n); x += p[0]; z += p[1]; }
   return nums.length ? [x / nums.length, z / nums.length] : [0, 0];
+}
+
+// инициалы — как на аватарке рельса доски: первые буквы слов, без эмодзи бота, максимум две
+function initialsOf(p) {
+  if (p && p.initials) return String(p.initials).slice(0, 3);
+  return String((p && p.name) || "?").replace(/^\p{Extended_Pictographic}\s*/u, "").split(/\s+/).filter(Boolean).map((w) => [...w][0]).join("").slice(0, 2).toUpperCase() || "?";
+}
+// сумма ставки: 1 250 → «1 250», 12 500 → «12,5k»
+function rlAmount(n) {
+  n = Math.round(Number(n) || 0);
+  if (n >= 10000) return (Math.round(n / 100) / 10).toString().replace(".", ",") + "k";
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, "\u2009");
 }
 
 // ---------- процедурные текстуры ----------
@@ -253,6 +265,63 @@ function pocketFloorCanvas(W, H) {
   g.fillStyle = v;
   g.fillRect(0, 0, W, H);
   return c;
+}
+
+// Выпавший номер на кольце колеса: светлая золотая плашка, цифра цвета номера, рамка в цвет номера.
+// Инверсия к кольцу (там золото по красному/чёрному) — поэтому плашка видна даже с общего плана.
+const NUM_INK = { red: "#b3160f", black: "#15100c", green: "#0b7a45" };
+function drawWinnerNumeral(c, n) {
+  const g = c.getContext("2d");
+  const W = c.width, H = c.height;
+  const ink = NUM_INK[numColor(n)];
+  const grd = g.createLinearGradient(0, 0, 0, H);
+  grd.addColorStop(0, "#fff4cf");
+  grd.addColorStop(1, "#f0c863");
+  g.fillStyle = grd;
+  g.fillRect(0, 0, W, H);
+  g.strokeStyle = ink;
+  g.lineWidth = 18;
+  g.strokeRect(9, 9, W - 18, H - 18);
+  g.font = `900 ${Math.round(H * 0.66)}px Georgia, "Times New Roman", serif`;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.save();
+  g.translate(W / 2, H * 0.55);
+  g.scale(n >= 10 ? 0.74 : 1, 1);
+  g.fillStyle = ink;
+  g.fillText(String(n), 0, 0);
+  g.restore();
+}
+
+// Выпавшая клетка на сукне: светящийся ореол и светлая плашка с цифрой цвета номера (на зеро — зелёная)
+function cellPlateCanvas(n) {
+  const zero = n === 0;
+  const w = zero ? LAY.zeroW : LAY.cw, h = zero ? 3 * LAY.ch : LAY.ch;
+  const PX = 1600, pad = 0.024;
+  const W = Math.round((w + 2 * pad) * PX), H = Math.round((h + 2 * pad) * PX);
+  const c = canvas(W, H);
+  const g = c.getContext("2d");
+  const x0 = pad * PX, y0 = pad * PX, cw = w * PX, chh = h * PX;
+  const halo = zero ? "rgba(110,255,170,1)" : "rgba(255,210,110,1)";
+  // ореол: несколько обводок с размытием вокруг клетки
+  g.shadowColor = halo;
+  for (const blur of [46, 30, 16]) { g.shadowBlur = blur; g.fillStyle = halo; g.fillRect(x0, y0, cw, chh); }
+  g.shadowBlur = 0;
+  const grd = g.createLinearGradient(0, y0, 0, y0 + chh);
+  grd.addColorStop(0, zero ? "#d6ffe6" : "#fff4cf");
+  grd.addColorStop(1, zero ? "#5fe39a" : "#f0c863");
+  g.fillStyle = grd;
+  g.fillRect(x0, y0, cw, chh);
+  const ink = NUM_INK[numColor(n)];
+  g.strokeStyle = ink;
+  g.lineWidth = Math.max(6, PX * 0.004);
+  g.strokeRect(x0 + 3, y0 + 3, cw - 6, chh - 6);
+  g.font = `900 ${Math.round(LAY.ch * PX * 0.62)}px Georgia, "Times New Roman", serif`;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillStyle = ink;
+  g.fillText(String(n), x0 + cw / 2, y0 + chh / 2 + 2);
+  return { c, w: w + 2 * pad, h: h + 2 * pad };
 }
 
 // Сукно: зерно ворса без рисунка
@@ -745,7 +814,26 @@ function buildWheel(Q) {
   const glowLight = new THREE.PointLight(0xffffff, 0, 0.09, 2);
   rotor.add(glowLight);
 
-  return { wheel, rotor, ball, ghosts, contact, glow, glowLight, materials: { walnut, walnutDark, brass, brassBright, ballMat } };
+  /*
+   * Подсветка выпавшего номера на кольце: сегмент поверх номерного кольца с яркой цифрой и золотой рамкой.
+   * Неосвещаемый материал без тонмаппинга — цифра горит, а не просто отражает лампу, и читается с ТВ.
+   * Геометрия построена для сектора у угла 0, на нужную ячейку ставим поворотом.
+   */
+  const segGeo = revolve([
+    [g.rotorR - 0.0012, g.ringOuterY + 0.0009],
+    [g.ringInnerR + 0.0004, g.ringInnerY + 0.0009],
+  ], 12, { a0: -PA / 2, a1: PA / 2, vByIndex: true });
+  const uv = segGeo.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setX(i, (PA / 2 - uv.getX(i) * TAU) / PA); // u поперёк сектора, как на кольце
+  const numC = canvas(256, 224);
+  const numTex = tex(numC, { aniso: 8 });
+  const numMat = new THREE.MeshBasicMaterial({ map: numTex, transparent: true, toneMapped: false, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+  const numHL = new THREE.Mesh(segGeo, numMat);
+  numHL.renderOrder = 4;
+  numHL.visible = false;
+  rotor.add(numHL);
+
+  return { wheel, rotor, ball, ghosts, contact, glow, glowLight, numHL, numC, numTex, materials: { walnut, walnutDark, brass, brassBright, ballMat } };
 }
 
 // ---------- стол ----------
@@ -754,7 +842,8 @@ function buildWheel(Q) {
 const WHEEL_POS = new THREE.Vector3(LAY.x0 - 0.07 - GEOM.bowlR - 0.012, 0.078, LAY.z0 + LAY.h / 2);
 const FELT_RECT = { x0: -1.58, x1: 0.88, z0: -0.62, z1: 0.46 };
 const TRAY = { x: -0.14, z: -0.43, w: 0.5, d: 0.11 };
-const CHIP = { R: 0.0195, h: 0.0034, b: 0.0009 };
+// фишки чуть крупнее настоящих (39 мм): с 3 м на ТВ и в Zoom иначе это точки в 20 px
+const CHIP = { R: 0.0235, h: 0.0042, b: 0.001 };
 
 function roundedRectShape(x0, z0, x1, z1, r) {
   const s = new THREE.Shape();
@@ -1004,6 +1093,26 @@ class Dealer {
     this.rakeHead = head;
     for (const o of [this.left, this.right, this.thrower, this.rake]) { o.visible = false; parent.add(o); }
     this.tracks = [];
+    /*
+     * Руки и лопатка входят с дальней стороны стола — то есть сверху кадра, под табло доски.
+     * Плоскость отсечения проходит через камеру и верхнюю кромку свободной зоны экрана:
+     * всё, что выше неё, не рисуется, и рука «выходит» из-под табло, а не лезет на логотип.
+     */
+    this.clip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 100);
+    for (const o of [this.left, this.right, this.thrower, this.rake]) {
+      o.traverse((m) => { if (m.material && !m.material.clippingPlanes) m.material.clippingPlanes = [this.clip]; });
+    }
+  }
+  // yTop — верхняя граница свободной зоны в NDC (1 − 2·safe.top)
+  updateClip(camera, yTop) {
+    const O = camera.position;
+    const A = new THREE.Vector3(-1, yTop, 0.5).unproject(camera);
+    const B = new THREE.Vector3(1, yTop, 0.5).unproject(camera);
+    const n = new THREE.Vector3().subVectors(A, O).cross(new THREE.Vector3().subVectors(B, O)).normalize();
+    this.clip.setFromNormalAndCoplanarPoint(n, O);
+    // видимая сторона — ниже кромки
+    const below = new THREE.Vector3(0, yTop - 0.5, 0.5).unproject(camera);
+    if (this.clip.distanceToPoint(below) < 0) this.clip.negate();
   }
   play(obj, keys, t0) {
     this.tracks = this.tracks.filter((tr) => tr.obj !== obj);
@@ -1524,7 +1633,6 @@ function surfaceY(r) {
 
 // ячейка «загорается» тёплым светом: чисто красное свечение на красном дне не читается
 const GLOW_COLOR = { red: 0xffa47a, black: 0xffe2a8, green: 0x6dffb0 };
-const IDLE_SPEED = 0.55;
 const CHIP_H = CHIP.h + 0.00012;
 
 function create3D(container, opts) {
@@ -1542,6 +1650,7 @@ function create3D(container, opts) {
   renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.localClippingEnabled = true; // руки крупье не залезают под табло (см. Dealer.updateClip)
   const cv = renderer.domElement;
   cv.style.display = "block";
   cv.style.width = "100%";
@@ -1562,7 +1671,8 @@ function create3D(container, opts) {
    * Безопасная зона: доля экрана под интерфейсом страницы (сверху табло, справа чат, снизу рельс игроков).
    * Центр кадра смещаем в середину свободной части через setViewOffset — сцена не прячется под HUD.
    */
-  const safe = Object.assign({ top: 0.1, right: 0.21, bottom: 0.15, left: 0.01 }, opts.safeArea || {});
+  // по умолчанию — под доску: табло сверху (~12%), чат справа внизу (~18%), рельс игроков снизу (~15%)
+  const safe = Object.assign({ top: 0.12, right: 0.18, bottom: 0.15, left: 0.02 }, opts.safeArea || {});
   const fitK = () => Math.max(1 / Math.max(0.4, 1 - safe.left - safe.right), (1 / Math.max(0.4, 1 - safe.top - safe.bottom)) * 0.92);
 
   // одна тёплая лампа над столом + её же «второй плафон» над колесом, без теней
@@ -1628,6 +1738,68 @@ function create3D(container, opts) {
   dolly.visible = false;
   scene.add(dolly);
 
+  // подсветка выпавшей клетки на столе и тёплый свет над ней (свет живёт с начала — иначе при появлении перекомпилируются все шейдеры)
+  const cellHL = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ transparent: true, toneMapped: false, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6 }));
+  cellHL.rotation.x = -Math.PI / 2;
+  cellHL.renderOrder = 5;
+  cellHL.visible = false;
+  scene.add(cellHL);
+  const cellLight = new THREE.PointLight(0xffd79a, 0, 0.55, 2);
+  scene.add(cellLight);
+  // ореол шире клетки (его не закрывают фишки и маркер) и волна, раз в секунду расходящаяся по сукну —
+  // глаз цепляется за выпавший номер даже на общем плане
+  const haloMat = new THREE.MeshBasicMaterial({ map: tex(blobCanvas(128, "rgba(255,255,255,1)", "rgba(255,255,255,0)")), transparent: true, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending, color: 0xffc860 });
+  const cellHalo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), haloMat);
+  cellHalo.rotation.x = -Math.PI / 2;
+  cellHalo.renderOrder = 4;
+  cellHalo.visible = false;
+  scene.add(cellHalo);
+  const ripple = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 64), new THREE.MeshBasicMaterial({ transparent: true, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending, color: 0xffd98a }));
+  ripple.rotation.x = -Math.PI / 2;
+  ripple.renderOrder = 4;
+  ripple.visible = false;
+  scene.add(ripple);
+  // выпавший номер: на колесе — сектор кольца, на столе — клетка; держится до новых ставок
+  const win = { n: null, wheel: false, table: false, t0: 0 };
+  function showWinner(n, where) {
+    if (!(n >= 0 && n <= 36)) return;
+    if (win.n !== n) {
+      win.n = n;
+      drawWinnerNumeral(W3.numC, n);
+      W3.numTex.needsUpdate = true;
+      W3.numHL.rotation.y = -WHEEL.indexOf(n) * PA;
+      const zero = n === 0;
+      const plate = cellPlateCanvas(n);
+      if (cellHL.material.map) cellHL.material.map.dispose();
+      cellHL.material.map = tex(plate.c, { aniso: 8 });
+      cellHL.material.needsUpdate = true;
+      cellHL.scale.set(plate.w, plate.h, 1);
+      const [cx, cz] = cellCenter(n);
+      cellHL.position.set(cx, 0.0014, cz);
+      cellHalo.position.set(cx, 0.0011, cz);
+      cellHalo.scale.set(plate.w + 0.16, plate.h + 0.16, 1);
+      haloMat.color.set(zero ? 0x6dffb0 : 0xffc860);
+      ripple.position.set(cx, 0.0012, cz);
+      ripple.material.color.set(zero ? 0x8dffc0 : 0xffd98a);
+      win.rip = Math.max(plate.w, plate.h) * 0.55;
+      cellLight.position.set(cx, 0.16, cz + 0.04);
+      cellLight.color.set(zero ? 0x9dffc4 : 0xffd79a);
+      win.wheel = win.table = false;
+      win.t0 = nowL();
+    }
+    if (where === "wheel" || where === "both") win.wheel = true;
+    if (where === "table" || where === "both") win.table = true;
+  }
+  function clearWinner() {
+    win.n = null;
+    win.wheel = win.table = false;
+    W3.numHL.visible = false;
+    cellHL.visible = false;
+    cellHalo.visible = false;
+    ripple.visible = false;
+    cellLight.intensity = 0;
+  }
+
   // ---------- состояние ----------
   const listeners = {};
   const emit = (ev, data) => { for (const fn of listeners[ev] || []) { try { fn(data); } catch (e) { console.error(e); } } };
@@ -1648,21 +1820,144 @@ function create3D(container, opts) {
   };
 
   // ---------- колесо: холостой ход, разгон перед броском, траектория ----------
-  function preAngle(tr, t) {
-    const s0 = tr.wheel.speed, R = 1.2;
-    const F = (u) => u * u * u - (u * u * u * u) / 2;
-    const u = clamp((t + 1200) / 1200, 0, 1);
-    const integ = IDLE_SPEED * (-t / 1000) + (s0 - IDLE_SPEED) * R * (F(1) - F(u));
-    return tr.wheelAngle(0) + integ;
-  }
+  // угол ротора во время спина: стыковка с холостым ходом живёт в roulette-trajectory.js (там же её тест)
   function spinWheelAngle(sp, t) {
-    const base = t < 0 ? preAngle(sp.traj, t) : sp.traj.wheelAngle(t);
-    const k = sp.blendB > sp.blendA ? 1 - smooth((t - sp.blendA) / (sp.blendB - sp.blendA)) : 0;
-    return base + sp.off0 * k;
+    return sp.wheel.angle(t);
   }
   function currentWheelAngle(ns) {
     if (st.spin && st.mode !== "idle") return spinWheelAngle(st.spin, ns - st.spin.spinAt);
     return st.wheelA;
+  }
+
+  // ---------- ярлыки ставок ----------
+  /*
+   * С 3 м на ТВ цвет фишки мало что говорит — над каждым столбиком висит ярлык: инициалы игрока
+   * (как на аватарке рельса) и сумма, на плашке цвета игрока. Размер задан в долях высоты экрана,
+   * а не в метрах, поэтому он одинаково читается на любом экране. Если ярлыки налезают друг на друга,
+   * крупная ставка остаётся, мелкая гаснет (цвет фишки всё равно показывает, чья она).
+   * На общей клетке — один ярлык: плашки до трёх игроков, «+N» и общая сумма.
+   */
+  const tagGroup = new THREE.Group();
+  scene.add(tagGroup);
+  const tags = new Map();
+  let tagFade = 0;
+  let tagTick = 0;
+  // ярлык: одна плашка цвета игрока «инициалы сумма»; у общей клетки — плашки нескольких игроков и общая сумма
+  function drawTag(items, total) {
+    const H = 64;
+    const font = `800 ${Math.round(H * 0.62)}px "Roboto Condensed", "Arial Narrow", Arial, sans-serif`;
+    const m = canvas(8, 8).getContext("2d");
+    m.font = font;
+    const pad = H * 0.28, gap = H * 0.16;
+    const single = items.length === 1;
+    const show = single ? items : items.slice(0, 3);
+    const more = items.length - show.length;
+    const parts = show.map((it) => ({ ...it, text: single ? it.ini + " " + rlAmount(it.amount) : it.ini }));
+    parts.forEach((pt) => { pt.w = m.measureText(pt.text).width + pad * 2; });
+    const tail = single ? "" : (more > 0 ? `+${more} ` : "") + rlAmount(total);
+    const tailW = tail ? m.measureText(tail).width + pad * 2 : 0;
+    const W = Math.ceil(parts.reduce((a, pt) => a + pt.w + gap, 0) + tailW + 4);
+    const c = canvas(W, H);
+    const g = c.getContext("2d");
+    g.font = font;
+    g.textBaseline = "middle";
+    let x = 2;
+    const pill = (w, fill) => {
+      g.beginPath();
+      g.roundRect(x, 2, w, H - 4, H / 2 - 3);
+      g.fillStyle = fill;
+      g.fill();
+      g.lineWidth = 4;
+      g.strokeStyle = "rgba(10,6,3,0.85)";
+      g.stroke();
+    };
+    for (const pt of parts) {
+      pill(pt.w, pt.hex);
+      g.fillStyle = "#120c07";
+      g.fillText(pt.text, x + pad, H / 2 + 2);
+      x += pt.w + gap;
+    }
+    if (tail) {
+      pill(tailW, "rgba(20,14,9,0.92)");
+      g.fillStyle = "#f1e6cf";
+      g.fillText(tail, x + pad, H / 2 + 2);
+    }
+    return c;
+  }
+  function syncTags(dt) {
+    // один ярлык на клетку ставки: игроки на общей клетке собираются в одну строку, а не спорят за место
+    const groups = new Map();
+    for (const s2 of st.stacks.values()) {
+      let gr = groups.get(s2.key);
+      if (!gr) { gr = { key: s2.key, items: [], total: 0, top: 0 }; groups.set(s2.key, gr); }
+      gr.items.push({ ini: s2.ini || "?", amount: s2.amount, hex: s2.hex || "#ccc" });
+      gr.total += s2.amount;
+      gr.top = Math.max(gr.top, s2.chips.length * CHIP_H);
+    }
+    for (const [id, t] of tags) if (!groups.has(id)) { tagGroup.remove(t.sp); t.sp.material.map.dispose(); t.sp.material.dispose(); tags.delete(id); }
+    for (const [id, gr] of groups) {
+      gr.items.sort((a, b) => b.amount - a.amount);
+      const text = gr.items.map((it) => it.ini + ":" + it.amount + ":" + it.hex).join("|");
+      let t = tags.get(id);
+      if (!t) {
+        const mat = new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false, toneMapped: false, sizeAttenuation: false, opacity: 0 });
+        t = { sp: new THREE.Sprite(mat), text: "", a: 0, aim: 1, ratio: 1 };
+        t.sp.renderOrder = 20;
+        t.sp.frustumCulled = false;
+        tagGroup.add(t.sp);
+        tags.set(id, t);
+        const [bx, bz] = betPos(id);
+        t.x = bx;
+        t.z = bz;
+      }
+      if (t.text !== text) {
+        const c = drawTag(gr.items, gr.total);
+        if (t.sp.material.map) t.sp.material.map.dispose();
+        t.sp.material.map = tex(c, { aniso: 1 });
+        t.sp.material.needsUpdate = true;
+        t.ratio = c.width / c.height;
+        t.text = text;
+      }
+      t.total = gr.total;
+      t.top = gr.top;
+    }
+    // высота ярлыка — 3% высоты кадра, но не меньше 22 px
+    const hPx = Math.max(22, 0.03 * renderer.domElement.clientHeight);
+    const hFrac = hPx / Math.max(1, renderer.domElement.clientHeight);
+    const k = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    // ярлыки нужны на общем плане во время ставок; на колесе и на выплатах они только мешают
+    const want = st.mode !== "payout" && shotName === "overview" ? 1 : 0;
+    tagFade += (want - tagFade) * Math.min(1, dt * 6);
+    tagGroup.visible = tagFade > 0.01;
+    if (!tagGroup.visible) return;
+    // раскладка без наложений: раз в несколько кадров, по убыванию суммы — мелкие ставки уступают крупным
+    if (++tagTick % 4 === 0) {
+      const list = [...tags.values()].sort((a, b) => b.total - a.total);
+      const placed = [];
+      const aspect = camera.aspect;
+      for (const t of list) {
+        tmpV.set(t.x, t.top + 0.004, t.z).project(camera);
+        const h = hFrac * 2, w = (hFrac * 2 * t.ratio) / aspect;
+        const y0 = tmpV.y + h * 0.45;
+        const rect = [tmpV.x - w / 2, y0, tmpV.x + w / 2, y0 + h];
+        let hit = false;
+        for (const q of placed) {
+          const ox = Math.min(rect[2], q[2]) - Math.max(rect[0], q[0]);
+          const oy = Math.min(rect[3], q[3]) - Math.max(rect[1], q[1]);
+          if (ox > 0 && oy > 0 && ox * oy > 0.08 * w * h) { hit = true; break; }
+        }
+        t.aim = hit ? 0 : 1;
+        if (!hit) placed.push(rect);
+      }
+    }
+    for (const t of tags.values()) {
+      t.a += (t.aim - t.a) * Math.min(1, dt * 8);
+      t.sp.position.set(t.x, t.top + 0.004, t.z);
+      t.sp.center.set(0.5, -0.45); // над столбиком, а не на нём: сами фишки остаются видны
+      t.sp.scale.set(hFrac * k * t.ratio, hFrac * k, 1);
+      t.sp.material.opacity = t.a * tagFade;
+      t.sp.visible = t.sp.material.opacity > 0.01;
+    }
   }
 
   // ---------- фишки ----------
@@ -1682,7 +1977,7 @@ function create3D(container, opts) {
   function fanOffset(i, n, key) {
     if (n <= 1) return [0, 0];
     const big = !key.includes(":") || key.startsWith("dz:") || key.startsWith("col:");
-    const rad = (big ? 0.019 : 0.012) + 0.0016 * n;
+    const rad = (big ? 0.024 : 0.015) + 0.002 * n;
     const a = -Math.PI / 2 + ((i + 0.5) / n) * TAU + (strHash(key) % 100) / 100;
     return [Math.cos(a) * rad, Math.sin(a) * rad];
   }
@@ -1713,6 +2008,8 @@ function create3D(container, opts) {
   }
   let clinkBudget = 0;
   function syncStacks(players, instant) {
+    // вкладка скрыта — анимировать некому: ставим фишки сразу на места
+    if (typeof document !== "undefined" && document.hidden) instant = true;
     const now = nowL();
     const want = new Map();
     const byKey = new Map();
@@ -1740,7 +2037,7 @@ function create3D(container, opts) {
       arr.forEach(({ p, a }, i) => {
         const [ox, oz] = fanOffset(i, arr.length, key);
         const id = p.id + "|" + key;
-        want.set(id, { id, pid: p.id, key, amount: a, count: chipCount(a), color: colorOfHex(p.color || "#cccccc"), x: bx + ox, z: bz + oz });
+        want.set(id, { id, pid: p.id, key, amount: a, count: chipCount(a), color: colorOfHex(p.color || "#cccccc"), hex: p.color || "#cccccc", ini: initialsOf(p), row: i, x: bx + ox, z: bz + oz });
       });
     }
     let added = 0;
@@ -1759,6 +2056,9 @@ function create3D(container, opts) {
       }
       s.amount = w.amount;
       s.color = w.color;
+      s.hex = w.hex;
+      s.ini = w.ini;
+      s.row = w.row;
       const moved = Math.abs(s.x - w.x) > 1e-6 || Math.abs(s.z - w.z) > 1e-6;
       if (moved) {
         s.x = w.x;
@@ -1780,7 +2080,8 @@ function create3D(container, opts) {
           const r = chipRest(s, i);
           c = pool.add({ x: r.x, y: r.y, z: r.z, rot: r.rot, color: s.color });
         } else {
-          c = dropChip(s, i, now, added * 45);
+          // лесенка падений короткая: при пачке ставок (переподключение) иначе последние фишки ждали бы секундами
+          c = dropChip(s, i, now, Math.min(600, added * 30));
           added++;
         }
         if (!c) break;
@@ -1802,6 +2103,8 @@ function create3D(container, opts) {
     const key = `${result.seed}|${result.spinAt}|${result.number}`;
     if (st.spin && st.spin.key === key && st.mode === "spin") return;
     finishPayout();
+    clearWinner();
+    dolly.visible = false;
     const ns = nowS();
     const spinAt = Number(result.spinAt) || ns;
     const revealAt = Number(result.revealAt) || spinAt + ((result.story && result.story.duration) || 10000);
@@ -1814,15 +2117,12 @@ function create3D(container, opts) {
     }
     const tCall = ns - spinAt;
     const cur = currentWheelAngle(ns);
-    const sp = { key, res: result, traj, spinAt, revealAt, story: result.story || {}, tCall, fired: new Set(), landed: false, revealed: false, off0: 0, blendA: 0, blendB: 0 };
-    const base = tCall < 0 ? preAngle(traj, tCall) : traj.wheelAngle(tCall);
-    if (tCall < 400) {
-      sp.off0 = wrapPi(cur - base);
-      sp.blendA = Math.max(tCall, -1200);
-      sp.blendB = Math.max(sp.blendA + 600, 300);
-    }
+    const sp = { key, res: result, traj, spinAt, revealAt, story: result.story || {}, tCall, fired: new Set(), landed: false, revealed: false };
+    // текущая скорость ротора (со знаком): холостой ход крутит угол вниз
+    const curV = st.spin && st.mode !== "idle" ? (currentWheelAngle(ns + 1) - currentWheelAngle(ns - 1)) / 0.002 : -st.wheelV;
+    sp.wheel = wheelHandoff(traj, cur, curV, tCall);
     // шарик из прошлой ячейки уходит в руку крупье, если спин начат вовремя
-    sp.pick = st.ballShown && tCall < 300 ? { phi: st.ballPhi, a: clamp(tCall, -700, 0), b: clamp(tCall, -700, 0) + 700 } : null;
+    sp.pick = st.ballShown && tCall < 300 ? { phi: st.ballPhi, a: clamp(tCall, -900, -100), b: clamp(tCall, -900, -100) + 650 } : null;
     // события, которые уже прошли, не звучат (переподключение)
     for (const e of traj.events) if (e.t < tCall - 250) sp.fired.add(e);
     if (tCall >= traj.times.settle) sp.landed = true;
@@ -1859,6 +2159,7 @@ function create3D(container, opts) {
       st.ballShown = true;
       setGlow(WHEEL.indexOf(number), 0.8);
     }
+    showWinner(number, "both");
     st.mode = "payout";
     const pay = { number, t0: now, spinKey: st.spin && st.spin.key, done: false, jackpot: !!(st.spin && st.spin.story.jackpot) };
     st.pay = pay;
@@ -2011,13 +2312,68 @@ function create3D(container, opts) {
   const C = WHEEL_POS;
   const camPos = new Spring(3, 2.2), camLook = new Spring(3, 2.2), camFov = new Spring(1, 2.0), orbit = new Spring(1, 3.0);
   let shotName = "overview";
+  /*
+   * Общий план подбирается по кадру, а не константами: раскладка целиком и большая часть колеса
+   * должны влезть в свободную часть экрана (без табло, чата и рельса), и не мельче, чем нужно.
+   * Считается на ресайз: бинарный поиск расстояния + подгонка точки взгляда к центру свободной зоны.
+   */
+  const fitCam = new THREE.PerspectiveCamera();
+  let overviewFit = null;
+  function fitShot(points, elev, yaw, fov) {
+    const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(elev), Math.sin(elev), Math.cos(yaw) * Math.cos(elev));
+    const look = new THREE.Vector3();
+    for (const p of points) look.add(p);
+    look.multiplyScalar(1 / points.length);
+    fitCam.copy(camera);
+    fitCam.fov = fov;
+    const fx0 = -1 + 2 * safe.left, fx1 = 1 - 2 * safe.right, fy0 = -1 + 2 * safe.bottom, fy1 = 1 - 2 * safe.top;
+    const box = (d) => {
+      fitCam.position.copy(look).addScaledVector(dir, d);
+      fitCam.lookAt(look);
+      fitCam.updateMatrixWorld();
+      fitCam.updateProjectionMatrix();
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const p of points) { tmpV.copy(p).project(fitCam); x0 = Math.min(x0, tmpV.x); x1 = Math.max(x1, tmpV.x); y0 = Math.min(y0, tmpV.y); y1 = Math.max(y1, tmpV.y); }
+      return [x0, x1, y0, y1];
+    };
+    let d = 2;
+    for (let it = 0; it < 4; it++) {
+      let lo = 0.5, hi = 8;
+      for (let k = 0; k < 28; k++) {
+        const m = (lo + hi) / 2;
+        const [x0, x1, y0, y1] = box(m);
+        if (x1 - x0 <= (fx1 - fx0) * 0.96 && y1 - y0 <= (fy1 - fy0) * 0.96) hi = m; else lo = m;
+      }
+      d = hi;
+      // сдвигаем точку взгляда, чтобы рамка точек встала по центру свободной зоны
+      const [x0, x1, y0, y1] = box(d);
+      const ex = (x0 + x1) / 2 - (fx0 + fx1) / 2, ey = (y0 + y1) / 2 - (fy0 + fy1) / 2;
+      const right = new THREE.Vector3().setFromMatrixColumn(fitCam.matrixWorld, 0);
+      const up = new THREE.Vector3().setFromMatrixColumn(fitCam.matrixWorld, 1);
+      const scale = d * Math.tan(THREE.MathUtils.degToRad(fov) / 2);
+      look.addScaledVector(right, ex * scale * camera.aspect).addScaledVector(up, ey * scale);
+    }
+    return { pos: look.clone().addScaledVector(dir, d).toArray(), look: look.toArray(), fov };
+  }
+  function computeOverview() {
+    const y = 0.03;
+    const pts = [
+      new THREE.Vector3(LAY.x0 - 0.01, y, LAY.z0 - 0.02), new THREE.Vector3(LAY.x0 + LAY.w + 0.01, y, LAY.z0 - 0.02),
+      new THREE.Vector3(LAY.x0 - 0.01, 0, LAY.z0 + LAY.h + 0.02), new THREE.Vector3(LAY.x0 + LAY.w + 0.01, 0, LAY.z0 + LAY.h + 0.02),
+      // колесо целиком, с деревянным бортиком чаши и небольшим запасом — владелец любит его больше всего
+      ...Array.from({ length: 12 }, (_, i) => {
+        const a = (i / 12) * TAU, R = GEOM.bowlR + 0.045;
+        return new THREE.Vector3(WHEEL_POS.x + Math.cos(a) * R, WHEEL_POS.y + GEOM.bowlTopY, WHEEL_POS.z + Math.sin(a) * R);
+      }),
+      new THREE.Vector3(TRAY.x, 0.03, TRAY.z - TRAY.d / 2),
+    ];
+    overviewFit = fitShot(pts, THREE.MathUtils.degToRad(64), THREE.MathUtils.degToRad(Number(opts.overviewYaw) || 0), 35);
+  }
   function overviewShot(tl) {
-    const a = camera.aspect;
-    const k = Math.max(1, 1.62 / a) * fitK(); // на узком экране отъезжаем пропорционально: ширина стола — главное ограничение
-    const drift = [Math.sin(tl * 0.00007) * 0.045, Math.sin(tl * 0.00005) * 0.02, Math.cos(tl * 0.00006) * 0.03];
-    const look = [-0.4, -0.02, -0.05];
-    const off = [0.0, 1.76, 1.06];
-    return { pos: [look[0] + off[0] * k + drift[0], look[1] + off[1] * k + drift[1], look[2] + off[2] * k + drift[2]], look, fov: 35 };
+    if (!overviewFit) computeOverview();
+    const drift = [Math.sin(tl * 0.00007) * 0.03, Math.sin(tl * 0.00005) * 0.015, Math.cos(tl * 0.00006) * 0.02];
+    const o = overviewFit;
+    return { pos: [o.pos[0] + drift[0], o.pos[1] + drift[1], o.pos[2] + drift[2]], look: o.look, fov: o.fov };
   }
   function wheelShot(push) {
     const a = camera.aspect;
@@ -2051,7 +2407,12 @@ function create3D(container, opts) {
         const rest = [GEOM.pocketR * Math.cos(th), GEOM.floorY + GEOM.ballR, GEOM.pocketR * Math.sin(th)];
         return { p: [lerp(rest[0], hand[0], k), lerp(rest[1], hand[1], k) + Math.sin(Math.PI * k) * 0.07, lerp(rest[2], hand[2], k)], s, shown: true, air: true };
       }
-      return { p: hand, s, shown: sp.pick ? true : t > 150, air: true };
+      // замах: шарик в руке чуть уходит назад по треку и уже с ходом вперёд срывается в бросок — без мёртвой паузы
+      const w0 = sp.pick ? sp.pick.b : Math.max(150, sp.tCall);
+      const k = clamp((t - w0) / (tr.times.launch - w0), 0, 1);
+      const d = -0.06 * 6.75 * k * k * (1 - k);
+      const th = s.theta + d;
+      return { p: [s.r * Math.cos(th), s.y, s.r * Math.sin(th)], s, shown: sp.pick ? true : t > 150, air: true };
     }
     const s = tr.sample(t);
     return { p: [s.r * Math.cos(s.theta), s.y, s.r * Math.sin(s.theta)], s, shown: true, air: s.air };
@@ -2102,6 +2463,7 @@ function create3D(container, opts) {
     emit("reveal", { number: Number(sp.res.number), at: sp.revealAt });
     setGlow(sp.traj.target, 1);
     st.glow.level = 1.4; // вспышка поверх и спад к 1
+    showWinner(Number(sp.res.number), "both");
     const story = sp.story || {};
     const n = Number(sp.res.number);
     if (n === 0 || story.zero) st.effects.green = 1;
@@ -2188,6 +2550,23 @@ function create3D(container, opts) {
     W3.glowLight.color.copy(G.color);
     W3.glowLight.intensity = G.level * 0.14 * pulse;
     W3.glow.visible = G.level > 0.01;
+    // выпавший номер пульсирует: вспышка при появлении, потом ровное «дыхание» раз в ~1,2 с
+    if (win.n != null) {
+      const age = (nl - win.t0) / 1000;
+      const beat = 0.5 + 0.5 * Math.sin(age * 5.2);
+      const pop = Math.max(0, 1 - age / 0.6);
+      W3.numHL.visible = win.wheel;
+      W3.numHL.material.color.setScalar(0.9 + 0.25 * beat + 0.6 * pop);
+      cellHL.visible = win.table;
+      cellHL.material.opacity = smooth(age / 0.35);
+      cellHL.material.color.setScalar(0.82 + 0.3 * beat + 0.4 * pop);
+      cellLight.intensity = win.table ? (0.22 + 0.12 * beat) * smooth(age / 0.35) : 0;
+      cellHalo.visible = ripple.visible = win.table;
+      haloMat.opacity = (0.55 + 0.35 * beat) * smooth(age / 0.35);
+      const ph = (age % 1.25) / 1.25;
+      ripple.scale.setScalar(win.rip + ph * 0.12); // волна небольшая: не должна заходить на колесо
+      ripple.material.opacity = (1 - ph) * (1 - ph) * 0.9;
+    }
 
     // свет: во время спина стол уходит в полутень, зеро красит лампу зелёным, джекпот — золото
     const spinning = st.mode === "spin" && t > -600 && !(sp && sp.revealed && t > sp.revealAt - sp.spinAt + 1500);
@@ -2228,17 +2607,23 @@ function create3D(container, opts) {
       const kk = Math.pow(Math.max(1, 1.5 / camera.aspect), 0.8) * Math.pow(fitK(), 0.7);
       const a0 = Math.atan2(0.86, 0.36);
       const aT = a0 + wrapPi(sp.side - a0);
-      if (t < T.launch - 500 || (st.calm && !finale)) {
-        const push = st.calm ? smooth((t - T.launch) / Math.max(1, T.drop - T.launch)) * 0.6 + smooth((t - T.drop) / 2500) * 0.4 : 0;
+      /*
+       * Облёт начинается сразу с вызова spin(), а не с броска: иначе камера успевала доехать
+       * от общего плана до колеса, почти замереть (0,01 м/с) и лишь потом снова тронуться —
+       * это и читалось как «пауза при раскрутке». Теперь цель движется всё время, пружина её догоняет.
+       */
+      const t0 = clamp(sp.tCall, -12000, T.launch - 500);
+      if (st.calm && !finale) {
+        const push = smooth((t - t0) / Math.max(1, T.drop - t0)) * 0.6 + smooth((t - T.drop) / 2500) * 0.4;
         shot = wheelShot(push);
         shotName = "wheel";
       } else if (!finale) {
         /*
          * Круги по треку: камера плавно облетает колесо и опускается к той стороне,
-         * где потом будут отскоки (режиссёр знает траекторию заранее). Медленно — за все 4–8 с кругов,
+         * где потом будут отскоки (режиссёр знает траекторию заранее). Медленно — за всё время до схода,
          * поэтому к падению шарика камера уже на месте и не мечется за ним.
          */
-        const u = easeInOut((t - T.launch + 500) / Math.max(1, T.drop - T.launch + 250));
+        const u = smooth((t - t0) / Math.max(1, T.drop - 250 - t0));
         const al = lerp(a0, aT, u);
         const R = lerp(0.932 * kk, 0.74, u), y = lerp(1.02 * kk, 0.56, u);
         shot = { pos: [C.x + Math.cos(al) * R, C.y + y, C.z + Math.sin(al) * R], look: [C.x + 0.12 * (1 - u), C.y - 0.04, C.z + 0.03 * (1 - u)], fov: lerp(34, 32, u) };
@@ -2301,6 +2686,8 @@ function create3D(container, opts) {
     camera.lookAt(l[0], l[1], l[2]);
     if (Math.abs(camera.fov - f) > 1e-4) { camera.fov = f; camera.updateProjectionMatrix(); }
 
+    dealer.updateClip(camera, 1 - 2 * safe.top);
+
     // глубина резкости: фокус на шарике
     const dofOn = level >= 2 && !st.calm;
     post.amount += ((dofOn ? dof : 0) - post.amount) * Math.min(1, dt * 3);
@@ -2308,6 +2695,7 @@ function create3D(container, opts) {
       W3.wheel.localToWorld(tmpV.copy(ballLocal)).project(camera);
       post.focus.set(tmpV.x * 0.5 + 0.5, tmpV.y * 0.5 + 0.5);
     }
+    syncTags(dt);
   }
 
   function render() {
@@ -2335,6 +2723,7 @@ function create3D(container, opts) {
     camera.aspect = w / h;
     camera.setViewOffset(w, h, ((safe.right - safe.left) / 2) * w, ((safe.bottom - safe.top) / 2) * h, w, h);
     camera.updateProjectionMatrix();
+    overviewFit = null; // пересчитать общий план под новый размер
     const pr = renderer.getPixelRatio();
     post.setSize(Math.round(w * pr), Math.round(h * pr));
   }
@@ -2352,7 +2741,13 @@ function create3D(container, opts) {
       const c0 = performance.now();
       update(dt);
       render();
-      perf.cpu += (performance.now() - c0 - perf.cpu) * 0.05; // время JS на кадр (без ожидания GPU)
+      const spent = performance.now() - c0;
+      perf.cpu += (spent - perf.cpu) * 0.05; // время JS на кадр (без ожидания GPU)
+      if (dbg.trace) {
+        // стенд: покадровая запись движения — ловить рывки и провалы скорости
+        const bw = W3.wheel.localToWorld(tmpV.copy(W3.ball.position));
+        dbg.trace.push([nl, dtMs, spent, nowS() - (st.spin ? st.spin.spinAt : 0), -W3.rotor.rotation.y, bw.x, bw.y, bw.z, camera.position.x, camera.position.y, camera.position.z, renderer.info.programs.length, shotName, W3.ball.visible ? 1 : 0]);
+      }
     }
     // автоснижение качества: кадр стабильно дольше 20 мс
     perf.frames++;
@@ -2374,7 +2769,12 @@ function create3D(container, opts) {
   }
   function onVis() {
     if (document.hidden) { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; }
-    else if (!running) { running = true; lastL = 0; perf.since = 0; raf = requestAnimationFrame(frame); }
+    else if (!running) {
+      running = true; lastL = 0; perf.since = 0;
+      // вкладка снова видна: сразу кадр с досчитанными (по времени) анимациями — фишки не «висят в воздухе»
+      if (!dbg.time) { try { update(0.1); render(); } catch (e) { console.error(e); } }
+      raf = requestAnimationFrame(frame);
+    }
   }
   document.addEventListener("visibilitychange", onVis);
   // контейнер может менять размер и без resize окна (раскладка страницы)
@@ -2382,9 +2782,25 @@ function create3D(container, opts) {
   if (ro) ro.observe(container);
   applyLevel(level);
   // прогрев: компилируем шейдеры сцены и глубины резкости заранее, иначе первый финал дёрнется
+  // (руки, лопатка, маркер, шлейф, свечения и искры скрыты — на прогреве показываем всё на один кадр)
   try {
+    const hidden = [];
+    scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+    // и оба варианта шейдеров: на экран (с тонмаппингом) и в буфер глубины резкости (линейный) —
+    // иначе при первом «полёте за шариком» компилировались недостающие варианты (~70 мс на M1)
+    renderer.setRenderTarget(post.rtScene);
     renderer.compile(scene, camera);
+    renderer.setRenderTarget(null);
+    renderer.compile(scene, camera);
+    // обзорная камера сверху — чтобы в кадр попало всё, включая то, что вне общего плана
+    const wide = new THREE.PerspectiveCamera(80, 1.6, 0.05, 20);
+    wide.position.set(-0.3, 2.6, 0.6);
+    wide.lookAt(-0.3, 0, -0.05);
+    post.render(scene, wide);
+    renderer.render(scene, wide);
     post.render(scene, camera);
+    renderer.render(scene, camera);
+    for (const o of hidden) o.visible = false;
   } catch (e) { /* не критично */ }
   raf = requestAnimationFrame(frame);
 
@@ -2403,11 +2819,12 @@ function create3D(container, opts) {
       st.mode = "idle";
       dolly.visible = false;
       setGlow(-1, 0);
+      clearWinner();
     },
     setBets(players, unit) {
       if (unit > 0) opts.chipUnit = unit;
       if (st.mode === "payout" && st.pay && !st.pay.done) return;
-      if (st.mode === "payout") { finishPayout(); st.mode = "idle"; dolly.visible = false; setGlow(-1, 0); }
+      if (st.mode === "payout") { finishPayout(); st.mode = "idle"; dolly.visible = false; setGlow(-1, 0); clearWinner(); }
       syncStacks(players || [], false);
     },
     noMoreBets() {
@@ -2443,6 +2860,9 @@ function create3D(container, opts) {
       get traj() { return st.spin && st.spin.traj; },
       get fps() { return perf.fps; },
       get cpu() { return perf.cpu; },
+      traceStart() { dbg.trace = []; },
+      progs() { return renderer.info.programs.map((p) => p.name + "|" + p.cacheKey); },
+      traceStop() { const t = dbg.trace; dbg.trace = null; return t; },
       get level() { return level; },
       get shot() { return shotName; },
       setLevel(lv) { applyLevel(clamp(lv, 0, 2)); },
@@ -2461,6 +2881,8 @@ function create3D(container, opts) {
       unfreeze() { dbg.time = null; dbg.silent = false; lastL = 0; },
       renderNow() { render(); },
       get parts() { return W3; },
+      // сколько фишек ещё в полёте и сколько всего — стенд проверяет, что после скрытой вкладки всё осело
+      get chips() { return { total: pool.list.length, moving: pool.list.filter((c) => c.anim).length, tags: tags.size }; },
       get glow() { return { idx: st.glow.idx, level: st.glow.level, target: st.glow.target, vis: W3.glow.visible, op: W3.glow.material.opacity, pos: W3.glow.position.toArray(), light: W3.glowLight.intensity }; },
       // камера стенда относительно центра колеса: [x, y, z, lookX, lookY, lookZ, fov]
       cam(c) { dbg.cam = c; },
@@ -2542,9 +2964,7 @@ function createFallback(container, opts) {
     const sp = st.spin;
     if (!sp || st.mode === "idle") return st.wheelA;
     const t = ns - sp.spinAt;
-    const base = t < 0 ? sp.traj.wheelAngle(0) - IDLE_SPEED * (t / 1000) : sp.traj.wheelAngle(t);
-    const k = sp.blendB > sp.blendA ? 1 - smooth((t - sp.blendA) / (sp.blendB - sp.blendA)) : 0;
-    return base + sp.off0 * k;
+    return sp.wheel.angle(t);
   }
   let last = 0, raf = 0, disposed = false;
   function frame(nl) {
@@ -2569,7 +2989,7 @@ function createFallback(container, opts) {
         else if (e.type === "settle") { sound.settle(1); if (!sp.landed) { sp.landed = true; emit("land", { number: Number(sp.res.number), at: sp.spinAt + e.t }); } }
         emit("sfx", { type: e.type });
       }
-      if (!sp.revealed && ns >= sp.revealAt) { sp.revealed = true; emit("reveal", { number: Number(sp.res.number), at: sp.revealAt }); }
+      if (!sp.revealed && ns >= sp.revealAt) { sp.revealed = true; st.win = Number(sp.res.number); st.winT = nl; emit("reveal", { number: Number(sp.res.number), at: sp.revealAt }); }
       if (ball) sound.hum(ball.rolling, ball.phase === "rim" || ball.phase === "slope" ? "wood" : "rotor", ball.rate);
     } else {
       st.wheelV += (IDLE_SPEED - st.wheelV) * Math.min(1, dt * 0.35);
@@ -2604,12 +3024,22 @@ function createFallback(container, opts) {
       }
       g.globalAlpha = 1;
     }
-    if (st.pay) {
-      const [cx, cz] = cellCenter(st.pay.number);
+    // выпавший номер: клетка стола светится и пульсирует до новых ставок (на зеро — зелёным)
+    const beat = st.win != null ? 0.5 + 0.5 * Math.sin(((nl - st.winT) / 1000) * 5.2) : 0;
+    if (st.win != null) {
+      const n = st.win, zero = n === 0;
+      const [cx, cz] = cellCenter(n);
       const [x, y] = tpt(cx, cz);
-      g.strokeStyle = GOLD; g.lineWidth = 3;
-      g.strokeRect(x - (LAY.cw * scale) / 2, y - (LAY.ch * scale) / 2, LAY.cw * scale, LAY.ch * scale);
-      g.fillStyle = "#e0bf7a";
+      const w = (zero ? LAY.zeroW : LAY.cw) * scale, h = (zero ? 3 * LAY.ch : LAY.ch) * scale;
+      const edge = zero ? "#8dffc0" : "#ffd98a";
+      g.save();
+      g.fillStyle = zero ? `rgba(90,255,160,${0.25 + 0.2 * beat})` : `rgba(255,205,110,${0.25 + 0.2 * beat})`;
+      g.fillRect(x - w / 2, y - h / 2, w, h);
+      g.shadowColor = edge; g.shadowBlur = 14 + 10 * beat;
+      g.strokeStyle = edge; g.lineWidth = 4;
+      g.strokeRect(x - w / 2, y - h / 2, w, h);
+      g.restore();
+      g.fillStyle = "#f4ecd8";
       g.beginPath(); g.arc(x, y, CHIP.R * scale * 0.6, 0, TAU); g.fill();
     }
     // колесо
@@ -2617,6 +3047,17 @@ function createFallback(container, opts) {
     g.drawImage(geo.stator, geo.cx - geo.R, geo.cy - geo.R, geo.R * 2, geo.R * 2);
     g.save(); g.translate(geo.cx, geo.cy); g.rotate(Wa);
     g.drawImage(geo.rotor, -geo.R, -geo.R, geo.R * 2, geo.R * 2);
+    if (st.win != null) {
+      // сектор выпавшего номера: яркая рамка по ячейке и номеру
+      const i = WHEEL.indexOf(st.win), a0 = (i - 0.5) * PA, a1 = (i + 0.5) * PA;
+      g.save();
+      g.shadowColor = st.win === 0 ? "#8dffc0" : "#ffd98a"; g.shadowBlur = 12 + 10 * beat;
+      g.strokeStyle = g.shadowColor; g.lineWidth = 3 + 2 * beat;
+      g.fillStyle = `rgba(255,240,200,${0.18 + 0.2 * beat})`;
+      g.beginPath(); g.arc(0, 0, GEOM.rotorR * k, a0, a1); g.arc(0, 0, GEOM.pocketInnerR * k, a1, a0, true); g.closePath();
+      g.fill(); g.stroke();
+      g.restore();
+    }
     g.restore();
     let bx, by, bs;
     if (ball) { bx = geo.cx + Math.cos(ball.theta) * ball.r * k; by = geo.cy + Math.sin(ball.theta) * ball.r * k; bs = 1 + (ball.y - (GEOM.floorY + GEOM.ballR)) * 9; }
@@ -2663,6 +3104,7 @@ function createFallback(container, opts) {
       }
       st.mode = "idle";
       st.pay = null;
+      st.win = null;
     },
     setBets(players, unit) { if (unit > 0) opts.chipUnit = unit; if (st.pay && nowS() - st.pay.at < 4500) return; st.pay = null; syncBets(players); },
     noMoreBets() { sound.swish(200, 0.8); },
@@ -2676,12 +3118,13 @@ function createFallback(container, opts) {
       try { traj = buildTrajectory({ number: Number(result.number), seed: Number(result.seed), story: result.story || {}, spinMs: revealAt - spinAt }); } catch (e) { console.error(e); return; }
       const cur = wheelAngle(ns);
       const tCall = ns - spinAt;
-      const sp = { key, res: result, traj, spinAt, revealAt, fired: new Set(), off0: 0, blendA: 0, blendB: 0 };
-      const base = tCall < 0 ? traj.wheelAngle(0) - IDLE_SPEED * (tCall / 1000) : traj.wheelAngle(tCall);
-      if (tCall < 400) { sp.off0 = wrapPi(cur - base); sp.blendA = Math.max(tCall, -1200); sp.blendB = Math.max(sp.blendA + 600, 300); }
+      const sp = { key, res: result, traj, spinAt, revealAt, fired: new Set() };
+      sp.wheel = wheelHandoff(traj, cur, st.spin && st.mode !== "idle" ? undefined : -st.wheelV, tCall);
       for (const e of traj.events) if (e.t < tCall - 250) sp.fired.add(e);
       st.spin = sp;
       st.mode = "spin";
+      st.win = null;
+      st.pay = null;
     },
     payout(d) {
       if (!d) return;
@@ -2689,6 +3132,7 @@ function createFallback(container, opts) {
       const number = Number(d.number);
       for (const s of st.bets) s.lose = !betNumbers(s.key).includes(number);
       st.pay = { number, t0: performance.now(), at: nowS() };
+      if (st.win !== number) { st.win = number; st.winT = performance.now(); }
       st.mode = "payout";
       sound.swish(900, 0.6);
       sound.clink(4, 2600, 0.16);
@@ -2712,11 +3156,12 @@ function createFallback(container, opts) {
 export function createRouletteScene(container, opts = {}) {
   if (!opts.force2d && webglOk()) {
     try {
-      return create3D(container, opts);
+      // ручка для отладки со стенда и из DevTools: window.__rouletteScene._debug
+      return (window.__rouletteScene = create3D(container, opts));
     } catch (e) {
       console.error("[roulette] 3D не запустилось, рисуем 2D", e);
       container.querySelectorAll("canvas").forEach((c) => c.remove());
     }
   }
-  return createFallback(container, opts);
+  return (window.__rouletteScene = createFallback(container, opts));
 }

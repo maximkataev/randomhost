@@ -327,7 +327,7 @@ function rlOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
 }
 
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
-function rlConnect({ code, onMessage, onOpen, onGone, onState }) {
+function rlConnect({ code, onMessage, onOpen, onGone, onState, onSendFail }) {
   let t = null, delay = 500, stopped = false;
   const holder = { api: null, send: (m) => holder.api && holder.api.send(m), stop() { stopped = true; clearTimeout(t); if (holder.api) holder.api.close(); } };
   const open = () => {
@@ -339,6 +339,7 @@ function rlConnect({ code, onMessage, onOpen, onGone, onState }) {
       onOpen: () => { delay = 500; if (onState) onState("open"); if (onOpen) onOpen(); },
       onClose: () => { if (stopped) return; if (onState) onState("lost"); t = setTimeout(open, delay); delay = Math.min(delay * 2, 8000); },
       onGone: () => { stopped = true; if (onGone) onGone(); },
+      onSendFail, // сообщение не ушло (сокет закрыт) — страница решает, повторить ли его после переподключения
     });
   };
   open();

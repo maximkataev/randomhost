@@ -177,6 +177,45 @@ export function wheelModel(seed, over = {}) {
   return { w0, speed, decel, idle, angleAt, speedAt };
 }
 
+// ---------- стыковка холостого хода со спином ----------
+
+export const IDLE_SPEED = 0.55; // рад/с, холостой ход ротора между спинами
+const smoother = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * u * (u * (u * 6 - 15) + 10));
+
+/*
+ * Разгон перед броском (τ < 0): крупье толкает ротор, скорость плавно растёт с холостой до стартовой
+ * за 1,2 с (smoothstep по скорости — ускорение без скачков на концах).
+ */
+export function wheelPreAngle(tr, t) {
+  const s0 = tr.wheel.speed, R = 1.2;
+  const F = (u) => u * u * u - (u * u * u * u) / 2;
+  const u = Math.min(1, Math.max(0, (t + 1200) / 1200));
+  return tr.wheelAngle(0) + IDLE_SPEED * (-t / 1000) + (s0 - IDLE_SPEED) * R * (F(1) - F(u));
+}
+
+/*
+ * Колесо на доске крутится на холостом ходу со своим углом, а спину нужен угол из сида.
+ * Разницу E добираем добавкой E·(1 − smootherstep), C2-гладкой на обоих концах, и только ВПЕРЁД
+ * (E ∈ [−π/3, 5π/3)): раньше брался кратчайший путь ±π, и при минусе ротор тормозил до нуля
+ * и даже шёл назад прямо перед броском — отсюда «пауза при раскрутке».
+ * Окно стыковки — от вызова до 3 с после spinAt (ротор встречает шарик не раньше ~4,4 с),
+ * поэтому добавочная скорость не больше ~2 рад/с. Разница скоростей в момент вызова
+ * гасится членом dv·u(1−u)² — скорость непрерывна и там.
+ */
+export function wheelHandoff(tr, cur, curSpeed, tCall) {
+  const base = (t) => (t < 0 ? wheelPreAngle(tr, t) : tr.wheelAngle(t));
+  if (!(tCall < 1500)) return { angle: base, E: 0, until: tCall };
+  const A = tCall, B = Math.max(3000, tCall + 1500), D = (B - A) / 1000;
+  const E = mod(cur - base(A) + Math.PI / 3, TAU) - Math.PI / 3;
+  const v0 = (base(A + 0.5) - base(A - 0.5)) / 0.001;
+  const dv = Number.isFinite(curSpeed) ? curSpeed - v0 : 0;
+  const angle = (t) => {
+    const u = Math.min(1, Math.max(0, (t - A) / (B - A)));
+    return base(t) + E * (1 - smoother(u)) + dv * D * u * (1 - u) * (1 - u);
+  };
+  return { angle, E, until: B };
+}
+
 // ---------- построение ----------
 
 const G_HOP = 2.4; // «киношная» гравитация отскоков, м/с²: при настоящей 9,8 скачки не успеть разглядеть
