@@ -10,14 +10,16 @@
  */
 
 const GROUPS = {
-  hands: ["wires", "swipe", "hold", "order", "nopress", "catch"],
-  eyes: ["color", "odd", "code", "count", "letter", "sad"],
-  head: ["quiz", "sudoku", "seq", "math", "tf", "heavy", "chrono"],
+  hands: ["wires", "swipe", "hold", "order", "nopress", "catch", "spark", "slots", "rhythm", "coward"],
+  eyes: ["color", "odd", "code", "count", "letter", "sad", "shells", "simon", "blink", "flashes", "diff"],
+  head: ["quiz", "sudoku", "seq", "math", "tf", "heavy", "chrono", "manual", "rebus", "oddmeaning", "dice"],
+  // «Зал»: без других людей не решить — код показан на чужом телефоне или на общем экране
+  crowd: ["crowd"],
 };
 const TYPE_GROUP = {};
 for (const [g, types] of Object.entries(GROUPS)) for (const t of types) TYPE_GROUP[t] = g;
 // испытания режима «Эрудит»: только вопросы из банка
-const QUIZ_TYPES = ["quiz", "tf", "heavy", "chrono"];
+const QUIZ_TYPES = ["quiz", "tf", "heavy", "chrono", "rebus"];
 const BANK_TYPES = new Set(QUIZ_TYPES);
 
 // Если держатель завис на испытании — выдаём другое (§5)
@@ -281,6 +283,15 @@ const GEN = {
     const heavier = h.heavier === "a" ? 0 : 1;
     return { view: { options }, answer: flip ? 1 - heavier : heavier, minMs: MIN_HEAD };
   },
+  rebus(lvl, rnd, used) {
+    const list = bank().rebus;
+    let i = takeIndex(list, used.rebus, rnd, (q) => (q.lvl || 1) === lvl);
+    if (i < 0) i = takeIndex(list, used.rebus, rnd);
+    if (i < 0) return null;
+    const q = list[i];
+    const options = shuffle([q.right, ...q.wrong], rnd);
+    return { view: { q: q.q, options }, answer: options.indexOf(q.right), minMs: MIN_HEAD };
+  },
   chrono(lvl, rnd, used) {
     const list = bank().chrono;
     if (list.length < 3) return null;
@@ -299,7 +310,163 @@ const GEN = {
     }
     return null;
   },
+
+  // ---- ловкость: новые ----
+  spark(lvl) {
+    // искра ползёт по фитилю к бомбе; успей тапнуть по ней n раз
+    const n = by(lvl, 4, 5, 6), travel = by(lvl, 4500, 3800, 3200);
+    return { view: { n, travel }, answer: n, minMs: MIN_FAST + n * 120 };
+  },
+  slots(lvl, rnd) {
+    // три барабана по 6 символов, один из них 💣; остановить каждый, когда в окне бомба.
+    // Положение барабана в момент t (мс от начала показа): f = ((t / period + phase) * 6) mod 6.
+    const syms = shuffle(["🍒", "🔔", "🍋", "⭐", "7️⃣", "💣"], rnd);
+    const bomb = syms.indexOf("💣");
+    const base = by(lvl, 2100, 1700, 1300);
+    const reels = range(0, 2).map(() => ({ period: base + rnd(500), phase: rnd(1000) / 1000 }));
+    // эталонные моменты остановки: первый проход бомбы через окно после 600 мс, барабаны по очереди
+    let t0 = 600;
+    const answer = reels.map((r) => {
+      let t = ((((bomb / 6 - r.phase) % 1) + 1) % 1) * r.period;
+      while (t < t0) t += r.period;
+      t0 = t + 300;
+      return Math.round(t);
+    });
+    return { view: { syms, reels }, answer, minMs: 900 };
+  },
+  rhythm(lvl, rnd) {
+    // бомба тикает 4 раза — простучи так же; сравниваем промежутки
+    const beats = by(lvl, [[500, 500, 500]], [[400, 400, 800], [800, 400, 400], [400, 800, 400]], [[300, 300, 600], [600, 300, 300], [300, 600, 300], [300, 300, 300]]);
+    const gaps = pick(beats, rnd);
+    return { view: { gaps, lead: 600 }, answer: gaps, minMs: 600 + gaps.reduce((a, b) => a + b, 0) + 400 };
+  },
+  coward(lvl) {
+    const hits = by(lvl, 3, 3, 4), jump = by(lvl, 700, 550, 450);
+    return { view: { hits, jump }, answer: hits, minMs: MIN_FAST + hits * 220 };
+  },
+
+  // ---- внимание: новые ----
+  shells(lvl, rnd) {
+    const cups = by(lvl, 3, 3, 4), n = by(lvl, 4, 6, 8), swapMs = by(lvl, 420, 340, 280);
+    const start = rnd(cups);
+    const swaps = [];
+    let at = start;
+    for (let i = 0; i < n; i++) {
+      const a = rnd(cups);
+      let b = rnd(cups - 1);
+      if (b >= a) b++;
+      swaps.push([a, b]);
+      if (at === a) at = b; else if (at === b) at = a;
+    }
+    return { view: { cups, start, swaps, swapMs, show: 900 }, answer: at, minMs: 900 + n * swapMs };
+  },
+  simon(lvl, rnd) {
+    const len = by(lvl, 3, 4, 5), step = by(lvl, 600, 500, 420);
+    const seq = [];
+    for (let i = 0; i < len; i++) seq.push(pick(range(0, 3).filter((x) => x !== seq[i - 1]), rnd));
+    return { view: { seq, step, lead: 500 }, answer: seq, minMs: 500 + len * step + len * 150 };
+  },
+  blink(lvl, rnd) {
+    const n = by(lvl, 9, 12, 16);
+    const pool = shuffle(["😀", "😎", "🤓", "😴", "🤠", "😇", "🥸", "😜", "🤔", "😬", "🙃", "😏", "🤖", "👽", "🐸", "🐵", "🦊", "🐼"], rnd);
+    const items = pool.slice(0, n);
+    const at = rnd(n);
+    const showAt = 700 + rnd(1200), dur = by(lvl, 700, 450, 300);
+    // какая клетка моргнёт, телефону знать приходится — иначе нечего показывать (как цифры в «Коде»)
+    return { view: { items, to: pool[n], showAt, dur, cell: at }, answer: at, minMs: showAt + dur };
+  },
+  flashes(lvl, rnd) {
+    const count = by(lvl, 3, 4, 5) + rnd(3), gap = by(lvl, 450, 350, 280);
+    const { options, answer } = numberOptions(count, rnd, [count + 1, count - 1, count + 2]);
+    return { view: { count, gap, lead: 600, options }, answer, minMs: 600 + count * gap };
+  },
+  diff(lvl, rnd) {
+    const side = by(lvl, 3, 4, 4), n = side * side;
+    const pool = ["🍎", "🚗", "⚽", "🎈", "🐱", "🌵", "🍩", "🎸", "🌙", "🔑", "🧦", "🍄", "🐙", "🎁", "📎", "🦆"];
+    const items = range(1, n).map(() => pick(pool, rnd));
+    const at = rnd(n);
+    // на трудном — подмена на похожее, на лёгком — на что угодно другое
+    const similar = { "🍎": "🍅", "🚗": "🚕", "⚽": "🏐", "🎈": "🎀", "🐱": "🐯", "🌵": "🌴", "🍩": "🥯", "🎸": "🎻", "🌙": "⭐", "🔑": "🗝️", "🧦": "🧤", "🍄": "🌰", "🐙": "🦑", "🎁": "📦", "📎": "🖇️", "🦆": "🐤" };
+    const other = lvl === 3 ? similar[items[at]] : pick(pool.filter((x) => x !== items[at]), rnd);
+    const second = items.slice();
+    second[at] = other;
+    return { view: { side, top: items, bottom: second }, answer: at, minMs: MIN_FAST + 300 };
+  },
+
+  // ---- голова: новые ----
+  manual(lvl, rnd) {
+    // инструкция сапёра: провода и правило, какой резать
+    const RULES = by(lvl, ["last_yellow", "even"], ["red", "blue", "white"], ["same", "black", "green", "red"]);
+    const [lo, hi] = by(lvl, [3, 4], [4, 5], [5, 6]);
+    for (let tries = 0; tries < 200; tries++) {
+      const n = lo + rnd(hi - lo + 1);
+      const wires = range(1, n).map(() => pick(WIRE_KEYS, rnd));
+      const rule = pick(RULES, rnd);
+      const ans = MANUAL[rule](wires);
+      if (ans == null || ans < 0 || ans >= n) continue;
+      return { view: { wires, rule }, answer: ans, minMs: MIN_HEAD + 400 };
+    }
+    return null;
+  },
+  oddmeaning(lvl, rnd) {
+    // на трудном — соседние по смыслу наборы (фрукт среди овощей), иначе — далёкие
+    const cats = Object.keys(MEANING);
+    const close = (x, y) => CLOSE_CATS.some((p) => p.includes(x) && p.includes(y));
+    let a, b;
+    if (lvl === 3) [a, b] = shuffle(pick(CLOSE_CATS, rnd), rnd);
+    else { a = pick(cats, rnd); b = pick(cats.filter((c) => c !== a && !close(a, c)), rnd); }
+    const n = by(lvl, 4, 4, 5);
+    const items = shuffle(MEANING[a], rnd).slice(0, n - 1);
+    const odd = pick(MEANING[b], rnd);
+    const at = rnd(n);
+    items.splice(at, 0, odd);
+    return { view: { items }, answer: at, minMs: MIN_HEAD };
+  },
+  dice(lvl, rnd) {
+    const dice = range(1, by(lvl, 2, 3, 4)).map(() => 1 + rnd(6));
+    const sum = dice.reduce((x, y) => x + y, 0);
+    const { options, answer } = numberOptions(sum, rnd, [sum + 1, sum - 1, sum + 2, sum - 2]);
+    return { view: { dice, options }, answer, minMs: MIN_HEAD };
+  },
+
+  // ---- зал ----
+  crowd(lvl, rnd) {
+    // кто покажет код — телефон соседа или общий экран — решает движок (game.js), он знает игроков
+    const n = by(lvl, 3, 3, 4);
+    let code = "";
+    for (let i = 0; i < n; i++) code += String(1 + rnd(9));
+    return { view: { n }, answer: code, minMs: 1200 };
+  },
 };
+
+// Инструкция сапёра: правило → номер провода (с нуля) или null, если к этим проводам правило не подходит
+const WIRE_KEYS = ["red", "blue", "yellow", "green", "white", "black"];
+const MANUAL = {
+  last_yellow: (w) => (w[w.length - 1] === "yellow" ? 0 : w.length - 1),
+  even: (w) => (w.length % 2 === 0 ? w.length - 2 : 0),
+  red: (w) => (w.filter((c) => c === "red").length > 1 ? w.lastIndexOf("red") : 1),
+  blue: (w) => (w.includes("blue") ? w.indexOf("blue") : 2),
+  white: (w) => (w.filter((c) => c === "white").length === 1 ? w.indexOf("white") : w.length - 1),
+  same: (w) => { const i = w.indexOf(w[0], 1); return i > 0 ? i : null; },
+  black: (w) => (!w.includes("black") ? null : w[0] === "black" ? 1 : w.indexOf("black")),
+  green: (w) => { const i = w.indexOf("green"); return i >= 0 && i < w.length - 1 ? i + 1 : null; },
+};
+
+// «Лишний по смыслу»: наборы без пограничных случаев (помидор, авокадо — не берём)
+const MEANING = {
+  fruit: ["🍎", "🍌", "🍇", "🍓", "🍉", "🍍", "🍒", "🍑", "🍐"],
+  veg: ["🥕", "🥦", "🌽", "🥔", "🍆", "🥒", "🧅", "🧄"],
+  pets: ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼"],
+  sea: ["🐟", "🐠", "🐙", "🦀", "🐬", "🐳", "🦈", "🦑"],
+  cars: ["🚗", "🚕", "🚌", "🚓", "🚑", "🚒", "🚜"],
+  air: ["✈️", "🚁", "🚀", "🛸", "🎈"],
+  balls: ["⚽", "🏀", "🏈", "⚾", "🎾", "🏐", "🏉"],
+  music: ["🎸", "🎹", "🎺", "🎻", "🥁", "🎷"],
+  drinks: ["☕", "🍵", "🥛", "🧃", "🍺", "🍷", "🥤"],
+  clothes: ["👕", "👖", "👗", "🧥", "👔", "🧦", "🧢"],
+  bugs: ["🐝", "🐞", "🦋", "🐛", "🐜"],
+};
+const CLOSE_CATS = [["fruit", "veg"], ["cars", "air"], ["pets", "sea"], ["bugs", "pets"], ["drinks", "fruit"]];
 
 // Уровень по прошедшему времени раунда (оно видно всем): 0–20 с, 20–45 с, дальше (§5)
 function levelFor(elapsedMs) {
@@ -313,6 +480,8 @@ function levelFor(elapsedMs) {
  */
 function generate({ lvl, rnd, groups, quizOnly, last, used, only }) {
   const b = bank();
+  used = used || {};
+  for (const k of QUIZ_TYPES) if (!Array.isArray(used[k])) used[k] = [];
   let types = only ? [only] : quizOnly ? QUIZ_TYPES.slice() : Object.keys(GROUPS).filter((g) => groups[g] !== false).flatMap((g) => GROUPS[g]);
   types = types.filter((t) => !BANK_TYPES.has(t) || b[t].length >= (t === "chrono" ? 3 : 1));
   if (!types.length) types = GROUPS.hands.slice();
@@ -342,10 +511,25 @@ function check(ch, ans, elapsed) {
     case "swipe": case "order": case "chrono": return sameArr(v, a) ? "ok" : "wrong";
     case "hold": return typeof v === "number" && v >= a[0] && v <= a[1] ? "ok" : "wrong";
     case "nopress": return "ok";
-    case "code": return String(v) === a ? "ok" : "wrong";
+    case "code": case "crowd": return String(v) === a ? "ok" : "wrong";
+    case "spark": return ans && ans.late === true ? "wrong" : v === a ? "ok" : "wrong";
+    case "coward": return v === a ? "ok" : "wrong";
+    case "simon": return sameArr(v, a) ? "ok" : "wrong";
+    case "rhythm": return Array.isArray(v) && v.length === a.length && v.every((x, i) => typeof x === "number" && Math.abs(x - a[i]) <= Math.max(110, a[i] * 0.3)) ? "ok" : "wrong";
+    case "slots": {
+      // каждый барабан остановлен, когда бомба в окне (ближе полсимвола к центру)
+      if (!Array.isArray(v) || v.length !== 3) return "wrong";
+      const bomb = ch.view.syms.indexOf("💣");
+      return ch.view.reels.every((r, i) => {
+        if (typeof v[i] !== "number" || v[i] < 0) return false;
+        const f = ((((v[i] / r.period + r.phase) * 6) % 6) + 6) % 6;
+        const d = Math.min(Math.abs(f - bomb), 6 - Math.abs(f - bomb));
+        return d < 0.5;
+      }) ? "ok" : "wrong";
+    }
     case "sudoku": return v === a ? "ok" : "wrong";
     default: return v === a ? "ok" : "wrong"; // индекс варианта
   }
 }
 
-module.exports = { GROUPS, TYPE_GROUP, QUIZ_TYPES, CHALLENGE_TTL, COLOR_KEYS, generate, check, levelFor, setBank, bank };
+module.exports = { GROUPS, TYPE_GROUP, QUIZ_TYPES, CHALLENGE_TTL, COLOR_KEYS, WIRE_KEYS, MANUAL, MEANING, generate, check, levelFor, setBank, bank };

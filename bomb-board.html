@@ -137,6 +137,7 @@
   /* вопрос держателя крупно — чтобы зал подсказывал (§5.3); место под него зарезервировано всегда */
   .bubble { position: relative; width: 100%; height: 132px; background: #fff; border: var(--line); box-shadow: var(--shift); border-radius: 18px; display: grid; place-items: center; padding: 10px 18px; overflow: hidden; }
   .bubble .q { font-weight: 900; font-size: 30px; line-height: 1.1; }
+  .bubble .q.crowdcode { font-size: 44px; }
   .bubble .opts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin-top: 8px; font-size: 20px; font-weight: 700; color: var(--ink-2); }
   .bubble .opts span::before { content: "▸ "; color: var(--red); }
   .bubble .meta { display: flex; gap: 28px; font-size: 22px; font-weight: 700; }
@@ -512,7 +513,7 @@ function drawOpts(players) {
       return btn(`${escapeHtml(T("fuse_" + f))}<small>${escapeHtml(tpl("fuse_range", { a: r[0], b: r[1] }))}</small>`, s.fuse === f, { fuse: f });
     })),
     opt(T("opt_return"), [true, false].map((v) => { const b = btn(escapeHtml(T(v ? "on" : "off")), s.returnOk === v, { returnOk: v }); if (two) b.disabled = true; return b; }), two ? T("return_two") : T("return_d")),
-    opt(T("opt_groups"), ["hands", "eyes", "head"].map((g) => {
+    opt(T("opt_groups"), ["hands", "eyes", "head", "crowd"].map((g) => {
       const b = btn(escapeHtml(T("grp_" + g)), s.groups[g], { groups: { [g]: !s.groups[g] } });
       // эрудиту группы не нужны — он всегда задаёт вопросы
       if (s.mode === "quiz") b.disabled = true;
@@ -690,7 +691,19 @@ function drawCenter() {
 let bubbleKey = "";
 function drawBubble(holders) {
   const box = $("bubble");
-  const ch = live() && state.challenges ? holders.map((id) => state.challenges[id]).find((c) => c && c.group === "head") : null;
+  const chs = live() && state.challenges ? holders.map((id) => [id, state.challenges[id]]).filter(([, c]) => c) : [];
+  // «Зал» важнее всего: без доски держатель кода не узнает; дальше — вопросы «головы»
+  const crowd = chs.find(([, c]) => c.type === "crowd");
+  if (crowd) {
+    const [holder, c] = crowd;
+    const key = "c" + c.id + bmLang();
+    if (bubbleKey === key) return;
+    bubbleKey = key;
+    const txt = c.view.where === "tv" ? tpl("crowd_tv", { name: nameOf(holder), code: c.code || "?" }) : tpl("crowd_phone", { name: nameOf(holder), helper: nameOf(c.view.helper) });
+    box.innerHTML = `<div class="q${c.view.where === "tv" ? " crowdcode" : ""}">${escapeHtml(txt)}</div>`;
+    return;
+  }
+  const ch = (chs.find(([, c]) => c.group === "head") || [])[1];
   if (ch) {
     const key = "q" + ch.id + bmLang();
     if (bubbleKey === key) return;
@@ -704,6 +717,10 @@ function drawBubble(holders) {
     else if (ch.type === "math") { q = v.text + " = ?"; }
     else if (ch.type === "seq") { q = seqText(v) + ", ?"; }
     else if (ch.type === "sudoku") { q = "🧩 " + v.n + "×" + v.n; }
+    else if (ch.type === "rebus") { q = v.q; opts = v.options.map(bmTx); }
+    else if (ch.type === "manual") { q = T("mr_" + v.rule); opts = v.wires.map((w, i) => `${i + 1} ${{ red: "🟥", blue: "🟦", yellow: "🟨", green: "🟩", white: "⬜", black: "⬛" }[w]}`); }
+    else if (ch.type === "oddmeaning") { q = v.items.join("  "); }
+    else if (ch.type === "dice") { q = v.dice.map((d) => "⚀⚁⚂⚃⚄⚅"[d - 1]).join(" ") + " = ?"; }
     box.innerHTML = `<div><div class="q">${escapeHtml(q)}</div>${opts.length ? `<div class="opts">${opts.map((o) => `<span>${escapeHtml(o)}</span>`).join("")}</div>` : ""}</div>`;
     return;
   }

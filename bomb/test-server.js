@@ -38,7 +38,7 @@ function stopServer(signal = "SIGTERM") {
 }
 
 // ловкость и внимание: решаются по тому, что видит телефон (голову в тестах сервера выключаем)
-const SETTINGS = { groups: { hands: true, eyes: true, head: false } };
+const SETTINGS = { groups: { hands: true, eyes: true, head: false, crowd: false } };
 
 async function createRoom(settings = {}, speed = 1) {
   const r = await fetch(`http://127.0.0.1:${port}/bomb/api/rooms`, { method: "POST", body: JSON.stringify({ settings: { ...SETTINGS, ...settings }, speed }) });
@@ -109,10 +109,23 @@ function solveView(c) {
     case "sad": return { v: v.items.findIndex((x) => SAD.has(x)) };
     case "code": return { v: v.digits };
     case "count": return { v: v.options.indexOf(v.items.filter((x) => x === "🦆").length) };
+    case "spark": return { v: v.n };
+    case "coward": return { v: v.hits };
+    case "rhythm": return { v: v.gaps };
+    case "simon": return { v: v.seq };
+    case "blink": return { v: v.cell };
+    case "flashes": return { v: v.options.indexOf(v.count) };
+    case "diff": return { v: v.top.findIndex((x, i) => x !== v.bottom[i]) };
+    case "shells": { let at = v.start; for (const [a, b] of v.swaps) { if (at === a) at = b; else if (at === b) at = a; } return { v: at }; }
+    case "slots": {
+      // момент, когда бомба в окне, — по той же формуле, что у сервера
+      const bomb = v.syms.indexOf("💣");
+      return { v: v.reels.map((r) => ((((bomb / 6 - r.phase) % 1) + 1) % 1) * r.period + 2 * r.period) };
+    }
     default: throw new Error("тест не умеет решать " + c.type);
   }
 }
-const minWait = (c) => (c.type === "nopress" ? c.view.wait : c.type === "code" ? 1400 : c.type === "hold" ? c.view.from : 1000) + 120;
+const minWait = (c) => Math.max(c.minMs || 0, c.type === "nopress" ? c.view.wait : c.type === "code" ? 1400 : c.type === "hold" ? c.view.from : 1000) + 150;
 
 // держатель решает и кидает; возвращает, кому кинул
 async function solveAndThrow(p, targets) {

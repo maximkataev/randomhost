@@ -278,7 +278,7 @@ test("ещё раунд с итогов и возврат в лобби; нов�
 });
 
 test("настройки: неизвестное отбрасывается, все группы выключить нельзя", () => {
-  const s = clampSettings({ mode: "hack", fuse: "eternal", returnOk: "yes", groups: { hands: false, eyes: false, head: false } });
+  const s = clampSettings({ mode: "hack", fuse: "eternal", returnOk: "yes", groups: { hands: false, eyes: false, head: false, crowd: false } });
   assert.strictEqual(s.mode, "classic");
   assert.strictEqual(s.fuse, "normal");
   assert.strictEqual(s.returnOk, false);
@@ -373,7 +373,7 @@ test("уровень испытаний растёт по времени рау�
 
 test("выключенная группа не выпадает; «Эрудит» — только вопросы банка", () => {
   for (let i = 0; i < 200; i++) {
-    const c = CH.generate({ lvl: 2, rnd: rig([], i + 1), groups: { hands: false, eyes: true, head: false }, used: { quiz: [], tf: [], heavy: [], chrono: [] } });
+    const c = CH.generate({ lvl: 2, rnd: rig([], i + 1), groups: { hands: false, eyes: true, head: false, crowd: false }, used: { quiz: [], tf: [], heavy: [], chrono: [] } });
     assert.strictEqual(c.group, "eyes");
   }
   if (!CH.bank().quiz.length) return;
@@ -399,4 +399,111 @@ test("одно испытание не выпадает дважды подря�
   }
   const quizUsed = g.s.used.quiz;
   assert.strictEqual(new Set(quizUsed).size, quizUsed.length);
+});
+
+// ---------- новые задания (27.09) ----------
+
+// mulberry32: у LCG из rig() младший бит чередуется, и «монетка» rnd(2) выпадает всегда одинаково
+function fair(seed) {
+  let a = seed >>> 0;
+  return (n) => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return Math.floor((((t ^ (t >>> 14)) >>> 0) / 4294967296) * n);
+  };
+}
+
+test("«Зал»: код видит помощник или доска, но никогда держатель", () => {
+  let phone = 0, tv = 0;
+  for (let seed = 1; seed < 60; seed++) {
+    const g = game(["A", "B", "C", "D"], { groups: { hands: false, eyes: false, head: false, crowd: true } }, fair(seed));
+    const h = holderOf(g);
+    const c = g.s.challenges[h];
+    assert.strictEqual(c.type, "crowd");
+    const code = c.answer;
+    const mine = JSON.stringify(g.snapshot(1000, h));
+    assert.ok(!mine.includes(`"${code}"`), "держатель видит код");
+    const board = g.snapshot(1000, "board");
+    if (c.view.where === "phone") {
+      phone++;
+      assert.notStrictEqual(c.helper, h);
+      assert.strictEqual(g.snapshot(1000, c.helper).me.hints[0].code, code);
+      assert.strictEqual(board.challenges[h].code, undefined, "при соседе доска кода не показывает");
+      for (const p of ["A", "B", "C", "D"]) if (p !== c.helper) assert.strictEqual(g.snapshot(1000, p).me.hints.length, 0);
+    } else {
+      tv++;
+      assert.strictEqual(board.challenges[h].code, code);
+    }
+    assert.strictEqual(g.answer(h, c.id, { v: code }, c.at + c.minMs).events[0].type, "armed");
+  }
+  assert.ok(phone > 5 && tv > 5, `оба варианта встречаются: сосед ${phone}, экран ${tv}`);
+});
+
+test("«Зал»: помощник ушёл — держателю новое задание", () => {
+  for (let seed = 1; seed < 40; seed++) {
+    const g = game(["A", "B", "C", "D"], { groups: { hands: false, eyes: false, head: false, crowd: true } }, fair(seed));
+    const h = holderOf(g);
+    const c = g.s.challenges[h];
+    if (c.view.where !== "phone") continue;
+    const ev = g.removePlayer(c.helper, 2000);
+    assert.ok(ev.some((e) => e.type === "swap" && e.playerId === h));
+    assert.notStrictEqual(g.s.challenges[h].id, c.id);
+    return;
+  }
+  assert.fail("не нашлось варианта с соседом");
+});
+
+test("инструкция сапёра: правило однозначно указывает провод", () => {
+  const { MANUAL } = CH;
+  assert.strictEqual(MANUAL.red(["red", "blue", "red"]), 2);
+  assert.strictEqual(MANUAL.red(["red", "blue", "green"]), 1);
+  assert.strictEqual(MANUAL.blue(["red", "green", "white"]), 2);
+  assert.strictEqual(MANUAL.last_yellow(["red", "yellow"]), 0);
+  assert.strictEqual(MANUAL.even(["a", "b", "c", "d"]), 2);
+  assert.strictEqual(MANUAL.same(["red", "blue", "red"]), 2);
+  assert.strictEqual(MANUAL.same(["red", "blue"]), null);
+  assert.strictEqual(MANUAL.green(["green", "red"]), 1);
+  assert.strictEqual(MANUAL.green(["red", "green"]), null);
+});
+
+test("барабаны: остановка на бомбе засчитана, мимо — нет", () => {
+  for (let i = 0; i < 200; i++) {
+    const c = CH.generate({ lvl: 1 + (i % 3), rnd: rig([], i + 5), groups: {}, used: {}, only: "slots" });
+    assert.strictEqual(CH.check(c, { v: c.answer }, 5000), "ok");
+    // сдвиг на целый символ — уже не бомба
+    const off = c.answer.map((t, k) => t + c.view.reels[k].period / 6);
+    assert.strictEqual(CH.check(c, { v: off }, 5000), "wrong");
+    // небольшая неточность пальца (0,3 символа) прощается
+    const near = c.answer.map((t, k) => t + (c.view.reels[k].period / 6) * 0.3);
+    assert.strictEqual(CH.check(c, { v: near }, 5000), "ok");
+  }
+});
+
+test("ритм: допуск 30% (но не меньше 110 мс), сбился — мимо", () => {
+  const c = CH.generate({ lvl: 2, rnd: rig([], 3), groups: {}, used: {}, only: "rhythm" });
+  assert.strictEqual(CH.check(c, { v: c.view.gaps.map((g) => g * 1.2) }, 9000), "ok");
+  assert.strictEqual(CH.check(c, { v: c.view.gaps.map((g) => g * 1.6) }, 9000), "wrong");
+  assert.strictEqual(CH.check(c, { v: c.view.gaps.slice(1) }, 9000), "wrong");
+});
+
+test("«лишний по смыслу»: ровно один из другого набора", () => {
+  for (let i = 0; i < 300; i++) {
+    const c = CH.generate({ lvl: 1 + (i % 3), rnd: rig([], i + 9), groups: {}, used: {}, only: "oddmeaning" });
+    const catOf = (e) => Object.keys(CH.MEANING).find((k) => CH.MEANING[k].includes(e));
+    const cats = c.view.items.map(catOf);
+    const odd = cats[c.answer];
+    assert.strictEqual(cats.filter((x) => x === odd).length, 1, c.view.items.join(""));
+    assert.strictEqual(new Set(cats.filter((x) => x !== odd)).size, 1, c.view.items.join(""));
+    assert.strictEqual(new Set(c.view.items).size, c.view.items.length);
+  }
+});
+
+test("напёрстки: ответ — где бомба после всех перестановок", () => {
+  for (let i = 0; i < 200; i++) {
+    const c = CH.generate({ lvl: 1 + (i % 3), rnd: rig([], i + 2), groups: {}, used: {}, only: "shells" });
+    let at = c.view.start;
+    for (const [a, b] of c.view.swaps) { assert.notStrictEqual(a, b); if (at === a) at = b; else if (at === b) at = a; }
+    assert.strictEqual(at, c.answer);
+  }
 });

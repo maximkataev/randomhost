@@ -121,6 +121,44 @@ const SOLVER = String.raw`(async () => {
       break;
     }
     case "chrono": for (let i = 0; i < 3; i++) { opt(i); await sleep(40); } break;
+    case "spark": for (let i = 0; i < v.n; i++) { ptr(document.querySelector(".sparkbtn"), "pointerdown", 1, 1); await sleep(40); } break;
+    case "coward": for (let i = 0; i < v.hits; i++) { ptr(document.querySelector(".cowardbtn"), "pointerdown", 1, 1); await sleep(60); } break;
+    case "rhythm": {
+      const b = document.querySelector(".rhythmbtn");
+      for (let i = 0; i < 100 && b.disabled; i++) await sleep(60);
+      ptr(b, "pointerdown", 1, 1);
+      for (const g of v.gaps) { await sleep(g); ptr(b, "pointerdown", 1, 1); }
+      break;
+    }
+    case "shells": {
+      const f = document.querySelector(".shellfield");
+      for (let i = 0; i < 150 && !f.classList.contains("pick"); i++) await sleep(60);
+      let at = v.start; for (const [a, b] of v.swaps) { if (at === a) at = b; else if (at === b) at = a; }
+      click($$(".shellfield .cup").sort((x, y) => parseFloat(x.style.left) - parseFloat(y.style.left))[at]);
+      break;
+    }
+    case "simon": {
+      const pads = $$(".spad");
+      for (let i = 0; i < 150 && pads[0].disabled; i++) await sleep(60);
+      for (const i of v.seq) { click(pads[i]); await sleep(60); }
+      break;
+    }
+    case "blink": await sleep(v.showAt + v.dur + 100); cell(v.cell); break;
+    case "flashes": { for (let i = 0; i < 150 && !$$("#pad .opt").length; i++) await sleep(60); opt(v.options.indexOf(v.count)); break; }
+    case "diff": click($$("#pad .grid")[1].children[v.top.findIndex((x, i) => x !== v.bottom[i])]); break;
+    case "dice": opt(v.options.indexOf(v.dice.reduce((a, b) => a + b, 0))); break;
+    case "manual": {
+      const w = v.wires, L = w.length;
+      const R = {
+        last_yellow: () => (w[L - 1] === "yellow" ? 0 : L - 1), even: () => (L % 2 === 0 ? L - 2 : 0),
+        red: () => (w.filter((c) => c === "red").length > 1 ? w.lastIndexOf("red") : 1), blue: () => (w.includes("blue") ? w.indexOf("blue") : 2),
+        white: () => (w.filter((c) => c === "white").length === 1 ? w.indexOf("white") : L - 1), same: () => w.indexOf(w[0], 1),
+        black: () => (w[0] === "black" ? 1 : w.indexOf("black")), green: () => w.indexOf("green") + 1,
+      };
+      click($$("#pad .mwire")[R[v.rule]()]);
+      break;
+    }
+    case "oddmeaning": cell(0); break;
     default: opt(0);
   }
   return c.type;
@@ -248,6 +286,8 @@ const SOLVER = String.raw`(async () => {
     check((await gallery.evaluate("window.bmPhone.me")) != null, "телефон после перезагрузки вернулся по токену");
 
     // --- 4. живая партия
+    await board.evaluate(`window.bmBoard.send({ type: "settings", settings: { groups: { crowd: false } } })`);
+    await wait(400);
     await board.evaluate("document.getElementById('startbtn').click()");
     await wait(600);
     check((await board.evaluate("state.phase")) === "countdown", "доска: отсчёт с печатью");
@@ -298,6 +338,44 @@ const SOLVER = String.raw`(async () => {
     const phoneSeal = await phones[0].evaluate("(document.getElementById('sealok')||{}).textContent || ''");
     check(phoneSeal.startsWith("✓"), `телефон: печать совпала (${phoneSeal.slice(0, 50)})`);
     await phones[0].shot("p_result");
+
+    // --- 5б. «Зал»: код на телефоне соседа или на общем экране — держатель вводит его по-настоящему
+    await board.evaluate(`window.bmBoard.send({ type: "settings", settings: { groups: { hands: false, eyes: false, head: false, crowd: true } } })`);
+    await wait(400);
+    let crowdDone = 0;
+    for (let round = 0; round < 3; round++) {
+      await board.evaluate("document.getElementById('again').click()");
+      await wait(3600);
+      const holder = await board.evaluate("state.bombs[0].holder");
+      const ids = await Promise.all(phones.map((p) => p.evaluate("window.bmPhone.me")));
+      const hp = phones[ids.indexOf(holder)];
+      const ch = await hp.evaluate("window.bmPhone.state.me.challenge");
+      let code;
+      if (ch.view.where === "phone") {
+        const helper = phones[ids.indexOf(ch.view.helper)];
+        code = await helper.evaluate("(document.querySelector('#hintbar.on .code') || {}).textContent || ''");
+        check(/^[1-9]{3,4}$/.test(code), `«Зал»: у соседа на телефоне плашка с кодом (${code})`);
+        await helper.shot("crowd_helper");
+        check((await hp.evaluate("document.body.innerText.includes(" + JSON.stringify(code) + ")")) === false, "«Зал»: у держателя кода на экране нет");
+      } else {
+        const txt = await board.evaluate("document.getElementById('bubble').textContent");
+        code = (txt.match(/[1-9]{3,4}/) || [""])[0];
+        check(code.length >= 3, `«Зал»: код на общем экране (${txt.slice(0, 40)})`);
+        await board.shot("crowd_board");
+      }
+      await hp.shot("crowd_holder_" + ch.view.where);
+      await wait(1300);
+      for (const d of code) { await hp.evaluate(`[...document.querySelectorAll(".keypad button")].find((b) => b.textContent === "${d}").click()`); await wait(60); }
+      await wait(900);
+      const armed = await hp.evaluate("!!window.bmPhone.state.me.armed");
+      check(armed, `«Зал» (${ch.view.where}): держатель ввёл код и может кидать`);
+      if (armed) crowdDone++;
+      await board.evaluate("document.querySelector('#hostbar button').click()");
+      await wait(1500);
+    }
+    check(crowdDone >= 1, "«Зал» пройден по-настоящему");
+    await board.evaluate(`window.bmBoard.send({ type: "settings", settings: { groups: { hands: true, eyes: true, head: true, crowd: true } } })`);
+    await wait(300);
 
     // --- 6. ещё раунд на коротком фитиле — до настоящего взрыва (никто не кидает)
     await board.evaluate(`window.bmBoard.send({ type: "settings", settings: { fuse: "short" } })`);

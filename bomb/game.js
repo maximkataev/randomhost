@@ -26,7 +26,7 @@ const DEFAULTS = {
   mode: "classic",
   fuse: "normal",
   returnOk: false, // можно сразу вернуть бомбу тому, кто её кинул (§4)
-  groups: { hands: true, eyes: true, head: true },
+  groups: { hands: true, eyes: true, head: true, crowd: true },
   lang: "ru",
 };
 
@@ -94,7 +94,7 @@ class Game {
       challenges: {}, // playerId → испытание (с ответом — только на сервере)
       armed: {}, // playerId → true: испытание пройдено, можно кидать
       lastType: {}, // playerId → тип прошлого испытания
-      used: { quiz: [], tf: [], heavy: [], chrono: [] },
+      used: { quiz: [], tf: [], heavy: [], chrono: [], rebus: [] },
       log: [], // передачи раунда: {b, from, to, at, held}
       seals: [], // печати партии: {round, bomb, commit, min, max, fuseMs?, salt?, revealed}
       booms: [], // взрывы партии: {round, bomb, playerId, at}
@@ -158,6 +158,12 @@ class Game {
     delete s.armed[id];
     const ev = [{ type: "left", playerId: id }];
     if (this.alive().length < MIN_PLAYERS) return ev.concat(this.finish("few", now));
+    // ушёл тот, у кого на телефоне был код «Зала», — держателю новое задание
+    for (const [holder, c] of Object.entries(s.challenges)) {
+      if (c.helper !== id) continue;
+      this.issue(holder, now, c.lvl);
+      ev.push({ type: "swap", playerId: holder });
+    }
     // ушёл с бомбой — она достаётся случайному живому игроку: не висеть же ей в воздухе
     if (s.phase === "live") {
       for (const b of s.bombs) {
@@ -196,7 +202,7 @@ class Game {
     s.roundInGame = 0;
     s.seals = [];
     s.booms = [];
-    s.used = { quiz: [], tf: [], heavy: [], chrono: [] };
+    s.used = { quiz: [], tf: [], heavy: [], chrono: [], rebus: [] };
     s.loserId = null;
     s.winnerId = null;
     s.finishedReason = null;
@@ -259,15 +265,29 @@ class Game {
     this.issue(id, now);
   }
 
-  issue(id, now) {
+  issue(id, now, lvl) {
     const s = this.s;
-    const lvl = CH.levelFor(now - (s.startedAt || now));
+    if (lvl == null) lvl = CH.levelFor(now - (s.startedAt || now));
     const c = CH.generate({ lvl, rnd: this.rnd, groups: s.settings.groups, quizOnly: s.settings.mode === "quiz", last: s.lastType[id], used: s.used });
+    if (c.type === "crowd") this.placeCode(c, id);
     c.id = ++s.seq;
     c.at = now;
     s.challenges[id] = c;
     s.lastType[id] = c.type;
     return c;
+  }
+
+  // «Зал»: код видит случайный живой игрок на связи (кроме держателя), а если такого нет — только доска.
+  // Даже при соседе в половине случаев код уходит на общий экран — чтобы держатель смотрел и туда.
+  placeCode(c, holder) {
+    const helpers = this.alive().filter((p) => p.id !== holder && p.online && !this.holding(p.id).length);
+    if (helpers.length && this.rnd(2) === 0) {
+      const h = helpers[this.rnd(helpers.length)];
+      c.helper = h.id;
+      c.view = { ...c.view, where: "phone", helper: h.id };
+    } else {
+      c.view = { ...c.view, where: "tv" };
+    }
   }
 
   answer(id, cid, ans, now) {
@@ -279,11 +299,7 @@ class Game {
     if (verdict === "early") return { ok: false, reason: "early" };
     if (verdict === "wrong") {
       // ошибся — новое испытание того же уровня; штраф — потерянное время
-      const next = CH.generate({ lvl: c.lvl, rnd: this.rnd, groups: s.settings.groups, quizOnly: s.settings.mode === "quiz", last: c.type, used: s.used });
-      next.id = ++s.seq;
-      next.at = now;
-      s.challenges[id] = next;
-      s.lastType[id] = next.type;
+      this.issue(id, now, c.lvl);
       return { ok: true, events: [{ type: "wrong", playerId: id, was: c.type }] };
     }
     delete s.challenges[id];
@@ -494,8 +510,16 @@ class Game {
       winnerId: s.phase === "finished" ? s.winnerId : null,
       finishedReason: s.phase === "finished" ? s.finishedReason : null,
       twoBombsMin: TWO_BOMBS_MIN,
-      challenges: board ? Object.fromEntries(Object.entries(s.challenges).map(([k, c]) => [k, pub(c)])) : null,
-      me: me ? { id: me.id, challenge: pub(s.challenges[me.id]), armed: !!s.armed[me.id], holding: this.holding(me.id).map((b) => b.id) } : null,
+      // доска видит код «Зала», только если он показан на общем экране; держатель — никогда
+      challenges: board ? Object.fromEntries(Object.entries(s.challenges).map(([k, c]) => [k, c.type === "crowd" && c.view.where === "tv" ? { ...pub(c), code: c.answer } : pub(c)])) : null,
+      me: me ? {
+        id: me.id,
+        challenge: pub(s.challenges[me.id]),
+        armed: !!s.armed[me.id],
+        holding: this.holding(me.id).map((b) => b.id),
+        // я помощник: кому продиктовать код
+        hints: Object.entries(s.challenges).filter(([, c]) => c.type === "crowd" && c.helper === me.id).map(([holder, c]) => ({ holder, code: c.answer, cid: c.id })),
+      } : null,
       players: s.players.map((p) => ({
         id: p.id,
         name: p.name,
