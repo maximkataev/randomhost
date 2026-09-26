@@ -337,6 +337,14 @@ test("последовательности: ответ действительн�
       const alt = b - a === d - x && d - x === right - e && x - b === e - d;
       assert.ok(fib || alt, JSON.stringify(v) + " → " + right);
     }
+    if (v.kind === "emoji") {
+      // период узора — наименьший p, при котором ряд повторяется; показан минимум дважды целиком
+      const it = v.items;
+      const p = [1, 2, 3].find((k) => it.every((x, j) => j < k || x === it[j - k]));
+      assert.ok(p && p >= 2 && it.length >= 2 * p + 1, "ряд короткий или без узора: " + it.join(""));
+      assert.strictEqual(right, it[it.length - p], it.join("") + " → " + right);
+      assert.ok(new Set(it).size <= p, "в ряду лишние эмодзи: " + it.join(""));
+    }
     if (v.kind === "days") {
       const step = (v.items[1] - v.items[0] + 7) % 7;
       assert.strictEqual(right, (v.items[3] + step) % 7);

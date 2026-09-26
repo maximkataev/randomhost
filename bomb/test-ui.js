@@ -154,6 +154,7 @@ const SOLVER = String.raw`(async () => {
     for (const w of [320, 390, 768, 1280]) {
       await land.call("Emulation.setDeviceMetricsOverride", { width: w, height: 800, deviceScaleFactor: 1, mobile: w < 700 });
       await wait(400);
+      check((await land.evaluate("document.documentElement.scrollWidth <= innerWidth")) === true, `стартовый экран ${w}px: без горизонтальной прокрутки`);
       check((await land.evaluate(OVERLAP)) === true, `стартовый экран ${w}px: звук и языки не накладываются`);
       // звук и переключатель на одной линии: центры по вертикали расходятся не больше чем на 2 px
       check((await land.evaluate(ALIGN)) === true, `стартовый экран ${w}px: звук и языки на одной линии`);
@@ -199,7 +200,7 @@ const SOLVER = String.raw`(async () => {
     const gallery = phones[2];
     const types = Object.values(CH.GROUPS).flat();
     const rnd = (n) => Math.floor(Math.random() * n);
-    for (const phoneSize of [[390, 844], [360, 640]]) {
+    for (const phoneSize of [[390, 844], [360, 640], [320, 568]]) {
       await gallery.call("Emulation.setDeviceMetricsOverride", { width: phoneSize[0], height: phoneSize[1], deviceScaleFactor: 2, mobile: true });
       for (const type of types) {
         const c = CH.generate({ lvl: 3, rnd, groups: {}, used: { quiz: [], tf: [], heavy: [], chrono: [] }, only: type });
@@ -215,10 +216,28 @@ const SOLVER = String.raw`(async () => {
           const pad = document.getElementById("pad");
           const r = pad.getBoundingClientRect();
           const over = [...pad.querySelectorAll("*")].filter((n) => { const b = n.getBoundingClientRect(); return b.width && (b.right > innerWidth + 1 || b.left < -1); }).length;
-          return { ok: !!pad.children.length, over, scroll: document.documentElement.scrollWidth <= innerWidth, bottom: r.bottom };
+          const low = [...pad.querySelectorAll("*")].filter((n) => { const b = n.getBoundingClientRect(); return b.height && b.bottom > r.bottom + 1; }).length;
+          return { ok: !!pad.children.length, over, low, scroll: document.documentElement.scrollWidth <= innerWidth, fits: document.documentElement.scrollHeight <= innerHeight + 1, bottom: r.bottom };
         })()`);
-        check(res && res.ok && res.over === 0 && res.scroll, `испытание ${type} (${phoneSize[0]}px): отрисовано, ничего не вылезает` + (res && res.over ? ` — вылезло ${res.over}` : "") + (res && res.__error ? " " + res.__error : ""));
-        if (phoneSize[0] === 390 || type === "sudoku" || type === "quiz") await gallery.shot(`ch_${type}_${phoneSize[0]}`);
+        check(res && res.ok && res.over === 0 && res.low === 0 && res.scroll && res.fits, `испытание ${type} (${phoneSize.join("×")}): отрисовано, влезает в экран без прокрутки` + (res && res.over ? ` — вбок вылезло ${res.over}` : "") + (res && res.low ? ` — вниз вылезло ${res.low}` : "") + (res && !res.fits ? " — экран прокручивается" : "") + (res && res.__error ? " " + res.__error : ""));
+        await gallery.shot(`ch_${type}_${phoneSize[0]}`);
+      }
+    }
+    for (const size of [[320, 568], [360, 640], [390, 844], [414, 896], [768, 1024]]) {
+      await gallery.call("Emulation.setDeviceMetricsOverride", { width: size[0], height: size[1], deviceScaleFactor: 2, mobile: true });
+      for (const [phase, victimIsMe] of [["boom", true], ["boom", false], ["finished", true], ["finished", false]]) {
+        const res = await gallery.evaluate(`(() => {
+          const me = window.bmPhone.me, real = window.bmPhone.state;
+          const other = real.players.find((p) => p.id !== me) || real.players[0];
+          const victim = ${victimIsMe} ? me : other.id;
+          const fake = JSON.parse(JSON.stringify(real));
+          Object.assign(fake, { phase: "${phase}", round: 7, loserId: victim, booms: [{ round: 7, bomb: 0, playerId: victim, at: Date.now() }],
+            seals: [{ round: 7, bomb: 0, commit: "ab".repeat(32), min: 30, max: 90, revealed: true, fuseMs: 47000, salt: "00", seal: "x" }], bombs: [] });
+          screen = null; state = fake; renderBoom();
+          return { scroll: document.documentElement.scrollWidth <= innerWidth, fits: document.documentElement.scrollHeight <= innerHeight + 1 };
+        })()`);
+        check(res && res.scroll && res.fits, `экран ${phase} ${victimIsMe ? "жертвы" : "остальных"} ${size.join("×")}: влезает` + (res && res.__error ? " " + res.__error : ""));
+        await gallery.shot(`v_${phase}_${victimIsMe ? "me" : "other"}_${size[0]}`);
       }
     }
     check(gallery.errors.length === 0, "галерея без JS-ошибок" + (gallery.errors[0] ? ": " + gallery.errors[0] : ""));

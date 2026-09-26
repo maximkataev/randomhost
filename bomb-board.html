@@ -197,6 +197,8 @@
   @keyframes flash { 0% { opacity: .95; } 100% { opacity: 0; } }
   @keyframes kapow { 0% { transform: scale(.2) rotate(-20deg); } 40% { transform: scale(1.15) rotate(4deg); } 100% { transform: scale(1) rotate(0); } }
   @keyframes bigshake { 10%, 50%, 90% { transform: translate(-10px, 6px); } 30%, 70% { transform: translate(10px, -6px); } }
+  .float.down { animation-name: floatdown; }
+  @keyframes floatdown { from { transform: translate(-50%, 0) scale(.6); opacity: 0; } 15% { opacity: 1; transform: translate(-50%, 10px) scale(1.15); } to { transform: translate(-50%, 90px) scale(1); opacity: 0; } }
   @keyframes floatup { from { transform: translate(-50%, 0) scale(.6); opacity: 0; } 15% { opacity: 1; transform: translate(-50%, -10px) scale(1.15); } to { transform: translate(-50%, -90px) scale(1); opacity: 0; } }
 
   /* узкий экран: игроки сеткой сверху, центр — снизу; бомба садится на карточку держателя */
@@ -256,7 +258,7 @@ window.I18N_DICT = {
     rule0: `Заходи с телефона по QR или коду`,
     rule1: `Бомба пришла — пройди мини-испытание на телефоне`,
     rule2: `Прошёл — кидай её кому хочешь`,
-    rule3: `Когда рванёт, не знает никто. У кого взорвалась — тот ведёт стендап`,
+    rule3: `Когда рванёт, не знает никто. У кого взорвалась — тот проиграл`,
     opt_mode: `Режим`, opt_fuse: `Фитиль`, opt_return: `Можно вернуть отправителю`, opt_groups: `Испытания`,
     on: `Да`, off: `Нет`,
     return_d: `«Нет» — сразу вернуть бомбу тому, кто её кинул, нельзя`,
@@ -272,7 +274,7 @@ window.I18N_DICT = {
     get_ready: `Поджигаем через`,
     seal_full: `нажми — покажу целиком`,
     boom: `БУМ!`,
-    standup: `Стендап ведёт`, winner: `Последний выживший`, standup_sub: `Стендап ведёт: {name}`,
+    loser: `Не повезло`, winner: `Последний выживший`, boom_line: `Бомба рванула в руках`, out_line: `Выбывает из игры`,
     boom_at: `Не повезло`,
     out_mark: `выбыл(а)`,
     st_longest: `Дольше всех держал(а)`, st_mostgot: `Чаще всех получал(а)`, st_fastest: `Самый быстрый бросок`, st_passes: `Передач за раунд`,
@@ -296,7 +298,7 @@ window.I18N_DICT = {
     rule0: `Join from your phone via the QR or code`,
     rule1: `Got the bomb? Beat a mini challenge on your phone`,
     rule2: `Done — throw it to anyone you like`,
-    rule3: `Nobody knows when it blows. Whoever's holding it hosts the stand-up`,
+    rule3: `Nobody knows when it blows. Whoever's holding it loses`,
     opt_mode: `Mode`, opt_fuse: `Fuse`, opt_return: `Can throw it straight back`, opt_groups: `Challenges`,
     on: `Yes`, off: `No`,
     return_d: `"No" — you can't return the bomb to whoever just threw it`,
@@ -312,7 +314,7 @@ window.I18N_DICT = {
     get_ready: `Lighting in`,
     seal_full: `tap to see it in full`,
     boom: `BOOM!`,
-    standup: `Stand-up host`, winner: `Last one standing`, standup_sub: `Stand-up host: {name}`,
+    loser: `Unlucky`, winner: `Last one standing`, boom_line: `It blew up in their hands`, out_line: `Out of the game`,
     boom_at: `Unlucky`,
     out_mark: `out`,
     st_longest: `Held it longest`, st_mostgot: `Got it most often`, st_fastest: `Fastest throw`, st_passes: `Passes this round`,
@@ -336,7 +338,7 @@ window.I18N_DICT = {
     rule0: `Μπες από το κινητό με το QR ή τον κωδικό`,
     rule1: `Ήρθε η βόμβα; Πέρνα μια μίνι δοκιμασία στο κινητό`,
     rule2: `Τα κατάφερες — πέτα τη σε όποιον θες`,
-    rule3: `Κανείς δεν ξέρει πότε σκάει. Σε όποιον σκάσει, κάνει το stand-up`,
+    rule3: `Κανείς δεν ξέρει πότε σκάει. Σε όποιον σκάσει, χάνει`,
     opt_mode: `Λειτουργία`, opt_fuse: `Φιτίλι`, opt_return: `Επιστροφή στον αποστολέα`, opt_groups: `Δοκιμασίες`,
     on: `Ναι`, off: `Όχι`,
     return_d: `«Όχι» — δεν γυρνάς τη βόμβα αμέσως σε όποιον σου την πέταξε`,
@@ -352,7 +354,7 @@ window.I18N_DICT = {
     get_ready: `Ανάβουμε σε`,
     seal_full: `πάτα για ολόκληρη`,
     boom: `ΜΠΟΥΜ!`,
-    standup: `Κάνει το stand-up`, winner: `Ο τελευταίος όρθιος`, standup_sub: `Stand-up κάνει: {name}`,
+    loser: `Κακή τύχη`, winner: `Ο τελευταίος όρθιος`, boom_line: `Έσκασε στα χέρια του/της`, out_line: `Εκτός παιχνιδιού`,
     boom_at: `Κακή τύχη`,
     out_mark: `εκτός`,
     st_longest: `Την κράτησε περισσότερο`, st_mostgot: `Την πήρε πιο συχνά`, st_fastest: `Πιο γρήγορη πάσα`, st_passes: `Πάσες στον γύρο`,
@@ -678,7 +680,7 @@ function drawCenter() {
     else if (p0 && p0.solving) doing = tpl("doing", { name: p0.name, what: T("ch_" + p0.solving) });
     else if (p0) doing = tpl("fresh", { name: p0.name });
   } else if (ph === "boom" || ph === "finished") {
-    doing = state.loserId ? tpl("standup_sub", { name: nameOf(state.loserId) }) : "";
+    doing = victim ? T(state.settings.mode === "elim" ? "out_line" : "boom_line") : "";
   }
   $("doing").textContent = doing;
   drawBubble(holders);
@@ -756,10 +758,10 @@ function drawResult() {
   if (state.settings.mode === "elim" && state.winnerId) {
     const w = player(state.winnerId) || {};
     verdict = `<div class="verdict" style="--vc:${w.color || "var(--red)"}"><div class="k">${T("winner")}</div><div class="n">${escapeHtml(w.name || "?")}</div>
-      ${state.loserId ? `<div class="sub">${escapeHtml(tpl("standup_sub", { name: nameOf(state.loserId) }))}</div>` : ""}</div>`;
+      ${state.loserId ? `<div class="sub">${escapeHtml(tpl("first_out", { name: nameOf(state.loserId) }))}</div>` : ""}</div>`;
   } else if (state.loserId) {
     const l = player(state.loserId) || {};
-    verdict = `<div class="verdict" style="--vc:${l.color || "var(--red)"}"><div class="k">${T("standup")}</div><div class="n">${escapeHtml(l.name || "?")}</div></div>`;
+    verdict = `<div class="verdict" style="--vc:${l.color || "var(--red)"}"><div class="k">${T("loser")}</div><div class="n">${escapeHtml(l.name || "?")}</div></div>`;
   } else {
     verdict = `<div class="verdict"><div class="k">${T(state.finishedReason === "few" ? "fin_few" : "fin_host")}</div></div>`;
   }
@@ -820,9 +822,11 @@ function boomFx(victim) {
 function floatAt(id, emoji) {
   const pos = cardPos.get(id);
   if (!pos || state.phase === "lobby") return;
-  const f = el("div", "float", emoji);
+  // у верхнего края лететь вверх некуда — улетает вниз под карточку
+  const down = pos.y < 130;
+  const f = el("div", "float" + (down ? " down" : ""), emoji);
   f.style.left = pos.x + "px";
-  f.style.top = pos.y - 50 + "px";
+  f.style.top = pos.y + (down ? 30 : -50) + "px";
   $("arena").append(f);
   setTimeout(() => f.remove(), 1700);
 }

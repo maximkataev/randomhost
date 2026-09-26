@@ -196,7 +196,8 @@ const GEN = {
     if (kind.startsWith("pattern")) {
       const e = shuffle(PATTERN, rnd);
       const unit = kind === "pattern2" ? [e[0], e[1]] : kind === "pattern3" ? [e[0], e[1], e[2]] : [e[0], e[1], e[1]];
-      const len = kind === "pattern2" ? 5 : 5 + rnd(2);
+      // узор показан минимум дважды целиком — иначе «🍒🥝🥝🍒🥝 ?» читается как угодно
+      const len = unit.length * 2 + 1 + rnd(unit.length - 1);
       items = range(0, len - 1).map((i) => unit[i % unit.length]);
       right = unit[len % unit.length];
       const opts = shuffle([right, ...shuffle(e.filter((x) => x !== right), rnd).slice(0, 3)], rnd);
