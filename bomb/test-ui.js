@@ -149,10 +149,15 @@ const SOLVER = String.raw`(async () => {
     check((await land.evaluate("document.documentElement.scrollWidth <= innerWidth")) === true, "стартовый экран: без горизонтальной прокрутки");
     const OVERLAP = `(() => { const a = document.querySelector(".sound-toggle-btn").getBoundingClientRect(), b = document.querySelector(".lang-switch").getBoundingClientRect();
       return a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom; })()`;
+    const ALIGN = `(() => { const a = document.querySelector(".sound-toggle-btn").getBoundingClientRect(), b = document.querySelector(".lang-switch").getBoundingClientRect();
+      return Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2) <= 2 && Math.abs(a.height - b.height) <= 2; })()`;
     for (const w of [320, 390, 768, 1280]) {
       await land.call("Emulation.setDeviceMetricsOverride", { width: w, height: 800, deviceScaleFactor: 1, mobile: w < 700 });
       await wait(400);
       check((await land.evaluate(OVERLAP)) === true, `стартовый экран ${w}px: звук и языки не накладываются`);
+      // звук и переключатель на одной линии: центры по вертикали расходятся не больше чем на 2 px
+      check((await land.evaluate(ALIGN)) === true, `стартовый экран ${w}px: звук и языки на одной линии`);
+      await land.shot(`p_top_${w}`);
     }
     await land.call("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await wait(300);
@@ -167,6 +172,7 @@ const SOLVER = String.raw`(async () => {
     await wait(2500);
     check((await board.evaluate("!!document.getElementById('startbtn')")) === true, "доска: лобби с кнопкой старта");
     check((await board.evaluate(OVERLAP)) === true, "доска: звук и языки не накладываются");
+    check((await board.evaluate(ALIGN)) === true, "доска: звук и языки на одной линии");
 
     const names = ["Аня", "Петя", "Оля"];
     const phones = [];

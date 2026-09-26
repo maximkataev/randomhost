@@ -259,14 +259,20 @@ const bmSfx = (function () {
 
 // ---------- место под переключатель языка ----------
 // i18n.js ставит его fixed в правый верхний угол, а ширина у него своя на каждом экране и языке.
-// Меряем и кладём в --lsw отступ от правого края до его левой кромки — шапка страницы на него не заезжает.
+// Меряем: --lsw — отступ от правого края до его левой кромки (шапка на него не заезжает), --lsc/--lsh — его центр и высота.
 (function reserveLangSwitch() {
   let seen = null;
   const measure = () => {
     const sw = document.querySelector(".lang-switch");
     if (!sw) return false;
     const r = sw.getBoundingClientRect();
-    if (r.width) document.documentElement.style.setProperty("--lsw", Math.ceil(window.innerWidth - r.left + 10) + "px");
+    if (r.width) {
+      const root = document.documentElement.style;
+      root.setProperty("--lsw", Math.ceil(window.innerWidth - r.left + 10) + "px");
+      // центр и высота переключателя: кнопка звука встаёт с ним на одну линию и той же высоты
+      root.setProperty("--lsc", Math.round(r.top + r.height / 2) + "px");
+      root.setProperty("--lsh", Math.round(r.height) + "px");
+    }
     if (sw !== seen && window.ResizeObserver) { seen = sw; new ResizeObserver(measure).observe(sw); }
     return true;
   };
