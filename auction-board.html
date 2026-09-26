@@ -152,12 +152,16 @@
   .p.broke .p-left { color: #ff8a8a; }
   .p-bar { height: .25em; border-radius: .25em; background: rgba(255, 255, 255, .08); margin: .5em 0; overflow: hidden; }
   .p-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--c1), var(--c2)); transition: width .6s cubic-bezier(.2, .8, .3, 1); }
-  /* слоты переносятся целыми пилюлями (названия не режутся); последний лот с пустыми кружками — одна группа */
-  .slots { display: flex; gap: .38em; flex-wrap: wrap; min-width: 0; }
-  .slots .tailgrp { display: inline-flex; gap: .38em; flex: none; max-width: 100%; }
-  .players.roomy .slots .tailgrp { display: contents; }
-  .slot-i { flex: none; min-width: 2.15em; height: 2.15em; border-radius: 999px; border: 1px dashed var(--glass-line); display: flex; align-items: center; gap: .45em; padding: 0 .7em; font-size: .82em; }
-  .slot-i.filled { flex: 0 1 auto; min-width: 2.15em; border-style: solid; background: rgba(255, 255, 255, .07); }
+  /* Слоты — сетка постоянной формы: столбцов ceil(слотов / 2) (--sc из renderPlayers), всегда две
+     строки, у каждой ячейки одна ширина, длинное название режется многоточием (целиком — в подсказке).
+     Раньше пилюли переносились по длине названий: каждая покупка перекладывала строки, карточка росла,
+     fitPlayers заново подбирал кегль — и весь список прыгал на каждом проданном лоте. Теперь высота
+     карточки от названий не зависит вовсе: список меняет размер только при смене числа игроков или окна. */
+  .slots { display: grid; grid-template-columns: repeat(var(--sc, 3), minmax(0, 1fr)); gap: .38em; min-width: 0; }
+  /* ступень «две колонки слотов»: ячейки шире — названия читаются, строк больше */
+  .players.two .slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .slot-i { flex: none; min-width: 0; height: 2.15em; border-radius: 999px; border: 1px dashed var(--glass-line); display: flex; align-items: center; gap: .45em; padding: 0 .7em; font-size: .82em; }
+  .slot-i.filled { border-style: solid; background: rgba(255, 255, 255, .07); }
   .slot-i.filled > :first-child { flex: none; }
   .p.leader .slot-i.filled { border-color: transparent; background: linear-gradient(100deg, var(--c1), var(--c2) 85%); background-origin: border-box; color: #0a0a0f; font-weight: 600; }
   .slot-i .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -167,8 +171,12 @@
   .players.dense .p { padding: .35em .65em .4em; border-radius: .75em; }
   .players.dense .p-bar { display: none; }
   .players.dense .p-top { margin-bottom: .3em; }
-  .players.dense .slots, .players.dense .slots .tailgrp { flex-wrap: nowrap; overflow: hidden; gap: .25em; }
-  .players.dense .slot-i { padding: 0 .35em; }
+  /* узкие ячейки сетки (fitPlayers): только эмодзи, название — в подсказке */
+  .players.icons .slot-i { padding: 0; justify-content: center; }
+  .players.icons .slot-i .n { display: none; }
+  /* плотно: одна строка одинаковых ячеек-эмодзи */
+  .players.dense .slots { grid-template-columns: repeat(var(--sn, 5), 2.15em); overflow: hidden; gap: .25em; }
+  .players.dense .slot-i { padding: 0; justify-content: center; }
   .players.dense .slot-i .n { display: none; }
   /* просторно (мало игроков): каждый слот — строка «эмодзи · лот · цена», у пустого — номер */
   .players.roomy { gap: .6em; }
@@ -679,6 +687,7 @@
 <script src="sound-toggle.js" defer></script>
 <script src="auction-modes.js"></script>
 <script src="auction-shared.js"></script>
+<script src="auction-music.js"></script>
 <script>
 /* Словарь доски. Объявлен до i18n.js (тот грузится с defer в конце body) и до основного скрипта:
    первая же строка «нет кода комнаты» рисуется синхронно и берёт текст отсюда.
@@ -792,6 +801,8 @@ window.I18N_DICT = {
     tag_full: `готов`,
     tag_leader: `лидер`,
     tag_broke: `на мели`,
+    tag_skip: `скип`,
+    hot_tag: `🔥 самый популярный`,
     free: `даром`,
     slot_title: `{name} — {price}`,
     /* итоги */
@@ -934,6 +945,8 @@ window.I18N_DICT = {
     tag_full: `full`,
     tag_leader: `leader`,
     tag_broke: `broke`,
+    tag_skip: `skip`,
+    hot_tag: `🔥 most popular`,
     free: `free`,
     slot_title: `{name} — {price}`,
     vote_title: `Voting`,
@@ -1074,6 +1087,8 @@ window.I18N_DICT = {
     tag_full: `γεμάτος`,
     tag_leader: `πρώτος`,
     tag_broke: `άφραγκος`,
+    tag_skip: `πάσο`,
+    hot_tag: `🔥 το πιο δημοφιλές`,
     free: `τσάμπα`,
     slot_title: `{name} — {price}`,
     vote_title: `Ψηφοφορία`,
@@ -1339,17 +1354,24 @@ const nameOf = (id) => (state.players.find(function (p) { return p.id === id; })
 let actx;
 function beep(freq, ms = 90, type = "sine", gain = .08) {
   try {
-    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    // один контекст с музыкой (auction-music.js): он уже разбужен жестом ведущего
+    actx = actx || (window.AuctionMusic && AuctionMusic.ctx()) || new (window.AudioContext || window.webkitAudioContext)();
     const o = actx.createOscillator(), g = actx.createGain();
     o.type = type; o.frequency.value = freq; g.gain.value = gain;
     o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + ms / 1000);
   } catch {}
 }
+// Музыка (auction-music.js) заменяет пиканье «продано/забрали», когда звук уже разбужен жестом;
+// без жеста контекста нет — остаются прежние бипы (они тоже молчат до жеста, но хуже не будет).
+const music = () => (window.AuctionMusic && AuctionMusic.ctx() && AuctionMusic.ctx().state === "running" ? AuctionMusic : null);
 function onEvent(e) {
+  const m = music();
   if (e.type === "bid") beep(660, 70);
-  if (e.type === "sold") { beep(520, 120); setTimeout(() => beep(780, 160), 130); }
-  if (e.type === "taken") beep(440, 160, "triangle");
-  if (e.type === "finished") stopMusic();
+  if (e.type === "sold") { if (m) m.sold(); else { beep(520, 120); setTimeout(() => beep(780, 160), 130); } }
+  if (e.type === "taken") { if (m) m.taken(); else beep(440, 160, "triangle"); }
+  if (e.type === "unsold" && m) m.unsold();
+  if ((e.type === "lot" || e.type === "draft") && m) m.lot(!!e.hot);
+  if (e.type === "finished") { stopMusic(); if (m) m.stop(); }
   if (e.type === "judging") render();
   if (e.type === "judge_failed") toast(T("judge_failed"));
 }
@@ -1622,6 +1644,8 @@ const COUNTDOWN_MS = 3000;
 function renderIntro() {
   document.body.classList.remove("m-lobby");
   stopMusic();
+  // цикл кадров ведёт и музыку: заставка — это уже начало темы партии
+  if (!timerTicking) { timerTicking = true; requestAnimationFrame(tickTimer); }
   const s = state;
   app.style.display = "block";
   if (!document.getElementById("intro")) {
@@ -1772,7 +1796,8 @@ function renderCard(lot, kind) {
   const fact = el("p", "fact");
   fact.append(el("b", null, T("fact")), el("span", "ft", lot.fact));
   const text = el("div", "text");
-  text.append(el("div", "emoji", lot.emoji), el("div", "kind", kindLabel(kind)), el("div", "name", lot.name), meta, el("p", "desc", lot.description), fact);
+  // хит после серии пустых лотов (game.js, HOT_AFTER): пометка в строке категории — высота карточки та же
+  text.append(el("div", "emoji", lot.emoji), el("div", "kind", kindLabel(kind) + (state.hot ? " · " + T("hot_tag") : "")), el("div", "name", lot.name), meta, el("p", "desc", lot.description), fact);
   widget = kind === "artist" && state.settings.media ? playerWidget() : null;
   card.className = "card result";
   card.replaceChildren(state.settings.media ? heroWidget(lot, kind) : el("div", "hero gone"), text, ...(widget ? [widget.box] : []));
@@ -1835,6 +1860,8 @@ function renderBidbar() {
   if (!s.leaderId) {
     const bidders = s.players.filter((p) => p.canBid).length;
     bar.append(el("div", "cap", T("cap_nobids")), el("div", "lead", bidders ? tf("first_bid", { min: money(1) }) : T("nobody_to_bid")));
+    // кто уже сказал «Скип», видно по метке «скип» в карточке игрока: лента здесь теснила бы
+    // главную строку полосы до переноса
     return;
   }
   const lead = el("div", "lead");
@@ -1847,11 +1874,14 @@ function renderBidbar() {
 function renderPlayers() {
   const s = state, box = document.getElementById("players");
   document.getElementById("pcount").textContent = tf("pcount", { n: s.players.filter((p) => !p.left).length, slots: s.settings.slots, w: pluralWord(s.settings.slots, "plural_slot") });
+  // форма сетки слотов — от числа слотов, а не от названий (см. .slots в стилях)
+  box.style.setProperty("--sc", String(Math.ceil(s.settings.slots / 2)));
+  box.style.setProperty("--sn", String(s.settings.slots));
   box.replaceChildren(...s.players.map((p) => {
     const row = el("div", "p" + (p.id === s.leaderId && (s.phase === "bidding" || s.phase === "sold" || s.phase === "taken") ? " leader" : "") + (p.full ? " full" : "") + (!p.online ? " offline" : "") + (p.left ? " left" : "") + (p.money === 0 ? " broke" : ""));
     const top = el("div", "p-top");
     // сравниваем ключ, а не подпись: «лидер» на другом языке перестал бы подсвечиваться
-    const tagKey = p.left ? "tag_left" : !p.online ? "tag_offline" : p.full ? "tag_full" : p.id === s.leaderId && s.phase === "bidding" ? "tag_leader" : p.money === 0 ? "tag_broke" : "";
+    const tagKey = p.left ? "tag_left" : !p.online ? "tag_offline" : p.full ? "tag_full" : p.id === s.leaderId && s.phase === "bidding" ? "tag_leader" : p.skipped ? "tag_skip" : p.money === 0 ? "tag_broke" : "";
     top.append(el("div", "p-name", p.name), el("span", "p-tag" + (tagKey === "tag_leader" ? "" : " dim"), tagKey ? T(tagKey) : ""), el("div", "p-left", money(p.money)));
     const bar = el("div", "p-bar"); const fill = el("i"); fill.style.width = Math.max(0, Math.min(100, (p.money / s.settings.budget) * 100)) + "%"; bar.append(fill);
     const slots = el("div", "slots");
@@ -1864,14 +1894,7 @@ function renderPlayers() {
       else sl.append(el("span", "no", String(i + 1)));
       items.push(sl);
     }
-    // Последний лот и пустые кружки — одна неразрывная группа: при переносе строки пустой кружок
-    // не остаётся один в начале новой строки, а уезжает вместе с лотом перед ним
-    const k = p.lots.length;
-    if (k > 0 && k < items.length) {
-      const grp = el("span", "tailgrp");
-      grp.append(...items.slice(k - 1));
-      slots.append(...items.slice(0, k - 1), grp);
-    } else slots.append(...items);
+    slots.append(...items);
     row.append(top, bar, slots);
     return row;
   }));
@@ -1884,44 +1907,74 @@ function renderPlayers() {
 // пустоты внутри карточки нет ни при каком числе игроков: высоту панели заполняет рост кегля.
 const DENSITY = [
   { c: ["roomy"], min: 14, max: 34 },
+  { c: ["two"], min: 14, max: 26 },
   { c: [], min: 13, max: 26 },
   { c: ["dense"], min: 12, max: 22 },
   { c: ["dense", "cols"], min: 11, max: 20 },
 ];
+let fitKey = "";
 function fitPlayers(box) {
+  // Высота карточек зависит только от числа игроков и слотов (сетка слотов постоянной формы), поэтому
+  // кегль подбираем заново только когда меняется это или размер панели — на покупке лота список не дёргается
+  const key = [box.children.length, state && state.settings.slots, box.clientWidth, box.clientHeight, innerWidth, innerHeight].join("|");
+  if (key === fitKey && box.style.fontSize) return;
+  fitKey = key;
+  fitLevel(box);
+  // Ячейка уже 7 знаков — название в ней превращается в «Ф…»: оставляем один эмодзи, как в плотной
+  // ступени (название — в подсказке). Решается по геометрии, а не по названиям, — список не дёргается.
+  const cell = box.querySelector(".slot-i");
+  if (cell && !box.classList.contains("dense") && !box.classList.contains("roomy")) {
+    const em = parseFloat(getComputedStyle(cell).fontSize) || 1;
+    box.classList.toggle("icons", cell.getBoundingClientRect().width / em < 7);
+  }
+}
+function fitLevel(box) {
   const set = (lv, fs) => {
-    box.classList.remove("roomy", "compact", "dense", "cols");
+    box.classList.remove("roomy", "two", "compact", "dense", "cols", "icons");
     lv.c.forEach((c) => box.classList.add(c));
     box.style.fontSize = fs + "px";
   };
   // узкая доска (телефон) прокручивается страницей — подбирать нечего
   if (matchMedia("(max-width: 1000px)").matches) return set(DENSITY[1], 16);
   // две колонки — только если панель широкая: на узкой они давали строки по 130px
-  const levels = box.clientWidth >= 420 ? DENSITY : DENSITY.slice(0, 3);
-  for (const lv of levels) {
+  const levels = box.clientWidth >= 420 ? DENSITY : DENSITY.slice(0, 4);
+  // самый крупный кегль ступени, при котором список влезает; null — не влезает и на минимуме
+  const best = (lv) => {
     set(lv, lv.min);
-    if (playersOverflow(box)) continue;
+    if (playersOverflow(box)) return null;
     set(lv, lv.max);
-    if (!playersOverflow(box)) return;
+    if (!playersOverflow(box)) return lv.max;
     let lo = lv.min, hi = lv.max;
     for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; set(lv, mid); if (playersOverflow(box)) hi = mid; else lo = mid; }
-    return set(lv, Math.floor(lo * 4) / 4);
-  }
+    return Math.floor(lo * 4) / 4;
+  };
+  const roomy = best(levels[0]);
+  if (roomy != null) return set(levels[0], roomy);
+  // две колонки слотов (названия читаются) против сетки из ceil(слотов/2) колонок (кегль крупнее):
+  // широкие ячейки берём, пока кегль в них не мельче 16px, — мелкий шрифт на телевизоре хуже
+  // обрезанных названий
+  const two = best(levels[1]), grid = best(levels[2]);
+  if (two != null && (grid == null || two >= 16)) return set(levels[1], two);
+  if (grid != null) return set(levels[2], grid);
+  for (const lv of levels.slice(3)) { const f = best(lv); if (f != null) return set(lv, f); }
   // не влезло и в две колонки на минимуме — остаётся прокрутка списка
   set(levels[levels.length - 1], levels[levels.length - 1].min);
 }
-// «Не влезло» — это и высота списка, и название лота, обрезанное многоточием (кроме плотных ступеней,
-// где названий нет вовсе): крупный кегль не должен покупаться ценой «Ка…» вместо «Каста».
+// «Не влезло» — только по высоте. Раньше сюда входили и названия лотов, обрезанные многоточием, — но тогда
+// кегль зависел от того, что куплено, и менялся с каждой покупкой (список «дышал»). Названия теперь
+// режутся в ячейках постоянной ширины, а целиком видны в просторной ступени и в подсказке.
 function playersOverflow(box) {
   // строго, без допуска в 1px: у списка overflow-y: auto, и лишний пиксель давал полосу прокрутки
-  if (box.scrollHeight > box.clientHeight) return true;
-  if (box.classList.contains("dense")) return false;
-  // название длиннее целой строки режется при любом кегле — такое не считаем (пилюля и так во всю ширину)
-  return [...box.querySelectorAll(".slot-i .n")].some((n) => n.scrollWidth > n.clientWidth + 1 &&
-    n.parentNode.offsetWidth < n.closest(".slots").clientWidth - 4);
+  return box.scrollHeight > box.clientHeight;
 }
 
+// превью песни исполнителя (категория «артист») — подложка на это время молчит
+const previewOn = () => typeof player !== "undefined" && !player.paused && !!player.src && !/^data:/.test(player.src);
 function tickTimer() {
+  if (state && window.AuctionMusic) {
+    const busy = state.phase === "lot" || state.phase === "bidding" || state.phase === "pickup" || state.phase === "draft";
+    AuctionMusic.update(state, busy && !state.paused && state.deadline ? state.deadline - (Date.now() + offset) : Infinity, previewOn());
+  }
   if (!state || state.phase === "lobby" || state.phase === "finished" || !document.getElementById("timer")) return requestAnimationFrame(tickTimer);
   const s = state;
   const total = { lot: s.settings.t1, bidding: s.settings.t2, pickup: 5000, draft: s.t4 || 10000 }[s.phase] || 2000;

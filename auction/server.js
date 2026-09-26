@@ -16,7 +16,7 @@ const crypto = require("crypto");
 const zlib = require("zlib");
 const { WebSocketServer } = require("ws");
 const { Game, clampSettings, cleanName } = require("./game");
-const { judge } = require("./judge");
+const { judge, lineupsFor } = require("./judge");
 const { MODES } = require("./modes");
 const { decide, decideDraft, STRATEGIES } = require("./bots");
 
@@ -91,6 +91,21 @@ for (const lang of LANGS.slice(1)) {
   }
 }
 const KINDS = KINDS_BY_LANG.ru; // список категорий и запасная колода
+// Популярность лотов (popularity.js: просмотры статьи в Википедии за год, в тысячах) → card.pop.
+// Номер в массиве — номер карты, одинаковый во всех языках. Нет файла или разошлась длина
+// колоды — карта остаётся без pop, и «хит после серии пустых лотов» (game.js) просто не срабатывает.
+try {
+  const POP = JSON.parse(fs.readFileSync(path.join(__dirname, "popularity.json"), "utf8"));
+  for (const lang of LANGS) {
+    for (const [kind, cards] of Object.entries(KINDS_BY_LANG[lang])) {
+      const pop = POP[kind];
+      if (Array.isArray(pop) && pop.length === cards.length) cards.forEach((c, i) => { c.pop = Number(pop[i]) || 0; });
+      else if (lang === "ru") console.warn(`[auction] popularity.json: нет данных для ${kind} (или колода изменилась) — перезапусти popularity.js`);
+    }
+  }
+} catch (err) {
+  console.warn(`[auction] popularity.json не прочитан (${err.message}) — хит после серии пустых лотов выключен`);
+}
 const cardsFor = (kind, lang) => (KINDS_BY_LANG[lang] || KINDS_BY_LANG.ru)[kind] || KINDS[kind];
 if (!OPENAI_API_KEY) console.warn("[auction] OPENAI_API_KEY не задан — судья будет через голосование");
 
@@ -167,6 +182,15 @@ function evictOldestEmpty(ip) {
   if (!victim) return false;
   destroyRoom(victim);
   return true;
+}
+
+// Токены игроков, которых в партии больше нет (вышли или выгнаны в лобби, не перешли в новую игру).
+// Без уборки каждый вход в лобби оставлял запись навсегда: цикл «вошёл — вышел» с одного сокета
+// накручивал ~20 записей в секунду, дамп рос на мегабайты и снова вёл к OOM (см. DEVOPS.md, п. 1).
+// Вернувшийся с таким токеном попадает на ввод имени (token_gone) — так же, как до уборки.
+function pruneTokens(room) {
+  const ids = new Set(room.game.s.players.map((p) => p.id));
+  for (const [t, id] of Object.entries(room.tokens)) if (!ids.has(id)) delete room.tokens[t];
 }
 
 function createRoom({ kind = "artist", settings = {}, speed = 1, ip = "" } = {}) {
@@ -381,7 +405,7 @@ async function startJudging(room) {
   if (s.settings.judge === "chatgpt" && OPENAI_API_KEY && room.judgeCalls < MAX_JUDGE_CALLS) {
     room.judgeCalls++;
     broadcast(room, { type: "event", event: { type: "judging" } });
-    const lineups = players.map((p, i) => ({ pid: `p${i + 1}`, playerId: p.id, lots: p.lots }));
+    const lineups = lineupsFor(players); // без цен и трат: судья оценивает только сами лоты
     try {
       const verdict = await judge({ kind: s.kind, lineups, slots: s.settings.slots, mode: s.settings.mode, lang: s.settings.lang, apiKey: OPENAI_API_KEY, model: OPENAI_MODEL });
       const byPid = Object.fromEntries(lineups.map((l) => [l.pid, l]));
@@ -751,6 +775,8 @@ function handle(room, client, msg) {
         if (!String(msg.name || "").trim()) return reply({ type: "error", error: "token_gone" });
         playerId = null;
       }
+      // токен уже убран (см. pruneTokens) — тот же исход, что и у токена ушедшего игрока
+      if (msg.token && !playerId && !String(msg.name || "").trim()) return reply({ type: "error", error: "token_gone" });
       if (playerId && g.player(playerId)?.left) playerId = null;
       // Потерял localStorage, но игра идёт: то же имя, что у никем не занятого игрока, — продолжаем
       // его партию. Признак занятости — живой сокет с этим playerId, а НЕ флаг online: в пределах
@@ -772,6 +798,11 @@ function handle(room, client, msg) {
       if (!playerId) {
         if (g.s.phase !== "lobby") return reply({ type: "error", error: "game_started" });
         if (g.activePlayers().length >= MAX_PLAYERS) return reply({ type: "error", error: "room_full" });
+        // Новый игрок с одного соединения — не чаще раза в 3 с. Живой пульт после «Выйти» заходит
+        // заново через новое соединение, так что это ограничение касается только цикла «вошёл — вышел»
+        // по одному сокету: каждый такой вход — рассылка состояния всей комнате (30 сокетов жгли 35% CPU).
+        if (client.newPlayerAt && now() - client.newPlayerAt < 3000) return;
+        client.newPlayerAt = now();
         playerId = "u_" + crypto.randomBytes(5).toString("hex");
         const token = crypto.randomBytes(12).toString("base64url");
         room.tokens[token] = playerId;
@@ -831,6 +862,7 @@ function handle(room, client, msg) {
       if (!client.playerId) return;
       const events = g.removePlayer(client.playerId);
       client.playerId = null;
+      pruneTokens(room);
       events.push(...autoResumeIfBack(room));
       afterChange(room, events);
       return maybeFinishVoting(room);
@@ -878,6 +910,7 @@ function handle(room, client, msg) {
       // ведущий с пульта не выгоняет сам себя случайным тапом — для этого есть «Выйти»
       if (client.hostRemote && !client.host && msg.playerId === client.playerId) return;
       const events = g.removePlayer(msg.playerId);
+      pruneTokens(room);
       for (const c of room.sockets) if (c.playerId === msg.playerId) { c.playerId = null; send(c.ws, { type: "kicked" }); }
       // выгнали отключённого — отключённых могло стать не больше половины (§7.4)
       events.push(...autoResumeIfBack(room));
@@ -898,6 +931,7 @@ function handle(room, client, msg) {
       clearTimeout(room.voteTimer);
       room.judging = false;
       room.game = fresh;
+      pruneTokens(room);
       return afterChange(room, [{ type: "new_game" }]);
     }
     case "bots": {
@@ -924,12 +958,12 @@ setInterval(() => {
       c.misses = (c.misses || 0) + 1;
       c.ws.ping();
     }
-    // Идущая партия живёт, пока к ней кто-то подключён: на паузе и в разборе игровых тиков нет,
-    // а room.touched двигают только сообщения — иначе живая игра умирала бы под людьми.
-    // Лобби так не продлеваем: комната, в которой полчаса никто ничего не сделал, — брошенная,
-    // и открытая доска с кодом на экране этого не меняет. Игроки увидят внятный экран «комната
-    // была неактивна», а не молча мёртвый код.
-    if (room.sockets.size && room.game.s.phase !== "lobby") room.touched = now();
+    // Идущая партия живёт, пока к ней кто-то подключён. Бесхозная комната — лобби, пауза, итоги,
+    // где полчаса никто ничего не нажал, — закрывается через ROOM_TTL, даже если на экране открыта
+    // доска: иначе телевизор с итогами, оставленный на ночь, держал комнату (и писал её в дамп)
+    // сколько угодно. Игроки увидят внятный экран «комната была неактивна», а не молча мёртвый код.
+    const ph = room.game.s.phase;
+    if (room.sockets.size && ph !== "lobby" && ph !== "finished" && !room.game.s.paused) room.touched = now();
     if (now() - room.touched > ROOM_TTL) destroyRoom(room);
   }
   // Одна строка в лог на каждый обход: по `docker logs randomhost-auction` видно, сколько комнат,
@@ -1019,6 +1053,7 @@ function restore() {
       }
       const room = { code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: Game.from(r.state), tokens: r.tokens, sockets: new Set(), offlineTimers: new Map(), dropCounts: new Map(), timer: null, voteTimer: null, touched: r.touched, speed: 1, skew: 0, bots: [], botTimer: null, judging: false, judgeCalls: Number(r.judgeCalls) || 0 };
       for (const p of room.game.s.players) p.online = false;
+      pruneTokens(room); // дамп прежней версии мог успеть накопить мёртвые токены
       // После перезапуска на связи никого: без паузы таймеры шли бы, и лоты продавались и сгорали
       // без людей. Авто-пауза снимется сама, когда вернётся больше половины (§7.4).
       if (room.game.s.phase !== "lobby" && room.game.s.phase !== "finished" && !room.game.s.paused) room.game.pause(clock(room), true);

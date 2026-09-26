@@ -47,6 +47,13 @@ const LANGS = {
 };
 const langPack = (lang) => LANGS[lang] || LANGS.ru;
 
+// Что уходит судье: только сами лоты (название и признаки с карточки). Цена лота, потраченное и
+// остаток бюджета сюда не попадают — судья оценивает, ЧТО собрано, а не сколько за это заплатили
+// (просьба владельца 27.09: хит, выхваченный за $1, не должен проигрывать тому же хиту за $30).
+function lineupsFor(players) {
+  return players.map((p, i) => ({ pid: `p${i + 1}`, playerId: p.id, lots: p.lots.map((l) => ({ name: l.name, meta: l.meta || [] })) }));
+}
+
 function buildPrompt(kind, lineups, slots, modeId, lang) {
   const mode = modeById(modeId);
   const base = FRAMES[kind] || ["набор", "качество и цельность"];
@@ -55,6 +62,7 @@ function buildPrompt(kind, lineups, slots, modeId, lang) {
   const extra = mode.prompt ? mode.prompt + "\n" : "";
   const L = langPack(lang);
   const lines = lineups.map((l) => {
+    // только название и признаки — даже если в лоте окажется цена, в промпт она не попадёт
     const items = l.lots.map((x) => `${x.name} (${(x.meta || []).join(", ")})`);
     while (items.length < slots) items.push(L.empty);
     return `${l.pid}: ${items.join("; ")}`;
@@ -62,7 +70,9 @@ function buildPrompt(kind, lineups, slots, modeId, lang) {
   return (
     `Ты ведущий весёлого шоу-аукциона. У каждого игрока ${slots} слотов, лоты — ${KIND_LABELS[kind] || "разные лоты"}. ` +
     `Задание: собрать ${what}. ` +
-    `Оцени составы по критериям: ${criteria}. Пустые слоты — минус. Деньги не учитывай.\n` +
+    `Оцени составы по критериям: ${criteria}. Пустые слоты — минус.\n` +
+    `Суди только сами лоты — что именно собрал каждый. Сколько игроки заплатили за лоты и сколько денег у них осталось, ` +
+    `тебе намеренно не показано: не учитывай цены и потраченные деньги, не угадывай их и не упоминай в вердиктах.\n` +
     extra +
     `Игроки обозначены p1, p2… — обращайся к ним ровно так, не выдумывай имён.\n\n` +
     lines.join("\n") +
@@ -140,4 +150,4 @@ async function askJudge({ kind, lineups, slots, mode, lang, apiKey, model, timeo
   }
 }
 
-module.exports = { judge, askJudge, buildPrompt, FRAMES, KIND_LABELS, LANGS };
+module.exports = { judge, askJudge, buildPrompt, lineupsFor, FRAMES, KIND_LABELS, LANGS };

@@ -126,6 +126,20 @@ async function wikiImage(lang, params, { allowLogo = false, allowFlag = false, s
   return { src: source, link: page.fullurl, portrait: height > width * 1.15, logo: allowFlag || /\.svg|logo/i.test(source) };
 }
 
+// Картинка, заданная в карточке явно (поле img — имя файла в английской Википедии). Нужна там, где
+// у статьи нет заглавной картинки и поиск подсовывал чужое: у «Сверхъестественного» русский поиск
+// находил статью про сверхъестественное вообще с фото «ящика диббука». Источник тот же — Википедия.
+async function wikiFile(file, pick, size) {
+  const url = `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&prop=imageinfo&iiprop=url|size` +
+    `&iiurlwidth=${size}&titles=${encodeURIComponent("File:" + file)}`;
+  const data = await (await fetch(url)).json();
+  const page = Object.values((data.query && data.query.pages) || {})[0];
+  const ii = page && page.imageinfo && page.imageinfo[0];
+  if (!ii) return null;
+  const link = "https://en.wikipedia.org/wiki/" + encodeURIComponent(String(pick.wiki_en || "").replace(/ /g, "_"));
+  return { src: ii.thumburl || ii.url, link, portrait: ii.height > ii.width * 1.15, logo: false };
+}
+
 async function findImage(pick, kind, size) {
   const q = encodeURIComponent;
   size = size || 1200;
@@ -137,6 +151,7 @@ async function findImage(pick, kind, size) {
   ];
   // у части карточек (русские картины) есть точное название статьи в русской Википедии — оно надёжнее
   if (pick.wiki_ru) attempts.unshift(() => wikiImage("ru", `titles=${q(pick.wiki_ru)}`, opts));
+  if (pick.img) attempts.unshift(() => wikiFile(pick.img, pick, size));
   if (kind === "country") {
     // заглавная картинка страны — всегда флаг; сначала пробуем пейзаж из статьи о туризме, флаг — запасной вариант
     attempts.unshift(() => wikiImage("en", `titles=${q("Tourism in " + pick.wiki_en)}`, { size }));

@@ -96,6 +96,17 @@
   /* в фазах без отсчёта цифры нет — вместо «пустого» кольца ставим нейтральный прочерк */
   .ring .num:empty::after { content: "—"; color: var(--muted); font-size: 15px; }
   .ring { flex: none; }
+  /* «Скип» в торгах: место под кнопку есть всегда (visibility, а не display), чтобы кольцо и
+     лидер не сдвигались, когда кнопка появляется и пропадает между фазами */
+  .skipbtn { flex: none; margin-left: auto; min-width: 88px; min-height: 44px; padding: 0 16px; font: 700 13px/1 var(--display); text-transform: uppercase; letter-spacing: .05em; color: var(--text); background: none; border: 1px solid var(--glass-line); border-radius: 999px; visibility: hidden; }
+  .skipbtn.on { visibility: visible; }
+  .skipbtn.done { color: var(--muted); border-style: dashed; }
+  .skipbtn:active { background: rgba(255, 255, 255, .08); }
+  /* без :has() — старые iPhone его не знают: кнопка «Скип» в ряду есть всегда (см. renderGame) */
+  .bidinfo { justify-content: flex-start; }
+  .bidinfo .lead { flex: 1 1 auto; }
+  .bidinfo .lead:not(.sold) .who { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  @media (max-width: 380px) { .skipbtn { min-width: 0; padding: 0 12px; font-size: 12px; } .bidinfo { gap: 12px; } }
   .ring.urgent .arc { stroke: #ff6b6b; }
   .lead { min-width: 0; text-align: left; overflow-wrap: anywhere; }
   .lead .cap { font: 700 10px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
@@ -372,6 +383,11 @@
   /* закрытая шторка не должна перехватывать тапы (на телефоне это ломало ввод имени) */
   .sheet { position: fixed; top: auto; right: 0; bottom: 0; left: 0; background: #1a1822; border-radius: 22px 22px 0 0; padding: 20px 20px calc(20px + env(safe-area-inset-bottom)); max-height: 78vh; max-height: 78dvh; overflow-y: auto; transform: translateY(100%); transition: transform .3s, visibility .3s; z-index: 40; visibility: hidden; pointer-events: none; }
   .sheet.on { transform: none; visibility: visible; pointer-events: auto; }
+  /* затемнение под шторкой: тап мимо шторки закрывает её (как «Закрыть») */
+  .sheetback { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 39; background: rgba(0, 0, 0, .5); opacity: 0; visibility: hidden; transition: opacity .3s, visibility .3s; -webkit-tap-highlight-color: transparent; }
+  .sheetback.on { opacity: 1; visibility: visible; }
+  /* шторка ведущего стоит над оверлеем паузы (z 50) — и её затемнение тоже */
+  .sheetback.host { z-index: 55; }
   /* «Закрыть» всегда под рукой, даже если факт длинный и шторка прокручивается */
   .sheet .mid { position: sticky; bottom: calc(-20px - env(safe-area-inset-bottom)); margin-top: 16px; background: #1a1822; box-shadow: 0 -12px 18px 6px #1a1822; }
   /* ведущий с телефона (§10.4): маленькая кнопка в статус-строке и шторка управления поверх паузы */
@@ -436,6 +452,7 @@
 <div class="util"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
 <div class="screen" id="app"></div>
 <div class="overlay" id="overlay"></div>
+<div class="sheetback" id="sheetback"></div>
 <div class="sheet" id="sheet"></div>
 <canvas class="confetti" id="confetti"></canvas>
 
@@ -561,6 +578,9 @@ window.I18N_DICT = {
     draft_take: `Взять за {money}`,
     draft_take_free: `Забрать`,
     draft_skip: `Скип · {n}`,
+    skip_btn: `Скип`,
+    skip_done: `Скип ✓`,
+    hot_tag: `🔥 самый популярный`,
     draft_must: `Скипы кончились — этот лот твой`,
     draft_broke: `Денег нет — забираешь всё подряд, без скипов`,
     draft_other: `{name} добирает лайнап`,
@@ -718,6 +738,9 @@ window.I18N_DICT = {
     draft_take: `Take for {money}`,
     draft_take_free: `Take it`,
     draft_skip: `Skip · {n}`,
+    skip_btn: `Skip`,
+    skip_done: `Skipped ✓`,
+    hot_tag: `🔥 most popular`,
     draft_must: `No skips left — this lot is yours`,
     draft_broke: `Out of money — you take every lot, no skips`,
     draft_other: `{name} is filling the lineup`,
@@ -872,6 +895,9 @@ window.I18N_DICT = {
     draft_take: `Πάρ' το με {money}`,
     draft_take_free: `Πάρ' το`,
     draft_skip: `Πάσο · {n}`,
+    skip_btn: `Πάσο`,
+    skip_done: `Πάσο ✓`,
+    hot_tag: `🔥 το πιο δημοφιλές`,
     draft_must: `Τα πάσα τελείωσαν — αυτό το λοτ είναι δικό σου`,
     draft_broke: `Τέλος τα λεφτά — παίρνεις ό,τι έρθει, χωρίς πάσο`,
     draft_other: `{name} συμπληρώνει το λάιναπ`,
@@ -1513,7 +1539,7 @@ function renderGame() {
     app.innerHTML = `<div class="status"><button class="hostpill" id="hostbtn" hidden>${escapeHtml(I18N.t("host_btn"))}</button><b id="myname"></b><span class="slots" id="myslots"></span><span class="spacer"></span><span id="lotno"></span><span class="money" id="mymoney"></span></div>
       <div class="taskbar" id="task"></div>
       <div class="lotbox" id="lot"></div>
-      <div class="bidinfo"><div class="ring" id="ring"><svg viewBox="0 0 62 62"><circle class="track" cx="31" cy="31" r="27"/><circle class="arc" id="arc" cx="31" cy="31" r="27" stroke-dasharray="170" stroke-dashoffset="0"/></svg><div class="num" id="tnum"></div></div><div class="lead" id="lead"></div></div>
+      <div class="bidinfo"><div class="ring" id="ring"><svg viewBox="0 0 62 62"><circle class="track" cx="31" cy="31" r="27"/><circle class="arc" id="arc" cx="31" cy="31" r="27" stroke-dasharray="170" stroke-dashoffset="0"/></svg><div class="num" id="tnum"></div></div><div class="lead" id="lead"></div><button class="skipbtn" id="skipbtn" type="button"></button></div>
       <div class="actions" id="bidbox"><div class="bidmain" id="bidmain"></div><div class="ownwrap" id="ownwrap"></div></div><div class="note" id="note"></div>`;
     // как и в заставке: один цикл на всю страницу, иначе смена языка удваивала бы кадры
     if (!timerLoop) { timerLoop = true; requestAnimationFrame(tickTimer); }
@@ -1555,6 +1581,17 @@ function renderGame() {
   }
   else lead.append(el("div", "cap", ""), el("div", "who", I18N.t("nobody_took")));
 
+  // «Скип»: лот мне не нужен. Скипнули все — лот заканчивается сразу (game.js, skip). В доборе
+  // у скипа свой счётчик и своя кнопка в блоке действий — эта там не показывается.
+  const sk = document.getElementById("skipbtn");
+  if (sk) {
+    const show = !s.paused && (p.canSkip || p.skipped);
+    sk.className = "skipbtn" + (show ? " on" : "") + (p.skipped ? " done" : "");
+    sk.textContent = I18N.t(p.skipped ? "skip_done" : "skip_btn");
+    sk.disabled = !p.canSkip || s.paused;
+    sk.onclick = () => act({ type: "skip", round: s.round }, sk);
+  }
+
   renderActions(p);
 }
 
@@ -1564,8 +1601,12 @@ function renderLot(lot, kind) {
   const img = el("img", "thumb"); img.alt = "";
   const meta = el("div", "meta"); (lot.meta || []).forEach((m) => meta.append(el("span", null, m)));
   const more = el("button", "more", I18N.t("more_btn"));
-  more.onclick = () => openSheet(lot);
-  box.append(img, el("div", "emoji", lot.emoji), el("div", "kind", auctionKind(kind, uiLang()).label || kind), el("div", "name", lot.name), meta, el("div", "short", lot.description), more);
+  more.onclick = (e) => { e.stopPropagation(); openSheet(lot); };
+  // вся карточка лота — тоже вход в подробности: «подробнее» мелкая, а тапают обычно по названию
+  box.onclick = () => openSheet(lot);
+  // хит после серии пустых лотов (game.js, HOT_AFTER) — пометка в той же строке, что и категория
+  const kindLine = (auctionKind(kind, uiLang()).label || kind) + (state.hot ? " · " + I18N.t("hot_tag") : "");
+  box.append(img, el("div", "emoji", lot.emoji), el("div", "kind", kindLine), el("div", "name", lot.name), meta, el("div", "short", lot.description), more);
   setNote("");
   // новый лот — ряд «своей суммы» пересоздаём пустым: прежняя сумма относилась к другому лоту
   const wrap = document.getElementById("ownwrap"); if (wrap) wrap.replaceChildren();
@@ -1686,6 +1727,17 @@ function tickTimer() {
   ring.classList.toggle("urgent", left < 3000 && (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "draft"));
   requestAnimationFrame(tickTimer);
 }
+
+// Затемнение следует за шторкой само: открывают и закрывают её из нескольких мест (лот, ведущий,
+// перерисовка), и помнить про фон в каждом из них ненадёжно
+(function () {
+  const sh = document.getElementById("sheet"), back = document.getElementById("sheetback");
+  if (!sh || !back) return;
+  const sync = () => { back.classList.toggle("on", sh.classList.contains("on")); back.classList.toggle("host", sh.classList.contains("host")); };
+  new MutationObserver(sync).observe(sh, { attributes: true, attributeFilter: ["class"] });
+  back.onclick = () => { if (hostSheetOpen) closeHostSheet(); else sh.classList.remove("on"); };
+  sync();
+})();
 
 function openSheet(lot) {
   const sh = document.getElementById("sheet");

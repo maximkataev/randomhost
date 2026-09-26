@@ -494,6 +494,50 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
     for (const x of [h, h2, a2, b, c]) x.ws.close();
   }
 
+  // ---------- «Скип» в торгах и хит после серии пустых лотов ----------
+  {
+    const r = await make({ slots: 3, budget: 20, t1: 20000, t2: 5000, judge: "vote" });
+    const h = await connect(r.code, { type: "host", token: r.hostToken });
+    const a = await connect(r.code, { type: "join", name: "Скип-А" });
+    const b = await connect(r.code, { type: "join", name: "Скип-Б" });
+    await until(() => h.state?.players.length === 2);
+    h.send({ type: "start" });
+    await until(() => h.state.phase === "lot");
+    const shown = [];
+    for (let i = 0; i < 3; i++) {
+      const round = h.state.round;
+      shown.push(h.state.lot);
+      const t0 = Date.now();
+      a.send({ type: "skip", round });
+      await until(() => h.state.players.find((p) => p.id === a.me).skipped, 2000);
+      if (i === 0) {
+        check(has(h, "event", (m) => m.event.type === "skip" && m.event.playerId === a.me), "скип игрока виден доске событием");
+        check(h.state.phase === "lot" && !h.state.players.find((p) => p.id === a.me).canSkip, "скипнул один — лот идёт, второй раз скипнуть нельзя");
+      }
+      b.send({ type: "skip", round });
+      await until(() => h.state.round === round + 1 && h.state.phase === "lot", 4000);
+      if (i === 0) check(h.state.round === round + 1 && Date.now() - t0 < 4000, `скипнули оба — следующий лот, не дожидаясь T1 (${Date.now() - t0} мс)`);
+    }
+    // три лота подряд мимо — на экране хит: самый популярный из оставшихся. Колоду клиент не видит,
+    // но из всей категории ушло только три лота — значит, хит не ниже четвёртого по популярности
+    const top4 = require("./popularity.json").animal.slice().sort((x, y) => y - x)[3];
+    check(h.state.hot === true && h.state.lot.pop >= top4 && !shown.some((l) => l.name === h.state.lot.name),
+      `после трёх пустых лотов выставлен хит (${h.state.lot.name}, pop ${h.state.lot.pop} ≥ ${top4})`);
+    // хит перебивают по-настоящему: А ставит, Б скипает — лот уходит А через 1,5 с, не через T2
+    a.send({ type: "bid", amount: 1, expectedPrice: 0, round: h.state.round });
+    await until(() => h.state.leaderId === a.me, 2000);
+    const tb = Date.now();
+    b.send({ type: "skip", round: h.state.round });
+    await until(() => h.state.phase === "sold", 4000);
+    check(h.state.phase === "sold" && Date.now() - tb < 3000, `в торгах все, кроме лидера, скипнули — продано лидеру (${Date.now() - tb} мс)`);
+    const late = [];
+    a.ws.on("message", (raw) => { const m = JSON.parse(raw); if (m.type === "rejected") late.push(m); });
+    a.send({ type: "skip", round: h.state.round - 1 });
+    await until(() => late.length, 2000);
+    check(late[0]?.reason === "closed", "запоздавший скип прошлого лота отклоняется");
+    for (const x of [h, a, b]) x.ws.close();
+  }
+
   // ---------- M16: state без повторов тяжёлых частей ----------
   // Клиент с d=1 получает настройки/лот/лоты игроков только при изменении и собирает полный снимок
   // сам (auctionMergeState из auction-shared.js). Проверяем, что собранное состояние совпадает
@@ -516,6 +560,7 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
 
   // ---------- TTL комнаты (свой инстанс с TTL 2 с) ----------
   await ttlSuite();
+  await tokensSuite();
   await graceSuite();
   await pingTtlSuite();
   await shutdownSuite();
@@ -720,8 +765,8 @@ async function ttlSuite() {
     check(h.rooms === 0, `брошенные и простаивающие комнаты убраны (комнат ${h.rooms})`);
     ws.close();
 
-    // а вот идущая партия по TTL умирать не должна: на паузе и в разборе игровых тиков нет,
-    // и без этого игра распадалась бы под людьми, которые просто задумались над ставкой
+    // а вот идущая партия по TTL умирать не должна, пока к ней подключены: между ставками
+    // сообщений может не быть дольше TTL, и игра распадалась бы под людьми, которые задумались
     const live = await mk();
     const hostWs = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + live.code);
     let liveExpired = false;
@@ -736,13 +781,109 @@ async function ttlSuite() {
     }
     await wait(300);
     hostWs.send(JSON.stringify({ type: "start" }));
-    await wait(500);
+    await wait(6500); // больше трёх TTL без единого сообщения
+    check(!liveExpired, "идущая партия с подключёнными игроками по TTL не закрывается");
+
+    // Бесхозная партия — пауза, в которой никто ничего не нажимает, — закрывается по TTL, даже
+    // если доска и пульты подключены: иначе забытая пауза жила бы до перезапуска процесса
     hostWs.send(JSON.stringify({ type: "pause" }));
-    await wait(6500); // больше трёх TTL на паузе
-    check(!liveExpired, "партия на паузе с подключёнными игроками по TTL не закрывается");
+    await wait(6500);
+    check(liveExpired, "пауза, в которой никто ничего не делает, закрывается по TTL и с подключёнными");
     hostWs.close(); for (const w of pl) w.close();
+
+    // то же для итогов: телевизор с финальным экраном, оставленный на ночь, не держит комнату
+    const fin = await mk();
+    const finWs = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + fin.code);
+    let finExpired = false, finPhase = null;
+    finWs.on("message", (raw) => { const m = JSON.parse(raw); if (m.type === "state") finPhase = m.state.phase; if (m.type === "error" && m.error === "room_expired") finExpired = true; });
+    finWs.on("error", () => {});
+    await new Promise((r) => { finWs.on("open", () => { finWs.send(JSON.stringify({ type: "host", token: fin.hostToken })); r(); }); setTimeout(r, 3000); });
+    const fp = [];
+    for (let i = 0; i < 2; i++) {
+      const w = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + fin.code);
+      await new Promise((r) => { w.on("open", () => { w.send(JSON.stringify({ type: "join", name: "Ф" + i })); r(); }); w.on("error", r); setTimeout(r, 2000); });
+      fp.push(w);
+    }
+    await wait(300);
+    finWs.send(JSON.stringify({ type: "start" }));
+    await wait(300);
+    finWs.send(JSON.stringify({ type: "end" }));
+    await wait(6500);
+    check(finPhase === "finished" && finExpired, `итоги, на которые никто не нажимает, закрываются по TTL (фаза ${finPhase})`);
+    finWs.close(); for (const w of fp) w.close();
   } finally {
     child.kill("SIGKILL");
+  }
+}
+
+// ---------- токены вышедших не копятся ----------
+// Каждый вход в лобби выдаёт токен. Раньше выход и кик его не убирали: цикл «вошёл — вышел»
+// с одного сокета накручивал ~20 записей в секунду, и за полчаса дамп дорастал до десятков МБ —
+// та самая дорога к OOM, что описана в DEVOPS.md. Плюс каждый вход — рассылка всей комнате.
+async function tokensSuite() {
+  const { spawn } = require("child_process");
+  const path = require("path");
+  const os = require("os");
+  const fs = require("fs");
+  const PORT = 3500 + Math.floor(Math.random() * 90);
+  const B = `http://127.0.0.1:${PORT}`;
+  const DUMP = path.join(os.tmpdir(), `tokens-${PORT}.json`);
+  const child = spawn(process.execPath, [path.join(__dirname, "server.js")], {
+    env: { ...process.env, PORT: String(PORT), NODE_ENV: "production", DUMP_FILE: DUMP },
+    stdio: "ignore",
+  });
+  try {
+    let up = false;
+    for (let i = 0; i < 60 && !up; i++) { try { up = (await fetch(B + "/auction/api/health")).ok; } catch { await wait(100); } }
+    if (!up) return check(false, "сервер токенов поднялся");
+    const room = await (await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal" }) })).json();
+    const url = B.replace(/^http/, "ws") + "/auction/ws?r=" + room.code;
+    const open = (onMsg) => new Promise((r) => { const w = new WebSocket(url); w.on("message", (raw) => onMsg(JSON.parse(raw))); w.on("error", () => {}); w.on("open", () => r(w)); });
+
+    // один сокет крутит «вошёл — вышел»: новый игрок с того же соединения — не чаще раза в 3 с
+    let joins = 0;
+    const spam = await open((m) => { if (m.type === "joined") joins++; });
+    for (let i = 0; i < 20; i++) { spam.send(JSON.stringify({ type: "join", name: "Спам" })); spam.send(JSON.stringify({ type: "leave" })); await wait(20); }
+    await wait(300);
+    check(joins === 1, `цикл «вошёл — вышел» по одному сокету не плодит игроков (входов ${joins} из 20)`);
+    spam.close();
+
+    // выходы и кики через новые соединения: токены ушедших убираются
+    const host = await open(() => {});
+    host.send(JSON.stringify({ type: "host", token: room.hostToken }));
+    let kickedToken = null;
+    for (let i = 0; i < 6; i++) {
+      let me = null, tok = null;
+      const w = await open((m) => { if (m.type === "joined") { me = m.playerId; tok = m.token; } });
+      w.send(JSON.stringify({ type: "join", name: "Гость" + i }));
+      await until(() => me, 2000);
+      if (i % 2) w.send(JSON.stringify({ type: "leave" }));
+      else { host.send(JSON.stringify({ type: "kick", playerId: me })); kickedToken = tok; }
+      await wait(100);
+      w.close();
+    }
+    let stay = null;
+    const keeper = await open((m) => { if (m.type === "joined") stay = m.token; });
+    keeper.send(JSON.stringify({ type: "join", name: "Остался" }));
+    await until(() => stay, 2000);
+
+    // выгнанный, вернувшийся с убранным токеном и без имени, попадает на ввод имени, а не в «Игрока»
+    let gone = false;
+    const back = await open((m) => { if (m.type === "error" && m.error === "token_gone") gone = true; });
+    back.send(JSON.stringify({ type: "join", name: "", token: kickedToken }));
+    await until(() => gone, 2000);
+    check(gone, "вход с убранным токеном без имени → token_gone");
+    back.close();
+
+    child.kill("SIGTERM"); // дамп перед выходом
+    await until(() => child.exitCode !== null, 3000);
+    const saved = JSON.parse(fs.readFileSync(DUMP, "utf8")).find((r) => r.code === room.code);
+    const toks = Object.keys(saved?.tokens || {});
+    check(toks.length === 1 && toks[0] === stay, `в дампе только токены тех, кто в комнате (${toks.length})`);
+    host.close(); keeper.close();
+  } finally {
+    child.kill("SIGKILL");
+    try { require("fs").rmSync(DUMP, { force: true }); } catch {}
   }
 }
 

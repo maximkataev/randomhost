@@ -50,6 +50,11 @@ const SOLO_SKIPS = 5; // скипов на слот
 const SOLO_PRICE = 1; // цена лота в ДОБОРЕ, пока у игрока есть деньги
 const SOLO_WAIT = 60000; // сколько ждём вернувшегося добирающего, прежде чем закончить партию (§7.4)
 const LAST_BID_DELAY = 1500; // ставку перебить некому — столько держим лот, прежде чем продать
+// Столько лотов подряд ушло «мимо» (все скипнули или промолчали) — следующим выставляется самый
+// популярный лот из оставшихся (card.pop, см. popularity.js): вечер не должен вязнуть в лотах,
+// которые никому не нужны, а хит провоцирует драку. Владелец назвал 3–5, взяли нижнюю границу:
+// три пустых лота подряд — это уже минута тишины на экране.
+const HOT_AFTER = 3;
 
 // `kind` обязателен всюду, где категория известна: задание живёт не во всех категориях,
 // и проверка id без категории пропускала «лигу суперзлодеев» в блюда (POST /rooms, next_game).
@@ -115,6 +120,9 @@ class Game {
       lotStartedAt: null,
       lotCapAt: null,
       solo: null, // соло-добор: {playerId, skips} (§6.5)
+      skips: [], // кто нажал «Скип» на текущем лоте (торги/разбор; в доборе у скипа своя логика)
+      dry: 0, // сколько лотов подряд ушло «мимо» (см. HOT_AFTER)
+      hot: false, // текущий лот выставлен как самый популярный после серии пустых
       paused: null, // {at, remaining}
       results: null, // {mode, ranking, summary} после судейства
       votes: {},
@@ -170,6 +178,8 @@ class Game {
     // партию с его пустыми слотами — иначе она висела бы вечно на одном человеке (§7.4).
     if (s.phase === "draft" && s.solo && s.solo.playerId === id) return this.waitFor(id, now).concat([{ type: "dropped", playerId: id }]);
     const ev = this.tooManyOffline() ? this.pause(now, true) : [];
+    // отвалился единственный, кто ещё не скипнул, — остальные уже отказались, ждать нечего
+    if (!s.paused) ev.push(...this.allSkipped(now));
     return ev.concat([{ type: "dropped", playerId: id }]);
   }
 
@@ -248,9 +258,12 @@ class Game {
   }
 
   // Есть ли кто-то, кроме лидера, кто ещё может перебить текущую цену.
+  // Скипнувший на этом лоте в счёт не идёт: он сам сказал, что перебивать не будет (передумает —
+  // ставка снимет его скип, см. bid).
   canBeOutbid() {
     const s = this.s;
-    return this.contenders().some((p) => p.id !== s.leaderId && p.money > s.price);
+    const skipped = s.skips || [];
+    return this.contenders().some((p) => p.id !== s.leaderId && p.money > s.price && !skipped.includes(p.id));
   }
 
   bidders() {
@@ -304,10 +317,15 @@ class Game {
       }
       return this.finish("all_full");
     }
+    // Серия пустых лотов — выставляем хит. Только в торгах: в соло-доборе это отдало бы последнему
+    // игроку лучшее из колоды за $1 (то, от чего добор и защищён, решение Максима 26.09).
+    s.hot = false;
+    if (drafters.length > 1 && (s.dry || 0) >= HOT_AFTER) s.hot = this.pullHot();
     s.lot = s.deck[s.round];
     s.price = 0;
     s.leaderId = null;
     s.bids = [];
+    s.skips = [];
     s.lotStartedAt = now;
     s.lotCapAt = now + s.settings.lotCap;
     // Свободные слоты остались у одного — торговаться не с кем: фаза ДОБОР (§6.5).
@@ -325,7 +343,23 @@ class Game {
     // торговаться некому — не держим лот 10 секунд
     const t1 = this.bidders().length ? s.settings.t1 : 3000;
     s.deadline = now + t1;
-    return [{ type: "lot", round: s.round }];
+    return [{ type: "lot", round: s.round, hot: s.hot }];
+  }
+
+  // Самый популярный из ещё не показанных лотов встаёт на текущее место колоды (обмен, а не вставка:
+  // колода остаётся перестановкой тех же карт, и дамп номерами по-прежнему её описывает). Ничья —
+  // первый по колоде, то есть случайный. Популярности у колоды нет (старые данные) — ничего не трогаем.
+  pullHot() {
+    const s = this.s;
+    let best = -1, bestPop = 0;
+    for (let i = s.round; i < s.deck.length; i++) {
+      const pop = Number(s.deck[i].pop) || 0;
+      if (pop > bestPop) { best = i; bestPop = pop; }
+    }
+    s.dry = 0;
+    if (best < 0) return false;
+    [s.deck[s.round], s.deck[best]] = [s.deck[best], s.deck[s.round]];
+    return true;
   }
 
   // Соло-добор выключается посреди лота: игрок вернулся или ведущий впустил гостя, добирающих
@@ -335,6 +369,7 @@ class Game {
     if (s.phase !== "draft") return [];
     s.solo = null;
     s.phase = "lot";
+    s.skips = [];
     s.lotStartedAt = now;
     s.lotCapAt = now + s.settings.lotCap;
     s.deadline = now + (this.bidders().length ? s.settings.t1 : 3000);
@@ -354,6 +389,8 @@ class Game {
     if (amount > p.money) return { ok: false, reason: "not_enough_money", money: p.money };
 
     const prevLeader = s.leaderId;
+    // передумал после «Скипа» — ставка и есть отмена скипа
+    if (s.skips && s.skips.includes(playerId)) s.skips = s.skips.filter((id) => id !== playerId);
     s.price = amount;
     s.leaderId = playerId;
     s.bids.push({ playerId, amount, at: now });
@@ -379,6 +416,7 @@ class Game {
     if (s.paused) return { ok: false, reason: "paused" };
     if (!this.canTake(p)) return { ok: false, reason: "cannot_take" };
     p.lots.push(this.lotRecord(0));
+    s.dry = 0;
     s.phase = "taken";
     s.leaderId = playerId;
     s.deadline = now + s.settings.showDelay;
@@ -410,8 +448,47 @@ class Game {
     return { ok: true, events: [{ type: "taken", playerId, lot: s.lot.name, auto }] };
   }
 
-  // «Скип»: лот в отбой и не возвращается, счётчик −1. Скипов не осталось — лот обязателен.
+  // «Скип» в торгах: игрок говорит «этот лот мне не нужен». Когда отказались все, кто мог что-то
+  // сделать с лотом, он заканчивается сразу, а не дотикивает таймер:
+  //  - ЛОТ без ставок — все, кто может ставить (на связи, слот и деньги), скипнули → как истёкший
+  //    таймер: РАЗБОР для тех, у кого $0, или «мимо»;
+  //  - ТОРГИ — перебить больше некому (скипнувшие не в счёт, см. canBeOutbid) → лидеру через 1,5 с,
+  //    как при «перебить некому»; сам лидер не скипает — он уже сказал «хочу»;
+  //  - РАЗБОР — все, кто мог забрать даром, отказались → «мимо».
+  // В ДОБОРЕ (один добирающий) «Скип» — это соло-скип со счётчиком: правило добора главнее (§6.5).
   skip(playerId, now) {
+    const s = this.s;
+    if (s.phase === "draft") return this.soloSkip(playerId, now);
+    if (s.phase !== "lot" && s.phase !== "bidding" && s.phase !== "pickup") return { ok: false, reason: "closed" };
+    if (s.paused) return { ok: false, reason: "paused" };
+    const p = this.player(playerId);
+    if (s.phase === "pickup" ? !this.canTake(p) : !this.canBid(p)) return { ok: false, reason: "cannot_skip" };
+    if (s.leaderId === playerId && s.phase === "bidding") return { ok: false, reason: "already_leader" };
+    s.skips = s.skips || [];
+    if (s.skips.includes(playerId)) return { ok: true, events: [] };
+    s.skips.push(playerId);
+    return { ok: true, events: [{ type: "skip", playerId }, ...this.allSkipped(now)] };
+  }
+
+  // Все, от кого зависел лот, скипнули — заканчиваем его, не дожидаясь таймера (см. skip).
+  allSkipped(now) {
+    const s = this.s;
+    const skipped = s.skips || [];
+    if (!skipped.length || s.paused) return [];
+    if (s.phase === "lot") {
+      const b = this.bidders();
+      if (b.length && b.every((p) => skipped.includes(p.id))) { s.deadline = now; return this.tick(now); }
+    } else if (s.phase === "pickup") {
+      const t = s.players.filter((p) => this.canTake(p));
+      if (t.length && t.every((p) => skipped.includes(p.id))) { s.deadline = now; return this.tick(now); }
+    } else if (s.phase === "bidding" && !this.canBeOutbid()) {
+      s.deadline = Math.min(s.deadline, now + LAST_BID_DELAY);
+    }
+    return [];
+  }
+
+  // Соло-скип: лот в отбой и не возвращается, счётчик −1. Скипов не осталось — лот обязателен.
+  soloSkip(playerId, now) {
     const s = this.s;
     if (s.phase !== "draft") return { ok: false, reason: "closed" };
     if (s.paused) return { ok: false, reason: "paused" };
@@ -457,6 +534,7 @@ class Game {
         p.money -= s.price;
         p.spent += s.price;
         p.lots.push(this.lotRecord(s.price));
+        s.dry = 0;
         s.phase = "sold";
         s.deadline = now + s.settings.showDelay;
         return [{ type: "sold", playerId: p.id, amount: s.price, lot: s.lot.name }];
@@ -468,11 +546,13 @@ class Game {
           return [{ type: "pickup" }];
         }
         s.phase = "unsold";
+        s.dry = (s.dry || 0) + 1;
         s.deadline = now + Math.min(s.settings.showDelay, 1000);
         return [{ type: "unsold", lot: s.lot.name }];
       }
       case "pickup": {
         s.phase = "unsold";
+        s.dry = (s.dry || 0) + 1;
         s.deadline = now + Math.min(s.settings.showDelay, 1000);
         return [{ type: "unsold", lot: s.lot.name }];
       }
@@ -480,7 +560,7 @@ class Game {
         // Бездействие = скип и списывает счётчик, иначе партия висела бы на неактивном игроке.
         // На обязательном лоте истёкший таймер, наоборот, = взятие (§6.5).
         const id = s.solo ? s.solo.playerId : null;
-        const r = s.solo && s.solo.skips > 0 ? this.skip(id, now) : this.draftTake(id, now, true);
+        const r = s.solo && s.solo.skips > 0 ? this.soloSkip(id, now) : this.draftTake(id, now, true);
         if (r.ok) return r.events;
         // добирающего не стало в ту же миллисекунду (кик/выход) — лот в отбой, следующий лот разберётся
         s.phase = "unsold";
@@ -611,6 +691,8 @@ class Game {
 
   snapshot(now) {
     const s = this.s;
+    const skipPhase = s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup";
+    const skips = s.skips || [];
     return {
       kind: s.kind,
       phase: s.phase,
@@ -624,6 +706,7 @@ class Game {
       // но клиентам нужно знать длину фазы, чтобы нарисовать кольцо таймера.
       solo: s.phase === "draft" && s.solo ? { playerId: s.solo.playerId, skips: s.solo.skips, price: (this.player(s.solo.playerId)?.money || 0) >= SOLO_PRICE ? SOLO_PRICE : 0 } : null,
       t4: SOLO_T4,
+      hot: !!s.hot && !!s.lot, // лот выставлен как хит после серии пустых (HOT_AFTER)
       lot: s.lot && (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "draft" || s.phase === "sold" || s.phase === "taken" || s.phase === "unsold") ? s.lot : null,
       price: s.price,
       leaderId: s.leaderId,
@@ -651,9 +734,12 @@ class Game {
         canBid: this.canBid(p),
         canTake: s.phase === "pickup" && this.canTake(p),
         canDraft: s.phase === "draft" && !!s.solo && s.solo.playerId === p.id,
+        // «Скип» в торгах: скипнул ли уже и может ли скипнуть сейчас (см. skip)
+        skipped: skipPhase && skips.includes(p.id),
+        canSkip: skipPhase && !skips.includes(p.id) && (s.phase === "pickup" ? this.canTake(p) : this.canBid(p) && !(s.phase === "bidding" && s.leaderId === p.id)),
       })),
     };
   }
 }
 
-module.exports = { Game, DEFAULTS, PHASES, clampSettings, cleanName, SOLO_T4, SOLO_SKIPS, SOLO_PRICE, SOLO_WAIT };
+module.exports = { Game, DEFAULTS, PHASES, clampSettings, cleanName, SOLO_T4, SOLO_SKIPS, SOLO_PRICE, SOLO_WAIT, HOT_AFTER, LAST_BID_DELAY };

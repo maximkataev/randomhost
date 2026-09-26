@@ -4,8 +4,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { Game, DEFAULTS, clampSettings } = require("./game");
-const { judge, buildPrompt } = require("./judge");
+const { Game, DEFAULTS, clampSettings, HOT_AFTER, LAST_BID_DELAY } = require("./game");
+const { judge, buildPrompt, lineupsFor } = require("./judge");
 const { MODES, modeById, modeText, modesForKind } = require("./modes");
 
 const cards = Array.from({ length: 60 }, (_, i) => ({ name: `Лот ${i}`, emoji: "🎲", meta: ["a", "b"], description: "d", fact: "f", wiki_en: "x" }));
@@ -821,4 +821,164 @@ test("язык: сервер не пишет клиенту по-русски н
     const g = Game.create({ kind: "test", cards, settings: { lang }, rng });
     assert.equal(g.addPlayer({ id: "a", name: "   " }).name, expected, `запасное имя для ${lang}`);
   }
+});
+
+// ---------- «Скип» в торгах ----------
+
+test("скип: все, кто может ставить, скипнули лот без ставок → лот заканчивается сразу", () => {
+  const g = setup(3);
+  assert.deepEqual(g.skip("p0", 1000).events, [{ type: "skip", playerId: "p0" }]);
+  assert.equal(g.s.phase, "lot", "скипнул один — лот идёт дальше");
+  assert.equal(g.skip("p0", 1100).events.length, 0, "повторный скип ничего не меняет");
+  g.skip("p1", 1200);
+  const snap = g.snapshot(1200);
+  assert.equal(snap.players[0].skipped, true);
+  assert.equal(snap.players[0].canSkip, false);
+  assert.equal(snap.players[2].canSkip, true);
+  const r = g.skip("p2", 1300);
+  assert.equal(g.s.phase, "unsold", "скипнули все — лот мимо, не дожидаясь T1");
+  assert.ok(r.events.some((e) => e.type === "unsold"));
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "lot");
+  assert.deepEqual(g.s.skips, [], "на новом лоте скипов нет");
+});
+
+test("скип: игрок с $0 не мешает досрочному концу — лот уходит в РАЗБОР, там свой скип", () => {
+  const g = setup(3);
+  g.player("p2").money = 0;
+  assert.equal(g.skip("p2", 100).reason, "cannot_skip", "без денег скипать в торгах нечего");
+  g.skip("p0", 200);
+  g.skip("p1", 300);
+  assert.equal(g.s.phase, "pickup", "ставить больше некому — сразу РАЗБОР");
+  assert.equal(g.skip("p0", 400).reason, "cannot_skip", "в РАЗБОРЕ скипает только тот, кто может забрать");
+  g.skip("p2", 500);
+  assert.equal(g.s.phase, "unsold", "и забирать никто не хочет — мимо");
+});
+
+test("скип: в торгах скипнувшие не в счёт — лидеру через 1,5 с; лидер не скипает; ставка отменяет скип", () => {
+  const g = setup(3);
+  g.bid("p0", 3, 1000);
+  assert.equal(g.skip("p0", 1100).reason, "already_leader");
+  g.skip("p1", 2000);
+  assert.equal(g.s.deadline, 20000, "p2 ещё может перебить — таймер обычный");
+  g.skip("p2", 3000);
+  assert.equal(g.s.deadline, 3000 + LAST_BID_DELAY, "скипнули все, кроме лидера, — продажа через 1,5 с");
+  // p1 передумал и перебил в эти полторы секунды: скип снят, торги идут дальше
+  assert.equal(g.bid("p1", 4, 3500).ok, true);
+  assert.ok(!g.s.skips.includes("p1"));
+  assert.equal(g.snapshot(3500).players[1].skipped, false);
+  assert.ok(g.s.deadline >= 3500 + DEFAULTS.t2, "p0 может перебить — снова полный T2");
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "sold");
+  assert.equal(g.player("p1").lots.length, 1);
+});
+
+test("скип: в соло-доборе действует правило добора (счётчик), а не общий скип", () => {
+  const g = solo();
+  const dry = g.s.dry;
+  const r = g.skip("p0", g.s.lotStartedAt + 1);
+  assert.equal(r.ok, true);
+  assert.equal(g.s.phase, "unsold");
+  assert.equal(g.s.solo.skips, 4, "скип списал счётчик добора");
+  assert.equal(g.s.dry, dry, "скипы добора не считаются пустыми лотами торгов");
+});
+
+test("скип: отвалился единственный нескипнувший — лот заканчивается", () => {
+  const g = setup(4);
+  g.skip("p0", 100);
+  g.skip("p1", 200);
+  g.skip("p2", 300);
+  g.setOnline("p3", false, 400);
+  assert.equal(g.s.phase, "unsold");
+});
+
+// ---------- хит после серии пустых лотов ----------
+
+function popSetup(n = 3) {
+  // популярность = номер карты: самая популярная — «Лот 59»
+  const popCards = cards.map((c, i) => ({ ...c, pop: i + 1 }));
+  const g = Game.create({ kind: "test", cards: popCards, settings: { intro: 0 }, rng: Math.random });
+  for (let i = 0; i < n; i++) g.addPlayer({ id: `p${i}`, name: `P${i}` });
+  g.start(0);
+  return g;
+}
+const allSkip = (g, t) => { for (const p of g.s.players) g.skip(p.id, t); };
+
+test(`хит: ${HOT_AFTER} лота подряд мимо → следующим выставляется самый популярный из оставшихся`, () => {
+  const g = popSetup();
+  const before = g.s.deck.map((c) => c.name).sort().join();
+  let t = 1000;
+  for (let i = 0; i < HOT_AFTER; i++) {
+    assert.equal(g.s.hot, false);
+    allSkip(g, t);
+    assert.equal(g.s.phase, "unsold");
+    assert.equal(g.s.dry, i + 1);
+    const ev = g.tick(g.s.deadline);
+    t = g.s.deadline - 1000;
+    if (i < HOT_AFTER - 1) assert.equal(ev[0].hot, false);
+    else assert.equal(ev[0].hot, true, "событие лота помечено как хит");
+  }
+  const rest = g.s.deck.slice(g.s.round);
+  const top = Math.max(...rest.map((c) => c.pop));
+  assert.equal(g.s.lot.pop, top, "на экране самый популярный из оставшихся");
+  assert.equal(g.snapshot(t).hot, true);
+  assert.equal(g.s.dry, 0, "счётчик серии обнулён");
+  assert.equal(g.s.deck.map((c) => c.name).sort().join(), before, "колода — та же перестановка карт");
+  // хит купили — следующий лот обычный
+  g.bid("p0", 1, t + 100);
+  g.tick(g.s.deadline);
+  g.tick(g.s.deadline);
+  assert.equal(g.s.hot, false);
+});
+
+test("хит: проданный лот обрывает серию; молчание до таймера тоже считается пустым лотом", () => {
+  const g = popSetup();
+  allSkip(g, 100); g.tick(g.s.deadline);
+  g.tick(g.s.deadline); // никто ничего не нажал — таймер
+  assert.equal(g.s.phase, "unsold");
+  assert.equal(g.s.dry, 2);
+  g.tick(g.s.deadline);
+  g.bid("p1", 1, g.s.lotStartedAt + 10);
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "sold");
+  assert.equal(g.s.dry, 0, "продажа обрывает серию");
+});
+
+test("хит: в соло-доборе не выставляется (иначе последний собрал бы хиты за $1)", () => {
+  const g = solo();
+  g.s.dry = HOT_AFTER;
+  for (const c of g.s.deck) c.pop = 1;
+  g.hostSkip(g.s.lotStartedAt + 1);
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "draft");
+  assert.equal(g.s.hot, false);
+  for (const c of g.s.deck) delete c.pop;
+});
+
+test("хит: у колоды без популярности порядок не меняется", () => {
+  const g = setup(3);
+  const next = g.s.deck[HOT_AFTER].name;
+  for (let i = 0; i < HOT_AFTER; i++) { allSkip(g, g.s.lotStartedAt + 1); g.tick(g.s.deadline); }
+  assert.equal(g.s.lot.name, next);
+  assert.equal(g.s.hot, false);
+});
+
+// ---------- судья не видит денег ----------
+
+test("судья: цены и траты в модель не уходят, промпт велит судить только лоты", () => {
+  const players = [
+    { id: "a", spent: 29, money: 1, lots: [{ name: "Хит", emoji: "🎵", meta: ["рок"], price: 29, round: 0 }] },
+    { id: "b", spent: 1, money: 29, lots: [{ name: "Хит-2", emoji: "🎵", meta: ["поп"], price: 1, round: 1 }] },
+  ];
+  const lu = lineupsFor(players);
+  assert.deepEqual(lu[0], { pid: "p1", playerId: "a", lots: [{ name: "Хит", meta: ["рок"] }] });
+  for (const lang of ["ru", "en", "el"]) {
+    const prompt = buildPrompt("artist", lu, 5, "base", lang);
+    assert.ok(!/\$|29/.test(prompt), `в промпте (${lang}) нет цен и трат`);
+    assert.match(prompt, /Суди только сами лоты/);
+    assert.match(prompt, /не учитывай цены и потраченные деньги/);
+  }
+  // даже если лоты придут сырыми, с ценой, в промпт она не попадёт
+  const raw = buildPrompt("artist", players.map((p, i) => ({ pid: `p${i + 1}`, lots: p.lots })), 5, "base");
+  assert.ok(!/29|\$/.test(raw));
 });
