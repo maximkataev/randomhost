@@ -468,6 +468,12 @@ function onConnection(room, ws, opts = {}) {
     try { msg = JSON.parse(raw); } catch { return; }
     try { handle(room, client, msg); } catch (err) { send(ws, { type: "error", error: err.message }); }
   });
+  // Без обработчика ошибка сокета (например, сообщение больше maxPayload) становится непойманной
+  // и роняет процесс со всеми комнатами. Рвём только этот сокет — close ниже уберёт его из комнаты.
+  ws.on("error", (err) => {
+    console.log(`${LOG} ${room.code}: ошибка сокета (${err.message}) — рвём`);
+    try { ws.terminate(); } catch {}
+  });
   ws.on("close", () => {
     room.sockets.delete(client);
     scheduleOffline(room, client.playerId);
