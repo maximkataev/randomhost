@@ -29,6 +29,7 @@ services:
         max-file: "3"
     depends_on:
       - auction
+      - roulette
       - storm
 
   # сервер онлайн-аукциона (WebSocket + API); nginx проксирует в него /auction/ws и /auction/api/
@@ -65,6 +66,29 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # сервер рулетки (WebSocket + API); nginx проксирует в него /roulette/ws и /roulette/api/.
+  # Устроен как auction: состояние комнат в памяти, дамп в том раз в 5 с — деплой не рвёт партию.
+  roulette:
+    build: ./roulette
+    image: randomhostroulette:latest
+    container_name: randomhost-roulette
+    cpuset: "2-5"
+    restart: always
+    mem_limit: 256m
+    volumes:
+      - roulette-state:/app/state
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3100/roulette/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # молнии для «Грома» (thunder.html): качает файлы NOAA GOES GLM из открытых бакетов AWS,
   # разбирает NetCDF и отдаёт вспышки; nginx проксирует в него /storm/api/. Состояния на диске нет.
   # Бакет опрашивается, только пока страницу кто-то смотрит (IDLE_S в server.py).
@@ -90,3 +114,4 @@ services:
 
 volumes:
   auction-state:
+  roulette-state:

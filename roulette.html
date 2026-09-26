@@ -1,0 +1,1986 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0b0d">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f3b0.svg" type="image/svg+xml">
+<title>Рулетка — мультиплеерная игра для компании</title>
+<meta name="robots" content="index,follow">
+<meta name="description" content="🎰 Мультиплеерная рулетка для компании: колесо на общем экране, ставки с телефонов, карты-пакости и чат. Все против казино, минимум растёт — побеждает последний с фишками." data-i18n-meta="_meta">
+<!-- ссылки на комнаты (?r=КОД) — та же страница: в выдаче должна быть одна, без кода -->
+<link rel="canonical" href="https://randomhost.online/roulette.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Рулетка — мультиплеерная игра для компании">
+<meta property="og:description" content="Колесо на общем экране, ставки с телефонов, карты-пакости. Побеждает последний с фишками.">
+<meta property="og:url" content="https://randomhost.online/roulette.html">
+<meta property="og:site_name" content="Рандомайзер Онлайн">
+<meta property="og:locale" content="ru_RU">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- неблокирующий шрифт: без ответа Google Fonts пульт рисуется системным шрифтом, а не остаётся пустым.
+     Inter Tight покрывает кириллицу и греческий. -->
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800;900&display=swap" rel="stylesheet"></noscript>
+<style>
+  /* Современный live-казино пульт: почти чёрный фон, плоские поверхности с тонкой гранью, точные акценты —
+     зелёное сукно, красный рулетки и один тёплый жёлтый. Тактильны только игровые предметы: фишки и стол.
+     Шрифт один — Inter Tight (кириллица и греческий), крупные цифры табличные. */
+  :root {
+    --bg: #0a0b0d;
+    --surface: #14161a;
+    --surface-2: #1c1f25;
+    --surface-3: #262a32;
+    --line: rgba(255, 255, 255, .08);
+    --line-2: rgba(255, 255, 255, .14);
+    --text: #f4f4f1;
+    --ivory: #f4f4f1;
+    --muted: #8f96a1;
+    --accent: #ffc043;
+    --accent-ink: #1a1305;
+    --gold: #ffc043;
+    --gold-hi: #ffd57a;
+    --green: #22c77f;
+    --felt: #0c6a44;
+    --felt-hi: #0f7d50;
+    --felt-lo: #084a30;
+    --red: #e3263a;
+    --red-lo: #9b1424;
+    --black: #17191e;
+    --zero: #17b06b;
+    --warn: #ff6a3d;
+    --ok: #3ddc84;
+    --ink: #0a0b0d;
+    --serif: "Inter Tight", "Helvetica Neue", Arial, system-ui, sans-serif;
+    --cond: "Inter Tight", "Helvetica Neue", Arial, system-ui, sans-serif;
+    --spring: cubic-bezier(.3, 1.5, .5, 1);
+    --lang-switch-bg: #14161a;
+    --lang-switch-border: rgba(255, 255, 255, .1);
+    --lang-switch-fg: #a8aeb8;
+    --lang-switch-active-bg: #f4f4f1;
+    --lang-switch-active-fg: #0a0b0d;
+    --lang-switch-active-border: transparent;
+    --lang-switch-font: "Inter Tight", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; width: 100%; max-width: 100vw; overflow-x: hidden; }
+  body {
+    min-height: 100dvh; color: var(--text); font: 500 15px/1.4 var(--cond); letter-spacing: -.005em;
+    /* свет над столом — зелёный отсвет сукна сверху, без текстур */
+    background: radial-gradient(110% 50% at 50% -10%, rgba(34, 199, 127, .14), rgba(34, 199, 127, 0) 60%), var(--bg);
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  button { font: inherit; color: inherit; cursor: pointer; letter-spacing: inherit; }
+  button:disabled { opacity: .4; cursor: default; }
+  button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  a { color: var(--accent); }
+  svg.ic { width: 20px; height: 20px; display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  #app { min-height: 100dvh; display: flex; flex-direction: column; }
+  .util { position: fixed; top: calc(8px + env(safe-area-inset-top)); left: 10px; z-index: 30; display: flex; gap: 8px; align-items: center; }
+  .util a { font-size: 13px; font-weight: 600; color: var(--muted); text-decoration: none; padding: 10px 4px; }
+  .sound-toggle-btn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--text); display: grid; place-items: center; }
+  .lang-switch button { min-width: 40px; min-height: 40px; font-weight: 700 !important; }
+
+  /* ---------- фишка: игровой предмет, остаётся тактильной ---------- */
+  .rchip {
+    --c: #f2c14e; --cd: #8a6a22; --cs: #ffffff; --inlay: #fbfaf6;
+    position: relative; border-radius: 50%; display: grid; place-items: center; color: #111; font-style: normal;
+    font: 800 13px/1 var(--cond); font-variant-numeric: tabular-nums; letter-spacing: -.03em;
+    background:
+      radial-gradient(circle, var(--inlay) 0 50%, var(--cd) 51% 53%, var(--c) 54% 66%, rgba(0, 0, 0, 0) 67%),
+      repeating-conic-gradient(from 8deg, var(--c) 0 32deg, var(--cs) 32deg 45deg);
+    box-shadow: inset 0 0 0 1.5px var(--cd), 0 2px 0 var(--cd), 0 6px 10px -2px rgba(0, 0, 0, .55);
+  }
+  .rchip.dark { --inlay: #1c1f25; color: var(--accent); }
+
+  /* ---------- кнопки: плоские, пружинят под пальцем ---------- */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none; border: 0; background: var(--accent); color: var(--accent-ink); font: 800 17px/1 var(--cond); letter-spacing: -.01em; border-radius: 16px; padding: 16px 20px; min-height: 58px; box-shadow: 0 10px 30px -10px rgba(255, 192, 67, .55); transition: transform .18s var(--spring), box-shadow .2s; }
+  .btn:active:not(:disabled) { transform: scale(.97); box-shadow: 0 4px 14px -6px rgba(255, 192, 67, .5); }
+  .btn.shine { position: relative; overflow: hidden; }
+  .btn.shine::after { content: ""; position: absolute; top: 0; bottom: 0; left: -40%; width: 24%; background: linear-gradient(100deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .55), rgba(255, 255, 255, 0)); transform: skewX(-20deg); animation: shine 3.6s ease-in-out infinite; }
+  @keyframes shine { 0%, 60% { left: -40%; } 100% { left: 130%; } }
+  .link { background: none; border: 0; color: var(--text); font-weight: 700; text-decoration: none; padding: 10px 14px; font-size: 14px; min-height: 40px; border-radius: 12px; border: 1px solid var(--line-2); }
+
+  /* ---------- стартовый экран ---------- */
+  .landing { flex: 1; display: grid; grid-template-areas: "head" "demo" "body"; grid-template-columns: minmax(0, 1fr); align-content: start; row-gap: 20px; padding: 64px 18px 26px; max-width: 1180px; margin: 0 auto; width: 100%; }
+  .lhead { grid-area: head; min-width: 0; } .demo { grid-area: demo; min-width: 0; } .lbody { grid-area: body; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+  @media (min-width: 900px) {
+    .landing { grid-template-areas: "head demo" "body demo"; grid-template-columns: minmax(0, 1fr) clamp(380px, 46%, 580px); column-gap: clamp(28px, 5vw, 72px); align-content: center; min-height: 100dvh; }
+    .demo { align-self: center; }
+    .dfelt .c span { width: 40px; height: 28px; font-size: 16px; }
+    .dfelt .rchip { width: 30px; height: 30px; margin: -15px 0 0 -15px; font-size: 10px; }
+  }
+  .live { display: inline-flex; align-items: center; gap: 8px; }
+  .live i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 4px rgba(227, 38, 58, .2); animation: live 1.2s ease-in-out infinite alternate; }
+  @keyframes live { to { box-shadow: 0 0 0 7px rgba(227, 38, 58, 0); } }
+  .landing .eyebrow { display: inline-flex; font: 700 12px/1 var(--cond); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .landing h1 { font: 900 clamp(60px, 18vw, 128px)/.86 var(--cond); margin: 14px 0 16px; letter-spacing: -.055em; text-transform: uppercase; color: var(--text); }
+  .landing h1 em { font-style: normal; color: var(--green); }
+  .landing .lede { color: #c5cad2; font-size: clamp(16px, 1.5vw, 19px); line-height: 1.5; margin: 0; max-width: 46ch; }
+  .landing .lede b { color: var(--text); font-weight: 700; }
+  .landing .cta { display: flex; flex-direction: column; gap: 10px; }
+  .landing .cta .btn { min-height: 64px; font-size: 19px; }
+  .landing .sub2 { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+  .landing .sub2 .link { flex: none; }
+  .rules { display: grid; gap: 14px; border-top: 1px solid var(--line); padding-top: 18px; }
+  .rules .r { display: grid; grid-template-columns: 44px 1fr; gap: 14px; align-items: center; }
+  .rules .k { width: 44px; height: 44px; font: 900 16px/1 var(--cond); }
+  .rules .t { color: #c5cad2; font-size: 14.5px; }
+  .rules .t b { color: var(--text); }
+  .fine { color: var(--muted); font-size: 12px; text-align: center; }
+  /* живой стол */
+  .demo { display: flex; flex-direction: column; gap: 10px; pointer-events: none; user-select: none; }
+  .demo-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font: 700 12px/1 var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .demo-head b { color: var(--text); }
+  .demo-box { position: relative; border-radius: 24px; padding: 6px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 30px 60px -30px rgba(0, 0, 0, .9), 0 0 80px -20px rgba(34, 199, 127, .35); }
+  .demo-in { position: relative; display: grid; grid-template-columns: 44% 1fr; gap: 10px; align-items: center; border-radius: 19px; padding: 12px; overflow: hidden; background: radial-gradient(90% 80% at 40% 30%, var(--felt-hi), var(--felt) 55%, var(--felt-lo)); }
+  .dwheel-box { position: relative; aspect-ratio: 1; width: 100%; }
+  .dwheel-box svg { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, .5)); will-change: transform; }
+  .dwheel-box .ball, .spinbox .ball { position: absolute; left: 50%; top: 50%; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #e6e6e6 55%, #a9a9a9); box-shadow: 0 2px 4px rgba(0, 0, 0, .6); will-change: transform; }
+  .dwheel-box .ball { width: 7%; height: 7%; margin: -3.5% 0 0 -3.5%; }
+  .dfelt { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 1fr; position: relative; height: 100%; min-height: 150px; gap: 1px; background: rgba(255, 255, 255, .16); border-radius: 10px; overflow: visible; }
+  .dfelt .c { position: relative; display: grid; place-items: center; background: var(--felt); transition: background .3s; }
+  .dfelt .c span { width: 30px; height: 21px; display: grid; place-items: center; border-radius: 6px; font: 800 13px/1 var(--cond); color: #fff; font-variant-numeric: tabular-nums; }
+  .dfelt .c.red span { background: var(--red); }
+  .dfelt .c.black span { background: var(--black); }
+  .dfelt .c.win { background: #1a9a62; box-shadow: inset 0 0 0 2px #fff; }
+  .dfelt .rchip { position: absolute; width: 24px; height: 24px; font-size: 8.5px; left: 50%; top: 50%; margin: -12px 0 0 -12px; animation: ddrop .45s var(--spring) both; z-index: 2; transition: opacity .5s, transform .5s; }
+  .dfelt .rchip.swept { opacity: 0; transform: translate(0, -60px) scale(.6); }
+  @keyframes ddrop { 0% { transform: translateY(-40px) scale(1.5); opacity: 0; } 60% { transform: translateY(0) scale(.92); opacity: 1; } }
+  .dfelt .bubble { z-index: 3; }
+  .dstamp { position: absolute; inset: 0; display: grid; place-items: center; z-index: 4; pointer-events: none; }
+  .dstamp b { font: 900 clamp(18px, 5vw, 24px)/1 var(--cond); letter-spacing: -.02em; text-transform: uppercase; color: var(--ink); background: var(--text); padding: 10px 14px; border-radius: 12px; animation: slam .45s var(--spring); box-shadow: 0 12px 30px -8px rgba(0, 0, 0, .7); }
+  .dwin { position: absolute; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%); white-space: nowrap; font: 900 clamp(24px, 6.4vw, 34px)/1 var(--cond); letter-spacing: -.03em; color: var(--accent); background: var(--ink); padding: 8px 14px; border-radius: 14px; animation: dwin 2.2s ease-out forwards; }
+  @keyframes dwin { 0% { opacity: 0; transform: translate(-50%, -20%) scale(.5); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 25% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -100%); } }
+  .demo-foot { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; height: 44px; padding: 0 4px; }
+  .demo-foot .numball { width: 40px; height: 40px; font-size: 17px; box-shadow: none; }
+  .demo-foot .numball.idle { background: var(--surface-2); animation: none; box-shadow: inset 0 0 0 1px var(--line-2); }
+  .demo-foot .say { font: 700 16px/1.15 var(--cond); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .demo-foot .t { font: 900 24px/1 var(--cond); color: var(--text); font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
+  .demo-foot .t.hot { color: var(--warn); }
+
+  /* ---------- вход ---------- */
+  .enter { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 64px 22px 28px; max-width: 460px; margin: 0 auto; width: 100%; gap: 16px; }
+  .placecard { position: relative; display: flex; flex-direction: column; gap: 14px; }
+  .placecard .room { align-self: flex-start; font: 800 13px/1 var(--cond); letter-spacing: .1em; color: var(--green); background: rgba(34, 199, 127, .12); padding: 8px 12px; border-radius: 999px; }
+  .placecard h2 { font: 900 40px/1 var(--cond); letter-spacing: -.045em; margin: 0; }
+  .placecard input { width: 100%; font: 800 26px/1.1 var(--cond); letter-spacing: -.02em; padding: 16px 18px; border: 1px solid var(--line-2); background: var(--surface); color: var(--text); outline: none; border-radius: 16px; transition: border-color .15s, box-shadow .15s; }
+  .placecard input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(255, 192, 67, .18); }
+  .placecard input::placeholder { color: #4d535c; }
+  .enter .err { color: var(--warn); min-height: 20px; font-size: 14px; font-weight: 600; }
+  .center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 70px 20px 26px; gap: 12px; }
+  .center h2 { font: 900 34px/1.05 var(--cond); letter-spacing: -.04em; margin: 0; }
+  .center p { color: #c5cad2; margin: 0; max-width: 360px; }
+  .center .room { color: var(--green); letter-spacing: .1em; font-weight: 800; font-size: 13px; background: rgba(34, 199, 127, .12); padding: 7px 12px; border-radius: 999px; }
+  /* ожидание: все, кто сел, — фишками на сукне, строго по центру */
+  .waitfelt { width: 100%; max-width: 380px; border-radius: 22px; padding: 14px 12px; background: radial-gradient(90% 90% at 50% 30%, var(--felt-hi), var(--felt) 60%, var(--felt-lo)); box-shadow: 0 24px 50px -24px rgba(0, 0, 0, .9); }
+  .lobby-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 6px; min-height: 66px; }
+  .lobby-list .who { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 68px; min-width: 0; }
+  .lobby-list .who .rchip { width: 44px; height: 44px; font-size: 14px; cursor: pointer; }
+  .lobby-list .who b { font-weight: 700; font-size: 12.5px; max-width: 68px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lobby-list .who.me b { color: var(--accent); }
+  .lobby-list .who.new .rchip { animation: ddrop .5s var(--spring) both; }
+  .lobby-list .rchip.flip { animation: flip .6s var(--spring); }
+  @keyframes flip { 0% { transform: translateY(0) rotateX(0); } 40% { transform: translateY(-26px) rotateX(360deg); } 100% { transform: translateY(0) rotateX(720deg); } }
+  .wf-head { display: flex; justify-content: space-between; gap: 8px; font: 700 11px/1 var(--cond); letter-spacing: .08em; text-transform: uppercase; color: rgba(255, 255, 255, .8); margin-bottom: 14px; padding: 0 4px; }
+  .wf-foot { font: 600 13px/1.2 var(--cond); color: rgba(255, 255, 255, .55); margin-top: 12px; }
+  .howto { display: grid; gap: 8px; text-align: left; max-width: 380px; width: 100%; margin-top: 6px; }
+  .howto div { display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: center; color: #c5cad2; font-size: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 8px 12px 8px 8px; }
+  .howto i { font-style: normal; font-size: 18px; width: 36px; height: 36px; border-radius: 10px; background: var(--surface-2); display: grid; place-items: center; }
+
+  /* ---------- игра ---------- */
+  .game { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 100dvh; padding: calc(56px + env(safe-area-inset-top)) 8px calc(6px + env(safe-area-inset-bottom)); gap: 6px; }
+  body.m-game { overflow: hidden; }
+  body.m-game .util a { display: none; }
+  .hud { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 136px 48px; gap: 10px; align-items: center; padding: 0 4px; height: 48px; }
+  .hud .me { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .mystack { width: 28px; height: 32px; position: relative; flex: none; }
+  .mystack i { position: absolute; left: 0; width: 28px; height: 9px; border-radius: 50%; background: repeating-linear-gradient(90deg, var(--c) 0 5px, var(--cs) 5px 7px); box-shadow: inset 0 -2px 0 var(--cd); }
+  .mystack i:nth-child(1) { bottom: 0; } .mystack i:nth-child(2) { bottom: 7px; } .mystack i:nth-child(3) { bottom: 14px; }
+  .mystack i:nth-child(4) { bottom: 21px; background: radial-gradient(ellipse at 50% 45%, #fbfaf6 0 35%, var(--c) 38% 72%, var(--cd) 74%); }
+  .hud .stack { font: 900 32px/1 var(--cond); letter-spacing: -.045em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .hud .stack.bump { animation: bump .4s var(--spring); }
+  @keyframes bump { 40% { transform: scale(1.12); color: var(--ok); } }
+  .need { min-width: 0; display: grid; gap: 5px; }
+  .need .nl { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; line-height: 1; }
+  .need .nl b { color: var(--text); font-weight: 800; font-variant-numeric: tabular-nums; font-size: 14px; }
+  .meter { position: relative; height: 18px; border-radius: 9px; background: var(--surface-2); overflow: hidden; }
+  .meter i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--warn); transition: width .3s var(--spring); border-radius: 9px; }
+  .meter span { position: absolute; inset: 0; display: grid; place-items: center; font: 800 10.5px/1 var(--cond); letter-spacing: .04em; text-transform: uppercase; color: #fff; white-space: nowrap; }
+  .need:not(.ok):not(.short) .meter i { background: var(--surface-3); }
+  .need.ok .meter i { background: var(--green); }
+  .need.ok .meter span { color: #04210f; }
+  .need.short .meter i { background: repeating-linear-gradient(-45deg, #ff7d55 0 6px, #f0582b 6px 12px); }
+  .need.short .nl b:last-child { color: var(--warn); }
+  .timer { position: relative; width: 48px; height: 48px; flex: none; border-radius: 50%; background: var(--surface); }
+  .timer svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .timer .v { position: absolute; inset: 0; display: grid; place-items: center; font: 900 19px/1 var(--cond); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+  .timer.hot { animation: throb 1s ease-in-out infinite; }
+  .timer.hot .v { color: var(--warn); }
+  @keyframes throb { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.14); box-shadow: 0 0 0 6px rgba(255, 106, 61, .25); } }
+
+  /* стол: сукно в тонкой тёмной рамке, линии разметки белые и тонкие */
+  .table-wrap { flex: 1; min-height: 0; position: relative; border-radius: 20px; padding: 5px; background: var(--surface); border: 1px solid var(--line); }
+  .felt {
+    position: absolute; inset: 5px; border-radius: 15px;
+    background: radial-gradient(100% 70% at 50% 30%, var(--felt-hi), var(--felt) 55%, var(--felt-lo));
+    display: grid; grid-template-columns: 38px 30px 1fr 1fr 1fr; grid-template-rows: minmax(26px, 1fr) repeat(12, minmax(22px, 1fr)) minmax(24px, 1fr);
+    overflow: hidden; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  }
+  .cell { position: relative; border-right: 1px solid rgba(255, 255, 255, .13); border-bottom: 1px solid rgba(255, 255, 255, .13); display: grid; place-items: center; font: 700 15px/1 var(--cond); min-width: 0; min-height: 0; }
+  .num span { position: relative; z-index: 1; width: 34px; height: min(24px, 82%); display: grid; place-items: center; border-radius: 7px; font: 800 15px/1 var(--cond); letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: #fff; }
+  .num.red span { background: var(--red); }
+  .num.black span { background: var(--black); }
+  .zero { grid-column: 3 / 6; grid-row: 1; }
+  .zero span { width: 76px; background: var(--zero) !important; border-radius: 999px; }
+  .col { font: 800 12px/1 var(--cond); color: rgba(255, 255, 255, .75); }
+  .dz, .ev { font: 800 11.5px/1 var(--cond); color: rgba(255, 255, 255, .8); writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: .06em; text-transform: uppercase; }
+  .ev.red-box::after, .ev.black-box::after { content: ""; width: 16px; height: 16px; transform: rotate(45deg); border-radius: 3px; }
+  .ev.red-box::after { background: var(--red); }
+  .ev.black-box::after { background: var(--black); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .25); }
+  .ev.red-box, .ev.black-box { writing-mode: horizontal-tb; transform: none; }
+  .corner-blank { grid-column: 1 / 3; grid-row: 1; border-right: 1px solid rgba(255, 255, 255, .13); border-bottom: 1px solid rgba(255, 255, 255, .13); display: grid; place-items: center; }
+  .corner-blank .hist { display: flex; gap: 3px; }
+  .corner-blank .hist i { width: 18px; height: 18px; border-radius: 50%; font: 800 9px/18px var(--cond); text-align: center; font-style: normal; opacity: .7; }
+  .corner-blank .hist i:first-child { width: 22px; height: 22px; line-height: 22px; font-size: 11px; opacity: 1; box-shadow: 0 0 0 2px #fff; }
+  .foot-blank { grid-column: 1 / 3; grid-row: 14; border-right: 1px solid rgba(255, 255, 255, .13); }
+  .cell.hit { background: rgba(255, 255, 255, .22); box-shadow: inset 0 0 0 2px #fff; }
+  /* маркер на выпавшем числе */
+  .cell.hit.num::after { content: ""; position: absolute; top: 50%; left: 50%; width: 18px; height: 18px; margin: -17px 0 0 12px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px var(--accent), 0 4px 8px rgba(0, 0, 0, .5); animation: dolly .5s var(--spring) both; z-index: 2; }
+  @keyframes dolly { from { transform: translateY(-30px) scale(1.4); opacity: 0; } }
+  .hitlayer { grid-column: 3 / 6; grid-row: 1 / 14; position: relative; z-index: 3; }
+  .chips { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+  .chip { position: absolute; transform: translate(-50%, -50%); width: 30px; height: 30px; font-size: 10.5px; }
+  .chip.pop { animation: drop .4s var(--spring); }
+  .chip.pop::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid #fff; animation: ripple .45s ease-out forwards; }
+  @keyframes drop { 0% { transform: translate(-50%, -140%) scale(1.6); opacity: .2; } 55% { transform: translate(-50%, -50%) scale(.9); opacity: 1; } 75% { transform: translate(-50%, -58%) scale(1.04); } }
+  @keyframes ripple { from { transform: scale(.8); opacity: 1; } to { transform: scale(2.3); opacity: 0; } }
+  .chip.other { width: 14px; height: 14px; font-size: 0; opacity: .85; box-shadow: inset 0 0 0 1px var(--cd), 0 1px 0 var(--cd), 0 2px 3px rgba(0, 0, 0, .5); }
+  .felt.frozen .hitlayer, .felt.locked .hitlayer { pointer-events: none; }
+  .num::before { content: ""; position: absolute; inset: 0; background: radial-gradient(closest-side, rgba(255, 150, 60, .85), rgba(255, 80, 30, 0)); opacity: var(--heat, 0); transition: opacity .4s; pointer-events: none; }
+  .num.fire span::after { content: "🔥"; position: absolute; margin: -20px 0 0 30px; font-size: 13px; }
+  .bubble { position: absolute; z-index: 5; transform: translate(-50%, -150%); pointer-events: none; white-space: nowrap; font: 800 11px/1 var(--cond); color: #111; background: var(--c); padding: 5px 8px; border-radius: 999px; box-shadow: 0 6px 14px -4px rgba(0, 0, 0, .6); animation: bubble 1.5s ease-out forwards; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+  @keyframes bubble { 0% { opacity: 0; transform: translate(-50%, -80%) scale(.6); } 12% { opacity: 1; transform: translate(-50%, -150%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -190%); } }
+  .ghost { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; pointer-events: none; font: 900 min(52vw, 240px)/1 var(--cond); letter-spacing: -.06em; color: rgba(255, 106, 61, .2); font-variant-numeric: tabular-nums; }
+  .ghost.pop { animation: ghost 1s ease-out; }
+  @keyframes ghost { from { transform: scale(1.4); color: rgba(255, 106, 61, .45); } }
+  .table-wrap.hot { animation: rim 1s ease-in-out infinite; }
+  @keyframes rim { 50% { border-color: rgba(255, 106, 61, .9); box-shadow: 0 0 0 4px rgba(255, 106, 61, .18), 0 0 30px rgba(255, 90, 50, .35); } }
+
+  /* покрывало над столом */
+  .veil { position: absolute; inset: 5px; border-radius: 15px; z-index: 6; display: flex; visibility: hidden; opacity: 0; transition: opacity .2s, visibility 0s .2s; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 18px; gap: 12px; background: rgba(10, 11, 13, .84); overflow: hidden; }
+  .veil.on { visibility: visible; opacity: 1; transition: opacity .2s; }
+  .veil.soft { background: rgba(10, 11, 13, .55); }
+  .veil.res { background: radial-gradient(closest-side, rgba(10, 11, 13, .95) 55%, rgba(10, 11, 13, .6)); }
+  .veil .big { font: 900 30px/1.05 var(--cond); letter-spacing: -.04em; }
+  .veil p { margin: 0; color: #c5cad2; max-width: 280px; }
+  .veil .quip { font: 600 15px/1.35 var(--cond); color: var(--muted); max-width: 270px; }
+  .veil .nomore { font: 900 36px/.95 var(--cond); letter-spacing: -.05em; text-transform: uppercase; color: var(--text); animation: slam .45s var(--spring); max-width: 300px; }
+  .veil .wave { position: absolute; top: 0; bottom: 0; width: 45%; background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .12), rgba(255, 255, 255, 0)); animation: wave 1s ease-in-out forwards; pointer-events: none; }
+  @keyframes wave { from { transform: translateX(-120%); } to { transform: translateX(260%); } }
+  @keyframes slam { from { transform: scale(1.5); opacity: 0; } }
+  .spinbox { position: relative; width: 150px; height: 150px; }
+  .spinbox svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .spinbox .ring { will-change: transform; }
+  .spinbox .ball { width: 14px; height: 14px; margin: -7px; }
+  .veil .look { font: 900 28px/1.05 var(--cond); letter-spacing: -.04em; }
+  .veil .look.beat { animation: beat .35s ease-out; }
+  @keyframes beat { 30% { transform: scale(1.08); } }
+  /* номер-шар: плоский цвет, белое кольцо */
+  .numball { width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; font: 900 44px/1 var(--cond); letter-spacing: -.05em; color: #fff; font-variant-numeric: tabular-nums; box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .9), 0 20px 40px -12px rgba(0, 0, 0, .8); animation: numin .55s var(--spring); }
+  .numball.red { background: var(--red); }
+  .numball.black { background: var(--black); }
+  .numball.green { background: var(--zero); }
+  @keyframes numin { from { transform: scale(.2); opacity: 0; } }
+  .veil .net { font: 900 44px/1 var(--cond); letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
+  .veil .net.plus { color: var(--ok); }
+  .veil .net.minus { color: var(--warn); }
+  .veil .lines { color: #c5cad2; font-size: 14px; display: grid; gap: 3px; }
+  .veil.frost { background: radial-gradient(120% 90% at 50% 50%, rgba(12, 30, 48, .75) 30%, rgba(160, 215, 255, .6) 100%); box-shadow: inset 0 0 40px rgba(200, 235, 255, .6); }
+  .veil.frost .big { color: #e6f5ff; }
+  .veil.frost p { color: #d4ecff; }
+  .veil .icon { font-size: 48px; line-height: 1; }
+  .veil .icon.wink { animation: wink 2.4s ease-in-out 2; }
+  @keyframes wink { 45%, 55% { transform: rotate(-12deg) scale(1.1); } }
+
+  /* победный экран: моушн-графика — лучи, кольца, счётчик */
+  .splash { position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 30px 20px; visibility: hidden; opacity: 0; overflow: hidden; background: radial-gradient(80% 60% at 50% 40%, #2a2108, var(--bg) 70%); }
+  .splash.on { visibility: visible; opacity: 1; }
+  .splash.out { opacity: 0; transition: opacity .35s; }
+  .splash.zero { background: radial-gradient(80% 60% at 50% 40%, #07402a, var(--bg) 70%); }
+  .splash .rays { position: absolute; left: 50%; top: 40%; width: 760px; height: 760px; margin: -380px 0 0 -380px; background: repeating-conic-gradient(rgba(255, 192, 67, .14) 0 6deg, rgba(255, 192, 67, 0) 6deg 18deg); border-radius: 50%; -webkit-mask: radial-gradient(circle, #000 18%, transparent 62%); mask: radial-gradient(circle, #000 18%, transparent 62%); animation: rays 6s linear forwards; pointer-events: none; }
+  @keyframes rays { to { transform: rotate(60deg); } }
+  .splash .numball { width: 150px; height: 150px; font-size: 74px; position: relative; box-shadow: inset 0 0 0 5px #fff, 0 0 0 10px rgba(255, 255, 255, .08), 0 30px 60px -16px rgba(0, 0, 0, .9); }
+  .splash .stamp { font: 900 22px/1 var(--cond); letter-spacing: .02em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent); padding: 10px 18px; border-radius: 999px; animation: stampin .5s .2s var(--spring) both; position: relative; }
+  @keyframes stampin { from { transform: scale(2); opacity: 0; } }
+  .splash .win { font: 900 72px/1 var(--cond); letter-spacing: -.06em; color: var(--text); font-variant-numeric: tabular-nums; position: relative; white-space: nowrap; }
+  .splash .sub { color: var(--muted); font-size: 15px; font-weight: 600; position: relative; }
+  .splash .tapx { position: absolute; bottom: calc(18px + env(safe-area-inset-bottom)); color: var(--muted); font-size: 13px; }
+  .burst { position: absolute; left: 50%; top: 40%; width: 0; height: 0; pointer-events: none; }
+  .burst .rchip { position: absolute; width: 30px; height: 30px; margin: -15px; font-size: 0; animation: fly var(--d, 1.2s) cubic-bezier(.15, .7, .4, 1) forwards; }
+  @keyframes fly { 0% { transform: translate(0, 0) scale(.4) rotate(0); opacity: 1; } 70% { opacity: 1; } 100% { transform: translate(var(--x), var(--y)) scale(1) rotate(var(--r)); opacity: 0; } }
+  .greenflash { position: fixed; inset: 0; z-index: 44; pointer-events: none; background: radial-gradient(circle at 50% 45%, rgba(34, 199, 127, .7), rgba(34, 199, 127, .25) 60%, rgba(34, 199, 127, 0)); animation: gflash .9s ease-out forwards; }
+  @keyframes gflash { from { opacity: 0; } 20% { opacity: 1; } to { opacity: 0; } }
+
+  /* лоток номиналов и кнопки */
+  .controls { flex: none; display: flex; flex-direction: column; gap: 6px; position: relative; }
+  .controls.spect > * { visibility: hidden; }
+  .controls.spect::after { content: attr(data-spect); position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 0 16px; border-radius: 16px; font: 700 16px/1.3 var(--cond); color: var(--text); background: var(--surface); border: 1px solid var(--line); }
+  .rack { display: flex; gap: 4px; align-items: center; justify-content: space-between; padding: 5px 7px; height: 60px; border-radius: 30px; background: var(--surface); border: 1px solid var(--line); }
+  .rack .den { flex: none; width: 46px; height: 46px; border: 0; padding: 0; font-size: 12.5px; transition: transform .2s var(--spring), box-shadow .2s; }
+  .rack .den.sel { transform: translateY(-6px) scale(1.1); box-shadow: inset 0 0 0 1.5px var(--cd), 0 2px 0 var(--cd), 0 0 0 3px var(--bg), 0 0 0 5px #fff, 0 12px 16px -4px rgba(0, 0, 0, .7); }
+  .rack .den.all { font-size: 11px; }
+  .actions { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) 1.7fr; gap: 5px; }
+  .act { height: 46px; border-radius: 14px; border: 0; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--text); font: 700 11px/1.05 var(--cond); padding: 2px; min-width: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; transition: transform .18s var(--spring), background .15s; }
+  .act:active:not(:disabled) { transform: scale(.94); background: var(--surface-2); }
+  .act .i { display: block; line-height: 1; color: var(--text); }
+  .act .i svg.ic { width: 18px; height: 18px; }
+  .act.dbl { font: 900 18px/1 var(--cond); letter-spacing: -.02em; }
+  .act.ready { background: var(--accent); color: var(--accent-ink); font: 900 16px/1 var(--cond); letter-spacing: -.01em; box-shadow: 0 8px 20px -10px rgba(255, 192, 67, .7); white-space: nowrap; }
+  .act.ready.on { background: var(--green); color: #04210f; box-shadow: 0 8px 20px -10px rgba(34, 199, 127, .8); }
+  .act.ready.stamp { animation: stamp .45s var(--spring); }
+  @keyframes stamp { 0% { transform: scale(1.3); } 60% { transform: scale(.94); } }
+  .dock { flex: none; display: flex; gap: 5px; align-items: center; }
+  .dock .tab { height: 44px; border-radius: 14px; border: 0; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); padding: 0 11px; font: 700 13px/1 var(--cond); display: flex; align-items: center; gap: 7px; flex: none; transition: transform .18s var(--spring); }
+  .dock .tab:active { transform: scale(.95); }
+  .fan { position: relative; width: 24px; height: 26px; flex: none; }
+  .fan b { position: absolute; bottom: 0; left: 5px; width: 15px; height: 21px; border-radius: 3px; background: var(--red); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .85); transform-origin: 50% 100%; }
+  .fan b:nth-child(1) { transform: rotate(-16deg); background: #b81d2f; } .fan b:nth-child(3) { transform: rotate(16deg); }
+  .fan .n { position: absolute; right: -6px; top: -4px; min-width: 17px; height: 17px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font: 900 11px/17px var(--cond); text-align: center; }
+  .fan.empty b { opacity: .3; }
+  .dock .reacts { flex: 1; display: flex; justify-content: space-between; min-width: 0; gap: 3px; }
+  .dock .reacts button { background: var(--surface); border: 0; box-shadow: inset 0 0 0 1px var(--line); border-radius: 50%; font-size: 19px; flex: 1 1 0; min-width: 0; max-width: 44px; height: 44px; padding: 0; transition: transform .18s var(--spring); }
+  .dock .reacts button:active { transform: scale(1.25); }
+  .fly-emoji { position: fixed; z-index: 50; pointer-events: none; font-size: 30px; animation: flyup 1s ease-out forwards; }
+  @keyframes flyup { to { transform: translateY(-120px) scale(1.6); opacity: 0; } }
+
+  /* выдвижные панели */
+  .sheet-bg { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); z-index: 40; display: none; }
+  .sheet-bg.on { display: block; }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; background: var(--surface); border-top: 1px solid var(--line-2); border-radius: 24px 24px 0 0; padding: 16px 16px calc(18px + env(safe-area-inset-bottom)); max-height: 78dvh; overflow-y: auto; transform: translateY(105%); transition: transform .32s var(--spring); box-shadow: 0 -20px 40px rgba(0, 0, 0, .6); }
+  .sheet::before { content: ""; display: block; width: 40px; height: 5px; border-radius: 3px; background: var(--line-2); margin: -6px auto 14px; }
+  .sheet.on { transform: none; }
+  .sheet h3 { font: 900 24px/1.1 var(--cond); letter-spacing: -.04em; margin: 0 0 8px; }
+  .sheet .hint { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+  .cardlist { display: grid; gap: 10px; }
+  .gcard { display: grid; grid-template-columns: 64px 1fr; gap: 0; align-items: stretch; text-align: left; border: 0; padding: 0; border-radius: 16px; overflow: hidden; background: var(--surface-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); transition: transform .18s var(--spring); min-height: 78px; }
+  .gcard:active:not(:disabled) { transform: scale(.97); }
+  .gcard .ic { display: grid; place-items: center; font-size: 30px; background: var(--k, #9b1424); }
+  .gcard > div:last-child { padding: 12px 14px; }
+  .gcard b { font: 800 17px/1.1 var(--cond); letter-spacing: -.02em; display: block; margin-bottom: 3px; }
+  .gcard small { color: var(--muted); font-size: 13.5px; line-height: 1.3; }
+  .gcard.passive { opacity: .7; }
+  .gcard:disabled { opacity: .45; }
+  .targets { display: grid; gap: 8px; }
+  .target { display: flex; align-items: center; gap: 12px; border: 0; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); border-radius: 16px; padding: 8px 16px 8px 8px; text-align: left; min-width: 0; min-height: 54px; transition: transform .18s var(--spring); }
+  .target:active { transform: scale(.97); }
+  .target .rchip { width: 36px; height: 36px; flex: none; font-size: 12px; }
+  .target b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 700; }
+  .target .s { color: var(--text); font: 800 16px/1 var(--cond); font-variant-numeric: tabular-nums; }
+  .chatbox { display: flex; gap: 8px; }
+  .chatbox input { flex: 1; min-width: 0; font: 500 17px/1 var(--cond); padding: 13px 14px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--bg); color: var(--text); outline: none; }
+  .chatbox input:focus { border-color: var(--accent); }
+  .chatbox .btn { min-height: 48px; padding: 10px 16px; font-size: 15px; border-radius: 14px; }
+  .quick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+  .quick button { border: 0; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); border-radius: 999px; padding: 10px 14px; font-size: 14px; font-weight: 600; min-height: 40px; }
+  .exact { display: grid; gap: 6px; }
+  .exact button { display: flex; justify-content: space-between; align-items: center; border: 0; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); border-radius: 14px; padding: 12px 14px; min-height: 46px; font-weight: 600; }
+  .exact button .p { color: var(--accent); font-weight: 800; }
+
+  .toast { position: fixed; left: 50%; bottom: calc(150px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--text); color: var(--ink); font-weight: 700; padding: 11px 16px; border-radius: 14px; z-index: 60; font-size: 14px; max-width: calc(100vw - 32px); opacity: 0; transition: opacity .2s; pointer-events: none; text-align: center; box-shadow: 0 12px 30px rgba(0, 0, 0, .5); }
+  .toast.on { opacity: 1; }
+  .conn { position: fixed; top: calc(8px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 50; background: var(--warn); color: #fff; font-weight: 700; padding: 7px 12px; border-radius: 10px; font-size: 13px; display: none; }
+  .conn.on { display: block; }
+
+  /* финал на телефоне */
+  .final { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 70px 22px 30px; gap: 12px; position: relative; overflow: hidden; }
+  .medal { width: 128px; height: 128px; border-radius: 50%; display: grid; place-items: center; font: 900 60px/1 var(--cond); letter-spacing: -.05em; color: var(--ink); background: var(--accent); box-shadow: 0 0 0 8px rgba(255, 192, 67, .15), 0 24px 50px -14px rgba(255, 192, 67, .5); animation: numin .6s var(--spring); }
+  .medal.cup { font-size: 64px; }
+  .medal.silver { background: #d9dde3; box-shadow: 0 0 0 8px rgba(217, 221, 227, .12), 0 24px 50px -14px rgba(0, 0, 0, .8); }
+  .medal.bronze { background: #d98a4a; box-shadow: 0 0 0 8px rgba(217, 138, 74, .15), 0 24px 50px -14px rgba(0, 0, 0, .8); }
+  .medal.plain { background: var(--surface-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line-2), 0 24px 50px -14px rgba(0, 0, 0, .8); }
+  .final h2 { font: 900 36px/1.05 var(--cond); letter-spacing: -.045em; margin: 6px 0 0; }
+  .final p { color: #c5cad2; margin: 0; }
+  .final .quip { font: 600 15px/1.3 var(--cond) !important; color: var(--muted) !important; }
+  .final .winner { display: inline-flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; }
+  .final .winner .rchip { width: 28px; height: 28px; font-size: 10px; }
+  .top3 { display: grid; gap: 6px; width: 100%; max-width: 320px; margin-top: 4px; position: relative; }
+  .top3 div { display: grid; grid-template-columns: 22px 30px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); text-align: left; }
+  .top3 div.me { box-shadow: inset 0 0 0 2px var(--accent); }
+  .top3 .pl { font: 900 17px/1 var(--cond); color: var(--muted); }
+  .top3 .rchip { width: 30px; height: 30px; font-size: 10px; }
+  .top3 b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+  .top3 .st { font: 800 15px/1 var(--cond); font-variant-numeric: tabular-nums; }
+  .rain { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .rain .rchip { position: absolute; top: -40px; width: 26px; height: 26px; font-size: 0; animation: fall var(--d, 3s) var(--w, 0s) linear forwards; }
+  @keyframes fall { to { transform: translateY(calc(100dvh + 80px)) rotate(var(--r, 360deg)); } }
+
+  @media (max-height: 700px) {
+    .game { gap: 4px; padding-top: calc(54px + env(safe-area-inset-top)); }
+    .hud { height: 42px; }
+    .hud .stack { font-size: 26px; }
+    .timer { width: 42px; height: 42px; }
+    .timer .v { font-size: 17px; }
+    .rack { height: 52px; }
+    .rack .den { width: 40px; height: 40px; font-size: 11px; }
+    .controls { gap: 4px; }
+    .act { height: 42px; }
+    .dock .tab, .dock .reacts button { height: 40px; }
+    .num span { font-size: 14px; }
+    .chip { width: 26px; height: 26px; font-size: 9.5px; }
+    .spinbox { width: 120px; height: 120px; }
+  }
+  @media (max-width: 370px) {
+    .rack .den { width: 40px; height: 40px; font-size: 11px; }
+    .dock .tab { padding: 0 8px; }
+    .dock .reacts button { font-size: 17px; }
+    .hud { grid-template-columns: minmax(0, 1fr) 124px 44px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cell.flash, .chip.pop, .chip.pop::after, .timer.hot, .splash .rays, .burst .rchip, .rain, .veil .wave, .icon.wink, .greenflash, .act.ready.stamp, .numball, .medal, .veil .nomore, .splash .stamp, .ghost.pop, .table-wrap.hot, .bubble, .btn.shine::after, .live i, .dfelt .rchip, .lobby-list .rchip, .dstamp b, .dwin { animation: none !important; }
+    .rain, .burst, .btn.shine::after { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="util"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
+<div class="conn" id="conn"></div>
+<div id="app"></div>
+<div class="sheet-bg" id="sheetbg"></div>
+<div class="sheet" id="sheet"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Рулетка — мультиплеерная игра для компании`,
+    _meta: `🎰 Мультиплеерная рулетка для компании: колесо на общем экране, ставки с телефонов, карты-пакости и чат. Все против казино, минимум растёт — побеждает последний с фишками.`,
+    nav_all_games: `← Все игры`,
+    eyebrow: `Игра для компании · телефоны + общий экран`,
+    h1_a: `Рулет`, h1_b: `ка`,
+    lede: `Колесо крутится на общем экране, ставки — с телефонов. У всех <b>1000 фишек</b>, все против казино, а <b>минимальная ставка растёт</b> каждые три спина. Кто остался с фишками последним — победил.`,
+    btn_create: `Создать комнату`, btn_creating: `Создаём…`,
+    cta_sub: `Открывай на ноутбуке или ТВ — там будет колесо`,
+    have_code: `У меня есть код`,
+    prompt_code: `Код комнаты`,
+    rule1: `<b>Полный европейский стол</b>: числа, сплиты, каре, дюжины, цвета — как в настоящем казино.`,
+    rule2: `<b>Ставки открыты</b>: все видят, куда поставили соседи, и могут поставить так же.`,
+    rule3: `<b>Карты-пакости</b>: удвоить соседу риск, заморозить, забрать долю выигрыша.`,
+    fine: `Фишки виртуальные, на деньги не играем.`,
+    enter_title: `Как тебя зовут?`,
+    enter_ph: `Имя`,
+    btn_join: `Сесть за стол`,
+    err_name: `Напиши имя`,
+    err_game_started: `Партия уже идёт — дождись следующей или войди со своего телефона`,
+    err_room_full: `За столом нет мест (максимум 12)`,
+    err_token_gone: `Тебя больше нет за этим столом — войди заново`,
+    wait_title: `Ты за столом`,
+    wait_text: `Ждём, пока ведущий начнёт партию на общем экране.`,
+    wait_players: `За столом`,
+    btn_leave: `Выйти`,
+    stack_lbl: `фишек`,
+    need_lbl: `ставка {bet} · мин {min}`,
+    penalty_warn: `штраф −{n}`,
+    all_in: `ВСЁ`,
+    act_undo: `Назад`, act_clear: `Сброс`, act_repeat: `Повтор`, act_double: `×2`, act_copy: `Как у…`,
+    act_ready: `Готово`, act_ready_on: `Готов ✓`,
+    tab_cards: `Карты`, tab_chat: `Чат`,
+    look: `Смотрите на экран`,
+    no_more: `Ставок больше нет`,
+    frozen: `❄️ Ты заморожен(а)`,
+    frozen_text: `В этом спине ставить нельзя, штраф — {n}.`,
+    paused: `Пауза`,
+    paused_text: `Ведущий поставил игру на паузу.`,
+    res_plus: `+{n}`, res_minus: `−{n}`, res_zero: `±0`,
+    res_share_in: `🧲 Доля от {name}: +{n}`,
+    res_share_out: `🧲 {name} забирает долю: −{n}`,
+    res_eye_in: `🧿 Сглаз на {name}: +{n}`,
+    res_penalty: `Штраф: −{n}`,
+    out_title: `Ты выбыл(а)`,
+    out_text: `Фишки кончились. Можно смотреть, писать в чат и ставить реакции.`,
+    fin_win: `Ты победил(а)!`,
+    fin_place: `{n}-е место`,
+    fin_winner: `Победитель — {name}`,
+    fin_wait: `Ждём, запустит ли ведущий ещё партию`,
+    cards_title: `Твои карты`,
+    cards_hint: `Одна карта за спин. Кладётся рубашкой вверх — все узнают, что это, только когда ставки закроются.`,
+    cards_none: `Карт нет. Новая приходит с каждым подъёмом минимума.`,
+    cards_played: `Карта уже сыграна в этом спине.`,
+    cards_off: `Карты в этой партии выключены.`,
+    target_title: `На кого?`,
+    chat_title: `Написать в чат`,
+    chat_hint: `Сообщение появится на общем экране.`,
+    chat_ph: `Сообщение…`,
+    chat_send: `Отправить`,
+    chat_muted: `Ведущий выключил тебе чат.`,
+    chat_off: `Чат в этой партии выключен.`,
+    copy_title: `Поставить как…`,
+    copy_empty: `Никто пока не поставил.`,
+    exact_title: `Ставки с числом {n}`,
+    rj_no_money: `Не хватает фишек`,
+    rj_closed: `Ставки уже закрыты`,
+    rj_frozen: `Ты заморожен(а) в этом спине`,
+    rj_bad_bet: `Такой ставки нет`,
+    rj_too_fast: `Не так быстро`,
+    rj_muted: `Чат для тебя выключен`,
+    rj_one_per_spin: `Одна карта за спин`,
+    rj_bad_target: `Эту цель выбрать нельзя`,
+    rj_no_card: `Этой карты нет в руке`,
+    rj_chat_off: `Чат выключен`,
+    expired_title: `Комнаты больше нет`,
+    expired_text: `Её закрыли или она долго простояла без дела.`,
+    expired_new: `Создать новую`,
+    kicked_title: `Ведущий убрал тебя из-за стола`,
+    replaced_title: `Игра открыта на другом устройстве`,
+    replaced_text: `Здесь больше не управляешь.`,
+    btn_back_here: `Играть здесь`,
+    conn_lost: `Нет связи, переподключаемся…`,
+    meter_ok: `✓ минимум есть`,
+    wait_live: `Стол открыт`, wait_seats: `мест занято: {n} из 12`, wait_tap: `Пока ждём — пощёлкай фишками`,
+    demo_live: `Идёт игра`, demo_table: `стол · мин <b>50</b>`, demo_place: `Делайте ваши ставки`, demo_names: `Маша|Петя|Аня|Гоша`, demo_win: `{name} +{n}`, demo_nobody: `Все мимо — казино довольно`,
+    how1: `Тап по числу — фишка на число`,
+    how2: `Тап по линии между числами — сплит, на перекрестье — каре`,
+    how3: `Держи палец на числе — все ставки с ним`,
+    spect: `🍿 Ты на трибуне: чат и реакции работают`,
+    out_quip: `Лучшие места — на диване. Болей громче.`,
+    win_stamp: `Выигрыш!`, jackpot_stamp: `Джекпот!`,
+    tap_close: `тапни, чтобы вернуться к столу`,
+    res_top: `{bet} · {pays}:1`,
+    lose_quips: `Казино благодарит за спонсорство|Фишки ушли на новый галстук крупье|Считай это инвестицией в атмосферу|Шарик тебя не заметил|Бывает. Особенно в казино`,
+    zero_quip: `Зеро. Казино улыбается.`,
+    even_quip: `Ровно. Как будто и не играл(а).`,
+    nobet: `Без ставки — просто смотрим`,
+    look_sub: `Шарик уже в колесе`,
+    fin_quip: `Казино запомнит этот вечер`,
+    quick: `Ва-банк!|Казино, верни фишки|Все на красное!|Я просто смотрю|Кто кинул карту?!`,
+  },
+  en: {
+    _title: `Roulette — a multiplayer party game`,
+    _meta: `🎰 Multiplayer roulette for a group: the wheel on a shared screen, bets from phones, dirty-trick cards and chat. Everyone vs the casino, the minimum keeps rising — last one with chips wins.`,
+    nav_all_games: `← All games`,
+    eyebrow: `Party game · phones + a shared screen`,
+    h1_a: `Roul`, h1_b: `ette`,
+    lede: `The wheel spins on the shared screen, bets come from phones. Everyone gets <b>1000 chips</b> and plays against the casino, and <b>the minimum bet rises</b> every three spins. Last one with chips wins.`,
+    btn_create: `Create a room`, btn_creating: `Creating…`,
+    cta_sub: `Open it on a laptop or TV — the wheel goes there`,
+    have_code: `I have a code`,
+    prompt_code: `Room code`,
+    rule1: `<b>Full European table</b>: numbers, splits, corners, dozens, colours — like a real casino.`,
+    rule2: `<b>Open bets</b>: everyone sees where the others bet and can copy them.`,
+    rule3: `<b>Dirty-trick cards</b>: double a rival's risk, freeze them, take a cut of their win.`,
+    fine: `Chips are virtual, no real money.`,
+    enter_title: `What's your name?`,
+    enter_ph: `Name`,
+    btn_join: `Take a seat`,
+    err_name: `Type a name`,
+    err_game_started: `A game is already running — wait for the next one or rejoin from your own phone`,
+    err_room_full: `The table is full (12 max)`,
+    err_token_gone: `You're no longer at this table — join again`,
+    wait_title: `You're at the table`,
+    wait_text: `Waiting for the host to start the game on the shared screen.`,
+    wait_players: `At the table`,
+    btn_leave: `Leave`,
+    stack_lbl: `chips`,
+    need_lbl: `bet {bet} · min {min}`,
+    penalty_warn: `penalty −{n}`,
+    all_in: `ALL`,
+    act_undo: `Undo`, act_clear: `Clear`, act_repeat: `Repeat`, act_double: `×2`, act_copy: `Copy…`,
+    act_ready: `Ready`, act_ready_on: `Ready ✓`,
+    tab_cards: `Cards`, tab_chat: `Chat`,
+    look: `Watch the screen`,
+    no_more: `No more bets`,
+    frozen: `❄️ You're frozen`,
+    frozen_text: `No bets this spin, penalty {n}.`,
+    paused: `Paused`,
+    paused_text: `The host paused the game.`,
+    res_plus: `+{n}`, res_minus: `−{n}`, res_zero: `±0`,
+    res_share_in: `🧲 Cut from {name}: +{n}`,
+    res_share_out: `🧲 {name} takes a cut: −{n}`,
+    res_eye_in: `🧿 Evil eye on {name}: +{n}`,
+    res_penalty: `Penalty: −{n}`,
+    out_title: `You're out`,
+    out_text: `No chips left. You can still watch, chat and react.`,
+    fin_win: `You won!`,
+    fin_place: `Place {n}`,
+    fin_winner: `Winner — {name}`,
+    fin_wait: `Waiting to see if the host starts another game`,
+    cards_title: `Your cards`,
+    cards_hint: `One card per spin. It goes face down — everyone finds out what it is when betting closes.`,
+    cards_none: `No cards. A new one comes with every minimum raise.`,
+    cards_played: `You've already played a card this spin.`,
+    cards_off: `Cards are off in this game.`,
+    target_title: `On whom?`,
+    chat_title: `Write to chat`,
+    chat_hint: `The message shows up on the shared screen.`,
+    chat_ph: `Message…`,
+    chat_send: `Send`,
+    chat_muted: `The host muted your chat.`,
+    chat_off: `Chat is off in this game.`,
+    copy_title: `Bet like…`,
+    copy_empty: `Nobody has bet yet.`,
+    exact_title: `Bets with {n}`,
+    rj_no_money: `Not enough chips`,
+    rj_closed: `Betting is closed`,
+    rj_frozen: `You're frozen this spin`,
+    rj_bad_bet: `No such bet`,
+    rj_too_fast: `Slow down`,
+    rj_muted: `Your chat is muted`,
+    rj_one_per_spin: `One card per spin`,
+    rj_bad_target: `Can't pick that target`,
+    rj_no_card: `That card isn't in your hand`,
+    rj_chat_off: `Chat is off`,
+    expired_title: `This room is gone`,
+    expired_text: `It was closed or sat idle for too long.`,
+    expired_new: `Create a new one`,
+    kicked_title: `The host removed you from the table`,
+    replaced_title: `The game is open on another device`,
+    replaced_text: `You're no longer in control here.`,
+    btn_back_here: `Play here`,
+    conn_lost: `No connection, reconnecting…`,
+    meter_ok: `✓ minimum met`,
+    wait_live: `Table open`, wait_seats: `seats taken: {n} of 12`, wait_tap: `While we wait — flip some chips`,
+    demo_live: `Live table`, demo_table: `table · min <b>50</b>`, demo_place: `Place your bets`, demo_names: `Mia|Pete|Ann|Gus`, demo_win: `{name} +{n}`, demo_nobody: `Everyone missed — the house is pleased`,
+    how1: `Tap a number — chip on the number`,
+    how2: `Tap the line between numbers — split, on a crossing — corner`,
+    how3: `Hold a number — every bet that includes it`,
+    spect: `🍿 You're in the stands: chat and reactions still work`,
+    out_quip: `Best seats are on the couch. Cheer louder.`,
+    win_stamp: `Winner!`, jackpot_stamp: `Jackpot!`,
+    tap_close: `tap to get back to the table`,
+    res_top: `{bet} · {pays}:1`,
+    lose_quips: `The casino thanks you for your sponsorship|Your chips just bought the croupier a new tie|Call it an investment in atmosphere|The ball didn't notice you|Happens. Especially in casinos`,
+    zero_quip: `Zero. The house smiles.`,
+    even_quip: `Even. As if you never played.`,
+    nobet: `No bet — just watching`,
+    look_sub: `The ball is in the wheel`,
+    fin_quip: `The casino will remember tonight`,
+    quick: `All in!|Casino, give my chips back|Everyone on red!|Just watching|Who played that card?!`,
+  },
+  el: {
+    _title: `Ρουλέτα — παιχνίδι για παρέα`,
+    _meta: `🎰 Ρουλέτα για παρέα: ο τροχός στην κοινή οθόνη, πονταρίσματα από τα κινητά, κάρτες-κόλπα και chat. Όλοι εναντίον του καζίνο, το ελάχιστο ανεβαίνει — κερδίζει ο τελευταίος με μάρκες.`,
+    nav_all_games: `← Όλα τα παιχνίδια`,
+    eyebrow: `Παιχνίδι για παρέα · κινητά + κοινή οθόνη`,
+    h1_a: `Ρουλ`, h1_b: `έτα`,
+    lede: `Ο τροχός γυρίζει στην κοινή οθόνη, τα πονταρίσματα γίνονται από τα κινητά. Όλοι έχουν <b>1000 μάρκες</b> και παίζουν κόντρα στο καζίνο, και <b>το ελάχιστο πόνταρισμα ανεβαίνει</b> κάθε τρία γυρίσματα. Κερδίζει ο τελευταίος με μάρκες.`,
+    btn_create: `Νέο δωμάτιο`, btn_creating: `Δημιουργία…`,
+    cta_sub: `Άνοιξέ το σε laptop ή τηλεόραση — εκεί θα είναι ο τροχός`,
+    have_code: `Έχω κωδικό`,
+    prompt_code: `Κωδικός δωματίου`,
+    rule1: `<b>Πλήρες ευρωπαϊκό τραπέζι</b>: αριθμοί, σπλιτ, καρέ, δωδεκάδες, χρώματα — όπως σε αληθινό καζίνο.`,
+    rule2: `<b>Ανοιχτά πονταρίσματα</b>: όλοι βλέπουν πού πόνταραν οι άλλοι και μπορούν να τους αντιγράψουν.`,
+    rule3: `<b>Κάρτες-κόλπα</b>: διπλό ρίσκο στον αντίπαλο, πάγωμα, μερίδιο από τα κέρδη του.`,
+    fine: `Οι μάρκες είναι εικονικές, δεν παίζουμε με χρήματα.`,
+    enter_title: `Πώς σε λένε;`,
+    enter_ph: `Όνομα`,
+    btn_join: `Κάτσε στο τραπέζι`,
+    err_name: `Γράψε ένα όνομα`,
+    err_game_started: `Το παιχνίδι έχει ήδη αρχίσει — περίμενε το επόμενο ή μπες από το δικό σου κινητό`,
+    err_room_full: `Το τραπέζι είναι γεμάτο (έως 12)`,
+    err_token_gone: `Δεν είσαι πια σε αυτό το τραπέζι — μπες ξανά`,
+    wait_title: `Είσαι στο τραπέζι`,
+    wait_text: `Περιμένουμε τον οικοδεσπότη να ξεκινήσει στην κοινή οθόνη.`,
+    wait_players: `Στο τραπέζι`,
+    btn_leave: `Έξοδος`,
+    stack_lbl: `μάρκες`,
+    need_lbl: `πόντος {bet} · ελάχ. {min}`,
+    penalty_warn: `ποινή −{n}`,
+    all_in: `ΟΛΑ`,
+    act_undo: `Πίσω`, act_clear: `Καθαρ.`, act_repeat: `Ξανά`, act_double: `×2`, act_copy: `Σαν…`,
+    act_ready: `Έτοιμος`, act_ready_on: `Έτοιμος ✓`,
+    tab_cards: `Κάρτες`, tab_chat: `Chat`,
+    look: `Κοίτα την οθόνη`,
+    no_more: `Τέλος πονταρισμάτων`,
+    frozen: `❄️ Είσαι παγωμένος`,
+    frozen_text: `Χωρίς πόνταρισμα σε αυτό το γύρισμα, ποινή {n}.`,
+    paused: `Παύση`,
+    paused_text: `Ο οικοδεσπότης έβαλε παύση.`,
+    res_plus: `+{n}`, res_minus: `−{n}`, res_zero: `±0`,
+    res_share_in: `🧲 Μερίδιο από {name}: +{n}`,
+    res_share_out: `🧲 {name} παίρνει μερίδιο: −{n}`,
+    res_eye_in: `🧿 Μάτι στον/στην {name}: +{n}`,
+    res_penalty: `Ποινή: −{n}`,
+    out_title: `Αποκλείστηκες`,
+    out_text: `Τελείωσαν οι μάρκες. Μπορείς ακόμα να βλέπεις, να γράφεις και να αντιδράς.`,
+    fin_win: `Κέρδισες!`,
+    fin_place: `{n}η θέση`,
+    fin_winner: `Νικητής — {name}`,
+    fin_wait: `Περιμένουμε αν ο οικοδεσπότης ξεκινήσει νέο παιχνίδι`,
+    cards_title: `Οι κάρτες σου`,
+    cards_hint: `Μία κάρτα ανά γύρισμα. Μπαίνει ανάποδα — όλοι μαθαίνουν τι είναι όταν κλείσουν τα πονταρίσματα.`,
+    cards_none: `Δεν έχεις κάρτες. Νέα έρχεται σε κάθε αύξηση του ελαχίστου.`,
+    cards_played: `Έχεις ήδη παίξει κάρτα σε αυτό το γύρισμα.`,
+    cards_off: `Οι κάρτες είναι κλειστές σε αυτό το παιχνίδι.`,
+    target_title: `Σε ποιον;`,
+    chat_title: `Γράψε στο chat`,
+    chat_hint: `Το μήνυμα εμφανίζεται στην κοινή οθόνη.`,
+    chat_ph: `Μήνυμα…`,
+    chat_send: `Αποστολή`,
+    chat_muted: `Ο οικοδεσπότης σού έκλεισε το chat.`,
+    chat_off: `Το chat είναι κλειστό σε αυτό το παιχνίδι.`,
+    copy_title: `Πόνταρε σαν…`,
+    copy_empty: `Κανείς δεν έχει ποντάρει ακόμα.`,
+    exact_title: `Πονταρίσματα με το {n}`,
+    rj_no_money: `Δεν φτάνουν οι μάρκες`,
+    rj_closed: `Τα πονταρίσματα έκλεισαν`,
+    rj_frozen: `Είσαι παγωμένος σε αυτό το γύρισμα`,
+    rj_bad_bet: `Δεν υπάρχει τέτοιο πόνταρισμα`,
+    rj_too_fast: `Πιο αργά`,
+    rj_muted: `Το chat σου είναι κλειστό`,
+    rj_one_per_spin: `Μία κάρτα ανά γύρισμα`,
+    rj_bad_target: `Δεν γίνεται αυτός ο στόχος`,
+    rj_no_card: `Δεν έχεις αυτή την κάρτα`,
+    rj_chat_off: `Το chat είναι κλειστό`,
+    expired_title: `Το δωμάτιο δεν υπάρχει πια`,
+    expired_text: `Έκλεισε ή έμεινε ανενεργό πολλή ώρα.`,
+    expired_new: `Νέο δωμάτιο`,
+    kicked_title: `Ο οικοδεσπότης σε αφαίρεσε από το τραπέζι`,
+    replaced_title: `Το παιχνίδι άνοιξε σε άλλη συσκευή`,
+    replaced_text: `Εδώ δεν ελέγχεις πια.`,
+    btn_back_here: `Παίξε εδώ`,
+    conn_lost: `Χωρίς σύνδεση, επανασύνδεση…`,
+    meter_ok: `✓ ελάχιστο εντάξει`,
+    wait_live: `Το τραπέζι άνοιξε`, wait_seats: `θέσεις: {n} από 12`, wait_tap: `Όσο περιμένουμε — παίξε με τις μάρκες`,
+    demo_live: `Παίζεται τώρα`, demo_table: `τραπέζι · ελάχ. <b>50</b>`, demo_place: `Ποντάρετε`, demo_names: `Μαρία|Πέτρος|Άννα|Γιώργος`, demo_win: `{name} +{n}`, demo_nobody: `Όλοι έχασαν — το καζίνο χαίρεται`,
+    how1: `Πάτα αριθμό — μάρκα στον αριθμό`,
+    how2: `Πάτα τη γραμμή ανάμεσα — σπλιτ, στη διασταύρωση — καρέ`,
+    how3: `Κράτα το δάχτυλο σε αριθμό — όλα τα πονταρίσματα μαζί του`,
+    spect: `🍿 Είσαι στην κερκίδα: chat και αντιδράσεις δουλεύουν`,
+    out_quip: `Οι καλύτερες θέσεις είναι στον καναπέ. Φώναξε πιο δυνατά.`,
+    win_stamp: `Κέρδος!`, jackpot_stamp: `Τζακποτ!`,
+    tap_close: `πάτα για να γυρίσεις στο τραπέζι`,
+    res_top: `{bet} · {pays}:1`,
+    lose_quips: `Το καζίνο ευχαριστεί για τη χορηγία|Οι μάρκες σου αγόρασαν γραβάτα στον κρουπιέρη|Πες το επένδυση στην ατμόσφαιρα|Η μπίλια δεν σε πρόσεξε|Συμβαίνει. Ειδικά στα καζίνο`,
+    zero_quip: `Μηδέν. Το καζίνο χαμογελά.`,
+    even_quip: `Ισοπαλία. Σαν να μην έπαιξες.`,
+    nobet: `Χωρίς πόνταρισμα — απλώς βλέπουμε`,
+    look_sub: `Η μπίλια είναι ήδη στον τροχό`,
+    fin_quip: `Το καζίνο θα θυμάται αυτή τη βραδιά`,
+    quick: `All in!|Καζίνο, δώσε πίσω τις μάρκες|Όλοι στο κόκκινο!|Απλώς κοιτάζω|Ποιος έριξε κάρτα;!`,
+  },
+};
+</script>
+<script src="roulette-shared.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+
+<script>
+"use strict";
+const params = new URLSearchParams(location.search);
+// код идёт в разметку — только алфавит кодов, иначе ?r=<img onerror> даёт XSS
+const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 10);
+const app = document.getElementById("app");
+const T = (k) => rlT(k);
+const tpl = (k, v) => rlTpl(k, v);
+
+let conn = null;
+let state = null;
+let me = null;
+let token = null;
+let dead = false;
+let screen = null; // landing | enter | wait | game | out | final | expired | kicked | replaced
+let joinErr = null;
+const tokenKey = () => "roulette-token-" + CODE;
+try { token = localStorage.getItem(tokenKey()); } catch (e) {}
+
+function screenMode(m) {
+  document.body.classList.remove("m-game");
+  if (m === "game") document.body.classList.add("m-game");
+}
+
+let toastT = null;
+function toast(text) {
+  const t = document.getElementById("toast");
+  t.textContent = text;
+  t.classList.add("on");
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.remove("on"), 2200);
+}
+
+// ---------- общие предметы: фишка, колесо ----------
+
+// фишка цвета игрока; text — номинал или инициалы во вставке
+function chipHtml(color, text, cls, extra) {
+  return `<i class="rchip${cls ? " " + cls : ""}" style="${rlChipVars(color)}${extra || ""}">${text == null ? "" : escapeHtml(text)}</i>`;
+}
+const initials = (name) => String(name || "?").replace(/^🤖\s*/, "").split(/\s+/).map((w) => w[0] || "").join("").slice(0, 2).toUpperCase();
+
+// колесо сверху: 37 ячеек в настоящем порядке, латунная турель. Рисуется один раз, крутится CSS-трансформом
+function wheelSvg(cls, numbers) {
+  const C = 150, n = RL_WHEEL.length, a = (Math.PI * 2) / n;
+  const pt = (r, t) => `${(C + r * Math.cos(t)).toFixed(1)},${(C + r * Math.sin(t)).toFixed(1)}`;
+  let cells = "", nums = "";
+  RL_WHEEL.forEach((num, i) => {
+    const a0 = i * a - Math.PI / 2 - a / 2, a1 = a0 + a;
+    const col = num === 0 ? "#17b06b" : RL_RED.has(num) ? "#e3263a" : "#17191e";
+    cells += `<path d="M${pt(92, a0)}L${pt(134, a0)}A134,134 0 0 1 ${pt(134, a1)}L${pt(92, a1)}A92,92 0 0 0 ${pt(92, a0)}Z" fill="${col}"/>`;
+    if (numbers) {
+      const tm = a0 + a / 2, [x, y] = pt(120, tm).split(",");
+      nums += `<text x="${x}" y="${y}" transform="rotate(${((tm * 180) / Math.PI + 90).toFixed(1)} ${x} ${y})">${num}</text>`;
+    }
+  });
+  const frets = RL_WHEEL.map((_, i) => { const t = i * a - Math.PI / 2 - a / 2; return `M${pt(92, t)}L${pt(134, t)}`; }).join("");
+  return `<svg class="${cls}" viewBox="0 0 300 300" aria-hidden="true">
+    <defs><radialGradient id="wr${cls}" cx=".45" cy=".4"><stop offset="0" stop-color="#2b2f37"/><stop offset="1" stop-color="#0d0e11"/></radialGradient>
+    <radialGradient id="wc${cls}" cx=".45" cy=".4"><stop offset="0" stop-color="#2a2e36"/><stop offset=".7" stop-color="#17191e"/><stop offset="1" stop-color="#0d0e11"/></radialGradient>
+    <radialGradient id="wb${cls}" cx=".4" cy=".35"><stop offset="0" stop-color="#ffe3a0"/><stop offset=".6" stop-color="#ffc043"/><stop offset="1" stop-color="#c98f1a"/></radialGradient></defs>
+    <circle cx="150" cy="150" r="149" fill="url(#wr${cls})"/><circle cx="150" cy="150" r="136" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.5"/>
+    ${cells}<path d="${frets}" stroke="rgba(255,255,255,.55)" stroke-width="1.2"/>
+    <g font-family="Inter Tight, Arial, sans-serif" font-weight="800" font-size="12" fill="#fff8ea" text-anchor="middle" dominant-baseline="central">${nums}</g>
+    <circle cx="150" cy="150" r="92" fill="url(#wc${cls})" stroke="rgba(255,255,255,.2)" stroke-width="1.5"/>
+    <g fill="url(#wb${cls})"><path d="M150 96l7 44 44 7-44 7-7 44-7-44-44-7 44-7z"/><circle cx="150" cy="150" r="16"/></g>
+  </svg>`;
+}
+
+// ---------- живой стол на стартовом экране ----------
+// Мини-раунд по кругу: фишки падают с именами, «ставок больше нет», шарик тормозит и ложится в ячейку,
+// выигравшая фишка платит. Число берём честно из ячеек под колесом — шарик приходит ровно в него.
+let demoRun = 0;
+function runDemo() {
+  const my = ++demoRun;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const $ = (id) => document.getElementById(id);
+  const felt = $("dfelt"), wheel = document.querySelector(".dwheel"), ball = $("dball");
+  if (!felt || !wheel) return;
+  const names = T("demo_names").split("|");
+  const colors = ["#ff8fc7", "#4ea8f2", "#f2c14e", "#5de0d0"];
+  const a = (Math.PI * 2) / RL_WHEEL.length;
+  let rot = 0, ballAng = 0, ballR = 0.43, spin = null, lockPocket = null, last = performance.now(), raf = 0;
+  const alive = () => my === demoRun && screen === "landing" && document.body.contains(felt);
+  const frame = (t) => {
+    if (!alive()) return;
+    const dt = Math.min(50, t - last) / 1000;
+    last = t;
+    rot += dt * 0.35;
+    if (spin) {
+      const k = Math.min(1, (t - spin.t0) / spin.D);
+      // замедление до нуля: θ(k) = θ0 − v·D·(k − k²/2); на k=1 шарик ровно над ячейкой
+      ballAng = spin.th0 - spin.v * (spin.D / 1000) * (k - (k * k) / 2);
+      ballR = 0.43 - 0.1 * Math.pow(k, 3);
+      if (k >= 1) { lockPocket = spin.pocket; spin = null; }
+    } else if (lockPocket != null) {
+      ballAng = rot + lockPocket * a - Math.PI / 2;
+      ballR = 0.33;
+    } else ballAng -= dt * 1.2;
+    const w = wheel.clientWidth || 1;
+    wheel.style.transform = `rotate(${rot}rad)`;
+    ball.style.transform = `translate(${Math.cos(ballAng) * ballR * w}px, ${Math.sin(ballAng) * ballR * w}px)`;
+    raf = requestAnimationFrame(frame);
+  };
+  if (!reduce) raf = requestAnimationFrame(frame);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const say = (txt) => { const e = $("dsay"); if (e) e.textContent = txt; };
+  const cellOf = (n) => felt.querySelector(`.c[data-n="${n}"]`);
+  (async () => {
+    while (alive()) {
+      felt.querySelectorAll(".rchip, .bubble, .dstamp, .dwin").forEach((x) => x.remove());
+      felt.querySelectorAll(".c.win").forEach((x) => x.classList.remove("win"));
+      lockPocket = null;
+      const num = $("dnum"); num.className = "numball idle"; num.textContent = "";
+      say(T("demo_place"));
+      const bets = [];
+      for (let i = 0; i < 7 && alive(); i++) {
+        const t = $("dt"); t.textContent = String(7 - i); t.classList.toggle("hot", 7 - i <= 3);
+        await wait(reduce ? 0 : 430);
+        const who = i % 4, n = 13 + Math.floor(Math.random() * 12), amt = [50, 100, 50, 250][Math.floor(Math.random() * 4)];
+        bets.push({ who, n, amt });
+        const c = cellOf(n);
+        const off = (bets.filter((b) => b.n === n).length - 1) * 5;
+        c.insertAdjacentHTML("beforeend", `<i class="rchip" style="${rlChipVars(colors[who])};margin-left:${-12 + off}px;margin-top:${-12 - off}px">${amt}</i>`);
+        const b = el("div", "bubble", `${names[who]} +${amt}`);
+        b.style.cssText = rlChipVars(colors[who]) + `;left:${c.offsetLeft + c.offsetWidth / 2}px;top:${c.offsetTop + c.offsetHeight / 2 - 6}px`;
+        felt.append(b);
+        setTimeout(() => b.remove(), 1500);
+      }
+      if (!alive()) break;
+      $("dt").textContent = "";
+      felt.insertAdjacentHTML("beforeend", `<div class="dstamp"><b>${escapeHtml(T("no_more"))}</b></div>`);
+      say("…");
+      // исход: чаще в ячейку с фишками, чтобы было кого поздравить, иначе любая из двенадцати
+      const n = Math.random() < 0.65 ? bets[Math.floor(Math.random() * bets.length)].n : 13 + Math.floor(Math.random() * 12);
+      const pocket = RL_WHEEL.indexOf(n), D = 3800, v = 7;
+      const endRot = rot + 0.35 * (D / 1000);
+      spin = { t0: performance.now(), D, v, pocket, th0: endRot + pocket * a - Math.PI / 2 + v * (D / 1000) / 2 };
+      await wait(900);
+      felt.querySelectorAll(".dstamp").forEach((x) => x.remove());
+      await wait(reduce ? 0 : D - 900);
+      if (!alive()) break;
+      cellOf(n).classList.add("win");
+      num.className = "numball " + rlColor(n);
+      num.textContent = String(n);
+      felt.querySelectorAll(".c:not(.win) .rchip").forEach((x) => x.classList.add("swept"));
+      const won = bets.filter((b) => b.n === n);
+      if (won.length) {
+        const top = won.sort((x, y) => y.amt - x.amt)[0];
+        const line = tpl("demo_win", { name: names[top.who], n: rlNum(top.amt * 35) });
+        say(line);
+        const w = el("div", "dwin", line);
+        felt.append(w);
+      } else say(T("demo_nobody"));
+      await wait(3000);
+    }
+    cancelAnimationFrame(raf);
+  })();
+}
+
+// ---------- стартовый экран: создать комнату ----------
+
+function renderLanding() {
+  screen = "landing";
+  screenMode(null);
+  const cells = [];
+  for (let n = 13; n <= 24; n++) cells.push(`<div class="c ${rlColor(n)}" data-n="${n}"><span>${n}</span></div>`);
+  app.innerHTML = `<div class="landing">
+    <div class="lhead">
+      <div class="eyebrow">${T("eyebrow")}</div>
+      <h1>${T("h1_a")}<em>${T("h1_b")}</em></h1>
+      <p class="lede">${T("lede")}</p>
+    </div>
+    <div class="demo" aria-hidden="true">
+      <div class="demo-head"><span class="live"><i></i>${T("demo_live")}</span><span>${T("demo_table")}</span></div>
+      <div class="demo-box"><div class="demo-in">
+        <div class="dwheel-box">${wheelSvg("dwheel", false)}<div class="ball" id="dball"></div></div>
+        <div class="dfelt" id="dfelt">${cells.join("")}</div>
+      </div></div>
+      <div class="demo-foot"><div class="numball idle" id="dnum"></div><div class="say" id="dsay"></div><div class="t" id="dt"></div></div>
+    </div>
+    <div class="lbody">
+      <div class="cta">
+        <button class="btn shine" id="create">${T("btn_create")}</button>
+        <div class="sub2"><span>${T("cta_sub")}</span><button class="link" id="havecode">${T("have_code")}</button></div>
+      </div>
+      <div class="rules">
+        <div class="r">${chipHtml("#cf2331", "37", "k")}<div class="t">${T("rule1")}</div></div>
+        <div class="r">${chipHtml("#4ea8f2", "👀", "k")}<div class="t">${T("rule2")}</div></div>
+        <div class="r">${chipHtml("#17130f", "☠️", "k dark")}<div class="t">${T("rule3")}</div></div>
+      </div>
+      <div class="fine">${T("fine")}</div>
+    </div>
+  </div>`;
+  runDemo();
+  document.getElementById("create").onclick = async () => {
+    const btn = document.getElementById("create");
+    btn.disabled = true;
+    btn.textContent = T("btn_creating");
+    try {
+      const lang = (window.I18N && I18N.lang) || "ru";
+      const res = await fetch("/roulette/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang } }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "error");
+      try { localStorage.setItem("roulette-host-" + data.code, data.hostToken); } catch (e) {}
+      location.href = `roulette-board.html?r=${data.code}`;
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = T("btn_create");
+      toast(String(err.message || err));
+    }
+  };
+  document.getElementById("havecode").onclick = () => {
+    const c = prompt(T("prompt_code"));
+    if (c) location.href = `roulette.html?r=${encodeURIComponent(c.trim().toUpperCase())}`;
+  };
+}
+
+// ---------- вход ----------
+
+function renderEnter() {
+  screen = "enter";
+  screenMode(null);
+  let saved = "";
+  try { saved = localStorage.getItem("roulette-name") || ""; } catch (e) {}
+  app.innerHTML = `<form class="enter" id="enterform" autocomplete="off">
+    <div class="placecard">
+      <div class="room">${escapeHtml(CODE)}</div>
+      <h2>${T("enter_title")}</h2>
+      <input id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}">
+    </div>
+    <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
+    <button class="btn" type="submit">${T("btn_join")}</button>
+  </form>`;
+  const input = document.getElementById("name");
+  document.getElementById("enterform").onsubmit = (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    if (!name) { document.getElementById("err").textContent = T("err_name"); return; }
+    try { localStorage.setItem("roulette-name", name); } catch (e2) {}
+    joinErr = null;
+    conn.send({ type: "join", name });
+  };
+}
+
+function renderCenter(titleKey, textKey, extra) {
+  screenMode(null);
+  app.innerHTML = `<div class="center"><h2>${T(titleKey)}</h2>${textKey ? `<p>${T(textKey)}</p>` : ""}${extra || ""}</div>`;
+}
+
+function renderExpired() {
+  dead = true;
+  screen = "expired";
+  try { localStorage.removeItem(tokenKey()); } catch (e) {}
+  renderCenter("expired_title", "expired_text", `<a class="btn" href="roulette.html">${T("expired_new")}</a>`);
+}
+
+// ---------- игра ----------
+
+const player = (id) => state && state.players.find((p) => p.id === id);
+const mine = () => player(me);
+
+// Мои ставки ведём локально: тап виден сразу, серверу уходит итоговый набор (set_bets).
+// Пока есть неподтверждённые изменения, снимок сервера мои ставки не перетирает.
+let myBets = {};
+let undo = [];
+let pendingUntil = 0;
+let chipIdx = 0;
+let lastSpin = -1;
+let lastPhase = null;
+
+function denominations() {
+  const min = Math.max(1, state ? state.minBet : 10);
+  return [1, 2, 5, 10, 25].map((k) => k * min);
+}
+
+function pushBets(next) {
+  const p = mine();
+  if (!p) return;
+  if (rlSum(next) > p.stack) { toast(T("rj_no_money")); return false; }
+  undo.push(myBets);
+  if (undo.length > 60) undo.shift();
+  myBets = next;
+  pendingUntil = Date.now() + 1200;
+  conn.send({ type: "set_bets", bets: myBets });
+  drawChips(true);
+  drawHeat();
+  drawHud();
+  return true;
+}
+
+function addChip(key) {
+  const p = mine();
+  if (!p || !canBet()) return;
+  const dens = denominations();
+  const free = p.stack - rlSum(myBets);
+  let amt = chipIdx === dens.length ? free : dens[chipIdx];
+  if (amt > free) amt = free;
+  if (amt <= 0) { toast(T("rj_no_money")); return; }
+  const next = Object.assign({}, myBets);
+  next[key] = (next[key] || 0) + amt;
+  if (pushBets(next)) { lastAdded = key; drawChips(true); rlSfx.chip(); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} }
+}
+let lastAdded = null;
+
+function canBet() {
+  const p = mine();
+  return state && state.phase === "betting" && p && !p.out && !p.frozen;
+}
+
+// Геометрия стола: зона чисел — 3 колонки × 13 строк (строка 0 — зеро). Координаты в долях зоны.
+function hitKey(fx, fy) {
+  const rowsH = 13;
+  const cy = fy * rowsH;
+  const row = Math.floor(cy);
+  const cx = fx * 3;
+  const col = Math.min(2, Math.floor(cx));
+  const inX = cx - col;
+  const inY = cy - row;
+  const EDGE_X = 0.22, EDGE_Y = 0.26;
+  if (row === 0) {
+    // зеро: у нижней кромки — сплит/трио/«первые четыре» с числами первого ряда
+    if (inY < 1 - EDGE_Y) return "n:0";
+    if (col === 0 && inX < EDGE_X) return "co:0-1-2-3";
+    if (col === 0 && inX > 1 - EDGE_X) return "st:0-1-2";
+    if (col === 1 && inX < EDGE_X) return "st:0-1-2";
+    if (col === 1 && inX > 1 - EDGE_X) return "st:0-2-3";
+    if (col === 2 && inX < EDGE_X) return "st:0-2-3";
+    return rlKeyFor([0, col + 1]);
+  }
+  const r = row - 1; // ряд чисел 0..11
+  const n = 3 * r + col + 1;
+  const left = inX < EDGE_X, right = inX > 1 - EDGE_X, top = inY < EDGE_Y, bottom = inY > 1 - EDGE_Y;
+  // правая внешняя кромка — стрит, на стыке рядов — сикслайн
+  if (col === 2 && right) {
+    if (bottom && r < 11) return rlKeyFor([n - 2, n - 1, n, n + 1, n + 2, n + 3]);
+    if (top && r > 0) return rlKeyFor([n - 5, n - 4, n - 3, n - 2, n - 1, n]);
+    return rlKeyFor([n - 2, n - 1, n]);
+  }
+  const hn = right && col < 2 ? n + 1 : left && col > 0 ? n - 1 : null; // сосед по горизонтали
+  const vn = bottom && r < 11 ? n + 3 : top && r > 0 ? n - 3 : top && r === 0 ? 0 : null; // по вертикали
+  if (hn && vn != null && vn !== 0) return rlKeyFor([n, hn, vn, vn + (hn - n)]);
+  if (hn && vn === 0) return rlKeyFor([0, n, hn]) || "n:" + n; // трио есть не у всех пар
+  if (hn) return rlKeyFor([n, hn]);
+  if (vn != null) return rlKeyFor([n, vn]);
+  return "n:" + n;
+}
+
+// Где рисовать фишку ставки (в долях зоны чисел; внешние — в своих клетках)
+function chipPos(key) {
+  const b = RL_BETS[key];
+  if (!b) return null;
+  const outside = { dz: 1, col: 1, red: 1, black: 1, even: 1, odd: 1, low: 1, high: 1 };
+  if (outside[b.type]) return { cell: key };
+  const ns = b.numbers;
+  const pos = (n) => (n === 0 ? { x: 1.5 / 3, y: 0.5 / 13 } : { x: (((n - 1) % 3) + 0.5) / 3, y: (Math.floor((n - 1) / 3) + 1.5) / 13 });
+  if (b.type === "st" && !ns.includes(0)) { const p = pos(ns[2]); return { x: 1 - 0.02, y: p.y }; }
+  if (b.type === "sl") { const p = pos(ns[2]); return { x: 1 - 0.02, y: p.y + 0.5 / 13 }; }
+  if (ns.includes(0) && ns.length > 1) {
+    const rest = ns.filter((n) => n);
+    const avgX = rest.reduce((a, n) => a + pos(n).x, 0) / rest.length;
+    return { x: key === "co:0-1-2-3" ? 0.02 : avgX, y: 1 / 13 };
+  }
+  const ps = ns.map(pos);
+  return { x: ps.reduce((a, p) => a + p.x, 0) / ps.length, y: ps.reduce((a, p) => a + p.y, 0) / ps.length };
+}
+
+let els = {};
+const lobbySeen = new Set();
+
+function buildGame() {
+  screen = "game";
+  screenMode("game");
+  app.innerHTML = `<div class="game">
+    <div class="hud">
+      <div class="me"><div class="mystack" id="mystack"><i></i><i></i><i></i><i></i></div><div class="stack" id="stack">0</div></div>
+      <div class="need" id="need"><div class="nl" id="needl"></div><div class="meter"><i id="meterbar"></i><span id="metertx"></span></div></div>
+      <div class="timer" id="timer"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="20" fill="none" stroke="rgba(231,192,104,.18)" stroke-width="4"/><circle id="ring" cx="24" cy="24" r="20" fill="none" stroke="#e7c068" stroke-width="4" stroke-linecap="round" stroke-dasharray="125.7" stroke-dashoffset="0"/></svg><div class="v" id="tv"></div></div>
+    </div>
+    <div class="table-wrap">
+      <div class="felt" id="felt"></div>
+      <div class="veil" id="veil"></div>
+    </div>
+    <div class="controls" id="controls">
+      <div class="rack" id="rack"></div>
+      <div class="actions" id="actions"></div>
+    </div>
+    <div class="dock" id="dock"></div>
+  </div>
+  <div class="splash" id="splash"></div>`;
+  els = {
+    stack: document.getElementById("stack"), need: document.getElementById("need"), needl: document.getElementById("needl"),
+    meter: document.getElementById("meterbar"), metertx: document.getElementById("metertx"), mystack: document.getElementById("mystack"),
+    felt: document.getElementById("felt"), veil: document.getElementById("veil"), rack: document.getElementById("rack"),
+    actions: document.getElementById("actions"), dock: document.getElementById("dock"), ring: document.getElementById("ring"),
+    tv: document.getElementById("tv"), timer: document.getElementById("timer"), controls: document.getElementById("controls"),
+    splash: document.getElementById("splash"),
+  };
+  els.splash.onclick = closeSplash;
+  buildFelt();
+  buildRack();
+  buildActions();
+  buildDock();
+}
+
+function buildFelt() {
+  const f = els.felt;
+  const cells = [];
+  const corner = el("div", "corner-blank");
+  corner.append(el("div", "hist"));
+  cells.push(corner);
+  const zero = el("div", "cell num zero");
+  zero.dataset.n = "0";
+  zero.append(el("span", null, "0"));
+  cells.push(zero);
+  for (let r = 0; r < 12; r++) {
+    for (let c = 0; c < 3; c++) {
+      const n = 3 * r + c + 1;
+      const d = el("div", `cell num ${rlColor(n)}`);
+      d.style.gridColumn = String(3 + c);
+      d.style.gridRow = String(2 + r);
+      d.dataset.n = String(n);
+      d.append(el("span", null, String(n)));
+      cells.push(d);
+    }
+  }
+  // внешние ставки: равные шансы у борта, дюжины между ними и числами — как на повёрнутом столе
+  const ev = [["low", "1–18"], ["even", null], ["red", ""], ["black", ""], ["odd", null], ["high", "19–36"]];
+  ev.forEach(([key, label], i) => {
+    const d = el("div", `cell ev ${key === "red" ? "red-box" : key === "black" ? "black-box" : ""}`, label == null ? rlT("bet_" + key) : label);
+    d.style.gridColumn = "1";
+    d.style.gridRow = `${2 + i * 2} / span 2`;
+    d.dataset.key = key;
+    cells.push(d);
+  });
+  for (let i = 0; i < 3; i++) {
+    const d = el("div", "cell dz", ["1–12", "13–24", "25–36"][i]);
+    d.style.gridColumn = "2";
+    d.style.gridRow = `${2 + i * 4} / span 4`;
+    d.dataset.key = `dz:${i + 1}`;
+    cells.push(d);
+  }
+  cells.push(el("div", "foot-blank"));
+  for (let c = 0; c < 3; c++) {
+    const d = el("div", "cell col", "2:1");
+    d.style.gridColumn = String(3 + c);
+    d.style.gridRow = "14";
+    d.dataset.key = `col:${c + 1}`;
+    cells.push(d);
+  }
+  const hit = el("div", "hitlayer");
+  const chips = el("div", "chips");
+  chips.id = "chips";
+  const ghost = el("div", "ghost");
+  ghost.id = "ghost";
+  const bubbles = el("div", "chips");
+  bubbles.id = "bubbles";
+  f.replaceChildren(...cells, ghost, hit, chips, bubbles);
+  // внешние клетки — обычный тап
+  f.addEventListener("click", (e) => {
+    const k = e.target.closest("[data-key]");
+    if (k && !hit.contains(e.target)) addChip(k.dataset.key);
+  });
+  // зона чисел: тап по координате, долгое нажатие — список всех ставок с этим числом
+  let press = null;
+  hit.addEventListener("pointerdown", (e) => {
+    if (!canBet()) return;
+    const r = hit.getBoundingClientRect();
+    press = { x: e.clientX, y: e.clientY, fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height, long: false };
+    press.timer = setTimeout(() => {
+      if (!press) return;
+      press.long = true;
+      const row = Math.floor(press.fy * 13), col = Math.min(2, Math.floor(press.fx * 3));
+      openExact(row === 0 ? 0 : 3 * (row - 1) + col + 1);
+    }, 450);
+  });
+  const cancel = () => { if (press) { clearTimeout(press.timer); press = null; } };
+  hit.addEventListener("pointermove", (e) => { if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 12) cancel(); });
+  hit.addEventListener("pointerup", () => {
+    if (!press) return;
+    clearTimeout(press.timer);
+    if (!press.long) {
+      const key = hitKey(Math.max(0, Math.min(0.9999, press.fx)), Math.max(0, Math.min(0.9999, press.fy)));
+      if (key) addChip(key);
+    }
+    press = null;
+  });
+  hit.addEventListener("pointercancel", cancel);
+  hit.addEventListener("contextmenu", (e) => e.preventDefault());
+}
+
+function fmtChip(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(n % 1e6 ? 1 : 0) + "M";
+  if (n >= 10000) return Math.round(n / 1000) + "k";
+  if (n >= 1000) return (n / 1000).toFixed(n % 1000 ? 1 : 0) + "k";
+  return String(n);
+}
+
+// центр позиции ставки в координатах сукна
+function chipAt(key) {
+  const p = chipPos(key);
+  if (!p || !els.felt) return null;
+  const fr = els.felt.getBoundingClientRect();
+  if (p.cell) {
+    const c = els.felt.querySelector(`[data-key="${p.cell}"]`);
+    if (!c) return null;
+    const cr = c.getBoundingClientRect();
+    return { x: cr.left - fr.left + cr.width / 2, y: cr.top - fr.top + cr.height / 2 };
+  }
+  const hr = els.felt.querySelector(".hitlayer").getBoundingClientRect();
+  return { x: hr.left - fr.left + p.x * hr.width, y: hr.top - fr.top + p.y * hr.height };
+}
+
+function drawChips(animate) {
+  const layer = document.getElementById("chips");
+  if (!layer || !state) return;
+  const out = [];
+  const place = (key) => chipAt(key);
+  // чужие — маленькие метки цвета игрока, веером вокруг позиции
+  const others = state.players.filter((p) => p.id !== me && !p.out && Object.keys(p.bets || {}).length);
+  others.forEach((p, i) => {
+    for (const key of Object.keys(p.bets)) {
+      const at = place(key);
+      if (!at) continue;
+      const a = (i / Math.max(1, others.length)) * Math.PI * 2;
+      const d = el("div", "chip other rchip");
+      d.style.cssText = rlChipVars(p.color);
+      d.style.left = at.x + Math.cos(a) * 14 + "px";
+      d.style.top = at.y + Math.sin(a) * 14 + "px";
+      out.push(d);
+    }
+  });
+  const my = mine();
+  for (const [key, amount] of Object.entries(myBets)) {
+    const at = place(key);
+    if (!at) continue;
+    const d = el("div", "chip rchip" + (animate && key === lastAdded ? " pop" : ""), fmtChip(amount));
+    const color = my ? my.color : "#f2c14e";
+    // столбик: копии фишки ниже, через одну темнее — видно высоту ставки
+    const layers = rlStackLayers(amount, state.minBet);
+    let sh = "inset 0 0 0 1.5px var(--cd)";
+    for (let i = 1; i < layers; i++) sh += `, 0 ${i * 3}px 0 ${i % 2 ? "var(--cd)" : "var(--c)"}`;
+    sh += `, 0 ${layers * 3}px 0 rgba(0,0,0,.5), 0 ${layers * 3 + 3}px 6px rgba(0,0,0,.5)`;
+    d.style.cssText = rlChipVars(color) + `;box-shadow:${sh};left:${at.x}px;top:${at.y - (layers - 1) * 1.5}px`;
+    out.push(d);
+  }
+  lastAdded = null;
+  layer.replaceChildren(...out);
+}
+
+// Жар по числам: ставки всех игроков раскладываются по номерам, самое горячее число — с огоньком
+function drawHeat() {
+  if (!els.felt || !state) return;
+  const heat = new Array(37).fill(0);
+  const add = (bets) => { for (const [k, v] of Object.entries(bets || {})) { const b = RL_BETS[k]; if (b && b.numbers.length <= 6) for (const n of b.numbers) heat[n] += v / b.numbers.length; } };
+  for (const p of state.players) if (!p.out) add(p.id === me ? myBets : p.bets);
+  const max = Math.max(...heat);
+  const fireN = max >= 2 * Math.max(1, state.minBet) ? heat.indexOf(max) : -1;
+  els.felt.querySelectorAll(".num").forEach((c) => {
+    const n = Number(c.dataset.n);
+    c.style.setProperty("--heat", max > 0 ? (Math.pow(heat[n] / max, 0.7) * 0.85).toFixed(2) : "0");
+    c.classList.toggle("fire", n === fireN);
+  });
+}
+
+// Чужие ставки вживую: у новой фишки на миг всплывает «Маша +50»
+let seenBets = {};
+function bubbleNewBets(fresh) {
+  const layer = document.getElementById("bubbles");
+  if (!layer || !state) return;
+  const now = {};
+  for (const p of state.players) {
+    if (p.id === me || p.out) continue;
+    now[p.id] = Object.assign({}, p.bets);
+    if (fresh) continue;
+    const prev = seenBets[p.id] || {};
+    let shown = 0;
+    for (const [k, v] of Object.entries(p.bets || {})) {
+      if (v <= (prev[k] || 0) || shown >= 2 || layer.children.length >= 4) continue;
+      const at = chipAt(k);
+      if (!at) continue;
+      shown++;
+      const b = el("div", "bubble", `${p.name.replace(/^🤖\s*/, "")} +${fmtChip(v - (prev[k] || 0))}`);
+      b.style.cssText = rlChipVars(p.color) + `;left:${Math.max(40, Math.min(els.felt.clientWidth - 40, at.x))}px;top:${at.y}px`;
+      layer.append(b);
+      setTimeout(() => b.remove(), 1500);
+    }
+  }
+  seenBets = now;
+}
+
+function buildRack() {
+  const dens = denominations();
+  const my = mine();
+  const color = my ? my.color : "#f2c14e";
+  const pick = (i) => { chipIdx = i; rlSfx.select(); if (navigator.vibrate) try { navigator.vibrate(5); } catch (e) {} buildRack(); };
+  const buttons = dens.map((v, i) => {
+    const b = el("button", "den rchip" + (i === chipIdx ? " sel" : ""), fmtChip(v));
+    b.style.cssText = rlChipVars(color);
+    b.setAttribute("aria-pressed", i === chipIdx ? "true" : "false");
+    b.onclick = () => pick(i);
+    return b;
+  });
+  // ва-банк — чёрная фишка с золотом, как «плак» старшего номинала
+  const all = el("button", "den all rchip dark" + (chipIdx === dens.length ? " sel" : ""), T("all_in"));
+  all.style.cssText = rlChipVars("#17130f") + ";--cs:#e7c068";
+  all.setAttribute("aria-pressed", chipIdx === dens.length ? "true" : "false");
+  all.onclick = () => pick(dens.length);
+  els.rack.replaceChildren(...buttons, all);
+  els.rack.dataset.min = String(state ? state.minBet : 0);
+}
+
+function buildActions() {
+  // иконки — тонкий SVG, а не символы шрифта: одинаково чётко на любом телефоне
+  const svg = (d) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+  const IC = {
+    undo: svg('<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>'),
+    clear: svg('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/>'),
+    repeat: svg('<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>'),
+    copy: svg('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14a6.5 6.5 0 0 1 3.5 6"/>'),
+  };
+  const mk = (icon, key, fn, cls) => {
+    const b = el("button", "act" + (cls ? " " + cls : ""));
+    b.innerHTML = icon ? `<span class="i">${icon}</span>${escapeHtml(T(key))}` : escapeHtml(T(key));
+    b.onclick = fn;
+    return b;
+  };
+  const undoB = mk(IC.undo, "act_undo", () => { if (!canBet() || !undo.length) return; const prev = undo.pop(); myBets = prev; pendingUntil = Date.now() + 1200; conn.send({ type: "set_bets", bets: myBets }); drawChips(); drawHud(); });
+  const clearB = mk(IC.clear, "act_clear", () => { if (!canBet() || !Object.keys(myBets).length) return; pushBets({}); });
+  const repB = mk(IC.repeat, "act_repeat", () => { if (!canBet()) return; const last = (state.me && state.me.lastBets) || {}; if (!Object.keys(last).length) return; pushBets(Object.assign({}, last)); });
+  const dblB = mk("", "act_double", () => { if (!canBet() || !Object.keys(myBets).length) return; const next = {}; for (const [k, v] of Object.entries(myBets)) next[k] = v * 2; pushBets(next); }, "dbl");
+  const copyB = mk(IC.copy, "act_copy", openCopy);
+  const ready = mk("", "act_ready", () => {
+    const p = mine();
+    if (!p || state.phase !== "betting" || p.out) return;
+    conn.send({ type: "ready", ready: !p.ready });
+  }, "ready");
+  ready.id = "readybtn";
+  els.actions.replaceChildren(undoB, clearB, repB, dblB, copyB, ready);
+}
+
+function buildDock() {
+  const cards = el("button", "tab");
+  cards.id = "cardstab";
+  cards.onclick = openCards;
+  const chat = el("button", "tab");
+  chat.innerHTML = `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12z"/></svg>${escapeHtml(T("tab_chat"))}`;
+  chat.onclick = openChat;
+  const reacts = el("div", "reacts");
+  for (const e of RL_REACTIONS) {
+    const b = el("button", null, e);
+    b.setAttribute("aria-label", e);
+    b.onclick = () => {
+      conn.send({ type: "react", emoji: e });
+      rlSfx.pop();
+      // реакция улетает с кнопки вверх — видно, что она ушла на общий экран
+      const r = b.getBoundingClientRect();
+      const f = el("div", "fly-emoji", e);
+      f.style.left = r.left + r.width / 2 - 15 + "px";
+      f.style.top = r.top - 10 + "px";
+      document.body.append(f);
+      setTimeout(() => f.remove(), 1000);
+    };
+    reacts.append(b);
+  }
+  els.dock.replaceChildren(cards, chat, reacts);
+  drawCardsTab();
+}
+
+function drawCardsTab() {
+  const t = document.getElementById("cardstab");
+  if (!t || !state) return;
+  const n = state.me ? state.me.hand.length : 0;
+  const on = state.settings.cards;
+  t.innerHTML = `<span class="fan${n ? "" : " empty"}"><b></b><b></b><b></b>${on ? `<span class="n">${n}</span>` : ""}</span>${escapeHtml(T("tab_cards"))}`;
+}
+
+let lastReady = false;
+let shownStackVal = null;
+function drawHud() {
+  const p = mine();
+  if (!p || !els.stack) return;
+  const bet = rlSum(myBets);
+  // до остановки шарика сервер держит стек «до спина», а ставки лежат на столе — вычитаем их;
+  // на выплате стек уже пересчитан, и ставки вычитать нельзя
+  const settled = state.phase === "payout" || state.phase === "finished";
+  const val = settled ? p.stack : p.stack - (state.phase === "betting" ? bet : p.betTotal);
+  els.stack.textContent = rlNum(val);
+  // стек вырос на выплате — цифра подпрыгивает
+  if (shownStackVal != null && val > shownStackVal && settled) { els.stack.classList.remove("bump"); void els.stack.offsetWidth; els.stack.classList.add("bump"); }
+  shownStackVal = val;
+  els.mystack.style.cssText = rlChipVars(p.color);
+  const need = p.need || 0;
+  const betting = state.phase === "betting" && !p.frozen && !p.out;
+  const short = betting && bet < need;
+  els.need.classList.toggle("short", short);
+  els.need.classList.toggle("ok", betting && need > 0 && bet >= need);
+  els.needl.innerHTML = tpl("need_lbl", { bet: `<b>${rlNum(bet)}</b>`, min: `<b>${rlNum(need)}</b>` });
+  // шкала: сколько поставлено от минимума; недобор — оранжевая штриховка с суммой штрафа
+  els.meter.style.width = (need > 0 ? Math.min(100, (bet / need) * 100) : bet > 0 ? 100 : 0) + "%";
+  els.metertx.textContent = short ? tpl("penalty_warn", { n: rlNum(need - bet) }) : betting && need > 0 ? T("meter_ok") : "";
+  const rb = document.getElementById("readybtn");
+  if (rb) {
+    const on = !!p.ready && state.phase === "betting";
+    rb.classList.toggle("on", on);
+    rb.textContent = T(on ? "act_ready_on" : "act_ready");
+    rb.disabled = state.phase !== "betting" || p.out;
+    // «Готов» ставится штампом: удар, звук, короткая вибрация
+    if (on && !lastReady) { rb.classList.remove("stamp"); void rb.offsetWidth; rb.classList.add("stamp"); rlSfx.stamp(); if (navigator.vibrate) try { navigator.vibrate(20); } catch (e) {} }
+    lastReady = on;
+  }
+}
+
+function drawHistory() {
+  const h = els.felt && els.felt.querySelector(".hist");
+  if (!h || !state) return;
+  const bg = { red: "var(--red)", black: "var(--black)", green: "var(--zero)" };
+  h.replaceChildren(...state.history.slice(0, 3).map((n) => { const i = el("i", null, String(n)); i.style.background = bg[rlColor(n)]; return i; }));
+}
+
+// Покрывало над столом: закрытие ставок, «смотрите на экран», итог спина, заморозка, пауза, выбыл.
+// Содержимое пересобираем только при смене ключа — иначе анимации перезапускались бы на каждом снимке.
+function netOf(x) { return x ? x.net + x.share + x.eye : 0; }
+function resultLines(x) {
+  const lines = [];
+  if (!x) return lines;
+  if (x.penalty) lines.push(tpl("res_penalty", { n: rlNum(x.penalty) }));
+  for (const tr of state.result.transfers || []) {
+    const nm = (id) => escapeHtml((player(id) || {}).name || "?");
+    if (tr.card === "share" && tr.by === me) lines.push(tpl("res_share_in", { name: nm(tr.target), n: rlNum(tr.amount) }));
+    if (tr.card === "share" && tr.target === me) lines.push(tpl("res_share_out", { name: nm(tr.by), n: rlNum(tr.amount) }));
+    if (tr.card === "eye" && tr.by === me) lines.push(tpl("res_eye_in", { name: nm(tr.target), n: rlNum(tr.amount) }));
+  }
+  return lines;
+}
+function drawVeil() {
+  const v = els.veil;
+  const p = mine();
+  if (!v || !p) return;
+  const s = state;
+  const felt = els.felt;
+  felt.classList.toggle("frozen", !!p.frozen);
+  felt.classList.toggle("locked", s.phase !== "betting");
+  let key = null, build = null, cls = "";
+  if (s.phase === "betting" && s.paused) {
+    key = "paused";
+    build = () => `<div class="icon">⏸</div><div class="big">${T("paused")}</div><p>${T("paused_text")}</p>`;
+  } else if (s.phase === "betting" && p.out) {
+    key = "out";
+    build = () => `<div class="icon wink">😎</div><div class="big">${T("out_title")}</div><p>${T("out_text")}</p><div class="quip">${T("out_quip")}</div>`;
+  } else if (s.phase === "betting" && p.frozen) {
+    key = "frozen:" + s.spin;
+    cls = "frost";
+    build = () => { rlSfx.freeze(); return `<div class="icon">❄️</div><div class="big">${T("frozen")}</div><p>${escapeHtml(tpl("frozen_text", { n: rlNum(p.need) }))}</p>`; };
+  } else if (s.phase === "closing") {
+    key = "closing:" + s.spin;
+    cls = "soft";
+    build = () => { rlSfx.sweep(); setTimeout(() => rlSfx.stamp(), 120); return `<div class="wave"></div><div class="nomore">${T("no_more")}</div>`; };
+  } else if (s.phase === "spinning") {
+    key = "spin:" + s.spin;
+    build = () => `<div class="spinbox">${wheelSvg("ring", false)}<div class="ball" id="sball"></div></div><div class="look" id="slook">${T("look")}</div><p>${T("look_sub")}</p>`;
+  } else if ((s.phase === "payout" || s.phase === "finished") && s.result && s.result.number != null && s.result.perPlayer) {
+    key = "res:" + s.spin + ":" + ((window.I18N && I18N.lang) || "");
+    cls = "res";
+    build = () => {
+      const n = s.result.number;
+      const x = s.result.perPlayer[me];
+      const net = netOf(x);
+      const played = x && (x.wager > 0 || x.penalty > 0);
+      let quip = "";
+      if (!played) quip = T("nobet");
+      else if (net < 0 && n === 0) quip = T("zero_quip");
+      else if (net < 0) { const q = T("lose_quips").split("|"); quip = q[s.spin % q.length]; }
+      else if (net === 0) quip = T("even_quip");
+      const netTxt = !played ? "" : net > 0 ? tpl("res_plus", { n: rlNum(net) }) : net < 0 ? tpl("res_minus", { n: rlNum(-net) }) : T("res_zero");
+      const lines = resultLines(x);
+      return `<div class="numball ${rlColor(n)}">${n}</div>${netTxt ? `<div class="net ${net > 0 ? "plus" : net < 0 ? "minus" : ""}">${netTxt}</div>` : ""}<div class="lines">${lines.map((l) => `<div>${l}</div>`).join("")}</div>${quip ? `<div class="quip">${escapeHtml(quip)}</div>` : ""}`;
+    };
+  }
+  // подсветка выпавшего числа и маркер на нём — пока идёт выплата
+  const hitN = (s.phase === "payout" || s.phase === "finished") && s.result && s.result.number != null ? s.result.number : null;
+  felt.querySelectorAll(".cell.hit").forEach((c) => { if (Number(c.dataset.n) !== hitN) c.classList.remove("hit"); });
+  if (hitN != null) felt.querySelectorAll(`.cell[data-n="${hitN}"]`).forEach((c) => c.classList.add("hit"));
+  v.classList.toggle("on", key != null);
+  if (key !== v.dataset.key) {
+    v.dataset.key = key || "";
+    v.className = "veil" + (cls ? " " + cls : "") + (key != null ? " on" : "");
+    if (build) v.innerHTML = build();
+  }
+  if (s.phase === "spinning") startSuspense(); else stopSuspense();
+}
+
+// ---------- ожидание шарика: без числа, только темп ----------
+// Шарик на кольце тормозит к revealAt, сердце стучит чаще — телефон не знает числа и не спойлерит.
+let susp = null;
+function startSuspense() {
+  if (susp || !state.result) return;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const t0 = rlNow();
+  const end = state.result.revealAt || t0 + 10000;
+  susp = { raf: 0, ang: 0, ring: 0, last: performance.now(), nextBeat: performance.now() + 300 };
+  // без анимации шарик просто лежит на дорожке, а не на турели
+  if (reduce) { const b = document.getElementById("sball"); if (b) { const r = b.parentNode.clientWidth * 0.39; b.style.transform = `translate(${r * 0.7}px, ${-r * 0.7}px)`; } }
+  const step = (now) => {
+    if (!susp) return;
+    const dt = Math.min(50, now - susp.last) / 1000;
+    susp.last = now;
+    const k = Math.max(0, Math.min(1, (rlNow() - t0) / Math.max(1, end - t0)));
+    const ball = document.getElementById("sball"), ring = els.veil.querySelector(".ring");
+    if (!reduce && ball && ring) {
+      susp.ang -= dt * (9 * Math.pow(1 - k, 1.4) + 0.6); // по бортику против колеса, с торможением
+      susp.ring += dt * 0.5;
+      const r = ball.parentNode.clientWidth * 0.39;
+      ball.style.transform = `translate(${Math.cos(susp.ang) * r}px, ${Math.sin(susp.ang) * r}px)`;
+      ring.style.transform = `rotate(${susp.ring}rad)`;
+    }
+    if (now >= susp.nextBeat) {
+      rlSfx.heart(k);
+      const look = document.getElementById("slook");
+      if (look && !reduce) { look.classList.remove("beat"); void look.offsetWidth; look.classList.add("beat"); }
+      susp.nextBeat = now + 950 - 520 * k;
+    }
+    susp.raf = requestAnimationFrame(step);
+  };
+  susp.raf = requestAnimationFrame(step);
+}
+function stopSuspense() {
+  if (!susp) return;
+  cancelAnimationFrame(susp.raf);
+  susp = null;
+}
+
+// ---------- итог спина: выигрыш на весь экран, зеро — зелёная вспышка, проигрыш — коротко ----------
+let splashT = null;
+function showOutcome() {
+  const r = state.result;
+  const x = r.perPlayer[me];
+  const net = netOf(x);
+  const n = r.number;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (n === 0) {
+    const g = el("div", "greenflash");
+    document.body.append(g);
+    setTimeout(() => g.remove(), 1000);
+    if (!(net > 0)) rlSfx.zero();
+  }
+  if (!(net > 0)) {
+    if (x && net < 0) rlSfx.lose();
+    return;
+  }
+  // «Джекпот» — только прямое попадание 35:1; крупный выигрыш на сплите просто получает больше фишек в залпе
+  const jackpot = !!(x.top && x.top.pays === 35);
+  const big = jackpot || net >= 10 * Math.max(1, state.minBet);
+  const my = mine();
+  const top = x.top ? tpl("res_top", { bet: rlBetName(x.top.key), pays: x.top.pays }) : "";
+  const lines = resultLines(x);
+  let chips = "";
+  if (!reduce) {
+    const cols = [my ? my.color : "#f2c14e", "#e7c068", "#cf2331", "#17130f", "#f7eedb"];
+    const cnt = big ? 34 : 20;
+    for (let i = 0; i < cnt; i++) {
+      const a = (i / cnt) * Math.PI * 2 + Math.random() * 0.4;
+      const d = 130 + Math.random() * (big ? 260 : 170);
+      chips += `<i class="rchip" style="${rlChipVars(cols[i % cols.length])};--x:${(Math.cos(a) * d).toFixed(0)}px;--y:${(Math.sin(a) * d + 60).toFixed(0)}px;--r:${(Math.random() * 720 - 360).toFixed(0)}deg;--d:${(0.9 + Math.random() * 0.7).toFixed(2)}s"></i>`;
+    }
+  }
+  const sp = els.splash;
+  sp.className = "splash on" + (n === 0 ? " zero" : "");
+  sp.innerHTML = `<div class="rays"></div><div class="burst">${chips}</div>
+    <div class="numball ${rlColor(n)}">${n}</div>
+    <div class="stamp">${T(jackpot ? "jackpot_stamp" : "win_stamp")}</div>
+    <div class="win" id="wincount">+0</div>
+    ${top ? `<div class="sub">${escapeHtml(top)}</div>` : ""}
+    ${lines.length ? `<div class="sub">${lines.join("<br>")}</div>` : ""}
+    <div class="tapx">${T("tap_close")}</div>`;
+  rlSfx.win(big);
+  if (navigator.vibrate) try { navigator.vibrate(big ? [60, 50, 60, 50, 120] : [40, 60, 40]); } catch (e) {}
+  // сумма набегает, как на табло
+  const cnt = document.getElementById("wincount");
+  const t0 = performance.now(), dur = reduce ? 1 : 1300;
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / dur);
+    if (cnt) cnt.textContent = tpl("res_plus", { n: rlNum(Math.round(net * (1 - Math.pow(1 - k, 3)))) });
+    if (k < 1 && sp.classList.contains("on")) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+  clearTimeout(splashT);
+  splashT = setTimeout(closeSplash, big ? 4200 : 3400);
+}
+function closeSplash() {
+  const sp = els.splash;
+  if (!sp || !sp.classList.contains("on")) return;
+  clearTimeout(splashT);
+  sp.classList.add("out");
+  setTimeout(() => { sp.className = "splash"; sp.innerHTML = ""; }, 360);
+}
+
+let lastTickSec = null;
+function tickTimer() {
+  if (!state || !els.ring) return;
+  const s = state;
+  let left = 0, total = s.settings.betTime;
+  if (s.phase === "betting" && s.deadline && !s.paused) left = Math.max(0, s.deadline - rlNow());
+  if (s.paused) left = total;
+  const frac = s.phase === "betting" ? Math.min(1, left / total) : 0;
+  const hot = s.phase === "betting" && !s.paused && left < 5000;
+  els.ring.setAttribute("stroke-dashoffset", String(125.7 * (1 - frac)));
+  els.ring.setAttribute("stroke", hot ? "#ff7a45" : "#e7c068");
+  const sec = s.phase === "betting" && !s.paused ? Math.ceil(left / 1000) : null;
+  els.tv.textContent = sec == null ? "" : String(sec);
+  els.timer.classList.toggle("hot", hot);
+  els.felt.parentNode.classList.toggle("hot", hot);
+  const g = document.getElementById("ghost");
+  if (g && sec !== lastTickSec) {
+    g.textContent = hot && sec > 0 ? String(sec) : "";
+    if (hot) { g.classList.remove("pop"); void g.offsetWidth; g.classList.add("pop"); }
+  }
+  // последние секунды тикают вслух, если ещё не нажал «Готово»
+  if (hot && sec !== lastTickSec && sec > 0) { const p = mine(); if (p && !p.ready && !p.out) rlSfx.tick(true); }
+  lastTickSec = sec;
+}
+setInterval(tickTimer, 250);
+
+// ---------- выдвижные панели ----------
+
+function openSheet(nodes) {
+  const sh = document.getElementById("sheet");
+  sh.replaceChildren(...nodes);
+  sh.classList.add("on");
+  document.getElementById("sheetbg").classList.add("on");
+}
+function closeSheet() {
+  document.getElementById("sheet").classList.remove("on");
+  document.getElementById("sheetbg").classList.remove("on");
+}
+document.getElementById("sheetbg").onclick = closeSheet;
+
+function openCards() {
+  const h = el("h3", null, T("cards_title"));
+  if (!state.settings.cards) return openSheet([h, el("p", "hint", T("cards_off"))]);
+  const hand = (state.me && state.me.hand) || [];
+  const p = mine();
+  const played = p && p.played;
+  const hint = el("p", "hint", played ? T("cards_played") : T("cards_hint"));
+  if (!hand.length) return openSheet([h, el("p", "hint", T("cards_none"))]);
+  const list = el("div", "cardlist");
+  for (const c of hand) {
+    const b = el("button", "gcard" + (c === "shield" ? " passive" : ""));
+    b.style.setProperty("--k", CARD_INK[c] || "#7d0f19");
+    b.innerHTML = `<div class="ic">${RL_CARDS[c].icon}</div><div><b>${escapeHtml(T("card_" + c))}</b><small>${escapeHtml(T("card_" + c + "_d"))}</small></div>`;
+    b.disabled = c === "shield" || played || state.phase !== "betting" || (p && p.out);
+    b.onclick = () => openTargets(c);
+    list.append(b);
+  }
+  openSheet([h, hint, list]);
+}
+
+// рубашка карты своего цвета: смерть — багровая, лёд — синий, магнит — сталь, сглаз — бирюза, щит — латунь
+const CARD_INK = { double: "#7d0f19", freeze: "#1f5f8f", share: "#4a5560", eye: "#0f6b73", shield: "#8a6420" };
+
+function openTargets(card) {
+  const h = el("h3", null, `${RL_CARDS[card].icon} ${T("card_" + card)} — ${T("target_title")}`);
+  const list = el("div", "targets");
+  for (const p of state.players.filter((x) => x.id !== me && !x.out && !x.left)) {
+    const b = el("button", "target");
+    b.innerHTML = `${chipHtml(p.color, initials(p.name))}<b>${escapeHtml(p.name)}</b><span class="s">${rlNum(p.stack)}</span>`;
+    b.onclick = () => { conn.send({ type: "card", card, target: p.id }); closeSheet(); };
+    list.append(b);
+  }
+  openSheet([h, list]);
+}
+
+function openChat() {
+  const h = el("h3", null, T("chat_title"));
+  if (!state.settings.chat) return openSheet([h, el("p", "hint", T("chat_off"))]);
+  if (state.me && state.me.muted) return openSheet([h, el("p", "hint", T("chat_muted"))]);
+  const hint = el("p", "hint", T("chat_hint"));
+  const form = el("form", "chatbox");
+  const input = el("input");
+  input.maxLength = 80;
+  input.placeholder = T("chat_ph");
+  input.enterKeyHint = "send";
+  const send = el("button", "btn", T("chat_send"));
+  send.type = "submit";
+  form.append(input, send);
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    conn.send({ type: "chat", text });
+    input.value = "";
+    closeSheet();
+  };
+  // готовые фразы — одним тапом, без клавиатуры
+  const quick = el("div", "quick");
+  for (const q of T("quick").split("|")) {
+    const b = el("button", null, q);
+    b.type = "button";
+    b.onclick = () => { conn.send({ type: "chat", text: q }); closeSheet(); };
+    quick.append(b);
+  }
+  openSheet([h, hint, form, quick]);
+  setTimeout(() => input.focus(), 250);
+}
+
+function openCopy() {
+  if (!canBet()) return;
+  const h = el("h3", null, T("copy_title"));
+  const list = el("div", "targets");
+  const who = state.players.filter((x) => x.id !== me && !x.out && x.betTotal > 0);
+  if (!who.length) return openSheet([h, el("p", "hint", T("copy_empty"))]);
+  for (const p of who) {
+    const b = el("button", "target");
+    b.innerHTML = `${chipHtml(p.color, initials(p.name))}<b>${escapeHtml(p.name)}</b><span class="s">${rlNum(p.betTotal)}</span>`;
+    b.onclick = () => {
+      // чужие ставки в пределах своего стека: при нехватке — пропорционально меньше
+      const my = mine();
+      const k = Math.min(1, my.stack / p.betTotal);
+      const next = {};
+      for (const [key, v] of Object.entries(p.bets)) { const a = Math.floor(v * k); if (a > 0) next[key] = a; }
+      pushBets(next);
+      closeSheet();
+    };
+    list.append(b);
+  }
+  openSheet([h, list]);
+}
+
+function openExact(n) {
+  const h = el("h3", null, tpl("exact_title", { n }));
+  const list = el("div", "exact");
+  const keys = Object.keys(RL_BETS).filter((k) => RL_BETS[k].numbers.includes(n) && RL_BETS[k].numbers.length <= 6);
+  keys.sort((a, b) => RL_BETS[a].numbers.length - RL_BETS[b].numbers.length);
+  for (const k of keys) {
+    const b = el("button");
+    b.innerHTML = `<span>${escapeHtml(rlBetName(k))}${myBets[k] ? ` · ${rlNum(myBets[k])}` : ""}</span><span class="p">${RL_BETS[k].pays}:1</span>`;
+    b.onclick = () => { addChip(k); closeSheet(); };
+    list.append(b);
+  }
+  if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) {}
+  openSheet([h, list]);
+}
+
+// ---------- отрисовка по состоянию ----------
+
+function render() {
+  if (dead) return;
+  if (!state) return;
+  const p = mine();
+  if (!p) {
+    // есть токен — ждём ответа на join, а не показываем форму имени на полсекунды
+    if (!token && screen !== "enter") renderEnter();
+    return;
+  }
+  if (state.phase === "lobby") {
+    screen = "wait";
+    screenMode(null);
+    const seated = state.players.filter((x) => !x.left);
+    // новенькие падают на сукно со щелчком, старые лежат спокойно
+    const fresh = seated.filter((x) => !lobbySeen.has(x.id));
+    const list = seated.map((x) => `<div class="who${x.id === me ? " me" : ""}${lobbySeen.has(x.id) ? "" : " new"}">${chipHtml(x.color, initials(x.name))}<b>${escapeHtml(x.name)}</b></div>`).join("");
+    if (fresh.length && lobbySeen.size) rlSfx.chip();
+    fresh.forEach((x) => lobbySeen.add(x.id));
+    app.innerHTML = `<div class="center"><div class="room">${escapeHtml(CODE)}</div><h2>${T("wait_title")}</h2><p>${T("wait_text")}</p>
+      <div class="waitfelt"><div class="wf-head"><span class="live"><i></i>${T("wait_live")}</span><span>${escapeHtml(tpl("wait_seats", { n: seated.length }))}</span></div><div class="lobby-list">${list}</div><div class="wf-foot">${T("wait_tap")}</div></div>
+      <div class="howto"><div><i>👆</i>${T("how1")}</div><div><i>✌️</i>${T("how2")}</div><div><i>✋</i>${T("how3")}</div></div>
+      <button class="link" id="leave">${T("btn_leave")}</button></div>`;
+    app.querySelector(".lobby-list").onclick = (e) => {
+      const c = e.target.closest(".rchip");
+      if (!c) return;
+      c.classList.remove("flip"); void c.offsetWidth; c.classList.add("flip");
+      rlSfx.chip();
+      if (navigator.vibrate) try { navigator.vibrate(6); } catch (e2) {}
+    };
+    document.getElementById("leave").onclick = () => { conn.send({ type: "leave" }); try { localStorage.removeItem(tokenKey()); } catch (e) {} me = null; token = null; renderEnter(); };
+    myBets = {};
+    undo = [];
+    return;
+  }
+  if (state.phase === "finished") {
+    const key = "final:" + state.spin + ":" + state.winnerId + ":" + ((window.I18N && I18N.lang) || "");
+    if (screen === "final" && app.dataset.key === key) return;
+    stopSuspense();
+    screen = "final";
+    screenMode(null);
+    app.dataset.key = key;
+    const w = player(state.winnerId);
+    const won = state.winnerId === me;
+    const place = p.place || "–";
+    const medal = won ? "cup" : place === 2 ? "silver" : place === 3 ? "bronze" : "plain";
+    let rain = "";
+    if (won && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const cols = state.players.map((x) => x.color).concat(["#e7c068", "#cf2331", "#17130f"]);
+      for (let i = 0; i < 40; i++) rain += `<i class="rchip" style="${rlChipVars(cols[i % cols.length])};left:${(Math.random() * 100).toFixed(1)}%;--d:${(2.4 + Math.random() * 2).toFixed(2)}s;--w:${(Math.random() * 2.5).toFixed(2)}s;--r:${(Math.random() * 900 - 450).toFixed(0)}deg"></i>`;
+    }
+    app.innerHTML = `<div class="final">${rain ? `<div class="rain">${rain}</div>` : ""}
+      <div class="medal ${medal}">${won ? "🏆" : place}</div>
+      <h2>${won ? T("fin_win") : escapeHtml(tpl("fin_place", { n: place }))}</h2>
+      ${won ? `<p class="winner">${chipHtml(p.color, initials(p.name))}<b>${rlNum(p.stack)}</b></p>` : w ? `<p class="winner">${chipHtml(w.color, initials(w.name))}<span>${escapeHtml(tpl("fin_winner", { name: w.name }))}</span></p>` : ""}
+      <p class="quip">${T("fin_quip")}</p>
+      <div class="top3">${state.players.filter((x) => !x.left && x.place && x.place <= 3).sort((x, y) => x.place - y.place).map((x) => `<div class="${x.id === me ? "me" : ""}"><span class="pl">${x.place}</span>${chipHtml(x.color, initials(x.name))}<b>${escapeHtml(x.name)}</b><span class="st">${rlNum(x.stack)}</span></div>`).join("")}</div>
+      <p style="color:var(--muted);margin-top:8px">${T("fin_wait")}</p></div>`;
+    if (won) rlSfx.win(true);
+    return;
+  }
+  // выбывший смотрит на стол без права ставить, но с чатом и реакциями
+  if (screen !== "game") { app.dataset.key = ""; buildGame(); }
+  let freshSpin = false;
+  if (state.spin !== lastSpin) {
+    lastSpin = state.spin;
+    myBets = Object.assign({}, p.bets);
+    undo = [];
+    freshSpin = true;
+  } else if (Date.now() > pendingUntil) {
+    myBets = Object.assign({}, p.bets);
+  }
+  if (els.rack.dataset.min !== String(state.minBet)) buildRack();
+  drawHud();
+  drawChips();
+  drawHeat();
+  if (state.phase === "betting") bubbleNewBets(freshSpin); else seenBets = {};
+  drawHistory();
+  drawVeil();
+  drawCardsTab();
+  // выбывший: вместо лотка фишек — табличка трибуны (место не пустеет и не прыгает)
+  els.controls.classList.toggle("spect", !!p.out);
+  els.controls.dataset.spect = T("spect");
+  if (state.phase === "payout" && lastPhase !== "payout" && lastPhase != null && state.result && state.result.perPlayer) showOutcome();
+  if (state.phase !== "payout") closeSplash();
+  lastPhase = state.phase;
+  tickTimer();
+}
+
+window.addEventListener("resize", () => { if (screen === "game") drawChips(); });
+window.addEventListener("langchange", () => {
+  if (!CODE) return renderLanding();
+  if (screen === "enter") return renderEnter();
+  if (screen === "game") { buildGame(); }
+  screen === "expired" ? renderExpired() : render();
+});
+
+// ---------- связь ----------
+
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+    case "state":
+      state = m.state;
+      if (m.type === "hello" && token && !me) conn.send({ type: "join", token });
+      render();
+      break;
+    case "joined":
+      me = m.playerId;
+      token = m.token;
+      try { localStorage.setItem(tokenKey(), token); } catch (e) {}
+      render();
+      break;
+    case "rejected":
+      toast(T("rj_" + m.reason) !== "rj_" + m.reason ? T("rj_" + m.reason) : m.reason);
+      if (m.action === "set_bets" || m.action === "bet") { pendingUntil = 0; const p = mine(); if (p) myBets = Object.assign({}, p.bets); drawChips(); drawHud(); }
+      break;
+    case "error":
+      if (m.error === "room_expired") return renderExpired();
+      if (["game_started", "room_full", "token_gone", "bad_name"].includes(m.error)) {
+        if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
+        joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
+        me = null;
+        renderEnter();
+      }
+      break;
+    case "kicked":
+      me = null;
+      try { localStorage.removeItem(tokenKey()); } catch (e) {}
+      token = null;
+      screen = "kicked";
+      renderCenter("kicked_title");
+      break;
+    case "replaced":
+      me = null;
+      screen = "replaced";
+      renderCenter("replaced_title", "replaced_text", `<button class="btn" id="here">${T("btn_back_here")}</button>`);
+      document.getElementById("here").onclick = () => { conn.send({ type: "join", token }); };
+      break;
+    case "event":
+      break;
+  }
+}
+
+function start() {
+  if (!CODE) return renderLanding();
+  renderCenter("wait_title");
+  const banner = document.getElementById("conn");
+  conn = rlConnect({
+    code: CODE,
+    onMessage,
+    onGone: renderExpired,
+    // переподключились — снова садимся за стол своим токеном (hello придёт первым)
+    onOpen: () => { me = null; },
+    onState: (st) => { banner.textContent = T("conn_lost"); banner.classList.toggle("on", st === "lost"); },
+  });
+}
+start();
+</script>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+  ym(104849796, 'init', { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+</body>
+</html>

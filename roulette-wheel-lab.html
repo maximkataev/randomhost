@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Рулетка — стенд колеса</title>
+<style>
+  :root { --ink: #f1e6cf; --dim: #a8987c; --brass: #d9b56a; --panel: rgba(18, 12, 8, 0.86); }
+  html, body { margin: 0; height: 100%; background: #060403; color: var(--ink); font: 13px/1.35 -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+  #stage { position: fixed; inset: 0; }
+  #panel { position: fixed; top: 10px; right: 10px; width: 250px; padding: 10px 12px; background: var(--panel); border: 1px solid #4a3622; border-radius: 6px; z-index: 5; }
+  #panel h1 { font: 600 13px/1 Georgia, serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--brass); margin: 0 0 8px; }
+  #panel label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0; color: var(--dim); }
+  #panel select, #panel input[type=number], #panel input[type=text] { width: 120px; background: #1c140d; color: var(--ink); border: 1px solid #4a3622; border-radius: 4px; padding: 3px 5px; font: inherit; }
+  #panel .row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+  #panel button { background: #2a1d12; color: var(--ink); border: 1px solid #6b4e2e; border-radius: 4px; padding: 6px 4px; font: inherit; cursor: pointer; }
+  #panel button:hover { border-color: var(--brass); }
+  #panel button.main { background: #6b4e2e; border-color: var(--brass); font-weight: 600; }
+  #stats { margin-top: 8px; font: 12px/1.4 ui-monospace, Menlo, monospace; color: var(--dim); white-space: pre; }
+  #err { position: fixed; left: 10px; bottom: 10px; max-width: 60vw; color: #ff9b8a; font: 12px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; z-index: 6; }
+  body.shot #panel { display: none; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="panel">
+  <h1>Стенд колеса</h1>
+  <label>Число <select id="num"><option value="rnd">случайно</option></select></label>
+  <label>Сюжет <select id="story">
+    <option value="normal">обычный</option>
+    <option value="fake">ложная посадка</option>
+    <option value="jump">скачок</option>
+    <option value="allin">ва-банк</option>
+    <option value="jackpot">джекпот</option>
+    <option value="zero">зеро</option>
+    <option value="save">спасение</option>
+  </select></label>
+  <label>Длительность, мс <input id="dur" type="number" min="9000" max="14000" step="100" placeholder="авто"></label>
+  <label>Сид <input id="seed" type="text" placeholder="случайно"></label>
+  <label>Без укачивания <input id="calm" type="checkbox"></label>
+  <label>Качество <select id="q"><option value="auto">авто</option><option value="high">высокое</option><option value="low">низкое</option></select></label>
+  <label>Звук <input id="snd" type="checkbox" checked></label>
+  <div class="row">
+    <button id="bBets">Ставки</button>
+    <button id="bClose">Ставок больше нет</button>
+    <button id="bSpin" class="main">Крутить</button>
+    <button id="bPay">Выплата</button>
+    <button id="bIdle">Холостой ход</button>
+    <button id="bAll">Весь цикл</button>
+  </div>
+  <div id="stats"></div>
+</div>
+<div id="err"></div>
+
+<script>
+  // ошибки видно прямо на стенде и в headless-снимках
+  window.__errors = [];
+  const showErr = (m) => { window.__errors.push(m); document.getElementById("err").textContent = window.__errors.slice(-5).join("\n"); };
+  window.addEventListener("error", (e) => showErr("error: " + e.message + " @" + (e.filename || "").split("/").pop() + ":" + e.lineno));
+  window.addEventListener("unhandledrejection", (e) => showErr("promise: " + (e.reason && (e.reason.stack || e.reason.message) || e.reason)));
+</script>
+<script type="module">
+import { createRouletteScene } from "./roulette-wheel.js";
+import { WHEEL } from "./roulette-trajectory.js";
+
+const $ = (id) => document.getElementById(id);
+const P = new URLSearchParams(location.search);
+const COLORS = ["#f2c14e", "#4ea8f2", "#b57bff", "#ff8fc7", "#5de0d0", "#ff9a3c", "#e8e8e8", "#9ad14b", "#7f8cff", "#d9a86c", "#ff6f91", "#62c6ff"];
+const NAMES = ["Маша", "Петя", "Оля", "Гоша", "Лена", "Дима"];
+for (let n = 0; n <= 36; n++) $("num").insertAdjacentHTML("beforeend", `<option value="${n}">${n}</option>`);
+
+// локальные часы вместо серверных
+const clock = () => Math.round(performance.timeOrigin + performance.now());
+
+// детерминированный генератор для снимков
+function rng(seed) { let s = seed >>> 0; return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296); }
+
+const INSIDE = () => {
+  const keys = [];
+  for (let n = 0; n <= 36; n++) keys.push("n:" + n);
+  for (let r = 0; r < 12; r++) {
+    const a = 3 * r + 1;
+    keys.push(`sp:${a}-${a + 1}`, `sp:${a + 1}-${a + 2}`, `st:${a}-${a + 1}-${a + 2}`);
+    if (r < 11) keys.push(`sp:${a}-${a + 3}`, `co:${a}-${a + 1}-${a + 3}-${a + 4}`, `sl:${a}-${a + 1}-${a + 2}-${a + 3}-${a + 4}-${a + 5}`);
+  }
+  keys.push("sp:0-1", "st:0-1-2", "co:0-1-2-3");
+  return keys;
+};
+const OUTSIDE = ["red", "black", "even", "odd", "low", "high", "dz:1", "dz:2", "dz:3", "col:1", "col:2", "col:3"];
+function fakePlayers(r) {
+  const inside = INSIDE();
+  const shared = ["red", "n:17", "dz:2"];
+  return NAMES.map((name, i) => {
+    const bets = {};
+    const n = 2 + Math.floor(r() * 4);
+    for (let k = 0; k < n; k++) {
+      const pool = r() < 0.55 ? inside : OUTSIDE;
+      const key = r() < 0.2 ? shared[Math.floor(r() * shared.length)] : pool[Math.floor(r() * pool.length)];
+      bets[key] = (bets[key] || 0) + [10, 20, 50, 10, 100][Math.floor(r() * 5)];
+    }
+    return { id: "p" + i, name, color: COLORS[i], bets };
+  });
+}
+
+function makeResult(now, r) {
+  const storyKind = $("story").value;
+  let number = $("num").value === "rnd" ? Math.floor(r() * 37) : Number($("num").value);
+  if (storyKind === "zero") number = 0;
+  const idx = WHEEL.indexOf(number);
+  const story = { path: "normal", fakeFrom: null, allin: [], jackpot: false, save: [], zero: number === 0, duration: 0 };
+  if (storyKind === "fake") { story.path = "fake"; story.fakeFrom = WHEEL[(idx + (r() < 0.5 ? 1 : -1) + 37) % 37]; }
+  if (storyKind === "jump") story.path = "jump";
+  if (storyKind === "allin") story.allin = ["p1"];
+  if (storyKind === "jackpot") story.jackpot = true;
+  if (storyKind === "save") story.save = ["p2"];
+  let dur = Number($("dur").value);
+  if (!dur) dur = 9000 + Math.floor(r() * 2001) + (story.path === "fake" ? 1600 : 0) + (story.path === "jump" ? 900 : 0) + (story.allin.length ? 1800 : 0);
+  dur = Math.max(9000, Math.min(14000, dur));
+  story.duration = dur;
+  const seed = $("seed").value.trim() ? Number($("seed").value) >>> 0 : Math.floor(r() * 2 ** 31);
+  const closeMs = 2000;
+  return { number, seed, story, closedAt: now, spinAt: now + closeMs, revealAt: now + closeMs + dur };
+}
+
+// параметры из адреса: ?shot=…&num=…&story=…&dur=…&seed=…&q=…&calm=1
+if (P.has("num")) $("num").value = P.get("num");
+if (P.has("story")) $("story").value = P.get("story");
+if (P.has("dur")) $("dur").value = P.get("dur");
+if (P.has("seed")) $("seed").value = P.get("seed");
+if (P.has("q")) $("q").value = P.get("q");
+if (P.get("calm") === "1") $("calm").checked = true;
+
+let scene = null;
+let players = [];
+let last = null;
+let timers = [];
+const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+
+function boot() {
+  if (scene) scene.dispose();
+  scene = createRouletteScene($("stage"), { now: clock, calm: $("calm").checked, quality: $("q").value, lang: P.get("lang") || "ru", force2d: P.get("2d") === "1", preserveDrawingBuffer: P.has("shot") });
+  window.scene = scene;
+  scene.on("land", (e) => console.log("land", e));
+  scene.on("reveal", (e) => console.log("reveal", e));
+}
+window.addEventListener("resize", () => scene && scene.resize());
+
+$("bBets").onclick = () => { players = fakePlayers(Math.random); scene.setIdle(); scene.setBets(players); };
+$("bClose").onclick = () => scene.noMoreBets();
+$("bSpin").onclick = () => {
+  clearTimers();
+  last = makeResult(clock(), Math.random);
+  if (!players.length) { players = fakePlayers(Math.random); scene.setBets(players); }
+  scene.noMoreBets();
+  scene.spin(last);
+};
+$("bPay").onclick = () => { if (last) scene.payout({ number: last.number, players, perPlayer: {} }); };
+$("bIdle").onclick = () => { clearTimers(); scene.setIdle(); scene.setBets([]); players = []; };
+$("bAll").onclick = () => {
+  clearTimers();
+  players = fakePlayers(Math.random);
+  scene.setIdle();
+  scene.setBets([]);
+  // ставки прилетают по одной, как с телефонов
+  let i = 0;
+  const partial = players.map((p) => ({ ...p, bets: {} }));
+  const all = players.flatMap((p, pi) => Object.entries(p.bets).map(([k, a]) => [pi, k, a]));
+  all.forEach(([pi, k, a], j) => timers.push(setTimeout(() => { partial[pi].bets[k] = a; scene.setBets(partial.map((x) => ({ ...x, bets: { ...x.bets } }))); }, 400 + j * 260)));
+  const t0 = 600 + all.length * 260;
+  timers.push(setTimeout(() => {
+    last = makeResult(clock(), Math.random);
+    scene.noMoreBets();
+    scene.spin(last);
+    timers.push(setTimeout(() => scene.payout({ number: last.number, players, perPlayer: {} }), last.revealAt - clock()));
+    timers.push(setTimeout(() => { scene.setIdle(); scene.setBets([]); }, last.revealAt - clock() + 5200));
+  }, t0));
+  void i;
+};
+$("calm").onchange = () => scene.setCalm($("calm").checked);
+$("q").onchange = () => boot();
+$("snd").onchange = () => scene.setMuted(!$("snd").checked);
+
+setInterval(() => {
+  if (!scene || !scene._debug) return;
+  const d = scene._debug;
+  const tr = d.traj;
+  let line = `${scene.mode}  fps ${d.fps.toFixed(0)}  качество ${d.level}\nплан: ${d.shot}`;
+  if (tr && last) {
+    const t = clock() - last.spinAt;
+    line += `\nt=${(t / 1000).toFixed(2)} с  число ${tr.number}\nсюжет ${tr.path}${tr.slow ? " +ва-банк" : ""}  ромб ${tr.hit ? "да" : "нет"}\nкругов ${tr.laps.toFixed(1)}  бросок ${tr.launchSpeed.toFixed(1)} рад/с`;
+  }
+  $("stats").textContent = line;
+}, 250);
+
+boot();
+
+/*
+ * Снимок фазы для headless: время заморожено, сцена прогоняется кадрами от начала до нужного момента.
+ * shot: idle | bets | launch | rim | drop | diamond | bounce | fake | slow | settle | reveal | freeze | payout | t (с параметром t=мс)
+ */
+if (P.has("shot")) {
+  document.body.classList.add("shot");
+  const shot = P.get("shot");
+  const r = rng(Number(P.get("seed") || 7) ^ 0xabcdef);
+  const S0 = 1.8e12, L0 = 1e6;
+  const d = scene._debug;
+  players = fakePlayers(r);
+  if (d.freeze) d.freeze(S0, L0);
+  if (P.has("cam")) d.cam(P.get("cam").split(",").map(Number));
+  const run = async () => {
+    await new Promise((res) => setTimeout(res, 50));
+    if (shot === "idle") { d.simulate(S0, S0 + 2000, L0); }
+    else if (shot === "bets") { scene.setBets(players); d.simulate(S0, S0 + 1500, L0); }
+    else {
+      scene.setBets(players);
+      d.simulate(S0, S0 + 1200, L0);
+      last = makeResult(S0 + 1200, r);
+      scene.noMoreBets();
+      scene.spin(last);
+      const tr = d.traj;
+      const T = tr.times;
+      const ev = (type) => (tr.events.find((e) => e.type === type) || {}).t;
+      const map = {
+        launch: T.launch + 120, rim: T.launch + 1600, drop: T.drop + 350, diamond: (T.diamond || T.drop + 500) + 40,
+        bounce: T.rotor + 180, fake: (ev("rest") || T.land) + 150, slow: T.slowStart + 500, settle: T.settle + 150,
+        reveal: tr.spinMs + 300, freeze: T.settle + 1600, payout: tr.spinMs, t: Number(P.get("t") || 0),
+      };
+      const tt = map[shot] != null ? map[shot] : 0;
+      const from = S0 + 1200;
+      d.simulate(from, last.spinAt + tt, L0 + 1200);
+      if (shot === "payout") {
+        const Lp = L0 + 1200 + (last.spinAt + tt - from);
+        scene.payout({ number: last.number, players, perPlayer: {} });
+        const extra = Number(P.get("pt") || 1400);
+        d.simulate(last.spinAt + tt, last.spinAt + tt + extra, Lp);
+      }
+      window.__times = T;
+    }
+    window.__ready = true;
+  };
+  run().catch((e) => showErr(String(e && e.stack || e)));
+}
+</script>
+</body>
+</html>
