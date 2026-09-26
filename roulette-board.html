@@ -998,13 +998,16 @@ function tickRing() {
   if (state.phase === "betting" && state.deadline && !state.paused) left = Math.max(0, state.deadline - rlNow());
   if (state.paused) left = total;
   const hot = state.phase === "betting" && left < 5000 && !state.paused;
-  $("ringc").setAttribute("stroke-dashoffset", String(213.6 * (1 - (state.phase === "betting" ? Math.min(1, left / total) : 0))));
-  $("ringc").setAttribute("stroke", hot ? "#ff7a45" : "#e7c068");
+  // пишем в DOM только изменившееся: таймер тикает 5 раз в секунду и во время спина, а каждая запись — пересчёт стилей
+  const setAttr = (node, k, v) => { if (node.getAttribute(k) !== v) node.setAttribute(k, v); };
+  setAttr($("ringc"), "stroke-dashoffset", String(213.6 * (1 - (state.phase === "betting" ? Math.min(1, left / total) : 0))));
+  setAttr($("ringc"), "stroke", hot ? "#ff7a45" : "#e7c068");
   const res = (state.phase === "payout") && state.result && state.result.number != null ? state.result.number : null;
   const ring = $("ring");
   ring.classList.toggle("res", res != null);
   ["red", "black", "green"].forEach((c) => ring.classList.toggle(c, res != null && rlColor(res) === c));
-  $("ringv").textContent = state.phase === "betting" ? (state.paused ? "II" : String(Math.ceil(left / 1000))) : res != null ? String(res) : "";
+  const txt = state.phase === "betting" ? (state.paused ? "II" : String(Math.ceil(left / 1000))) : res != null ? String(res) : "";
+  if ($("ringv").textContent !== txt) $("ringv").textContent = txt;
   $("ring").classList.toggle("hot", state.phase === "betting" && left < 5000 && !state.paused);
 }
 setInterval(tickRing, 200);

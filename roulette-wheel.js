@@ -1649,7 +1649,8 @@ function create3D(container, opts) {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // тип теней выбираем один раз при запуске: его смена на лету перекомпилирует все шейдеры сцены (см. applyLevel)
+  renderer.shadowMap.type = level === 0 ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   renderer.localClippingEnabled = true; // руки крупье не залезают под табло (см. Dealer.updateClip)
   const cv = renderer.domElement;
   cv.style.display = "block";
@@ -2428,13 +2429,15 @@ function create3D(container, opts) {
       case "diamond": if (loud) sound.clack(g(e.strength || 1), 0, pitch); break;
       case "rotor": if (loud) sound.tuk(0.9, 0, pitch * 0.9); break;
       case "fret": if (loud) sound.tuk(g(e.strength || 0.6), 0, pitch); break;
-      case "fakeLand": case "land": if (loud) { sound.tuk(g((e.strength || 0.6) * 0.8), 0, pitch); } break;
-      case "tap": if (loud) sound.tuk(0.25, 0, pitch * 1.1); break;
-      case "rest":
-        if (loud) sound.settle(0.7);
-        // ложная посадка: ячейка уже будто выиграла
+      case "land": if (loud) { sound.tuk(g((e.strength || 0.6) * 0.8), 0, pitch); } break;
+      case "fakeLand":
+        if (loud) sound.tuk(g((e.strength || 0.6) * 0.8), 0, pitch);
+        // ложная посадка: ячейка уже будто выиграла (гаснет, когда шарик уходит по кромке — hopOut)
         if (sp.traj.fakeIdx != null) setGlow(((sp.traj.fakeIdx % POCKETS) + POCKETS) % POCKETS, 0.55);
         break;
+      case "rattle": if (loud) sound.tuk(g((e.strength || 0.3) * 0.7), 0, pitch * 1.15); break;
+      case "slopeLand": if (loud) sound.tuk(0.18, 0, pitch * 0.8); break;
+      case "tap": if (loud) sound.tuk(0.25, 0, pitch * 1.1); break;
       case "hopOut": if (loud) sound.tuk(0.7, 0, pitch); setGlow(-1, 0); break;
       case "settle":
         if (loud) sound.settle(1);
@@ -2477,6 +2480,8 @@ function create3D(container, opts) {
     if (!dbg.silent && sound.live) sound.settle(0.5, 0);
   }
 
+  // цвета света — константы: в кадре ничего не создаём, чтобы сборщик мусора не вклинивался в спин
+  const LAMP_GREEN = new THREE.Color(0x6dff9e), FILL_BASE = new THREE.Color(0xffc88e), FILL_GREEN = new THREE.Color(0x4dff90), FILL_GOLD = new THREE.Color(0xffd36a);
   function update(dt) {
     const ns = nowS(), nl = nowL();
     const sp = st.spin;
@@ -2577,8 +2582,8 @@ function create3D(container, opts) {
     E.flash = Math.max(0, E.flash - dt * 2.2);
     lamp.intensity = 17 * (1 - 0.45 * st.tableDim) * (1 + E.flash * 0.8);
     wheelFill.intensity = 7 * (1 + 0.9 * st.tableDim) + E.gold * 10;
-    lamp.color.copy(lampColor).lerp(new THREE.Color(0x6dff9e), E.green * 0.28);
-    wheelFill.color.set(0xffc88e).lerp(new THREE.Color(0x4dff90), E.green * 0.5).lerp(new THREE.Color(0xffd36a), E.gold * 0.6);
+    lamp.color.copy(lampColor).lerp(LAMP_GREEN, E.green * 0.28);
+    wheelFill.color.copy(FILL_BASE).lerp(FILL_GREEN, E.green * 0.5).lerp(FILL_GOLD, E.gold * 0.6);
 
     // маркер
     if (st.pay && st.pay.dolly) {
@@ -2713,12 +2718,21 @@ function create3D(container, opts) {
       lamp.shadow.mapSize.set(ms, ms);
       if (lamp.shadow.map) { lamp.shadow.map.dispose(); lamp.shadow.map = null; }
     }
-    const type = lv === 0 ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
-    if (renderer.shadowMap.type !== type) { renderer.shadowMap.type = type; renderer.shadowMap.needsUpdate = true; scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; }); }
+    /*
+     * Тип теней (мягкие/жёсткие) на лету НЕ меняем: это needsUpdate всем материалам и перекомпиляция
+     * ~15 шейдеров — от 0,13 до 2,3 с замершего кадра даже на M1 Pro. Автоснижение качества срабатывает как раз
+     * в тяжёлом финале спина (глубина резкости), поэтому колесо «вставало» посреди отскоков.
+     * Разрешение и размер карты теней меняются без перекомпиляции — их и хватает.
+     */
     resize();
   }
+  let sizeKey = "";
   function resize() {
     const w = Math.max(1, container.clientWidth || window.innerWidth), h = Math.max(1, container.clientHeight || window.innerHeight);
+    // тот же размер — ничего не трогаем: setSize переназначает буфер канвы даже с прежними числами
+    const key = w + "x" + h + "@" + renderer.getPixelRatio();
+    if (key === sizeKey) return;
+    sizeKey = key;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.setViewOffset(w, h, ((safe.right - safe.left) / 2) * w, ((safe.bottom - safe.top) / 2) * h, w, h);
@@ -2729,7 +2743,9 @@ function create3D(container, opts) {
   }
 
   let raf = 0, running = true, disposed = false;
-  const perf = { ema: 16.7, bad: 0, since: 0, cool: 0, fps: 60, frames: 0, acc: 0, cpu: 0 };
+  const perf = { ema: 16.7, bad: 0, since: 0, cool: 0, fps: 60, frames: 0, acc: 0, cpu: 0, drop: false };
+  // идёт спин или выплата ещё анимируется — менять разрешение и тени нельзя
+  const spinBusy = () => st.mode === "spin" || (st.mode === "payout" && st.pay && !st.pay.done);
   function frame() {
     raf = 0;
     if (disposed || !running) return;
@@ -2758,10 +2774,20 @@ function create3D(container, opts) {
     if (QP.auto && !dbg.time && perf.since > 3000 && nl > perf.cool) {
       if (perf.ema > 20 && dtMs < 250) perf.bad++;
       else perf.bad = Math.max(0, perf.bad - 2);
-      if (perf.bad > 90 && level > 0) {
+      if (perf.bad > 90 && level > 0) perf.drop = true;
+    }
+    /*
+     * Снижаем качество только вне спина. Тяжелее всего как раз финал спина (глубина резкости, камера у обода),
+     * и раньше снижение срабатывало посреди отскоков: смена разрешения — это пересоздание буфера канвы
+     * (до 250 мс на 4K), а переход на жёсткие тени перекомпилировал все шейдеры (до 2,3 с). Ровные 30 к/с
+     * до конца спина лучше замершего кадра, а решение «снизить» запоминаем до ставок.
+     */
+    if (perf.drop && !dbg.time && !spinBusy()) {
+      perf.drop = false;
+      if (level > 0) {
         applyLevel(level - 1);
         perf.bad = 0;
-        perf.cool = nl + 4000;
+        perf.cool = performance.now() + 4000;
         emit("quality", { level });
       }
     }
@@ -2783,6 +2809,11 @@ function create3D(container, opts) {
   applyLevel(level);
   // прогрев: компилируем шейдеры сцены и глубины резкости заранее, иначе первый финал дёрнется
   // (руки, лопатка, маркер, шлейф, свечения и искры скрыты — на прогреве показываем всё на один кадр)
+  // ярлыки ставок создаются по ходу игры — их шейдер (спрайт с картой) иначе компилировался на первой ставке
+  // или прямо на «Ставок больше нет»; прогреваем его материалом-образцом, который остаётся жить скрытым
+  const warmTag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex(canvas(4, 4), { aniso: 1 }), transparent: true, depthTest: false, depthWrite: false, toneMapped: false, sizeAttenuation: false, opacity: 0 }));
+  warmTag.frustumCulled = false;
+  tagGroup.add(warmTag);
   try {
     const hidden = [];
     scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
@@ -2802,6 +2833,8 @@ function create3D(container, opts) {
     renderer.render(scene, camera);
     for (const o of hidden) o.visible = false;
   } catch (e) { /* не критично */ }
+  // не удаляем и не освобождаем: three.js уничтожает программу, когда у неё не остаётся материалов
+  warmTag.visible = false;
   raf = requestAnimationFrame(frame);
 
   // ---------- API ----------
@@ -2985,7 +3018,7 @@ function createFallback(container, opts) {
         const s = e.strength || 0.6;
         if (e.type === "launch") sound.whoosh();
         else if (e.type === "diamond") sound.clack(s);
-        else if (e.type === "fret" || e.type === "rotor" || e.type === "land" || e.type === "fakeLand" || e.type === "hopOut") sound.tuk(s);
+        else if (e.type === "fret" || e.type === "rotor" || e.type === "land" || e.type === "fakeLand" || e.type === "hopOut" || e.type === "rattle") sound.tuk(s);
         else if (e.type === "settle") { sound.settle(1); if (!sp.landed) { sp.landed = true; emit("land", { number: Number(sp.res.number), at: sp.spinAt + e.t }); } }
         emit("sfx", { type: e.type });
       }

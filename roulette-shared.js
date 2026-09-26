@@ -379,10 +379,13 @@ function rlStackLayers(amount, min) {
 // ---------- звуки интерфейса: короткий синтез без файлов ----------
 // Всё идёт в ctx.destination — sound-toggle.js перехватывает это подключение и глушит общий выключатель.
 // Контекст создаём на первом касании: без жеста браузер его не запустит.
+// Только на касании: раньше его создавал и первый же звук, а на доске это «Ставок больше нет» —
+// new AudioContext() занимает 100–150 мс, и колесо замирало ровно на старте спина.
 const rlSfx = (function () {
   let ctx = null, noise = null;
-  function ac() {
+  function ac(create) {
     if (ctx) { if (ctx.state === "suspended") ctx.resume().catch(() => {}); return ctx; }
+    if (!create) return null;
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
     try { ctx = new AC(); } catch (e) { return null; }
@@ -391,7 +394,7 @@ const rlSfx = (function () {
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     return ctx;
   }
-  ["pointerdown", "keydown"].forEach((t) => window.addEventListener(t, () => ac(), { passive: true, capture: true }));
+  ["pointerdown", "keydown"].forEach((t) => window.addEventListener(t, () => ac(true), { passive: true, capture: true }));
   const out = (c, node, vol) => { const g = c.createGain(); g.gain.value = vol; node.connect(g); g.connect(c.destination); return g; };
   function env(g, t, a, d, v) {
     g.gain.setValueAtTime(0.0001, t);

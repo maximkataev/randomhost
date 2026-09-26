@@ -57,6 +57,19 @@ function fretPenetration(G, PA, phi, r, y) {
   return Math.max(0, need - y);
 }
 
+// Полная скорость (м/с) слева/справа от τ — односторонние разности 2-го порядка, в мире или в системе ротора
+function speed(tr, tau, side, frame, h = 0.25) {
+  const P = (t) => {
+    const s = tr.sampleTau(t);
+    const a = frame === "rotor" ? s.phi : s.theta;
+    return [s.r * Math.cos(a), s.y, s.r * Math.sin(a)];
+  };
+  const p0 = P(tau + side * 1e-7), p1 = P(tau + side * h), p2 = P(tau + side * 2 * h);
+  let q = 0;
+  for (let k = 0; k < 3; k++) { const v = (-3 * p0[k] + 4 * p1[k] - p2[k]) / (2 * h); q += v * v; }
+  return Math.sqrt(q) * 1000;
+}
+
 function checkOne(M, inp) {
   const G = M.GEOM;
   const tr = M.buildTrajectory(inp);
@@ -84,7 +97,11 @@ function checkOne(M, inp) {
   if (off * G.pocketR + G.ballR + G.fretW / 2 > (M.PA / 2) * G.pocketR + 1e-9) errs.push("rests on a fret");
   if (Math.abs(fin.y - (G.floorY + G.ballR)) > 1e-9 || Math.abs(fin.r - G.pocketR) > 1e-9) errs.push("not on pocket floor");
 
-  // 3) скорость относительно ротора не растёт без удара; 4) сквозь фретки не проходит
+  /*
+   * 3) в контакте (трек, склон, докат) скорость относительно ротора не растёт без удара;
+   *    в полёте её не меряем — там шарик баллистический (см. тест «физика» ниже);
+   * 4) сквозь фретки не проходит
+   */
   const imp = tr.impacts;
   const near = (tau, h) => imp.some((x) => Math.abs(x - tau) <= h * 2.5);
   let prevRate = Infinity;
@@ -95,22 +112,28 @@ function checkOne(M, inp) {
     tau += h;
     const cur = tr.sampleTau(tau);
     const rate = Math.abs(cur.phi - prev.phi) / (tau - prevTau);
-    if (!near(tau, h) && rate > prevRate * (1 + 1e-6) + 1e-9) { errs.push(`speed-up at τ=${tau.toFixed(1)} (${cur.phase})`); break; }
+    const air = cur.air || prev.air;
+    if (!air && !near(tau, h) && rate > prevRate * (1 + 1e-6) + 1e-9) { errs.push(`speed-up at τ=${tau.toFixed(1)} (${cur.phase})`); break; }
     const pen = fretPenetration(G, M.PA, cur.phi, cur.r, cur.y);
     if (pen > 1e-6) { errs.push(`fret pass ${pen.toFixed(5)} at τ=${tau.toFixed(1)} (${cur.phase})`); break; }
-    prevRate = rate;
+    prevRate = air ? Infinity : rate;
     prev = cur;
     prevTau = tau;
   }
 
-  // 3б) удар (ромб, фретка, стенка ячейки) скорость только забирает; разгоняют лишь бросок и выпрыгивание
+  // 3б) удар (ромб, фретка, дно ячейки) энергию только забирает: полная скорость в системе поверхности
+  //     (ротор — в системе ротора, ромб и склон — в мире) после удара меньше, чем до; разгоняет лишь бросок
+  const typeAt = new Map(tr.events.map((e) => [e.tau, e.type]));
   for (const x of imp) {
     if (tr.kicks.includes(x)) continue;
-    const a = tr.sampleTau(x - 4), b = tr.sampleTau(x - 2), c = tr.sampleTau(x + 2), d = tr.sampleTau(x + 4);
-    if (Math.abs(d.phi - c.phi) > Math.abs(b.phi - a.phi) * 1.02 + 1e-9) errs.push(`impact speeds up at τ=${x.toFixed(1)}`);
+    const frame = ["diamond", "slopeLand"].includes(typeAt.get(x)) ? "world" : "rotor";
+    const vb = speed(tr, x, -1, frame), va = speed(tr, x, +1, frame);
+    if (!(va <= vb * 0.98 + 1e-6)) errs.push(`${typeAt.get(x)} at τ=${x.toFixed(1)} gains energy: ${vb.toFixed(3)} → ${va.toFixed(3)} м/с`);
+    // «выпрыгнул из ячейки почти стоя» — отскок без скорости на входе
+    if (vb < 0.02 && va > 0.02) errs.push(`hop from rest at τ=${x.toFixed(1)}`);
   }
   const kickTypes = tr.events.filter((e) => tr.kicks.includes(e.tau)).map((e) => e.type);
-  if (kickTypes.some((k) => k !== "launch" && k !== "hopOut")) errs.push("unexpected kick");
+  if (kickTypes.some((k) => k !== "launch")) errs.push("unexpected kick");
 
   // 5) каждый отскок в цепочке ниже предыдущего — по фактической высоте в сэмплах
   for (const chain of [0, 1]) {
@@ -129,12 +152,15 @@ function checkOne(M, inp) {
   if (inp.story.path === "normal" && tr.path === "normal" && (chain0.length < 2 || chain0.length > 5)) errs.push(`hops ${chain0.length}`);
   if (tr.path === "jump" && !(chain0[0].pockets >= 5 && chain0[0].pockets <= 9)) errs.push(`jump ${chain0[0].pockets}`);
   if (tr.path === "fake") {
-    const rest = tr.events.find((e) => e.type === "rest");
+    // шарик падает в ложную ячейку, отскакивает в ней (на экране — в замедлении, ~0,4 с и дольше)
+    // и уходит по кромке фретки в выпавшую
+    const land = tr.events.find((e) => e.type === "fakeLand");
     const out = tr.events.find((e) => e.type === "hopOut");
-    if (!rest || !out || out.t - rest.t < 380) errs.push("fake pause too short");
+    if (!land || !out || out.t - land.t < 350) errs.push(`fake dwell too short ${land && out ? (out.t - land.t).toFixed(0) : "-"}`);
     else {
-      const mid = tr.sample((rest.t + out.t) / 2);
+      const mid = tr.sample((land.t + out.t) / 2);
       if (M.WHEEL[wrapPocket(M, mid.phi)] !== inp.story.fakeFrom) errs.push("fake lands in wrong pocket");
+      if (!(tr.sample(land.t + 1).air && tr.sample(out.t - 1).air)) errs.push("fake: no bounce in the fake pocket");
     }
   }
   if (inp.story.allin.length && !tr.slow) errs.push("allin not slow");
@@ -168,6 +194,112 @@ test(`${RUNS} траекторий: ячейка, правдоподобие, т
   const rate = hits / RUNS;
   assert.ok(rate > 0.5 && rate < 0.7, `доля ударов о ромб ${rate}`);
   assert.ok(byPath.fake > 0 && byPath.jump > 0 && byPath.normal > 0);
+});
+
+/*
+ * Физика (жалоба владельца: «шарик выпрыгивает в соседнюю ячейку — нравится, но без нарушения физики»).
+ * Путь кусочно-аналитический, поэтому разрывы возможны только на границах сегментов — их проверяем точно,
+ * а полёт и контакт — сэмплами по 1 мс:
+ *  • нет телепортов (разрыв положения) и скачков скорости без удара;
+ *  • в полёте по горизонтали — прямая в мире с постоянной скоростью, по вертикали — постоянное ускорение вниз;
+ *  • в полёте не ниже поверхности, в контакте — ровно на ней (склон, кольцо, дно ячейки);
+ *  • каждый отскок по ротору начинается и кончается на опоре: кромка фретки, дно ячейки или край ротора;
+ *  • покадрово (60 к/с, реальное время с замедлением) шарик не прыгает дальше, чем позволяет скорость.
+ */
+const PHYS_RUNS = Number(process.env.PHYS_RUNS) || 2000;
+test(`физика ${PHYS_RUNS} траекторий: непрерывность, баллистика, опоры`, async () => {
+  const M = await load();
+  const G = M.GEOM;
+  const SLOPE_COS = Math.cos(Math.atan((G.statorOuterY - G.statorInnerY) / (G.statorOuterR - G.statorInnerR)));
+  const ySlope = (r) => M.statorY(r) + G.ballR / SLOPE_COS;
+  const yRest = G.floorY + G.ballR, yFret = G.fretTopY + G.ballR;
+  const world = (s) => [s.r * Math.cos(s.theta), s.y, s.r * Math.sin(s.theta)];
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  const vel = (tr, tau, side) => {
+    const h = 0.25, p0 = world(tr.sampleTau(tau + side * 1e-7)), p1 = world(tr.sampleTau(tau + side * h)), p2 = world(tr.sampleTau(tau + side * 2 * h));
+    return [0, 1, 2].map((k) => ((side * (-3 * p0[k] + 4 * p1[k] - p2[k])) / (2 * h)) * 1000);
+  };
+  const rnd = lcg(4242);
+  const fails = [];
+  for (let i = 0; i < PHYS_RUNS && fails.length < 5; i++) {
+    const inp = makeInput(M, rnd);
+    const tr = M.buildTrajectory(inp);
+    const errs = [];
+    const isImpact = (tau) => tr.impacts.some((x) => Math.abs(x - tau) < 1e-6);
+    const bounds = new Set();
+    for (const s of tr.segs) {
+      if (s.t0 > tr.tau.launch && s.t0 < tr.tau.settle + 1) bounds.add(s.t0);
+      if (s.airFrom != null) { bounds.add(s.airFrom); bounds.add(s.airUntil); }
+    }
+    for (const b of bounds) {
+      const jump = dist(world(tr.sampleTau(b - 1e-6)), world(tr.sampleTau(b + 1e-6)));
+      if (jump > 1e-5) errs.push(`teleport ${(jump * 1000).toFixed(2)} мм at τ=${b.toFixed(1)}`);
+      if (!isImpact(b)) {
+        const vl = vel(tr, b, -1), vr = vel(tr, b, +1);
+        const dv = Math.hypot(vl[0] - vr[0], vl[1] - vr[1], vl[2] - vr[2]);
+        if (dv > 0.01) errs.push(`velocity jump ${dv.toFixed(3)} м/с without impact at τ=${b.toFixed(1)}`);
+      }
+    }
+    const nearBound = (tau) => { for (const b of bounds) if (Math.abs(b - tau) < 1.2) return true; return false; };
+    // полёт и контакт
+    let flight = null; // вертикальное ускорение текущего полёта
+    for (let tau = tr.tau.drop - 50; tau < tr.tau.settle + 100 && errs.length < 3; tau += 1) {
+      const s = tr.sampleTau(tau);
+      if (s.air) {
+        if (nearBound(tau)) { flight = null; continue; }
+        const h = 0.5, p0 = world(tr.sampleTau(tau - h)), p1 = world(s), p2 = world(tr.sampleTau(tau + h));
+        const a = [0, 1, 2].map((k) => ((p0[k] - 2 * p1[k] + p2[k]) / (h * h)) * 1e6);
+        if (!(a[1] < -0.5)) errs.push(`air without gravity at τ=${tau}`);
+        if (Math.hypot(a[0], a[2]) > 0.02 * -a[1]) errs.push(`curves in the air: ${Math.hypot(a[0], a[2]).toFixed(2)} м/с² at τ=${tau} (${s.phase})`);
+        if (flight != null && Math.abs(a[1] - flight) > 0.01 * -flight) errs.push(`gravity changes mid-flight at τ=${tau}`);
+        flight = a[1];
+        let floor = null;
+        if (s.r >= G.statorInnerR) floor = ySlope(Math.min(s.r, 0.386));
+        else if (s.r >= G.ringInnerR && s.r <= G.rotorR) floor = M.ringY(s.r) + G.ballR;
+        else if (s.r >= G.pocketInnerR && s.r < G.pocketOuterR) floor = yRest;
+        if (floor != null && s.y < floor - 1e-4) errs.push(`below surface ${((floor - s.y) * 1000).toFixed(2)} мм at τ=${tau}`);
+      } else {
+        flight = null;
+        if (s.phase === "rim" || s.phase === "slope") {
+          // у внутренней кромки склона шарик плавно переходит на номерное кольцо (оно на 2 мм ниже)
+          const lo = s.r < G.statorInnerR ? Math.min(ySlope(s.r), M.ringY(Math.min(s.r, G.rotorR)) + G.ballR) : ySlope(s.r);
+          if (s.y < lo - 1e-6 || s.y > ySlope(s.r) + 1e-6) errs.push(`floats/clips on the slope ${((s.y - ySlope(s.r)) * 1000).toFixed(2)} мм at τ=${tau}`);
+        } else if (["settle", "ride"].includes(s.phase)) {
+          if (Math.abs(s.y - yRest) > 1e-9 || Math.abs(s.r - G.pocketR) > 1e-9) errs.push(`not on the pocket floor at τ=${tau}`);
+        }
+      }
+    }
+    // отскоки по ротору: опоры на концах
+    const support = (tau) => {
+      const s = tr.sampleTau(tau);
+      const onFret = Math.abs(s.y - yFret) < 1e-6 && Math.abs(s.phi - (Math.round(s.phi / M.PA - 0.5) + 0.5) * M.PA) * s.r < 1e-4;
+      const x = s.phi - Math.round(s.phi / M.PA) * M.PA;
+      const onFloor = Math.abs(s.y - yRest) < 1e-6 && Math.abs(x) <= M.X_MAX + 1e-9;
+      const onRing = s.r <= G.rotorR && s.r >= G.ringInnerR && Math.abs(s.y - (M.ringY(s.r) + G.ballR)) < 1e-6;
+      return onFret || onFloor || onRing;
+    };
+    for (const h of tr.hops) {
+      if (!support(h.t0 + 1e-7)) errs.push(`hop starts in mid-air at τ=${h.t0.toFixed(1)}`);
+      if (!support(h.t1 - 1e-7)) errs.push(`hop ends in mid-air at τ=${h.t1.toFixed(1)}`);
+    }
+    // покадрово, по реальному времени (кадр, внутри которого удар, сравнивать не с чем — там излом пути)
+    const hitT = tr.impacts.map((x) => tr.toReal(x));
+    const F = 1000 / 60;
+    let prevP = null, prevD = null;
+    for (let t = tr.times.launch + 20; t < inp.spinMs; t += F) {
+      const p = world(tr.sample(t));
+      if (prevP) {
+        const d = dist(p, prevP);
+        const kink = hitT.some((x) => x > t - 2 * F && x <= t);
+        if (prevD != null && !kink && d > 3 * prevD + 0.004) errs.push(`frame jump ${(d * 1000).toFixed(1)} мм after ${(prevD * 1000).toFixed(1)} at t=${t.toFixed(0)}`);
+        prevD = d;
+      }
+      prevP = p;
+    }
+    if (errs.length) fails.push({ i, inp, errs: errs.slice(0, 4) });
+  }
+  if (fails.length) console.log(JSON.stringify(fails, null, 1));
+  assert.equal(fails.length, 0, "траектории нарушают физику");
 });
 
 test("тот же сид — та же траектория (переподключение доски)", async () => {

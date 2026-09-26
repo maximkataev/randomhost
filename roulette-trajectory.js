@@ -222,37 +222,72 @@ const G_HOP = 2.4; // «киношная» гравитация отскоков
 const G_HOP_ALLIN = 1.7; // ва-банк: финал медленнее
 const G_DIAMOND = 3.0;
 const LAUNCH_AT = 800; // мс: рука крупье подхватывает шарик и бросает
+/*
+ * Удары. Скорость шарика в системе той поверхности, о которую он бьётся (ротор — в системе ротора,
+ * ромб и склон — в мире), после удара не больше этой доли прежней: энергия берётся только из броска.
+ * При планировании угловая скорость ротора оценочная, поэтому validate() проверяет с запасом K_MAX.
+ */
+const K_FRET = 0.94; // скользящий удар о кромку фретки
+const K_FLOOR = 0.9; // падение на дно ячейки (дно лакированное, шарик «живой»)
+export const K_MAX = 0.97;
 
 /*
  * Сегмент пути: [τ0, τ1], frame — в чьей системе считается угол ("world" — θ, "rotor" — φ),
- * f(τ) → [угол, r, y]. Внутри сегмента скорость не растёт; все скачки скорости — на границах-ударах.
+ * f(τ) → [угол, r, y]. Все скачки скорости — на границах-ударах.
  */
 function seg(t0, t1, frame, phase, f, extra) {
   return Object.assign({ t0, t1, frame, phase, f }, extra || {});
 }
 
-// Параболический отскок с постоянной угловой скоростью относительно ротора
-function hopSeg(t0, a0, a1, r0, r1, y0, y1, rise, g, phase, extra) {
+const ZERO_W = () => 0;
+const smooth01 = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
+
+/*
+ * Отскок: в воздухе на шарик действует только тяжесть, поэтому по горизонтали он летит по прямой
+ * В МИРЕ с постоянной скоростью, а по вертикали — по параболе. Концы заданы в системе ротора
+ * (ячейка или фретка, куда он упадёт, едет вместе с ротором): точка старта берётся в момент τ0,
+ * точка касания — в момент τ1. W — угол ротора по τ (для прикидок при планировании — оценочный).
+ * Раньше угол относительно ротора шёл линейно, а радиус — по smoothstep: в мире шарик летел по дуге
+ * и на первом прыжке с обода «поворачивал» в воздухе с ускорением до 3,5 g.
+ */
+function hopSeg(t0, a0, a1, r0, r1, y0, y1, rise, g, phase, extra, W) {
   const yA = Math.max(y0, y1) + rise;
   const up = Math.sqrt((2 * (yA - y0)) / g);
   const down = Math.sqrt((2 * (yA - y1)) / g);
   const dur = (up + down) * 1000;
+  const T = up + down;
   const v0 = g * up;
-  const s = seg(t0, t0 + dur, "rotor", phase, (tau) => {
-    const u = Math.min(1, Math.max(0, (tau - t0) / dur));
-    const q = (tau - t0) / 1000;
-    // радиально — плавный заход, как шарик скатывается внутрь по номерному кольцу
-    const ur = u * u * (3 - 2 * u);
-    return [a0 + (a1 - a0) * u, r0 + (r1 - r0) * ur, y0 + v0 * q - (g * q * q) / 2];
-  }, Object.assign({ air: true, apex: yA, a0, a1, rise, dur }, extra || {}));
-  return s;
+  const Wf = W || ZERO_W;
+  const tA = a0 + Wf(t0);
+  const tB = a1 + Wf(t0 + dur);
+  const Ax = r0 * Math.cos(tA), Az = r0 * Math.sin(tA);
+  const Bx = r1 * Math.cos(tB), Bz = r1 * Math.sin(tB);
+  const sweep = tB - tA; // за прыжок шарик в мире проходит меньше полуоборота — atan2 ниже однозначен
+  return seg(t0, t0 + dur, "rotor", phase, (tau) => {
+    const q = Math.min(T, Math.max(0, (tau - t0) / 1000));
+    const u = q / T;
+    const px = Ax + (Bx - Ax) * u, pz = Az + (Bz - Az) * u;
+    const d = u >= 1 ? sweep : Math.atan2(Ax * pz - Az * px, Ax * px + Az * pz);
+    return [tA + d - Wf(t0 + q * 1000), Math.hypot(px, pz), y0 + v0 * q - (g * q * q) / 2];
+  }, Object.assign({ air: true, apex: yA, a0, a1, rise, dur, sweep }, extra || {}));
+}
+
+// Скорость (м/с) в системе ротора у начала сегмента (side = +1) или у конца (side = −1)
+function segSpeed(s, side) {
+  const h = 0.25;
+  const P = (t) => { const [a, r, y] = s.f(t); return [r * Math.cos(a), y, r * Math.sin(a)]; };
+  const t = side > 0 ? s.t0 : s.t1;
+  const p0 = P(t), p1 = P(t + side * h), p2 = P(t + 2 * side * h);
+  let q = 0;
+  for (let k = 0; k < 3; k++) { const v = (-3 * p0[k] + 4 * p1[k] - p2[k]) / (2 * h); q += v * v; }
+  return Math.sqrt(q) * 1000;
 }
 
 // Минимальная высота отскока, при которой шарик не цепляет фретки по пути
-function minRise(a0, a1, r0, r1, y0, y1, g, start) {
+function minRise(a0, a1, r0, r1, y0, y1, g, start, W) {
   let rise = start;
   for (let it = 0; it < 60; it++) {
-    const s = hopSeg(0, a0, a1, r0, r1, y0, y1, rise, g, "x");
+    const s = hopSeg(0, a0, a1, r0, r1, y0, y1, rise, g, "x", null, W);
     let ok = true;
     const n = 60;
     for (let i = 1; i < n; i++) {
@@ -263,6 +298,20 @@ function minRise(a0, a1, r0, r1, y0, y1, g, start) {
     rise *= 1.12;
   }
   return rise;
+}
+
+/*
+ * Подобрать высоту отскока: не ниже floor, ближе к want, но так, чтобы шарик пришёл к следующему удару
+ * с запасом скорости needIn (м/с в системе ротора). Возвращает null, если не вышло до потолка cap.
+ */
+function riseFor(proto, floor, want, needIn, cap) {
+  let rise = Math.max(floor, want);
+  if (!(needIn > 0)) return rise;
+  for (let it = 0; it < 40 && rise <= cap; it++) {
+    if (segSpeed(proto(rise), -1) >= needIn) return rise;
+    rise *= 1.1;
+  }
+  return null;
 }
 
 /*
@@ -277,14 +326,22 @@ function settlePlan(rng, x0, v0, sigma, tap, slow) {
     const f = U(rng, 1.25, 1.7);
     let tr1 = (dist / v0) * f * 1000;
     if (slow) tr1 *= 1.25;
-    const vTap = Math.max(0.02, (2 * dist) / (tr1 / 1000) - v0);
+    let vTap = (2 * dist) / (tr1 / 1000) - v0;
+    // скорость у фретки — в пределах [0,02; 0,9·v0]; время тогда пересчитываем, чтобы путь сходился точно
+    if (!(vTap >= 0.02 && vTap <= v0 * 0.9)) { vTap = Math.max(0.02, Math.min(v0 * 0.9, vTap)); tr1 = ((2 * dist) / (v0 + vTap)) * 1000; }
     parts.push({ kind: "roll", x0, x1: xw, v0, v1: vTap, dur: tr1 });
-    const xr = sigma * U(rng, -0.25, 0.3) * X_MAX;
-    const dist2 = Math.abs(xw - xr);
+    // откат: отскок от фретки забирает скорость (vb < vTap); если её мало, шарик и откатывается недалеко
+    let xr = sigma * U(rng, -0.25, 0.3) * X_MAX;
+    let dist2 = Math.abs(xw - xr);
     let vb = vTap * U(rng, 0.35, 0.55);
     let tr2 = ((2 * dist2) / vb) * 1000;
     if (tr2 > (slow ? 900 : 650)) { tr2 = slow ? 900 : 650; vb = (2 * dist2) / (tr2 / 1000); }
-    if (vb > vTap * 0.8) { vb = vTap * 0.8; tr2 = ((2 * dist2) / vb) * 1000; }
+    if (vb > vTap * 0.8) {
+      vb = vTap * 0.8;
+      tr2 = Math.min(((2 * dist2) / vb) * 1000, slow ? 1100 : 800);
+      dist2 = (vb * tr2) / 2000;
+      xr = xw - sigma * dist2;
+    }
     parts.push({ kind: "back", x0: xw, x1: xr, v0: vb, v1: 0, dur: tr2 });
     return { parts, rest: xr };
   }
@@ -312,18 +369,34 @@ function rollSeg(t0, base, p) {
 }
 
 /*
- * Цепочка отскоков по ротору, которая кончается посадкой в ячейку idx (развёрнутый индекс).
+ * Падение в ячейку: шарик отскакивает от дна невысоко — ниже кромок фреток, поэтому остаётся в своей
+ * ячейке, — чуть проезжает вперёд и дальше катится. Без этого отскока посадка выглядела «приклеенной».
+ */
+function pocketPlan(rng, o) {
+  const { idx, xLand, sigma, g, slow, W } = o;
+  const rise = U(rng, 0.0015, 0.0035) * (slow ? 1.15 : 1);
+  const lim = sigma * X_MAX * 0.9;
+  const x1 = xLand + (lim - xLand) * U(rng, 0.55, 0.9);
+  const hop = { a0: idx * PA + xLand, a1: idx * PA + x1, r0: GEOM.pocketR, r1: GEOM.pocketR, y0: Y_REST, y1: Y_REST, rise };
+  const proto = hopSeg(0, hop.a0, hop.a1, hop.r0, hop.r1, hop.y0, hop.y1, rise, g, "x", null, W);
+  const rate = Math.abs(x1 - xLand) / (proto.dur / 1000);
+  const settle = settlePlan(rng, x1, Math.max(0.03, rate * U(rng, 0.45, 0.75)), sigma, true, slow);
+  return { hop, dur: proto.dur, out: segSpeed(proto, +1), settle, settleDur: settle.parts.reduce((a, x) => a + x.dur, 0) };
+}
+
+/*
+ * Цепочка отскоков по ротору, которая кончается посадкой в ячейку idx (развёрнутый индекс) в точке xL.
  * Строим назад: точка посадки → последний прыжок → средние (фретка → фретка) → первый прыжок с края ротора.
+ * needIn — с какой скоростью шарик обязан прийти в ячейку, чтобы хватило на то, что будет после.
  */
 function planChain(rng, o) {
-  const { idx, kind, slow } = o;
+  const { idx, kind, slow, xL, needIn, W } = o;
   const g = slow ? G_HOP_ALLIN : G_HOP;
   let n;
   if (kind === "jump") n = pick(rng, [2, 3, 3]);
-  else if (kind === "fake") n = pick(rng, [2, 3, 3, 4]);
+  else if (kind === "fake") n = pick(rng, [2, 2, 3, 3]);
   else n = pick(rng, [2, 3, 3, 4, 4, 5]);
   const m = rng() < 0.5 ? 0 : 1; // сколько ячеек перелетает последний прыжок
-  const xL = -U(rng, 0.45, 0.95) * X_MAX; // шарик садится ближе к задней стенке и докатывается
   /*
    * Пролёты средних прыжков (фретка → фретка) строго растут к началу цепочки: 1, 2, 3…
    * Иначе при равных пролётах более высокий (а значит, более долгий) ранний прыжок летел бы
@@ -351,32 +424,71 @@ function planChain(rng, o) {
   // радиус касаний чуть гуляет — шарик не ходит по рельсу
   const rs = pts.map((_, i) => (i === 0 ? rE : rP + (i < pts.length - 1 ? U(rng, -0.004, 0.004) : 0)));
   const ys = pts.map((_, i) => (i === 0 ? yE : i === pts.length - 1 ? Y_REST : Y_FRET));
-  const durOf = (i, rise) => {
-    const yA = Math.max(ys[i], ys[i + 1]) + rise;
-    return Math.sqrt((2 * (yA - ys[i])) / g) + Math.sqrt((2 * (yA - ys[i + 1])) / g);
-  };
-  const rateOf = (i, rise) => Math.abs(pts[i + 1] - pts[i]) / durOf(i, rise);
+  const proto = (i, rise) => hopSeg(0, pts[i], pts[i + 1], rs[i], rs[i + 1], ys[i], ys[i + 1], rise, g, "x", null, W);
+  const rateOf = (i, rise) => Math.abs(pts[i + 1] - pts[i]) / (proto(i, rise).dur / 1000);
+  const cap = kind === "jump" ? 0.09 : 0.06;
 
-  // высоты: последняя минимальная, каждая предыдущая выше, но не настолько, чтобы прыжок стал медленнее следующего
+  // высоты: последняя — как можно ниже, каждая предыдущая выше, но не настолько, чтобы прыжок стал медленнее следующего;
+  // и на каждый удар шарик обязан приходить быстрее, чем отскакивает (K_FRET)
   const rises = new Array(n);
-  rises[n - 1] = minRise(pts[n - 1], pts[n], rs[n - 1], rs[n], ys[n - 1], ys[n], g, U(rng, 0.0045, 0.0065));
+  const last = riseFor((r) => proto(n - 1, r), minRise(pts[n - 1], pts[n], rs[n - 1], rs[n], ys[n - 1], ys[n], g, U(rng, 0.0045, 0.0065), W), 0, needIn, 0.035);
+  if (last == null) return fail("chain-last-" + kind);
+  rises[n - 1] = last;
   for (let i = n - 2; i >= 0; i--) {
     const apexNext = ys[i + 1] + rises[i + 1];
-    const floor = Math.max(apexNext - ys[i] + 0.0015, minRise(pts[i], pts[i + 1], rs[i], rs[i + 1], ys[i], ys[i + 1], g, 0.003));
+    const floor = Math.max(apexNext - ys[i] + 0.0015, minRise(pts[i], pts[i + 1], rs[i], rs[i + 1], ys[i], ys[i + 1], g, 0.003, W));
     let want = rises[i + 1] * U(rng, 1.3, 1.7);
     if (i === 0) want = kind === "jump" ? U(rng, 0.05, 0.065) : Math.min(0.04, Math.max(want, U(rng, 0.018, 0.03)));
     let rise = Math.max(floor, want);
     // потолок по скорости: этот прыжок не медленнее следующего
     const need = rateOf(i + 1, rises[i + 1]) * 1.03;
     while (rise > floor && rateOf(i, rise) < need) rise = Math.max(floor, rise * 0.9);
-    rises[i] = rise;
+    const r2 = riseFor((r) => proto(i, r), rise, 0, segSpeed(proto(i + 1, rises[i + 1]), +1) / K_FRET, cap);
+    if (r2 == null) return fail("chain-mid-" + kind + (i === 0 ? "-first" : ""));
+    rises[i] = r2;
   }
 
   const hops = [];
   for (let i = 0; i < n; i++) {
     hops.push({ a0: pts[i], a1: pts[i + 1], r0: rs[i], r1: rs[i + 1], y0: ys[i], y1: ys[i + 1], rise: rises[i], first: i === 0, last: i === n - 1 });
   }
-  return { hops, g, phiR, land, xL, idx };
+  return { hops, g, phiR, land, xL, idx, out: segSpeed(proto(0, rises[0]), +1) };
+}
+
+/*
+ * Ложная посадка (§7.4): шарик падает в соседнюю ячейку F, высоко отскакивает от её дна, приходит
+ * на кромку передней фретки и уходит по кромкам в выпавшую ячейку T = F + d. Если T позади (d < 0),
+ * кромка отбрасывает его назад — через ячейку F и её заднюю фретку.
+ * Раньше шарик лежал в F неподвижно 0,4 с и потом выпрыгивал сам — энергия бралась из ниоткуда.
+ * Теперь паузу даёт замедление 0,4× — отскок в ложной ячейке длится на экране ~0,5 с,
+ * а энергию на выход шарик приносит с собой (последний прыжок цепочки выше обычного).
+ * Строим назад от посадки в T: needIn — сколько скорости нужно для отскока в T.
+ */
+function planFakeOut(rng, o) {
+  const { F, d, g, xT, needIn, W } = o;
+  const sig = Math.sign(d);
+  const xF = -U(rng, 0.35, 0.85) * X_MAX; // в ложную ячейку шарик падает ближе к задней стенке
+  const pts = [F * PA + xF, (F + 0.5) * PA];
+  for (let k = 1; k < Math.abs(d) + (sig < 0 ? 1 : 0); k++) pts.push((F + 0.5 + sig * k) * PA);
+  pts.push((F + d) * PA + xT);
+  const n = pts.length - 1;
+  const rs = pts.map((_, i) => (i === 0 || i === n ? GEOM.pocketR : GEOM.pocketR + U(rng, -0.003, 0.003)));
+  const ys = pts.map((_, i) => (i === 0 || i === n ? Y_REST : Y_FRET));
+  const proto = (i, rise) => hopSeg(0, pts[i], pts[i + 1], rs[i], rs[i + 1], ys[i], ys[i + 1], rise, g, "x", null, W);
+  const rises = new Array(n);
+  let need = needIn;
+  for (let i = n - 1; i >= 0; i--) {
+    const floor = Math.max(i < n - 1 ? rises[i + 1] + 0.0015 : 0, minRise(pts[i], pts[i + 1], rs[i], rs[i + 1], ys[i], ys[i + 1], g, i === n - 1 ? U(rng, 0.002, 0.004) : 0.003, W));
+    // отскок в ложной ячейке — главный кадр сюжета: повыше, чтобы зритель успел поверить
+    const want = i === 0 ? U(rng, 0.006, 0.011) : 0;
+    const r = riseFor((x) => proto(i, x), floor, want, need, 0.045);
+    if (r == null) return null;
+    rises[i] = r;
+    need = segSpeed(proto(i, r), +1) / (i === 0 ? K_FLOOR : K_FRET);
+  }
+  const hops = [];
+  for (let i = 0; i < n; i++) hops.push({ a0: pts[i], a1: pts[i + 1], r0: rs[i], r1: rs[i + 1], y0: ys[i], y1: ys[i + 1], rise: rises[i] });
+  return { hops, xF, needIn: need };
 }
 
 /*
@@ -410,8 +522,12 @@ function attempt(rng, p, wheel, relax) {
   const D = p.spinMs;
   const T = pocketIndex(p.number);
   const settleMax = D - 500 - SLOW.extra; // к этому τ шарик обязан лежать
+  const gh = slow ? G_HOP_ALLIN : G_HOP;
+  // для прикидок скоростей при планировании: ротор к финалу крутится почти равномерно
+  const om = Math.abs(wheel.speedAt(settleMax - 1500));
+  const Wp = (tau) => (-om * tau) / 1000;
 
-  // --- ротор: цепочки и докат (длительности не зависят от углов) ---
+  // --- ротор: цепочки, ложная посадка, отскок в ячейке и докат (длительности не зависят от углов) ---
   let F = null; // ячейка ложной посадки, развёрнутый индекс
   let dF = 0;
   if (path === "fake") {
@@ -422,45 +538,28 @@ function attempt(rng, p, wheel, relax) {
     dF = d;
     F = T - d;
   }
-  const chainIdx = path === "fake" ? F : T;
-  const chain = planChain(rng, { idx: chainIdx, kind: path, slow });
+  const sigT = path === "fake" ? Math.sign(dF) : 1; // с какой стороны шарик входит в выпавшую ячейку
+  const xT = path === "fake" ? -sigT * U(rng, 0.2, 0.6) * X_MAX : -U(rng, 0.3, 0.85) * X_MAX;
+  const pocket = pocketPlan(rng, { idx: T, xLand: xT, sigma: sigT, g: gh, slow, W: Wp });
+  let fo = null;
+  let chain;
+  if (path === "fake") {
+    fo = planFakeOut(rng, { F, d: dF, g: gh, xT, needIn: pocket.out / K_FLOOR, W: Wp });
+    if (!fo) return fail("fakeOut");
+    chain = planChain(rng, { idx: F, kind: path, slow, xL: fo.xF, needIn: fo.needIn, W: Wp });
+  } else {
+    chain = planChain(rng, { idx: T, kind: path, slow, xL: xT, needIn: pocket.out / K_FLOOR, W: Wp });
+  }
+  if (!chain) return fail("chain");
 
   const segs = [];
   const events = [];
   const impacts = [];
-  const kicks = [LAUNCH_AT]; // удары, после которых скорость законно растёт
+  const kicks = [LAUNCH_AT]; // удары, после которых скорость законно растёт: только бросок
 
-  // длительности цепочки
-  let hopDur = 0;
-  const hopSegsProto = chain.hops.map((h) => {
-    const s = hopSeg(0, h.a0, h.a1, h.r0, h.r1, h.y0, h.y1, h.rise, chain.g, "bounce");
-    hopDur += s.dur;
-    return s;
-  });
-  const lastProto = hopSegsProto[hopSegsProto.length - 1];
-  const lastRate = Math.abs(lastProto.a1 - lastProto.a0) / (lastProto.dur / 1000);
-  const vLand = lastRate * U(rng, 0.45, 0.7);
-  const s1 = settlePlan(rng, chain.xL, vLand, 1, path !== "fake", slow);
-  const s1Dur = s1.parts.reduce((a, x) => a + x.dur, 0);
-
-  let fakeDur = 0;
-  let hopOut = null;
-  let s2 = null;
-  const restMs = 400 + Math.round(U(rng, 0, 60));
-  if (path === "fake") {
-    const sig = Math.sign(dF);
-    const a0 = F * PA + s1.rest;
-    const xL2 = -sig * U(rng, 0.4, 0.9) * X_MAX;
-    const a1 = T * PA + xL2;
-    const rise = Math.max(U(rng, 0.012, 0.018), minRise(a0, a1, GEOM.pocketR, GEOM.pocketR, Y_REST, Y_REST, chain.g, 0.008));
-    hopOut = { a0, a1, rise, sig, xL2 };
-    const proto = hopSeg(0, a0, a1, GEOM.pocketR, GEOM.pocketR, Y_REST, Y_REST, rise, chain.g, "hopout");
-    const rate = Math.abs(a1 - a0) / (proto.dur / 1000);
-    s2 = settlePlan(rng, xL2, rate * U(rng, 0.4, 0.6), sig, true, slow);
-    fakeDur = restMs + proto.dur + s2.parts.reduce((a, x) => a + x.dur, 0);
-    hopOut.dur = proto.dur;
-  }
-  const postRotor = hopDur + s1Dur + fakeDur;
+  const hopDur = (h) => hopSeg(0, h.a0, h.a1, h.r0, h.r1, h.y0, h.y1, h.rise, chain.g, "x").dur;
+  let postRotor = chain.hops.reduce((a, h) => a + hopDur(h), 0) + pocket.dur + pocket.settleDur;
+  if (fo) postRotor += fo.hops.reduce((a, h) => a + hopDur(h), 0);
 
   // --- склон ---
   const tauSettle = settleMax - U(rng, 0, 150);
@@ -469,6 +568,7 @@ function attempt(rng, p, wheel, relax) {
   const g = GEOM;
   const rT = g.trackR;
   const rE = g.rotorR - 0.004;
+  const yE = ringY(rE) + g.ballR;
   const W = wheel.angleAt;
   const thetaR = chain.phiR + W(tauR);
   const hit = rng() < 0.6;
@@ -488,6 +588,7 @@ function attempt(rng, p, wheel, relax) {
   const T1s = T1 / 1000;
   const hD = U(rng, 0.014, 0.022);
   const dD = 2 * Math.sqrt((2 * hD) / G_DIAMOND) * 1000;
+  const dDs = dD / 1000;
   const T2lo = Math.max(hit ? dD + 50 : 0, 240) * (slow ? 1.2 : 1);
   const T2hi = 420 * (slow ? 1.3 : 1);
   const wxLo = 1.6, wxHi = 3.4;
@@ -498,6 +599,8 @@ function attempt(rng, p, wheel, relax) {
   const dr1 = rT - g.diamondR;
   const vb = (2 * dr1) / T1s; // радиальная скорость на поясе
   const offsets = hit ? [0] : [0, -0.05, 0.05, -0.1, 0.1, -0.15, 0.15, -0.2, 0.2, -0.25, 0.25, 0.3, -0.3];
+  // у внутренней кромки склона шарик переходит на номерное кольцо — высоту сводим без ступеньки
+  const edgeY = (r) => (r >= g.statorInnerR ? 0 : (yE - Y_SLOPE(rE)) * smooth01((g.statorInnerR - r) / (g.statorInnerR - rE)));
 
   let wd, thetaD, slopeSeg, dia = null, tauD = 0;
   for (const off of offsets) {
@@ -527,12 +630,20 @@ function attempt(rng, p, wheel, relax) {
     const d1 = (T1s * (wdd + wpre)) / 2;
     const thetaX = thetaR - d2;
     const thD = thetaX - d1;
-    const v0h = Math.sqrt(2 * G_DIAMOND * hD);
-    const hopY = (tau) => {
-      if (!hit || tau < tCross || tau > tCross + dD) return 0;
+    const spiral = (tau) => {
       const q = (tau - tCross) / 1000;
-      return Math.max(0, v0h * q - (G_DIAMOND * q * q) / 2);
+      return [thetaX + wx * q - ((wx - wR) * q * q) / (2 * T2s), g.diamondR - vb * q - (ar * q * q) / 2];
     };
+    /*
+     * Отскок от ромба — тоже полёт: по горизонтали прямая в мире между точкой удара и точкой касания склона,
+     * по вертикали парабола. Раньше шарик и в воздухе шёл по спирали склона — поворачивал без опоры.
+     */
+    let fly = null;
+    if (hit) {
+      const [aA, rA] = spiral(tCross), [aB, rB] = spiral(tCross + dD);
+      const yA = Y_SLOPE(rA), yB = Y_SLOPE(rB);
+      fly = { aA, Ax: rA * Math.cos(aA), Az: rA * Math.sin(aA), Bx: rB * Math.cos(aB), Bz: rB * Math.sin(aB), sweep: aB - aA, yA, vy: (yB - yA) / dDs + (G_DIAMOND * dDs) / 2 };
+    }
     const sgs = [
       seg(tD, tCross, "world", "slope", (tau) => {
         const q = (tau - tD) / 1000;
@@ -541,9 +652,15 @@ function attempt(rng, p, wheel, relax) {
         return [thD + wdd * q - ((wdd - wpre) * q * q) / (2 * T1s), r, Y_SLOPE(r)];
       }, { w0: wdd, w1: wpre }),
       seg(tCross, tauR, "world", "slope", (tau) => {
-        const q = (tau - tCross) / 1000;
-        const r = g.diamondR - vb * q - (ar * q * q) / 2;
-        return [thetaX + wx * q - ((wx - wR) * q * q) / (2 * T2s), r, Y_SLOPE(r) + hopY(tau)];
+        if (fly && tau > tCross && tau < tCross + dD) {
+          const q = (tau - tCross) / 1000;
+          const u = q / dDs;
+          const px = fly.Ax + (fly.Bx - fly.Ax) * u, pz = fly.Az + (fly.Bz - fly.Az) * u;
+          const d = Math.atan2(fly.Ax * pz - fly.Az * px, fly.Ax * px + fly.Az * pz);
+          return [fly.aA + d, Math.hypot(px, pz), fly.yA + fly.vy * q - (G_DIAMOND * q * q) / 2];
+        }
+        const [a, r] = spiral(tau);
+        return [a, r, Y_SLOPE(r) + edgeY(r)];
       }, hit ? { w0: wx, w1: wR, airFrom: tCross, airUntil: tCross + dD, hitDiamond: best.j } : { w0: wx, w1: wR }),
     ];
     if (diamondHit(sgs, hit ? best.j : -1)) continue;
@@ -589,59 +706,55 @@ function attempt(rng, p, wheel, relax) {
   if (dia) {
     events.push({ tau: dia.t, type: "diamond", strength: Math.min(1, dia.wpre / 5), diamond: dia.j });
     impacts.push(dia.t);
+    // приземление после ромба на склон — тоже удар (гасит вертикальную скорость)
+    events.push({ tau: dia.t + dia.dur, type: "slopeLand" });
+    impacts.push(dia.t + dia.dur);
   }
   events.push({ tau: tauR, type: "rotor", strength: 0.8 });
   impacts.push(tauR);
 
-  // --- ротор: цепочка отскоков ---
+  // --- ротор: отскоки ---
   let t = tauR;
   const hopsOut = [];
-  chain.hops.forEach((h, i) => {
-    const s = hopSeg(t, h.a0, h.a1, h.r0, h.r1, h.y0, h.y1, h.rise, chain.g, "bounce", { chain: 0, index: i, pockets: Math.abs(h.a1 - h.a0) / PA });
+  const addHop = (h, phase, extra, ev) => {
+    const s = hopSeg(t, h.a0, h.a1, h.r0, h.r1, h.y0, h.y1, h.rise, chain.g, phase, extra, W);
     segs.push(s);
     hopsOut.push(s);
     t = s.t1;
     impacts.push(t);
-    const strength = Math.max(0.15, 1 - i * 0.22) * (i === chain.hops.length - 1 ? 0.7 : 1);
-    events.push({ tau: t, type: h.last ? (path === "fake" ? "fakeLand" : "land") : "fret", strength, index: i });
-  });
-  let base1 = chain.idx * PA;
-  const addSettle = (plan, basePhi, final) => {
-    plan.parts.forEach((pp, i) => {
-      const s = rollSeg(t, basePhi, pp);
-      segs.push(s);
-      t = s.t1;
-      if (pp.kind === "roll" && plan.parts[i + 1]) { impacts.push(t); events.push({ tau: t, type: "tap", strength: 0.35 }); }
-    });
-    events.push({ tau: t, type: final ? "settle" : "rest" });
+    events.push(Object.assign({ tau: t }, ev));
+    return s;
   };
-  addSettle(s1, base1, path !== "fake");
-  let tLandFinal = hopsOut[hopsOut.length - 1].t1;
+  chain.hops.forEach((h, i) => {
+    const strength = Math.max(0.15, 1 - i * 0.22) * (i === chain.hops.length - 1 ? 0.7 : 1);
+    addHop(h, "bounce", { chain: 0, index: i, pockets: Math.abs(h.a1 - h.a0) / PA }, { type: h.last ? (path === "fake" ? "fakeLand" : "land") : "fret", strength, index: i });
+  });
   let lastHop = hopsOut[hopsOut.length - 1];
-  if (path === "fake") {
-    const restPhi = base1 + s1.rest;
-    segs.push(seg(t, t + restMs, "rotor", "fakeRest", () => [restPhi, GEOM.pocketR, Y_REST]));
-    t += restMs;
-    impacts.push(t);
-    events.push({ tau: t, type: "hopOut", strength: 0.9 });
-    kicks.push(t);
-    const s = hopSeg(t, hopOut.a0, hopOut.a1, GEOM.pocketR, GEOM.pocketR, Y_REST, Y_REST, hopOut.rise, chain.g, "hopout", { chain: 1, index: 0, pockets: Math.abs(dF) });
-    segs.push(s);
-    hopsOut.push(s);
-    t = s.t1;
-    impacts.push(t);
-    events.push({ tau: t, type: "land", strength: 0.75 });
-    tLandFinal = t;
-    lastHop = s;
-    addSettle(s2, T * PA, true);
+  const tFakeLand = path === "fake" ? t : null;
+  if (fo) {
+    fo.hops.forEach((h, i) => {
+      const n = fo.hops.length;
+      const type = i === 0 ? "hopOut" : i === n - 1 ? "land" : "fret";
+      const s = addHop(h, "hopout", { chain: 1, index: i, pockets: Math.abs(h.a1 - h.a0) / PA }, { type, strength: i === 0 ? 0.8 : i === n - 1 ? 0.6 : 0.7 - i * 0.1 });
+      if (i === n - 1) lastHop = s;
+    });
   }
+  const tLandFinal = t;
+  // отскок от дна выпавшей ячейки и докат
+  addHop(pocket.hop, "rattle", { chain: 2, index: 0, pockets: 0 }, { type: "rattle", strength: 0.3 });
+  pocket.settle.parts.forEach((pp, i) => {
+    const s = rollSeg(t, T * PA, pp);
+    segs.push(s);
+    t = s.t1;
+    if (pp.kind === "roll" && pocket.settle.parts[i + 1]) { impacts.push(t); events.push({ tau: t, type: "tap", strength: 0.35 }); }
+  });
+  events.push({ tau: t, type: "settle" });
   const tauSettled = t;
   const finalPhi = segs[segs.length - 1].f(tauSettled)[0];
   segs.push(seg(tauSettled, 1e12, "rotor", "ride", () => [finalPhi, GEOM.pocketR, Y_REST]));
 
-  // --- замедление: последний прыжок попадает во вторую треть окна ---
-  let tw0 = tLandFinal - 380;
-  if (path === "fake") tw0 = Math.max(tw0, lastHop.t0 - 120);
+  // --- замедление: последний прыжок попадает во вторую треть окна; при ложной посадке — отскок в ложной ячейке ---
+  const tw0 = path === "fake" ? tFakeLand - 110 : tLandFinal - 380;
   const warp = makeWarp(tw0);
   events.push({ tau: tw0, type: "slowStart" });
   events.push({ tau: tw0 + SLOW.phys, type: "slowEnd" });
@@ -651,7 +764,7 @@ function attempt(rng, p, wheel, relax) {
   return {
     segs, events, impacts, kicks, warp, wheel, path, slow, hit: !!dia, dia, laps: A / TAU, w0, wd,
     tauLaunch: LAUNCH_AT, tauDrop: tauD, tauRotor: tauR, tauSettled, tauLand: tLandFinal,
-    hops: hopsOut, jump, lastHop, finalPhi, fakeIdx: F, target: T, spinMs: D,
+    hops: hopsOut, jump, lastHop, finalPhi, fakeIdx: F, target: T, spinMs: D, g: chain.g,
   };
 }
 
@@ -754,13 +867,18 @@ function finish(tr, number, seed) {
     hops: tr.hops.map((s) => ({ t0: s.t0, t1: s.t1, apex: s.apex, chain: s.chain, pockets: s.pockets, a0: s.a0, a1: s.a1 })),
     diamond: tr.dia ? { index: tr.dia.j, tau: tr.dia.t, angle: tr.dia.a } : null,
     finalPhi: tr.finalPhi,
+    // для физического теста: границы сегментов (разрывы возможны только на них) и «киношная» гравитация
+    segs: tr.segs.map((s) => ({ t0: s.t0, t1: s.t1, frame: s.frame, phase: s.phase, air: !!s.air, airFrom: s.airFrom, airUntil: s.airUntil })),
+    g: tr.g,
   };
 }
 
 /*
  * Внутренняя проверка правдоподобия — ей же отбраковываются неудачные попытки.
- * Скорость меряем относительно ротора (dφ/dτ): она у настоящего шарика только падает,
- * а растёт лишь на ударе (ромб, фретка, выпрыгивание из ячейки).
+ *  • В контакте (трек, склон, докат в ячейке) скорость относительно ротора (dφ/dτ) только падает.
+ *  • В полёте шарик баллистический по построению (прямая в мире + парабола) — там её не меряем.
+ *  • На ударе полная скорость в системе поверхности (ротор — в системе ротора, ромб и склон — в мире)
+ *    не растёт: после удара не больше K_MAX прежней. Разгоняет только бросок.
  */
 export function validate(tr) {
   const segs = tr.segs;
@@ -770,6 +888,8 @@ export function validate(tr) {
     const [a, r, y] = s.f(tau);
     return { phi: s.frame === "world" ? a - W(tau) : a, r, y, s };
   };
+  const inAir = (s, tau) => !!(s.air || (s.airFrom != null && tau >= s.airFrom && tau <= s.airUntil));
+  for (const s of segs) if (s.air && !(Math.abs(s.sweep) < 3)) return { ok: false, why: "sweep" };
   const impacts = tr.impacts;
   const nearImpact = (tau, h) => impacts.some((x) => Math.abs(x - tau) <= h * 2.5);
   const h = 2;
@@ -782,7 +902,8 @@ export function validate(tr) {
     tau += step;
     const cur = at(tau);
     const rn = Math.abs(cur.phi - prev.phi) / step;
-    if (!nearImpact(tau, step) && rn > prevRate * (1 + 1e-6) + 1e-9) return { ok: false, why: "speedup", tau };
+    const air = inAir(cur.s, tau) || inAir(prev.s, tau - step);
+    if (!air && !nearImpact(tau, step) && rn > prevRate * (1 + 1e-6) + 1e-9) return { ok: false, why: "speedup", tau };
     if (fretClearance(cur.phi, cur.r, cur.y) < -1e-6) return { ok: false, why: "fret", tau };
     // ромбы: проходить сквозь можно только в прыжке
     if (cur.s.phase === "slope") {
@@ -794,14 +915,23 @@ export function validate(tr) {
         if (Math.abs(cur.r - GEOM.diamondR) < dm.halfR + GEOM.ballR * 0.5 && da < dm.halfT + GEOM.ballR * 0.7 && lift < GEOM.diamondH * 0.5) return { ok: false, why: "diamond", tau };
       }
     }
-    prevRate = rn;
+    prevRate = air ? Infinity : rn;
     prev = cur;
   }
-  // удар о фретку или ромб скорость только забирает; разгоняют лишь бросок и выпрыгивание из ячейки
+  // удары: энергия только теряется
+  const typeAt = new Map(tr.events.map((e) => [e.tau, e.type]));
+  const vel = (tau, side, world) => {
+    const P = (t) => { const p = at(t); const a = world ? p.phi + W(t) : p.phi; return [p.r * Math.cos(a), p.y, p.r * Math.sin(a)]; };
+    const q = 0.25, p0 = P(tau + side * 1e-7), p1 = P(tau + side * q), p2 = P(tau + 2 * side * q);
+    let v = 0;
+    for (let k = 0; k < 3; k++) { const c = (-3 * p0[k] + 4 * p1[k] - p2[k]) / (2 * q); v += c * c; }
+    return Math.sqrt(v);
+  };
   for (const x of impacts) {
     if (tr.kicks.includes(x)) continue;
-    const a = at(x - 4), b = at(x - 2), c = at(x + 2), d = at(x + 4);
-    if (Math.abs(d.phi - c.phi) > Math.abs(b.phi - a.phi) * 1.02 + 1e-9) return { ok: false, why: "impact-speedup", tau: x };
+    const ty = typeAt.get(x);
+    const world = ty === "diamond" || ty === "slopeLand";
+    if (vel(x, 1, world) > vel(x, -1, world) * K_MAX + 1e-7) return { ok: false, why: "energy", tau: x, type: ty };
   }
   const fin = mod(tr.finalPhi / PA + 0.5, POCKETS);
   if (Math.floor(fin) !== tr.target) return { ok: false, why: "pocket" };
