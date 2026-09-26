@@ -30,6 +30,7 @@ services:
     depends_on:
       - auction
       - roulette
+      - bomb
       - storm
 
   # сервер онлайн-аукциона (WebSocket + API); nginx проксирует в него /auction/ws и /auction/api/
@@ -89,6 +90,29 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # сервер «Бомбы» (WebSocket + API); nginx проксирует в него /bomb/ws и /bomb/api/.
+  # Устроен как roulette. В дампе — запечатанная длина фитиля: без неё после рестарта нечего взрывать.
+  bomb:
+    build: ./bomb
+    image: randomhostbomb:latest
+    container_name: randomhost-bomb
+    cpuset: "2-5"
+    restart: always
+    mem_limit: 128m
+    volumes:
+      - bomb-state:/app/state
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3300/bomb/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # молнии для «Грома» (thunder.html): качает файлы NOAA GOES GLM из открытых бакетов AWS,
   # разбирает NetCDF и отдаёт вспышки; nginx проксирует в него /storm/api/. Состояния на диске нет.
   # Бакет опрашивается, только пока страницу кто-то смотрит (IDLE_S в server.py).
@@ -115,3 +139,4 @@ services:
 volumes:
   auction-state:
   roulette-state:
+  bomb-state:

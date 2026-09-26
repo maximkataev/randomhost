@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f4a3.svg" type="image/svg+xml">
+<title>Бомба — общий экран</title>
+<!-- доска ведущего с кодом комнаты: в поиске ей делать нечего -->
+<meta name="robots" content="noindex,nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans+Extra+Condensed:ital,wght@0,500;0,700;0,900;1,900&display=swap" rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Fira+Sans+Extra+Condensed:ital,wght@0,500;0,700;0,900;1,900&display=swap" rel="stylesheet"></noscript>
+<style>
+  /* Мир: дневной ретро-комикс (bomb-spec.md §9). Кремовая бумага с растром, толстый чёрный контур,
+     плоские печатные цвета, жёсткая тень-«сдвиг печати». Соседи — аукцион и рулетка — тёмные и вечерние;
+     здесь светло, всё пружинит, а бомба — классический чёрный шар с фитилём. */
+  :root {
+    --paper: #fbf1d9;
+    --paper-2: #f3e2b8;
+    --paper-3: #ead198;
+    --ink: #16120c;
+    --ink-2: #4a3f2e;
+    --muted: #7a6a4f;
+    --red: #e8322b;
+    --red-ink: #b31d17;
+    --yellow: #ffc21a;
+    --blue: #1e6fd9;
+    --green: #16924a;
+    --line: 3px solid var(--ink);
+    --shift: 4px 4px 0 var(--ink);
+    --font: "Fira Sans Extra Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --spring: cubic-bezier(.3, 1.6, .5, 1);
+    --lang-switch-bg: var(--paper);
+    --lang-switch-border: var(--ink);
+    --lang-switch-fg: var(--ink);
+    --lang-switch-active-bg: var(--ink);
+    --lang-switch-active-fg: var(--paper);
+    --lang-switch-active-border: var(--ink);
+    --lang-switch-font: var(--font);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: radial-gradient(rgba(22, 18, 12, .09) 1.1px, transparent 1.7px) 0 0 / 11px 11px, var(--paper);
+    color: var(--ink);
+    font: 500 18px/1.25 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible, a:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+  .hidden { display: none !important; }
+
+  /* ---------- верхняя полоса ---------- */
+  .top { position: fixed; inset: 0 0 auto 0; height: 64px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 16px; padding: 0 var(--lsw, 170px) 0 20px; z-index: 5; } /* справа — место под переключатель языка (--lsw меряет bomb-shared.js) */
+  .brand { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+  .brand a { color: var(--ink-2); text-decoration: none; font-weight: 700; font-size: 16px; white-space: nowrap; }
+  .logo { font: italic 900 38px/1 var(--font); letter-spacing: .01em; text-transform: uppercase; color: var(--red); -webkit-text-stroke: 1.5px var(--ink); text-shadow: 3px 3px 0 var(--ink); white-space: nowrap; }
+  .seal { justify-self: center; display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; height: 40px; padding: 0 14px; background: var(--paper); border: var(--line); box-shadow: var(--shift); visibility: hidden; }
+  .seal.on { visibility: visible; }
+  .seal .k { font-weight: 900; text-transform: uppercase; font-size: 15px; white-space: nowrap; }
+  .seal button { border: 0; background: none; padding: 0; font: 600 15px/1 var(--mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .seal .r { font-weight: 700; color: var(--ink-2); white-space: nowrap; }
+  .tools { display: flex; align-items: center; gap: 10px; }
+  .code-chip { font: 900 22px/1 var(--font); letter-spacing: .06em; padding: 6px 10px; border: var(--line); background: var(--yellow); box-shadow: var(--shift); white-space: nowrap; }
+  .sound-toggle-btn { width: 40px; height: 40px; border: var(--line); background: var(--paper); box-shadow: var(--shift); font-size: 18px; }
+
+  /* ---------- сцена ---------- */
+  main { position: fixed; inset: 64px 0 0 0; }
+  .conn { position: fixed; left: 50%; top: 72px; transform: translateX(-50%); z-index: 30; background: var(--red); color: #fff; font-weight: 700; padding: 6px 14px; border: var(--line); visibility: hidden; }
+  .conn.on { visibility: visible; }
+
+  /* лобби: участники слева (правило владельца), вход и настройки справа */
+  .lobby { position: absolute; inset: 12px 20px 20px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 460px); gap: 24px; }
+  .panel { background: var(--paper); border: var(--line); box-shadow: 6px 6px 0 var(--ink); min-height: 0; }
+  .who { display: flex; flex-direction: column; padding: 18px 20px; overflow: hidden; }
+  .who h2 { margin: 0 0 12px; font: 900 30px/1 var(--font); text-transform: uppercase; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .who h2 span { font-size: 20px; color: var(--ink-2); }
+  .seats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; align-content: start; flex: none; }
+  .howto { flex: 1; min-height: 150px; margin-top: 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .howto div { border: var(--line); background: #fff; display: grid; place-content: center; justify-items: center; gap: 10px; text-align: center; padding: 12px; font-size: 21px; font-weight: 700; line-height: 1.15; }
+  .howto div:nth-child(2) { background: var(--yellow); }
+  .howto div:nth-child(3) { background: var(--red); color: #fff; text-shadow: 1px 1px 0 var(--ink); }
+  .howto i { font-style: normal; font-size: clamp(40px, 6vh, 72px); line-height: 1; }
+  .seat { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 10px; border: var(--line); background: #fff; position: relative; }
+  .seat.new { animation: drop .45s var(--spring); }
+  .seat.empty { border-style: dashed; background: transparent; color: var(--muted); border-color: rgba(22, 18, 12, .35); }
+  .seat .x { margin-left: auto; border: 0; background: none; font-size: 18px; color: var(--muted); padding: 4px; }
+  .av { flex: none; width: 32px; height: 32px; border: 2.5px solid var(--ink); border-radius: 50%; background: var(--pc, #ccc); display: grid; place-items: center; font: 900 14px/1 var(--font); color: #fff; text-shadow: 1px 1px 0 var(--ink); }
+  .seat b { font-weight: 700; font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .seat .off { font-size: 14px; color: var(--muted); white-space: nowrap; }
+  .side { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px 0; overflow: auto; }
+  .join { display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 14px; align-items: center; }
+  #qr { width: 136px; height: 136px; background: #fff; border: var(--line); padding: 6px; }
+  #qr img, #qr canvas { width: 100% !important; height: 100% !important; display: block; }
+  .bigcode { font: 900 var(--code-fs, 64px)/1 var(--font); letter-spacing: .04em; white-space: nowrap; overflow: hidden; }
+  .url { font: 600 15px/1.2 var(--mono); color: var(--ink-2); word-break: break-all; }
+  .scan { font-size: 16px; color: var(--ink-2); margin-top: 6px; }
+  .opt { display: grid; gap: 6px; }
+  .opt .k { font-weight: 900; text-transform: uppercase; font-size: 14px; letter-spacing: .04em; color: var(--ink-2); }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button { border: 2.5px solid var(--ink); background: #fff; padding: 6px 10px; font-weight: 700; font-size: 17px; line-height: 1.1; }
+  .seg button.on { background: var(--ink); color: var(--paper); }
+  .seg button small { display: block; font-weight: 500; font-size: 13px; opacity: .8; }
+  .opt .d { font-size: 15px; color: var(--ink-2); min-height: 1.2em; }
+  .startbox { position: sticky; bottom: 0; margin-top: auto; background: var(--paper); padding: 8px 0 16px; display: grid; gap: 6px; }
+  .start { border: var(--line); background: var(--red); color: #fff; font: italic 900 30px/1 var(--font); text-transform: uppercase; padding: 14px 18px; box-shadow: 6px 6px 0 var(--ink); letter-spacing: .02em; text-shadow: 2px 2px 0 var(--ink); }
+  .start:not(:disabled):active { transform: translate(3px, 3px); box-shadow: 3px 3px 0 var(--ink); }
+  .fine { font-size: 15px; color: var(--ink-2); min-height: 1.25em; }
+
+  /* ---------- арена: игроки кольцом, бомба летает между ними ---------- */
+  .arena { position: absolute; inset: 8px 16px 16px; overflow: clip; }
+  .pc { position: absolute; left: 0; top: 0; width: var(--cw, 190px); height: 58px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: var(--line); background: #fff; box-shadow: var(--shift); transition: transform .5s var(--spring), background .2s, opacity .3s; will-change: transform; }
+  .pc b { font-weight: 700; font-size: 21px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+  .pc .st { font-size: 15px; font-weight: 700; white-space: nowrap; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .pc.hold { background: var(--yellow); }
+  .pc.hot { background: var(--red); color: #fff; }
+  .pc.hot .st { color: #fff; }
+  .pc.out { opacity: .38; background: var(--paper-2); box-shadow: none; }
+  .pc.off b::after { content: " ·"; color: var(--muted); }
+  .pc.victim { background: var(--ink); color: var(--paper); }
+  .pc.victim .st { color: var(--yellow); }
+  .bombwrap { position: absolute; left: 0; top: 0; width: 110px; height: 110px; margin: -55px 0 0 -55px; z-index: 4; pointer-events: none; will-change: transform; }
+  .bombwrap .shake { width: 100%; height: 100%; animation: shake calc(.5s - var(--heat, 0) * .42s) linear infinite; }
+  .bomb { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(4px 5px 0 rgba(22, 18, 12, .35)); }
+  .bomb .spark { animation: spark .18s steps(2) infinite; transform-box: fill-box; }
+  .bombwrap.gone { visibility: hidden; }
+
+  .center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(56%, 760px); display: grid; justify-items: center; text-align: center; gap: 10px; z-index: 3; }
+  .center .lbl { font: 900 18px/1 var(--font); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2); height: 18px; }
+  .holder { font: italic 900 var(--hfs, 84px)/1 var(--font); text-transform: uppercase; height: 88px; display: flex; align-items: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-text-stroke: 2px var(--ink); color: var(--hc, var(--red)); text-shadow: 4px 4px 0 var(--ink); padding: 0 6px; }
+  .doing { font-size: 24px; font-weight: 700; height: 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  /* вопрос держателя крупно — чтобы зал подсказывал (§5.3); место под него зарезервировано всегда */
+  .bubble { position: relative; width: 100%; height: 132px; background: #fff; border: var(--line); box-shadow: var(--shift); border-radius: 18px; display: grid; place-items: center; padding: 10px 18px; overflow: hidden; }
+  .bubble .q { font-weight: 900; font-size: 30px; line-height: 1.1; }
+  .bubble .opts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin-top: 8px; font-size: 20px; font-weight: 700; color: var(--ink-2); }
+  .bubble .opts span::before { content: "▸ "; color: var(--red); }
+  .bubble .meta { display: flex; gap: 28px; font-size: 22px; font-weight: 700; }
+  .bubble .meta b { display: block; font: 900 44px/1 var(--font); font-variant-numeric: tabular-nums; }
+  .danger { font: italic 900 26px/1 var(--font); text-transform: uppercase; color: var(--red); height: 30px; visibility: hidden; letter-spacing: .02em; }
+  body.hot .danger { visibility: visible; animation: blink .7s steps(2) infinite; }
+  body.hot main::before { content: ""; position: absolute; inset: 0; background: rgba(232, 50, 43, .09); animation: pulse 1.1s ease-in-out infinite; pointer-events: none; }
+  .hostbar { position: absolute; right: 0; bottom: 0; display: flex; gap: 8px; z-index: 6; }
+  .hostbar button { border: var(--line); background: var(--paper); font-weight: 700; padding: 6px 12px; box-shadow: var(--shift); font-size: 16px; }
+
+  /* отсчёт: печать на весь центр */
+  .sealcard { background: #fff; border: var(--line); box-shadow: 6px 6px 0 var(--ink); padding: 16px 22px; display: grid; gap: 6px; justify-items: center; width: 100%; }
+  .sealcard .t { font: 900 22px/1 var(--font); text-transform: uppercase; letter-spacing: .06em; }
+  .sealcard .h { font: 700 22px/1.1 var(--mono); word-break: break-all; }
+  .sealcard .s { font-size: 18px; color: var(--ink-2); }
+  .count { font: italic 900 150px/1 var(--font); color: var(--yellow); -webkit-text-stroke: 3px var(--ink); text-shadow: 6px 6px 0 var(--ink); height: 150px; }
+  .count.pop { animation: pop .5s var(--spring); }
+
+  /* взрыв */
+  .flash { position: fixed; inset: 0; z-index: 20; pointer-events: none; background: #fff; opacity: 0; }
+  .flash.on { animation: flash 1.1s ease-out forwards; }
+  .kapow { position: absolute; z-index: 21; width: 380px; height: 300px; margin: -150px 0 0 -190px; display: grid; place-items: center; pointer-events: none; visibility: hidden; }
+  .kapow.on { visibility: visible; animation: kapow 1.2s var(--spring) both; }
+  .kapow svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .kapow span { position: relative; font: italic 900 96px/1 var(--font); color: var(--yellow); -webkit-text-stroke: 3px var(--ink); text-shadow: 5px 5px 0 var(--ink); transform: rotate(-8deg); }
+  body.shaking main { animation: bigshake .6s linear; }
+  .float { position: absolute; z-index: 8; font-size: 40px; pointer-events: none; animation: floatup 1.6s ease-out forwards; }
+
+  /* итоги поверх арены */
+  body[data-phase="finished"] .center, body[data-phase="finished"] .bombwrap { visibility: hidden; }
+  .result { position: absolute; inset: 0; display: grid; place-items: center; z-index: 10; background: rgba(251, 241, 217, .72); }
+  .rcard { width: min(880px, calc(100% - 32px)); max-height: calc(100% - 24px); overflow: auto; background: var(--paper); border: var(--line); box-shadow: 8px 8px 0 var(--ink); padding: 22px 26px; display: grid; gap: 14px; animation: drop .5s var(--spring); }
+  .verdict { display: grid; gap: 4px; }
+  .verdict .k { font: 900 20px/1 var(--font); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2); }
+  .verdict .n { font: italic 900 72px/1 var(--font); text-transform: uppercase; color: var(--vc, var(--red)); -webkit-text-stroke: 2px var(--ink); text-shadow: 4px 4px 0 var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px; }
+  .verdict .sub { font-size: 20px; font-weight: 700; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+  .stat { border: 2.5px solid var(--ink); background: #fff; padding: 8px 10px; }
+  .stat .k { font-size: 14px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: .03em; }
+  .stat .v { font-size: 22px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seals { display: grid; gap: 8px; }
+  .sealrow { border: 2.5px solid var(--ink); background: #fff; padding: 8px 12px; display: grid; gap: 4px; }
+  .sealrow .top2 { display: flex; justify-content: space-between; gap: 12px; font-weight: 700; }
+  .sealrow .ok { color: var(--green); font-weight: 900; }
+  .sealrow .bad { color: var(--red); font-weight: 900; }
+  .sealrow code { font: 13px/1.3 var(--mono); word-break: break-all; color: var(--ink-2); user-select: all; }
+  .rbtns { display: flex; gap: 12px; flex-wrap: wrap; }
+  .rbtns button { border: var(--line); background: var(--paper); font: 900 22px/1 var(--font); text-transform: uppercase; padding: 12px 18px; box-shadow: var(--shift); }
+  .rbtns button.main { background: var(--red); color: #fff; text-shadow: 2px 2px 0 var(--ink); }
+  .banner { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); font-size: 26px; font-weight: 700; text-align: center; background: var(--paper); border: var(--line); box-shadow: var(--shift); padding: 16px 22px; max-width: calc(100% - 32px); }
+
+  @keyframes drop { from { transform: translateY(-14px) scale(.96); } }
+  @keyframes shake { 0% { transform: translate(0, 0) rotate(0); } 25% { transform: translate(calc(var(--heat, 0) * 4px), calc(var(--heat, 0) * -3px)) rotate(calc(var(--heat, 0) * 5deg)); } 50% { transform: translate(0, calc(var(--heat, 0) * 2px)) rotate(0); } 75% { transform: translate(calc(var(--heat, 0) * -4px), calc(var(--heat, 0) * -2px)) rotate(calc(var(--heat, 0) * -5deg)); } 100% { transform: translate(0, 0) rotate(0); } }
+  @keyframes spark { 50% { transform: scale(1.35) rotate(20deg); } }
+  @keyframes blink { 50% { opacity: .35; } }
+  @keyframes pulse { 50% { opacity: .35; } }
+  @keyframes pop { from { transform: scale(1.8); opacity: 0; } }
+  @keyframes flash { 0% { opacity: .95; } 100% { opacity: 0; } }
+  @keyframes kapow { 0% { transform: scale(.2) rotate(-20deg); } 40% { transform: scale(1.15) rotate(4deg); } 100% { transform: scale(1) rotate(0); } }
+  @keyframes bigshake { 10%, 50%, 90% { transform: translate(-10px, 6px); } 30%, 70% { transform: translate(10px, -6px); } }
+  @keyframes floatup { from { transform: translate(-50%, 0) scale(.6); opacity: 0; } 15% { opacity: 1; transform: translate(-50%, -10px) scale(1.15); } to { transform: translate(-50%, -90px) scale(1); opacity: 0; } }
+
+  /* узкий экран: игроки сеткой сверху, центр — снизу; бомба садится на карточку держателя */
+  @media (max-width: 760px) {
+    .top { grid-template-columns: auto auto; height: 56px; padding: 0 var(--lsw, 140px) 0 12px; }
+    .top .seal { display: none; }
+    .logo { font-size: 30px; }
+    main { inset: 56px 0 0 0; }
+    .lobby { grid-template-columns: 1fr; overflow: auto; inset: 8px 12px 12px; }
+    .who { max-height: none; }
+    .seats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .howto { grid-template-columns: 1fr; }
+    .join { grid-template-columns: 110px minmax(0, 1fr); }
+    #qr { width: 110px; height: 110px; }
+    .center { width: calc(100% - 16px); top: auto; bottom: 0; transform: translateX(-50%); }
+    .holder { height: 56px; }
+    .bubble { height: 116px; }
+    .bubble .q { font-size: 22px; }
+    .count { font-size: 100px; height: 100px; }
+    .verdict .n { font-size: 48px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bombwrap .shake, .bomb .spark, body.hot .danger, body.hot main::before, .count.pop, .kapow.on, body.shaking main, .seat.new, .rcard { animation: none !important; }
+    .pc { transition: none; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><span class="logo" data-i18n="logo">Бомба</span></div>
+  <div class="seal" id="seal"><span class="k" data-i18n="seal_title">Печать раунда</span><button id="sealhash" type="button"></button><span class="r" id="sealrange"></span></div>
+  <div class="tools"><span class="code-chip hidden" id="codechip"></span><button class="sound-toggle-btn" type="button"></button></div>
+</header>
+<div class="conn" id="conn"></div>
+<main id="main">
+  <section class="lobby hidden" id="lobby"></section>
+  <section class="arena hidden" id="arena">
+    <div class="center" id="center"></div>
+    <div class="hostbar" id="hostbar"></div>
+  </section>
+  <div class="result hidden" id="result"></div>
+  <div class="banner hidden" id="banner"></div>
+</main>
+<div class="flash" id="flash"></div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Бомба — общий экран`,
+    nav_all_games: `← Все игры`,
+    logo: `Бомба`,
+    creating: `Создаём комнату…`,
+    expired: `Комната закрылась. Создайте новую на странице игры.`,
+    viewer: `Этот экран — зритель: управляет другая вкладка`,
+    lobby_who: `В игре`, lobby_n: `{n} из 16`, lobby_free: `свободно`,
+    lobby_scan: `Наведи камеру телефона на QR или открой ссылку и введи имя.`,
+    rule0: `Заходи с телефона по QR или коду`,
+    rule1: `Бомба пришла — пройди мини-испытание на телефоне`,
+    rule2: `Прошёл — кидай её кому хочешь`,
+    rule3: `Когда рванёт, не знает никто. У кого взорвалась — тот ведёт стендап`,
+    opt_mode: `Режим`, opt_fuse: `Фитиль`, opt_return: `Можно вернуть отправителю`, opt_groups: `Испытания`,
+    on: `Да`, off: `Нет`,
+    return_d: `«Нет» — сразу вернуть бомбу тому, кто её кинул, нельзя`,
+    return_two: `При двоих возвращать можно всегда`,
+    btn_start: `Поджечь фитиль`, btn_again: `Ещё раунд`, btn_lobby: `В лобби`, btn_end: `Остановить раунд`,
+    need_two: `Нужно хотя бы 2 игрока на связи`,
+    two_note: `Две бомбы — с 6 игроков. Пока будет одна`,
+    kick: `Убрать`, offline: `не в сети`,
+    now_holds: `Сейчас держит`, now_hold2: `Держат`,
+    doing: `{name} {what}…`, armed: `{name} выбирает, в кого кинуть!`, fresh: `{name} получил(а) бомбу!`,
+    danger: `Может рвануть в любой момент`,
+    burning: `Горит`, passes: `Передач`, in_hands: `В руках`, burned: `Горел`, fuse_was: `Фитиль был`,
+    get_ready: `Поджигаем через`,
+    seal_full: `нажми — покажу целиком`,
+    boom: `БУМ!`,
+    standup: `Стендап ведёт`, winner: `Последний выживший`, standup_sub: `Стендап ведёт: {name}`,
+    boom_at: `Не повезло`,
+    out_mark: `выбыл(а)`,
+    st_longest: `Дольше всех держал(а)`, st_mostgot: `Чаще всех получал(а)`, st_fastest: `Самый быстрый бросок`, st_passes: `Передач за раунд`,
+    st_times: `{n} раз(а)`, st_none: `—`,
+    fin_few: `Раунд остановлен: осталось меньше двух игроков`,
+    fin_host: `Раунд остановлен ведущим`,
+    seals_title: `Печати`, seal_round: `Раунд {n}`, seal_bomb: `бомба {n}`,
+    round_n: `Раунд {n}`,
+    wait_host: `Ждём ведущего`,
+    wheel_left: `осталось {n}`,
+  },
+  en: {
+    _title: `Bomb — shared screen`,
+    nav_all_games: `← All games`,
+    logo: `Bomb`,
+    creating: `Creating a room…`,
+    expired: `The room has closed. Create a new one on the game page.`,
+    viewer: `This screen is a viewer: another tab is in control`,
+    lobby_who: `Players`, lobby_n: `{n} of 16`, lobby_free: `free`,
+    lobby_scan: `Point your phone camera at the QR or open the link and type your name.`,
+    rule0: `Join from your phone via the QR or code`,
+    rule1: `Got the bomb? Beat a mini challenge on your phone`,
+    rule2: `Done — throw it to anyone you like`,
+    rule3: `Nobody knows when it blows. Whoever's holding it hosts the stand-up`,
+    opt_mode: `Mode`, opt_fuse: `Fuse`, opt_return: `Can throw it straight back`, opt_groups: `Challenges`,
+    on: `Yes`, off: `No`,
+    return_d: `"No" — you can't return the bomb to whoever just threw it`,
+    return_two: `With two players, throwing back is always allowed`,
+    btn_start: `Light the fuse`, btn_again: `Another round`, btn_lobby: `To lobby`, btn_end: `Stop round`,
+    need_two: `Need at least 2 players online`,
+    two_note: `Two bombs start at 6 players. For now there'll be one`,
+    kick: `Remove`, offline: `offline`,
+    now_holds: `Holding it now`, now_hold2: `Holding`,
+    doing: `{name} {what}…`, armed: `{name} is picking a target!`, fresh: `{name} got the bomb!`,
+    danger: `Could blow any second`,
+    burning: `Burning`, passes: `Passes`, in_hands: `Held`, burned: `Burned`, fuse_was: `The fuse was`,
+    get_ready: `Lighting in`,
+    seal_full: `tap to see it in full`,
+    boom: `BOOM!`,
+    standup: `Stand-up host`, winner: `Last one standing`, standup_sub: `Stand-up host: {name}`,
+    boom_at: `Unlucky`,
+    out_mark: `out`,
+    st_longest: `Held it longest`, st_mostgot: `Got it most often`, st_fastest: `Fastest throw`, st_passes: `Passes this round`,
+    st_times: `{n} times`, st_none: `—`,
+    fin_few: `Round stopped: fewer than two players left`,
+    fin_host: `Round stopped by the host`,
+    seals_title: `Seals`, seal_round: `Round {n}`, seal_bomb: `bomb {n}`,
+    round_n: `Round {n}`,
+    wait_host: `Waiting for the host`,
+    wheel_left: `{n} left`,
+  },
+  el: {
+    _title: `Βόμβα — κοινή οθόνη`,
+    nav_all_games: `← Όλα τα παιχνίδια`,
+    logo: `Βόμβα`,
+    creating: `Δημιουργούμε δωμάτιο…`,
+    expired: `Το δωμάτιο έκλεισε. Φτιάξε νέο στη σελίδα του παιχνιδιού.`,
+    viewer: `Αυτή η οθόνη είναι θεατής: ελέγχει άλλη καρτέλα`,
+    lobby_who: `Παίκτες`, lobby_n: `{n} από 16`, lobby_free: `ελεύθερο`,
+    lobby_scan: `Στρέψε την κάμερα του κινητού στο QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.`,
+    rule0: `Μπες από το κινητό με το QR ή τον κωδικό`,
+    rule1: `Ήρθε η βόμβα; Πέρνα μια μίνι δοκιμασία στο κινητό`,
+    rule2: `Τα κατάφερες — πέτα τη σε όποιον θες`,
+    rule3: `Κανείς δεν ξέρει πότε σκάει. Σε όποιον σκάσει, κάνει το stand-up`,
+    opt_mode: `Λειτουργία`, opt_fuse: `Φιτίλι`, opt_return: `Επιστροφή στον αποστολέα`, opt_groups: `Δοκιμασίες`,
+    on: `Ναι`, off: `Όχι`,
+    return_d: `«Όχι» — δεν γυρνάς τη βόμβα αμέσως σε όποιον σου την πέταξε`,
+    return_two: `Με δύο παίκτες η επιστροφή επιτρέπεται πάντα`,
+    btn_start: `Άναψε το φιτίλι`, btn_again: `Άλλος γύρος`, btn_lobby: `Στο λόμπι`, btn_end: `Διακοπή γύρου`,
+    need_two: `Χρειάζονται τουλάχιστον 2 συνδεδεμένοι παίκτες`,
+    two_note: `Δύο βόμβες από 6 παίκτες. Προς το παρόν θα είναι μία`,
+    kick: `Αφαίρεση`, offline: `εκτός σύνδεσης`,
+    now_holds: `Την κρατά τώρα`, now_hold2: `Την κρατούν`,
+    doing: `{name} {what}…`, armed: `{name} διαλέγει σε ποιον θα την πετάξει!`, fresh: `{name} πήρε τη βόμβα!`,
+    danger: `Μπορεί να σκάσει ανά πάσα στιγμή`,
+    burning: `Καίει`, passes: `Πάσες`, in_hands: `Στα χέρια`, burned: `Έκαιγε`, fuse_was: `Το φιτίλι ήταν`,
+    get_ready: `Ανάβουμε σε`,
+    seal_full: `πάτα για ολόκληρη`,
+    boom: `ΜΠΟΥΜ!`,
+    standup: `Κάνει το stand-up`, winner: `Ο τελευταίος όρθιος`, standup_sub: `Stand-up κάνει: {name}`,
+    boom_at: `Κακή τύχη`,
+    out_mark: `εκτός`,
+    st_longest: `Την κράτησε περισσότερο`, st_mostgot: `Την πήρε πιο συχνά`, st_fastest: `Πιο γρήγορη πάσα`, st_passes: `Πάσες στον γύρο`,
+    st_times: `{n} φορές`, st_none: `—`,
+    fin_few: `Ο γύρος σταμάτησε: έμειναν λιγότεροι από δύο παίκτες`,
+    fin_host: `Ο γύρος σταμάτησε από τον οικοδεσπότη`,
+    seals_title: `Σφραγίδες`, seal_round: `Γύρος {n}`, seal_bomb: `βόμβα {n}`,
+    round_n: `Γύρος {n}`,
+    wait_host: `Περιμένουμε τον οικοδεσπότη`,
+    wheel_left: `απομένουν {n}`,
+  },
+};
+</script>
+<script src="bomb-shared.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+"use strict";
+const T = (k) => bmT(k);
+const tpl = (k, v) => bmTpl(k, v);
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const hostKey = () => "bomb-host-" + CODE;
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+let conn = null, state = null, isHost = false, dead = false, prev = null;
+
+const player = (id) => state && state.players.find((p) => p.id === id);
+const nameOf = (id) => (player(id) || {}).name || "?";
+const initials = (name) => String(name || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+const live = () => state && state.phase === "live";
+
+// ---------- создание комнаты, если доску открыли без кода ----------
+async function ensureRoom() {
+  if (CODE) return true;
+  showBanner(T("creating"));
+  try {
+    const res = await fetch("/bomb/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: bmLang() } }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "error");
+    CODE = data.code;
+    try { localStorage.setItem(hostKey(), data.hostToken); } catch (e) {}
+    history.replaceState(null, "", `?r=${CODE}`);
+    showBanner(null);
+    return true;
+  } catch (err) {
+    showBanner(String(err.message || err));
+    return false;
+  }
+}
+function showBanner(text) {
+  const b = $("banner");
+  b.classList.toggle("hidden", !text);
+  b.textContent = text || "";
+}
+
+// ---------- печать в верхней полосе ----------
+let sealFull = false;
+function drawSeal() {
+  const box = $("seal");
+  const b = state && state.bombs[0];
+  const on = !!(b && state.phase !== "lobby");
+  box.classList.toggle("on", on);
+  if (!on) return;
+  const commits = state.bombs.map((x) => x.commit);
+  $("sealhash").textContent = sealFull ? commits.join(" · ") : commits.map((c) => c.slice(0, 8) + "…").join(" · ");
+  $("sealhash").title = T("seal_full");
+  $("sealrange").textContent = tpl("fuse_range", { a: state.fuse.min, b: state.fuse.max });
+}
+$("sealhash").onclick = () => { sealFull = !sealFull; drawSeal(); };
+
+// ---------- лобби ----------
+let qrDrawn = false;
+const lobbySeen = new Set();
+function drawLobby() {
+  const box = $("lobby");
+  const on = state.phase === "lobby";
+  box.classList.toggle("hidden", !on);
+  if (!on) return;
+  const url = `${location.origin}/bomb.html?r=${CODE}`;
+  if (box.dataset.lang !== bmLang()) {
+    box.dataset.lang = bmLang();
+    qrDrawn = false;
+    box.innerHTML = `<div class="panel who"><h2>${T("lobby_who")}<span id="seatn"></span></h2><div class="seats" id="seats"></div>
+        <div class="howto"><div><i>📱</i>${T("rule0")}</div><div><i>💣</i>${T("rule1")}. ${T("rule2")}</div><div><i>💥</i>${T("rule3")}</div></div></div>
+      <div class="panel side">
+        <div class="join"><div id="qr"></div><div><div class="bigcode" id="bigcode">${escapeHtml(CODE)}</div><div class="url">${escapeHtml(url.replace(/^https?:\/\//, ""))}</div><div class="scan">${T("lobby_scan")}</div></div></div>
+        <div id="opts" style="display:grid;gap:12px"></div>
+        <div class="startbox"><div class="fine" id="starthint"></div><button class="start" id="startbtn" type="button">${T("btn_start")}</button></div>
+      </div>`;
+    $("startbtn").onclick = () => conn.send({ type: "start" });
+    const code = $("bigcode");
+    let fs = 64;
+    code.style.setProperty("--code-fs", fs + "px");
+    while (fs > 30 && code.scrollWidth > code.clientWidth + 1) { fs -= 4; code.style.setProperty("--code-fs", fs + "px"); }
+  }
+  if (!qrDrawn && window.QRCode) {
+    qrDrawn = true;
+    new QRCode($("qr"), { text: url, width: 124, height: 124, colorDark: "#16120c", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+  }
+  const players = state.players.filter((p) => !p.left);
+  const fresh = players.filter((p) => !lobbySeen.has(p.id));
+  if (fresh.length && lobbySeen.size) bmSfx.pop();
+  const nodes = players.map((p) => {
+    const d = el("div", "seat" + (lobbySeen.has(p.id) ? "" : " new"));
+    const av = el("i", "av", initials(p.name));
+    av.style.setProperty("--pc", p.color);
+    d.append(av, el("b", null, p.name));
+    if (!p.online) d.append(el("span", "off", T("offline")));
+    if (isHost) { const x = el("button", "x", "✕"); x.type = "button"; x.title = T("kick"); x.onclick = () => conn.send({ type: "kick", playerId: p.id }); d.append(x); }
+    return d;
+  });
+  fresh.forEach((p) => lobbySeen.add(p.id));
+  // пустые места пунктиром, чтобы колонка не зияла пустотой
+  const free = Math.max(0, 16 - players.length);
+  for (let i = 0; i < free; i++) { const d = el("div", "seat empty"); d.append(el("i", "av"), el("b", null, T("lobby_free"))); nodes.push(d); }
+  $("seats").replaceChildren(...nodes);
+  $("seatn").textContent = tpl("lobby_n", { n: players.length });
+  drawOpts(players);
+  const enough = players.filter((p) => p.online).length >= 2;
+  $("startbtn").disabled = !isHost || !enough;
+  $("startbtn").classList.toggle("hidden", !isHost);
+  const notes = [];
+  if (!enough) notes.push(T("need_two"));
+  if (state.settings.mode === "two" && players.length < state.twoBombsMin) notes.push(T("two_note"));
+  if (!isHost) notes.push(T("viewer"));
+  $("starthint").textContent = notes.join(" · ");
+}
+
+function drawOpts(players) {
+  const s = state.settings;
+  const opt = (label, buttons, desc) => {
+    const o = el("div", "opt");
+    const seg = el("div", "seg");
+    seg.append(...buttons);
+    o.append(el("div", "k", label), seg);
+    if (desc != null) o.append(el("div", "d", desc));
+    return o;
+  };
+  const btn = (html, on, send) => {
+    const b = el("button", on ? "on" : "");
+    b.type = "button";
+    b.innerHTML = html;
+    b.disabled = !isHost;
+    b.onclick = () => conn.send({ type: "settings", settings: send });
+    return b;
+  };
+  const two = players.length === 2;
+  $("opts").replaceChildren(
+    opt(T("opt_mode"), ["classic", "elim", "two", "quiz"].map((m) => btn(escapeHtml(T("mode_" + m)), s.mode === m, { mode: m })), T("mode_" + s.mode + "_d")),
+    opt(T("opt_fuse"), ["short", "normal", "long"].map((f) => {
+      const r = { short: [20, 45], normal: [30, 90], long: [60, 150] }[f];
+      return btn(`${escapeHtml(T("fuse_" + f))}<small>${escapeHtml(tpl("fuse_range", { a: r[0], b: r[1] }))}</small>`, s.fuse === f, { fuse: f });
+    })),
+    opt(T("opt_return"), [true, false].map((v) => { const b = btn(escapeHtml(T(v ? "on" : "off")), s.returnOk === v, { returnOk: v }); if (two) b.disabled = true; return b; }), two ? T("return_two") : T("return_d")),
+    opt(T("opt_groups"), ["hands", "eyes", "head"].map((g) => {
+      const b = btn(escapeHtml(T("grp_" + g)), s.groups[g], { groups: { [g]: !s.groups[g] } });
+      // эрудиту группы не нужны — он всегда задаёт вопросы
+      if (s.mode === "quiz") b.disabled = true;
+      return b;
+    })),
+  );
+}
+
+// ---------- арена ----------
+const cards = new Map(); // id → элемент карточки
+const bombEls = []; // по номеру бомбы
+const cardPos = new Map(); // id → {x, y} центр карточки в координатах арены
+let arenaSize = "";
+
+function arenaPlayers() {
+  return state.players.filter((p) => !p.left);
+}
+
+// раскладка: широкий экран — эллипс вокруг центра, узкий — сетка сверху
+function layout() {
+  const arena = $("arena");
+  const W = arena.clientWidth, H = arena.clientHeight;
+  const list = arenaPlayers();
+  const n = list.length;
+  const narrow = W < 760;
+  const cw = narrow ? Math.floor((W - 8) / Math.max(1, Math.min(3, Math.floor(W / 150)))) - 8 : Math.max(150, Math.min(220, Math.floor(W / 7)));
+  arena.style.setProperty("--cw", cw + "px");
+  list.forEach((p, i) => {
+    let x, y;
+    if (narrow) {
+      const cols = Math.max(1, Math.floor((W + 8) / (cw + 8)));
+      x = (i % cols) * (cw + 8) + cw / 2;
+      y = Math.floor(i / cols) * 66 + 29;
+    } else {
+      const rx = W / 2 - cw / 2 - 8, ry = H / 2 - 29 - 8;
+      const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
+      x = W / 2 + rx * Math.cos(a);
+      y = H / 2 + ry * Math.sin(a);
+    }
+    cardPos.set(p.id, { x, y });
+    const c = cards.get(p.id);
+    if (c) c.style.transform = `translate(${x - cw / 2}px, ${y - 29}px)`;
+  });
+}
+
+function drawArena() {
+  const arena = $("arena");
+  const on = state.phase !== "lobby";
+  arena.classList.toggle("hidden", !on);
+  if (!on) return;
+  const list = arenaPlayers();
+  const ids = new Set(list.map((p) => p.id));
+  for (const [id, c] of cards) if (!ids.has(id)) { c.remove(); cards.delete(id); }
+  for (const p of list) {
+    let c = cards.get(p.id);
+    if (!c) {
+      c = el("div", "pc");
+      c.innerHTML = `<i class="av"></i><b></b><span class="st"></span>`;
+      arena.append(c);
+      cards.set(p.id, c);
+    }
+    c.querySelector(".av").textContent = initials(p.name);
+    c.querySelector(".av").style.setProperty("--pc", p.color);
+    c.querySelector("b").textContent = p.name;
+    c.classList.toggle("out", p.out);
+    c.classList.toggle("off", !p.online);
+    c.classList.toggle("hold", live() && p.holding);
+    c.classList.toggle("victim", (state.phase === "boom" || state.phase === "finished") && lastVictim() === p.id);
+    c.dataset.id = p.id;
+  }
+  const key = `${arena.clientWidth}x${arena.clientHeight}:${list.map((p) => p.id).join(",")}`;
+  if (key !== arenaSize) { arenaSize = key; layout(); }
+  drawBombs();
+  drawCenter();
+  drawHostbar();
+}
+
+function lastVictim() {
+  const b = state.booms[state.booms.length - 1];
+  return b && b.round === state.round ? b.playerId : null;
+}
+
+// место бомбы: у карточки держателя, чуть ближе к центру
+function bombSpot(holder) {
+  const p = cardPos.get(holder);
+  if (!p) return null;
+  const arena = $("arena");
+  const W = arena.clientWidth, H = arena.clientHeight;
+  if (W < 760) return { x: p.x + (parseFloat(getComputedStyle(arena).getPropertyValue("--cw")) || 150) / 2 - 20, y: p.y - 18 };
+  const dx = W / 2 - p.x, dy = H / 2 - p.y, d = Math.hypot(dx, dy) || 1;
+  return { x: p.x + (dx / d) * 92, y: p.y + (dy / d) * 70 };
+}
+
+function drawBombs() {
+  const arena = $("arena");
+  const bombs = state.phase === "lobby" ? [] : state.bombs;
+  while (bombEls.length < bombs.length) {
+    const w = el("div", "bombwrap");
+    w.innerHTML = `<div class="shake">${bmBombSvg()}</div>`;
+    arena.append(w);
+    bombEls.push({ el: w, holder: null, at: null });
+  }
+  bombEls.forEach((be, i) => {
+    const b = bombs[i];
+    const visible = !!(b && b.holder && (state.phase === "live" || state.phase === "boom"));
+    be.el.classList.toggle("gone", !visible || state.phase === "boom");
+    if (!visible) { be.holder = null; return; }
+    const to = bombSpot(b.holder);
+    if (!to) return;
+    if (be.holder && be.holder !== b.holder && be.at && !reduceMotion()) flyBomb(be, be.at, to);
+    else be.el.style.transform = `translate(${to.x}px, ${to.y}px)`;
+    be.holder = b.holder;
+    be.at = to;
+  });
+}
+
+// полёт дугой: вверх к середине пути и вниз к получателю, с поворотом
+function flyBomb(be, from, to) {
+  const mx = (from.x + to.x) / 2, my = Math.min(from.y, to.y) - 90 - Math.abs(from.x - to.x) * 0.08;
+  bmSfx.whoosh();
+  const a = be.el.animate([
+    { transform: `translate(${from.x}px, ${from.y}px) rotate(0deg) scale(1)` },
+    { transform: `translate(${mx}px, ${my}px) rotate(200deg) scale(1.25)`, offset: 0.5 },
+    { transform: `translate(${to.x}px, ${to.y}px) rotate(360deg) scale(1)` },
+  ], { duration: 600, easing: "cubic-bezier(.4,.1,.5,1)" });
+  be.el.style.transform = `translate(${to.x}px, ${to.y}px)`;
+  a.onfinish = () => { bmSfx.catch(); const c = cards.get(be.holder); if (c && !reduceMotion()) c.animate([{ transform: c.style.transform + " scale(1.08)" }, { transform: c.style.transform }], { duration: 300, easing: "ease-out" }); };
+}
+
+// центр: держатель крупно, что он делает, пузырь с вопросом или счётчики
+function drawCenter() {
+  const c = $("center");
+  const ph = state.phase;
+  if (ph === "countdown") {
+    if (c.dataset.mode !== "cd" + state.round) {
+      c.dataset.mode = "cd" + state.round;
+      c.innerHTML = `<div class="lbl">${escapeHtml(tpl("round_n", { n: state.roundInGame }))}</div>
+        <div class="sealcard"><div class="t">${T("seal_title")}</div>${state.bombs.map((b) => `<div class="h">${escapeHtml(b.commit)}</div>`).join("")}
+        <div class="s">${escapeHtml(tpl("fuse_range", { a: state.fuse.min, b: state.fuse.max }))} · ${escapeHtml(T("seal_line"))}</div></div>
+        <div class="count" id="count"></div>`;
+    }
+    return;
+  }
+  if (c.dataset.mode !== "live") {
+    c.dataset.mode = "live";
+    bubbleKey = ""; // центр пересобран — пузырь тоже
+    c.innerHTML = `<div class="lbl" id="lbl"></div><div class="holder" id="holder"></div><div class="doing" id="doing"></div>
+      <div class="bubble" id="bubble"></div><div class="danger">${T("danger")}</div>`;
+  }
+  const holders = [...new Set(state.bombs.filter((b) => b.alive && b.holder).map((b) => b.holder))];
+  const victim = lastVictim();
+  const shown = ph === "boom" || ph === "finished" ? (victim ? [victim] : []) : holders;
+  $("lbl").textContent = ph === "boom" || ph === "finished" ? (victim ? T("boom_at") : "") : holders.length > 1 ? T("now_hold2") : T("now_holds");
+  const h = $("holder");
+  h.textContent = shown.map(nameOf).join(" + ");
+  h.style.setProperty("--hc", shown.length === 1 ? (player(shown[0]) || {}).color || "var(--red)" : "var(--red)");
+  let fs = 84;
+  h.style.setProperty("--hfs", fs + "px");
+  while (fs > 34 && h.scrollWidth > h.clientWidth + 1) { fs -= 6; h.style.setProperty("--hfs", fs + "px"); }
+  // что делает держатель
+  let doing = "";
+  if (live()) {
+    const p0 = holders.map(player).find(Boolean);
+    if (p0 && p0.armed) doing = tpl("armed", { name: p0.name });
+    else if (p0 && p0.solving) doing = tpl("doing", { name: p0.name, what: T("ch_" + p0.solving) });
+    else if (p0) doing = tpl("fresh", { name: p0.name });
+  } else if (ph === "boom" || ph === "finished") {
+    doing = state.loserId ? tpl("standup_sub", { name: nameOf(state.loserId) }) : "";
+  }
+  $("doing").textContent = doing;
+  drawBubble(holders);
+}
+
+// пузырь: вопрос «головы» у держателя — крупно; иначе счётчики раунда. Место всегда занято (без пустот)
+let bubbleKey = "";
+function drawBubble(holders) {
+  const box = $("bubble");
+  const ch = live() && state.challenges ? holders.map((id) => state.challenges[id]).find((c) => c && c.group === "head") : null;
+  if (ch) {
+    const key = "q" + ch.id + bmLang();
+    if (bubbleKey === key) return;
+    bubbleKey = key;
+    const v = ch.view;
+    let q = "", opts = [];
+    if (ch.type === "quiz") { q = bmTx(v.q); opts = v.options.map(bmTx); }
+    else if (ch.type === "tf") { q = bmTx(v.q); opts = [T("q_true"), T("q_false")]; }
+    else if (ch.type === "heavy") { q = v.options.map(bmTx).join("  ⚖  "); }
+    else if (ch.type === "chrono") { q = v.items.map(bmTx).join(" · "); }
+    else if (ch.type === "math") { q = v.text + " = ?"; }
+    else if (ch.type === "seq") { q = seqText(v) + ", ?"; }
+    else if (ch.type === "sudoku") { q = "🧩 " + v.n + "×" + v.n; }
+    box.innerHTML = `<div><div class="q">${escapeHtml(q)}</div>${opts.length ? `<div class="opts">${opts.map((o) => `<span>${escapeHtml(o)}</span>`).join("")}</div>` : ""}</div>`;
+    return;
+  }
+  // после взрыва: сколько горел раунд и какой был фитиль — печать уже вскрыта
+  if (state.phase === "boom" || state.phase === "finished") {
+    const key = "b" + state.round + bmLang();
+    if (bubbleKey === key) return;
+    bubbleKey = key;
+    const st = state.stats || {};
+    const boom = state.booms[state.booms.length - 1];
+    const seal = boom && state.seals.find((x) => x.round === boom.round && x.bomb === boom.bomb && x.revealed);
+    const dur = Math.round((st.duration || 0) / 1000);
+    box.innerHTML = `<div class="meta"><div>${T("burned")}<b>${Math.floor(dur / 60)}:${String(dur % 60).padStart(2, "0")}</b></div><div>${T("passes")}<b>${st.passes || 0}</b></div>${seal ? `<div>${T("fuse_was")}<b>${escapeHtml(tpl("sec_s", { s: seal.fuseMs / 1000 }))}</b></div>` : ""}</div>`;
+    return;
+  }
+  const key = "m";
+  if (bubbleKey !== key) {
+    bubbleKey = key;
+    box.innerHTML = `<div class="meta"><div>${T("burning")}<b id="m-el">0:00</b></div><div>${T("passes")}<b id="m-pa">0</b></div><div>${T("in_hands")}<b id="m-ih">0,0</b></div></div>`;
+  }
+  $("m-pa").textContent = String(state.passes || 0);
+}
+function seqText(v) {
+  if (v.kind === "days") { const d = String(T("days")).split("|"); return v.items.map((i) => d[i]).join(", "); }
+  return v.items.join(", ");
+}
+
+function drawHostbar() {
+  const bar = $("hostbar");
+  const show = isHost && (state.phase === "live" || state.phase === "countdown");
+  if (!show) { bar.replaceChildren(); return; }
+  if (bar.childElementCount) return;
+  const b = el("button", null, T("btn_end"));
+  b.type = "button";
+  b.onclick = () => conn.send({ type: "end" });
+  bar.append(b);
+}
+
+// ---------- итоги ----------
+let resultKey = "";
+function drawResult() {
+  const box = $("result");
+  const on = state.phase === "finished";
+  box.classList.toggle("hidden", !on);
+  if (!on) { resultKey = ""; return; }
+  const key = `${state.game}.${state.round}.${bmLang()}.${isHost}`;
+  if (key === resultKey) return;
+  resultKey = key;
+  const st = state.stats;
+  const who = (x) => (x && x.playerId ? escapeHtml(nameOf(x.playerId)) : T("st_none"));
+  let verdict;
+  if (state.settings.mode === "elim" && state.winnerId) {
+    const w = player(state.winnerId) || {};
+    verdict = `<div class="verdict" style="--vc:${w.color || "var(--red)"}"><div class="k">${T("winner")}</div><div class="n">${escapeHtml(w.name || "?")}</div>
+      ${state.loserId ? `<div class="sub">${escapeHtml(tpl("standup_sub", { name: nameOf(state.loserId) }))}</div>` : ""}</div>`;
+  } else if (state.loserId) {
+    const l = player(state.loserId) || {};
+    verdict = `<div class="verdict" style="--vc:${l.color || "var(--red)"}"><div class="k">${T("standup")}</div><div class="n">${escapeHtml(l.name || "?")}</div></div>`;
+  } else {
+    verdict = `<div class="verdict"><div class="k">${T(state.finishedReason === "few" ? "fin_few" : "fin_host")}</div></div>`;
+  }
+  const stats = st ? `<div class="stats">
+      <div class="stat"><div class="k">${T("st_longest")}</div><div class="v">${who(st.longest)}</div></div>
+      <div class="stat"><div class="k">${T("st_mostgot")}</div><div class="v">${who(st.mostGot)}${st.mostGot ? " · " + escapeHtml(tpl("st_times", { n: st.mostGot.n })) : ""}</div></div>
+      <div class="stat"><div class="k">${T("st_fastest")}</div><div class="v">${who(st.fastest)}${st.fastest ? " · " + escapeHtml(tpl("sec_s", { s: bmSec(st.fastest.ms) })) : ""}</div></div>
+      <div class="stat"><div class="k">${T("st_passes")}</div><div class="v">${st.passes}</div></div>
+    </div>` : "";
+  // номер раунда внутри партии; у двух бомб одного раунда — ещё и номер бомбы
+  const rounds = [...new Set(state.seals.map((x) => x.round))];
+  const twoOf = (x) => state.seals.filter((y) => y.round === x.round).length > 1;
+  const seals = state.seals.map((x, i) => `<div class="sealrow"><div class="top2"><span>${escapeHtml(tpl("seal_round", { n: rounds.indexOf(x.round) + 1 }))}${twoOf(x) ? " · " + escapeHtml(tpl("seal_bomb", { n: x.bomb + 1 })) : ""} · ${escapeHtml(tpl("seal_fuse", { n: x.revealed ? x.fuseMs / 1000 : "?" }))}</span><span class="chk" data-i="${i}">${T("seal_check")}</span></div>
+      <code>sha256(${escapeHtml(x.seal || "")})</code><code>= ${escapeHtml(x.commit)}</code></div>`).join("");
+  box.innerHTML = `<div class="rcard">${verdict}${stats}
+    <div class="seals"><div class="stat" style="border:0;background:none;padding:0"><div class="k">${T("seals_title")} · ${escapeHtml(T("seal_line"))}</div></div>${seals}</div>
+    ${isHost ? `<div class="rbtns"><button class="main" id="again" type="button">${T("btn_again")}</button><button id="tolobby" type="button">${T("btn_lobby")}</button></div>` : `<div class="fine">${T("wait_host")}</div>`}</div>`;
+  if (isHost) {
+    $("again").onclick = () => conn.send({ type: "start" });
+    $("tolobby").onclick = () => conn.send({ type: "lobby" });
+  }
+  state.seals.forEach(async (x, i) => {
+    const ok = await bmVerifySeal(x);
+    const node = box.querySelector(`.chk[data-i="${i}"]`);
+    if (!node) return;
+    node.className = "chk " + (ok ? "ok" : "bad");
+    node.textContent = ok ? "✓ " + T("seal_ok") : "✗ " + T("seal_bad");
+  });
+}
+
+// ---------- эффекты по смене состояния ----------
+function effects() {
+  if (!prev) return;
+  // новый взрыв — вспышка, «БУМ!» над карточкой, тряска
+  if (state.booms.length > prev.booms.length || (state.phase === "boom" && prev.phase !== "boom")) {
+    const v = lastVictim();
+    boomFx(v);
+  }
+  if (state.phase === "countdown" && prev.phase !== "countdown") lastCount = null;
+}
+
+function boomFx(victim) {
+  bmSfx.boom();
+  if (reduceMotion()) return;
+  const f = $("flash");
+  f.classList.remove("on"); void f.offsetWidth; f.classList.add("on");
+  document.body.classList.remove("shaking"); void document.body.offsetWidth; document.body.classList.add("shaking");
+  const pos = cardPos.get(victim);
+  if (!pos) return;
+  const k = el("div", "kapow on");
+  k.innerHTML = `<svg viewBox="0 0 380 300"><path d="M190 8 L222 92 L300 40 L276 124 L372 132 L292 176 L352 262 L252 226 L230 296 L186 234 L126 292 L122 214 L20 244 L84 170 L8 118 L104 110 L70 26 L150 84Z" fill="#e8322b" stroke="#16120c" stroke-width="8" stroke-linejoin="round"/></svg><span>${escapeHtml(T("boom"))}</span>`;
+  k.style.left = pos.x + "px";
+  k.style.top = pos.y + "px";
+  $("arena").append(k);
+  setTimeout(() => k.remove(), 4200);
+}
+
+function floatAt(id, emoji) {
+  const pos = cardPos.get(id);
+  if (!pos || state.phase === "lobby") return;
+  const f = el("div", "float", emoji);
+  f.style.left = pos.x + "px";
+  f.style.top = pos.y - 50 + "px";
+  $("arena").append(f);
+  setTimeout(() => f.remove(), 1700);
+}
+
+// ---------- кадр: фитиль, тряска, часы, тиканье ----------
+let lastTick = 0, lastCount = null;
+function frame() {
+  requestAnimationFrame(frame);
+  if (!state) return;
+  const now = bmNow();
+  const heatOn = live();
+  const left = bmFuseLeft(state, now);
+  for (const be of bombEls) {
+    bmSetFuse(be.el.querySelector("svg"), heatOn ? left : 1);
+    be.el.style.setProperty("--heat", heatOn ? (1 - left).toFixed(3) : "0");
+  }
+  const elapsed = heatOn && state.startedAt ? now - state.startedAt : 0;
+  // после нижней границы взрыв возможен в любую секунду — это знают все, фитиль ничего не выдаёт
+  document.body.classList.toggle("hot", heatOn && elapsed >= state.fuse.min * 1000);
+  if (heatOn) {
+    const m = $("m-el");
+    if (m) m.textContent = `${Math.floor(elapsed / 60000)}:${String(Math.floor(elapsed / 1000) % 60).padStart(2, "0")}`;
+    const ih = $("m-ih");
+    const b = state.bombs.find((x) => x.alive);
+    if (ih && b && b.since) ih.textContent = bmSec(now - b.since);
+    // тиканье чаще по прошедшему времени (одинаково в любом раунде)
+    const gap = 720 - 540 * Math.min(1, elapsed / (state.fuse.max * 1000));
+    if (now - lastTick > gap) { lastTick = now; bmSfx.tick(elapsed >= state.fuse.min * 1000); }
+    for (const p of arenaPlayers()) {
+      const c = cards.get(p.id);
+      if (!c) continue;
+      const st = c.querySelector(".st");
+      const hb = state.bombs.find((x) => x.alive && x.holder === p.id);
+      st.textContent = hb ? "🧨 " + bmSec(now - hb.since) : p.out ? T("out_mark") : !p.online ? T("offline") : "";
+      c.classList.toggle("hot", !!hb && now - hb.since > 6000);
+    }
+  } else if (state.phase === "countdown") {
+    const n = Math.max(1, Math.ceil((state.phaseEnd - now) / 1000));
+    const cnt = $("count");
+    if (cnt && n !== lastCount && state.phaseEnd - now > 0) {
+      lastCount = n;
+      cnt.textContent = n;
+      cnt.classList.remove("pop"); void cnt.offsetWidth; cnt.classList.add("pop");
+      bmSfx.count(false);
+    }
+  } else {
+    for (const p of arenaPlayers()) {
+      const c = cards.get(p.id);
+      if (!c) continue;
+      c.classList.remove("hot");
+      c.querySelector(".st").textContent = p.out ? T("out_mark") : !p.online ? T("offline") : "";
+    }
+  }
+}
+
+// ---------- отрисовка ----------
+function render() {
+  if (!state || dead) return;
+  document.body.dataset.phase = state.phase;
+  $("codechip").textContent = CODE;
+  $("codechip").classList.toggle("hidden", state.phase === "lobby");
+  drawSeal();
+  drawLobby();
+  drawArena();
+  drawResult();
+  effects();
+  prev = state;
+}
+
+window.addEventListener("resize", () => { arenaSize = ""; if (state) drawArena(); });
+window.addEventListener("langchange", () => { $("lobby").dataset.lang = ""; $("center").dataset.mode = ""; bubbleKey = ""; resultKey = ""; render(); });
+
+// ---------- связь ----------
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+      state = m.state;
+      if (!isHost) {
+        let token = null;
+        try { token = localStorage.getItem(hostKey()); } catch (e) {}
+        if (token) conn.send({ type: "host", token });
+      }
+      render();
+      break;
+    case "state":
+      state = m.state;
+      render();
+      break;
+    case "host_ok":
+      isHost = true;
+      document.body.classList.add("host");
+      $("lobby").dataset.lang = "";
+      resultKey = "";
+      break;
+    case "host_lost":
+      isHost = false;
+      document.body.classList.remove("host");
+      $("lobby").dataset.lang = "";
+      resultKey = "";
+      render();
+      break;
+    case "event":
+      if (m.event.type === "react") floatAt(m.event.playerId, m.event.emoji);
+      break;
+    case "error":
+      if (m.error === "room_expired") gone();
+      break;
+  }
+}
+
+function gone() {
+  dead = true;
+  for (const id of ["lobby", "arena", "result"]) $(id).classList.add("hidden");
+  $("seal").classList.remove("on");
+  showBanner(T("expired"));
+}
+
+async function boot() {
+  // ?h=токен — ссылка ведущего на другое устройство: токен кладём в хранилище и убираем из адреса
+  const h = params.get("h");
+  if (h && CODE) {
+    try { localStorage.setItem(hostKey(), h); } catch (e) {}
+    history.replaceState(null, "", `?r=${CODE}`);
+  }
+  if (!(await ensureRoom())) return;
+  const banner = $("conn");
+  conn = bmConnect({
+    code: CODE,
+    onMessage,
+    onGone: gone,
+    onOpen: () => { isHost = false; },
+    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+  });
+  requestAnimationFrame(frame);
+  // ручка для отладки и стенда: те же сообщения, что шлют кнопки доски
+  window.bmBoard = { send: (m) => conn.send(m), get state() { return state; }, get code() { return CODE; } };
+}
+boot();
+</script>
+</body>
+</html>

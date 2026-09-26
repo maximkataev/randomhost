@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#fbf1d9">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f4a3.svg" type="image/svg+xml">
+<title>Бомба — горячая картошка для компании</title>
+<meta name="robots" content="index,follow">
+<meta name="description" content="💣 Мультиплеерная «горячая картошка»: бомба ходит по телефонам, чтобы передать — пройди мини-испытание. Когда рванёт, не знает никто: время запечатано до старта и проверяется после взрыва. У кого взорвалась — ведёт стендап." data-i18n-meta="_meta">
+<!-- ссылки на комнаты (?r=КОД) — та же страница: в выдаче должна быть одна, без кода -->
+<link rel="canonical" href="https://randomhost.online/bomb.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Бомба — горячая картошка для компании">
+<meta property="og:description" content="Бомба ходит по телефонам, передать — только пройдя мини-испытание. У кого взорвалась — ведёт стендап.">
+<meta property="og:url" content="https://randomhost.online/bomb.html">
+<meta property="og:site_name" content="Рандомайзер Онлайн">
+<meta property="og:locale" content="ru_RU">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- неблокирующий шрифт: без ответа Google Fonts пульт рисуется системным шрифтом. Fira Sans покрывает кириллицу и греческий -->
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans+Extra+Condensed:ital,wght@0,500;0,700;0,900;1,900&display=swap" rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Fira+Sans+Extra+Condensed:ital,wght@0,500;0,700;0,900;1,900&display=swap" rel="stylesheet"></noscript>
+<style>
+  /* Пульт в том же мире, что и доска: дневной ретро-комикс. Пока бомбы нет — спокойная бумага;
+     бомба пришла — экран краснеет, испытание на весь экран, кнопки крупные: решать надо за секунды. */
+  :root {
+    --paper: #fbf1d9;
+    --paper-2: #f3e2b8;
+    --ink: #16120c;
+    --ink-2: #4a3f2e;
+    --muted: #7a6a4f;
+    --red: #e8322b;
+    --yellow: #ffc21a;
+    --blue: #1e6fd9;
+    --green: #16924a;
+    --line: 3px solid var(--ink);
+    --shift: 4px 4px 0 var(--ink);
+    --font: "Fira Sans Extra Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --spring: cubic-bezier(.3, 1.6, .5, 1);
+    --lang-switch-bg: var(--paper);
+    --lang-switch-border: var(--ink);
+    --lang-switch-fg: var(--ink);
+    --lang-switch-active-bg: var(--ink);
+    --lang-switch-active-fg: var(--paper);
+    --lang-switch-active-border: var(--ink);
+    --lang-switch-font: var(--font);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: radial-gradient(rgba(22, 18, 12, .09) 1.1px, transparent 1.7px) 0 0 / 11px 11px, var(--paper);
+    color: var(--ink);
+    font: 500 18px/1.25 var(--font);
+    -webkit-font-smoothing: antialiased;
+    transition: background-color .2s;
+  }
+  body.holding { background: radial-gradient(rgba(22, 18, 12, .14) 1.1px, transparent 1.7px) 0 0 / 11px 11px, var(--red); }
+  button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+  .hidden { display: none !important; }
+  /* справа — место под переключатель языка из i18n.js (fixed в правом верхнем углу; --lsw меряет bomb-shared.js) */
+  .util { display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 var(--lsw, 150px) 0 14px; }
+  .util .sound-toggle-btn { margin-left: auto; }
+  .util a { color: var(--ink-2); text-decoration: none; font-weight: 700; }
+  body.holding .util a { color: #fff; }
+  .sound-toggle-btn { width: 38px; height: 38px; border: var(--line); background: var(--paper); box-shadow: 3px 3px 0 var(--ink); font-size: 17px; }
+  .conn { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 30; background: var(--ink); color: #fff; font-weight: 700; padding: 6px 12px; visibility: hidden; white-space: nowrap; }
+  .conn.on { visibility: visible; }
+  .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: var(--ink); color: var(--paper); font-weight: 700; padding: 10px 14px; max-width: calc(100% - 32px); visibility: hidden; }
+  .toast.on { visibility: visible; animation: drop .3s var(--spring); }
+  /* контент по центру экрана по вертикали; экран с бомбой (.hot) растягивается на всю высоту */
+  #app { max-width: 520px; margin: 0 auto; padding: 0 16px 24px; min-height: calc(100vh - 52px); min-height: calc(100dvh - 52px); display: flex; flex-direction: column; justify-content: center; }
+
+  .btn { display: block; width: 100%; border: var(--line); background: var(--red); color: #fff; font: italic 900 28px/1 var(--font); text-transform: uppercase; padding: 16px; box-shadow: 5px 5px 0 var(--ink); text-shadow: 2px 2px 0 var(--ink); text-align: center; text-decoration: none; }
+  .btn.alt { background: var(--paper); color: var(--ink); text-shadow: none; font-size: 22px; }
+  .btn:not(:disabled):active { transform: translate(3px, 3px); box-shadow: 2px 2px 0 var(--ink); }
+  .link { border: 0; background: none; padding: 0; text-decoration: underline; font-weight: 700; color: var(--ink); }
+
+  /* ---------- стартовый экран ---------- */
+  .landing { display: grid; gap: 18px; }
+  .hero { display: grid; grid-template-columns: minmax(0, 1fr) 120px; align-items: center; gap: 8px; }
+  h1 { margin: 0; font: italic 900 64px/.95 var(--font); text-transform: uppercase; color: var(--red); -webkit-text-stroke: 2px var(--ink); text-shadow: 4px 4px 0 var(--ink); }
+  .eyebrow { font-weight: 900; text-transform: uppercase; font-size: 15px; letter-spacing: .06em; color: var(--ink-2); margin-bottom: 6px; }
+  .lede { margin: 0; font-size: 20px; line-height: 1.3; }
+  .lede b { background: var(--yellow); padding: 0 3px; }
+  .hero .bombbox { width: 120px; height: 120px; }
+  .bombbox .bomb { width: 100%; height: 100%; overflow: visible; }
+  .bombbox .shake { width: 100%; height: 100%; animation: shake .35s linear infinite; --heat: .4; }
+  .bomb .spark { animation: spark .18s steps(2) infinite; transform-box: fill-box; }
+  .cta { display: grid; gap: 10px; }
+  .cta .sub { display: flex; justify-content: space-between; gap: 12px; font-size: 16px; color: var(--ink-2); flex-wrap: wrap; }
+  .rules { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; counter-reset: r; }
+  .rules li { display: grid; grid-template-columns: 30px 1fr; gap: 10px; font-size: 19px; counter-increment: r; align-items: start; }
+  .rules li::before { content: counter(r); width: 30px; height: 30px; border: 2.5px solid var(--ink); background: var(--yellow); display: grid; place-items: center; font-weight: 900; }
+  .fine { font-size: 15px; color: var(--ink-2); }
+
+  /* ---------- вход ---------- */
+  .card { background: var(--paper); border: var(--line); box-shadow: 6px 6px 0 var(--ink); padding: 18px; display: grid; gap: 12px; }
+  .room { font: 900 16px/1 var(--font); letter-spacing: .08em; color: var(--ink-2); }
+  h2 { margin: 0; font: italic 900 38px/1 var(--font); text-transform: uppercase; }
+  input { font: 700 26px/1 var(--font); width: 100%; padding: 12px; border: var(--line); background: #fff; color: var(--ink); border-radius: 0; }
+  .err { color: var(--red); font-weight: 700; min-height: 1.25em; }
+  .enter { display: grid; gap: 14px; }
+
+  /* ---------- ожидание и спокойные экраны ---------- */
+  .calm { display: grid; gap: 14px; align-content: center; }
+  .status { text-align: center; display: grid; gap: 4px; }
+  .status .k { font: 900 16px/1 var(--font); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2); }
+  .status .big { font: italic 900 var(--bfs, 54px)/1.05 var(--font); text-transform: uppercase; color: var(--bc, var(--ink)); -webkit-text-stroke: 1.5px var(--ink); text-shadow: 3px 3px 0 var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px 4px; }
+  .status .sub { font-size: 19px; font-weight: 700; min-height: 1.3em; }
+  .plist { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pl { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 10px; border: 2.5px solid var(--ink); background: #fff; min-width: 0; }
+  .pl b { font-weight: 700; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+  .pl.me { background: var(--paper-2); }
+  .pl.hold { background: var(--yellow); }
+  .pl.out { opacity: .4; }
+  .pl .tag { font-size: 18px; }
+  .av { flex: none; width: 28px; height: 28px; border: 2.5px solid var(--ink); border-radius: 50%; background: var(--pc, #ccc); display: grid; place-items: center; font: 900 12px/1 var(--font); color: #fff; text-shadow: 1px 1px 0 var(--ink); }
+  .reacts { display: flex; justify-content: space-between; gap: 8px; padding-top: 6px; }
+  .reacts button { flex: 1; height: 54px; font-size: 26px; border: 2.5px solid var(--ink); background: #fff; box-shadow: 3px 3px 0 var(--ink); }
+  .reacts button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  .mini { display: grid; grid-template-columns: 76px 1fr; gap: 12px; align-items: center; background: #fff; border: 2.5px solid var(--ink); padding: 8px 12px; }
+  .mini .bombbox { width: 70px; height: 70px; }
+  .mini .t { font-size: 17px; line-height: 1.25; }
+  .mini .t b { font-size: 22px; display: block; }
+  .count { font: italic 900 120px/1 var(--font); color: var(--yellow); -webkit-text-stroke: 3px var(--ink); text-shadow: 5px 5px 0 var(--ink); text-align: center; height: 120px; }
+  .seal { font: 600 14px/1.3 var(--mono); word-break: break-all; background: #fff; border: 2.5px solid var(--ink); padding: 8px 10px; }
+  .seal .ok { color: var(--green); font: 900 17px/1.2 var(--font); display: block; margin-top: 4px; }
+  .seal .bad { color: var(--red); font: 900 17px/1.2 var(--font); display: block; margin-top: 4px; }
+
+  /* ---------- бомба в руках: испытание ---------- */
+  .hot { flex: 1; display: grid; grid-template-rows: auto auto 1fr; gap: 12px; padding-top: 2px; color: #fff; }
+  .hothead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .hothead .yours { font: italic 900 30px/1 var(--font); text-transform: uppercase; text-shadow: 3px 3px 0 var(--ink); -webkit-text-stroke: 1px var(--ink); }
+  .hothead .held { font: 900 22px/1 var(--font); font-variant-numeric: tabular-nums; background: var(--ink); padding: 6px 10px; }
+  .task { font: 900 26px/1.1 var(--font); text-shadow: 2px 2px 0 var(--ink); min-height: 2.2em; display: flex; align-items: flex-end; }
+  .ttl { height: 8px; background: rgba(22, 18, 12, .35); border: 2px solid var(--ink); }
+  .ttl i { display: block; height: 100%; background: var(--yellow); transform-origin: left; }
+  .pad { position: relative; background: var(--paper); color: var(--ink); border: var(--line); box-shadow: 6px 6px 0 var(--ink); padding: 14px; display: grid; align-content: space-evenly; gap: 12px; min-height: 340px; overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: none; }
+  .pad.shake { animation: bigshake .35s linear; }
+  .pad.solved::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center; font: 900 140px/1 var(--font); color: var(--green); background: rgba(251, 241, 217, .88); animation: pop .35s var(--spring); }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .opts.one { grid-template-columns: 1fr; }
+  .opt { min-height: 64px; border: var(--line); background: #fff; font-weight: 900; font-size: 22px; line-height: 1.1; padding: 8px; box-shadow: 3px 3px 0 var(--ink); word-break: break-word; }
+  .opt:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  .opt.picked { background: var(--yellow); }
+  .qtext { font-weight: 900; font-size: 28px; line-height: 1.15; text-align: center; }
+  .grid { display: grid; gap: 8px; justify-content: center; }
+  .cell { width: 100%; aspect-ratio: 1; border: 2.5px solid var(--ink); background: #fff; font-size: 30px; display: grid; place-items: center; padding: 0; }
+  .cell.txt { font: 900 34px/1 var(--font); }
+  .cell:active { background: var(--yellow); }
+  .field { position: relative; height: 300px; }
+  .wire { position: absolute; left: 0; right: 0; height: 30px; border: 3px solid var(--ink); background: var(--wc); transition: top .25s var(--spring); }
+  .wire.cut { visibility: hidden; }
+  .tgt { position: absolute; width: 72px; height: 72px; margin: -36px 0 0 -36px; border: 0; background: none; font-size: 54px; padding: 0; transition: left .18s ease-out, top .18s ease-out; }
+  .num { position: absolute; width: 60px; height: 60px; margin: -30px 0 0 -30px; border: var(--line); background: #fff; font: 900 30px/1 var(--font); border-radius: 50%; box-shadow: 3px 3px 0 var(--ink); }
+  .num.done { background: var(--green); color: #fff; }
+  .arrows { display: flex; justify-content: center; gap: 12px; font: 900 72px/1 var(--font); }
+  .arrows span.done { color: var(--green); }
+  .swipezone { height: 180px; border: 3px dashed var(--ink); display: grid; place-items: center; font-size: 20px; font-weight: 700; color: var(--ink-2); }
+  .holdbar { height: 44px; border: var(--line); background: #fff; position: relative; }
+  .holdbar .zone { position: absolute; top: 0; bottom: 0; background: rgba(22, 146, 74, .45); border-left: 3px solid var(--green); border-right: 3px solid var(--green); }
+  .holdbar .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--ink); opacity: .75; }
+  .holdbtn { height: 150px; border: var(--line); background: var(--yellow); font: italic 900 34px/1 var(--font); text-transform: uppercase; box-shadow: 5px 5px 0 var(--ink); }
+  .holdbtn.on { transform: translate(3px, 3px); box-shadow: 2px 2px 0 var(--ink); background: var(--green); color: #fff; }
+  .nopress { height: 220px; border: 4px solid var(--ink); border-radius: 50%; background: var(--red); color: #fff; font: italic 900 42px/1 var(--font); text-transform: uppercase; text-shadow: 3px 3px 0 var(--ink); box-shadow: 0 8px 0 #8a1510; width: 220px; justify-self: center; }
+  .nowbtn { border: var(--line); background: var(--green); color: #fff; font: 900 20px/1 var(--font); padding: 12px 18px; justify-self: center; visibility: hidden; }
+  .nowbtn.on { visibility: visible; animation: pop .3s var(--spring); }
+  .word { font: 900 min(58px, 12vw)/1 var(--font); text-align: center; letter-spacing: .02em; }
+  .digits { font: 900 84px/1 var(--mono); text-align: center; letter-spacing: .12em; height: 90px; }
+  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .keypad button { height: 56px; border: 2.5px solid var(--ink); background: #fff; font: 900 26px/1 var(--font); }
+  .sud { display: grid; gap: 0; border: 3px solid var(--ink); justify-self: center; }
+  .sud div { width: 58px; height: 58px; display: grid; place-items: center; font: 900 30px/1 var(--font); border: 1.5px solid var(--ink); background: #fff; }
+  .sud div.q { background: var(--yellow); }
+  .sud div.e { background: var(--paper-2); }
+  .seqrow { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; font: 900 34px/1 var(--font); }
+  .seqrow span { min-width: 44px; padding: 6px 8px; border: 2.5px solid var(--ink); background: #fff; text-align: center; }
+  .seqrow span.q { background: var(--yellow); }
+  .chron .opt { text-align: left; display: flex; gap: 10px; align-items: center; }
+  .chron .opt i { flex: none; width: 34px; height: 34px; border: 2.5px solid var(--ink); display: grid; place-items: center; font-style: normal; background: var(--paper-2); }
+  .chron .opt.picked i { background: var(--ink); color: #fff; }
+  /* плитки целей растягиваются на весь экран: при двух-трёх игроках — огромные, под большой палец */
+  .targets { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; grid-auto-rows: minmax(76px, 1fr); padding-bottom: 6px; }
+  .targets.few { grid-template-columns: 1fr; }
+  .target { min-height: 76px; color: var(--ink); border: var(--line); background: #fff; box-shadow: 4px 4px 0 var(--ink); display: flex; align-items: center; gap: 10px; padding: 0 10px; font-weight: 900; font-size: 22px; min-width: 0; text-align: left; }
+  .target span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .target small { display: block; font-size: 13px; font-weight: 700; color: var(--ink-2); }
+  .target:not(:disabled):active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--ink); background: var(--yellow); }
+  .throwing .target { pointer-events: none; }
+
+  /* ---------- взрыв ---------- */
+  .boomscr { flex: 1; display: grid; place-items: center; text-align: center; gap: 10px; align-content: center; }
+  .boomscr .kapow { font: italic 900 110px/1 var(--font); color: var(--yellow); -webkit-text-stroke: 3px var(--ink); text-shadow: 6px 6px 0 var(--ink); transform: rotate(-8deg); animation: pop .5s var(--spring); }
+  body.blown { background: var(--ink); color: var(--paper); }
+  body.blown .util a { color: var(--paper); }
+
+  @keyframes drop { from { transform: translate(-50%, 10px); opacity: 0; } }
+  @keyframes pop { from { transform: scale(1.8) rotate(-8deg); opacity: 0; } }
+  @keyframes spark { 50% { transform: scale(1.35) rotate(20deg); } }
+  @keyframes shake { 25% { transform: translate(2px, -2px) rotate(3deg); } 75% { transform: translate(-2px, -1px) rotate(-3deg); } }
+  @keyframes bigshake { 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
+  @media (max-width: 370px) {
+    h1 { font-size: 52px; }
+    .opt { font-size: 19px; min-height: 58px; }
+    .qtext { font-size: 24px; }
+    .sud div { width: 50px; height: 50px; }
+    .target { font-size: 19px; height: 68px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bombbox .shake, .bomb .spark, .pad.shake, .pad.solved::after, .boomscr .kapow, .nowbtn.on, .toast.on { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="util"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
+<div class="conn" id="conn"></div>
+<div id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Бомба — горячая картошка для компании`,
+    _meta: `💣 Мультиплеерная «горячая картошка»: бомба ходит по телефонам, чтобы передать — пройди мини-испытание. Когда рванёт, не знает никто: время запечатано до старта и проверяется после взрыва. У кого взорвалась — ведёт стендап.`,
+    nav_all_games: `← Все игры`,
+    eyebrow: `Игра для компании · телефоны + общий экран`,
+    h1: `Бомба`,
+    lede: `Горячая картошка с настоящим фитилём. Бомба ходит по телефонам, а чтобы передать её — нужно <b>пройти мини-испытание</b>. Когда рванёт, <b>не знает никто</b>. У кого взорвалась — тот ведёт стендап.`,
+    btn_create: `Создать комнату`, btn_creating: `Создаём…`,
+    cta_sub: `Открывай на ноутбуке или ТВ — там будет бомба`,
+    have_code: `У меня есть код`, prompt_code: `Код комнаты`,
+    rule1: `Все заходят с телефонов по QR с общего экрана`,
+    rule2: `Бомба пришла — пройди испытание: провода, судоку, вопрос, «не жми»…`,
+    rule3: `Прошёл — кидай кому хочешь. Время взрыва запечатано до старта — после взрыва его можно проверить`,
+    fine: `Ботов нет: играют только те, кто зашёл с телефона.`,
+    enter_title: `Как тебя зовут?`, enter_ph: `Имя`, btn_join: `Войти`,
+    err_name: `Напиши имя`, err_room_full: `В комнате уже 16 игроков`, err_game_started: `Раунд уже идёт — зайдёшь, как только он закончится`, err_token_gone: `Тебя нет в этой партии — войди заново`,
+    wait_title: `Подключаемся…`,
+    lobby_in: `Ты в игре`, lobby_wait: `Ждём, пока ведущий подожжёт фитиль`,
+    spectator: `Раунд уже идёт`, spectator_sub: `Смотри на общий экран — войдёшь в следующий`,
+    cd_k: `Печать раунда`, cd_sub: `Приготовься: бомба сейчас у кого-то появится`,
+    holds_k: `Бомбу держит`, holds_you: `ты!`,
+    calm_sub: `Держи телефон под рукой — она может прилететь`,
+    you_have: `Бомба у тебя!`, held_for: `{s} с`,
+    pick_target: `Кидай! Кому?`, just_threw: `только что кинул(а)`, throwing: `Летит…`,
+    wrong: `Мимо! Держи другое`, swap: `Не успел — держи другое`,
+    boom: `БУМ!`, boom_you: `Ты ведёшь стендап`, boom_you_out: `Ты выбыл(а) — смотри на экран`, boom_other: `Не повезло`,
+    out_title: `Ты выбыл(а)`, out_sub: `Смотри на общий экран и болей`,
+    fin_standup: `Стендап ведёт`, fin_winner: `Последний выживший`, fin_you: `Это ты!`, fin_stop: `Раунд остановлен`,
+    fin_wait: `Ждём ведущего: ещё раунд или лобби`,
+    expired_title: `Комната закрылась`, expired_text: `Попроси ведущего создать новую.`, expired_new: `Новая комната`,
+    kicked_title: `Ведущий убрал тебя из комнаты`,
+    replaced_title: `Ты открыл(а) игру на другом устройстве`, replaced_text: `Здесь управлять больше нельзя.`, btn_back_here: `Играть здесь`,
+    rj_no_return: `Сразу вернуть нельзя — выбери другого`, rj_not_live: `Раунд уже закончился`, rj_bad_target: `Этот игрок уже не в игре`,
+    // испытания
+    t_wires: `Перережь {n} провода!`, t_wires5: `Перережь {n} проводов!`,
+    t_swipe: `Смахни по стрелкам`, swipe_here: `Смахивай здесь`,
+    t_hold: `Держи и отпусти в зелёной зоне`, hold_btn: `Держи`,
+    t_order: `Жми по порядку: 1 → {n}`,
+    t_nopress: `Не нажимай. Серьёзно`, nopress_btn: `НЕ ЖМИ`, now_btn: `Вот теперь жми`, fake1: `ЖМИ?`, fake2: `ну жми`,
+    t_catch: `Поймай бомбу {n} раза`,
+    t_color: `Каким цветом написано слово?`,
+    t_odd: `Найди лишнего`, t_letter: `Найди не такую`, t_sad: `Найди грустного`,
+    t_code: `Запомни код`, t_code2: `Введи код`,
+    t_count: `Сколько уток?`,
+    t_quiz: `Вопрос`, t_tf: `Правда или враньё?`, t_heavy: `Кто тяжелее?`, t_chrono: `Расставь по порядку: от древнего к новому`,
+    t_sudoku: `Какая цифра на месте «?» — в строке и столбце без повторов`,
+    t_seq: `Что дальше?`, t_math: `Посчитай`,
+  },
+  en: {
+    _title: `Bomb — a hot potato party game`,
+    _meta: `💣 Multiplayer hot potato: the bomb travels between phones, and to pass it you must beat a mini challenge. Nobody knows when it blows: the time is sealed before the start and verifiable afterwards. Whoever's holding it hosts the stand-up.`,
+    nav_all_games: `← All games`,
+    eyebrow: `Party game · phones + shared screen`,
+    h1: `Bomb`,
+    lede: `Hot potato with a real fuse. The bomb travels between phones, and to pass it you have to <b>beat a mini challenge</b>. <b>Nobody knows</b> when it blows. Whoever's holding it hosts the stand-up.`,
+    btn_create: `Create a room`, btn_creating: `Creating…`,
+    cta_sub: `Open it on a laptop or TV — that's where the bomb lives`,
+    have_code: `I have a code`, prompt_code: `Room code`,
+    rule1: `Everyone joins from their phone via the QR on the shared screen`,
+    rule2: `Got the bomb? Beat a challenge: wires, sudoku, trivia, "don't press"…`,
+    rule3: `Done — throw it to anyone. The blast time is sealed before the start and can be checked afterwards`,
+    fine: `No bots: only people who joined from a phone play.`,
+    enter_title: `What's your name?`, enter_ph: `Name`, btn_join: `Join`,
+    err_name: `Type a name`, err_room_full: `The room already has 16 players`, err_game_started: `A round is on — you'll join as soon as it ends`, err_token_gone: `You're not in this game — join again`,
+    wait_title: `Connecting…`,
+    lobby_in: `You're in`, lobby_wait: `Waiting for the host to light the fuse`,
+    spectator: `A round is on`, spectator_sub: `Watch the shared screen — you'll join the next one`,
+    cd_k: `Round seal`, cd_sub: `Get ready: the bomb is about to land on someone`,
+    holds_k: `Holding the bomb`, holds_you: `you!`,
+    calm_sub: `Keep your phone handy — it may fly your way`,
+    you_have: `You've got the bomb!`, held_for: `{s} s`,
+    pick_target: `Throw it! To whom?`, just_threw: `just threw it`, throwing: `Flying…`,
+    wrong: `Miss! Here's another`, swap: `Too slow — here's another`,
+    boom: `BOOM!`, boom_you: `You're hosting the stand-up`, boom_you_out: `You're out — watch the screen`, boom_other: `Unlucky`,
+    out_title: `You're out`, out_sub: `Watch the shared screen and cheer`,
+    fin_standup: `Stand-up host`, fin_winner: `Last one standing`, fin_you: `That's you!`, fin_stop: `Round stopped`,
+    fin_wait: `Waiting for the host: another round or the lobby`,
+    expired_title: `The room has closed`, expired_text: `Ask the host to create a new one.`, expired_new: `New room`,
+    kicked_title: `The host removed you from the room`,
+    replaced_title: `You opened the game on another device`, replaced_text: `You can't play from here anymore.`, btn_back_here: `Play here`,
+    rj_no_return: `Can't throw it straight back — pick someone else`, rj_not_live: `The round is already over`, rj_bad_target: `That player is no longer in the game`,
+    t_wires: `Cut {n} wires!`, t_wires5: `Cut {n} wires!`,
+    t_swipe: `Swipe along the arrows`, swipe_here: `Swipe here`,
+    t_hold: `Hold and release in the green zone`, hold_btn: `Hold`,
+    t_order: `Tap in order: 1 → {n}`,
+    t_nopress: `Don't press it. Seriously`, nopress_btn: `DON'T`, now_btn: `Now press this`, fake1: `PRESS?`, fake2: `go on`,
+    t_catch: `Catch the bomb {n} times`,
+    t_color: `What colour is the word written in?`,
+    t_odd: `Find the odd one`, t_letter: `Find the different one`, t_sad: `Find the sad one`,
+    t_code: `Remember the code`, t_code2: `Enter the code`,
+    t_count: `How many ducks?`,
+    t_quiz: `Question`, t_tf: `True or false?`, t_heavy: `Which is heavier?`, t_chrono: `Put in order: oldest to newest`,
+    t_sudoku: `Which digit goes in "?" — no repeats in a row or column`,
+    t_seq: `What comes next?`, t_math: `Work it out`,
+  },
+  el: {
+    _title: `Βόμβα — καυτή πατάτα για παρέες`,
+    _meta: `💣 Πολυπαικτική καυτή πατάτα: η βόμβα περνά από κινητό σε κινητό και για να τη δώσεις πρέπει να περάσεις μια μίνι δοκιμασία. Κανείς δεν ξέρει πότε σκάει: η ώρα σφραγίζεται πριν την αρχή και ελέγχεται μετά. Σε όποιον σκάσει, κάνει το stand-up.`,
+    nav_all_games: `← Όλα τα παιχνίδια`,
+    eyebrow: `Παιχνίδι για παρέες · κινητά + κοινή οθόνη`,
+    h1: `Βόμβα`,
+    lede: `Καυτή πατάτα με αληθινό φιτίλι. Η βόμβα περνά από κινητό σε κινητό και για να τη δώσεις πρέπει να <b>περάσεις μια μίνι δοκιμασία</b>. <b>Κανείς δεν ξέρει</b> πότε σκάει. Σε όποιον σκάσει, κάνει το stand-up.`,
+    btn_create: `Νέο δωμάτιο`, btn_creating: `Δημιουργία…`,
+    cta_sub: `Άνοιξέ το σε laptop ή τηλεόραση — εκεί θα είναι η βόμβα`,
+    have_code: `Έχω κωδικό`, prompt_code: `Κωδικός δωματίου`,
+    rule1: `Όλοι μπαίνουν από το κινητό με το QR της κοινής οθόνης`,
+    rule2: `Ήρθε η βόμβα; Πέρνα μια δοκιμασία: καλώδια, σουντόκου, ερώτηση, «μην πατάς»…`,
+    rule3: `Τα κατάφερες — πέτα τη σε όποιον θες. Η ώρα της έκρηξης σφραγίζεται πριν την αρχή και ελέγχεται μετά`,
+    fine: `Χωρίς bots: παίζουν μόνο όσοι μπήκαν από κινητό.`,
+    enter_title: `Πώς σε λένε;`, enter_ph: `Όνομα`, btn_join: `Είσοδος`,
+    err_name: `Γράψε όνομα`, err_room_full: `Το δωμάτιο έχει ήδη 16 παίκτες`, err_game_started: `Ο γύρος τρέχει — θα μπεις μόλις τελειώσει`, err_token_gone: `Δεν είσαι σε αυτό το παιχνίδι — μπες ξανά`,
+    wait_title: `Σύνδεση…`,
+    lobby_in: `Είσαι μέσα`, lobby_wait: `Περιμένουμε να ανάψει το φιτίλι`,
+    spectator: `Ο γύρος τρέχει`, spectator_sub: `Δες την κοινή οθόνη — θα μπεις στον επόμενο`,
+    cd_k: `Σφραγίδα γύρου`, cd_sub: `Ετοιμάσου: η βόμβα θα εμφανιστεί σε κάποιον`,
+    holds_k: `Τη βόμβα κρατά`, holds_you: `εσύ!`,
+    calm_sub: `Κράτα το κινητό κοντά — μπορεί να έρθει σε σένα`,
+    you_have: `Η βόμβα είναι σε σένα!`, held_for: `{s} δ`,
+    pick_target: `Πέτα τη! Σε ποιον;`, just_threw: `μόλις την πέταξε`, throwing: `Πετάει…`,
+    wrong: `Άστοχο! Πάρε άλλη`, swap: `Άργησες — πάρε άλλη`,
+    boom: `ΜΠΟΥΜ!`, boom_you: `Εσύ κάνεις το stand-up`, boom_you_out: `Αποκλείστηκες — δες την οθόνη`, boom_other: `Κακή τύχη`,
+    out_title: `Αποκλείστηκες`, out_sub: `Δες την κοινή οθόνη και φώναζε`,
+    fin_standup: `Κάνει το stand-up`, fin_winner: `Ο τελευταίος όρθιος`, fin_you: `Εσύ!`, fin_stop: `Ο γύρος σταμάτησε`,
+    fin_wait: `Περιμένουμε τον οικοδεσπότη: άλλος γύρος ή λόμπι`,
+    expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Ζήτα από τον οικοδεσπότη νέο.`, expired_new: `Νέο δωμάτιο`,
+    kicked_title: `Ο οικοδεσπότης σε αφαίρεσε`,
+    replaced_title: `Άνοιξες το παιχνίδι σε άλλη συσκευή`, replaced_text: `Από εδώ δεν παίζεις πια.`, btn_back_here: `Παίξε εδώ`,
+    rj_no_return: `Δεν τη γυρνάς αμέσως πίσω — διάλεξε άλλον`, rj_not_live: `Ο γύρος τελείωσε`, rj_bad_target: `Αυτός ο παίκτης δεν παίζει πια`,
+    t_wires: `Κόψε {n} καλώδια!`, t_wires5: `Κόψε {n} καλώδια!`,
+    t_swipe: `Σύρε όπως δείχνουν τα βέλη`, swipe_here: `Σύρε εδώ`,
+    t_hold: `Κράτα και άφησε στην πράσινη ζώνη`, hold_btn: `Κράτα`,
+    t_order: `Πάτα με τη σειρά: 1 → {n}`,
+    t_nopress: `Μην το πατάς. Σοβαρά`, nopress_btn: `ΜΗΝ`, now_btn: `Τώρα πάτα αυτό`, fake1: `ΠΑΤΑ;`, fake2: `έλα, πάτα`,
+    t_catch: `Πιάσε τη βόμβα {n} φορές`,
+    t_color: `Με τι χρώμα είναι γραμμένη η λέξη;`,
+    t_odd: `Βρες το παράταιρο`, t_letter: `Βρες το διαφορετικό`, t_sad: `Βρες τον λυπημένο`,
+    t_code: `Θυμήσου τον κωδικό`, t_code2: `Γράψε τον κωδικό`,
+    t_count: `Πόσες πάπιες;`,
+    t_quiz: `Ερώτηση`, t_tf: `Αλήθεια ή ψέμα;`, t_heavy: `Τι είναι πιο βαρύ;`, t_chrono: `Βάλε σε σειρά: από το παλιότερο στο νεότερο`,
+    t_sudoku: `Ποιο ψηφίο μπαίνει στο «?» — χωρίς επαναλήψεις σε γραμμή και στήλη`,
+    t_seq: `Τι ακολουθεί;`, t_math: `Υπολόγισε`,
+  },
+};
+</script>
+<script src="bomb-shared.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script>
+"use strict";
+const params = new URLSearchParams(location.search);
+// код идёт в разметку — только алфавит кодов, иначе ?r=<img onerror> даёт XSS
+const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const app = document.getElementById("app");
+const T = (k) => bmT(k);
+const tpl = (k, v) => bmTpl(k, v);
+const REACTIONS = ["😂", "😱", "🔥", "🙏", "😈"];
+
+let conn = null, state = null, me = null, token = null, dead = false;
+let screen = null; // landing | enter | calm | hot | targets | boom | final | expired | kicked | replaced
+let joinErr = null;
+const tokenKey = () => "bomb-token-" + CODE;
+try { token = localStorage.getItem(tokenKey()); } catch (e) {}
+
+const player = (id) => state && state.players.find((p) => p.id === id);
+const mine = () => (state && me ? player(me) : null);
+const initials = (name) => String(name || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+const avHtml = (p) => `<i class="av" style="--pc:${p.color}">${escapeHtml(initials(p.name))}</i>`;
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function toast(text) {
+  const t = document.getElementById("toast");
+  t.textContent = text;
+  t.classList.remove("on"); void t.offsetWidth; t.classList.add("on");
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove("on"), 2200);
+}
+function bodyMode(mode) {
+  document.body.classList.toggle("holding", mode === "hot");
+  document.body.classList.toggle("blown", mode === "blown");
+}
+
+// экран не гаснет, пока идёт игра (где поддерживается)
+let wakeLock = null;
+async function keepAwake() {
+  try { if ("wakeLock" in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && me) keepAwake(); });
+
+// ---------- стартовый экран ----------
+function renderLanding() {
+  screen = "landing";
+  bodyMode(null);
+  app.innerHTML = `<div class="landing">
+    <div class="hero"><div><div class="eyebrow">${T("eyebrow")}</div><h1>${T("h1")}</h1></div><div class="bombbox"><div class="shake">${bmBombSvg()}</div></div></div>
+    <p class="lede">${T("lede")}</p>
+    <div class="cta"><button class="btn" id="create" type="button">${T("btn_create")}</button>
+      <div class="sub"><span>${T("cta_sub")}</span><button class="link" id="havecode" type="button">${T("have_code")}</button></div></div>
+    <ol class="rules"><li>${T("rule1")}</li><li>${T("rule2")}</li><li>${T("rule3")}</li></ol>
+    <div class="fine">${T("fine")}</div>
+  </div>`;
+  // пример: фитиль на заставке тлеет по кругу
+  const svg = app.querySelector(".bomb");
+  let t0 = performance.now();
+  (function burn(now) {
+    if (screen !== "landing" || !svg.isConnected) return;
+    const k = 1 - ((now - t0) % 9000) / 9000;
+    bmSetFuse(svg, 0.15 + 0.85 * k);
+    requestAnimationFrame(burn);
+  })(t0);
+  document.getElementById("create").onclick = async () => {
+    const btn = document.getElementById("create");
+    btn.disabled = true;
+    btn.textContent = T("btn_creating");
+    try {
+      const res = await fetch("/bomb/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: bmLang() } }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "error");
+      try { localStorage.setItem("bomb-host-" + data.code, data.hostToken); } catch (e) {}
+      location.href = `bomb-board.html?r=${data.code}`;
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = T("btn_create");
+      toast(String(err.message || err));
+    }
+  };
+  document.getElementById("havecode").onclick = () => {
+    const c = prompt(T("prompt_code"));
+    if (c) location.href = `bomb.html?r=${encodeURIComponent(c.trim().toUpperCase())}`;
+  };
+}
+
+// ---------- вход ----------
+function renderEnter() {
+  screen = "enter";
+  bodyMode(null);
+  let saved = "";
+  try { saved = localStorage.getItem("bomb-name") || ""; } catch (e) {}
+  app.innerHTML = `<form class="enter" id="enterform" autocomplete="off">
+    <div class="card"><div class="room">${escapeHtml(CODE)}</div><h2>${T("enter_title")}</h2>
+      <input id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}"></div>
+    <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
+    <button class="btn" type="submit">${T("btn_join")}</button>
+  </form>`;
+  const input = document.getElementById("name");
+  document.getElementById("enterform").onsubmit = (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    if (!name) { document.getElementById("err").textContent = T("err_name"); return; }
+    try { localStorage.setItem("bomb-name", name); } catch (e2) {}
+    joinErr = null;
+    conn.send({ type: "join", name });
+    keepAwake();
+  };
+}
+
+function renderCenter(titleKey, textKey, extra) {
+  bodyMode(null);
+  app.innerHTML = `<div class="calm"><div class="card"><h2>${T(titleKey)}</h2>${textKey ? `<p style="margin:0">${T(textKey)}</p>` : ""}${extra || ""}</div></div>`;
+}
+function renderExpired() {
+  dead = true;
+  screen = "expired";
+  try { localStorage.removeItem(tokenKey()); } catch (e) {}
+  renderCenter("expired_title", "expired_text", `<a class="btn" href="bomb.html">${T("expired_new")}</a>`);
+}
+
+// ---------- спокойные экраны: лобби, отсчёт, бомба у другого ----------
+function playersList(holders) {
+  return state.players.filter((p) => !p.left).map((p) => `<div class="pl${p.id === me ? " me" : ""}${holders.includes(p.id) ? " hold" : ""}${p.out ? " out" : ""}">${avHtml(p)}<b>${escapeHtml(p.name)}</b><span class="tag">${holders.includes(p.id) ? "💣" : p.out ? "💥" : ""}</span></div>`).join("");
+}
+function reactsHtml() {
+  return `<div class="reacts">${REACTIONS.map((e) => `<button type="button" data-e="${e}">${e}</button>`).join("")}</div>`;
+}
+function bindReacts() {
+  app.querySelectorAll(".reacts button").forEach((b) => {
+    b.onclick = () => { conn.send({ type: "react", emoji: b.dataset.e }); bmVibrate(8); b.disabled = true; setTimeout(() => (b.disabled = false), 2000); };
+  });
+}
+function fitBig(node) {
+  let fs = 54;
+  node.style.setProperty("--bfs", fs + "px");
+  while (fs > 26 && node.scrollWidth > node.clientWidth + 1) { fs -= 4; node.style.setProperty("--bfs", fs + "px"); }
+}
+
+let calmKey = "";
+function renderCalm() {
+  bodyMode(null);
+  const p = mine();
+  const ph = state.phase;
+  const holders = [...new Set(state.bombs.filter((b) => b.alive && b.holder).map((b) => b.holder))];
+  let k = "", big = "", sub = "", color = "";
+  let extra = "";
+  if (ph === "lobby" || (ph === "finished" && !p)) { k = T("lobby_in"); big = p ? p.name : ""; sub = T("lobby_wait"); color = p ? p.color : ""; }
+  else if (ph === "countdown") {
+    k = T("cd_k"); sub = T("cd_sub");
+    extra = `<div class="seal">${state.bombs.map((b) => escapeHtml(b.commit)).join("<br>")}</div><div class="count" id="count"></div>`;
+  } else if (ph === "live") {
+    const names = holders.map((id) => (id === me ? T("holds_you") : (player(id) || {}).name || "?"));
+    k = T("holds_k"); big = names.join(" + "); sub = T("calm_sub"); color = holders.length === 1 ? (player(holders[0]) || {}).color : "";
+    if (p && p.out) { k = T("out_title"); big = "💥"; sub = T("out_sub"); color = ""; }
+  }
+  const key = [ph, k, big, sub, holders.join(), state.players.map((x) => x.id + x.out + x.left).join(), bmLang()].join("|");
+  if (screen === "calm" && key === calmKey) return;
+  screen = "calm";
+  calmKey = key;
+  const showBomb = ph === "live";
+  app.innerHTML = `<div class="calm">
+    <div class="status"><div class="k">${escapeHtml(k)}</div>${big ? `<div class="big" id="big" style="--bc:${color || "var(--ink)"}">${escapeHtml(big)}</div>` : ""}<div class="sub">${escapeHtml(sub)}</div></div>
+    ${extra}
+    ${showBomb ? `<div class="mini"><div class="bombbox"><div class="shake">${bmBombSvg()}</div></div><div class="t" id="minit"></div></div>` : ""}
+    <div class="plist">${playersList(holders)}</div>
+    ${ph === "live" || ph === "countdown" ? reactsHtml() : ""}
+  </div>`;
+  const b = document.getElementById("big");
+  if (b) fitBig(b);
+  bindReacts();
+}
+
+// ---------- бомба в руках ----------
+let chId = null, chSolved = false, throwingAt = 0, lastAns = null;
+function renderHot() {
+  bodyMode("hot");
+  const p = mine();
+  const c = state.me.challenge;
+  if (screen === "hot" && c && c.id === chId) return;
+  if (!c) return;
+  const fresh = screen !== "hot";
+  screen = "hot";
+  chId = c.id;
+  chSolved = false;
+  app.innerHTML = `<div class="hot">
+    <div class="hothead"><span class="yours">${T("you_have")}</span><span class="held" id="held">0,0</span></div>
+    <div><div class="task" id="task"></div><div class="ttl"><i id="ttl"></i></div></div>
+    <div class="pad" id="pad"></div>
+  </div>`;
+  if (fresh) { bmVibrate([80, 40, 80]); bmSfx.catch(); }
+  (RENDER[c.type] || RENDER.fallback)(c, document.getElementById("pad"), document.getElementById("task"));
+}
+
+// Ответ уходит не раньше minMs от выдачи (иначе сервер скажет «рано» и игрок ничего не поймёт).
+function submit(ans) {
+  const c = state && state.me && state.me.challenge;
+  if (!c || chSolved) return;
+  chSolved = true;
+  lastAns = { cid: c.id, ans };
+  const pad = document.getElementById("pad");
+  const wait = Math.max(0, c.at + c.minMs + 60 - bmNow());
+  setTimeout(() => conn.send({ type: "answer", cid: c.id, ans }), wait);
+  if (pad) pad.style.pointerEvents = "none";
+}
+function flashWrong() {
+  bmSfx.buzz();
+  bmVibrate(200);
+  const pad = document.getElementById("pad");
+  if (pad && !reduceMotion()) { pad.classList.remove("shake"); void pad.offsetWidth; pad.classList.add("shake"); }
+}
+function optButtons(opts, onPick, cls) {
+  const box = el("div", "opts" + (cls ? " " + cls : ""));
+  opts.forEach((o, i) => {
+    const b = el("button", "opt");
+    b.type = "button";
+    b.textContent = o;
+    b.onclick = () => { b.classList.add("picked"); bmSfx.tap(); onPick(i); };
+    box.append(b);
+  });
+  return box;
+}
+function gridOf(items, cols, onPick, txt) {
+  const g = el("div", "grid");
+  g.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+  items.forEach((x, i) => {
+    const b = el("button", "cell" + (txt ? " txt" : ""), x);
+    b.type = "button";
+    b.onclick = () => { bmSfx.tap(); onPick(i); };
+    g.append(b);
+  });
+  return g;
+}
+const rndInt = (n) => Math.floor(Math.random() * n);
+function shuffled(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rndInt(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+const WIRE_COLORS = ["#e8322b", "#1e6fd9", "#ffc21a", "#16924a", "#a259ff", "#ff7a1a", "#16120c"];
+
+const RENDER = {
+  // ---- ловкость ----
+  wires(c, pad, task) {
+    const n = c.view.n;
+    task.textContent = tpl(n >= 5 ? "t_wires5" : "t_wires", { n });
+    const field = el("div", "field");
+    let left = n;
+    const wires = [];
+    for (let i = 0; i < n; i++) {
+      const w = el("button", "wire");
+      w.type = "button";
+      w.style.setProperty("--wc", WIRE_COLORS[i % WIRE_COLORS.length]);
+      w.onclick = () => {
+        w.classList.add("cut"); bmSfx.tap(); bmVibrate(15);
+        if (--left === 0) return submit({ v: n });
+        place();
+      };
+      wires.push(w);
+      field.append(w);
+    }
+    // провода переставляются после каждого разреза
+    function place() {
+      const live = wires.filter((w) => !w.classList.contains("cut"));
+      const slots = shuffled(live.map((_, i) => i));
+      const gap = 300 / live.length;
+      live.forEach((w, i) => { w.style.top = `${slots[i] * gap + (gap - 30) / 2}px`; });
+    }
+    place();
+    pad.append(field);
+  },
+  swipe(c, pad, task) {
+    const dirs = c.view.dirs;
+    task.textContent = T("t_swipe");
+    const ARROW = { u: "↑", d: "↓", l: "←", r: "→" };
+    const row = el("div", "arrows");
+    dirs.forEach((d) => row.append(el("span", null, ARROW[d])));
+    const zone = el("div", "swipezone", T("swipe_here"));
+    pad.append(row, zone);
+    const got = [];
+    let sx = null, sy = null;
+    zone.addEventListener("pointerdown", (e) => { sx = e.clientX; sy = e.clientY; });
+    zone.addEventListener("pointerup", (e) => {
+      if (sx == null) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      sx = null;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 30) return;
+      const d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "r" : "l") : dy > 0 ? "d" : "u";
+      got.push(d);
+      row.children[got.length - 1].classList.add("done");
+      bmSfx.tap();
+      if (got.length === dirs.length) submit({ v: got });
+    });
+  },
+  hold(c, pad, task) {
+    const v = c.view;
+    task.textContent = T("t_hold");
+    const bar = el("div", "holdbar");
+    const zone = el("div", "zone");
+    zone.style.left = (v.from / v.full) * 100 + "%";
+    zone.style.width = ((v.to - v.from) / v.full) * 100 + "%";
+    const fill = el("div", "fill");
+    bar.append(zone, fill);
+    const btn = el("button", "holdbtn", T("hold_btn"));
+    btn.type = "button";
+    pad.append(bar, btn);
+    let t0 = null, raf = 0;
+    const tick = () => {
+      if (t0 == null) return;
+      const ms = performance.now() - t0;
+      fill.style.width = Math.min(100, (ms / v.full) * 100) + "%";
+      if (ms >= v.full) return release();
+      raf = requestAnimationFrame(tick);
+    };
+    const press = (e) => { e.preventDefault(); if (t0 != null || chSolved) return; t0 = performance.now(); btn.classList.add("on"); bmVibrate(10); raf = requestAnimationFrame(tick); };
+    const release = () => {
+      if (t0 == null) return;
+      const ms = Math.round(performance.now() - t0);
+      t0 = null; cancelAnimationFrame(raf); btn.classList.remove("on");
+      submit({ v: ms });
+    };
+    btn.addEventListener("pointerdown", press);
+    btn.addEventListener("pointerup", release);
+    btn.addEventListener("pointercancel", release);
+    btn.addEventListener("pointerleave", release);
+  },
+  order(c, pad, task) {
+    const n = c.view.n;
+    task.textContent = tpl("t_order", { n });
+    const field = el("div", "field");
+    // раскладка без наложений: ячейки сетки 4×4, числа в случайных ячейках
+    const cells = shuffled([...Array(16).keys()]).slice(0, n);
+    let next = 1;
+    cells.forEach((cell, i) => {
+      const b = el("button", "num", String(i + 1));
+      b.type = "button";
+      b.style.left = ((cell % 4) * 25 + 12.5 + (rndInt(9) - 4)) + "%";
+      b.style.top = (Math.floor(cell / 4) * 75 + 38 + (rndInt(15) - 7)) + "px";
+      b.onclick = () => {
+        if (Number(b.textContent) !== next) { flashWrong(); return; }
+        b.classList.add("done"); bmSfx.tap(); next++;
+        if (next > n) submit({ v: [...Array(n)].map((_, k) => k + 1) });
+      };
+      field.append(b);
+    });
+    pad.append(field);
+  },
+  nopress(c, pad, task) {
+    const v = c.view;
+    task.textContent = T("t_nopress");
+    const big = el("button", "nopress", T("nopress_btn"));
+    big.type = "button";
+    const now = el("button", "nowbtn", T("now_btn"));
+    now.type = "button";
+    pad.append(big, now);
+    big.onclick = () => submit({ early: true });
+    now.onclick = () => submit({ early: false });
+    // уловки: надпись на большой кнопке ненадолго подмигивает «ЖМИ?»
+    for (let i = 0; i < v.fakes; i++) {
+      setTimeout(() => { if (big.isConnected) { big.textContent = T(i ? "fake2" : "fake1"); setTimeout(() => big.isConnected && (big.textContent = T("nopress_btn")), 500); } }, 500 + i * 700);
+    }
+    const showAt = c.at + v.wait;
+    const t = setInterval(() => {
+      if (!now.isConnected) return clearInterval(t);
+      if (bmNow() >= showAt) { clearInterval(t); now.classList.add("on"); bmSfx.pop(); }
+    }, 50);
+  },
+  catch(c, pad, task) {
+    const v = c.view;
+    task.textContent = tpl("t_catch", { n: v.hits });
+    const field = el("div", "field");
+    const tgt = el("button", "tgt", "💣");
+    tgt.type = "button";
+    field.append(tgt);
+    pad.append(field);
+    let hits = 0;
+    const jump = () => { tgt.style.left = 12 + rndInt(76) + "%"; tgt.style.top = 40 + rndInt(220) + "px"; };
+    jump();
+    const iv = setInterval(() => { if (!tgt.isConnected) return clearInterval(iv); jump(); }, Math.round(900 / v.speed));
+    tgt.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      hits++; bmSfx.tap(); bmVibrate(12); jump();
+      if (hits >= v.hits) { clearInterval(iv); submit({ v: hits }); }
+    });
+  },
+
+  // ---- внимание ----
+  color(c, pad, task) {
+    const v = c.view;
+    task.textContent = T("t_color");
+    const w = el("div", "word", T("color_" + v.word));
+    w.style.color = BM_INK[v.ink];
+    pad.append(w, optButtons(v.options.map((k) => T("color_" + k)), (i) => submit({ v: i })));
+  },
+  odd(c, pad, task) {
+    task.textContent = T("t_odd");
+    const n = c.view.items.length;
+    pad.append(gridOf(c.view.items, n <= 4 ? 2 : 3, (i) => submit({ v: i })));
+  },
+  letter(c, pad, task) {
+    task.textContent = T("t_letter");
+    pad.append(gridOf(c.view.items, 4, (i) => submit({ v: i }), true));
+  },
+  sad(c, pad, task) {
+    task.textContent = T("t_sad");
+    const n = c.view.items.length;
+    pad.append(gridOf(c.view.items, n <= 6 ? 3 : 4, (i) => submit({ v: i })));
+  },
+  code(c, pad, task) {
+    const v = c.view;
+    task.textContent = T("t_code");
+    const d = el("div", "digits", v.digits);
+    pad.append(d);
+    let typed = "";
+    setTimeout(() => {
+      if (!d.isConnected) return;
+      task.textContent = T("t_code2");
+      d.textContent = "_".repeat(v.digits.length);
+      const kp = el("div", "keypad");
+      ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", ""].forEach((k) => {
+        const b = el("button", null, k);
+        b.type = "button";
+        if (!k) b.style.visibility = "hidden";
+        b.onclick = () => {
+          bmSfx.tap();
+          if (k === "⌫") typed = typed.slice(0, -1);
+          else typed += k;
+          d.textContent = (typed + "_".repeat(v.digits.length)).slice(0, v.digits.length);
+          if (typed.length === v.digits.length) submit({ v: typed });
+        };
+        kp.append(b);
+      });
+      pad.append(kp);
+    }, v.show);
+  },
+  count(c, pad, task) {
+    task.textContent = T("t_count");
+    const n = c.view.items.length;
+    const g = el("div", "grid");
+    g.style.gridTemplateColumns = `repeat(${n <= 9 ? 3 : 4}, 1fr)`;
+    g.style.fontSize = "34px";
+    g.style.textAlign = "center";
+    c.view.items.forEach((x) => g.append(el("span", null, x)));
+    pad.append(g, optButtons(c.view.options.map(String), (i) => submit({ v: i })));
+  },
+
+  // ---- голова ----
+  quiz(c, pad, task) {
+    task.textContent = T("t_quiz");
+    pad.append(el("div", "qtext", bmTx(c.view.q)), optButtons(c.view.options.map(bmTx), (i) => submit({ v: i })));
+  },
+  tf(c, pad, task) {
+    task.textContent = T("t_tf");
+    pad.append(el("div", "qtext", bmTx(c.view.q)), optButtons([T("q_true"), T("q_false")], (i) => submit({ v: i })));
+  },
+  heavy(c, pad, task) {
+    task.textContent = T("t_heavy");
+    pad.append(el("div", "qtext", "⚖️"), optButtons(c.view.options.map(bmTx), (i) => submit({ v: i }), "one"));
+  },
+  chrono(c, pad, task) {
+    task.textContent = T("t_chrono");
+    const box = el("div", "opts one chron");
+    const picked = [];
+    c.view.items.forEach((x, i) => {
+      const b = el("button", "opt");
+      b.type = "button";
+      b.innerHTML = `<i></i><span>${escapeHtml(bmTx(x))}</span>`;
+      b.onclick = () => {
+        if (picked.includes(i)) return;
+        picked.push(i);
+        b.classList.add("picked");
+        b.querySelector("i").textContent = picked.length;
+        bmSfx.tap();
+        if (picked.length === c.view.items.length) submit({ v: picked });
+      };
+      box.append(b);
+    });
+    pad.append(box);
+  },
+  sudoku(c, pad, task) {
+    const v = c.view;
+    task.textContent = T("t_sudoku");
+    const g = el("div", "sud");
+    g.style.gridTemplateColumns = `repeat(${v.n}, auto)`;
+    v.cells.forEach((row, r) => row.forEach((x, col) => {
+      const isQ = r === v.target[0] && col === v.target[1];
+      g.append(el("div", isQ ? "q" : x == null ? "e" : "", isQ ? "?" : x == null ? "" : String(x)));
+    }));
+    pad.append(g, optButtons(v.options.map(String), (i) => submit({ v: v.options[i] })));
+  },
+  seq(c, pad, task) {
+    const v = c.view;
+    task.textContent = T("t_seq");
+    const days = String(T("days")).split("|");
+    const show = (x) => (v.kind === "days" ? days[x] : String(x));
+    const row = el("div", "seqrow");
+    v.items.forEach((x) => row.append(el("span", null, show(x))));
+    row.append(el("span", "q", "?"));
+    pad.append(row, optButtons(v.options.map(show), (i) => submit({ v: i })));
+  },
+  math(c, pad, task) {
+    task.textContent = T("t_math");
+    pad.append(el("div", "qtext", c.view.text + " = ?"), optButtons(c.view.options.map(String), (i) => submit({ v: i })));
+  },
+  fallback(c, pad) {
+    pad.append(el("div", "qtext", "…"));
+  },
+};
+
+// ---------- выбор цели ----------
+let targetsKey = "";
+function renderTargets() {
+  bodyMode("hot");
+  const b = state.bombs.filter((x) => x.alive && x.holder === me).sort((x, y) => x.since - y.since)[0];
+  const alive = state.players.filter((p) => !p.left && !p.out);
+  const blockFrom = !state.settings.returnOk && alive.length > 2 && b ? b.from : null;
+  const key = alive.map((p) => p.id + p.online).join() + "|" + blockFrom + "|" + bmLang();
+  if (screen === "targets" && key === targetsKey) return;
+  const fresh = screen !== "targets";
+  screen = "targets";
+  targetsKey = key;
+  app.innerHTML = `<div class="hot">
+    <div class="hothead"><span class="yours">${T("pick_target")}</span><span class="held" id="held">0,0</span></div>
+    <div></div>
+    <div class="targets" id="targets"></div>
+  </div>`;
+  if (fresh) { bmSfx.ok(); bmVibrate(30); }
+  const box = document.getElementById("targets");
+  box.classList.toggle("few", alive.length <= 4);
+  for (const p of alive) {
+    if (p.id === me) continue;
+    const t = el("button", "target");
+    t.type = "button";
+    t.innerHTML = `${avHtml(p)}<span>${escapeHtml(p.name)}${p.id === blockFrom ? `<small>${T("just_threw")}</small>` : ""}</span>`;
+    t.disabled = p.id === blockFrom;
+    t.onclick = () => {
+      if (Date.now() - throwingAt < 800) return;
+      throwingAt = Date.now();
+      box.classList.add("throwing");
+      t.style.background = "var(--yellow)";
+      bmSfx.whoosh();
+      bmVibrate(20);
+      conn.send({ type: "pass", to: p.id });
+    };
+    box.append(t);
+  }
+}
+
+// ---------- взрыв и итоги ----------
+let boomKey = "";
+function renderBoom() {
+  const v = state.booms[state.booms.length - 1];
+  const victim = v && v.round === state.round ? v.playerId : null;
+  const key = state.phase + state.round + bmLang() + (state.phase === "finished" ? state.game : "");
+  if (screen === "boom" && boomKey === key) return;
+  const first = screen !== "boom";
+  screen = "boom";
+  boomKey = key;
+  const isMe = victim && victim === me;
+  const elim = state.settings.mode === "elim";
+  bodyMode(isMe ? "blown" : null);
+  if (first && state.phase === "boom") { bmSfx.boom(); bmVibrate(isMe ? [300, 80, 500] : [120]); }
+  if (state.phase === "boom") {
+    const vp = player(victim) || {};
+    app.innerHTML = `<div class="boomscr"><div class="kapow">${T("boom")}</div>
+      <div class="status"><div class="k">${isMe ? "" : T("boom_other")}</div><div class="big" id="big" style="--bc:${isMe ? "var(--yellow)" : vp.color || "var(--red)"}">${escapeHtml(isMe ? (elim ? T("out_title") : T("boom_you")) : vp.name || "?")}</div></div></div>`;
+    fitBig(document.getElementById("big"));
+    return;
+  }
+  // итоги партии
+  let k, who;
+  if (elim && state.winnerId) { k = T("fin_winner"); who = state.winnerId; }
+  else if (state.loserId) { k = T("fin_standup"); who = state.loserId; }
+  else { k = T("fin_stop"); who = null; }
+  const wp = player(who) || {};
+  const seal = state.seals[state.seals.length - 1];
+  bodyMode(state.loserId === me ? "blown" : null);
+  app.innerHTML = `<div class="calm">
+    <div class="status"><div class="k">${escapeHtml(k)}</div>${who ? `<div class="big" id="big" style="--bc:${wp.color || "var(--red)"}">${escapeHtml(wp.name || "?")}</div>` : ""}
+      <div class="sub">${who === me ? T("fin_you") : elim && state.loserId ? escapeHtml(bmTpl("standup_sub", { name: (player(state.loserId) || {}).name || "?" })) : ""}</div></div>
+    ${seal ? `<div class="seal">${escapeHtml(bmTpl("seal_fuse", { n: seal.revealed ? seal.fuseMs / 1000 : "?" }))}<br>${escapeHtml(seal.commit)}<span id="sealok" class="ok">${T("seal_check")}</span></div>` : ""}
+    <div class="card" style="text-align:center">${T("fin_wait")}</div>
+  </div>`;
+  const big = document.getElementById("big");
+  if (big) fitBig(big);
+  if (seal) bmVerifySeal(seal).then((ok) => { const n = document.getElementById("sealok"); if (n) { n.className = ok ? "ok" : "bad"; n.textContent = ok ? "✓ " + T("seal_ok") : "✗ " + T("seal_bad"); } });
+}
+
+// ---------- выбор экрана ----------
+function render() {
+  if (dead || !state) return;
+  if (!me) {
+    if (screen === "kicked" || screen === "replaced") return;
+    if (joinErr === "err_game_started") {
+      if (state.phase !== "lobby" && state.phase !== "finished") {
+        if (screen !== "spect") { screen = "spect"; renderCenter("spectator", "spectator_sub"); }
+        return;
+      }
+      // раунд кончился — входим сами под тем же именем
+      let name = "";
+      try { name = localStorage.getItem("bomb-name") || ""; } catch (e) {}
+      if (name && !autoJoinSent) { autoJoinSent = true; joinErr = null; conn.send({ type: "join", name }); return; }
+    }
+    if (screen === "enter") return;
+    // раунд закончился — зритель может войти
+    return renderEnter();
+  }
+  const p = mine();
+  if (!p) return renderEnter();
+  const ph = state.phase;
+  if (ph === "boom" || ph === "finished") return renderBoom();
+  if (ph === "live" && state.me && state.me.holding.length && !p.out) {
+    if (state.me.armed) return renderTargets();
+    if (state.me.challenge) return renderHot();
+  }
+  return renderCalm();
+}
+
+// часы на экране: сколько бомба в руках, полоса до смены испытания, фитиль на мини-бомбе, отсчёт
+let lastCount = null;
+function frame() {
+  requestAnimationFrame(frame);
+  if (!state || dead) return;
+  const now = bmNow();
+  const held = document.getElementById("held");
+  if (held && state.me) {
+    const b = state.bombs.filter((x) => x.alive && x.holder === me).sort((x, y) => x.since - y.since)[0];
+    if (b && b.since) held.textContent = bmTpl("held_for", { s: bmSec(now - b.since) });
+  }
+  const ttl = document.getElementById("ttl");
+  const c = state.me && state.me.challenge;
+  if (ttl && c) ttl.style.transform = `scaleX(${Math.max(0, 1 - (now - c.at) / c.ttl)})`;
+  const svg = app.querySelector(".mini .bomb");
+  if (svg) bmSetFuse(svg, bmFuseLeft(state, now));
+  const minit = document.getElementById("minit");
+  if (minit && state.phase === "live" && state.startedAt) {
+    const el2 = now - state.startedAt;
+    minit.innerHTML = `<b>${Math.floor(el2 / 60000)}:${String(Math.floor(el2 / 1000) % 60).padStart(2, "0")}</b>${escapeHtml(bmTpl("fuse_range", { a: state.fuse.min, b: state.fuse.max }))}`;
+  }
+  const cnt = document.getElementById("count");
+  if (cnt && state.phase === "countdown" && state.phaseEnd) {
+    const n = Math.max(1, Math.ceil((state.phaseEnd - now) / 1000));
+    if (n !== lastCount) { lastCount = n; cnt.textContent = n; bmSfx.count(false); }
+  }
+}
+
+window.addEventListener("langchange", () => {
+  if (!CODE) return renderLanding();
+  if (screen === "enter") return renderEnter();
+  calmKey = targetsKey = boomKey = "";
+  if (screen === "hot") { screen = null; }
+  screen === "expired" ? renderExpired() : render();
+});
+
+// ---------- связь ----------
+let prevChallenge = null, autoJoinSent = false;
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+    case "state":
+      state = m.state;
+      if (m.type === "hello" && token && !me) conn.send({ type: "join", token });
+      render();
+      prevChallenge = state.me && state.me.challenge ? state.me.challenge.id : null;
+      break;
+    case "joined":
+      me = m.playerId;
+      token = m.token;
+      joinErr = null;
+      try { localStorage.setItem(tokenKey(), token); } catch (e) {}
+      keepAwake();
+      screen = null;
+      render();
+      break;
+    case "rejected":
+      if (m.action === "pass") {
+        throwingAt = 0;
+        const box = document.getElementById("targets");
+        if (box) box.classList.remove("throwing");
+        targetsKey = "";
+        render();
+      }
+      if (m.action === "answer" && m.reason === "early") {
+        // часы телефона и сервера разошлись — тот же ответ ещё раз чуть позже
+        const again = lastAns;
+        if (again) setTimeout(() => { if (state && state.me && state.me.challenge && state.me.challenge.id === again.cid) conn.send({ type: "answer", cid: again.cid, ans: again.ans }); }, 350);
+        break;
+      }
+      if (T("rj_" + m.reason) !== "rj_" + m.reason) toast(T("rj_" + m.reason));
+      break;
+    case "error":
+      if (m.error === "room_expired") return renderExpired();
+      if (["game_started", "room_full", "token_gone", "bad_name"].includes(m.error)) {
+        if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
+        joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
+        me = null;
+        if (m.error === "game_started") { autoJoinSent = false; screen = "spect"; renderCenter("spectator", "spectator_sub"); }
+        else renderEnter();
+      }
+      break;
+    case "kicked":
+      me = null;
+      try { localStorage.removeItem(tokenKey()); } catch (e) {}
+      token = null;
+      screen = "kicked";
+      renderCenter("kicked_title");
+      break;
+    case "replaced":
+      me = null;
+      screen = "replaced";
+      renderCenter("replaced_title", "replaced_text", `<button class="btn" id="here" type="button">${T("btn_back_here")}</button>`);
+      document.getElementById("here").onclick = () => { conn.send({ type: "join", token }); };
+      break;
+    case "event": {
+      const e = m.event;
+      if (e.playerId !== me) break;
+      if (e.type === "wrong") { flashWrong(); toast(T("wrong")); }
+      if (e.type === "swap") toast(T("swap"));
+      break;
+    }
+  }
+}
+
+function start() {
+  if (!CODE) return renderLanding();
+  renderCenter("wait_title");
+  const banner = document.getElementById("conn");
+  conn = bmConnect({
+    code: CODE,
+    onMessage,
+    onGone: renderExpired,
+    // переподключились — снова входим своим токеном (hello придёт первым)
+    onOpen: () => { me = null; },
+    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+  });
+  requestAnimationFrame(frame);
+  // ручка для стенда: состояние и отправка
+  window.bmPhone = { send: (msg) => conn.send(msg), get state() { return state; }, get me() { return me; } };
+}
+start();
+</script>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+  ym(104849796, 'init', { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+</body>
+</html>
