@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#efe8d8">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f925.svg" type="image/svg+xml">
+<title>Не верю! — игра в правду и ложь для компании</title>
+<meta name="robots" content="index,follow">
+<meta name="description" content="🤥 Мультиплеерная игра для компании: на экране настоящий, но дикий факт с пропуском. Каждый с телефона вписывает правдоподобную ложь, потом все ищут правду. Как Fibbage, только бесплатно и в браузере." data-i18n-meta="_meta">
+<!-- ссылки на комнаты (?r=КОД) — та же страница: в выдаче должна быть одна, без кода -->
+<link rel="canonical" href="https://randomhost.online/fibs.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Не верю! — игра в правду и ложь для компании">
+<meta property="og:description" content="На экране дикий, но правдивый факт с пропуском. Все врут, потом ищут правду. Бесплатно, в браузере.">
+<meta property="og:url" content="https://randomhost.online/fibs.html">
+<meta property="og:site_name" content="Рандомайзер Онлайн">
+<meta property="og:locale" content="ru_RU">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- неблокирующий шрифт. Noto Serif Display — заголовки полосы, Noto Serif — текст, Cousine — пишущая машинка; все три с кириллицей и греческим -->
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Display:wght@700;900&family=Noto+Serif:ital,wght@0,400;0,700;1,400&family=Cousine:wght@400;700&display=swap" rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Display:wght@700;900&family=Noto+Serif:ital,wght@0,400;0,700;1,400&family=Cousine:wght@400;700&display=swap" rel="stylesheet"></noscript>
+<style>
+  /* Мир: жёлтая пресса (fibs-spec.md §9). Газетная бумага, чёрная печать, один акцент — красный штемпель.
+     Факт — заголовок полосы, варианты — вырезки, раскрытие — штампы «ЛОЖЬ» / «ПРАВДА».
+     Пульт — «репортёрский блокнот»: светлый, крупный, всё под большой палец. */
+  :root {
+    --paper: #efe8d8;
+    --paper-2: #e6dcc6;
+    --sheet: #fbf8f0;
+    --ink: #151412;
+    --ink-2: #3b3833;
+    --muted: #6f685c;
+    --rule: #cfc4ab;
+    --red: #c8201e;
+    --red-2: #a31414;
+    --ok: #1f7a3c;
+    --font: "Noto Serif", Georgia, "Times New Roman", serif;
+    --head: "Noto Serif Display", "Noto Serif", Georgia, serif;
+    --mono: "Cousine", "Courier New", monospace;
+    --press: cubic-bezier(.2, .9, .3, 1.2);
+    --lang-switch-bg: var(--sheet);
+    --lang-switch-border: var(--ink);
+    --lang-switch-fg: var(--ink);
+    --lang-switch-active-bg: var(--ink);
+    --lang-switch-active-fg: var(--sheet);
+    --lang-switch-active-border: var(--ink);
+    --lang-switch-font: var(--mono);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    /* газетная бумага: лёгкий растр точек и пятна старения */
+    background:
+      radial-gradient(circle at 20% 10%, rgba(255, 255, 255, .5), transparent 40%),
+      radial-gradient(rgba(21, 20, 18, .06) 1px, transparent 1.2px) 0 0 / 5px 5px,
+      linear-gradient(180deg, var(--paper), var(--paper-2));
+    background-color: var(--paper);
+    background-attachment: fixed;
+    color: var(--ink);
+    font: 400 17px/1.4 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; touch-action: manipulation; }
+  button:disabled { opacity: .45; cursor: default; }
+  :focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+  .hidden { display: none !important; }
+  /* справа — место под переключатель языка из i18n.js (--lsw меряет fibs-shared.js) */
+  .util { display: flex; align-items: center; gap: 12px; height: calc(var(--lsc, 30px) * 2); padding: 0 var(--lsw, 150px) 0 14px; }
+  .util a { color: var(--ink-2); text-decoration: none; font: 700 14px/1 var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .sound-toggle-btn { flex: none; width: calc(var(--lsh, 44px) * 1.25); height: var(--lsh, 44px); border: 1.5px solid var(--ink); border-radius: 2px; background: var(--sheet); font-size: 17px; display: grid; place-items: center; padding: 0; }
+  .conn { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 30; background: var(--red); color: #fff; font: 700 14px/1 var(--mono); padding: 8px 12px; visibility: hidden; white-space: nowrap; }
+  .conn.on { visibility: visible; }
+  .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: var(--ink); color: var(--sheet); font: 700 15px/1.3 var(--mono); padding: 11px 14px; max-width: calc(100% - 32px); visibility: hidden; box-shadow: 4px 4px 0 var(--red); }
+  .toast.on { visibility: visible; animation: toast .3s var(--press); }
+  @keyframes toast { from { transform: translate(-50%, 20px); } }
+  #app { max-width: 520px; margin: 0 auto; padding: 0 16px 28px; min-height: calc(100vh - var(--lsc, 30px) * 2); min-height: calc(100dvh - var(--lsc, 30px) * 2); display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+  #app.top { justify-content: flex-start; padding-top: 4px; }
+
+  /* шапка газеты */
+  .masthead { text-align: center; border-top: 4px double var(--ink); border-bottom: 4px double var(--ink); padding: 8px 0 6px; }
+  .masthead .kicker { font: 700 12px/1.3 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); text-wrap: balance; }
+  .masthead h1 { margin: 4px 0 0; font: 900 clamp(44px, 14vw, 64px)/.95 var(--head); letter-spacing: -.01em; }
+  .masthead h1 em { font-style: normal; color: var(--red); }
+  .headline { font: 900 30px/1.05 var(--head); margin: 0; }
+
+  /* кнопки: чёрная печатная плашка, вторичная — пунктир «вырезать здесь» */
+  .btn { display: block; width: 100%; border: 2px solid var(--ink); border-radius: 0; background: var(--ink); color: var(--sheet); font: 700 20px/1 var(--mono); letter-spacing: .02em; padding: 17px 14px; box-shadow: 4px 4px 0 var(--red); text-align: center; text-decoration: none; transition: transform .08s; }
+  .btn:not(:disabled):active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--red); }
+  .btn.ghost { background: var(--sheet); color: var(--ink); box-shadow: none; border: 2px dashed var(--ink); font-size: 17px; }
+  .btn.ghost.sure { border-style: solid; border-color: var(--red); color: var(--red); }
+  .btn.ghost.on { background: var(--red); border-color: var(--red); color: #fff; border-style: solid; }
+  /* вторичное действие под пальцем: строка целиком, 44 px в высоту */
+  .link { display: block; min-height: 44px; margin: 2px auto 0; background: none; border: 0; color: var(--red); text-decoration: underline; text-underline-offset: 3px; padding: 10px 16px; font-weight: 700; font-size: 17px; }
+
+  /* лист: вырезка из газеты */
+  .card { position: relative; background: var(--sheet); color: var(--ink); padding: 16px; border: 1px solid var(--rule); box-shadow: 0 1px 0 var(--rule), 3px 4px 0 rgba(21, 20, 18, .12); }
+  .card .k { font: 700 12px/1.2 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 6px; }
+  .card .k:empty { display: none; }
+  .fact { font: 700 24px/1.22 var(--head); overflow-wrap: anywhere; }
+  .mini .card { padding: 10px 12px; }
+  .mini .card .k { margin-bottom: 2px; }
+  .mini .fact { font-size: 17px; line-height: 1.25; }
+  .fact .gap { display: inline-block; width: 3.2em; border-bottom: 3px solid var(--ink); vertical-align: -2px; }
+  .fact mark.ans { background: none; color: var(--red); border-bottom: 3px solid var(--red); padding: 0 2px; }
+
+  .eyebrow { color: var(--ink-2); font: 700 13px/1.3 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+  .lede { margin: 0; font-size: 18px; }
+  .lede b { color: var(--red); }
+  .rules { margin: 0; padding-left: 22px; color: var(--ink-2); display: grid; gap: 6px; }
+  .fine { color: var(--muted); font-size: 14px; }
+  .center { text-align: center; }
+
+  /* вход */
+  .enter .room { font: 700 15px/1 var(--mono); letter-spacing: .14em; color: var(--muted); }
+  .enter h2 { margin: 6px 0 12px; font: 900 28px/1.1 var(--head); }
+  .enter input { width: 100%; border: 0; border-bottom: 3px solid var(--ink); background: transparent; color: var(--ink); font: 700 28px/1.2 var(--font); padding: 4px 0; border-radius: 0; }
+  .err { min-height: 22px; color: var(--red); font-weight: 700; }
+
+  /* игроки */
+  .players { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pl { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; background: var(--sheet); border: 1.5px solid var(--pc); font: 700 14px/1.2 var(--mono); max-width: 100%; }
+  .pl b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .pl.me { background: color-mix(in srgb, var(--pc) 16%, var(--sheet)); }
+  .pl.off { opacity: .45; }
+  .av { font-style: normal; font-size: 18px; line-height: 1; }
+  .me-badge { display: flex; align-items: center; gap: 12px; }
+  .me-badge .av { font-size: 44px; }
+  .me-badge b { font: 900 28px/1.1 var(--head); display: block; overflow-wrap: anywhere; }
+
+  .status h2 { margin: 0 0 4px; font: 900 28px/1.1 var(--head); }
+  .status p { margin: 0; color: var(--ink-2); }
+
+  /* ложь */
+  .ahead { display: flex; justify-content: space-between; align-items: baseline; font: 700 14px/1.2 var(--mono); color: var(--ink-2); gap: 10px; }
+  .ahead b { color: var(--red); }
+  .timer { height: 6px; background: var(--rule); overflow: hidden; }
+  .timer i { display: block; height: 100%; background: var(--ink); transform-origin: 0 50%; }
+  .timer.hot i { background: var(--red); }
+  .write input { width: 100%; background: var(--sheet); border: 2px solid var(--ink); border-radius: 0; padding: 14px 12px; font: 700 22px/1.2 var(--mono); color: var(--ink); }
+  .write input:focus { outline: none; box-shadow: 4px 4px 0 var(--red); }
+  .write .cnt { display: flex; justify-content: space-between; color: var(--ink-2); font: 400 14px/1 var(--mono); min-height: 16px; margin-top: 6px; }
+  .write .truthmsg { color: var(--red); font: 700 16px/1.2 var(--mono); min-height: 20px; }
+  .row2 { display: grid; gap: 10px; }
+  .gotit { font: 700 24px/1.25 var(--mono); overflow-wrap: anywhere; }
+  .flip { perspective: 900px; }
+  @media (prefers-reduced-motion: no-preference) { .flip.go .card { animation: flip .6s var(--press); } }
+  @keyframes flip { 0% { transform: rotateY(90deg); } 100% { transform: rotateY(0); } }
+  .tag { display: inline-block; font: 700 12px/1 var(--mono); text-transform: uppercase; letter-spacing: .06em; padding: 4px 6px; background: var(--ink); color: var(--sheet); vertical-align: middle; }
+
+  /* темы */
+  .topics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .topics button { min-height: 104px; background: var(--sheet); border: 2px solid var(--ink); font: 900 19px/1.15 var(--head); padding: 10px; box-shadow: 3px 3px 0 var(--ink); overflow-wrap: anywhere; }
+  .topics button:not(:disabled):active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+
+  /* выбор правды: вырезки */
+  .opts { display: grid; gap: 10px; }
+  .opt { position: relative; display: flex; align-items: center; gap: 10px; text-align: left; background: var(--sheet); color: var(--ink); border: 2px solid var(--ink); padding: 13px 12px; font: 700 20px/1.2 var(--mono); overflow-wrap: anywhere; min-height: 56px; }
+  .opt .l { flex: none; width: 28px; height: 28px; border: 2px solid var(--ink); font: 700 15px/24px var(--mono); text-align: center; }
+  .opt .t { flex: 1; min-width: 0; }
+  .opt .lk { flex: none; font-size: 20px; opacity: .35; }
+  .opt .lk.on { opacity: 1; }
+  .opt.sel { background: var(--ink); color: var(--sheet); box-shadow: 4px 4px 0 var(--red); }
+  .opt.sel .l { border-color: var(--sheet); }
+  .opt.own { opacity: .45; border-style: dashed; }
+  .opt.own::after { content: attr(data-own); position: absolute; right: 8px; top: -9px; background: var(--paper); padding: 0 4px; font: 700 12px/1.4 var(--mono); text-transform: uppercase; color: var(--ink-2); }
+  .opt:not(:disabled):active { transform: scale(.985); }
+  .hedge { display: flex; gap: 10px; align-items: center; }
+  .hedge .btn { flex: 1; }
+
+  /* раскрытие */
+  .res { display: grid; gap: 8px; }
+  .res .r { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: start; background: var(--sheet); border: 1px solid var(--rule); border-left: 5px solid var(--pc, var(--muted)); padding: 10px 12px; }
+  .res .r.truth { border-left-color: var(--ok); background: color-mix(in srgb, var(--ok) 8%, var(--sheet)); }
+  .res .r .t { font: 700 18px/1.25 var(--mono); overflow-wrap: anywhere; }
+  .res .r .who { grid-column: 1 / -1; color: var(--ink-2); font-size: 14px; }
+  .res .r .p { font: 700 16px/1.2 var(--mono); color: var(--red); white-space: nowrap; }
+  .big { font: 900 clamp(40px, 13vw, 64px)/1.05 var(--head); color: var(--ink); }
+  .big.red { color: var(--red); }
+  /* штемпель */
+  .stamp { display: inline-block; font: 900 26px/1 var(--head); letter-spacing: .08em; color: var(--red); border: 4px solid var(--red); padding: 6px 12px 4px; transform: rotate(-6deg); mix-blend-mode: multiply; }
+  .stamp.ok { color: var(--ok); border-color: var(--ok); }
+  @media (prefers-reduced-motion: no-preference) { .stamp.in { animation: stampin .35s var(--press) both; } }
+  @keyframes stampin { from { transform: rotate(-6deg) scale(2.2); opacity: .2; } }
+
+  /* таблица счёта — как колонка биржевых котировок */
+  .table ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .table li { display: flex; align-items: center; gap: 8px; min-height: 32px; font: 700 15px/1 var(--mono); border-bottom: 1px dotted var(--rule); }
+  .table li .n { width: 22px; flex: none; color: var(--muted); }
+  .table li b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .table li .s { flex: none; font-variant-numeric: tabular-nums; }
+  .table li.me { color: var(--red); }
+  .howcard ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+
+  /* реакции */
+  .reacts { display: flex; justify-content: center; gap: 10px; }
+  .reacts button { width: 54px; height: 54px; border: 1.5px solid var(--ink); border-radius: 0; background: var(--sheet); font-size: 26px; }
+  .reacts button:not(:disabled):active { transform: scale(.9); }
+
+  /* пример на стартовом экране */
+  .sample { display: grid; gap: 10px; }
+  .sample .card { transform: rotate(-1deg); }
+  .sample .clips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sample .clip { background: var(--sheet); border: 1px dashed var(--ink); padding: 6px 10px; font: 700 16px/1.2 var(--mono); }
+  .sample .clip.t { border: 2px solid var(--ok); color: var(--ok); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="util"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
+<div class="conn" id="conn"></div>
+<div id="app"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Не верю! — игра в правду и ложь для компании`,
+    _meta: `🤥 Мультиплеерная игра для компании: на экране настоящий, но дикий факт с пропуском. Каждый с телефона вписывает правдоподобную ложь, потом все ищут правду. Как Fibbage, только бесплатно и в браузере.`,
+    nav_all_games: `← Все игры`,
+    kicker: `Игра для компании · телефоны + общий экран`,
+    lede: `На экране <b>настоящий</b> факт, но такой, что не верится. Впиши на месте пропуска <b>ложь</b>, в которую поверят. Потом найди правду среди чужих выдумок.`,
+    btn_create: `Открыть редакцию`, btn_creating: `Открываем…`,
+    cta_sub: `Открывай на ноутбуке или ТВ — там будет полоса`,
+    have_code: `У меня есть код`, prompt_code: `Код комнаты`,
+    rule1: `От трёх человек, все заходят с телефонов по QR с общего экрана`,
+    rule2: `Очки за найденную правду и за каждого, кто поверил твоей лжи`,
+    rule3: `Все факты правдивые и проверены по источникам`,
+    sample_k: `Пример`, sample_q: `В 1932 году Австралия официально объявила войну ______ и проиграла`,
+    enter_title: `Как тебя зовут?`, enter_ph: `Имя`, btn_join: `В редакцию`,
+    err_name: `Напиши имя`, err_room_full: `В комнате уже 16 игроков`, err_token_gone: `Тебя нет в этой партии — войди заново`,
+    wait_title: `Подключаемся…`,
+    lobby_in: `Ты в игре`, lobby_wait: `Ждём, пока ведущий начнёт. Нужно хотя бы трое`,
+    intro_k: `Раунд {n} из {m}`,
+    topic_you: `Выбирай тему`, topic_wait: `Тему выбирает {name}`,
+    fact_of: `Факт {i} из {n}`,
+    lie_title: `Соври`, ph_lie: `Твоя ложь`,
+    btn_send: `Отправить`,
+    btn_hint: `🎲 Соври за меня · осталось {n}`, btn_hint_sure: `Взять готовую? Сменить нельзя`, btn_hint_none: `🎲 Подсказок не осталось`,
+    got_hint: `Твоя ложь:`,
+    truth_rj: `Это правда! Придумай ложь`,
+    done_title: `Ложь сдана в печать`, done_sub: `Ждём остальных — смотри на общий экран`,
+    late_title: `Ты со следующего факта`, late_sub: `Пока смотри на экран`,
+    choose_title: `Где правда?`, choose_one: `Тапни вариант, который считаешь правдой`, choose_two: `Подстраховка: выбери два — всё за полцены`,
+    btn_hedge: `🛟 Подстраховка`, btn_hedge_on: `🛟 Два варианта · ×½`, btn_pick: `Это правда · {n}`,
+    own: `твоя`,
+    chose_title: `Ставка сделана`, chose_sub: `Понравилась чужая ложь? Лайкни — автору +100`, likes_left: `Лайков осталось: {n}`,
+    reveal_title: `Разоблачение`, you_got: `+{n}`, you_zero: `Мимо`,
+    you_found: `Правда найдена`, you_fooled: `Поверили тебе: {n}`,
+    scores_title: `Счёт`, place: `{n} место`,
+    final_title: `Номер сдан`, final_sub: `Ведущий может начать ещё партию`,
+    final_few: `Игроков стало меньше трёх — игра закончилась`,
+    final_host: `Ведущий закончил игру`,
+    kicked_title: `Ведущий убрал тебя из комнаты`,
+    replaced_title: `Игра открыта в другой вкладке`, replaced_text: `Играть можно только в одной.`, btn_back_here: `Играть здесь`,
+    expired_title: `Комната закрыта`, expired_text: `Она пустовала полчаса или ведущий её закрыл.`, expired_new: `Открыть новую редакцию`,
+    table: `Сводка`, how_k: `Пока ждём — как играть`, how_lie: `Хорошая ложь похожа на правду: того же вида, та же длина`,
+    rj_no_hints: `Подсказки кончились`, rj_empty: `Напиши хоть что-нибудь`, rj_not_lie: `Время вышло`, rj_done: `Уже отправлено`, rj_own: `Свою ложь выбрать нельзя`, rj_chosen: `Выбор уже сделан`, rj_not_choose: `Выбор закончился`, rj_no_likes: `Лайков больше нет`, rj_not_chooser: `Тему выбирает другой`, rj_bad_topic: `Такой темы нет`,
+  },
+  en: {
+    _title: `No Way! — the truth-or-lie party game`,
+    _meta: `🤥 A multiplayer party game: a real but unbelievable fact with a blank on the shared screen. Everyone writes a believable lie on their phone, then everybody hunts for the truth. Like Fibbage, but free and in the browser.`,
+    nav_all_games: `← All games`,
+    kicker: `Party game · phones + shared screen`,
+    lede: `A <b>real</b> fact hits the screen — one you won't believe. Fill the blank with a <b>lie</b> people will buy. Then find the truth among everyone's fibs.`,
+    btn_create: `Open the newsroom`, btn_creating: `Opening…`,
+    cta_sub: `Open it on a laptop or TV — that's the front page`,
+    have_code: `I have a code`, prompt_code: `Room code`,
+    rule1: `Three or more players, everyone joins by phone via the QR on the shared screen`,
+    rule2: `Points for finding the truth and for everyone who believes your lie`,
+    rule3: `Every fact is true and checked against sources`,
+    sample_k: `Example`, sample_q: `In 1932, Australia's military waged a war against ______ and lost`,
+    enter_title: `What's your name?`, enter_ph: `Name`, btn_join: `Join the newsroom`,
+    err_name: `Type a name`, err_room_full: `The room already has 16 players`, err_token_gone: `You're not in this game — join again`,
+    wait_title: `Connecting…`,
+    lobby_in: `You're in`, lobby_wait: `Waiting for the host to start. At least three players needed`,
+    intro_k: `Round {n} of {m}`,
+    topic_you: `Pick a topic`, topic_wait: `{name} is picking the topic`,
+    fact_of: `Fact {i} of {n}`,
+    lie_title: `Lie`, ph_lie: `Your lie`,
+    btn_send: `Send`,
+    btn_hint: `🎲 Lie for me · {n} left`, btn_hint_sure: `Take a ready one? No take-backs`, btn_hint_none: `🎲 No hints left`,
+    got_hint: `Your lie:`,
+    truth_rj: `That's the truth! Make up a lie`,
+    done_title: `Lie sent to print`, done_sub: `Waiting for the others — watch the shared screen`,
+    late_title: `You're in from the next fact`, late_sub: `Watch the screen for now`,
+    choose_title: `Where's the truth?`, choose_one: `Tap the answer you think is true`, choose_two: `Safety net: pick two — everything at half price`,
+    btn_hedge: `🛟 Safety net`, btn_hedge_on: `🛟 Two picks · ×½`, btn_pick: `That's true · {n}`,
+    own: `yours`,
+    chose_title: `Bet placed`, chose_sub: `Liked someone's lie? Like it — +100 to the author`, likes_left: `Likes left: {n}`,
+    reveal_title: `Exposed`, you_got: `+{n}`, you_zero: `Missed`,
+    you_found: `You found the truth`, you_fooled: `Fooled: {n}`,
+    scores_title: `Scores`, place: `{n} place`,
+    final_title: `That's a wrap`, final_sub: `The host can start another game`,
+    final_few: `Fewer than three players left — game over`,
+    final_host: `The host ended the game`,
+    kicked_title: `The host removed you from the room`,
+    replaced_title: `You opened the game in another tab`, replaced_text: `You can only play in one.`, btn_back_here: `Play here`,
+    expired_title: `Room closed`, expired_text: `It sat empty for half an hour or the host closed it.`, expired_new: `Open a new newsroom`,
+    table: `Standings`, how_k: `While we wait — how to play`, how_lie: `A good lie looks like the truth: same kind, same length`,
+    rj_no_hints: `No hints left`, rj_empty: `Write something`, rj_not_lie: `Time's up`, rj_done: `Already sent`, rj_own: `You can't pick your own lie`, rj_chosen: `You already picked`, rj_not_choose: `Picking is over`, rj_no_likes: `No likes left`, rj_not_chooser: `Someone else picks the topic`, rj_bad_topic: `No such topic`,
+  },
+  el: {
+    _title: `Δεν το πιστεύω! — παιχνίδι αλήθειας και ψέματος για παρέες`,
+    _meta: `🤥 Παιχνίδι για παρέες: στην κοινή οθόνη ένα αληθινό αλλά απίστευτο γεγονός με κενό. Ο καθένας γράφει από το κινητό ένα πειστικό ψέμα, μετά όλοι ψάχνουν την αλήθεια. Σαν το Fibbage, δωρεάν στον browser.`,
+    nav_all_games: `← Όλα τα παιχνίδια`,
+    kicker: `Παιχνίδι για παρέες · κινητά + κοινή οθόνη`,
+    lede: `Στην οθόνη ένα <b>αληθινό</b> γεγονός — τόσο απίστευτο που δεν το πιστεύεις. Συμπλήρωσε το κενό με ένα <b>ψέμα</b> που θα το πιστέψουν. Μετά βρες την αλήθεια ανάμεσα στα ψέματα των άλλων.`,
+    btn_create: `Άνοιξε τη σύνταξη`, btn_creating: `Ανοίγουμε…`,
+    cta_sub: `Άνοιξέ το σε laptop ή τηλεόραση — εκεί είναι το πρωτοσέλιδο`,
+    have_code: `Έχω κωδικό`, prompt_code: `Κωδικός δωματίου`,
+    rule1: `Από τρεις παίκτες, όλοι μπαίνουν από το κινητό με το QR της κοινής οθόνης`,
+    rule2: `Πόντοι για την αλήθεια και για κάθε θύμα του ψέματός σου`,
+    rule3: `Όλα τα γεγονότα είναι αληθινά και ελεγμένα σε πηγές`,
+    sample_k: `Παράδειγμα`, sample_q: `Το 1932 ο στρατός της Αυστραλίας κήρυξε πόλεμο στους ______ και έχασε`,
+    enter_title: `Πώς σε λένε;`, enter_ph: `Όνομα`, btn_join: `Στη σύνταξη`,
+    err_name: `Γράψε όνομα`, err_room_full: `Το δωμάτιο έχει ήδη 16 παίκτες`, err_token_gone: `Δεν είσαι σε αυτή την παρτίδα — μπες ξανά`,
+    wait_title: `Σύνδεση…`,
+    lobby_in: `Είσαι μέσα`, lobby_wait: `Περιμένουμε τον οικοδεσπότη. Χρειάζονται τουλάχιστον τρεις`,
+    intro_k: `Γύρος {n} από {m}`,
+    topic_you: `Διάλεξε θέμα`, topic_wait: `Θέμα διαλέγει: {name}`,
+    fact_of: `Γεγονός {i} από {n}`,
+    lie_title: `Πες ψέματα`, ph_lie: `Το ψέμα σου`,
+    btn_send: `Στείλε`,
+    btn_hint: `🎲 Πες ψέμα για μένα · απομένουν {n}`, btn_hint_sure: `Έτοιμο; Δεν αλλάζει μετά`, btn_hint_none: `🎲 Δεν έμειναν βοήθειες`,
+    got_hint: `Το ψέμα σου:`,
+    truth_rj: `Αυτό είναι αλήθεια! Βρες ψέμα`,
+    done_title: `Το ψέμα στάλθηκε στο τυπογραφείο`, done_sub: `Περιμένουμε τους άλλους — κοίτα την κοινή οθόνη`,
+    late_title: `Παίζεις από το επόμενο γεγονός`, late_sub: `Μέχρι τότε κοίτα την οθόνη`,
+    choose_title: `Πού είναι η αλήθεια;`, choose_one: `Πάτα αυτό που πιστεύεις ότι είναι αληθινό`, choose_two: `Δίχτυ ασφαλείας: διάλεξε δύο — όλα στη μισή τιμή`,
+    btn_hedge: `🛟 Δίχτυ ασφαλείας`, btn_hedge_on: `🛟 Δύο επιλογές · ×½`, btn_pick: `Αυτό είναι αλήθεια · {n}`,
+    own: `δικό σου`,
+    chose_title: `Η επιλογή έγινε`, chose_sub: `Σου άρεσε ένα ψέμα; Κάνε like — +100 στον δημιουργό`, likes_left: `Like που απομένουν: {n}`,
+    reveal_title: `Αποκάλυψη`, you_got: `+{n}`, you_zero: `Άστοχο`,
+    you_found: `Βρήκες την αλήθεια`, you_fooled: `Σε πίστεψαν: {n}`,
+    scores_title: `Σκορ`, place: `{n}η θέση`,
+    final_title: `Το φύλλο κλείνει`, final_sub: `Ο οικοδεσπότης μπορεί να ξεκινήσει νέα παρτίδα`,
+    final_few: `Έμειναν λιγότεροι από τρεις — τέλος`,
+    final_host: `Ο οικοδεσπότης τελείωσε το παιχνίδι`,
+    kicked_title: `Ο οικοδεσπότης σε έβγαλε από το δωμάτιο`,
+    replaced_title: `Άνοιξες το παιχνίδι σε άλλη καρτέλα`, replaced_text: `Μπορείς να παίζεις μόνο σε μία.`, btn_back_here: `Παίξε εδώ`,
+    expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης.`, expired_new: `Άνοιξε νέα σύνταξη`,
+    table: `Κατάταξη`, how_k: `Όσο περιμένουμε — πώς παίζεται`, how_lie: `Ένα καλό ψέμα μοιάζει με αλήθεια: ίδιο είδος, ίδιο μήκος`,
+    rj_no_hints: `Τελείωσαν οι βοήθειες`, rj_empty: `Γράψε κάτι`, rj_not_lie: `Τέλος χρόνου`, rj_done: `Στάλθηκε ήδη`, rj_own: `Όχι το δικό σου ψέμα`, rj_chosen: `Διάλεξες ήδη`, rj_not_choose: `Η επιλογή τελείωσε`, rj_no_likes: `Τελείωσαν τα like`, rj_not_chooser: `Άλλος διαλέγει θέμα`, rj_bad_topic: `Δεν υπάρχει τέτοιο θέμα`,
+  },
+};
+</script>
+<script src="fibs-shared.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script>
+"use strict";
+const params = new URLSearchParams(location.search);
+// код идёт в разметку — только алфавит кодов, иначе ?r=<img onerror> даёт XSS
+const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const app = document.getElementById("app");
+const T = (k) => qpT(k);
+const tpl = (k, v) => qpTpl(k, v);
+const REACTIONS = ["😂", "😱", "🤥", "👏", "🤯"];
+
+let conn = null, state = null, me = null, token = null, dead = false;
+let screen = null, screenKey = "";
+let joinErr = null;
+let draft = ""; // черновик лжи: переживает перерисовки
+let draftFact = null; // к какому факту черновик
+let truthMsg = false; // последняя попытка оказалась правдой
+let hintArmed = false; // кнопка подсказки ждёт второго нажатия
+let justHinted = false; // только что вытянули готовую ложь
+let hedge = false; // подстраховка: два варианта
+let picks = []; // выбранные варианты до отправки
+let sentPick = false;
+const tokenKey = () => "fibs-token-" + CODE;
+try { token = localStorage.getItem(tokenKey()); } catch (e) {}
+
+const player = (id) => state && state.players.find((p) => p.id === id);
+const mine = () => (state && me ? player(me) : null);
+const avHtml = (p) => `<i class="av">${escapeHtml(p.avatar)}</i>`;
+const factId = () => (state ? state.game + ":" + state.ri + ":" + state.fi : "");
+
+function toast(text) {
+  const t = document.getElementById("toast");
+  t.textContent = text;
+  t.classList.remove("on"); void t.offsetWidth; t.classList.add("on");
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove("on"), 2400);
+}
+function show(html, key, top) {
+  screenKey = key;
+  app.classList.toggle("top", !!top);
+  app.innerHTML = html;
+}
+
+// экран не гаснет, пока идёт игра (где поддерживается)
+let wakeLock = null;
+async function keepAwake() {
+  try { if ("wakeLock" in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && me) keepAwake(); });
+
+// ---------- стартовый экран ----------
+function renderLanding() {
+  screen = "landing";
+  show(`<div class="masthead"><div class="kicker">${T("kicker")}</div><h1>${escapeHtml(T("game_name")).replace(/!$/, "<em>!</em>")}</h1></div>
+    <p class="lede">${T("lede")}</p>
+    <div class="sample" aria-hidden="true">
+      <div class="card"><div class="k">${T("sample_k")}</div><div class="fact">${qpFactHtml(T("sample_q"))}</div></div>
+      <div class="clips"><span class="clip">${qpLang() === "ru" ? "кроликам" : qpLang() === "en" ? "rabbits" : "κουνέλια"}</span><span class="clip t">${qpLang() === "ru" ? "эму" : qpLang() === "en" ? "emus" : "εμού"}</span><span class="clip">${qpLang() === "ru" ? "кенгуру" : qpLang() === "en" ? "kangaroos" : "καγκουρό"}</span></div>
+    </div>
+    <div><button class="btn" id="create" type="button">${T("btn_create")}</button>
+      <div class="fine center" style="margin-top:10px;text-wrap:balance">${T("cta_sub")}</div><button class="link" id="havecode" type="button">${T("have_code")}</button></div>
+    <ol class="rules"><li>${T("rule1")}</li><li>${T("rule2")}</li><li>${T("rule3")}</li></ol>`, "landing");
+  document.getElementById("create").onclick = async () => {
+    const btn = document.getElementById("create");
+    btn.disabled = true;
+    btn.textContent = T("btn_creating");
+    try {
+      const res = await fetch("/fibs/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: qpLang() } }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "error");
+      try { localStorage.setItem("fibs-host-" + data.code, data.hostToken); } catch (e) {}
+      location.href = `fibs-board.html?r=${data.code}`;
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = T("btn_create");
+      toast(String(err.message || err));
+    }
+  };
+  document.getElementById("havecode").onclick = () => {
+    const c = prompt(T("prompt_code"));
+    if (c) location.href = `fibs.html?r=${encodeURIComponent(c.trim().toUpperCase())}`;
+  };
+}
+
+// ---------- вход ----------
+function renderEnter() {
+  screen = "enter";
+  let saved = "";
+  try { saved = localStorage.getItem("fibs-name") || ""; } catch (e) {}
+  show(`<form class="enter" id="enterform" autocomplete="off" style="display:grid;gap:14px">
+    <div class="card"><div class="room">${escapeHtml(CODE)}</div><h2>${T("enter_title")}</h2>
+      <input id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}"></div>
+    <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
+    <button class="btn" type="submit">${T("btn_join")}</button>
+  </form>`, "enter");
+  const input = document.getElementById("name");
+  document.getElementById("enterform").onsubmit = (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    if (!name) { document.getElementById("err").textContent = T("err_name"); return; }
+    try { localStorage.setItem("fibs-name", name); } catch (e2) {}
+    joinErr = null;
+    conn.send({ type: "join", name });
+    keepAwake();
+  };
+}
+
+function renderCenter(titleKey, textKey, extra, key) {
+  show(`<div class="card status"><h2>${T(titleKey)}</h2>${textKey ? `<p>${T(textKey)}</p>` : ""}${extra || ""}</div>`, key || "c:" + titleKey);
+}
+function renderExpired() {
+  dead = true;
+  screen = "expired";
+  try { localStorage.removeItem(tokenKey()); } catch (e) {}
+  renderCenter("expired_title", "expired_text", `<a class="btn" style="margin-top:14px" href="fibs.html">${T("expired_new")}</a>`);
+}
+
+// ---------- общие куски ----------
+function playersHtml() {
+  return `<div class="players">${state.players.filter((p) => !p.left).map((p) => `<span class="pl${p.id === me ? " me" : ""}${p.online ? "" : " off"}" style="--pc:${p.color}">${avHtml(p)}<b>${escapeHtml(p.name)}</b></span>`).join("")}</div>`;
+}
+function reactsHtml() {
+  return `<div class="reacts">${REACTIONS.map((e) => `<button type="button" data-e="${e}" aria-label="${e}">${e}</button>`).join("")}</div>`;
+}
+function bindReacts() {
+  app.querySelectorAll(".reacts button").forEach((b) => {
+    b.onclick = () => { conn.send({ type: "react", emoji: b.dataset.e }); qpVibrate(8); b.disabled = true; setTimeout(() => (b.disabled = false), 2000); };
+  });
+}
+function meBadge() {
+  const p = mine();
+  return `<div class="me-badge">${avHtml(p)}<div><span class="eyebrow">${T("lobby_in")}</span><b>${escapeHtml(p.name)}</b></div></div>`;
+}
+const timerHtml = () => `<div class="timer" id="timer"><i></i></div>`;
+const factHead = () => `<div class="ahead"><span>${escapeHtml(tpl("fact_of", { i: state.fi + 1, n: state.factsInRound }))} · <b>${escapeHtml(qpRoundName(state.roundKey))}</b></span><span id="tleft"></span></div>`;
+const factCard = (ans) => `<div class="card"><div class="k">${escapeHtml(state.fact.final ? T("r_final") : qpTopic(state.fact.topic))}</div><div class="fact">${qpFactHtml(state.fact.text, ans)}</div></div>`;
+
+// ---------- экраны по фазам ----------
+function renderLobby() {
+  const key = "lobby:" + state.players.map((p) => p.id + p.online).join(",") + qpLang();
+  if (screenKey === key) return;
+  show(`${meBadge()}<div class="status"><p>${T("lobby_wait")}</p></div>${playersHtml()}${reactsHtml()}
+    <div class="card howcard"><div class="k">${T("how_k")}</div><ul><li>${T("how_lie")}</li><li>${T("rule2")}</li><li>${T("rule3")}</li></ul></div>`, key, true);
+  bindReacts();
+}
+
+function renderIntro() {
+  const key = "intro:" + state.ri + qpLang();
+  if (screenKey === key) return;
+  const pts = state.points;
+  show(`<div class="center"><div class="eyebrow">${escapeHtml(tpl("intro_k", { n: state.ri + 1, m: 3 }))}</div>
+    <h1 class="headline" style="font-size:48px;margin-top:6px">${escapeHtml(qpRoundName(state.roundKey))}</h1>
+    <p class="lede" style="margin-top:12px">${escapeHtml(qpRoundDesc(state.roundKey))}</p>
+    ${pts ? `<p class="eyebrow" style="margin-top:14px">${escapeHtml(tpl("pts_truth", { n: pts.truth }))} · ${escapeHtml(tpl("pts_fool", { n: pts.fool }))}</p>` : ""}</div>`, key);
+}
+
+function renderTopic() {
+  const s = state.me;
+  const key = "topic:" + factId() + ":" + (s && s.chooser) + qpLang();
+  if (screenKey === key) return;
+  if (s && s.chooser) {
+    show(`${timerHtml()}<h2 class="headline">${T("topic_you")}</h2>
+      <div class="topics">${state.topics.map((t) => `<button type="button" data-t="${escapeHtml(t)}">${escapeHtml(qpTopic(t))}</button>`).join("")}</div>`, key);
+    app.querySelectorAll(".topics button").forEach((b) => {
+      b.onclick = () => { conn.send({ type: "topic", topic: b.dataset.t }); qpSfx.tap(); qpVibrate(15); app.querySelectorAll(".topics button").forEach((x) => (x.disabled = true)); };
+    });
+    qpVibrate([30, 40, 30]);
+    return;
+  }
+  const ch = player(state.chooser);
+  show(`<div class="card status center"><h2>${escapeHtml(tpl("topic_wait", { name: ch ? ch.name : "?" }))}</h2></div>${timerHtml()}${reactsHtml()}`, key);
+  bindReacts();
+}
+
+function renderLie() {
+  const s = state.me;
+  if (!s || !s.inRound) {
+    const key = "late:" + factId() + qpLang();
+    if (screenKey === key) return;
+    show(`${factCard()}<div class="card status"><h2>${T("late_title")}</h2><p>${T("late_sub")}</p></div>${reactsHtml()}`, key, true);
+    return bindReacts();
+  }
+  if (draftFact !== factId()) { draftFact = factId(); draft = ""; truthMsg = false; hintArmed = false; justHinted = false; }
+  if (s.lie) {
+    const key = "lied:" + factId() + ":" + justHinted + qpLang();
+    if (screenKey === key) return;
+    show(`${factHead()}${timerHtml()}${factCard()}
+      <div class="${justHinted ? "flip go" : ""}"><div class="card"><div class="k">${T("got_hint")}</div><div class="gotit">${escapeHtml(s.lie.text)} ${s.lie.hint ? `<span class="tag">🎲</span>` : ""}</div></div></div>
+      <div class="status center"><h2>${T("done_title")}</h2><p>${T("done_sub")}</p></div>${reactsHtml()}`, key, true);
+    if (justHinted) { qpSfx.flip(); justHinted = false; }
+    return bindReacts();
+  }
+  const key = "lie:" + factId() + ":" + s.hintsLeft + ":" + hintArmed + ":" + truthMsg + qpLang();
+  if (screenKey === key) return;
+  const hintLabel = s.hintsLeft <= 0 ? T("btn_hint_none") : hintArmed ? T("btn_hint_sure") : tpl("btn_hint", { n: s.hintsLeft });
+  const max = state.liesMax || 25;
+  show(`${factHead()}${timerHtml()}${factCard()}
+    <form class="write" id="write" autocomplete="off">
+      <div class="truthmsg" id="truthmsg">${truthMsg ? escapeHtml(T("truth_rj")) : ""}</div>
+      <input id="lie" maxlength="${max}" placeholder="${escapeHtml(T("ph_lie"))}" value="${escapeHtml(draft)}" enterkeyhint="send" aria-label="${escapeHtml(T("ph_lie"))}" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <div class="cnt"><span></span><span id="cnt"></span></div>
+      <div class="row2" style="margin-top:6px"><button class="btn" type="submit" id="sendbtn">${T("btn_send")}</button>
+      <button class="btn ghost${hintArmed ? " sure" : ""}" type="button" id="hintbtn"${s.hintsLeft <= 0 ? " disabled" : ""}>${escapeHtml(hintLabel)}</button></div>
+    </form>`, key, true);
+  const form = document.getElementById("write");
+  const inp = document.getElementById("lie");
+  const cnt = document.getElementById("cnt");
+  const upd = () => { draft = inp.value; cnt.textContent = inp.value.length > max - 8 ? `${inp.value.length}/${max}` : ""; };
+  inp.oninput = upd;
+  upd();
+  if (!matchMedia("(pointer: coarse)").matches || truthMsg) inp.focus();
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const text = draft.trim();
+    if (!text) { toast(T("rj_empty")); return; }
+    conn.send({ type: "lie", text });
+    qpSfx.send();
+    qpVibrate(15);
+    document.getElementById("sendbtn").disabled = true;
+    hintArmed = false;
+  };
+  document.getElementById("hintbtn").onclick = () => {
+    if (!hintArmed) { hintArmed = true; screenKey = ""; return render(); }
+    hintArmed = false;
+    justHinted = true;
+    conn.send({ type: "hint" });
+    qpVibrate([10, 30, 10]);
+  };
+}
+
+function renderChoose() {
+  const s = state.me;
+  if (!state.options) return;
+  const chose = s && (s.picks || sentPick);
+  const key = "choose:" + factId() + ":" + !!chose + ":" + hedge + ":" + picks.join(",") + ":" + (s ? s.likes.join(",") : "") + qpLang();
+  if (screenKey === key) return;
+  if (!s) return;
+  const letter = (i) => String.fromCharCode(65 + i);
+  if (chose) {
+    const mineIdx = s.picks || picks;
+    const left = 2 - s.likes.length;
+    show(`${timerHtml()}<div class="status"><h2>${T("chose_title")}</h2><p>${T("chose_sub")}</p></div>
+      <div class="eyebrow">${escapeHtml(tpl("likes_left", { n: left }))}</div>
+      <div class="opts">${state.options.map((o, i) => {
+        const liked = s.likes.includes(i);
+        return `<button type="button" class="opt${o.mine ? " own" : ""}${mineIdx.includes(i) ? " sel" : ""}" data-i="${i}" data-own="${escapeHtml(T("own"))}"${o.mine || liked || left <= 0 ? " disabled" : ""}><span class="l">${letter(i)}</span><span class="t">${escapeHtml(o.text)}</span><span class="lk${liked ? " on" : ""}">👍</span></button>`;
+      }).join("")}</div>${reactsHtml()}`, key, true);
+    app.querySelectorAll(".opt:not(:disabled)").forEach((b) => {
+      b.onclick = () => { conn.send({ type: "like", opt: Number(b.dataset.i) }); qpSfx.pop(); qpVibrate(10); b.disabled = true; };
+    });
+    return bindReacts();
+  }
+  const need = hedge ? 2 : 1;
+  show(`${timerHtml()}<div class="mini">${factCard()}</div>
+    <div class="eyebrow">${escapeHtml(hedge ? T("choose_two") : T("choose_one"))}</div>
+    <div class="opts">${state.options.map((o, i) => `<button type="button" class="opt${o.mine ? " own" : ""}${picks.includes(i) ? " sel" : ""}" data-i="${i}" data-own="${escapeHtml(T("own"))}"${o.mine ? " disabled" : ""}><span class="l">${letter(i)}</span><span class="t">${escapeHtml(o.text)}</span></button>`).join("")}</div>
+    <div class="hedge"><button class="btn ghost${hedge ? " on" : ""}" type="button" id="hedge">${escapeHtml(hedge ? T("btn_hedge_on") : T("btn_hedge"))}</button></div>
+    ${hedge ? `<button class="btn" type="button" id="pickbtn"${picks.length === 2 ? "" : " disabled"}>${escapeHtml(tpl("btn_pick", { n: `${picks.length}/2` }))}</button>` : ""}`, key, true);
+  app.querySelectorAll(".opt:not(.own)").forEach((b) => {
+    b.onclick = () => {
+      const i = Number(b.dataset.i);
+      qpSfx.tap();
+      if (need === 1) { picks = [i]; sendPick(); return; }
+      picks = picks.includes(i) ? picks.filter((x) => x !== i) : picks.length < 2 ? picks.concat(i) : [picks[1], i];
+      render();
+    };
+  });
+  document.getElementById("hedge").onclick = () => { hedge = !hedge; picks = []; render(); };
+  const pb = document.getElementById("pickbtn");
+  if (pb) pb.onclick = sendPick;
+}
+function sendPick() {
+  if (!picks.length) return;
+  conn.send({ type: "choose", picks });
+  sentPick = true;
+  qpVibrate(15);
+  qpSfx.send();
+  render();
+}
+
+function renderReveal() {
+  const s = state.me;
+  if (!state.options || !s) return;
+  const key = "rev:" + factId() + qpLang();
+  if (screenKey === key) return;
+  const opts = state.options;
+  const truthI = opts.findIndex((o) => o.kind === "truth");
+  const found = (s.picks || []).includes(truthI);
+  const fooled = opts.filter((o) => o.kind === "lie" && o.authors.includes(me)).reduce((n, o) => n + o.choosers.length, 0);
+  const gain = s.gain || 0;
+  const rows = opts.map((o, i) => {
+    const authorsTxt = o.kind === "lie" ? tpl("lie_of", { names: qpNames(o.authors, player) }) : o.kind === "trap" ? T("trap") : T("truth");
+    const p = o.kind === "lie" ? player(o.authors[0]) : null;
+    const ch = o.choosers.map((c) => (player(c.playerId) || {}).avatar || "").join(" ");
+    const tags = o.kind === "lie" ? o.authors.map((a, k) => (o.late[k] ? "🐌" : o.hint[k] ? "🎲" : "")).filter(Boolean).join(" ") : "";
+    return `<div class="r${o.kind === "truth" ? " truth" : ""}" style="--pc:${p ? p.color : "var(--muted)"}"><div class="t">${escapeHtml(o.text)}</div><div class="p">${o.likes ? escapeHtml(tpl("likes_n", { n: o.likes })) : ""}</div>
+      <div class="who">${escapeHtml(authorsTxt)}${tags ? " " + tags : ""}${ch ? " · " + escapeHtml(ch) : ""}</div></div>`;
+  });
+  // правда последней, как на доске
+  const order = opts.map((_, i) => i).filter((i) => i !== truthI).concat(truthI);
+  show(`${factCard(state.truth ? state.truth.answer : null)}
+    <div class="center"><div class="big${gain ? " red" : ""}">${escapeHtml(gain ? tpl("you_got", { n: gain }) : T("you_zero"))}</div>
+      <p class="lede">${found ? `<span class="stamp ok in">${T("truth")}</span> ` : ""}${fooled ? escapeHtml(tpl("you_fooled", { n: fooled })) : ""}</p></div>
+    <div class="eyebrow">${T("reveal_title")}</div><div class="res">${order.map((i) => rows[i]).join("")}</div>${reactsHtml()}`, key, true);
+  bindReacts();
+  if (found) qpVibrate([40, 40, 80]);
+}
+
+function standing() {
+  const list = state.players.filter((p) => !p.left).slice().sort((a, b) => b.score - a.score);
+  const p = mine();
+  const place = 1 + list.filter((x) => x.score > p.score).length;
+  return { list, place, p };
+}
+function tableHtml(list) {
+  return `<div class="card table"><div class="k">${T("table")}</div><ol>${list.map((x, i) => `<li class="${x.id === me ? "me" : ""}"><span class="n">${i + 1}</span>${avHtml(x)}<b>${escapeHtml(x.name)}</b><span class="s">${x.score}</span></li>`).join("")}</ol></div>`;
+}
+
+function renderScores() {
+  const key = "scores:" + factId() + qpLang();
+  if (screenKey === key) return;
+  const { list, place, p } = standing();
+  show(`<div class="center"><div class="eyebrow">${T("scores_title")}</div>
+    <div class="big" style="margin:10px 0">${escapeHtml(tpl("place", { n: place }))}</div><div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div></div>${tableHtml(list)}${reactsHtml()}`, key, true);
+  bindReacts();
+}
+
+function renderFinal() {
+  const key = "final:" + state.game + ":" + state.finishedReason + qpLang();
+  if (screenKey === key) return;
+  const { list, place, p } = standing();
+  const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : T("final_sub");
+  show(`<div class="center"><h1 class="headline">${T("final_title")}</h1>
+    <div class="big${place === 1 ? " red" : ""}" style="margin:14px 0 6px">${escapeHtml(tpl("place", { n: place }))}</div>
+    <div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div>
+    <p class="fine">${escapeHtml(sub)}</p></div>${tableHtml(list)}${reactsHtml()}`, key, true);
+  bindReacts();
+}
+
+// ---------- выбор экрана ----------
+function render() {
+  if (dead || !state) return;
+  if (!me) {
+    if (screen === "kicked" || screen === "replaced" || screen === "enter") return;
+    return renderEnter();
+  }
+  if (!mine()) return renderEnter();
+  screen = "game";
+  switch (state.phase) {
+    case "lobby": return renderLobby();
+    case "intro": return renderIntro();
+    case "topic": return renderTopic();
+    case "lie": return renderLie();
+    case "choose": return renderChoose();
+    case "reveal": return renderReveal();
+    case "scores": return renderScores();
+    case "finished": return renderFinal();
+  }
+}
+
+// таймер фазы: полоска и секунды; последние 5 с — красным и с тиканьем
+let lastTickSec = null;
+function frame() {
+  requestAnimationFrame(frame);
+  if (!state || dead || !state.phaseEnd) return;
+  const now = qpNow();
+  const left = state.phaseEnd - now;
+  const total = Math.max(1, state.phaseEnd - state.phaseStart);
+  const bar = document.getElementById("timer");
+  if (bar) {
+    bar.firstChild.style.transform = `scaleX(${Math.max(0, Math.min(1, left / total))})`;
+    bar.classList.toggle("hot", left < 5000);
+  }
+  const tl = document.getElementById("tleft");
+  if (tl) tl.textContent = tpl("sec", { s: Math.max(0, Math.ceil(left / 1000)) });
+  if ((state.phase === "lie" || state.phase === "choose") && left < 5000 && left > 0) {
+    const sec = Math.ceil(left / 1000);
+    if (sec !== lastTickSec) { lastTickSec = sec; qpSfx.tick(true); }
+  }
+}
+
+window.addEventListener("langchange", () => {
+  if (!CODE) return renderLanding();
+  if (screen === "enter") return renderEnter();
+  screenKey = "";
+  screen === "expired" ? renderExpired() : render();
+});
+
+// ---------- связь ----------
+let prevPhase = null;
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+    case "state":
+      state = m.state;
+      if (m.type === "hello" && token && !me) conn.send({ type: "join", token });
+      if (state.phase !== prevPhase) {
+        if (state.phase === "choose") { hedge = false; picks = []; sentPick = false; }
+        if (state.phase === "lie" || state.phase === "choose") qpVibrate(30);
+        prevPhase = state.phase;
+      }
+      render();
+      break;
+    case "joined":
+      me = m.playerId;
+      token = m.token;
+      joinErr = null;
+      try { localStorage.setItem(tokenKey(), token); } catch (e) {}
+      keepAwake();
+      screen = null;
+      screenKey = "";
+      render();
+      break;
+    case "rejected":
+      if (m.action === "hint") { justHinted = false; screenKey = ""; }
+      if (m.action === "choose") { sentPick = false; screenKey = ""; }
+      if (m.action === "lie") {
+        screenKey = "";
+        if (m.reason === "truth") { truthMsg = true; draft = ""; qpSfx.buzz(); qpVibrate([60, 40, 60]); render(); break; }
+      }
+      if (T("rj_" + m.reason) !== "rj_" + m.reason) toast(T("rj_" + m.reason));
+      render();
+      break;
+    case "error":
+      if (m.error === "room_expired") return renderExpired();
+      if (["room_full", "token_gone", "bad_name"].includes(m.error)) {
+        if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
+        joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
+        me = null;
+        renderEnter();
+      }
+      break;
+    case "kicked":
+      me = null;
+      try { localStorage.removeItem(tokenKey()); } catch (e) {}
+      token = null;
+      screen = "kicked";
+      renderCenter("kicked_title");
+      break;
+    case "replaced":
+      me = null;
+      screen = "replaced";
+      renderCenter("replaced_title", "replaced_text", `<button class="btn" style="margin-top:14px" id="here" type="button">${T("btn_back_here")}</button>`);
+      document.getElementById("here").onclick = () => { conn.send({ type: "join", token }); };
+      break;
+  }
+}
+
+function start() {
+  if (!CODE) return renderLanding();
+  renderCenter("wait_title");
+  const banner = document.getElementById("conn");
+  conn = qpConnect({
+    code: CODE,
+    onMessage,
+    onGone: renderExpired,
+    // переподключились — снова входим своим токеном (hello придёт первым)
+    onOpen: () => { me = null; },
+    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+  });
+  requestAnimationFrame(frame);
+  // ручка для стенда: состояние и отправка
+  window.qpPhone = { send: (msg) => conn.send(msg), get state() { return state; }, get me() { return me; } };
+}
+start();
+</script>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+  ym(104849796, 'init', { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+</body>
+</html>

@@ -31,6 +31,7 @@ services:
       - auction
       - roulette
       - bomb
+      - fibs
       - quip
       - storm
 
@@ -160,8 +161,32 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # сервер «Не верю!» (WebSocket + API); nginx проксирует в него /fibs/ws и /fibs/api/.
+  # Устроен как bomb/quip. В дампе — правда до раскрытия и пул заготовленной лжи: снимки их не отдают.
+  fibs:
+    build: ./fibs
+    image: randomhostfibs:latest
+    container_name: randomhost-fibs
+    cpuset: "2-5"
+    restart: always
+    mem_limit: 128m
+    volumes:
+      - fibs-state:/app/state
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3500/fibs/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   auction-state:
   roulette-state:
   bomb-state:
+  fibs-state:
   quip-state:
