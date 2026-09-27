@@ -293,7 +293,9 @@ function readJson(req) {
     let body = "", done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
     req.on("data", (c) => { body += c; if (body.length > 10000) { finish({}); req.destroy(); } });
-    req.on("end", () => { try { finish(JSON.parse(body || "{}")); } catch { finish({}); } });
+    // Только объект: тело `null` превращало `body.sid` в TypeError в async-обработчике —
+    // unhandledRejection и падение процесса со всеми комнатами от одного запроса.
+    req.on("end", () => { try { const v = JSON.parse(body || "{}"); finish(v && typeof v === "object" && !Array.isArray(v) ? v : {}); } catch { finish({}); } });
     req.on("error", () => finish({}));
   });
 }
@@ -352,7 +354,7 @@ function roomHasSpace(room, ip) {
   return !ip || anonCount(room, ip) < MAX_ANON_PER_IP;
 }
 
-const server = http.createServer(async (req, res) => {
+async function route(req, res) {
   const url = new URL(req.url, "http://x");
   const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json" }); res.end(JSON.stringify(obj)); };
   if (url.pathname === "/bomb/api/session") {
@@ -403,6 +405,16 @@ const server = http.createServer(async (req, res) => {
   if (STATIC && req.method === "GET") return serveStatic(req, res);
   res.writeHead(404);
   res.end();
+}
+
+// Любая ошибка в обработке запроса — 500 этому запросу, а не падение процесса со всеми комнатами
+const server = http.createServer(async (req, res) => {
+  try {
+    await route(req, res);
+  } catch (err) {
+    console.error(`${LOG} запрос ${req.method} ${String(req.url).slice(0, 80)} упал:`, err);
+    try { if (!res.headersSent) res.writeHead(500); res.end(); } catch {}
+  }
 });
 
 // ---------- WebSocket ----------
