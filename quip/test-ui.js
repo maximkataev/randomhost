@@ -181,7 +181,7 @@ async function playGame(board, phones, label, plan) {
     const ph = await board.evaluate("state && state.phase + ':' + state.ri + ':' + state.mi");
     const [phase, ri] = String(ph).split(":");
     if (phase === "finished") break;
-    if (phase === "intro") { await once(board, `${label}_b_intro_${ri}`); await wait(400); continue; }
+    if (phase === "intro") { await once(board, `${label}_b_intro_${ri}`); await once(phones[0], `${label}_p_intro_${ri}`); await wait(400); continue; }
     if (phase === "answer") {
       const key = plan[Number(ri)] || {};
       await wait(500);
@@ -213,6 +213,8 @@ async function playGame(board, phones, label, plan) {
       check(fits === true, `${label}: доска, голосование раунда ${Number(ri) + 1} — ответы влезают (${fits})`);
       for (const p of phones) { const h = await p.evaluate(NO_HSCROLL); if (h !== true) check(false, `${p.name}: голосование без прокрутки вбок`); }
       await voteRound(phones);
+      await wait(200);
+      await once(phones[0], `${label}_p_voted_${ri}`);
       await waitFor(board, "state.phase !== 'vote'", 15000 / SPEED + 3000);
       continue;
     }
@@ -229,10 +231,15 @@ async function playGame(board, phones, label, plan) {
       }
       await once(board, `${label}_b_reveal_${ri}`);
       await once(phones[1], `${label}_p_reveal_${ri}`);
+      // второй кадр — когда анимации раскрытия доиграли (жетоны, победитель, штамп)
+      await wait(1300);
+      if (cur && cur.result && cur.result.jinx.length) await once(board, `${label}_b_jinx_end`);
+      if (cur && cur.result && cur.result.sweep) await once(board, `${label}_b_sweep_end`);
+      await once(board, `${label}_b_reveal_${ri}_end`);
       await waitFor(board, `state.phase !== 'reveal' || (state.current && state.current.id !== ${cur ? cur.id : -1})`, 8000);
       continue;
     }
-    if (phase === "scores") { await wait(300); await once(board, `${label}_b_scores_${ri}`); await once(phones[0], `${label}_p_scores_${ri}`); await waitFor(board, "state.phase !== 'scores'", 8000); continue; }
+    if (phase === "scores") { await wait(300); await once(board, `${label}_b_scores_${ri}`); await once(phones[0], `${label}_p_scores_${ri}`); await wait(1200); await once(board, `${label}_b_scores_${ri}_end`); await waitFor(board, "state.phase !== 'scores'", 8000); continue; }
     await wait(300);
   }
   return { rounds, reveals: revealed.size, sawJinx, sawLate, sawHint };
@@ -305,6 +312,8 @@ async function main() {
     check(!!(await waitFor(board, "state.phase === 'finished'", 15000)), "партия дошла до итогов");
     await wait(600);
     await board.shot("g5_b_final");
+    await wait(2000);
+    await board.shot("g5_b_final_end");
     for (const p of phones) { await p.shot("g5_p_final_" + p.name.slice(0, 4)); check((await p.evaluate(NO_HSCROLL)) === true, `${p.name}: итоги без прокрутки вбок`); }
     check((await board.evaluate("!!document.querySelector('.podium .p1')")) === true, "доска: пьедестал");
     check((await board.evaluate("!!document.getElementById('again')")) === true, "доска: кнопка «Ещё шоу»");
