@@ -1517,6 +1517,59 @@
     }
 
     /* Узкие телефоны до 380px (в т.ч. 375 — iPhone SE/mini): тач-цели остаются ≥36px, а поле имени не ужимается до 50–70px */
+    /* Телефоны до 480px: имя в строке участника ужималось до 84px («Дмитри», «Евгени» на 390).
+       Отдаём ему место: поуже боковой padding панели и кнопки строки (тап-цели остаются ≥36px) */
+    @media (max-width: 480px) {
+      .settings-panel {
+        padding-left: 10px;
+        padding-right: 10px;
+      }
+
+      .name-item {
+        gap: 6px;
+      }
+
+      .name-item .probability-controls,
+      .headers-row .header-probability {
+        flex: 0 0 122px;
+        max-width: 122px;
+        gap: 3px;
+      }
+
+      .name-item .prob-btn {
+        flex: 0 0 36px;
+        width: 36px;
+        min-width: 36px;
+        max-width: 36px;
+      }
+
+      .name-item .probability-input {
+        flex: 0 0 44px;
+        width: 44px;
+        min-width: 44px;
+        max-width: 44px;
+      }
+
+      .name-item .away-btn {
+        flex: 0 0 38px;
+        width: 38px;
+        margin-left: 0;
+      }
+
+      .name-item .away-btn + .remove-btn {
+        flex: 0 0 40px;
+        width: 40px;
+        min-width: 40px;
+        max-width: 40px;
+        margin-left: 0;
+      }
+
+      .name-item .name-input {
+        padding-left: 8px;
+        padding-right: 8px;
+      }
+    }
+
     @media (max-width: 380px) {
       .name-item {
         gap: 6px;
@@ -3747,13 +3800,21 @@
       const bottomPad = isMobile ? 100 : 80;
       const sidePad = isMobile ? 15 : 25;
       
+      // На низком поле (десктопное окно 800×450 попадает под landscape-стили) сетка 12×16 сжимается так,
+      // что шарик застревает между штырьками и бросок не кончается. Убираем колонки и ряды,
+      // пока между соседними штырьками шарик проходит с запасом.
+      const pass = (PEG_R + BALL_R) * 2 * 1.3;
+      const usableW = W - sidePad * 2;
+      let cols = isMobile ? 8 : 16;
+      while (cols > 4 && usableW / (cols - 1) < pass) cols--;
+      const step = usableW / (cols - 1);
+
       const usableH = H - topPad - bottomPad;
-      const rowGap = usableH / rows;
-      
-      for (let r = 0; r < rows; r++) {
-        const cols = isMobile ? 8 : 16;
-        const usableW = W - sidePad * 2;
-        const step = usableW / (cols - 1);
+      let rowCount = rows;
+      while (rowCount > 4 && Math.hypot(step / 2, usableH / rowCount) < pass) rowCount--;
+      const rowGap = usableH / rowCount;
+
+      for (let r = 0; r < rowCount; r++) {
         const y = topPad + r * rowGap;
         
         if (r % 2 === 0) {
