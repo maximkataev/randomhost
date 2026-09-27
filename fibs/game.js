@@ -70,6 +70,16 @@ function cleanText(text, max) {
 }
 const cleanName = (name) => cleanText(name, 16);
 
+// Вид варианта на экране: все строчными, без точки/«!»/«?» в конце и без кавычек вокруг.
+// Правда в банке написана строчными и без знаков, а игроки пишут «Акулы!» — по заглавной букве
+// и восклицательному знаку правда угадывалась с первого взгляда (замечание владельца).
+function displayText(t) {
+  const low = String(t || "").toLowerCase().trim();
+  let x = low, prev;
+  do { prev = x; x = x.replace(/^["«“„']+|["»”“']+$/g, "").replace(/[\s.!?…,;:]+$/u, "").trim(); } while (x !== prev);
+  return x || low;
+}
+
 function levenshtein(a, b) {
   if (a === b) return 0;
   const x = Array.from(a), y = Array.from(b);
@@ -388,7 +398,7 @@ class Game {
     // Отказ «это правда» подсказывает правду только тому, кто её и так вписал: любая неправда сразу
     // принимается как ложь, поэтому перебором нащупать ответ нельзя — лимит попыток не нужен.
     if (isTruth(t, s.fact)) return { ok: false, reason: "truth" };
-    s.lies[id] = { text: t, key: normalize(t), hint: false, late: false, at: now };
+    s.lies[id] = { text: displayText(t), key: normalize(t), hint: false, late: false, at: now };
     return { ok: true, events: [{ type: "lied", playerId: id }, ...this.maybeAdvance(now)] };
   }
 
@@ -414,13 +424,13 @@ class Game {
     if (free.length) {
       const i = free[this.rnd(free.length)];
       f.poolUsed.push(i);
-      return { text: f.pool[i], key: normalize(f.pool[i]) };
+      return { text: displayText(f.pool[i]), key: normalize(f.pool[i]) };
     }
     const bank = this.bank().filter((x) => x.id !== f.id && (x.lies || []).length);
     for (let tries = 0; tries < 30 && bank.length; tries++) {
       const other = bank[this.rnd(bank.length)];
       const cand = other.lies[this.rnd(other.lies.length)];
-      if (!taken.has(normalize(cand)) && !isTruth(cand, f)) return { text: cand, key: normalize(cand) };
+      if (!taken.has(normalize(cand)) && !isTruth(cand, f)) return { text: displayText(cand), key: normalize(cand) };
     }
     return { text: "…", key: "…" + s.seq++ };
   }
@@ -449,7 +459,7 @@ class Game {
       byKey.get(l.key).authors.push(id);
     }
     const options = [...byKey.values()];
-    options.push({ text: s.fact.answer, kind: "truth", authors: [], key: normalize(s.fact.answer) });
+    options.push({ text: displayText(s.fact.answer), kind: "truth", authors: [], key: normalize(s.fact.answer) });
     // ловушки игры — пока вариантов меньше шести
     const f = s.fact;
     const taken = new Set(options.map((o) => o.key));
@@ -462,7 +472,7 @@ class Game {
       const i = free.splice(this.rnd(free.length), 1)[0];
       f.poolUsed.push(i);
       taken.add(normalize(f.pool[i]));
-      options.push({ text: f.pool[i], kind: "trap", authors: [], key: normalize(f.pool[i]) });
+      options.push({ text: displayText(f.pool[i]), kind: "trap", authors: [], key: normalize(f.pool[i]) });
     }
     for (let i = options.length - 1; i > 0; i--) { const j = this.rnd(i + 1); [options[i], options[j]] = [options[j], options[i]]; }
     s.options = options;
@@ -712,7 +722,7 @@ class Game {
       topics: s.phase === "topic" ? s.topics : null,
       topic: s.topic,
       fact: f && s.phase !== "topic" ? { text: f.text, topic: f.topic, final: f.final } : null,
-      truth: f && revealed ? { answer: f.answer, source: f.source } : null,
+      truth: f && revealed ? { answer: displayText(f.answer), source: f.source } : null,
       lied: s.phase === "lie" ? s.roster.filter((id) => s.lies[id]) : null,
       roster: s.phase === "lie" ? s.roster : null,
       options,
@@ -739,4 +749,4 @@ class Game {
   }
 }
 
-module.exports = { Game, ROUNDS, PLAN, T, DEFAULTS, MAX_PLAYERS, MIN_PLAYERS, MIN_OPTIONS, TOPICS_OFFERED, LIE_MAX, LIKE_GRACE, LIKES_PER_FACT, LIKE_POINTS, REACTIONS, COLORS, AVATARS, clampSettings, cleanName, cleanText, isTruth, levenshtein };
+module.exports = { Game, ROUNDS, PLAN, T, DEFAULTS, MAX_PLAYERS, MIN_PLAYERS, MIN_OPTIONS, TOPICS_OFFERED, LIE_MAX, LIKE_GRACE, LIKES_PER_FACT, LIKE_POINTS, REACTIONS, COLORS, AVATARS, clampSettings, cleanName, cleanText, displayText, isTruth, levenshtein };

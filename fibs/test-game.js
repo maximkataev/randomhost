@@ -423,3 +423,12 @@ test("темы, сыгранные в партии, не предлагаютс�
   }
   assert.ok(seen.length >= 2);
 });
+
+test("варианты на экране — строчными и без знаков в конце: правду не узнать по оформлению", () => {
+  const { displayText } = require("./game");
+  assert.strictEqual(displayText("Акулы!"), "акулы");
+  assert.strictEqual(displayText("«Кенгуру»."), "кенгуру");
+  assert.strictEqual(displayText("THE MOON?!"), "the moon");
+  assert.strictEqual(displayText("ΓΑΤΑ!"), "γατα");
+  assert.strictEqual(displayText("..."), "...");
+});
