@@ -277,3 +277,15 @@ test("чужой токен ведущего не даёт управлять, �
   const h = await fetch(`http://127.0.0.1:${port}/bomb/api/health`);
   assert.strictEqual(h.status, 200);
 });
+
+test("сообщение больше 8 КБ рвёт только этот сокет, сервер жив", async () => {
+  const room = await createRoom({}, 1);
+  const big = client(room.code);
+  await big.open;
+  const closed = new Promise((res) => big.ws.once("close", res));
+  big.send({ type: "join", name: "x".repeat(20000) });
+  await closed;
+  await sleep(200);
+  const h = await (await fetch(`http://127.0.0.1:${port}/bomb/api/health`)).json();
+  assert.ok(h.ok, "сервер упал от большого сообщения");
+});
