@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#2a1511">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f3a4.svg" type="image/svg+xml">
+<title>Вопрос ребром — игра в смешные ответы для компании</title>
+<meta name="robots" content="index,follow">
+<meta name="description" content="🎤 Мультиплеерная игра для компании: на общем экране вопрос, каждый с телефона пишет самый смешной ответ или вытягивает вслепую подсказку, потом все голосуют. Как Quiplash, только бесплатно и в браузере." data-i18n-meta="_meta">
+<!-- ссылки на комнаты (?r=КОД) — та же страница: в выдаче должна быть одна, без кода -->
+<link rel="canonical" href="https://randomhost.online/quip.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Вопрос ребром — игра в смешные ответы для компании">
+<meta property="og:description" content="На экране вопрос, каждый с телефона пишет самый смешной ответ, потом все голосуют. Бесплатно, в браузере.">
+<meta property="og:url" content="https://randomhost.online/quip.html">
+<meta property="og:site_name" content="Рандомайзер Онлайн">
+<meta property="og:locale" content="ru_RU">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- неблокирующий шрифт. Comfortaa — неоновая вывеска, Ubuntu — всё остальное; оба покрывают кириллицу и греческий -->
+<link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@700&family=Ubuntu:ital,wght@0,400;0,500;0,700;1,500&display=swap" rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@700&family=Ubuntu:ital,wght@0,400;0,500;0,700;1,500&display=swap" rel="stylesheet"></noscript>
+<style>
+  /* Мир: ночной стендап-клуб (quip-spec.md §9). Кирпичная стена, луч прожектора сверху, неоновая вывеска,
+     вопросы и ответы — карточки комика (линованные, с красным полем). Пульт — «карманная» версия сцены:
+     тёмно, тепло, всё крупно — писать шутку надо за двадцать секунд. */
+  :root {
+    --brick: #3b1c16;
+    --brick-2: #4a241c;
+    --mortar: #1f0f0c;
+    --stage: #150b09;
+    --light: #ffcf5a;
+    --light-2: #ffe29a;
+    --text: #f6ecdc;
+    --muted: #c3ab95;
+    --neon: #ff4f8b;
+    --neon-glow: rgba(255, 79, 139, .55);
+    --card: #fbf6e8;
+    --card-ink: #1d1612;
+    --card-muted: #6d5f52;
+    --rule: #bcd4ec;
+    --margin: #e25b5b;
+    --ok: #7be38a;
+    --bad: #ff6b5b;
+    --font: "Ubuntu", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --sign: "Comfortaa", "Ubuntu", system-ui, sans-serif;
+    --press: cubic-bezier(.2, .9, .3, 1.2);
+    --lang-switch-bg: var(--stage);
+    --lang-switch-border: rgba(255, 207, 90, .35);
+    --lang-switch-fg: var(--text);
+    --lang-switch-active-bg: var(--light);
+    --lang-switch-active-fg: var(--card-ink);
+    --lang-switch-active-border: var(--light);
+    --lang-switch-font: var(--font);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    /* кирпич: ряды со смещением через два градиента + луч прожектора сверху */
+    background:
+      radial-gradient(ellipse 70% 45% at 50% -5%, rgba(255, 207, 90, .22), transparent 70%),
+      linear-gradient(var(--mortar) 2px, transparent 2px) 0 0 / 100% 26px,
+      linear-gradient(90deg, var(--mortar) 2px, transparent 2px) 0 0 / 58px 52px,
+      linear-gradient(90deg, var(--mortar) 2px, transparent 2px) 29px 26px / 58px 52px,
+      linear-gradient(180deg, var(--brick-2), var(--brick) 40%, var(--stage));
+    background-color: var(--stage);
+    background-attachment: fixed;
+    color: var(--text);
+    font: 400 17px/1.35 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; touch-action: manipulation; }
+  button:disabled { opacity: .45; cursor: default; }
+  :focus-visible { outline: 3px solid var(--light); outline-offset: 2px; }
+  .hidden { display: none !important; }
+  /* справа — место под переключатель языка из i18n.js (--lsw меряет quip-shared.js) */
+  .util { display: flex; align-items: center; gap: 12px; height: calc(var(--lsc, 30px) * 2); padding: 0 var(--lsw, 150px) 0 14px; }
+  /* ссылка «все игры» не переносится на вторую строку (греческая длинная) — обрезается */
+  .util a { color: var(--muted); text-decoration: none; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .sound-toggle-btn { flex: none; width: calc(var(--lsh, 44px) * 1.25); height: var(--lsh, 44px); border: 1px solid rgba(255, 207, 90, .35); border-radius: 999px; background: var(--stage); font-size: 17px; display: grid; place-items: center; padding: 0; }
+  .conn { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 30; background: var(--bad); color: #fff; font-weight: 700; padding: 6px 12px; visibility: hidden; white-space: nowrap; border-radius: 3px; }
+  .conn.on { visibility: visible; }
+  .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: var(--card); color: var(--card-ink); font-weight: 700; padding: 10px 14px; max-width: calc(100% - 32px); visibility: hidden; border-radius: 3px; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
+  .toast.on { visibility: visible; animation: toast .3s var(--press); }
+  @keyframes toast { from { transform: translate(-50%, 20px); } }
+  #app { max-width: 520px; margin: 0 auto; padding: 0 16px 28px; min-height: calc(100vh - var(--lsc, 30px) * 2); min-height: calc(100dvh - var(--lsc, 30px) * 2); display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+  #app.top { justify-content: flex-start; padding-top: 4px; }
+
+  /* неоновая вывеска */
+  .sign { font: 700 44px/1 var(--sign); color: #fff4f8; letter-spacing: .01em; text-shadow: 0 0 4px #fff, 0 0 12px var(--neon), 0 0 28px var(--neon), 0 0 48px var(--neon-glow); margin: 0; }
+  .sign.sm { font-size: 26px; }
+  @media (prefers-reduced-motion: no-preference) { .sign.flick { animation: flick 6s infinite; } }
+  @keyframes flick { 0%, 91%, 93%, 100% { opacity: 1; } 92% { opacity: .55; } }
+
+  /* кнопки: «софит» — главная, «подсказка» — тёмная с пунктиром */
+  .btn { display: block; width: 100%; border: 0; border-radius: 4px; background: var(--light); color: var(--card-ink); font: 700 21px/1 var(--font); padding: 17px 14px; box-shadow: 0 4px 0 #b88a1f, 0 10px 24px rgba(255, 207, 90, .18); text-align: center; text-decoration: none; transition: transform .08s; }
+  .btn:not(:disabled):active { transform: translateY(3px); box-shadow: 0 1px 0 #b88a1f; }
+  .btn.ghost { background: transparent; color: var(--text); box-shadow: none; border: 2px dashed rgba(255, 207, 90, .55); font-size: 18px; }
+  .btn.ghost.sure { border-style: solid; border-color: var(--neon); color: #fff; background: rgba(255, 79, 139, .16); }
+  .link { background: none; border: 0; color: var(--light); text-decoration: underline; padding: 6px; font-weight: 500; }
+
+  /* карточка комика: линовка + красное поле */
+  .card { position: relative; background: var(--card); color: var(--card-ink); border-radius: 3px; padding: 16px 16px 16px 34px;
+    background-image: linear-gradient(90deg, transparent 22px, var(--margin) 22px, var(--margin) 24px, transparent 24px), repeating-linear-gradient(transparent 0 27px, var(--rule) 27px 28px);
+    background-position: 0 0, 0 12px;
+    box-shadow: 0 14px 30px rgba(0, 0, 0, .45); }
+  .card .k { font: 500 13px/1.2 var(--font); color: var(--card-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+  .card .k:empty { display: none; }
+  .card .q { font: 700 23px/1.22 var(--font); overflow-wrap: anywhere; }
+  .card .q .scene { display: block; font-size: 64px; line-height: 1.1; letter-spacing: .08em; text-align: center; padding: 6px 0; }
+  .items { margin: 0; padding-left: 22px; }
+  .items li + li { margin-top: 2px; }
+
+  .eyebrow { color: var(--muted); font-weight: 500; font-size: 15px; }
+  .lede { margin: 0; color: var(--text); font-size: 18px; }
+  .lede b { color: var(--light-2); }
+  .rules { margin: 0; padding-left: 22px; color: var(--muted); display: grid; gap: 6px; }
+  .fine { color: var(--muted); font-size: 14px; }
+  .center { text-align: center; }
+
+  /* вход */
+  .enter .room { font: 700 15px/1 var(--font); letter-spacing: .12em; color: var(--card-muted); }
+  .enter h2 { margin: 6px 0 12px; font-size: 26px; }
+  .enter input { width: 100%; border: 0; border-bottom: 3px solid var(--card-ink); background: transparent; color: var(--card-ink); font: 700 28px/1.2 var(--font); padding: 4px 0; border-radius: 0; }
+  .err { min-height: 22px; color: var(--bad); font-weight: 500; }
+
+  /* игроки */
+  .players { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pl { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px 5px 6px; border-radius: 999px; background: rgba(0, 0, 0, .35); border: 1px solid color-mix(in srgb, var(--pc) 60%, transparent); font-weight: 500; font-size: 15px; max-width: 100%; }
+  .pl b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .pl.me { background: color-mix(in srgb, var(--pc) 30%, #000); }
+  .pl.off { opacity: .5; }
+  .av { font-style: normal; font-size: 18px; line-height: 1; }
+  .me-badge { display: flex; align-items: center; gap: 12px; }
+  .me-badge .av { font-size: 44px; }
+  .me-badge b { font-size: 26px; display: block; overflow-wrap: anywhere; }
+
+  .status h2 { margin: 0 0 4px; font-size: 28px; line-height: 1.15; }
+  .status p { margin: 0; color: var(--muted); }
+
+  /* ответ */
+  .ahead { display: flex; justify-content: space-between; align-items: baseline; font-weight: 700; color: var(--muted); font-size: 15px; }
+  .ahead .left b { color: var(--light); }
+  .timer { height: 6px; background: rgba(0, 0, 0, .45); border-radius: 3px; overflow: hidden; }
+  .timer i { display: block; height: 100%; background: var(--light); transform-origin: 0 50%; }
+  .timer.hot i { background: var(--bad); }
+  .write textarea, .write input { width: 100%; background: rgba(0, 0, 0, .4); border: 2px solid rgba(255, 207, 90, .5); border-radius: 4px; padding: 12px; font: 500 20px/1.3 var(--font); color: var(--text); resize: none; }
+  .write textarea { height: 104px; }
+  .write .three { display: grid; gap: 8px; }
+  .write .three label { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--light); }
+  .write .three input { font-size: 18px; padding: 10px; }
+  .write .cnt { text-align: right; color: var(--muted); font-size: 13px; height: 16px; }
+  .row2 { display: grid; gap: 10px; }
+  .dice { display: inline-block; letter-spacing: .1em; }
+  /* подсказка переворачивается */
+  .flip { perspective: 900px; }
+  .flip .card { transform-origin: 50% 50%; }
+  @media (prefers-reduced-motion: no-preference) { .flip.go .card { animation: flip .6s var(--press); } }
+  @keyframes flip { 0% { transform: rotateY(90deg); } 100% { transform: rotateY(0); } }
+  .gotit { font: 700 22px/1.25 var(--font); }
+  .tag { display: inline-block; font: 700 12px/1 var(--font); text-transform: uppercase; letter-spacing: .06em; padding: 4px 6px; border-radius: 2px; background: var(--card-ink); color: var(--light); vertical-align: middle; }
+
+  /* голосование */
+  .opts { display: grid; gap: 10px; }
+  .opt { position: relative; text-align: left; background: var(--card); color: var(--card-ink); border: 3px solid transparent; border-radius: 3px; padding: 12px 12px 12px 44px; font: 500 18px/1.3 var(--font); box-shadow: 0 6px 16px rgba(0, 0, 0, .35); overflow-wrap: anywhere; }
+  .opt .l { position: absolute; left: 10px; top: 10px; width: 26px; height: 26px; border-radius: 50%; background: var(--card-ink); color: var(--light); font: 700 15px/26px var(--font); text-align: center; }
+  .opt.sel { border-color: var(--neon); box-shadow: 0 0 0 3px rgba(255, 79, 139, .35), 0 6px 16px rgba(0, 0, 0, .35); }
+  .opt.sel .l { background: var(--neon); color: #fff; }
+  .opt.own { opacity: .45; }
+  /* «Голосую» всегда под пальцем: при 8–9 ответах по три пункта кнопка уезжала на 2–3 экрана вниз */
+  #votebtn { position: sticky; bottom: 12px; z-index: 5; }
+  .opt.own::after { content: attr(data-own); position: absolute; right: 8px; top: 8px; font: 700 11px/1 var(--font); text-transform: uppercase; color: var(--card-muted); }
+  .opt:not(:disabled):active { transform: scale(.98); }
+  .opt .items { padding-left: 18px; }
+
+  /* раскрытие */
+  .res { display: grid; gap: 8px; }
+  .res .r { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: start; background: rgba(0, 0, 0, .35); border-radius: 3px; padding: 10px 12px; border-left: 4px solid var(--pc, var(--muted)); }
+  .res .r.win { background: rgba(255, 207, 90, .14); }
+  .res .r .t { overflow-wrap: anywhere; }
+  .res .r .who { grid-column: 1 / -1; color: var(--muted); font-size: 14px; }
+  .res .r .p { font-weight: 700; color: var(--light); white-space: nowrap; }
+  .big { font: 700 clamp(40px, 13vw, 64px)/1.05 var(--sign); color: var(--light); text-shadow: 0 0 18px rgba(255, 207, 90, .45); }
+  .stamp { display: inline-block; font: 700 30px/1 var(--sign); color: #fff; text-shadow: 0 0 10px var(--neon), 0 0 24px var(--neon); }
+
+  /* сет-лист: весь состав по местам, как листок комика с порядком выступлений */
+  .setlist ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .setlist li { display: flex; align-items: center; gap: 8px; min-height: 28px; font-weight: 500; }
+  .setlist li .n { font: 700 16px/1 var(--sign); color: var(--card-muted); width: 22px; flex: none; }
+  .setlist li b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .setlist li .dots { flex: 1; min-width: 10px; border-bottom: 2px dotted rgba(29, 22, 18, .3); margin-top: 10px; }
+  .setlist li .s { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .setlist li.me { color: var(--margin); }
+  .setlist li.me b { text-decoration: underline; text-decoration-thickness: 2px; }
+  .howcard ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-weight: 500; }
+
+  /* реакции */
+  .reacts { display: flex; justify-content: center; gap: 10px; }
+  .reacts button { width: 54px; height: 54px; border-radius: 50%; border: 1px solid rgba(255, 207, 90, .3); background: rgba(0, 0, 0, .35); font-size: 26px; }
+  .reacts button:not(:disabled):active { transform: scale(.9); }
+
+  /* пример на стартовом экране */
+  .sample { display: grid; gap: 10px; }
+  .sample .card { transform: rotate(-1.2deg); }
+  .sample .card.a { transform: rotate(1deg); margin-left: 26px; }
+  .sample .card.a .k { color: var(--margin); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="util"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
+<div class="conn" id="conn"></div>
+<div id="app"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Вопрос ребром — игра в смешные ответы для компании`,
+    _meta: `🎤 Мультиплеерная игра для компании: на общем экране вопрос, каждый с телефона пишет самый смешной ответ или вытягивает вслепую подсказку, потом все голосуют. Как Quiplash, только бесплатно и в браузере.`,
+    nav_all_games: `← Все игры`,
+    eyebrow: `Игра для компании · телефоны + общий экран`,
+    lede: `На экране вопрос. У тебя двадцать секунд, чтобы ответить <b>смешнее всех</b>. Завис — тяни <b>подсказку вслепую</b>: заранее не узнаешь, что там. Потом зал голосует.`,
+    btn_create: `Открыть клуб`, btn_creating: `Открываем…`,
+    cta_sub: `Открывай на ноутбуке или ТВ — там будет сцена`,
+    have_code: `У меня есть код`, prompt_code: `Код комнаты`,
+    rule1: `От трёх человек, все заходят с телефонов по QR с общего экрана`,
+    rule2: `Три раунда: дуэли, подпись к эмодзи-сцене, финал из трёх ответов`,
+    rule3: `Одинаковые ответы — «джинкс»: оба получают ноль`,
+    sample_k: `Пример`, sample_q: `Что на самом деле делает кнопка «Сохранить»?`, sample_a: `Молится`, sample_ak: `Ответ, 5 голосов`,
+    enter_title: `Как тебя зовут?`, enter_ph: `Имя`, btn_join: `На сцену`,
+    err_name: `Напиши имя`, err_room_full: `В комнате уже 16 игроков`, err_token_gone: `Тебя нет в этой партии — войди заново`,
+    wait_title: `Подключаемся…`,
+    lobby_in: `Ты в игре`, lobby_wait: `Ждём, пока ведущий начнёт шоу. Нужно хотя бы трое`,
+    intro_k: `Раунд {n} из {m}`,
+    q_of: `Вопрос {i} из {n}`,
+    ph_answer: `Твой ответ`, ph_item: `{n}…`, ph_caption: `Подпиши сцену`,
+    rj_need_three: `Нужно все три пункта`, late_vote: `Ты зашёл посреди шоу: пока голосуешь, отвечать будешь со следующего раунда`,
+    btn_send: `Отправить`,
+    btn_hint: `🎲 Подсказка · осталось {n}`, btn_hint_sure: `Тянуть вслепую? Сменить нельзя`, btn_hint_none: `🎲 Подсказок не осталось`,
+    got_hint: `Выпало:`, sent: `Отправлено`,
+    done_title: `Ответы на сцене`, done_sub: `Ждём остальных — смотри на общий экран`,
+    late_title: `Ты со следующего раунда`, late_sub: `Пока можно голосовать и реагировать`,
+    vote_title: `Что смешнее?`, vote_many: `Выбери до {n}`, vote_one: `Тапни самый смешной`,
+    btn_vote: `Голосую · {n}`,
+    own: `твой`,
+    author_title: `Это твоя дуэль!`, author_sub: `Смотри на экран — зал решает`,
+    voted_title: `Голос принят`, voted_sub: `Ждём остальных`,
+    novote_title: `Здесь тебе голосовать не за что`, novote_sub: `Смотри на экран`,
+    reveal_title: `Итоги схватки`,
+    you_got: `Тебе: +{n}`, you_jinx: `Джинкс — у тебя ноль`,
+    scores_title: `Счёт после раунда {n}`, place: `{n} место`,
+    final_title: `Шоу окончено`, final_sub: `Ведущий может начать ещё партию`,
+    final_few: `Игроков стало меньше трёх — шоу закончилось`,
+    final_host: `Ведущий закончил шоу`,
+    kicked_title: `Ведущий убрал тебя из комнаты`,
+    replaced_title: `Ты открыл игру в другой вкладке`, replaced_text: `Играть можно только в одной.`, btn_back_here: `Играть здесь`,
+    expired_title: `Комната закрыта`, expired_text: `Она пустовала полчаса или ведущий её закрыл.`, expired_new: `Открыть новый клуб`,
+    setlist: `Сет-лист вечера`, how_k: `Пока ждём — как тут играют`, how_fast: `Время на ответ короткое — пиши первое смешное, что пришло в голову`,
+    rj_no_hints: `Подсказки кончились`, rj_empty: `Напиши хоть что-нибудь`, rj_not_answer: `Время вышло`, rj_answered: `Уже отправлено`, rj_own: `За себя нельзя`, rj_voted: `Ты уже проголосовал`, rj_not_vote: `Голосование закончилось`, rj_stale: `Голосование закончилось`,
+  },
+  en: {
+    _title: `Point Blank — the funny answers party game`,
+    _meta: `🎤 A multiplayer party game: a prompt on the shared screen, everyone writes the funniest answer on their phone or blindly draws a hint, then everybody votes. Like Quiplash, but free and in the browser.`,
+    nav_all_games: `← All games`,
+    eyebrow: `Party game · phones + shared screen`,
+    lede: `A prompt hits the screen. You have twenty seconds to be <b>the funniest in the room</b>. Stuck? Draw a <b>blind hint</b> — no peeking first. Then the room votes.`,
+    btn_create: `Open the club`, btn_creating: `Opening…`,
+    cta_sub: `Open it on a laptop or TV — that's the stage`,
+    have_code: `I have a code`, prompt_code: `Room code`,
+    rule1: `Three or more players, everyone joins by phone via the QR on the shared screen`,
+    rule2: `Three rounds: duels, an emoji-scene caption, a three-answer final`,
+    rule3: `Same answers? "Jinx" — both score zero`,
+    sample_k: `Example`, sample_q: `What does the "Save" button actually do?`, sample_a: `Prays`, sample_ak: `Answer, 5 votes`,
+    enter_title: `What's your name?`, enter_ph: `Name`, btn_join: `Take the stage`,
+    err_name: `Type a name`, err_room_full: `The room already has 16 players`, err_token_gone: `You're not in this game — join again`,
+    wait_title: `Connecting…`,
+    lobby_in: `You're in`, lobby_wait: `Waiting for the host to start the show. At least three players needed`,
+    intro_k: `Round {n} of {m}`,
+    q_of: `Prompt {i} of {n}`,
+    ph_answer: `Your answer`, ph_item: `{n}…`, ph_caption: `Write a caption`,
+    rj_need_three: `All three items, please`, late_vote: `You joined mid-show: vote now, answer from the next round`,
+    btn_send: `Send`,
+    btn_hint: `🎲 Hint · {n} left`, btn_hint_sure: `Draw blind? No take-backs`, btn_hint_none: `🎲 No hints left`,
+    got_hint: `You drew:`, sent: `Sent`,
+    done_title: `Your answers are on stage`, done_sub: `Waiting for the others — watch the shared screen`,
+    late_title: `You're in from the next round`, late_sub: `You can already vote and react`,
+    vote_title: `Which is funnier?`, vote_many: `Pick up to {n}`, vote_one: `Tap the funniest`,
+    btn_vote: `Vote · {n}`,
+    own: `yours`,
+    author_title: `This is your duel!`, author_sub: `Watch the screen — the room decides`,
+    voted_title: `Vote counted`, voted_sub: `Waiting for the others`,
+    novote_title: `Nothing for you to vote on here`, novote_sub: `Watch the screen`,
+    reveal_title: `Matchup results`,
+    you_got: `You: +{n}`, you_jinx: `Jinx — you score zero`,
+    scores_title: `Scores after round {n}`, place: `{n} place`,
+    final_title: `That's the show`, final_sub: `The host can start another game`,
+    final_few: `Fewer than three players left — show's over`,
+    final_host: `The host ended the show`,
+    kicked_title: `The host removed you from the room`,
+    replaced_title: `You opened the game in another tab`, replaced_text: `You can only play in one.`, btn_back_here: `Play here`,
+    expired_title: `Room closed`, expired_text: `It sat empty for half an hour or the host closed it.`, expired_new: `Open a new club`,
+    setlist: `Tonight's setlist`, how_k: `While we wait — how it works`, how_fast: `Answer time is short — write the first funny thing that comes to mind`,
+    rj_no_hints: `No hints left`, rj_empty: `Write something`, rj_not_answer: `Time's up`, rj_answered: `Already sent`, rj_own: `Can't vote for yourself`, rj_voted: `You already voted`, rj_not_vote: `Voting is over`, rj_stale: `Voting is over`,
+  },
+  el: {
+    _title: `Ευθέως — παιχνίδι με αστείες απαντήσεις για παρέες`,
+    _meta: `🎤 Παιχνίδι για παρέες: στην κοινή οθόνη μια ερώτηση, ο καθένας γράφει από το κινητό την πιο αστεία απάντηση ή τραβά στα τυφλά βοήθεια, μετά ψηφίζουν όλοι. Σαν το Quiplash, δωρεάν στον browser.`,
+    nav_all_games: `← Όλα τα παιχνίδια`,
+    eyebrow: `Παιχνίδι για παρέες · κινητά + κοινή οθόνη`,
+    lede: `Στην οθόνη μια ερώτηση. Έχεις είκοσι δευτερόλεπτα να γίνεις <b>ο πιο αστείος</b>. Κόλλησες; Τράβα <b>βοήθεια στα τυφλά</b> — δεν βλέπεις πριν. Μετά ψηφίζει η αίθουσα.`,
+    btn_create: `Άνοιξε το κλαμπ`, btn_creating: `Ανοίγουμε…`,
+    cta_sub: `Άνοιξέ το σε laptop ή τηλεόραση — εκεί είναι η σκηνή`,
+    have_code: `Έχω κωδικό`, prompt_code: `Κωδικός δωματίου`,
+    rule1: `Από τρεις παίκτες, όλοι μπαίνουν από το κινητό με το QR της κοινής οθόνης`,
+    rule2: `Τρεις γύροι: μονομαχίες, λεζάντα σε σκηνή με emoji, τελικός με τρεις απαντήσεις`,
+    rule3: `Ίδιες απαντήσεις; «Τζινξ» — μηδέν και οι δύο`,
+    sample_k: `Παράδειγμα`, sample_q: `Τι κάνει στην πραγματικότητα το κουμπί «Αποθήκευση»;`, sample_a: `Προσεύχεται`, sample_ak: `Απάντηση, 5 ψήφοι`,
+    enter_title: `Πώς σε λένε;`, enter_ph: `Όνομα`, btn_join: `Στη σκηνή`,
+    err_name: `Γράψε όνομα`, err_room_full: `Το δωμάτιο έχει ήδη 16 παίκτες`, err_token_gone: `Δεν είσαι σε αυτή την παρτίδα — μπες ξανά`,
+    wait_title: `Σύνδεση…`,
+    lobby_in: `Είσαι μέσα`, lobby_wait: `Περιμένουμε τον οικοδεσπότη να ξεκινήσει. Χρειάζονται τουλάχιστον τρεις`,
+    intro_k: `Γύρος {n} από {m}`,
+    q_of: `Ερώτηση {i} από {n}`,
+    ph_answer: `Η απάντησή σου`, ph_item: `{n}η απάντηση`, ph_caption: `Γράψε λεζάντα`,
+    rj_need_three: `Χρειάζονται και τα τρία`, late_vote: `Μπήκες στη μέση του σόου: τώρα ψηφίζεις, απαντάς από τον επόμενο γύρο`,
+    btn_send: `Στείλε`,
+    btn_hint: `🎲 Βοήθεια · απομένουν {n}`, btn_hint_sure: `Στα τυφλά; Δεν αλλάζει μετά`, btn_hint_none: `🎲 Δεν έμειναν βοήθειες`,
+    got_hint: `Σου έπεσε:`, sent: `Στάλθηκε`,
+    done_title: `Οι απαντήσεις σου είναι στη σκηνή`, done_sub: `Περιμένουμε τους άλλους — κοίτα την κοινή οθόνη`,
+    late_title: `Παίζεις από τον επόμενο γύρο`, late_sub: `Μέχρι τότε ψηφίζεις και αντιδράς`,
+    vote_title: `Ποιο είναι πιο αστείο;`, vote_many: `Διάλεξε έως {n}`, vote_one: `Πάτα το πιο αστείο`,
+    btn_vote: `Ψηφίζω · {n}`,
+    own: `δικό σου`,
+    author_title: `Είναι η μονομαχία σου!`, author_sub: `Κοίτα την οθόνη — αποφασίζει η αίθουσα`,
+    voted_title: `Η ψήφος μετρήθηκε`, voted_sub: `Περιμένουμε τους άλλους`,
+    novote_title: `Εδώ δεν έχεις κάτι να ψηφίσεις`, novote_sub: `Κοίτα την οθόνη`,
+    reveal_title: `Αποτελέσματα`,
+    you_got: `Εσύ: +{n}`, you_jinx: `Τζινξ — μηδέν για σένα`,
+    scores_title: `Σκορ μετά τον γύρο {n}`, place: `{n}η θέση`,
+    final_title: `Τέλος παράστασης`, final_sub: `Ο οικοδεσπότης μπορεί να ξεκινήσει νέα παρτίδα`,
+    final_few: `Έμειναν λιγότεροι από τρεις — τέλος`,
+    final_host: `Ο οικοδεσπότης τελείωσε την παράσταση`,
+    kicked_title: `Ο οικοδεσπότης σε έβγαλε από το δωμάτιο`,
+    replaced_title: `Άνοιξες το παιχνίδι σε άλλη καρτέλα`, replaced_text: `Μπορείς να παίζεις μόνο σε μία.`, btn_back_here: `Παίξε εδώ`,
+    expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης.`, expired_new: `Άνοιξε νέο κλαμπ`,
+    setlist: `Το πρόγραμμα της βραδιάς`, how_k: `Όσο περιμένουμε — πώς παίζεται`, how_fast: `Ο χρόνος είναι λίγος — γράψε το πρώτο αστείο που σου έρχεται`,
+    rj_no_hints: `Τελείωσαν οι βοήθειες`, rj_empty: `Γράψε κάτι`, rj_not_answer: `Τέλος χρόνου`, rj_answered: `Στάλθηκε ήδη`, rj_own: `Όχι στον εαυτό σου`, rj_voted: `Ψήφισες ήδη`, rj_not_vote: `Η ψηφοφορία τελείωσε`, rj_stale: `Η ψηφοφορία τελείωσε`,
+  },
+};
+</script>
+<script src="quip-shared.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script>
+"use strict";
+const params = new URLSearchParams(location.search);
+// код идёт в разметку — только алфавит кодов, иначе ?r=<img onerror> даёт XSS
+const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const app = document.getElementById("app");
+const T = (k) => qpT(k);
+const tpl = (k, v) => qpTpl(k, v);
+const REACTIONS = ["😂", "🔥", "😱", "👏", "💀"];
+const LIMIT = 80, ITEM = 40;
+
+let conn = null, state = null, me = null, token = null, dead = false;
+let screen = null, screenKey = "";
+let joinErr = null;
+const drafts = {}; // mid → черновик (строка или три строки): переживает перерисовки
+let hintArmed = null; // mid, для которого кнопка подсказки ждёт второго нажатия
+let justHinted = null; // mid, у которого только что перевернулась подсказка
+let langPicked = false;
+try { langPicked = !!localStorage.getItem("site-lang"); } catch (e) {}
+let hintSeen = null; // mid, чью перевёрнутую подсказку игрок успел увидеть
+let picks = []; // выбранные в голосовании
+let sentVote = null; // mid, за который голос уже отправлен
+const tokenKey = () => "quip-token-" + CODE;
+try { token = localStorage.getItem(tokenKey()); } catch (e) {}
+
+const player = (id) => state && state.players.find((p) => p.id === id);
+const mine = () => (state && me ? player(me) : null);
+const avHtml = (p) => `<i class="av">${escapeHtml(p.avatar)}</i>`;
+
+function toast(text) {
+  const t = document.getElementById("toast");
+  t.textContent = text;
+  t.classList.remove("on"); void t.offsetWidth; t.classList.add("on");
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove("on"), 2200);
+}
+function show(html, key, top) {
+  screenKey = key;
+  app.classList.toggle("top", !!top);
+  app.innerHTML = html;
+}
+
+// экран не гаснет, пока идёт игра (где поддерживается)
+let wakeLock = null;
+async function keepAwake() {
+  try { if ("wakeLock" in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && me) keepAwake(); });
+
+// ---------- стартовый экран ----------
+function renderLanding() {
+  screen = "landing";
+  show(`<div><div class="eyebrow">${T("eyebrow")}</div><h1 class="sign flick">${T("game_name")}</h1></div>
+    <p class="lede">${T("lede")}</p>
+    <div class="sample" aria-hidden="true">
+      <div class="card"><div class="k">${T("sample_k")}</div><div class="q">${T("sample_q")}</div></div>
+      <div class="card a"><div class="k">${T("sample_ak")}</div><div class="q">${T("sample_a")}</div></div>
+    </div>
+    <div><button class="btn" id="create" type="button">${T("btn_create")}</button>
+      <div class="fine center" style="margin-top:8px">${T("cta_sub")} · <button class="link" id="havecode" type="button">${T("have_code")}</button></div></div>
+    <ol class="rules"><li>${T("rule1")}</li><li>${T("rule2")}</li><li>${T("rule3")}</li></ol>`, "landing");
+  document.getElementById("create").onclick = async () => {
+    const btn = document.getElementById("create");
+    btn.disabled = true;
+    btn.textContent = T("btn_creating");
+    try {
+      const res = await fetch("/quip/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: qpLang() } }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "error");
+      try { localStorage.setItem("quip-host-" + data.code, data.hostToken); } catch (e) {}
+      location.href = `quip-board.html?r=${data.code}`;
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = T("btn_create");
+      toast(String(err.message || err));
+    }
+  };
+  document.getElementById("havecode").onclick = () => {
+    const c = prompt(T("prompt_code"));
+    if (c) location.href = `quip.html?r=${encodeURIComponent(c.trim().toUpperCase())}`;
+  };
+}
+
+// ---------- вход ----------
+function renderEnter() {
+  screen = "enter";
+  let saved = "";
+  try { saved = localStorage.getItem("quip-name") || ""; } catch (e) {}
+  show(`<form class="enter" id="enterform" autocomplete="off" style="display:grid;gap:14px">
+    <div class="card"><div class="room">${escapeHtml(CODE)}</div><h2>${T("enter_title")}</h2>
+      <input id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}"></div>
+    <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
+    <button class="btn" type="submit">${T("btn_join")}</button>
+  </form>`, "enter");
+  const input = document.getElementById("name");
+  document.getElementById("enterform").onsubmit = (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    if (!name) { document.getElementById("err").textContent = T("err_name"); return; }
+    try { localStorage.setItem("quip-name", name); } catch (e2) {}
+    joinErr = null;
+    conn.send({ type: "join", name });
+    keepAwake();
+  };
+}
+
+function renderCenter(titleKey, textKey, extra, key) {
+  show(`<div class="card status"><h2>${T(titleKey)}</h2>${textKey ? `<p style="margin:0;color:var(--card-muted)">${T(textKey)}</p>` : ""}${extra || ""}</div>`, key || "c:" + titleKey);
+}
+function renderExpired() {
+  dead = true;
+  screen = "expired";
+  try { localStorage.removeItem(tokenKey()); } catch (e) {}
+  renderCenter("expired_title", "expired_text", `<a class="btn" style="margin-top:14px" href="quip.html">${T("expired_new")}</a>`);
+}
+
+// ---------- общие куски ----------
+function playersHtml() {
+  return `<div class="players">${state.players.filter((p) => !p.left).map((p) => `<span class="pl${p.id === me ? " me" : ""}${p.online ? "" : " off"}" style="--pc:${p.color}">${avHtml(p)}<b>${escapeHtml(p.name)}</b></span>`).join("")}</div>`;
+}
+function reactsHtml() {
+  return `<div class="reacts">${REACTIONS.map((e) => `<button type="button" data-e="${e}" aria-label="${e}">${e}</button>`).join("")}</div>`;
+}
+function bindReacts() {
+  app.querySelectorAll(".reacts button").forEach((b) => {
+    b.onclick = () => { conn.send({ type: "react", emoji: b.dataset.e }); qpVibrate(8); b.disabled = true; setTimeout(() => (b.disabled = false), 2000); };
+  });
+}
+function meBadge() {
+  const p = mine();
+  return `<div class="me-badge">${avHtml(p)}<div><span class="eyebrow">${T("lobby_in")}</span><b>${escapeHtml(p.name)}</b></div></div>`;
+}
+const timerHtml = () => `<div class="timer" id="timer"><i></i></div>`;
+
+// ---------- экраны по фазам ----------
+function renderLobby() {
+  const key = "lobby:" + state.players.map((p) => p.id + p.online).join(",") + qpLang();
+  if (screenKey === key) return;
+  show(`${meBadge()}<div class="status"><p>${T("lobby_wait")}</p></div>${playersHtml()}${reactsHtml()}
+    <div class="card howcard"><div class="k">${T("how_k")}</div><ul><li>${T("how_fast")}</li><li>${T("rule2")}</li><li>${T("rule3")}</li></ul></div>`, key, true);
+  bindReacts();
+}
+
+function renderIntro() {
+  const key = "intro:" + state.ri + qpLang();
+  if (screenKey === key) return;
+  const small = state.small;
+  show(`<div class="center"><div class="eyebrow">${escapeHtml(tpl("intro_k", { n: state.ri + 1, m: state.plan.length }))}</div>
+    <h1 class="sign">${escapeHtml(qpRoundName(state.roundKey, small))}</h1>
+    <p class="lede" style="margin-top:12px">${escapeHtml(qpRoundDesc(state.roundKey, small))}</p>
+    ${state.mult > 1 ? `<div class="big" style="margin-top:14px">${escapeHtml(tpl("mult", { n: state.mult }))}</div>` : ""}</div>`, key);
+}
+
+function renderAnswer() {
+  const s = state.me;
+  if (!s || !s.inRound) {
+    const key = "late:" + state.ri + qpLang();
+    if (screenKey === key) return;
+    show(`<div class="card status"><h2>${T("late_title")}</h2><p style="margin:0;color:var(--card-muted)">${T("late_sub")}</p></div>${reactsHtml()}`, key);
+    return bindReacts();
+  }
+  const list = s.prompts;
+  const cur = list.find((p) => !p.done);
+  // только что вытянутая подсказка: показываем карточку, пока игрок не нажмёт «дальше» или не истечёт пауза
+  const flipped = justHinted && list.find((p) => p.id === justHinted && p.done);
+  if (flipped) {
+    hintSeen = flipped.id;
+    const key = "hinted:" + flipped.id + qpLang();
+    if (screenKey === key) return;
+    show(`<div class="ahead"><span>${escapeHtml(tpl("q_of", { i: list.indexOf(flipped) + 1, n: list.length }))}</span><span id="tleft"></span></div>${timerHtml()}
+      <div class="card"><div class="k">${escapeHtml(flipped.prompt.e ? T("r_emoji") : "")}</div><div class="q">${qpPromptHtml(flipped.prompt)}</div></div>
+      <div class="flip go"><div class="card"><div class="k">${T("got_hint")}</div><div class="gotit">${qpAnswerHtml(flipped.answer)}</div></div></div>`, key, true);
+    qpSfx.flip();
+    clearTimeout(renderAnswer.t);
+    renderAnswer.t = setTimeout(() => { justHinted = null; screenKey = ""; render(); }, 1800);
+    return;
+  }
+  if (!cur) {
+    const key = "done:" + state.ri + qpLang();
+    if (screenKey === key) return;
+    show(`<div class="status center"><h2>${T("done_title")}</h2><p>${T("done_sub")}</p></div>
+      <div class="opts">${list.map((p) => `<div class="card"><div class="k">${qpPromptHtml(p.prompt.e ? { q: p.prompt.e } : p.prompt)}</div><div class="gotit">${qpAnswerHtml(p.answer)} ${p.hint ? `<span class="tag">🎲</span>` : ""}</div></div>`).join("")}</div>
+      ${reactsHtml()}`, key, true);
+    return bindReacts();
+  }
+  const key = "ans:" + cur.id + ":" + s.hintsLeft + ":" + (hintArmed === cur.id) + qpLang();
+  if (screenKey === key) return;
+  const final = cur.deck === "final";
+  const d = drafts[cur.id] || (final ? ["", "", ""] : "");
+  const hintLabel = s.hintsLeft <= 0 ? T("btn_hint_none") : hintArmed === cur.id ? T("btn_hint_sure") : tpl("btn_hint", { n: s.hintsLeft });
+  const promptKind = cur.prompt.e ? T("r_emoji") : "";
+  show(`<div class="ahead"><span class="left">${escapeHtml(tpl("q_of", { i: list.indexOf(cur) + 1, n: list.length }))}</span><span id="tleft"></span></div>${timerHtml()}
+    <div class="card"><div class="k">${escapeHtml(promptKind)}</div><div class="q">${qpPromptHtml(cur.prompt)}</div></div>
+    <form class="write" id="write" autocomplete="off">
+      ${final
+        ? `<div class="three">${[0, 1, 2].map((i) => `<label>${i + 1}<input maxlength="${ITEM}" data-i="${i}" value="${escapeHtml(d[i] || "")}" placeholder="${escapeHtml(tpl("ph_item", { n: i + 1 }))}" enterkeyhint="${i < 2 ? "next" : "send"}"></label>`).join("")}</div>`
+        : `<textarea id="ta" maxlength="${LIMIT}" placeholder="${escapeHtml(T(cur.prompt.e ? "ph_caption" : "ph_answer"))}" enterkeyhint="send" aria-label="${escapeHtml(T("ph_answer"))}">${escapeHtml(d)}</textarea><div class="cnt" id="cnt"></div>`}
+      <div class="row2"><button class="btn" type="submit" id="sendbtn">${T("btn_send")}</button>
+      <button class="btn ghost${hintArmed === cur.id ? " sure" : ""}" type="button" id="hintbtn"${s.hintsLeft <= 0 ? " disabled" : ""}>${escapeHtml(hintLabel)}</button></div>
+    </form>`, key, true);
+  const form = document.getElementById("write");
+  const cnt = document.getElementById("cnt");
+  if (final) {
+    const inputs = [...form.querySelectorAll("input")];
+    inputs.forEach((inp, i) => {
+      inp.oninput = () => { drafts[cur.id] = inputs.map((x) => x.value); };
+      inp.onkeydown = (e) => { if (e.key === "Enter" && i < 2) { e.preventDefault(); inputs[i + 1].focus(); } };
+    });
+    const first = inputs.find((x) => !x.value) || inputs[0];
+    if (!matchMedia("(pointer: coarse)").matches) first.focus();
+  } else {
+    const ta = document.getElementById("ta");
+    const upd = () => { drafts[cur.id] = ta.value; cnt.textContent = ta.value.length > LIMIT - 20 ? `${ta.value.length}/${LIMIT}` : ""; };
+    ta.oninput = upd;
+    ta.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit ? form.requestSubmit() : form.onsubmit(e); } };
+    upd();
+    if (!matchMedia("(pointer: coarse)").matches) ta.focus();
+  }
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const val = drafts[cur.id];
+    const ans = final ? (val || []).map((x) => String(x || "").trim()) : String(val || "").trim();
+    if (final ? !ans.some(Boolean) : !ans) { toast(T("rj_empty")); return; }
+    if (final && ans.filter(Boolean).length < 3) { toast(T("rj_need_three")); return; }
+    conn.send({ type: "answer", mid: cur.id, ans });
+    qpSfx.send();
+    qpVibrate(15);
+    document.getElementById("sendbtn").disabled = true;
+    hintArmed = null;
+  };
+  document.getElementById("hintbtn").onclick = () => {
+    if (hintArmed !== cur.id) { hintArmed = cur.id; screenKey = ""; return render(); }
+    hintArmed = null;
+    justHinted = cur.id;
+    conn.send({ type: "hint", mid: cur.id });
+    qpVibrate([10, 30, 10]);
+  };
+}
+
+function renderVote() {
+  const s = state.me, c = state.current;
+  if (!c || !c.answers) return;
+  // подсказку вытянул последним — фаза ответов кончилась раньше, чем перевернулась карточка: покажем, что выпало
+  if (justHinted && hintSeen !== justHinted) {
+    const mineA = c.answers.find((a) => a.mine);
+    if (mineA) toast(T("got_hint") + " " + (mineA.items ? mineA.items.join(" / ") : mineA.text));
+    justHinted = null;
+  }
+  const voted = s && (s.voted || sentVote === c.id);
+  const key = "vote:" + c.id + ":" + voted + ":" + (s && s.canVote) + ":" + picks.join(",") + qpLang();
+  if (screenKey === key) return;
+  if (s && s.author && c.kind === "duel") {
+    show(`<div class="card status"><h2>${T("author_title")}</h2><p style="margin:0;color:var(--card-muted)">${T("author_sub")}</p></div>${timerHtml()}${reactsHtml()}`, key);
+    return bindReacts();
+  }
+  if (voted || !s || !s.canVote) {
+    show(`<div class="card status"><h2>${T(voted ? "voted_title" : "novote_title")}</h2><p style="margin:0;color:var(--card-muted)">${T(voted ? "voted_sub" : "novote_sub")}</p></div>${timerHtml()}${reactsHtml()}`, key);
+    return bindReacts();
+  }
+  const n = s.votesFor;
+  // отмеченное до перезагрузки/переподключения — с сервера
+  if (!picks.length && s.myDraft) picks = s.myDraft.slice();
+  show(`${timerHtml()}${s.inRound ? "" : `<div class="eyebrow">${escapeHtml(T("late_vote"))}</div>`}<div class="card"><div class="k">${T("vote_title")}</div><div class="q" style="font-size:19px">${qpPromptHtml(c.prompt)}</div></div>
+    <div class="eyebrow">${escapeHtml(n > 1 ? tpl("vote_many", { n }) : T("vote_one"))}</div>
+    <div class="opts">${c.answers.map((a, i) => `<button type="button" class="opt${a.mine ? " own" : ""}${picks.includes(i) ? " sel" : ""}" data-i="${i}" data-own="${escapeHtml(T("own"))}"${a.mine ? " disabled" : ""}><span class="l">${String.fromCharCode(65 + i)}</span>${qpAnswerHtml(a)}</button>`).join("")}</div>
+    ${n > 1 ? `<button class="btn" type="button" id="votebtn"${picks.length ? "" : " disabled"}>${escapeHtml(tpl("btn_vote", { n: `${picks.length}/${n}` }))}</button>` : ""}`, key, true);
+  app.querySelectorAll(".opt:not(.own)").forEach((b) => {
+    b.onclick = () => {
+      const i = Number(b.dataset.i);
+      qpSfx.tap();
+      if (n === 1) { picks = [i]; sendVote(c.id); return; }
+      picks = picks.includes(i) ? picks.filter((x) => x !== i) : picks.length < n ? picks.concat(i) : picks;
+      // выбрал все N — голос уходит сам; иначе отметка идёт на сервер черновиком и засчитается по таймеру
+      if (picks.length === n) { sendVote(c.id); return; }
+      conn.send({ type: "vote", mid: c.id, picks, draft: true });
+      render();
+    };
+  });
+  const vb = document.getElementById("votebtn");
+  if (vb) vb.onclick = () => sendVote(c.id);
+}
+function sendVote(mid) {
+  if (!picks.length) return;
+  conn.send({ type: "vote", mid, picks });
+  sentVote = mid;
+  qpVibrate(15);
+  qpSfx.send();
+  render();
+}
+
+function renderReveal() {
+  const c = state.current;
+  if (!c || !c.result) return;
+  const key = "rev:" + c.id + qpLang();
+  if (screenKey === key) return;
+  const r = c.result;
+  const myIdx = c.answers.findIndex((a) => a.playerId === me);
+  let head = "";
+  if (myIdx >= 0) head = r.jinx.includes(me) ? `<div class="stamp">${T("you_jinx")}</div>` : `<div class="big">${escapeHtml(tpl("you_got", { n: r.points[myIdx] }))}</div>`;
+  const rows = c.answers.map((a, i) => {
+    const p = player(a.playerId) || {};
+    const jin = r.jinx.includes(a.playerId);
+    const tags = [a.hint && !a.late ? `🎲 ${T("hint_mark")}` : "", a.late ? `🐌 ${T("late_mark")}` : "", jin ? T("jinx") : "", r.sweep === a.playerId ? T("sweep") : ""].filter(Boolean).join(" · ");
+    return `<div class="r${r.winners.includes(a.playerId) ? " win" : ""}" style="--pc:${p.color || "#777"}"><div class="t">${qpAnswerHtml(a)}</div><div class="p">${escapeHtml(tpl("pts", { n: r.points[i] }))}</div>
+      <div class="who">${escapeHtml(p.avatar || "")} ${escapeHtml(p.name || "?")} · ${escapeHtml(qpVotes(r.tally[i]))}${tags ? " · " + escapeHtml(tags) : ""}</div></div>`;
+  }).join("");
+  show(`<div class="center">${head}</div><div class="eyebrow">${T("reveal_title")}</div><div class="res">${rows}</div>${reactsHtml()}`, key, true);
+  bindReacts();
+}
+
+// места с ничьими и порядок — как на доске (qpRanked)
+function standing() {
+  const list = qpRanked(state.players);
+  const p = list.find((x) => x.id === me) || mine();
+  return { list, place: p.place || 1, p };
+}
+
+function setlistHtml(list) {
+  return `<div class="card setlist"><div class="k">${T("setlist")}</div><ol>${list.map((x) => `<li class="${x.id === me ? "me" : ""}"><span class="n">${x.place}</span>${avHtml(x)}<b>${escapeHtml(x.name)}</b><span class="dots"></span><span class="s">${x.score}</span></li>`).join("")}</ol></div>`;
+}
+
+function renderScores() {
+  const key = "scores:" + state.ri + qpLang();
+  if (screenKey === key) return;
+  const { list, place, p } = standing();
+  show(`<div class="center"><div class="eyebrow">${escapeHtml(tpl("scores_title", { n: state.ri + 1 }))}</div>
+    <div class="big" style="margin:10px 0">${escapeHtml(qpPlace(place))}</div><div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div></div>${setlistHtml(list)}${reactsHtml()}`, key, true);
+  bindReacts();
+}
+
+function renderFinal() {
+  const key = "final:" + state.game + ":" + state.finishedReason + qpLang();
+  if (screenKey === key) return;
+  const { list, place, p } = standing();
+  const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : T("final_sub");
+  show(`<div class="center"><h1 class="sign sm">${T("final_title")}</h1>
+    <div class="big" style="margin:14px 0 6px">${escapeHtml(qpPlace(place))}</div>
+    <div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div>
+    <p class="fine">${escapeHtml(sub)}</p></div>${setlistHtml(list)}${reactsHtml()}`, key, true);
+  bindReacts();
+}
+
+// ---------- выбор экрана ----------
+function render() {
+  if (dead || !state) return;
+  if (!me) {
+    if (screen === "kicked" || screen === "replaced" || screen === "enter") return;
+    return renderEnter();
+  }
+  if (!mine()) return renderEnter();
+  screen = "game";
+  switch (state.phase) {
+    case "lobby": return renderLobby();
+    case "intro": return renderIntro();
+    case "answer": return renderAnswer();
+    case "vote": return renderVote();
+    case "reveal": return renderReveal();
+    case "scores": return renderScores();
+    case "finished": return renderFinal();
+  }
+}
+
+// таймер фазы: полоска и секунды; последние 5 с — красным и с тиканьем
+let lastTickSec = null;
+function frame() {
+  requestAnimationFrame(frame);
+  if (!state || dead || !state.phaseEnd) return;
+  const now = qpNow();
+  const left = state.phaseEnd - now;
+  const total = Math.max(1, state.phaseEnd - state.phaseStart);
+  const bar = document.getElementById("timer");
+  if (bar) {
+    bar.firstChild.style.transform = `scaleX(${Math.max(0, Math.min(1, left / total))})`;
+    bar.classList.toggle("hot", left < 5000);
+  }
+  const tl = document.getElementById("tleft");
+  if (tl) tl.textContent = tpl("sec", { s: Math.max(0, Math.ceil(left / 1000)) });
+  if ((state.phase === "answer" || state.phase === "vote") && left < 5000 && left > 0) {
+    const sec = Math.ceil(left / 1000);
+    if (sec !== lastTickSec) { lastTickSec = sec; qpSfx.tick(true); }
+  }
+}
+
+window.addEventListener("langchange", () => {
+  if (!CODE) return renderLanding();
+  if (screen === "enter") return renderEnter();
+  screenKey = "";
+  screen === "expired" ? renderExpired() : render();
+});
+
+// ---------- связь ----------
+let prevPhase = null, prevMid = null;
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+    case "state":
+      state = m.state;
+      if (m.type === "hello" && token && !me) conn.send({ type: "join", token });
+      // язык пульта — язык комнаты, если человек сам его не выбирал (иначе телефон с русской
+      // локалью в греческой комнате показывал русский интерфейс при греческих вопросах)
+      if (m.type === "hello" && !langPicked && state.settings && window.I18N && I18N.setLang && state.settings.lang !== qpLang()) { langPicked = true; I18N.setLang(state.settings.lang); }
+      // новая схватка — сбрасываем выбор
+      if (state.current && state.current.id !== prevMid) { picks = []; prevMid = state.current.id; }
+      if (state.phase !== prevPhase) {
+        if (state.phase === "answer") { hintArmed = null; justHinted = null; }
+        if (state.phase === "vote" || state.phase === "answer") qpVibrate(30);
+        prevPhase = state.phase;
+      }
+      render();
+      break;
+    case "joined":
+      me = m.playerId;
+      token = m.token;
+      joinErr = null;
+      try { localStorage.setItem(tokenKey(), token); } catch (e) {}
+      keepAwake();
+      screen = null;
+      screenKey = "";
+      render();
+      break;
+    case "rejected":
+      if (m.action === "hint") { justHinted = null; screenKey = ""; }
+      if (m.action === "vote") { sentVote = null; screenKey = ""; }
+      if (m.action === "answer") screenKey = "";
+      if (T("rj_" + m.reason) !== "rj_" + m.reason) toast(T("rj_" + m.reason));
+      render();
+      break;
+    case "error":
+      if (m.error === "room_expired") return renderExpired();
+      if (["room_full", "token_gone", "bad_name"].includes(m.error)) {
+        if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
+        joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
+        me = null;
+        renderEnter();
+      }
+      break;
+    case "kicked":
+      me = null;
+      try { localStorage.removeItem(tokenKey()); } catch (e) {}
+      token = null;
+      screen = "kicked";
+      renderCenter("kicked_title");
+      break;
+    case "replaced":
+      me = null;
+      screen = "replaced";
+      renderCenter("replaced_title", "replaced_text", `<button class="btn" style="margin-top:14px" id="here" type="button">${T("btn_back_here")}</button>`);
+      document.getElementById("here").onclick = () => { conn.send({ type: "join", token }); };
+      break;
+    case "event": {
+      const e = m.event;
+      if (e.type === "reveal") {
+        if (e.sweep) qpSfx.sweep();
+        if (e.sweep === me || (e.winners || []).includes(me)) qpVibrate([40, 40, 80]);
+      }
+      if (e.type === "jinx") qpSfx.jinx();
+      break;
+    }
+  }
+}
+
+function start() {
+  if (!CODE) return renderLanding();
+  renderCenter("wait_title");
+  const banner = document.getElementById("conn");
+  conn = qpConnect({
+    code: CODE,
+    onMessage,
+    onGone: renderExpired,
+    // переподключились — снова входим своим токеном (hello придёт первым)
+    onOpen: () => { me = null; },
+    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+  });
+  requestAnimationFrame(frame);
+  // ручка для стенда: состояние и отправка
+  window.qpPhone = { send: (msg) => conn.send(msg), get state() { return state; }, get me() { return me; } };
+}
+start();
+</script>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+  ym(104849796, 'init', { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+</body>
+</html>

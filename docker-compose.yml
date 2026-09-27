@@ -31,6 +31,7 @@ services:
       - auction
       - roulette
       - bomb
+      - quip
       - storm
 
   # сервер онлайн-аукциона (WebSocket + API); nginx проксирует в него /auction/ws и /auction/api/
@@ -113,6 +114,29 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # сервер «Вопроса ребром» (WebSocket + API); nginx проксирует в него /quip/ws и /quip/api/.
+  # Устроен как bomb. В дампе — авторы ответов и пулы подсказок: без них после рестарта не раскрыть схватку.
+  quip:
+    build: ./quip
+    image: randomhostquip:latest
+    container_name: randomhost-quip
+    cpuset: "2-5"
+    restart: always
+    mem_limit: 128m
+    volumes:
+      - quip-state:/app/state
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3400/quip/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # молнии для «Грома» (thunder.html): качает файлы NOAA GOES GLM из открытых бакетов AWS,
   # разбирает NetCDF и отдаёт вспышки; nginx проксирует в него /storm/api/. Состояния на диске нет.
   # Бакет опрашивается, только пока страницу кто-то смотрит (IDLE_S в server.py).
@@ -140,3 +164,4 @@ volumes:
   auction-state:
   roulette-state:
   bomb-state:
+  quip-state:
