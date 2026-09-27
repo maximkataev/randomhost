@@ -19,18 +19,18 @@ const DECKS = ["duel", "emoji", "final"];
 // Раунды партии (§2). Полная: дуэли → сцена → дуэли ×2 → финал (8–12 минут; с одним кругом дуэлей
 // плейтест выходил в 3 минуты — «только разогрелись, а уже пьедестал»). Короткая: дуэли и финал.
 const ROUNDS = {
-  duel: { deck: "duel", mult: 1, votes: 1, answerMs: 20000, shift: 1 },
-  emoji: { deck: "emoji", mult: 2, votes: 2, answerMs: 20000 },
-  duel2: { deck: "duel", mult: 2, votes: 1, answerMs: 20000, shift: 2 },
-  final: { deck: "final", mult: 3, votes: 3, answerMs: 40000 },
+  duel: { deck: "duel", mult: 1, votes: 1, answerMs: 30000, shift: 1 },
+  emoji: { deck: "emoji", mult: 2, votes: 2, answerMs: 30000 },
+  duel2: { deck: "duel", mult: 2, votes: 1, answerMs: 30000, shift: 2 },
+  final: { deck: "final", mult: 3, votes: 3, answerMs: 60000 },
 };
 const PLAN_FULL = ["duel", "emoji", "duel2", "final"];
 const PLAN_SHORT = ["duel", "final"];
 
 const T = {
   intro: 3500, // заставка раунда
-  voteDuel: 10000,
-  voteGrid: 15000,
+  voteDuel: 15000,
+  voteGrid: 20000,
   revealDuel: 5000, // успеть прочитать авторов и отсмеяться (3–4 с сливались в мельтешение)
   revealGrid: 7000,
   scores: 6000,
@@ -60,6 +60,8 @@ const LATE_SHARE = 0.5; // 🐌-подсказка за молчание — з�
 // 16 цветов карточек под неоновую вывеску на кирпиче
 const COLORS = ["#ff3d7f", "#22d3ee", "#ffd23f", "#7cff6b", "#b388ff", "#ff8a3d", "#3d8bff", "#ff5c5c", "#00e0a4", "#f472b6", "#a3e635", "#fb7185", "#38bdf8", "#facc15", "#c084fc", "#94a3b8"];
 const AVATARS = ["🎤", "🦊", "🐸", "🦉", "🐙", "🦄", "🐧", "🦁", "🐼", "🐵", "🦖", "🐝", "🐳", "🦩", "🐢", "🦔"];
+// из чего игрок выбирает сам (первые 16 раздаются по умолчанию)
+const AVATAR_CHOICES = AVATARS.concat(["🐱", "🐶", "🐰", "🐻", "🐨", "🐯", "🐷", "🐮", "🦝", "🦥", "🦦", "🐲", "👽", "🤖", "👻", "🤡", "🥑", "🍕", "🌮", "🍩", "🧀", "🌵", "🍄", "🪩"]);
 
 function clampSettings(input = {}) {
   const s = { ...DEFAULTS };
@@ -548,6 +550,18 @@ class Game {
     return this.finish("host", now);
   }
 
+  // Свой аватар (владелец, 27.09): в лобби и между партиями, из списка, не занятый другим игроком
+  setAvatar(id, avatar) {
+    const s = this.s;
+    const p = this.player(id);
+    if (!p || p.left) return { ok: false, reason: "not_player" };
+    if (s.phase !== "lobby" && s.phase !== "finished") return { ok: false, reason: "game_started" };
+    if (!AVATAR_CHOICES.includes(avatar)) return { ok: false, reason: "bad_avatar" };
+    if (this.present().some((x) => x !== p && x.avatar === avatar)) return { ok: false, reason: "avatar_taken" };
+    p.avatar = avatar;
+    return { ok: true, events: [{ type: "avatar", playerId: id }] };
+  }
+
   react(id, emoji, now) {
     const p = this.player(id);
     if (!p || !REACTIONS.includes(emoji)) return { ok: false, reason: "bad" };
@@ -643,6 +657,7 @@ class Game {
       hintStar: s.phase === "finished" ? s.hintStar : null,
       finishedReason: s.phase === "finished" ? s.finishedReason : null,
       minPlayers: MIN_PLAYERS,
+      avatarChoices: s.phase === "lobby" || s.phase === "finished" ? AVATAR_CHOICES : null,
       me: mePart,
       players: s.players.map((p) => ({
         id: p.id,
@@ -660,4 +675,4 @@ class Game {
   }
 }
 
-module.exports = { Game, ROUNDS, PLAN_FULL, PLAN_SHORT, LATE_SHARE, T, DEFAULTS, DECKS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, SMALL, ANSWER_MAX, ITEM_MAX, REACTIONS, POINTS, WIN_BONUS, SWEEP_BONUS, COLORS, AVATARS, clampSettings, cleanName, cleanText };
+module.exports = { Game, ROUNDS, PLAN_FULL, PLAN_SHORT, LATE_SHARE, T, DEFAULTS, DECKS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, SMALL, ANSWER_MAX, ITEM_MAX, REACTIONS, POINTS, WIN_BONUS, SWEEP_BONUS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText };

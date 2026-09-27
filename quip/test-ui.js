@@ -300,6 +300,14 @@ async function main() {
     check((await board.evaluate("!document.getElementById('startbtn').disabled")) === true, "доска: старт доступен");
     await board.shot("b_lobby");
     await phones[3].shot("p_lobby_longname");
+    // своя аватарка: тап по ней — выбор, тап по свободной — сменилась, на доске тоже
+    const avBefore = await phones[0].evaluate("window.qpPhone.state.players.find((p) => p.id === window.qpPhone.me).avatar");
+    await click(phones[0], "#avbtn");
+    check(!!(await waitFor(phones[0], "document.querySelectorAll('.avpick button:not(:disabled)').length > 10", 3000)), "аватарка: открылся выбор");
+    await phones[0].shot("p_avatar_pick");
+    const want = await phones[0].evaluate("document.querySelector('.avpick button:not(:disabled):not(.on)').dataset.a");
+    await phones[0].evaluate("document.querySelector('.avpick button:not(:disabled):not(.on)').click()");
+    check(!!(await waitFor(board, `state.players.some((p) => p.avatar === ${JSON.stringify(want)})`, 3000)), `аватарка: сменилась ${avBefore} → ${want}, доска видит`);
     for (const p of phones) check((await p.evaluate(NO_HSCROLL)) === true, `${p.name}: лобби без прокрутки вбок`);
 
     await click(board, "#startbtn");
@@ -317,6 +325,8 @@ async function main() {
     for (const p of phones) { await p.shot("g5_p_final_" + p.name.slice(0, 4)); check((await p.evaluate(NO_HSCROLL)) === true, `${p.name}: итоги без прокрутки вбок`); }
     check((await board.evaluate("!!document.querySelector('.podium .p1')")) === true, "доска: пьедестал");
     check((await board.evaluate("!!document.getElementById('again')")) === true, "доска: кнопка «Ещё шоу»");
+    check((await board.evaluate("!!document.getElementById('homebtn')")) === true, "доска: кнопка «Главная» на итогах");
+    for (const p of phones) check((await p.evaluate("(document.getElementById('homebtn') || {}).getAttribute && document.getElementById('homebtn').getAttribute('href')")) === "index.html", `${p.name}: кнопка «Главная» на итогах`);
 
     // ---------- 3. короткая партия втроём ----------
     await click(board, "#tolobby");

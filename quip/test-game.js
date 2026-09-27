@@ -484,3 +484,19 @@ test("🐌 за полцены и без бонуса; финал — тольк
   const fm = f.s.matchups[0];
   assert.strictEqual(f.answer(fm.authors[0], fm.id, ["раз", "два"], f.s.phaseStart + 1).reason, "need_three");
 });
+
+test("аватарка: свою можно сменить в лобби и между партиями, из списка, не занятую", () => {
+  const { AVATAR_CHOICES } = require("./game");
+  const g = Game.create({ rnd: rig(), content: fixture() });
+  names(3).forEach((id) => g.addPlayer({ id, name: id }));
+  const taken = g.player("P2").avatar;
+  assert.strictEqual(g.setAvatar("P1", taken).reason, "avatar_taken");
+  assert.strictEqual(g.setAvatar("P1", "💩").reason, "bad_avatar");
+  const free = AVATAR_CHOICES.find((a) => !g.s.players.some((p) => p.avatar === a));
+  assert.ok(g.setAvatar("P1", free).ok);
+  assert.strictEqual(g.player("P1").avatar, free);
+  assert.ok(g.snapshot(0, "P1").avatarChoices.includes(free));
+  g.start(0);
+  assert.strictEqual(g.setAvatar("P1", AVATAR_CHOICES[AVATAR_CHOICES.length - 1]).reason, "game_started");
+  assert.strictEqual(g.snapshot(0, "P1").avatarChoices, null);
+});

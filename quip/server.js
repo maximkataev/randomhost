@@ -606,6 +606,7 @@ function handle(room, client, msg) {
       if (msg.draft === true) { const r = g.vote(me, Number(msg.mid), msg.picks, t, true); return r.ok ? undefined : reply({ type: "rejected", action: "vote", reason: r.reason }); }
       return act("vote", g.vote(me, Number(msg.mid), msg.picks, t));
     }
+    case "avatar": return me ? act("avatar", g.setAvatar(me, String(msg.avatar || ""))) : undefined;
     case "react": {
       if (!me) return;
       const r = g.react(me, String(msg.emoji || ""), t);
