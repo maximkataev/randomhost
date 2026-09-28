@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#5b8cff">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f30a.svg" type="image/svg+xml">
+<title>На одной волне — игра для компании, как Wavelength</title>
+<meta name="robots" content="index,follow">
+<meta name="description" content="🌊 Мультиплеерная игра для компании: на экране шкала «Холодное ↔ Горячее», каждый прячет на ней точку и даёт подсказку, остальные с телефонов ловят волну. Как Wavelength, только бесплатно и в браузере." data-i18n-meta="_meta">
+<!-- ссылки на комнаты (?r=КОД) — та же страница: в выдаче должна быть одна, без кода -->
+<link rel="canonical" href="https://randomhost.online/wave.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="На одной волне — игра для компании">
+<meta property="og:description" content="Шкала между двумя полюсами, одна подсказка и стрелки всех игроков. Бесплатно, в браузере, с телефонов.">
+<meta property="og:url" content="https://randomhost.online/wave.html">
+<meta property="og:site_name" content="Рандомайзер Онлайн">
+<meta property="og:locale" content="ru_RU">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Roboto Flex — одна переменная гарнитура на всё: широкая и сверхжирная для крика, обычная для текста; с кириллицей и греческим -->
+<!-- шрифт подключаем обычным стилем: заголовки подгоняются под ширину, и мерить их в запасном Arial Black нельзя -->
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,400..1000&display=swap" rel="stylesheet">
+<style>
+  /* Мир: «плакат-табло» (wave-spec.md §8). Сплошная сочная заливка, у каждой шкалы свой цвет, толстая чёрная линия,
+     крупные широкие буквы. Никаких градиентов, стекла и карточек в карточках: только заливка, шкала и чёрный шрифт.
+     Пульт: всё под большой палец, шкала на всю ширину, стрелка тянется из любой точки полукруга. */
+  :root {
+    --bg: #5b8cff;
+    --card: #5b8cff;
+    --ink: #111;
+    --paper: #fff;
+    --hot: #ff2d2d;
+    --f: "Roboto Flex", "Arial Black", system-ui, sans-serif;
+    --press: cubic-bezier(.2, 1.6, .4, 1);
+    --lang-switch-bg: var(--paper);
+    --lang-switch-border: var(--ink);
+    --lang-switch-fg: var(--ink);
+    --lang-switch-active-bg: var(--ink);
+    --lang-switch-active-fg: var(--paper);
+    --lang-switch-active-border: var(--ink);
+    --lang-switch-font: var(--f);
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; min-height: 100vh; min-height: 100dvh; background: var(--bg); color: var(--ink); font: 500 16px/1.35 var(--f); overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; touch-action: manipulation; }
+
+  /* шапка: слева «все игры», справа звук и место под переключатель языка (--lsw меряет wave-shared.js) */
+  .util { display: flex; align-items: center; gap: 12px; height: calc(var(--lsc, 30px) * 2); padding: 0 var(--lsw, 150px) 0 14px; position: relative; z-index: 3; }
+  .util a { color: var(--ink); text-decoration: none; font-weight: 800; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .sound-toggle-btn { flex: none; margin-left: auto; width: calc(var(--lsh, 44px) * 1.25); height: var(--lsh, 44px); border: 3px solid var(--ink); border-radius: 0; background: var(--paper); font-size: 17px; display: grid; place-items: center; padding: 0; }
+  .conn { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 30; background: var(--ink); color: var(--paper); font-weight: 800; font-size: 14px; padding: 8px 12px; visibility: hidden; white-space: nowrap; }
+  .conn.on { visibility: visible; }
+  .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: var(--ink); color: var(--paper); font-weight: 800; font-size: 15px; padding: 12px 16px; max-width: calc(100% - 32px); visibility: hidden; }
+  .toast.on { visibility: visible; animation: pop .35s var(--press); }
+
+  /* шторка смены цвета: новый цвет растёт кругом из центра шкалы (снизу) */
+  .wipe { position: fixed; inset: 0; z-index: 1; pointer-events: none; clip-path: circle(0 at 50% 100%); animation: wipe .5s cubic-bezier(.6, 0, .2, 1) forwards; }
+  @keyframes wipe { to { clip-path: circle(150% at 50% 100%); } }
+
+  #app { position: relative; z-index: 2; max-width: 560px; margin: 0 auto; padding: 4px 16px calc(24px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 14px; min-height: calc(100dvh - var(--lsc, 30px) * 2); overflow-x: clip; }
+  #app.mid { justify-content: center; }
+
+  /* крик: широкий сверхжирный */
+  /* line-height меньше единицы режет «Й» и «Ё» — запас сверху */
+  .shout { font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; text-transform: uppercase; line-height: .9; letter-spacing: -.01em; margin: 0; padding-top: .12em; }
+  h1.shout { font-size: clamp(34px, 13.5vw, 68px); }
+  h2.shout { font-size: clamp(26px, 8.4vw, 40px); }
+  .eyebrow { font-weight: 900; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+  .lede { font-size: 18px; font-weight: 600; margin: 0; text-wrap: pretty; }
+  .fine { font-size: 14px; font-weight: 600; opacity: .8; margin: 0; }
+  .center { text-align: center; }
+  /* элемент сетки по умолчанию не уже содержимого — без min-width:0 широкий заголовок распирал экран */
+  .center > *, #app > * { min-width: 0; }
+  .lede { overflow-wrap: anywhere; }
+  /* узкий экран: вместо «← Все и…» — просто стрелка */
+  @media (max-width: 380px) { .util a { font-size: 0; } .util a::before { content: "←"; font-size: 24px; } }
+  /* низкий экран (iPhone SE): шкала ужимается, чтобы подсказка, полюса и кнопка влезали без прокрутки */
+  @media (max-height: 720px) { .dialbox { width: min(100%, calc((100svh - 440px) * 1.85)); margin-inline: auto; } }
+  /* совсем низкий экран: подсказка компактнее, а панель внизу идёт обычным потоком — никогда не закрывает полюса */
+  @media (max-height: 640px) {
+    #app .clue { padding: 10px 12px 12px; } #app .clue q { font-size: 21px; margin-top: 4px; }
+    #app .scrub { height: 46px; } #app .dock .btn { padding: 12px 10px; } #app .dock { position: static; }
+    #app { gap: 10px; }
+  }
+  .ahead b { text-transform: none; }
+
+  .btn { display: block; width: 100%; border: 4px solid var(--ink); background: var(--ink); color: var(--paper); font-weight: 1000; font-stretch: 130%; font-variation-settings: "wdth" 130; font-size: 22px; text-transform: uppercase; padding: 18px 14px; text-align: center; text-decoration: none; box-shadow: 0 7px 0 rgba(0, 0, 0, .28); transition: transform .08s, box-shadow .08s; }
+  .btn:active:not(:disabled) { transform: translateY(5px); box-shadow: 0 2px 0 rgba(0, 0, 0, .28); }
+  .btn:disabled { opacity: .45; box-shadow: none; }
+  .btn.ghost { background: var(--paper); color: var(--ink); }
+  .link { background: none; border: 0; padding: 12px 0 0; font-weight: 800; text-decoration: underline; text-underline-offset: 4px; display: block; margin: 0 auto; }
+
+  input.field { width: 100%; border: 4px solid var(--ink); background: var(--paper); font-weight: 800; font-size: 22px; padding: 14px 14px; border-radius: 0; outline: none; }
+  input.field:focus { box-shadow: 0 0 0 4px var(--paper), 0 0 0 8px var(--ink); }
+  .err { min-height: 22px; font-weight: 900; font-size: 16px; color: var(--ink); }
+  .err:not(:empty)::before { content: "✋ "; }
+
+  /* шкала */
+  .dialbox { position: relative; }
+  .dial { display: block; width: 100%; height: auto; overflow: visible; }
+  .dial .bandnum { font: 1000 44px/1 var(--f); font-stretch: 151%; font-variation-settings: "wdth" 151; text-anchor: middle; dominant-baseline: central; }
+  .dial .avtxt { font-size: 34px; text-anchor: middle; }
+  .dial .gpts { font: 1000 40px/1 var(--f); text-anchor: middle; fill: #111; paint-order: stroke; stroke: #fff; stroke-width: 10px; }
+  .dial .gpts.zero { opacity: .55; }
+  .dial .needle, .dial .gneedle { transform-box: view-box; transform-origin: 500px 510px; transform: rotate(calc(var(--a) * 1deg)); }
+  .dial .sector.anim { transform-box: view-box; transform-origin: 500px 510px; animation: grow .55s var(--press) both; }
+  .dial .gneedle { animation: swing .7s var(--press) both; animation-delay: var(--d); }
+  .dial .gav { animation: pop .4s var(--press) both; animation-delay: calc(var(--d) + .35s); transform-box: fill-box; transform-origin: center; }
+  @keyframes grow { from { transform: scale(0); } }
+  @keyframes swing { from { transform: rotate(90deg); } }
+  @keyframes pop { from { transform: scale(0); } }
+  .poles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+  .poles span { font-weight: 1000; font-stretch: 120%; font-variation-settings: "wdth" 120; font-size: 17px; line-height: 1.05; text-transform: uppercase; }
+  .poles span:first-child::before { content: "← "; }
+  .poles span:last-child { text-align: right; }
+  .poles span:last-child::after { content: " →"; }
+  .dial.grab { touch-action: none; cursor: grab; }
+
+  /* подсказка на экране угадывания */
+  .clue { background: var(--ink); color: var(--paper); padding: 14px 16px 16px; }
+  .clue .eyebrow { opacity: .7; display: flex; justify-content: space-between; gap: 10px; }
+  .clue .eyebrow span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .clue .eyebrow span:last-child { flex: none; white-space: nowrap; }
+  .clue q { display: block; font-weight: 1000; font-size: clamp(24px, 7.4vw, 34px); line-height: 1.05; margin-top: 6px; quotes: "«" "»" "“" "”"; overflow-wrap: anywhere; }
+
+  .timer { height: 12px; background: rgba(0, 0, 0, .15); position: relative; overflow: hidden; }
+  .timer i { position: absolute; inset: 0; background: var(--ink); transform-origin: left; }
+  .timer.hot i { animation: blink .5s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  .ahead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-weight: 900; font-size: 14px; text-transform: uppercase; letter-spacing: .04em; }
+  .ahead b { font-size: 20px; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+
+  /* угадывание: шкала растёт по высоте, «Зафиксировать» прилипает к низу — под большой палец */
+  #app.guess .grow { flex: 1; }
+  .dock { position: sticky; bottom: 0; display: grid; gap: 8px; padding: 8px 0 calc(4px + env(safe-area-inset-bottom)); background: var(--card); }
+  .dock .btn { white-space: nowrap; font-size: clamp(17px, 5.6vw, 22px); }
+  /* полоса подстройки: тянешь по ней — стрелка едет на треть градуса за пиксель, палец не закрывает шкалу */
+  .scrub { display: grid; grid-template-columns: 56px 1fr 56px; height: 54px; border: 4px solid var(--ink); background: var(--paper); touch-action: none; user-select: none; }
+  .scrub button { border: 0; background: var(--paper); font-weight: 1000; font-size: 20px; padding: 0; }
+  .scrub button:active { background: var(--ink); color: var(--paper); }
+  .scrub .track { border-left: 4px solid var(--ink); border-right: 4px solid var(--ink); display: grid; place-items: center; font-weight: 900; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; cursor: ew-resize;
+    background: repeating-linear-gradient(90deg, transparent 0 11px, rgba(0, 0, 0, .2) 11px 13px); background-position: var(--sx, 0) 0; }
+  .nudge button.n:active { background: var(--ink); color: var(--paper); }
+
+  .pick { display: grid; gap: 12px; }
+  .pick button { min-height: 22vh; border: 4px solid var(--ink); background: var(--paper); padding: 16px 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; font-weight: 1000; font-size: 18px; text-transform: uppercase; line-height: 1.05; box-shadow: 0 7px 0 rgba(0, 0, 0, .28); }
+  .pick button span { overflow-wrap: anywhere; hyphens: auto; }
+  .pick button span:first-child { text-align: left; }
+  .pick button span:last-child { text-align: right; }
+  .pick button i { font-style: normal; font-size: 22px; }
+  .pick button:active { transform: translateY(5px); box-shadow: 0 2px 0 rgba(0, 0, 0, .28); }
+
+  .stamp { display: inline-block; background: var(--ink); color: var(--paper); padding: 8px 12px; font-weight: 1000; font-size: 16px; text-transform: uppercase; transform: rotate(-3deg); }
+  .gain { font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; font-size: clamp(56px, 21vw, 120px); line-height: .85; text-align: center; font-variant-numeric: tabular-nums; animation: pop .5s var(--press) both; }
+  .gain small { display: block; font-size: 16px; font-stretch: 100%; font-variation-settings: "wdth" 100; text-transform: uppercase; letter-spacing: .06em; margin-top: 8px; }
+
+  .players { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pl { display: inline-flex; align-items: center; gap: 6px; background: var(--paper); border: 3px solid var(--ink); padding: 4px 10px 4px 4px; font-weight: 800; max-width: 100%; }
+  .pl b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .pl.me { background: var(--ink); color: var(--paper); }
+  .pl.off { opacity: .45; }
+  .pl.done::after { content: "✓"; font-weight: 1000; }
+  .av { font-style: normal; width: 30px; height: 30px; display: grid; place-items: center; background: var(--pc, #111); border-radius: 50%; font-size: 17px; flex: none; }
+
+  .table { display: grid; gap: 6px; }
+  .row { display: grid; grid-template-columns: 30px 34px 1fr auto; align-items: center; gap: 8px; background: var(--paper); border: 3px solid var(--ink); padding: 6px 10px 6px 8px; font-weight: 800; }
+  .row.me { background: var(--ink); color: var(--paper); }
+  .row .n { font-weight: 1000; }
+  .row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .row .s { font-weight: 1000; font-variant-numeric: tabular-nums; font-size: 18px; }
+
+  .reacts { display: flex; justify-content: center; gap: 8px; }
+  .reacts button { width: 52px; height: 52px; border: 3px solid var(--ink); background: var(--paper); font-size: 24px; padding: 0; }
+  .reacts button:disabled { opacity: .4; }
+
+  .rules { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; counter-reset: r; }
+  .rules li { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start; font-weight: 700; }
+  .rules li::before { counter-increment: r; content: counter(r); background: var(--ink); color: var(--paper); font-weight: 1000; display: grid; place-items: center; height: 34px; }
+  .room { font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; font-size: 30px; letter-spacing: .04em; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="util"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
+<div class="conn" id="conn"></div>
+<div id="app"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `На одной волне — игра для компании, как Wavelength`,
+    _meta: `🌊 Мультиплеерная игра для компании: на экране шкала «Холодное ↔ Горячее», каждый прячет на ней точку и даёт подсказку, остальные с телефонов ловят волну. Как Wavelength, только бесплатно и в браузере.`,
+    nav_all_games: `← Все игры`,
+    kicker: `Игра для компании · телефоны + общий экран`,
+    lede: `У каждого на телефоне шкала с тайным сектором. Все разом пишут по <b>одной фразе</b>-подсказке, потом по очереди угадывают чужие шкалы. Чем ближе стрелка — тем больше очков.`,
+    btn_create: `Открыть экран игры`, btn_creating: `Открываем…`,
+    cta_sub: `Открывай на ноутбуке или ТВ — там будет большая шкала`,
+    have_code: `У меня есть код`, prompt_code: `Код комнаты`,
+    rule1: `От трёх человек, все заходят с телефонов по QR с общего экрана`,
+    rule2: `Каждый пишет подсказку к своей шкале, потом угадывает чужие`,
+    rule3: `Без цифр и без слов с полюсов — только намёк`,
+    sample_l: `Холодное`, sample_r: `Горячее`, sample_clue: `Чай, про который забыли`, sample_name: `Лиса`,
+    enter_title: `Как тебя зовут?`, enter_ph: `Имя`, btn_join: `Поймать волну`,
+    err_name: `Напиши имя`, err_name_taken: `Это имя уже в игре. Если это ты — вернись с того же телефона, или возьми другое имя`, err_room_full: `В комнате уже 12 игроков`, err_token_gone: `Тебя нет в этой партии — войди заново`,
+    wait_title: `Подключаемся…`,
+    btn_home: `Главная`,
+    lobby_in: `Ты в игре`, lobby_wait: `Все в сборе — ждём, пока ведущий начнёт`, lobby_need: `Нужно ещё {n}: зови друзей`, lobby_look: `Главное — на большом экране. Телефон — твой пульт`,
+    intro_mult: `Очки ×{n}`,
+    pick_title: `Выбери шкалу`, pick_sub: `Сектор на ней увидишь только ты`,
+    clue_title: `Подскажи, где сектор`, clue_ph: `Одна фраза, без цифр`, btn_send: `Отправить`,
+    clue_help: `Чёрный центр — {a} очков, рядом {b} и {c}. Назови то, что, по-твоему, лежит ровно там. Конкретная вещь угадывается лучше, чем ситуация`,
+    clue_sent: `Подсказка ушла`, clue_wait: `Написали {n} из {m}`,
+    late_join: `Подсказки пишут те, кто был с начала раунда. Ты угадываешь их шкалы — жди`,
+    rj_digits: `Без цифр — опиши словами`, rj_pole: `Нельзя называть полюса шкалы`, rj_empty: `Напиши хоть что-нибудь`, rj_mixed: `Не смешивай алфавиты в одном слове`, rj_late: `Ты зашёл посреди этой шкалы — угадываешь со следующей`,
+    rj_pick_first: `Сначала выбери шкалу`, rj_done: `Уже отправлено`, rj_locked: `Уже зафиксировано`, rj_own: `Свою не угадывают`,
+    guess_title: `Где это на шкале?`, btn_lock: `Зафиксировать`, drag_hint: `тяни — точнее`,
+    locked_title: `Зафиксировано`, locked_wait: `Ждём остальных: {n} из {m}`,
+    mine_title: `Угадывают твою — молчи!`, mine_wait: `Зафиксировали {n} из {m}`,
+    your_pts: `твои очки`, author_pts: `тебе как автору`, missed: `мимо`, no_guess: `не успел`,
+    wave_you: `На одной волне!`,
+    scores_title: `Счёт`, place: `{n}-е место`,
+    final_title: `Финиш!`, final_sub: `Ведущий может начать ещё партию`, final_few: `Осталось меньше трёх игроков`, final_host: `Ведущий закончил партию`,
+    expired_title: `Комната закрылась`, expired_text: `Она живёт полчаса без игры. Открой новую`, expired_new: `Новая игра`,
+    kicked_title: `Ведущий убрал тебя из комнаты`,
+    replaced_title: `Ты зашёл с другой вкладки`, replaced_text: `Здесь игра на паузе`, btn_back_here: `Играть здесь`,
+  },
+  en: {
+    _title: `Same Wave — a party game like Wavelength`,
+    _meta: `🌊 A multiplayer party game: a scale like "Cold ↔ Hot" is on screen, everyone hides a point on it and gives a clue, the rest catch the wave from their phones. Like Wavelength, but free and in the browser.`,
+    nav_all_games: `← All games`,
+    kicker: `Party game · phones + shared screen`,
+    lede: `Everyone gets a scale with a secret target and writes <b>a one-line clue</b> at the same time. Then you take turns guessing each other's scales — the closer the needle, the more points.`,
+    btn_create: `Open the game screen`, btn_creating: `Opening…`,
+    cta_sub: `Open it on a laptop or TV — that's where the big dial goes`,
+    have_code: `I have a code`, prompt_code: `Room code`,
+    rule1: `Three or more people, everyone joins from their phone via the QR`,
+    rule2: `Everyone writes a clue for their own scale, then guesses the others`,
+    rule3: `No numbers and no words from the poles — hints only`,
+    sample_l: `Cold`, sample_r: `Hot`, sample_clue: `Tea you forgot about`, sample_name: `Fox`,
+    enter_title: `What's your name?`, enter_ph: `Name`, btn_join: `Catch the wave`,
+    err_name: `Type your name`, err_name_taken: `That name is already in the game. If it's you, come back on the same phone, or pick another name`, err_room_full: `The room already has 12 players`, err_token_gone: `You're not in this game — join again`,
+    wait_title: `Connecting…`,
+    btn_home: `Home`,
+    lobby_in: `You're in`, lobby_wait: `Everyone's here — waiting for the host to start`, lobby_need: `{n} more needed — invite friends`, lobby_look: `The action is on the big screen. Your phone is the remote`,
+    intro_mult: `Points ×{n}`,
+    pick_title: `Pick a scale`, pick_sub: `Only you will see the target on it`,
+    clue_title: `Hint where the target is`, clue_ph: `One phrase, no numbers`, btn_send: `Send`,
+    clue_help: `The black center is {a} points, then {b} and {c}. Name something you think sits right there. A concrete thing beats a situation`,
+    clue_sent: `Clue sent`, clue_wait: `{n} of {m} done`,
+    late_join: `Clues come from those who were here when the round began. You'll guess their scales — hang on`,
+    rj_digits: `No numbers — use words`, rj_pole: `You can't use the poles' words`, rj_empty: `Write something`, rj_mixed: `Don't mix alphabets in one word`, rj_late: `You joined mid-scale — you'll guess from the next one`,
+    rj_pick_first: `Pick a scale first`, rj_done: `Already sent`, rj_locked: `Already locked`, rj_own: `You don't guess your own`,
+    guess_title: `Where is it on the scale?`, btn_lock: `Lock it in`, drag_hint: `drag to fine-tune`,
+    locked_title: `Locked in`, locked_wait: `Waiting for others: {n} of {m}`,
+    mine_title: `They're guessing yours — stay quiet!`, mine_wait: `{n} of {m} locked`,
+    your_pts: `your points`, author_pts: `for you as the author`, missed: `miss`, no_guess: `too late`,
+    wave_you: `Same wave!`,
+    scores_title: `Scores`, place: `#{n}`,
+    final_title: `Finish!`, final_sub: `The host can start another game`, final_few: `Fewer than three players left`, final_host: `The host ended the game`,
+    expired_title: `The room has closed`, expired_text: `Rooms live half an hour without play. Open a new one`, expired_new: `New game`,
+    kicked_title: `The host removed you from the room`,
+    replaced_title: `You joined from another tab`, replaced_text: `The game is paused here`, btn_back_here: `Play here`,
+  },
+  el: {
+    _title: `Στο ίδιο κύμα — παιχνίδι για παρέες, σαν το Wavelength`,
+    _meta: `🌊 Παιχνίδι για παρέες: στην οθόνη μια κλίμακα «Κρύο ↔ Ζεστό», ο καθένας κρύβει ένα σημείο και δίνει στοιχείο, οι άλλοι πιάνουν το κύμα από το κινητό. Σαν το Wavelength, δωρεάν στον browser.`,
+    nav_all_games: `← Όλα τα παιχνίδια`,
+    kicker: `Παιχνίδι για παρέες · κινητά + κοινή οθόνη`,
+    lede: `Ο καθένας παίρνει μια κλίμακα με κρυφό στόχο και όλοι μαζί γράφουν από <b>ένα στοιχείο</b>. Μετά μαντεύετε με τη σειρά τις κλίμακες των άλλων — όσο πιο κοντά η βελόνα, τόσο περισσότεροι πόντοι.`,
+    btn_create: `Άνοιξε την οθόνη του παιχνιδιού`, btn_creating: `Ανοίγει…`,
+    cta_sub: `Άνοιξέ το σε laptop ή τηλεόραση — εκεί μπαίνει η μεγάλη κλίμακα`,
+    have_code: `Έχω κωδικό`, prompt_code: `Κωδικός δωματίου`,
+    rule1: `Από τρία άτομα, όλοι μπαίνουν από το κινητό με το QR`,
+    rule2: `Ο καθένας γράφει στοιχείο για τη δική του κλίμακα και μαντεύει των άλλων`,
+    rule3: `Χωρίς αριθμούς και χωρίς λέξεις των πόλων — μόνο υπαινιγμός`,
+    sample_l: `Κρύο`, sample_r: `Ζεστό`, sample_clue: `Τσάι που το ξέχασες`, sample_name: `Αλεπού`,
+    enter_title: `Πώς σε λένε;`, enter_ph: `Όνομα`, btn_join: `Πιάσε το κύμα`,
+    err_name: `Γράψε όνομα`, err_name_taken: `Αυτό το όνομα παίζει ήδη. Αν είσαι εσύ, γύρνα από το ίδιο κινητό ή διάλεξε άλλο όνομα`, err_room_full: `Το δωμάτιο έχει ήδη 12 παίκτες`, err_token_gone: `Δεν είσαι σε αυτή την παρτίδα — μπες ξανά`,
+    wait_title: `Σύνδεση…`,
+    btn_home: `Αρχική`,
+    lobby_in: `Είσαι μέσα`, lobby_wait: `Όλοι εδώ — περιμένουμε τον οικοδεσπότη`, lobby_need: `Χρειάζονται ακόμα {n} — φώναξε φίλους`, lobby_look: `Η δράση είναι στη μεγάλη οθόνη. Το κινητό είναι το τηλεχειριστήριο`,
+    intro_mult: `Πόντοι ×{n}`,
+    pick_title: `Διάλεξε κλίμακα`, pick_sub: `Τον στόχο θα τον δεις μόνο εσύ`,
+    clue_title: `Δείξε πού είναι ο στόχος`, clue_ph: `Μία φράση, χωρίς αριθμούς`, btn_send: `Αποστολή`,
+    clue_help: `Το μαύρο κέντρο δίνει {a} πόντους, δίπλα {b} και {c}. Γράψε κάτι που κατά τη γνώμη σου είναι ακριβώς εκεί. Ένα συγκεκριμένο πράγμα μαντεύεται πιο εύκολα από μια κατάσταση`,
+    clue_sent: `Το στοιχείο στάλθηκε`, clue_wait: `Έγραψαν {n} από {m}`,
+    late_join: `Στοιχεία γράφουν όσοι ήταν από την αρχή του γύρου. Εσύ μαντεύεις τις κλίμακές τους — περίμενε`,
+    rj_digits: `Χωρίς αριθμούς — με λέξεις`, rj_pole: `Όχι λέξεις από τους πόλους`, rj_empty: `Γράψε κάτι`, rj_mixed: `Μην ανακατεύεις αλφάβητα στην ίδια λέξη`, rj_late: `Μπήκες στη μέση — μαντεύεις από την επόμενη κλίμακα`,
+    rj_pick_first: `Διάλεξε πρώτα κλίμακα`, rj_done: `Ήδη στάλθηκε`, rj_locked: `Ήδη κλειδώθηκε`, rj_own: `Τη δική σου δεν τη μαντεύεις`,
+    guess_title: `Πού είναι στην κλίμακα;`, btn_lock: `Κλείδωσέ το`, drag_hint: `σύρε για ακρίβεια`,
+    locked_title: `Κλειδώθηκε`, locked_wait: `Περιμένουμε: {n} από {m}`,
+    mine_title: `Μαντεύουν τη δική σου — σιωπή!`, mine_wait: `Κλείδωσαν {n} από {m}`,
+    your_pts: `οι πόντοι σου`, author_pts: `για σένα ως δημιουργό`, missed: `άστοχο`, no_guess: `άργησες`,
+    wave_you: `Στο ίδιο κύμα!`,
+    scores_title: `Σκορ`, place: `{n}η θέση`,
+    final_title: `Τέλος!`, final_sub: `Ο οικοδεσπότης μπορεί να ξεκινήσει νέα παρτίδα`, final_few: `Έμειναν λιγότεροι από τρεις`, final_host: `Ο οικοδεσπότης τερμάτισε`,
+    expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Ζει μισή ώρα χωρίς παιχνίδι. Άνοιξε νέο`, expired_new: `Νέο παιχνίδι`,
+    kicked_title: `Ο οικοδεσπότης σε έβγαλε από το δωμάτιο`,
+    replaced_title: `Μπήκες από άλλη καρτέλα`, replaced_text: `Εδώ το παιχνίδι είναι σε παύση`, btn_back_here: `Παίξε εδώ`,
+  },
+};
+</script>
+<script src="wave-shared.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script>
+"use strict";
+const params = new URLSearchParams(location.search);
+// код идёт в разметку — только алфавит кодов, иначе ?r=<img onerror> даёт XSS
+const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const app = document.getElementById("app");
+const T = (k) => wvT(k);
+const tpl = (k, v) => wvTpl(k, v);
+const REACTIONS = ["😂", "😱", "🤯", "👏", "🙈"];
+
+let conn = null, state = null, me = null, token = null, dead = false;
+let screen = null, screenKey = "";
+let joinErr = null;
+let draft = ""; // черновик подсказки: переживает перерисовки
+let draftKey = null; // к какому раунду черновик
+let clueErr = null;
+let needle = 90; // стрелка на экране угадывания, пока не зафиксирована
+let needleKey = null;
+let sentLock = false;
+const tokenKey = () => "wave-token-" + CODE;
+try { token = localStorage.getItem(tokenKey()); } catch (e) {}
+
+const player = (id) => state && state.players.find((p) => p.id === id);
+const mine = () => (state && me ? player(me) : null);
+const avHtml = (p) => `<i class="av" style="--pc:${p.color}">${escapeHtml(p.avatar)}</i>`;
+const roundKey = () => (state ? state.game + ":" + state.ri : "");
+const cardKey = () => (state && state.card ? roundKey() + ":" + state.card.n : "");
+
+function toast(text) {
+  const t = document.getElementById("toast");
+  t.textContent = text;
+  t.classList.remove("on"); void t.offsetWidth; t.classList.add("on");
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove("on"), 2400);
+}
+function show(html, key, mid) {
+  screenKey = key;
+  app.classList.toggle("mid", !!mid);
+  app.classList.toggle("guess", /^(guess|locked|mine|reveal):/.test(key));
+  app.innerHTML = html;
+  fitShouts();
+}
+// крупные заголовки не шире экрана: «НАСТРОЙКА» широким кеглем на 360 px уезжала вбок
+function fitShouts() {
+  app.querySelectorAll(".shout").forEach((h) => {
+    h.style.fontSize = "";
+    let fs = parseFloat(getComputedStyle(h).fontSize), guard = 0;
+    while (h.scrollWidth > h.clientWidth + 1 && fs > 18 && guard++ < 40) { fs -= 2; h.style.fontSize = fs + "px"; }
+  });
+}
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitShouts());
+
+// ---------- цвет экрана ----------
+// у каждой шкалы свой цвет, смена — шторкой из центра шкалы
+let curColor = null;
+function paint(color) {
+  if (color === curColor) return;
+  const first = curColor == null;
+  curColor = color;
+  document.documentElement.style.setProperty("--card", color);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = color;
+  if (first || matchMedia("(prefers-reduced-motion: reduce)").matches) { document.body.style.background = color; return; }
+  const w = el("div", "wipe");
+  w.style.background = color;
+  document.body.append(w);
+  setTimeout(() => { document.body.style.background = color; w.remove(); }, 520);
+}
+function phaseColor() {
+  if (!state) return WV_HOME;
+  switch (state.phase) {
+    case "intro": return state.ri === 1 ? "#ff5fa2" : "#2ee8b0";
+    case "clue": return wvColor(state.ri * 3 + 4);
+    case "guess": case "reveal": return wvColor(state.ri * 5 + (state.card ? state.card.n : 0));
+    case "scores": return "#9be7ff";
+    case "finished": return "#c6f432";
+    default: return WV_HOME;
+  }
+}
+
+// экран не гаснет, пока идёт игра (где поддерживается)
+let wakeLock = null;
+async function keepAwake() {
+  try { if ("wakeLock" in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && me) keepAwake(); });
+
+// ---------- шкала ----------
+const polesHtml = (l, r) => `<div class="poles"><span>${wvPole(l)}</span><span>${wvPole(r)}</span></div>`;
+function dialHtml(o, l, r) {
+  return `<div class="dialbox">${wvDialSvg(Object.assign({ uid: "p", bands: state && state.bands, missText: T("miss_short") }, o))}</div>${polesHtml(l, r)}`;
+}
+
+// ---------- стартовый экран ----------
+let demoTimer = null;
+function renderLanding() {
+  screen = "landing";
+  paint(WV_HOME);
+  show(`<div><div class="eyebrow">${T("kicker")}</div><h1 class="shout" style="margin-top:8px">${escapeHtml(T("game_name"))}</h1></div>
+    <p class="lede">${T("lede")}</p>
+    <div><button class="btn" id="create" type="button">${T("btn_create")}</button>
+      <p class="fine center" style="margin-top:10px;text-wrap:balance">${T("cta_sub")}</p><button class="link" id="havecode" type="button">${T("have_code")}</button></div>
+    <div id="demo" aria-hidden="true"></div>
+    <ol class="rules"><li>${T("rule1")}</li><li>${T("rule2")}</li><li>${T("rule3")}</li></ol>`, "landing");
+  // пример: стрелка ищет сектор и находит его
+  const demo = document.getElementById("demo");
+  let a = 40, dir = 1, n = 0;
+  const draw = () => {
+    demo.innerHTML = `<div class="clue"><div class="eyebrow"><span>${escapeHtml(tpl("clue_by", { name: "🦊 " + T("sample_name") }))}</span></div><q>${escapeHtml(T("sample_clue"))}</q></div>` +
+      dialHtml({ target: 58, needle: a }, T("sample_l"), T("sample_r"));
+  };
+  draw();
+  clearInterval(demoTimer);
+  demoTimer = setInterval(() => {
+    if (screen !== "landing") return clearInterval(demoTimer);
+    n++;
+    a += dir * (6 + Math.sin(n / 3) * 4);
+    if (a > 130) dir = -1;
+    if (a < 30) dir = 1;
+    const nd = document.querySelector("#demo .needle");
+    if (nd) nd.style.setProperty("--a", a.toFixed(1));
+  }, 90);
+  document.getElementById("create").onclick = async () => {
+    const btn = document.getElementById("create");
+    btn.disabled = true;
+    btn.textContent = T("btn_creating");
+    try {
+      const res = await fetch("/wave/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: wvLang() } }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "error");
+      try { localStorage.setItem("wave-host-" + data.code, data.hostToken); } catch (e) {}
+      location.href = `wave-board.html?r=${data.code}`;
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = T("btn_create");
+      toast(String(err.message || err));
+    }
+  };
+  document.getElementById("havecode").onclick = () => {
+    const c = prompt(T("prompt_code"));
+    if (c) location.href = `wave.html?r=${encodeURIComponent(c.trim().toUpperCase())}`;
+  };
+}
+
+// ---------- вход ----------
+function renderEnter() {
+  screen = "enter";
+  paint(WV_HOME);
+  let saved = "";
+  try { saved = localStorage.getItem("wave-name") || ""; } catch (e) {}
+  show(`<form id="enterform" autocomplete="off" style="display:grid;gap:14px">
+    <div class="room">${escapeHtml(CODE)}</div>
+    <h2 class="shout">${T("enter_title")}</h2>
+    <input class="field" id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}">
+    <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
+    <button class="btn" type="submit">${T("btn_join")}</button>
+  </form>`, "enter", true);
+  const input = document.getElementById("name");
+  document.getElementById("enterform").onsubmit = (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    if (!name) { document.getElementById("err").textContent = T("err_name"); return; }
+    try { localStorage.setItem("wave-name", name); } catch (e2) {}
+    joinErr = null;
+    conn.send({ type: "join", name });
+    keepAwake();
+  };
+}
+
+function renderCenter(titleKey, textKey, extra, key) {
+  show(`<div class="center" style="display:grid;gap:14px"><h2 class="shout">${T(titleKey)}</h2>${textKey ? `<p class="lede">${T(textKey)}</p>` : ""}${extra || ""}</div>`, key || "c:" + titleKey, true);
+}
+function renderExpired() {
+  dead = true;
+  screen = "expired";
+  try { localStorage.removeItem(tokenKey()); } catch (e) {}
+  renderCenter("expired_title", "expired_text", `<a class="btn" href="wave.html">${T("expired_new")}</a>`);
+}
+
+// ---------- общие куски ----------
+function playersHtml(doneIds) {
+  const done = new Set(doneIds || []);
+  return `<div class="players">${state.players.filter((p) => !p.left).map((p) => `<span class="pl${p.id === me ? " me" : ""}${p.online ? "" : " off"}${done.has(p.id) ? " done" : ""}">${avHtml(p)}<b>${escapeHtml(p.name)}</b></span>`).join("")}</div>`;
+}
+function reactsHtml() {
+  return `<div class="reacts">${REACTIONS.map((e) => `<button type="button" data-e="${e}" aria-label="${e}">${e}</button>`).join("")}</div>`;
+}
+function bindReacts() {
+  app.querySelectorAll(".reacts button").forEach((b) => {
+    b.onclick = () => { conn.send({ type: "react", emoji: b.dataset.e }); wvVibrate(8); b.disabled = true; setTimeout(() => (b.disabled = false), 2000); };
+  });
+}
+const timerHtml = () => `<div class="timer" id="timer"><i></i></div>`;
+function headHtml(left) {
+  return `<div class="ahead"><span>${left}</span><b id="tleft"></b></div>${timerHtml()}`;
+}
+const roundLabel = () => `${escapeHtml(tpl("round_n", { n: state.ri + 1 }))} · ${escapeHtml(T("r_" + state.ri))}`;
+function clueBox(card) {
+  const a = player(card.author);
+  return `<div class="clue"><div class="eyebrow"><span>${escapeHtml(tpl("clue_by", { name: a ? a.name : "?" }))}</span><span>${escapeHtml(tpl("card_of", { i: card.n, n: card.of }))}</span></div><q>${escapeHtml(card.clue)}</q></div>`;
+}
+
+// ---------- экраны по фазам ----------
+function renderLobby() {
+  const key = "lobby:" + state.players.map((p) => p.id + p.online).join(",") + wvLang();
+  if (screenKey === key) return;
+  const p = mine();
+  const need = Math.max(0, state.minPlayers - state.players.filter((x) => !x.left).length);
+  show(`<div><div class="eyebrow">${T("lobby_in")}</div><h2 class="shout" style="margin-top:6px">${avHtml(p)} ${escapeHtml(p.name)}</h2></div>
+    <p class="lede">${escapeHtml(need > 0 ? tpl("lobby_need", { n: need }) : T("lobby_wait"))}</p>${playersHtml()}<p class="fine">${T("lobby_look")}</p>${reactsHtml()}`, key);
+  bindReacts();
+}
+
+function renderIntro() {
+  const key = "intro:" + roundKey() + wvLang();
+  if (screenKey === key) return;
+  show(`<div class="center" style="display:grid;gap:16px"><div class="eyebrow">${escapeHtml(tpl("round_n", { n: state.ri + 1 }))}</div>
+    <h1 class="shout">${escapeHtml(T("r_" + state.ri))}</h1><div><span class="stamp">${escapeHtml(tpl("intro_mult", { n: state.mult }))}</span></div>
+    <p class="lede">${escapeHtml(T("r_" + state.ri + "_d"))}</p></div>`, key, true);
+}
+
+function renderClue() {
+  const c = state.me.card;
+  const waitLine = () => tpl("clue_wait", { n: state.clued.length, m: state.roster.length });
+  if (!c) {
+    const key = "clue-late:" + roundKey() + wvLang();
+    if (screenKey !== key) show(`${headHtml(roundLabel())}<h2 class="shout">${T("clue_title")}</h2><p class="lede">${T("late_join")}</p><p class="fine" id="cw"></p>${playersHtml(state.clued)}`, key);
+    document.getElementById("cw").textContent = waitLine();
+    return;
+  }
+  if (c.pick == null) {
+    const key = "pick:" + roundKey() + wvLang();
+    if (screenKey === key) return;
+    show(`${headHtml(roundLabel())}<div><h2 class="shout">${T("pick_title")}</h2><p class="fine" style="margin-top:8px">${T("pick_sub")}</p></div>
+      <div class="pick">${c.options.map((o, i) => `<button type="button" data-i="${i}" lang="${wvLang()}"><span>${wvPole(o.l)}</span><i>↔</i><span>${wvPole(o.r)}</span></button>`).join("")}</div>`, key);
+    app.querySelectorAll(".pick button").forEach((b) => {
+      b.onclick = () => { wvSfx.tap(); wvVibrate(10); app.querySelectorAll(".pick button").forEach((x) => (x.disabled = true)); conn.send({ type: "pick", i: Number(b.dataset.i) }); };
+    });
+    return;
+  }
+  if (c.clue) {
+    const key = "clued:" + roundKey() + wvLang();
+    if (screenKey !== key) {
+      show(`${headHtml(roundLabel())}<span class="stamp" style="justify-self:start;align-self:flex-start">✓ ${T("clue_sent")}</span>
+        <div class="clue"><q>${escapeHtml(c.clue)}</q></div>${dialHtml({ target: c.target, needle: c.target }, c.l, c.r)}<p class="fine" id="cw"></p>${playersHtml(state.clued)}`, key);
+    }
+    document.getElementById("cw").textContent = waitLine();
+    return;
+  }
+  if (draftKey !== roundKey()) { draft = ""; draftKey = roundKey(); clueErr = null; }
+  const key = "write:" + roundKey() + wvLang();
+  if (screenKey === key) { document.getElementById("err").textContent = clueErr ? T("rj_" + clueErr) : ""; return; }
+  show(`${headHtml(roundLabel())}<h2 class="shout">${T("clue_title")}</h2>${dialHtml({ target: c.target, anim: true }, c.l, c.r)}
+    <form id="write" autocomplete="off" style="display:grid;gap:10px">
+      <div class="err" id="err">${clueErr ? escapeHtml(T("rj_" + clueErr)) : ""}</div>
+      <input class="field" id="clue" maxlength="${state.clueMax}" placeholder="${escapeHtml(T("clue_ph"))}" value="${escapeHtml(draft)}" enterkeyhint="send" aria-label="${escapeHtml(T("clue_ph"))}" autocomplete="off">
+      <button class="btn" type="submit" id="sendbtn">${T("btn_send")}</button>
+      <p class="fine">${escapeHtml(tpl("clue_help", { a: 400 * state.mult, b: 300 * state.mult, c: 200 * state.mult }))}</p>
+    </form>`, key);
+  const input = document.getElementById("clue");
+  input.oninput = () => { draft = input.value; if (clueErr) { clueErr = null; document.getElementById("err").textContent = ""; } };
+  document.getElementById("write").onsubmit = (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) { clueErr = "empty"; document.getElementById("err").textContent = T("rj_empty"); return; }
+    // цифры ловим сразу, не дожидаясь сервера
+    if (/\p{Nd}/u.test(text)) { clueErr = "digits"; document.getElementById("err").textContent = T("rj_digits"); wvSfx.buzz(); wvVibrate([60, 40, 60]); return; }
+    document.getElementById("sendbtn").disabled = true;
+    wvSfx.send();
+    conn.send({ type: "clue", text });
+  };
+}
+
+// угадывание: стрелка тянется пальцем, фиксируется кнопкой
+function renderGuess() {
+  const card = state.card;
+  const s = state.me;
+  const n = state.locked.length, m = state.guessers.length;
+  if (s.myCard) {
+    const key = "mine:" + cardKey() + wvLang();
+    if (screenKey !== key) show(`${headHtml(roundLabel())}<h2 class="shout">${T("mine_title")}</h2>${clueBox(card)}${dialHtml({ target: s.card.target }, card.l, card.r)}<p class="fine" id="lw"></p>${reactsHtml()}`, key);
+    bindReacts();
+    document.getElementById("lw").textContent = tpl("mine_wait", { n, m });
+    return;
+  }
+  if (s.guess != null) {
+    const key = "locked:" + cardKey() + wvLang();
+    if (screenKey !== key) show(`${headHtml(roundLabel())}${clueBox(card)}${dialHtml({ needle: s.guess }, card.l, card.r)}<span class="stamp" style="align-self:center">🔒 ${T("locked_title")}</span><p class="fine center" id="lw"></p>${reactsHtml()}`, key);
+    bindReacts();
+    document.getElementById("lw").textContent = tpl("locked_wait", { n, m });
+    return;
+  }
+  if (needleKey !== cardKey()) { needleKey = cardKey(); needle = 90; sentLock = false; }
+  const key = "guess:" + cardKey() + wvLang();
+  if (screenKey === key) return;
+  show(`${headHtml(roundLabel())}${clueBox(card)}${dialHtml({ needle }, card.l, card.r)}<div class="grow"></div>
+    <div class="dock"><div class="scrub"><button type="button" id="left" aria-label="←">◀</button><div class="track" id="track">${T("drag_hint")}</div><button type="button" id="right" aria-label="→">▶</button></div>
+    <button class="btn" type="button" id="lock">${T("btn_lock")}</button></div>`, key);
+  const svg = app.querySelector(".dial");
+  svg.classList.add("grab");
+  const nd = svg.querySelector(".needle");
+  const track = document.getElementById("track");
+  let lastDetent = Math.round(needle / 3);
+  const set = (a) => {
+    needle = Math.round(Math.max(0, Math.min(180, a)) * 10) / 10;
+    nd.style.setProperty("--a", needle);
+    track.style.setProperty("--sx", (needle * 6).toFixed(0) + "px");
+    const d = Math.round(needle / 3);
+    if (d !== lastDetent) { lastDetent = d; wvSfx.detent(); }
+  };
+  // по шкале — стрелка встаёт в точку касания
+  let dragging = false;
+  svg.addEventListener("pointerdown", (e) => { dragging = true; try { svg.setPointerCapture(e.pointerId); } catch (x) {} set(wvAngleAt(svg, e.clientX, e.clientY)); e.preventDefault(); });
+  svg.addEventListener("pointermove", (e) => { if (dragging) set(wvAngleAt(svg, e.clientX, e.clientY)); });
+  const up = () => { dragging = false; };
+  svg.addEventListener("pointerup", up);
+  svg.addEventListener("pointercancel", up);
+  // по полосе — относительно: треть градуса за пиксель, палец не закрывает шкалу
+  let from = null;
+  track.addEventListener("pointerdown", (e) => { from = { x: e.clientX, a: needle }; try { track.setPointerCapture(e.pointerId); } catch (x) {} e.preventDefault(); });
+  track.addEventListener("pointermove", (e) => { if (from) set(from.a + (e.clientX - from.x) / 3); });
+  ["pointerup", "pointercancel"].forEach((ev) => track.addEventListener(ev, () => { from = null; }));
+  // ◀ ▶ — по градусу, удержание — быстро
+  const hold = (btn, step) => {
+    let t = null;
+    const go = () => { set(needle + step); wvVibrate(4); };
+    const stop = () => { clearInterval(t); t = null; };
+    btn.addEventListener("pointerdown", (e) => { e.preventDefault(); go(); stop(); t = setInterval(go, 70); });
+    ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => btn.addEventListener(ev, stop));
+    btn.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") go(); });
+  };
+  hold(document.getElementById("left"), -1);
+  hold(document.getElementById("right"), 1);
+  document.getElementById("lock").onclick = () => {
+    if (sentLock) return;
+    sentLock = true;
+    document.getElementById("lock").disabled = true;
+    wvSfx.lock();
+    wvVibrate(35);
+    conn.send({ type: "lock", angle: needle });
+  };
+}
+
+function renderReveal() {
+  const card = state.card;
+  const s = state.me;
+  const key = "reveal:" + cardKey() + wvLang();
+  if (screenKey === key) return;
+  const guesses = wvRevealGuesses(card, player);
+  const plan = wvRevealPlan(guesses.length);
+  if (guesses.length) guesses[guesses.length - 1].best = guesses[guesses.length - 1].pts > 0;
+  let gain;
+  // промах и «не успел» — крупный ноль и подпись словом: длинное слово кеглем очков не влезает в 320 px (греческое «άστοχο»)
+  if (s.myCard) gain = `<div class="gain" style="animation-delay:${plan.done}ms">${s.gain ? "+" + s.gain : "0"}<small>${T("author_pts")}</small></div>`;
+  else if (s.gain == null) gain = `<div class="gain" style="animation-delay:${plan.done}ms">0<small>${T("no_guess")}</small></div>`;
+  else gain = `<div class="gain" style="animation-delay:${plan.done}ms">${s.gain ? "+" + s.gain : "0"}<small>${s.gain ? T("your_pts") : T("missed")}</small></div>`;
+  show(`${headHtml(roundLabel())}${clueBox(card)}${dialHtml({ target: card.target, shutter: "open", guesses, plan }, card.l, card.r)}${card.wave ? `<span class="stamp" style="align-self:center;font-size:22px;animation:pop .4s var(--press) both;animation-delay:${plan.done}ms">🌊 ${T("wave_you")}</span>` : ""}${gain}`, key);
+  const bar = document.getElementById("timer");
+  if (bar) bar.firstChild.style.transform = "none";
+  clearTimeout(renderReveal.t);
+  renderReveal.t = setTimeout(() => {
+    if (screenKey !== key) return;
+    if (s.myCard) (card.wave ? wvSfx.wave : s.gain ? wvSfx.send : wvSfx.womp)();
+    else if (s.gain) (s.gain >= 400 * state.mult ? wvSfx.bull : wvSfx.send)();
+    else wvSfx.womp();
+    wvVibrate(s.gain ? [20, 30, 40] : 60);
+  }, plan.done);
+}
+
+function tableHtml(list) {
+  return `<div class="table">${list.map((p, i) => `<div class="row${p.id === me ? " me" : ""}"><span class="n">${wvRank(list, p)}</span>${avHtml(p)}<b>${escapeHtml(p.name)}</b><span class="s">${p.score}</span></div>`).join("")}</div>`;
+}
+const ranked = () => state.players.filter((p) => !p.left).slice().sort((a, b) => b.score - a.score);
+const placeOf = (list) => { const p = list.find((x) => x.id === me); return p ? wvRank(list, p) : 0; };
+
+function renderScores() {
+  const key = "scores:" + roundKey() + wvLang();
+  if (screenKey === key) return;
+  const list = ranked();
+  const place = placeOf(list);
+  show(`<div><div class="eyebrow">${T("scores_title")}</div><h1 class="shout" style="margin-top:6px">${escapeHtml(tpl("place", { n: place }))}</h1></div>${tableHtml(list)}${reactsHtml()}`, key);
+  bindReacts();
+}
+
+function renderFinal() {
+  const key = "final:" + state.game + wvLang();
+  if (screenKey === key) return;
+  const list = ranked();
+  const p = mine();
+  const place = placeOf(list);
+  const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : T("final_sub");
+  show(`<div class="center" style="display:grid;gap:10px"><div class="eyebrow">${T("final_title")}</div><h1 class="shout">${escapeHtml(tpl("place", { n: place }))}</h1>
+    <p class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></p><p class="fine">${escapeHtml(sub)}</p></div>${tableHtml(list)}${reactsHtml()}
+    <a class="btn ghost" id="homebtn" href="index.html">${T("btn_home")}</a>`, key);
+  bindReacts();
+  if (place === 1 && state.finishedReason === "done") wvSfx.fanfare();
+}
+
+// ---------- выбор экрана ----------
+function render() {
+  if (dead || !state) return;
+  if (!me) {
+    if (screen === "kicked" || screen === "replaced" || screen === "enter") return;
+    return renderEnter();
+  }
+  if (!mine()) return renderEnter();
+  screen = "game";
+  paint(phaseColor());
+  switch (state.phase) {
+    case "lobby": return renderLobby();
+    case "intro": return renderIntro();
+    case "clue": return renderClue();
+    case "guess": return renderGuess();
+    case "reveal": return renderReveal();
+    case "scores": return renderScores();
+    case "finished": return renderFinal();
+  }
+}
+
+// таймер фазы: полоска и секунды; последние 5 с — мигает и тикает
+let lastTickSec = null;
+function frame() {
+  requestAnimationFrame(frame);
+  if (!state || dead || !state.phaseEnd) return;
+  const now = wvNow();
+  const left = state.phaseEnd - now;
+  const total = Math.max(1, state.phaseEnd - state.phaseStart);
+  const bar = document.getElementById("timer");
+  if (bar && state.phase !== "reveal") {
+    bar.firstChild.style.transform = `scaleX(${Math.max(0, Math.min(1, left / total))})`;
+    bar.classList.toggle("hot", left < 5000);
+  }
+  const tl = document.getElementById("tleft");
+  if (tl) tl.textContent = state.phase === "reveal" ? "" : tpl("sec", { s: Math.max(0, Math.ceil(left / 1000)) });
+  if ((state.phase === "clue" || state.phase === "guess") && left < 5000 && left > 0) {
+    const sec = Math.ceil(left / 1000);
+    if (sec !== lastTickSec) { lastTickSec = sec; wvSfx.tick(true); }
+  }
+}
+
+window.addEventListener("langchange", () => {
+  if (!CODE) return renderLanding();
+  if (screen === "enter") return renderEnter();
+  screenKey = "";
+  screen === "expired" ? renderExpired() : render();
+});
+
+// ---------- связь ----------
+let prevPhase = null;
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+    case "state":
+      state = m.state;
+      if (m.type === "hello" && token && !me) conn.send({ type: "join", token });
+      if (state.phase !== prevPhase) {
+        if (state.phase === "clue" || state.phase === "guess") wvVibrate(30);
+        prevPhase = state.phase;
+      }
+      render();
+      break;
+    case "joined":
+      me = m.playerId;
+      token = m.token;
+      joinErr = null;
+      try { localStorage.setItem(tokenKey(), token); } catch (e) {}
+      keepAwake();
+      screen = null;
+      screenKey = "";
+      render();
+      break;
+    case "rejected":
+      if (m.action === "clue") {
+        clueErr = m.reason;
+        screenKey = "";
+        wvSfx.buzz();
+        wvVibrate([60, 40, 60]);
+        render();
+        const b = document.getElementById("sendbtn");
+        if (b) b.disabled = false;
+        break;
+      }
+      if (m.action === "lock") { sentLock = false; screenKey = ""; }
+      if (m.action === "pick") screenKey = "";
+      if (T("rj_" + m.reason) !== "rj_" + m.reason) toast(T("rj_" + m.reason));
+      render();
+      break;
+    case "error":
+      if (m.error === "room_expired") return renderExpired();
+      if (["room_full", "token_gone", "bad_name", "name_taken"].includes(m.error)) {
+        if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
+        joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
+        me = null;
+        renderEnter();
+      }
+      break;
+    case "kicked":
+      me = null;
+      try { localStorage.removeItem(tokenKey()); } catch (e) {}
+      token = null;
+      screen = "kicked";
+      renderCenter("kicked_title");
+      break;
+    case "replaced":
+      me = null;
+      screen = "replaced";
+      renderCenter("replaced_title", "replaced_text", `<button class="btn" id="here" type="button">${T("btn_back_here")}</button>`);
+      document.getElementById("here").onclick = () => { conn.send({ type: "join", token }); };
+      break;
+  }
+}
+
+function start() {
+  if (!CODE) return renderLanding();
+  renderCenter("wait_title");
+  const banner = document.getElementById("conn");
+  conn = wvConnect({
+    code: CODE,
+    onMessage,
+    onGone: renderExpired,
+    // переподключились — снова входим своим токеном (hello придёт первым)
+    onOpen: () => { me = null; },
+    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+  });
+  requestAnimationFrame(frame);
+  // ручка для стенда: состояние и отправка
+  window.wvPhone = { send: (msg) => conn.send(msg), get state() { return state; }, get me() { return me; }, get needle() { return needle; } };
+}
+start();
+</script>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+  ym(104849796, 'init', { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+</body>
+</html>

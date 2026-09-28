@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f30a.svg" type="image/svg+xml">
+<title>На одной волне — общий экран</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,400..1000&display=swap" rel="stylesheet">
+<style>
+  /* Мир: «плакат-табло» (wave-spec.md §8). Общий экран — ТВ или демонстрация в Zoom: всё видно с трёх метров.
+     Сплошная заливка, у каждой шкалы свой цвет, смена — шторкой из центра шкалы. Шкала — главный герой, на пол-экрана.
+     Своё лицо игры — ширма (как у настольной Wavelength): пока угадывают, шкала закрыта штриховкой в цвет шкалы;
+     стрелки падают на закрытую ширму, под дробь она уезжает вокруг оси, и очки вскрываются от дальнего промаха к ближнему.
+     Без наклонных стикеров и теней-смещений: только заливка, чёрная линия и крупный шрифт. */
+  :root {
+    --bg: #5b8cff;
+    --card: #5b8cff;
+    --ink: #111;
+    --paper: #fff;
+    --hot: #ff2d2d;
+    --f: "Roboto Flex", "Arial Black", system-ui, sans-serif;
+    --press: cubic-bezier(.2, 1.6, .4, 1);
+    --lang-switch-bg: var(--paper);
+    --lang-switch-border: var(--ink);
+    --lang-switch-fg: var(--ink);
+    --lang-switch-active-bg: var(--ink);
+    --lang-switch-active-fg: var(--paper);
+    --lang-switch-active-border: var(--ink);
+    --lang-switch-font: var(--f);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 600 18px/1.3 var(--f); -webkit-font-smoothing: antialiased; overflow: hidden; display: flex; flex-direction: column; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  :focus-visible { outline: 4px solid var(--ink); outline-offset: 3px; }
+  .hidden { display: none !important; }
+
+  /* line-height меньше единицы режет «Й» и «Ё» — запас сверху */
+  .shout { font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; text-transform: uppercase; line-height: .88; letter-spacing: -.01em; margin: 0; padding-top: .12em; }
+  .eyebrow { font-weight: 900; font-size: clamp(16px, 2.3vh, 28px); text-transform: uppercase; letter-spacing: .1em; }
+
+  /* шапка: название и код; справа — место под переключатель языка */
+  .top { flex: none; display: flex; align-items: center; gap: 14px; height: calc(var(--lsc, 32px) * 2); padding: 0 var(--lsw, 160px) 0 26px; position: relative; z-index: 3; }
+  .brand { font-weight: 1000; font-size: 22px; text-transform: uppercase; white-space: nowrap; display: flex; align-items: center; gap: 10px; }
+  .brand svg { width: 44px; height: 18px; flex: none; }
+  .chip { font-weight: 1000; font-size: 18px; padding: 7px 12px; background: var(--ink); color: var(--paper); white-space: nowrap; letter-spacing: .04em; }
+  .top .grow { flex: 1; }
+  .sound-toggle-btn { flex: none; width: calc(var(--lsh, 44px) * 1.25); height: var(--lsh, 44px); border: 3px solid var(--ink); border-radius: 0; background: var(--paper); font-size: 17px; display: grid; place-items: center; padding: 0; }
+  /* «Закончить» — видна на ТВ, поэтому тихая: квадрат ■ с подписью по наведению */
+  .endbtn { flex: none; width: var(--lsh, 44px); height: var(--lsh, 44px); border: 3px solid var(--ink); background: transparent; padding: 0; font-size: 16px; display: grid; place-items: center; }
+  .endbtn:hover { background: var(--ink); color: var(--paper); }
+  .banner { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 50; background: var(--ink); color: var(--paper); padding: 8px 14px; font-weight: 800; }
+  .conn { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 50; background: var(--ink); color: var(--paper); padding: 6px 12px; font-weight: 800; visibility: hidden; }
+  .conn.on { visibility: visible; }
+
+  /* шторка: новый цвет растёт кругом из центра шкалы */
+  .wipe { position: fixed; inset: 0; z-index: 0; pointer-events: none; clip-path: circle(0 at 50% 92%); animation: wipe .55s cubic-bezier(.6, 0, .2, 1) forwards; }
+  @keyframes wipe { to { clip-path: circle(150% at 50% 92%); } }
+
+  main { flex: 1; min-height: 0; position: relative; z-index: 1; }
+  .screen { position: absolute; inset: 4px 26px 6vh; display: flex; flex-direction: column; gap: 1.6vh; min-height: 0; }
+
+  /* ---------- шкала ---------- */
+  .dialwrap { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+  .dialbox { position: relative; height: 100%; max-height: 100%; aspect-ratio: 1000 / 540; max-width: 100%; }
+  .dial { display: block; width: 100%; height: 100%; overflow: visible; }
+  .poles { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 3vw; flex: none; }
+  .poles div { height: var(--pole-h, 10vh); display: flex; align-items: flex-start; overflow: hidden; }
+  .poles div:last-child { justify-content: flex-end; text-align: right; }
+  .poles span { font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; text-transform: uppercase; line-height: .95; font-size: var(--pfs, 56px); text-wrap: balance; }
+  .poles div:first-child span::before { content: "←\00a0"; }
+  .poles div:last-child span::after { content: "\00a0→"; }
+
+  /* подсказка — чёрная плашка; на раскрытии её текст перещёлкивается на итог («В ЯБЛОЧКО! 🐸 ОЛЯ») */
+  .cluebar { flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; background: var(--ink); color: var(--paper); }
+  .cluebar .who { display: flex; align-items: center; gap: 12px; padding: 0 22px; border-right: 4px solid var(--card); max-width: 30vw; }
+  .cluebar .who .av { width: 64px; height: 64px; font-size: 38px; }
+  .cluebar .who b { font-size: clamp(18px, 2.2vh, 28px); line-height: 1.1; overflow-wrap: anywhere; }
+  .cluebar .txt { position: relative; height: var(--clue-h, 15vh); overflow: hidden; min-width: 0; }
+  .cluebar .txt > div { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 28px; }
+  .cluebar q { font-weight: 1000; font-size: var(--cfs, 80px); line-height: 1; quotes: "«" "»" "“" "”"; overflow-wrap: anywhere; }
+  .cluebar .flash { background: var(--card); color: var(--ink); clip-path: inset(0 0 100% 0); font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; text-transform: uppercase; font-size: var(--ffs, 80px); line-height: .95; white-space: nowrap; gap: .4em; }
+  .cluebar.flashed .flash { animation: flashIn .35s cubic-bezier(.7, 0, .3, 1) forwards; }
+  @keyframes flashIn { to { clip-path: inset(0); } }
+  .cluebar .num { display: grid; place-items: center; align-content: center; padding: 0 22px; border-left: 4px solid var(--card); text-align: center; white-space: nowrap; }
+  .cluebar .num small { font-weight: 900; font-size: clamp(12px, 1.4vh, 16px); letter-spacing: .1em; text-transform: uppercase; opacity: .7; }
+  .cluebar .num b { font-weight: 1000; font-size: clamp(24px, 3.4vh, 40px); font-variant-numeric: tabular-nums; }
+
+  /* нижняя строка: игроки, «зафиксировали», секунды */
+  .foot { flex: none; display: flex; align-items: center; gap: 18px; min-height: 7vh; }
+  .chips { flex: 1; display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; align-items: center; }
+  .pc { display: inline-flex; align-items: center; gap: 8px; border: 3px solid var(--ink); background: var(--paper); padding: 4px 12px 4px 4px; font-weight: 800; font-size: clamp(17px, 2.6vh, 30px); max-width: 16em; }
+  .pc b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .pc.on { background: var(--ink); color: var(--paper); animation: slam .35s var(--press); }
+  /* замок место держит всегда: плитка не шире после «клац», соседи не прыгают */
+  .pc::after { content: "🔒"; visibility: hidden; }
+  .pc.on::after { visibility: visible; }
+  .pc.author::after, .pc:has(.pts)::after { display: none; }
+  .pc.author { border-style: dashed; background: transparent; }
+  .pc.off { opacity: .45; }
+  .pc .pts { font-weight: 1000; font-variant-numeric: tabular-nums; }
+  @keyframes slam { from { transform: scale(1.35); } }
+  .av { font-style: normal; width: 38px; height: 38px; display: grid; place-items: center; background: var(--pc, #111); border-radius: 50%; font-size: 22px; flex: none; border: 3px solid var(--ink); }
+  .count { font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; font-size: clamp(30px, 5vh, 60px); line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .count small { font-size: .42em; font-stretch: 100%; font-variation-settings: "wdth" 100; letter-spacing: .08em; margin-right: .5em; vertical-align: middle; }
+  .secs { min-width: 2.6em; text-align: right; font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; font-size: clamp(34px, 6vh, 72px); line-height: 1; font-variant-numeric: tabular-nums; }
+  .secs.hot { color: var(--hot); animation: jump .5s steps(1) infinite; }
+  @keyframes jump { 50% { transform: translateY(-.12em); } }
+  .timer { flex: none; height: 14px; background: rgba(0, 0, 0, .14); position: relative; overflow: hidden; }
+  .timer i { position: absolute; inset: 0; background: var(--ink); transform-origin: left; }
+  .timer.hot i { background: var(--hot); }
+  .timer.done i { transform: none !important; }
+  /* волна у нижнего края: вздрагивает на каждый «клац», на «На одной волне!» выпрямляется в ровную синусоиду */
+  .wave { position: fixed; left: 0; bottom: 0; width: 100%; height: 5vh; z-index: 0; pointer-events: none; }
+  .wave path { fill: none; stroke: var(--ink); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+
+  /* ---------- лобби: игроки слева (правило владельца), подключение и пример справа ---------- */
+  .lobby { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(400px, 1fr); gap: 3vw; height: 100%; }
+  .col { display: flex; flex-direction: column; gap: 1.8vh; min-height: 0; }
+  .lobby h1 { font-size: clamp(44px, 8.4vh, 118px); }
+  .seats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.2vh 1.4vw; align-content: start; flex: 1; min-height: 0; }
+  .seat { position: relative; display: flex; align-items: center; gap: 14px; min-width: 0; animation: slam .45s var(--press); }
+  .seat .av { width: clamp(44px, 7vh, 80px); height: clamp(44px, 7vh, 80px); font-size: clamp(24px, 4vh, 46px); border-width: 4px; }
+  .seat b { font-weight: 1000; font-size: clamp(20px, 3.4vh, 40px); line-height: 1.05; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .seat .x { background: none; border: 0; padding: 2px 6px; font-weight: 900; visibility: hidden; }
+  .host .seat:hover .x, .host .seat:focus-within .x { visibility: visible; }
+  .seat.off { opacity: .5; }
+  .free { display: flex; gap: 6px; align-items: center; font-weight: 900; font-size: clamp(15px, 2vh, 22px); }
+  .free i { width: 1.1em; height: 1.1em; border: 3px solid var(--ink); display: inline-block; }
+  .joinbox { background: var(--paper); border: 4px solid var(--ink); padding: 18px; display: flex; gap: 20px; align-items: center; }
+  #qr { flex: none; width: clamp(150px, 25vh, 250px); height: clamp(150px, 25vh, 250px); background: #fff; }
+  #qr img, #qr canvas { width: 100% !important; height: 100% !important; display: block; image-rendering: pixelated; }
+  .bigcode { font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; font-size: var(--code-fs, 64px); line-height: 1; letter-spacing: .02em; white-space: nowrap; overflow: hidden; }
+  .url { font-weight: 700; font-size: 17px; overflow-wrap: anywhere; opacity: .75; }
+  .scan { font-size: clamp(17px, 2.3vh, 26px); font-weight: 700; margin-top: 8px; }
+  #starthint { min-height: 1.3em; }
+  .demo { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 1vh; }
+  .demo .dq { font-weight: 1000; font-size: clamp(18px, 2.6vh, 30px); display: flex; gap: .6em; align-items: baseline; }
+  .demo .dq span { background: var(--ink); color: var(--paper); padding: .15em .5em; }
+  .demo .dq em { font-style: normal; font-size: .6em; letter-spacing: .1em; text-transform: uppercase; }
+  .demo .dp { display: flex; justify-content: space-between; font-weight: 1000; text-transform: uppercase; font-size: clamp(14px, 2vh, 22px); }
+  .opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 4px solid var(--ink); padding-top: 12px; }
+  .opt b { display: block; font-size: 19px; }
+  .opt span { font-size: 15px; opacity: .75; }
+  .tog { flex: none; width: 76px; height: 40px; border: 4px solid var(--ink); background: var(--paper); position: relative; padding: 0; }
+  .tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; background: var(--ink); transition: left .15s; }
+  .tog[aria-pressed="true"] { background: var(--ink); }
+  .tog[aria-pressed="true"]::after { left: 39px; background: var(--paper); }
+  .start { width: 100%; border: 4px solid var(--ink); background: var(--ink); color: var(--paper); font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; font-size: clamp(26px, 4vh, 44px); text-transform: uppercase; padding: 2vh 20px; }
+  .start:not(:disabled):hover { background: var(--paper); color: var(--ink); }
+  .start:not(:disabled):active { transform: translateY(4px); }
+  .ghostbtn { border: 4px solid var(--ink); background: var(--paper); font-weight: 900; font-size: 20px; padding: 14px 20px; text-transform: uppercase; text-decoration: none; color: var(--ink); display: grid; place-items: center; }
+  .fine { font-size: clamp(17px, 2.4vh, 28px); font-weight: 700; }
+
+  /* ---------- заставка раунда ---------- */
+  .intro { flex: 1; display: grid; place-items: center; text-align: center; align-content: center; gap: 3vh; }
+  .intro h1 { font-size: clamp(70px, 17vh, 240px); }
+  .intro .mult { display: inline-block; background: var(--ink); color: var(--card); font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; font-size: clamp(40px, 8vh, 110px); padding: .5vh 2.4vw; clip-path: inset(0 100% 0 0); animation: wipeIn .45s cubic-bezier(.7, 0, .3, 1) .5s forwards; }
+  @keyframes wipeIn { to { clip-path: inset(0); } }
+  .intro p { font-size: clamp(20px, 3vh, 36px); font-weight: 800; max-width: 26em; margin: 0; text-wrap: balance; }
+  .intro .eyebrow { font-size: clamp(18px, 2.6vh, 30px); }
+  .intro h1 span { display: inline-block; animation: rise .55s var(--press) both; }
+  @keyframes rise { from { transform: translateY(60%); opacity: 0; } }
+
+  /* ---------- подсказки пишут ---------- */
+  .cluehead { flex: none; display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+  .cluehead h1 { font-size: clamp(44px, 9vh, 120px); }
+
+  /* ---------- счёт: полоса из двух частей — прежний счёт чёрным и прибавка цветом, вырастающая из конца ---------- */
+  .board { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 1.2vh; }
+  .brow { flex: 0 1 13vh; min-height: 0; display: grid; grid-template-columns: 2.2em 2.2em minmax(0, 11em) 1fr 4.2em; align-items: center; gap: 1vw; font-size: clamp(18px, 3.6vh, 44px); font-weight: 1000; }
+  .brow .n { font-stretch: 151%; font-variation-settings: "wdth" 151; }
+  .brow .av { width: 1.8em; height: 1.8em; font-size: .9em; }
+  .brow b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar { height: 62%; display: flex; align-items: stretch; min-width: 0; }
+  .bar .old { background: var(--ink); width: var(--o); }
+  .bar .add { background: var(--next, #fff); border: 4px solid var(--ink); width: var(--g); min-width: 3.4em; transform-origin: left; animation: grow .8s cubic-bezier(.3, 1.3, .5, 1) .5s both; display: flex; align-items: center; justify-content: flex-end; padding-right: .3em; overflow: hidden; font-size: .8em; white-space: nowrap; }
+  .bar .add.empty { display: none; }
+  @keyframes grow { from { transform: scaleX(0); } }
+  .brow .s { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ---------- итоги ---------- */
+  .final { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 3vw; flex: 1; min-height: 0; }
+  .podium { display: grid; grid-template-columns: repeat(3, 1fr); align-items: end; gap: 12px; min-height: 0; }
+  .step { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
+  .step .who { text-align: center; font-weight: 1000; font-size: clamp(16px, 2.6vh, 30px); line-height: 1.1; overflow-wrap: anywhere; }
+  .step .who .av { margin: 0 auto 6px; width: 2.4em; height: 2.4em; font-size: 1.3em; }
+  .step .col { width: 100%; background: var(--ink); color: var(--card); display: grid; place-items: start center; align-content: start; gap: .6vh; padding-top: 1.4vh; font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; font-size: clamp(40px, 7vh, 90px); line-height: 1; animation: up .8s var(--press) both; transform-origin: bottom; }
+  .step .col small { font-size: .5em; color: var(--paper); font-stretch: 100%; font-variation-settings: "wdth" 100; font-variant-numeric: tabular-nums; }
+  @keyframes up { from { transform: scaleY(0); } }
+  .awards { display: flex; flex-direction: column; gap: 1.6vh; min-height: 0; }
+  .aw { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; }
+  .aw .av { width: 60px; height: 60px; font-size: 32px; }
+  .aw .eyebrow { opacity: .75; }
+  .aw b { display: block; font-size: clamp(20px, 3vh, 36px); font-weight: 1000; line-height: 1.05; }
+  .aw p { margin: 2px 0 0; font-size: clamp(17px, 2.6vh, 30px); font-weight: 700; }
+  .replay { flex: 1; min-height: 0; background: var(--paper); border: 4px solid var(--ink); display: flex; flex-direction: column; padding: 1.4vh 1.4vw; gap: .8vh; }
+  .replay .dialwrap { flex: 1; }
+  .replay q { font-weight: 1000; font-size: clamp(20px, 3.2vh, 40px); line-height: 1; quotes: "«" "»" "“" "”"; }
+  .replay .dp { display: flex; justify-content: space-between; gap: 12px; font-weight: 1000; text-transform: uppercase; font-size: clamp(16px, 2.6vh, 30px); }
+  .hostbtns { display: flex; gap: 12px; flex-wrap: wrap; }
+  .hostbtns .start { flex: 1; width: auto; }
+
+  .floater { position: fixed; bottom: 60px; z-index: 40; display: flex; flex-direction: column; align-items: center; pointer-events: none; animation: float 2.6s ease-out forwards; }
+  .floater span { font-size: 56px; }
+  .floater small { background: var(--ink); color: var(--paper); font-weight: 800; padding: 2px 8px; font-size: 15px; }
+  @keyframes float { to { transform: translateY(-55vh); opacity: 0; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><svg viewBox="0 0 44 18" aria-hidden="true"><path d="M2 9 Q 7.5 1 13 9 T 24 9 T 35 9 T 46 9" fill="none" stroke="#111" stroke-width="4" stroke-linecap="round"/></svg><span id="brand">На одной волне</span></div>
+  <span class="chip hidden" id="codechip"></span>
+  <span class="grow"></span>
+  <button class="endbtn hidden" id="endbtn" type="button">■</button>
+  <button class="sound-toggle-btn" type="button"></button>
+</div>
+<div class="banner hidden" id="banner"></div>
+<div class="conn" id="conn"></div>
+<main id="main"></main>
+<svg class="wave" id="wave" viewBox="0 0 1000 40" preserveAspectRatio="none" aria-hidden="true"><path d=""/></svg>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `На одной волне — общий экран`,
+    creating: `Открываем комнату…`, expired: `Комната закрылась — открой новую`,
+    lobby_players: `Игроки`, lobby_free: `свободно мест: {n}`, lobby_scan: `Наведи камеру телефона на QR или открой ссылку и введи имя.`,
+    demo_k: `Пример`, demo_l: `Холодное`, demo_r: `Горячее`, demo_q: `Чай, про который забыли`,
+    opt_short: `Короткая партия`, opt_short_d: `Один раунд вместо двух`,
+    btn_start: `Поехали!`, viewer: `Начать может только ведущий — тот, кто открыл этот экран`,
+    need_more: `Нужно ещё {n}`, kick: `Убрать`,
+    btn_end: `Закончить партию`, clues_title: `Все пишут подсказки`, clues_sub: `На телефоне у каждого своя шкала и тайный сектор`,
+    written: `написали`, locked: `зафиксировали`, card_k: `шкала`,
+    scores_title: `Счёт после раунда {n}`,
+    final_title: `Финиш!`, final_few: `Осталось меньше трёх игроков`, final_host: `Ведущий закончил партию`,
+    btn_again: `Ещё партия`, btn_lobby: `В лобби`, btn_home: `Главная`,
+  },
+  en: {
+    _title: `Same Wave — shared screen`,
+    creating: `Opening a room…`, expired: `The room has closed — open a new one`,
+    lobby_players: `Players`, lobby_free: `{n} seats left`, lobby_scan: `Point your phone camera at the QR or open the link and type your name.`,
+    demo_k: `Example`, demo_l: `Cold`, demo_r: `Hot`, demo_q: `Tea you forgot about`,
+    opt_short: `Short game`, opt_short_d: `One round instead of two`,
+    btn_start: `Let's go!`, viewer: `Only the host — whoever opened this screen — can start`,
+    need_more: `{n} more needed`, kick: `Remove`,
+    btn_end: `End the game`, clues_title: `Everyone's writing clues`, clues_sub: `Each phone has its own scale and a secret target`,
+    written: `done`, locked: `locked`, card_k: `scale`,
+    scores_title: `Scores after round {n}`,
+    final_title: `Finish!`, final_few: `Fewer than three players left`, final_host: `The host ended the game`,
+    btn_again: `Play again`, btn_lobby: `To lobby`, btn_home: `Home`,
+  },
+  el: {
+    _title: `Στο ίδιο κύμα — κοινή οθόνη`,
+    creating: `Άνοιγμα δωματίου…`, expired: `Το δωμάτιο έκλεισε — άνοιξε νέο`,
+    lobby_players: `Παίκτες`, lobby_free: `ακόμα {n} θέσεις`, lobby_scan: `Στρέψε την κάμερα του κινητού στο QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.`,
+    demo_k: `Παράδειγμα`, demo_l: `Κρύο`, demo_r: `Ζεστό`, demo_q: `Τσάι που το ξέχασες`,
+    opt_short: `Σύντομη παρτίδα`, opt_short_d: `Ένας γύρος αντί για δύο`,
+    btn_start: `Πάμε!`, viewer: `Ξεκινά μόνο ο οικοδεσπότης — όποιος άνοιξε αυτή την οθόνη`,
+    need_more: `Χρειάζονται ακόμα {n}`, kick: `Αφαίρεση`,
+    btn_end: `Τέλος παρτίδας`, clues_title: `Όλοι γράφουν στοιχεία`, clues_sub: `Κάθε κινητό έχει τη δική του κλίμακα και κρυφό στόχο`,
+    written: `έγραψαν`, locked: `κλείδωσαν`, card_k: `κλίμακα`,
+    scores_title: `Σκορ μετά τον γύρο {n}`,
+    final_title: `Τέλος!`, final_few: `Έμειναν λιγότεροι από τρεις`, final_host: `Ο οικοδεσπότης τερμάτισε`,
+    btn_again: `Νέα παρτίδα`, btn_lobby: `Στο λόμπι`, btn_home: `Αρχική`,
+  },
+};
+</script>
+<script src="wave-shared.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+"use strict";
+const T = (k) => wvT(k);
+const tpl = (k, v) => wvTpl(k, v);
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const hostKey = () => "wave-host-" + CODE;
+const main = $("main");
+
+let conn = null, state = null, isHost = false, dead = false;
+let viewKey = "";
+let prevScores = { game: null, by: {} };
+const timers = []; // таймауты раскрытия: при смене экрана гасим, чтобы звук не играл поверх следующей шкалы
+const later = (ms, fn) => timers.push(setTimeout(fn, ms));
+const clearLater = () => { while (timers.length) clearTimeout(timers.pop()); };
+
+const player = (id) => state && state.players.find((p) => p.id === id);
+const present = () => state.players.filter((p) => !p.left);
+const roundKey = () => state.game + ":" + state.ri;
+const cardKey = () => roundKey() + ":" + (state.card ? state.card.n : 0);
+const avHtml = (p) => `<i class="av" style="--pc:${p.color}">${escapeHtml(p.avatar)}</i>`;
+const cardColor = (ri, n) => wvColor(ri * 5 + n);
+
+// ---------- создание комнаты, если доску открыли без кода ----------
+async function ensureRoom() {
+  if (CODE) return true;
+  showBanner(T("creating"));
+  try {
+    const res = await fetch("/wave/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: wvLang() } }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "error");
+    CODE = data.code;
+    try { localStorage.setItem(hostKey(), data.hostToken); } catch (e) {}
+    history.replaceState(null, "", `?r=${CODE}`);
+    showBanner(null);
+    return true;
+  } catch (err) {
+    showBanner(String(err.message || err));
+    return false;
+  }
+}
+function showBanner(text) {
+  const b = $("banner");
+  b.classList.toggle("hidden", !text);
+  b.textContent = text || "";
+}
+
+// подогнать шрифт под коробку: уменьшаем, пока текст не влезет (коробка не растёт — правило «без скачков»)
+function fit(box, holder, varName, max, min) {
+  let fs = max;
+  holder.style.setProperty(varName, fs + "px");
+  let guard = 0;
+  while (fs > min && (box.scrollHeight > box.clientHeight + 1 || box.scrollWidth > box.clientWidth + 1) && guard++ < 80) {
+    fs -= 2;
+    holder.style.setProperty(varName, fs + "px");
+  }
+}
+const vh = (k) => Math.round(window.innerHeight * k);
+
+// ---------- цвет экрана ----------
+let curColor = null;
+function paint(color) {
+  if (color === curColor) return;
+  const first = curColor == null;
+  curColor = color;
+  document.documentElement.style.setProperty("--card", color);
+  if (first || matchMedia("(prefers-reduced-motion: reduce)").matches) { document.body.style.background = color; return; }
+  const w = el("div", "wipe");
+  w.style.background = color;
+  document.body.append(w);
+  wvSfx.whoosh();
+  setTimeout(() => { document.body.style.background = color; w.remove(); }, 560);
+}
+function phaseColor() {
+  switch (state.phase) {
+    case "intro": return state.ri === 1 ? "#ff5fa2" : "#2ee8b0";
+    case "clue": return wvColor(state.ri * 3 + 4);
+    case "guess": case "reveal": return cardColor(state.ri, state.card ? state.card.n : 0);
+    case "scores": return "#9be7ff";
+    case "finished": return "#c6f432";
+    default: return WV_HOME;
+  }
+}
+
+// ---------- волна внизу ----------
+const wave = { amp: 4, phase: 0, calm: 0 };
+function bumpWave(k) { wave.amp = Math.min(16, wave.amp + (k || 6)); }
+function calmWave(ms) { wave.calm = performance.now() + ms; }
+function drawWave(dt, t) {
+  wave.phase += dt * 0.004;
+  wave.amp += (4 - wave.amp) * Math.min(1, dt * 0.002);
+  const calm = t < wave.calm; // «На одной волне!» — рваная линия становится ровной синусоидой
+  let d = "";
+  for (let x = 0; x <= 1000; x += 8) {
+    const jag = calm ? 0 : Math.sin(x / 13 + wave.phase * 2.3) * 0.35 * wave.amp;
+    const y = 20 + Math.sin(x / 40 + wave.phase) * (calm ? 14 : wave.amp) + jag;
+    d += (x ? " L" : "M") + x + " " + y.toFixed(1);
+  }
+  $("wave").firstChild.setAttribute("d", d);
+}
+
+// ---------- шкала ----------
+function dialBlock(o, l, r) {
+  return `<div class="dialwrap"><div class="dialbox">${wvDialSvg(Object.assign({ uid: "b", bands: state.bands, missText: T("miss_short") }, o))}</div></div>
+    <div class="poles" id="poles"><div><span>${wvPole(l)}</span></div><div><span>${wvPole(r)}</span></div></div>`;
+}
+// оба полюса одним кеглем — меньший из двух, иначе шкала выглядит кривой
+function fitPoles() {
+  const ps = $("poles");
+  if (!ps) return;
+  ps.style.setProperty("--pole-h", vh(0.105) + "px");
+  let best = 80;
+  ps.querySelectorAll("div").forEach((box) => {
+    const span = box.firstChild;
+    let fs = Math.min(80, vh(0.078));
+    span.style.fontSize = fs + "px";
+    while (fs > 16 && (box.scrollHeight > box.clientHeight + 1 || span.offsetWidth > box.clientWidth + 1)) { fs -= 2; span.style.fontSize = fs + "px"; }
+    best = Math.min(best, fs);
+  });
+  ps.querySelectorAll("span").forEach((s) => (s.style.fontSize = ""));
+  ps.style.setProperty("--pfs", best + "px");
+}
+function clueBar(card, flash) {
+  const a = player(card.author) || { name: "?", avatar: "?", color: "#111" };
+  return `<div class="cluebar" id="cluebar"><div class="who">${avHtml(a)}<b>${escapeHtml(a.name)}</b></div>
+    <div class="txt" id="cluetxt"><div id="clueq"><q>${escapeHtml(card.clue)}</q></div>${flash ? `<div class="flash" id="flash">${flash}</div>` : ""}</div>
+    <div class="num"><small>${T("card_k")}</small><b>${card.n}/${card.of}</b>${state.mult > 1 ? `<small>×${state.mult}</small>` : ""}</div></div>`;
+}
+function fitClue() {
+  const box = $("cluetxt");
+  if (!box) return;
+  box.style.setProperty("--clue-h", vh(0.15) + "px");
+  const q = $("clueq");
+  fit(q, box, "--cfs", Math.min(110, vh(0.1)), 22);
+  const f = $("flash");
+  if (f) fit(f, box, "--ffs", Math.min(110, vh(0.1)), 22);
+}
+const footHtml = () => `<div class="foot"><div class="chips" id="chips"></div><div class="count" id="cn"></div><div class="secs" id="secs"></div></div><div class="timer" id="timer"><i></i></div>`;
+function jolt() {
+  const s = main.querySelector(".shutter.closed");
+  if (!s) return;
+  s.classList.remove("jolt"); void s.getBoundingClientRect(); s.classList.add("jolt");
+}
+
+// ---------- лобби ----------
+let qrDrawn = false;
+let demoTimer = null;
+function drawLobby() {
+  const url = `${location.origin}/wave.html?r=${CODE}`;
+  const ps = present();
+  const key = "lobby:" + wvLang() + isHost + ":" + ps.map((p) => p.id + p.online).join(",") + JSON.stringify(state.settings);
+  if (viewKey === key) return;
+  const fresh = viewKey.indexOf("lobby:") !== 0;
+  viewKey = key;
+  if (fresh) {
+    qrDrawn = false;
+    main.innerHTML = `<div class="screen"><div class="lobby">
+      <div class="col"><h1 class="shout">${escapeHtml(T("game_name"))}</h1><div class="eyebrow">${T("lobby_players")} · <span id="pn"></span></div><div class="seats" id="seats"></div><div class="free" id="free"></div></div>
+      <div class="col">
+        <div class="joinbox"><div id="qr"></div><div style="min-width:0;flex:1"><div class="bigcode" id="bigcode">${escapeHtml(CODE)}</div><div class="url">${escapeHtml(url.replace(/^https?:\/\//, ""))}</div><div class="scan">${T("lobby_scan")}</div></div></div>
+        <div class="demo"><div class="dq"><em>${T("demo_k")}</em><span><q>${escapeHtml(T("demo_q"))}</q></span></div><div class="dialwrap" id="demo"></div><div class="dp"><span>← ${escapeHtml(T("demo_l"))}</span><span>${escapeHtml(T("demo_r"))} →</span></div></div>
+        <div class="opt"><div><b>${T("opt_short")}</b><span>${T("opt_short_d")}</span></div><button class="tog" id="tshort" type="button" aria-label="${escapeHtml(T("opt_short"))}"></button></div>
+        <div><div class="fine" id="starthint" style="margin-bottom:8px"></div><button class="start" id="startbtn" type="button">${T("btn_start")}</button></div>
+      </div></div></div>`;
+    $("startbtn").onclick = () => conn.send({ type: "start" });
+    $("tshort").onclick = () => { if (isHost) conn.send({ type: "settings", settings: { short: !state.settings.short } }); };
+    const bc = $("bigcode");
+    fit(bc, bc.parentNode, "--code-fs", 76, 28);
+    runDemo();
+  }
+  if (!qrDrawn && window.QRCode) {
+    qrDrawn = true;
+    $("qr").replaceChildren();
+    new QRCode($("qr"), { text: url, width: 240, height: 240, colorDark: "#111111", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+  }
+  $("pn").textContent = ps.length + " / 12";
+  const seats = $("seats");
+  seats.innerHTML = ps.map((p) => `<div class="seat${p.online ? "" : " off"}">${avHtml(p)}<b>${escapeHtml(p.name)}</b>${isHost ? `<button class="x" type="button" data-kick="${escapeHtml(p.id)}" aria-label="${escapeHtml(T("kick"))}">✕</button>` : ""}</div>`).join("");
+  seats.querySelectorAll("[data-kick]").forEach((b) => (b.onclick = () => conn.send({ type: "kick", playerId: b.dataset.kick })));
+  const free = 12 - ps.length;
+  $("free").innerHTML = free ? `${"<i></i>".repeat(Math.min(free, 12))}<span>${escapeHtml(tpl("lobby_free", { n: free }))}</span>` : "";
+  $("tshort").setAttribute("aria-pressed", String(!!state.settings.short));
+  $("tshort").disabled = !isHost;
+  const need = Math.max(0, state.minPlayers - ps.length);
+  $("startbtn").disabled = !isHost || need > 0;
+  $("starthint").textContent = !isHost ? T("viewer") : need > 0 ? tpl("need_more", { n: need }) : "";
+}
+// пример в лобби: стрелки падают на ширму, ширма уезжает, очки — раз в 7 с; лобби само учит игре
+function runDemo() {
+  clearTimeout(demoTimer);
+  const box = $("demo");
+  if (!box || !state || state.phase !== "lobby") return;
+  const gs = [{ a: 40, color: "#1438e0", avatar: "🦊", pts: 0 }, { a: 100, color: "#e0115f", avatar: "🐙", pts: 200 }, { a: 136, color: "#0a8a4a", avatar: "🐸", pts: 400, best: true }];
+  const plan = wvRevealPlan(gs.length);
+  box.innerHTML = `<div class="dialbox">${wvDialSvg({ uid: "demo", target: 138, shutter: "open", guesses: gs, plan, missText: T("miss_short") })}</div>`;
+  demoTimer = setTimeout(runDemo, 7000);
+}
+
+// ---------- заставка раунда ----------
+function drawIntro() {
+  const key = "intro:" + roundKey() + wvLang();
+  if (viewKey === key) return;
+  viewKey = key;
+  const words = String(T("r_" + state.ri)).split(" ");
+  main.innerHTML = `<div class="screen"><div class="intro"><div class="eyebrow">${escapeHtml(tpl("round_n", { n: state.ri + 1 }))}</div>
+    <h1 class="shout">${words.map((w, i) => `<span style="animation-delay:${i * 0.12}s">${escapeHtml(w)}</span>`).join(" ")}</h1>
+    <div><span class="mult">×${state.mult}</span></div><p>${escapeHtml(T("r_" + state.ri + "_d"))}</p></div></div>`;
+}
+
+// ---------- все пишут подсказки ----------
+function drawClues() {
+  const key = "clue:" + roundKey() + wvLang();
+  if (viewKey !== key) {
+    viewKey = key;
+    main.innerHTML = `<div class="screen"><div class="cluehead"><div><div class="eyebrow">${escapeHtml(tpl("round_n", { n: state.ri + 1 }))} · ${escapeHtml(T("r_" + state.ri))} · ×${state.mult}</div><h1 class="shout" style="margin-top:1vh">${T("clues_title")}</h1><div class="fine" style="margin-top:1vh">${T("clues_sub")}</div></div></div>
+      <div class="dialwrap"><div class="dialbox">${wvDialSvg({ uid: "b", shutter: "closed", label: "?" })}</div></div>${footHtml()}</div>`;
+  }
+  const done = new Set(state.clued);
+  $("cn").innerHTML = `<small>${T("written")}</small>${state.clued.length}/${state.roster.length}`;
+  $("chips").innerHTML = state.roster.map((id) => { const p = player(id); return p ? `<span class="pc${done.has(id) ? " on" : ""}${p.online ? "" : " off"}">${avHtml(p)}<b>${escapeHtml(p.name)}</b></span>` : ""; }).join("");
+}
+
+// ---------- угадывание: шкала под ширмой ----------
+function drawGuess() {
+  const card = state.card;
+  const key = "guess:" + cardKey() + wvLang();
+  if (viewKey !== key) {
+    viewKey = key;
+    main.innerHTML = `<div class="screen">${clueBar(card)}${dialBlock({ shutter: "closed", label: wvNo(card.n) }, card.l, card.r)}${footHtml()}</div>`;
+    fitClue();
+    fitPoles();
+  }
+  const locked = new Set(state.locked);
+  $("cn").innerHTML = `<small>🔒 ${T("locked")}</small>${state.locked.length}/${state.guessers.length}`;
+  const a = player(card.author);
+  const chips = state.guessers.map((id) => { const p = player(id); return p ? `<span class="pc${locked.has(id) ? " on" : ""}" data-id="${escapeHtml(id)}">${avHtml(p)}<b>${escapeHtml(p.name)}</b></span>` : ""; });
+  if (a) chips.unshift(`<span class="pc author">${avHtml(a)}<b>${escapeHtml(a.name)}</b></span>`);
+  // перерисовываем только если поменялся состав — иначе «слэм» замка проигрывался бы у всех заново
+  const sig = state.guessers.join(",") + "|" + state.locked.join(",");
+  const box = $("chips");
+  if (box.dataset.sig !== sig) {
+    const before = new Set((box.dataset.sig || "").split("|")[1]?.split(",").filter(Boolean) || []);
+    box.innerHTML = chips.join("");
+    box.querySelectorAll(".pc.on").forEach((c) => { if (before.has(c.dataset.id)) c.style.animation = "none"; });
+    box.dataset.sig = sig;
+  }
+}
+
+// ---------- раскрытие ----------
+// стрелки падают на закрытую ширму → дробь → ширма уезжает → очки по одной от дальнего промаха к ближнему → итог в плашке подсказки
+function drawReveal() {
+  const card = state.card;
+  const key = "reveal:" + cardKey() + wvLang();
+  if (viewKey === key) return;
+  viewKey = key;
+  clearLater();
+  const guesses = wvRevealGuesses(card, player);
+  const plan = wvRevealPlan(guesses.length);
+  const bullPts = 400 * state.mult;
+  const bulls = guesses.filter((g) => g.pts >= bullPts);
+  if (guesses.length) guesses[guesses.length - 1].best = guesses[guesses.length - 1].pts > 0;
+  let flash = "";
+  if (card.wave) flash = escapeHtml(T("wave"));
+  else if (bulls.length) flash = `${escapeHtml(T("bull"))} ${bulls.map((g) => `${escapeHtml(g.avatar)} ${escapeHtml((player(g.id) || {}).name || "")}`).join(" ")}`;
+  const a = player(card.author);
+  // очки игроков в нижней строке появляются вместе с табличками на шкале
+  const chips = guesses.map((g, i) => { const p = player(g.id); return p ? `<span class="pc" style="animation:slam .35s var(--press) both;animation-delay:${plan.badgeAt(i)}ms">${avHtml(p)}<b>${escapeHtml(p.name)}</b><span class="pts">${g.pts ? "+" + g.pts : "0"}</span></span>` : ""; });
+  main.innerHTML = `<div class="screen">${clueBar(card, flash)}${dialBlock({ target: card.target, shutter: "open", label: wvNo(card.n), guesses, plan }, card.l, card.r)}
+    <div class="foot"><div class="chips">${a ? `<span class="pc author" style="animation:slam .35s var(--press) both;animation-delay:${plan.done}ms">${avHtml(a)}<b>${escapeHtml(a.name)}</b><span class="pts">+${card.authorPts}</span></span>` : ""}${chips.join("")}</div><div class="count"></div><div class="secs"></div></div><div class="timer done" id="timer"><i></i></div></div>`;
+  fitClue();
+  fitPoles();
+  // звук: стрелки падают, дробь, «вжух» ширмы, очки по одной (ближе к центру — выше нота), итог
+  guesses.forEach((g, i) => later(plan.drop + i * plan.dropStep + 250, () => { wvSfx.lock(); bumpWave(3); }));
+  later(plan.open - 700, () => wvSfx.drumroll(0.65));
+  later(plan.open, () => wvSfx.whoosh());
+  guesses.forEach((g, i) => later(plan.badgeAt(i), () => { wvSfx.drop(1 - Math.min(1, g.dist / 60)); bumpWave(g.pts ? 6 : 2); }));
+  later(plan.done, () => {
+    if (flash) $("cluebar")?.classList.add("flashed");
+    if (card.wave) { wvSfx.wave(); calmWave(1800); }
+    else if (bulls.length) wvSfx.bull();
+    else if (!guesses.some((g) => g.pts)) wvSfx.womp();
+    bumpWave(10);
+  });
+}
+
+// ---------- счёт ----------
+function drawScores() {
+  const key = "scores:" + roundKey() + wvLang();
+  if (viewKey === key) return;
+  viewKey = key;
+  const list = present().slice().sort((a, b) => b.score - a.score);
+  const max = Math.max(1, ...list.map((p) => p.score));
+  // прибавка за раунд: доска помнит счёт прошлого табло (с начала партии — ноль)
+  if (prevScores.game !== state.game) prevScores = { game: state.game, by: {} };
+  const was = prevScores.by;
+  const next = state.ri + 1 < state.rounds ? "#ff5fa2" : "#c6f432";
+  main.innerHTML = `<div class="screen"><h1 class="shout" style="font-size:clamp(40px,8vh,110px)">${escapeHtml(tpl("scores_title", { n: state.ri + 1 }))}</h1>
+    <div class="board" style="--next:${next}">${list.map((p, i) => {
+      const old = Math.min(was[p.id] || 0, p.score), g = p.score - old;
+      return `<div class="brow"><span class="n">${wvRank(list, p)}</span>${avHtml(p)}<b>${escapeHtml(p.name)}</b><div class="bar"><div class="old" style="--o:${(old / max) * 100}%"></div><div class="add${g > 0 ? "" : " empty"}" style="--g:${(g / max) * 100}%">${g > 0 ? "+" + g : ""}</div></div><span class="s" data-to="${p.score}" data-from="${old}">${old}</span></div>`;
+    }).join("")}</div></div>`;
+  prevScores.by = Object.fromEntries(list.map((p) => [p.id, p.score]));
+  countUp(main.querySelectorAll(".brow .s"), 1100, 500);
+}
+function countUp(nodes, dur, delay) {
+  const t0 = performance.now() + (delay || 0);
+  const step = (t) => {
+    const k = Math.max(0, Math.min(1, (t - t0) / dur));
+    const e = 1 - Math.pow(1 - k, 3);
+    nodes.forEach((n) => { const f = Number(n.dataset.from || 0); n.textContent = Math.round(f + (Number(n.dataset.to) - f) * e); });
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// ---------- итоги ----------
+function drawFinal() {
+  const key = "final:" + state.game + wvLang() + isHost;
+  if (viewKey === key) return;
+  viewKey = key;
+  const list = present().slice().sort((a, b) => b.score - a.score);
+  const top = [list[1], list[0], list[2]];
+  const heights = ["36vh", "48vh", "26vh"];
+  const places = top.map((p) => (p ? wvRank(list, p) : 0));
+  const aw = state.awards || {};
+  const names = (ids) => ids.map((id) => (player(id) || {}).name || "?").join(", ");
+  const firstAv = (ids) => { const p = player(ids[0]); return p ? avHtml(p) : ""; };
+  const rows = [];
+  if (aw.telepath) rows.push(`<div class="aw">${firstAv(aw.telepath.ids)}<div><div class="eyebrow">${T("aw_telepath")}</div><b>${escapeHtml(names(aw.telepath.ids))}</b><p>${escapeHtml(tpl("aw_telepath_d", { n: aw.telepath.n }))}</p></div></div>`);
+  if (aw.clear) rows.push(`<div class="aw">${firstAv(aw.clear.ids)}<div><div class="eyebrow">${T("aw_clear")}</div><b>${escapeHtml(names(aw.clear.ids))}</b><p>${escapeHtml(tpl("aw_clear_d", { n: aw.clear.n }))}</p></div></div>`);
+  // «Мимо кассы» — повтор той самой шкалы: сектор и промахнувшаяся стрелка, над этим смеются
+  let replay = "";
+  if (aw.miss) {
+    const h = (state.history || []).find((x) => x.clue === aw.miss.clue && x.guesses[aw.miss.playerId] != null);
+    const p = player(aw.miss.playerId) || { color: "#111", avatar: "?" };
+    if (h) replay = `<div class="replay"><div class="eyebrow">🙈 ${T("aw_miss")} · ${escapeHtml(tpl("aw_miss_d", { name: p.name || "?", n: aw.miss.dist }))}</div><q>${escapeHtml(aw.miss.clue)}</q>
+      <div class="dialwrap"><div class="dialbox">${wvDialSvg({ uid: "miss", target: h.target, guesses: [{ a: h.guesses[aw.miss.playerId], color: p.color, avatar: p.avatar }] })}</div></div>
+      <div class="dp"><span>← ${wvPole(aw.miss.l)}</span><span>${wvPole(aw.miss.r)} →</span></div></div>`;
+  }
+  const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : "";
+  main.innerHTML = `<div class="screen"><h1 class="shout" style="font-size:clamp(44px,9vh,120px)">${T("final_title")}</h1>${sub ? `<div class="fine">${escapeHtml(sub)}</div>` : ""}
+    <div class="final"><div class="podium">${top.map((p, i) => p ? `<div class="step"><div class="who">${avHtml(p)}${escapeHtml(p.name)}</div><div class="col" style="height:${heights[i]};animation-delay:${[0.5, 1, 0][i]}s">${places[i]}<small>${p.score}</small></div></div>` : `<div class="step"></div>`).join("")}</div>
+    <div class="awards">${rows.join("")}${replay}<div class="hostbtns">${isHost ? `<button class="start" id="again" type="button">${T("btn_again")}</button><button class="ghostbtn" id="tolobby" type="button">${T("btn_lobby")}</button>` : ""}<a class="ghostbtn" href="index.html">${T("btn_home")}</a></div></div></div></div>`;
+  if (isHost) {
+    $("again").onclick = () => conn.send({ type: "start" });
+    $("tolobby").onclick = () => conn.send({ type: "lobby" });
+  }
+  if (state.finishedReason === "done") later(900, () => wvSfx.fanfare());
+}
+
+// ---------- отрисовка ----------
+let lastPhase = null;
+function render() {
+  if (!state || dead) return;
+  if (state.phase !== lastPhase) { if (lastPhase === "reveal" || state.phase === "lobby") clearLater(); lastPhase = state.phase; }
+  document.body.dataset.phase = state.phase;
+  paint(phaseColor());
+  $("brand").textContent = T("game_name");
+  $("codechip").textContent = CODE;
+  $("codechip").classList.toggle("hidden", state.phase === "lobby");
+  const inGame = !["lobby", "finished"].includes(state.phase);
+  $("endbtn").classList.toggle("hidden", !(isHost && inGame));
+  $("endbtn").title = T("btn_end");
+  $("endbtn").setAttribute("aria-label", T("btn_end"));
+  if (state.phase !== "lobby") clearTimeout(demoTimer);
+  switch (state.phase) {
+    case "lobby": return drawLobby();
+    case "intro": return drawIntro();
+    case "clue": return drawClues();
+    case "guess": return drawGuess();
+    case "reveal": return drawReveal();
+    case "scores": return drawScores();
+    case "finished": return drawFinal();
+  }
+}
+$("endbtn").onclick = () => { if (confirm(T("btn_end") + "?")) conn.send({ type: "end" }); };
+
+// таймер, секунды, тиканье, волна
+let lastTickSec = null, lastFrame = performance.now();
+function frame(t) {
+  requestAnimationFrame(frame);
+  drawWave(Math.min(100, t - lastFrame), t);
+  lastFrame = t;
+  if (!state || dead || !state.phaseEnd) return;
+  const left = state.phaseEnd - wvNow();
+  const total = Math.max(1, state.phaseEnd - state.phaseStart);
+  const live = state.phase === "clue" || state.phase === "guess";
+  const bar = $("timer");
+  if (bar && live) {
+    bar.firstChild.style.transform = `scaleX(${Math.max(0, Math.min(1, left / total))})`;
+    bar.classList.toggle("hot", left < 5000);
+  }
+  const secs = $("secs");
+  if (secs && live) {
+    secs.textContent = String(Math.max(0, Math.ceil(left / 1000)));
+    secs.classList.toggle("hot", left < 5000);
+  }
+  if (live && left < 5000 && left > 0) {
+    const sec = Math.ceil(left / 1000);
+    if (sec !== lastTickSec) { lastTickSec = sec; wvSfx.tick(true); }
+  }
+}
+
+window.addEventListener("resize", () => { viewKey = ""; if (state) render(); });
+window.addEventListener("langchange", () => {
+  viewKey = "";
+  // язык доски — язык банка шкал комнаты: в лобби ведущий переключает и шкалы
+  if (isHost && state && (state.phase === "lobby" || state.phase === "finished") && state.settings.lang !== wvLang()) conn.send({ type: "settings", settings: { lang: wvLang() } });
+  render();
+});
+
+// реакции: эмодзи взлетает снизу с именем
+function floatReact(playerId, emoji) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const p = player(playerId);
+  const f = el("div", "floater");
+  f.style.left = (8 + Math.random() * 84) + "vw";
+  f.append(el("span", null, emoji), el("small", null, p ? p.name : ""));
+  document.body.append(f);
+  setTimeout(() => f.remove(), 2700);
+}
+
+// ---------- связь ----------
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+      state = m.state;
+      if (!isHost) {
+        let token = null;
+        try { token = localStorage.getItem(hostKey()); } catch (e) {}
+        if (token) conn.send({ type: "host", token });
+      }
+      render();
+      break;
+    case "state":
+      state = m.state;
+      render();
+      break;
+    case "host_ok":
+      isHost = true;
+      document.body.classList.add("host");
+      viewKey = "";
+      if (state && state.phase === "lobby" && state.settings.lang !== wvLang()) conn.send({ type: "settings", settings: { lang: wvLang() } });
+      render();
+      break;
+    case "host_lost":
+      isHost = false;
+      document.body.classList.remove("host");
+      viewKey = "";
+      render();
+      break;
+    case "event": {
+      const e = m.event;
+      if (e.type === "react") floatReact(e.playerId, e.emoji);
+      // «клац»: ширма вздрагивает, волна подпрыгивает
+      if (e.type === "locked" || e.type === "clued") { wvSfx.lock(); bumpWave(6); jolt(); }
+      break;
+    }
+    case "error":
+      if (m.error === "room_expired") gone();
+      break;
+  }
+}
+
+function gone() {
+  dead = true;
+  main.innerHTML = "";
+  showBanner(T("expired"));
+}
+
+async function boot() {
+  // ?h=токен — ссылка ведущего на другое устройство: токен кладём в хранилище и убираем из адреса
+  const h = params.get("h");
+  if (h && CODE) {
+    try { localStorage.setItem(hostKey(), h); } catch (e) {}
+    history.replaceState(null, "", `?r=${CODE}`);
+  }
+  paint(WV_HOME);
+  if (!(await ensureRoom())) return;
+  const banner = $("conn");
+  conn = wvConnect({
+    code: CODE,
+    onMessage,
+    onGone: gone,
+    onOpen: () => { isHost = false; },
+    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+  });
+  requestAnimationFrame(frame);
+  // ручка для отладки и стенда: те же сообщения, что шлют кнопки доски
+  window.wvBoard = { send: (m) => conn.send(m), get state() { return state; }, get code() { return CODE; } };
+}
+boot();
+</script>
+</body>
+</html>
