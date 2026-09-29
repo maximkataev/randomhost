@@ -391,7 +391,7 @@ const SOLVER = String.raw`(async () => {
     if (vIdx >= 0) await phones[vIdx].shot("p_boom_victim");
     await phones[(vIdx + 1) % 3].shot("p_boom_other");
     await wait(5000);
-    check((await board.evaluate("state.phase")) === "finished" && (await board.evaluate("state.loserId")) === victimPhone, "итоги: стендап ведёт тот, у кого взорвалось");
+    check((await board.evaluate("state.phase")) === "finished" && (await board.evaluate("state.loserId")) === victimPhone, "итоги: проиграл тот, на ком рванула");
     await board.shot("b_final");
 
     // --- 7. телефоны и доска без JS-ошибок, без горизонтальной прокрутки

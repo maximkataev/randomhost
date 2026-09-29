@@ -50,7 +50,7 @@ const BM_SHARED_I18N = {
     mr_red: "Если красных проводов больше одного — режь последний красный. Иначе — второй провод.",
     mr_blue: "Если синий провод есть — режь первый синий. Иначе — третий провод.",
     mr_white: "Если белый провод ровно один — режь его. Иначе — последний.",
-    mr_same: "Режь провод того же цвета, что и первый (но не сам первый).",
+    mr_same: "Режь ближайший к первому провод того же цвета (но не сам первый).",
     mr_black: "Если первый провод чёрный — режь второй. Иначе — первый чёрный.",
     mr_green: "Режь провод, который идёт сразу после первого зелёного.",
     crowd_tv: "{name}, твой код: {code}", crowd_phone: "Код знает {helper} — {name}, спроси!",
@@ -90,7 +90,7 @@ const BM_SHARED_I18N = {
     mr_red: "If there's more than one red wire, cut the last red. Otherwise cut the second wire.",
     mr_blue: "If there's a blue wire, cut the first blue. Otherwise cut the third wire.",
     mr_white: "If there's exactly one white wire, cut it. Otherwise cut the last.",
-    mr_same: "Cut the wire of the same colour as the first one (but not the first).",
+    mr_same: "Cut the wire nearest to the first one that has the same colour (but not the first).",
     mr_black: "If the first wire is black, cut the second. Otherwise cut the first black.",
     mr_green: "Cut the wire right after the first green one.",
     crowd_tv: "{name}, your code: {code}", crowd_phone: "{helper} has the code — {name}, ask!",
@@ -130,7 +130,7 @@ const BM_SHARED_I18N = {
     mr_red: "Αν τα κόκκινα είναι πάνω από ένα, κόψε το τελευταίο κόκκινο. Αλλιώς το δεύτερο καλώδιο.",
     mr_blue: "Αν υπάρχει μπλε καλώδιο, κόψε το πρώτο μπλε. Αλλιώς το τρίτο καλώδιο.",
     mr_white: "Αν υπάρχει ακριβώς ένα λευκό, κόψε το. Αλλιώς το τελευταίο.",
-    mr_same: "Κόψε το καλώδιο με το ίδιο χρώμα με το πρώτο (όχι το πρώτο).",
+    mr_same: "Κόψε το πιο κοντινό στο πρώτο καλώδιο με το ίδιο χρώμα (όχι το πρώτο).",
     mr_black: "Αν το πρώτο καλώδιο είναι μαύρο, κόψε το δεύτερο. Αλλιώς το πρώτο μαύρο.",
     mr_green: "Κόψε το καλώδιο αμέσως μετά το πρώτο πράσινο.",
     crowd_tv: "{name}, ο κωδικός σου: {code}", crowd_phone: "Τον κωδικό τον ξέρει: {helper} — {name}, ρώτα!",
@@ -161,6 +161,16 @@ function bmT(key) {
 }
 const bmTpl = (key, vars) => String(bmT(key)).replace(/\{(\w+)\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m));
 const bmLang = () => (window.I18N && window.I18N.lang) || "ru";
+// Ключ по числу: key1 (1 раз / 1 time), key (2 раза), key5 (5 раз / 5 times).
+// По-русски 21 — «раз», 22 — «раза», 11–14 — «раз»; в EN/EL только 1 или много.
+function bmPluralKey(key, n) {
+  const a = Math.abs(n) % 100, b = a % 10;
+  if (bmLang() !== "ru") return n === 1 ? key + "1" : key + "5";
+  if (b === 1 && a !== 11) return key + "1";
+  if (b >= 2 && b <= 4 && (a < 12 || a > 14)) return key;
+  return key + "5";
+}
+const bmTplN = (key, n, vars) => bmTpl(bmPluralKey(key, n), Object.assign({ n }, vars));
 // текст из банка вопросов: {ru, en, el}
 const bmTx = (o) => (o && typeof o === "object" ? o[bmLang()] || o.en || o.ru || "" : String(o == null ? "" : o));
 const bmSec = (ms) => (Math.max(0, ms) / 1000).toFixed(1).replace(".", bmLang() === "en" ? "." : ",");

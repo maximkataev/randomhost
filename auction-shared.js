@@ -141,6 +141,9 @@ async function wikiFile(file, pick, size) {
 }
 
 async function findImage(pick, kind, size) {
+  // noimg — картинка статьи 18+ (обнажёнка, жесть, откровенный постер): на общий экран её не тащим,
+  // лот остаётся с эмодзи, как когда Википедия ничего не нашла
+  if (pick.noimg) return null;
   const q = encodeURIComponent;
   size = size || 1200;
   const opts = { allowLogo: !!AUCTION_KINDS[kind].logo, size };

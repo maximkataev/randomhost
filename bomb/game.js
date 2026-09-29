@@ -32,7 +32,7 @@ const DEFAULTS = {
 
 const T = {
   countdown: 3000, // печать на экране + 3-2-1
-  boom: 4500, // вспышка и «Стендап ведёт…»
+  boom: 4500, // вспышка и «Не повезло: …»
 };
 
 const MAX_PLAYERS = 16;
@@ -100,7 +100,7 @@ class Game {
       booms: [], // взрывы партии: {round, bomb, playerId, at}
       stats: null, // итоги последнего раунда (§7)
       seq: 0,
-      loserId: null, // ведёт стендап
+      loserId: null, // проигравший: на ком рванула
       winnerId: null, // «на выбывание»: последний выживший
       finishedReason: null, // boom | last | few | host
     }, rnd, bytes);
@@ -379,7 +379,7 @@ class Game {
     s.armed = {};
     s.phase = "boom";
     s.phaseEnd = now + T.boom;
-    if (!s.loserId) s.loserId = victim; // стендап ведёт первый взорвавшийся партии
+    if (!s.loserId) s.loserId = victim; // проигравший — первый, на ком рванула в этой партии
     const ev = [{ type: "boom", bomb: b.id, playerId: victim, at }];
     if (s.settings.mode === "elim") {
       const p = this.player(victim);

@@ -178,7 +178,7 @@ test("зависшее испытание через 12 с сменяется д
   assert.notStrictEqual(g.s.challenges[h].id, c.id);
 });
 
-test("на выбывание: доводит до одного, стендап ведёт первый взорвавшийся", () => {
+test("на выбывание: доводит до одного, проигравший — первый, на ком рванула", () => {
   const g = game(["A", "B", "C", "D"], { mode: "elim", fuse: "short" });
   let now = 0, first = null;
   for (let round = 0; round < 10 && g.s.phase !== "finished"; round++) {
