@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <title>Царь льдины — песочница</title>
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f427.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@700&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <!--
+    Песочница «Царя льдины» (floe-battle-spec.md §11–12): партия без сервера — вы, второй игрок со стрелок и боты.
+    На ней подбираем физику ползунками. В деплой не идёт (.dockerignore).
+  -->
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    :root {
+      --ink: #f4fbff;
+      --muted: #9cc3dc;
+      --panel: rgba(6, 24, 44, 0.86);
+      --line: rgba(160, 215, 245, 0.18);
+      --gold: #ffd23f;
+      --red: #ff5a5a;
+      --ice: #8ee8ff;
+    }
+    html, body { height: 100%; overflow: hidden; background: #051b31; color: var(--ink); font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+    #arena { position: fixed; top: 0; bottom: 0; left: 0; width: 100%; height: 100%; display: block; }
+    /* на широком экране арена справа от панели, а не под ней */
+    @media (min-width: 900px) { body.with-panel #arena { left: 320px; width: calc(100% - 320px); } body.with-panel .hud, body.with-panel .banner, body.with-panel .big, body.with-panel .replay-tag { margin-left: 160px; } }
+
+    /* ----- Верх: таймер и счёт ----- */
+    .hud { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; z-index: 5; pointer-events: none; }
+    .pill { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: 14px; white-space: nowrap; }
+    .timer { font-variant-numeric: tabular-nums; font-size: 18px; min-width: 76px; text-align: center; }
+    .timer.low { color: var(--gold); }
+    .timer.ot { color: #fff; background: rgba(205, 48, 58, 0.92); }
+    .title { font-family: 'Comfortaa', sans-serif; }
+
+    /* ----- Панель слева ----- */
+    .panel { position: fixed; top: 10px; left: 10px; bottom: 10px; width: 300px; z-index: 6; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(10, 36, 64, 0.94), rgba(6, 24, 44, 0.94)); border: 1px solid var(--line); border-radius: 22px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 18px 50px rgba(0,0,0,0.35); transition: transform 0.25s ease; overflow: hidden; }
+    .panel.hidden { transform: translateX(calc(-100% - 20px)); }
+    .p-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 12px 16px; }
+    .p-head .logo { font-size: 26px; line-height: 1; }
+    .p-head h1 { font-family: 'Comfortaa', sans-serif; font-size: 17px; line-height: 1.1; flex: 1; }
+    .p-head h1 small { display: block; font: 600 11px Montserrat, sans-serif; color: var(--muted); margin-top: 3px; }
+    .icon-btn { width: 32px; height: 32px; flex: none; border-radius: 10px; border: 0; background: rgba(255,255,255,0.08); color: var(--ink); cursor: pointer; font-size: 14px; }
+    .icon-btn:hover { background: rgba(255,255,255,0.14); }
+    .p-body { flex: 1; overflow-y: auto; padding: 0 12px 12px; scrollbar-width: thin; scrollbar-color: rgba(160,215,245,0.25) transparent; }
+    .p-foot { padding: 12px; border-top: 1px solid var(--line); background: rgba(4, 16, 30, 0.5); }
+
+    .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; border: 0; border-radius: 14px; padding: 13px 12px; font: 800 16px Montserrat, sans-serif; cursor: pointer; color: #3b2400; background: linear-gradient(135deg, #ffe27a, #ffc21a); box-shadow: 0 4px 0 #b88400; }
+    .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #b88400; }
+    .btn.ghost { background: rgba(255,255,255,0.08); color: var(--ink); box-shadow: none; font-weight: 700; font-size: 13px; padding: 9px 10px; border-radius: 11px; }
+    .btn.ghost:hover { background: rgba(255,255,255,0.14); }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btns2 { display: flex; gap: 8px; margin-top: 8px; }
+    .btns2 .btn { flex: 1; }
+
+    .sec { background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 16px; padding: 12px; margin-top: 10px; }
+    .sec h3 { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px; }
+
+    /* игроки */
+    .who { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 8px; padding: 6px; border-radius: 12px; background: rgba(255,255,255,0.04); margin-bottom: 6px; transition: opacity 0.2s; }
+    .who.off { opacity: 0.45; }
+    .who.off input[type=text] { pointer-events: none; }
+    .hat { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font: 800 13px Montserrat, sans-serif; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.35); background: radial-gradient(circle at 35% 30%, #fff8, transparent 55%), var(--c); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.18); }
+    .who input[type=text] { min-width: 0; width: 100%; background: transparent; border: 0; border-bottom: 1px dashed rgba(160,215,245,0.3); color: var(--ink); padding: 4px 2px; font: 700 14px Montserrat, sans-serif; border-radius: 0; }
+    .who input[type=text]:focus { outline: none; border-bottom-color: var(--ice); }
+    .keys { display: flex; gap: 3px; align-items: center; }
+    kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; background: rgba(255,255,255,0.1); border-radius: 5px; box-shadow: inset 0 -2px 0 rgba(0,0,0,0.3); font: 700 10px Montserrat, sans-serif; color: var(--ink); }
+    .switch { position: relative; width: 38px; height: 22px; flex: none; }
+    .switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; z-index: 1; }
+    .switch i { position: absolute; inset: 0; border-radius: 999px; background: rgba(255,255,255,0.16); transition: background 0.2s; }
+    .switch i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.2s; }
+    .switch input:checked + i { background: var(--ice); }
+    .switch input:checked + i::after { transform: translateX(16px); }
+
+    .bots-row { display: flex; align-items: center; justify-content: space-between; margin: 12px 0 8px; }
+    .bots-row .lbl { font-weight: 700; font-size: 14px; }
+    .stepper { display: flex; align-items: center; background: rgba(255,255,255,0.06); border-radius: 12px; }
+    .stepper button { width: 34px; height: 34px; border: 0; background: transparent; color: var(--ink); font: 700 18px Montserrat, sans-serif; cursor: pointer; border-radius: 12px; }
+    .stepper button:hover { background: rgba(255,255,255,0.1); }
+    .stepper button:disabled { opacity: 0.3; cursor: default; }
+    .stepper b { min-width: 26px; text-align: center; font-variant-numeric: tabular-nums; font-size: 16px; }
+    .flock { display: flex; flex-wrap: wrap; gap: 4px; min-height: 18px; margin-bottom: 10px; }
+    .flock span { width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff8, transparent 55%), var(--c); animation: dotIn 0.2s ease-out; }
+    @keyframes dotIn { from { transform: scale(0); } to { transform: scale(1); } }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { border: 1px solid var(--line); background: rgba(255,255,255,0.04); color: var(--ink); border-radius: 999px; padding: 6px 10px; font: 700 12px Montserrat, sans-serif; cursor: pointer; }
+    .chip:hover { background: rgba(255,255,255,0.1); }
+    .chip.on { background: var(--ice); border-color: var(--ice); color: #06182c; }
+    .chip-note { color: var(--muted); font-size: 11px; margin-top: 8px; line-height: 1.4; min-height: 30px; }
+
+    /* управление */
+    .ctl { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; font-size: 12.5px; }
+    .ctl .keys { justify-content: flex-start; }
+    .ctl span { color: var(--muted); }
+    .ctl span b { color: var(--ink); }
+
+    /* физика */
+    .phys summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+    .phys summary::-webkit-details-marker { display: none; }
+    .phys summary .arr { transition: transform 0.2s; }
+    .phys[open] summary .arr { transform: rotate(90deg); }
+    .phys summary .badge { background: var(--gold); color: #3b2400; border-radius: 999px; padding: 1px 7px; font-size: 10px; letter-spacing: 0; margin-left: auto; margin-right: 8px; }
+    .phys .chips { margin: 12px 0 4px; }
+    .grp { margin-top: 12px; }
+    .grp-t { font-size: 12px; font-weight: 800; margin-bottom: 6px; display: flex; gap: 6px; align-items: center; }
+    .sl { margin-bottom: 8px; }
+    .sl .top { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; margin-bottom: 4px; }
+    .sl .top span { color: #d6ebf7; }
+    .sl .top b { font-variant-numeric: tabular-nums; color: var(--ice); font-size: 12px; cursor: pointer; }
+    .sl.changed .top b { color: var(--gold); }
+    .sl.changed .top b::after { content: ' ↺'; opacity: 0.7; }
+    .sl .track { position: relative; height: 18px; }
+    .sl input[type=range] { -webkit-appearance: none; appearance: none; position: absolute; inset: 0; width: 100%; height: 18px; background: transparent; margin: 0; cursor: pointer; }
+    .sl input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(90deg, var(--ice) var(--p), rgba(255,255,255,0.12) var(--p)); }
+    .sl input[type=range]::-moz-range-track { height: 6px; border-radius: 999px; background: linear-gradient(90deg, var(--ice) var(--p), rgba(255,255,255,0.12) var(--p)); }
+    .sl.changed input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(90deg, var(--gold) var(--p), rgba(255,255,255,0.12) var(--p)); }
+    .sl.changed input[type=range]::-moz-range-track { background: linear-gradient(90deg, var(--gold) var(--p), rgba(255,255,255,0.12) var(--p)); }
+    .sl input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+    .sl input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+    .sl .def { position: absolute; top: 12px; width: 2px; height: 6px; margin-left: -1px; background: rgba(255,255,255,0.5); border-radius: 1px; pointer-events: none; }
+    .sl .hint { color: var(--muted); font-size: 10.5px; margin-top: 2px; }
+
+    .toggle-panel { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 10px; z-index: 7; width: 42px; height: 42px; border-radius: 13px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: 18px; cursor: pointer; display: none; }
+    .panel.hidden ~ .toggle-panel { display: block; }
+
+    /* ----- Центр: отсчёт и плашки ----- */
+    .big { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 8; pointer-events: none; font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: min(22vw, 150px); color: #fff; text-shadow: 0 6px 30px rgba(0,0,0,0.5), 0 0 40px rgba(142,232,255,0.6); opacity: 0; }
+    .big.show { animation: pop 0.9s ease-out forwards; }
+    .big.word { font-size: min(11vw, 76px); }
+    @keyframes pop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); } 18% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); } }
+    .banner { position: fixed; left: 50%; top: 74px; transform: translateX(-50%) translateY(-20px); z-index: 8; pointer-events: none; background: rgba(205, 48, 58, 0.95); color: #fff; border-radius: 16px; padding: 12px 22px; font-weight: 800; font-size: 20px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4); opacity: 0; transition: opacity 0.25s, transform 0.25s; max-width: calc(100vw - 32px); }
+    .banner small { display: block; font-weight: 600; font-size: 12px; opacity: 0.85; margin-top: 2px; }
+    .banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .replay-tag { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 8; background: rgba(255,255,255,0.92); color: #06182c; font-weight: 800; border-radius: 999px; padding: 6px 14px; font-size: 13px; display: none; }
+    .replay-tag.show { display: block; }
+
+    /* ----- Лента выбываний ----- */
+    .feed { position: fixed; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 5; display: flex; flex-direction: column; gap: 5px; align-items: flex-end; pointer-events: none; }
+    .feed div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 5px 10px; font-size: 13px; font-weight: 600; animation: feedIn 0.25s ease-out; }
+    .feed .mine { border-color: var(--gold); background: rgba(60, 44, 6, 0.9); }
+    .feed .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+    @keyframes feedIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+
+    /* ----- Итог ----- */
+    .results { position: fixed; inset: 0; z-index: 9; display: none; align-items: center; justify-content: center; background: rgba(3, 14, 28, 0.55); padding: 16px; }
+    .results.show { display: flex; }
+    .card { background: #0a2440; border: 1px solid var(--line); border-radius: 22px; padding: 22px; width: 100%; max-width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); max-height: 100%; overflow-y: auto; }
+    .card .host { background: rgba(205, 48, 58, 0.18); border: 1px solid rgba(255, 90, 90, 0.5); border-radius: 16px; padding: 14px; text-align: center; margin-bottom: 10px; }
+    .card .host .lbl { color: #ffb3b3; font-size: 13px; font-weight: 700; }
+    .card .host .nm { font-size: 28px; font-weight: 800; margin-top: 2px; }
+    .card .host .note { color: #ffb3b3; font-size: 12px; margin-top: 4px; }
+    .card .king { text-align: center; color: var(--gold); font-weight: 700; margin-bottom: 12px; }
+    .card ul { list-style: none; margin-bottom: 14px; }
+    .card li { display: flex; gap: 8px; align-items: center; font-size: 14px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+    .card li .pl { width: 22px; color: var(--muted); font-weight: 700; text-align: right; }
+    .card li .nm { flex: 1; font-weight: 600; }
+    .card li .ex { color: var(--muted); font-size: 12px; }
+    .card .noms { font-size: 13px; color: var(--muted); margin-bottom: 14px; line-height: 1.6; }
+    .card .noms b { color: var(--ink); }
+    .card .debug { font-size: 11px; color: var(--muted); margin-top: 6px; text-align: center; }
+
+    /* ----- Тач: джойстик и рывок ----- */
+    .touch { display: none; }
+    body.is-touch .touch { display: block; }
+    .stick { position: fixed; z-index: 4; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: rgba(255,255,255,0.08); pointer-events: none; opacity: 0; transition: opacity 0.15s; }
+    .stick.on { opacity: 1; }
+    .stick i { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(255,255,255,0.55); }
+    .dash-btn { position: fixed; right: calc(22px + env(safe-area-inset-right, 0px)); bottom: calc(26px + env(safe-area-inset-bottom, 0px)); z-index: 5; width: 92px; height: 92px; border-radius: 50%; border: 0; background: radial-gradient(circle at 35% 30%, #ffe27a, #ffb000); color: #3b2400; font: 800 15px Montserrat, sans-serif; box-shadow: 0 6px 0 #b88400, 0 10px 24px rgba(0,0,0,0.4); }
+    .dash-btn:active { transform: translateY(3px); box-shadow: 0 3px 0 #b88400; }
+    .dash-btn.cd { filter: grayscale(0.8) brightness(0.7); }
+    body.is-touch .feed { bottom: calc(130px + env(safe-area-inset-bottom, 0px)); }
+    .rotate { position: fixed; inset: 0; z-index: 20; background: #051b31; display: none; align-items: center; justify-content: center; text-align: center; font-weight: 700; font-size: 18px; padding: 30px; }
+    @media (orientation: portrait) and (max-width: 700px) { body.is-touch .rotate { display: flex; } }
+
+    @media (max-width: 760px) { .panel { width: min(290px, calc(100vw - 20px)); } }
+    @media (max-height: 500px) { .hud { top: calc(6px + env(safe-area-inset-top, 0px)); } .pill { padding: 5px 11px; font-size: 12px; } .timer { font-size: 15px; min-width: 60px; } .banner { top: 46px; font-size: 15px; padding: 7px 14px; border-radius: 12px; } .banner small { font-size: 11px; } .replay-tag { top: 46px; } }
+  </style>
+</head>
+<body>
+  <canvas id="arena"></canvas>
+
+  <div class="hud">
+    <span class="pill title">🐧 Царь льдины</span>
+    <span class="pill timer" id="timer">—</span>
+    <span class="pill" id="alive">На льдине: —</span>
+  </div>
+
+  <aside class="panel" id="panel">
+    <div class="p-head">
+      <span class="logo">🐧</span>
+      <h1>Царь льдины<small>песочница · без сервера</small></h1>
+      <button class="icon-btn" id="closePanel" title="Скрыть">✕</button>
+    </div>
+
+    <div class="p-body">
+      <section class="sec">
+        <h3>Кто на льдине</h3>
+        <div class="who" id="whoMe">
+          <span class="hat" style="--c:#ff5a5a">1</span>
+          <input type="text" id="p1name" maxlength="15" value="Максим" aria-label="Ваше имя">
+          <span class="keys"><kbd>WASD</kbd></span>
+        </div>
+        <div class="who off" id="whoP2">
+          <span class="hat" style="--c:#6f8cff">2</span>
+          <input type="text" id="p2name" maxlength="15" value="Второй" aria-label="Имя второго игрока">
+          <label class="switch" title="Второй игрок на этой же клавиатуре"><input type="checkbox" id="p2on"><i></i></label>
+        </div>
+
+        <div class="bots-row">
+          <span class="lbl">Боты</span>
+          <div class="stepper">
+            <button id="botMinus" aria-label="Меньше ботов">−</button>
+            <b id="botCount">5</b>
+            <button id="botPlus" aria-label="Больше ботов">+</button>
+          </div>
+        </div>
+        <div class="flock" id="flock"></div>
+        <div class="chips" id="botStyle"></div>
+        <div class="chip-note" id="styleNote"></div>
+      </section>
+
+      <section class="sec">
+        <h3>Управление</h3>
+        <div class="ctl" id="ctl"></div>
+      </section>
+
+      <details class="sec phys" id="phys">
+        <summary><span>Физика</span><span class="badge" id="physBadge" hidden></span><span class="arr">›</span></summary>
+        <div class="chips" id="presets"></div>
+        <div id="sliders"></div>
+        <div class="btns2">
+          <button class="btn ghost" id="resetCfg">Как было</button>
+          <button class="btn ghost" id="copyCfg">Скопировать</button>
+        </div>
+      </details>
+    </div>
+
+    <div class="p-foot">
+      <button class="btn" id="startBtn">▶ Начать партию</button>
+      <div class="btns2">
+        <button class="btn ghost" id="lobbyBtn">Разминка</button>
+        <button class="btn ghost" id="replayBtn" disabled>Повтор</button>
+      </div>
+    </div>
+  </aside>
+  <button class="toggle-panel" id="openPanel" title="Настройки">☰</button>
+
+  <div class="big" id="big"></div>
+  <div class="banner" id="banner"></div>
+  <div class="replay-tag" id="replayTag">▶ Повтор · замедленно</div>
+  <div class="feed" id="feed"></div>
+
+  <div class="results" id="results">
+    <div class="card" id="card"></div>
+  </div>
+
+  <div class="touch">
+    <div class="stick" id="stick"><i id="knob"></i></div>
+    <button class="dash-btn" id="dashBtn">РЫВОК</button>
+  </div>
+  <div class="rotate">Поверните телефон горизонтально 🔄</div>
+
+  <script src="floe/game.js"></script>
+  <script src="floe/bots.js"></script>
+  <script src="floe-render.js"></script>
+  <script src="sound-toggle.js" defer></script>
+  <script>
+  (function () {
+    'use strict';
+    const $ = (id) => document.getElementById(id);
+    const { createGame, DEFAULTS } = window.FloeGame;
+    const Bots = window.FloeBots;
+    const Sound = window.FloeRender.Sound;
+    const HAT = window.FloeRender.HAT_COLORS;
+
+    const BOT_NAMES = ['Шкипер', 'Ковальски', 'Рико', 'Прапор', 'Кеша', 'Пинго', 'Лёдик', 'Снежок', 'Мумбл', 'Пуфик', 'Лоло'];
+    const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+    if (isTouch) document.body.classList.add('is-touch');
+
+    // ----- Настройки физики: ползунки правят cfg движка на лету -----
+    const CFG_KEY = 'floe_lab_cfg_v1';
+    const GROUPS = [
+      ['⛸', 'Движение', [
+        ['ACC', 'Разгон', 120, 600, 10, 'как быстро набирает ход'],
+        ['DRAG', 'Трение льда', 1, 7, 0.1, 'меньше — скользче, дольше тормозит'],
+      ]],
+      ['💨', 'Рывок', [
+        ['DASH_V', 'Скорость', 120, 400, 10, ''],
+        ['DASH_HIT', 'Сила удара', 40, 320, 10, 'сколько получает цель'],
+        ['DASH_CD', 'Перезарядка, с', 0.4, 3, 0.1, ''],
+      ]],
+      ['🧊', 'Партия', [
+        ['AREA_PER_PLAYER', 'Лёд на пингвина', 6000, 24000, 500, 'размер льдины — со следующей партии'],
+        ['FIGHT_T', 'Длина, с', 30, 90, 5, 'со следующей партии'],
+      ]],
+    ];
+    const SLIDERS = GROUPS.flatMap(g => g[2]);
+    const PRESETS = [
+      ['Обычно', {}],
+      ['Каток', { DRAG: 1.8, ACC: 220 }],
+      ['Вязко', { DRAG: 5.5, ACC: 450, DASH_HIT: 120 }],
+      ['Бильярд', { DASH_HIT: 240, DASH_CD: 1 }],
+    ];
+    const cfg = Object.assign({}, DEFAULTS);
+    try { Object.assign(cfg, JSON.parse(localStorage.getItem(CFG_KEY) || '{}')); } catch (e) {}
+    const diffCfg = () => Object.fromEntries(SLIDERS.map(s => s[0]).filter(k => cfg[k] !== DEFAULTS[k]).map(k => [k, cfg[k]]));
+    const saveCfg = () => { try { localStorage.setItem(CFG_KEY, JSON.stringify(diffCfg())); } catch (e) {} };
+    const fmt = (v, step) => (step < 1 ? (+v).toFixed(step < 0.1 ? 2 : 1) : String(Math.round(v)));
+
+    function setCfg(k, v) {
+      cfg[k] = v;
+      if (game) game.cfg[k] = v;
+      if (k === 'FIGHT_T') { cfg.MELT_MID = Math.max(cfg.MELT_START + 5, v - 10); if (game) game.cfg.MELT_MID = cfg.MELT_MID; }
+    }
+
+    function buildSliders() {
+      const box = $('sliders');
+      box.innerHTML = '';
+      for (const [icon, title, list] of GROUPS) {
+        const g = document.createElement('div');
+        g.className = 'grp';
+        g.innerHTML = `<div class="grp-t">${title}</div>`;
+        for (const [k, label, min, max, step, hint] of list) {
+          const d = document.createElement('div');
+          d.className = 'sl';
+          d.innerHTML = `<div class="top"><span>${label}</span><b title="Вернуть как было"></b></div><div class="track"><input type="range" min="${min}" max="${max}" step="${step}" aria-label="${label}"><i class="def"></i></div>` + (hint ? `<div class="hint">${hint}</div>` : '');
+          const inp = d.querySelector('input'), val = d.querySelector('b');
+          d.querySelector('.def').style.left = `calc(9px + (100% - 18px) * ${(DEFAULTS[k] - min) / (max - min)})`;
+          const show = () => {
+            inp.value = cfg[k];
+            inp.style.setProperty('--p', ((cfg[k] - min) / (max - min)) * 100 + '%');
+            val.textContent = fmt(cfg[k], step);
+            d.classList.toggle('changed', cfg[k] !== DEFAULTS[k]);
+          };
+          show();
+          inp.addEventListener('input', () => { setCfg(k, Number(inp.value)); show(); saveCfg(); syncPhys(); });
+          val.addEventListener('click', () => { setCfg(k, DEFAULTS[k]); show(); saveCfg(); syncPhys(); });
+          d._show = show;
+          g.appendChild(d);
+        }
+        box.appendChild(g);
+      }
+    }
+    function syncPhys() {
+      const n = Object.keys(diffCfg()).length;
+      const b = $('physBadge');
+      b.hidden = !n;
+      b.textContent = 'изменено: ' + n;
+      const key = (o) => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
+      const cur = key(diffCfg());
+      [...$('presets').children].forEach((c, i) => c.classList.toggle('on', key(PRESETS[i][1]) === cur));
+    }
+    function applyPreset(over) {
+      for (const [k] of SLIDERS) setCfg(k, k in over ? over[k] : DEFAULTS[k]);
+      saveCfg();
+      buildSliders();
+      syncPhys();
+    }
+    PRESETS.forEach(([name, over]) => {
+      const c = document.createElement('button');
+      c.className = 'chip';
+      c.textContent = name;
+      c.onclick = () => applyPreset(over);
+      $('presets').appendChild(c);
+    });
+    buildSliders();
+    syncPhys();
+    if (Object.keys(diffCfg()).length) $('phys').open = true;
+    $('resetCfg').onclick = () => applyPreset({});
+    $('copyCfg').onclick = () => {
+      const txt = JSON.stringify(diffCfg());
+      (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(
+        () => flashBanner('Настройки скопированы', txt === '{}' ? 'всё по умолчанию' : txt, '#2a7fb8'),
+        () => prompt('Скопируйте:', txt));
+    };
+
+    // ----- Кто играет: второй игрок, число и характер ботов -----
+    const STYLES = [
+      ['mix', 'Вперемешку', 'Все характеры сразу: кто-то лезет в драку, кто-то держится центра.'],
+      ['novice', 'Новички', 'Медленно реагируют, мажут и сами подходят к краю — самое то для первой пробы.'],
+      ['cautious', 'Осторожные', 'Держатся центра и бьют только наверняка.'],
+      ['aggressor', 'Агрессоры', 'Сразу бегут к ближайшему и бьют рывком.'],
+      ['hunter', 'Охотники', 'Выбирают того, кто ближе к краю, и заходят со стороны центра.'],
+    ];
+    const lab = { bots: 5, style: 'mix' };
+    try { Object.assign(lab, JSON.parse(localStorage.getItem('floe_lab_setup_v1') || '{}')); } catch (e) {}
+    const saveLab = () => { try { localStorage.setItem('floe_lab_setup_v1', JSON.stringify({ bots: lab.bots, style: lab.style, p1: $('p1name').value, p2: $('p2name').value, p2on: $('p2on').checked })); } catch (e) {} };
+    if (lab.p1) $('p1name').value = lab.p1;
+    if (lab.p2) $('p2name').value = lab.p2;
+    if (lab.p2on) $('p2on').checked = true;
+
+    STYLES.forEach(([k, name]) => {
+      const c = document.createElement('button');
+      c.className = 'chip';
+      c.textContent = name;
+      c.dataset.k = k;
+      c.onclick = () => { lab.style = k; syncWho(); saveLab(); };
+      $('botStyle').appendChild(c);
+    });
+    $('botMinus').onclick = () => { lab.bots = Math.max(0, lab.bots - 1); syncWho(); saveLab(); };
+    $('botPlus').onclick = () => { lab.bots = Math.min(11, lab.bots + 1); syncWho(); saveLab(); };
+    $('p2on').onchange = () => { syncWho(); saveLab(); };
+    $('p1name').onchange = $('p2name').onchange = saveLab;
+
+    function syncWho() {
+      const two = $('p2on').checked;
+      $('whoP2').classList.toggle('off', !two);
+      $('botCount').textContent = lab.bots;
+      $('botMinus').disabled = lab.bots <= (two ? 0 : 1);
+      if (!two && lab.bots < 1) lab.bots = 1, $('botCount').textContent = 1;
+      $('botPlus').disabled = lab.bots >= 11;
+      const flock = $('flock');
+      flock.innerHTML = '';
+      for (let i = 0; i < lab.bots; i++) { const d = document.createElement('span'); d.style.setProperty('--c', HAT[(i + 1 + (i >= 6 ? 1 : 0)) % HAT.length][0]); flock.appendChild(d); }
+      [...$('botStyle').children].forEach(c => c.classList.toggle('on', c.dataset.k === lab.style));
+      $('styleNote').textContent = STYLES.find(s => s[0] === lab.style)[2];
+      $('whoMe').querySelector('.keys').innerHTML = two ? '<kbd>WASD</kbd><kbd>␣</kbd>' : '<kbd>WASD</kbd><kbd>←→</kbd>';
+      $('ctl').innerHTML = two
+        ? `<span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span><b>Вы</b> — ход, <kbd>Пробел</kbd> рывок</span>
+           <span class="keys"><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd></span><span><b>Второй</b> — ход, <kbd>Enter</kbd> рывок</span>`
+        : `<span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>или стрелки — <b>ход</b></span>
+           <span class="keys"><kbd>Пробел</kbd></span><span><b>рывок</b> туда, куда смотрит стрелка</span>`;
+    }
+    syncWho();
+
+    // ----- Партия -----
+    let game = null, render = null;
+    let bots = new Map();
+    let humans = [];               // [{id, keys}]
+    let allEvents = [];            // события партии — для повтора
+    let replay = null;             // {frames, i, t, speed...}
+    let lastPhase = '';
+    let lastCount = 0;
+    let showResultsAt = 0;
+    let freezeUntil = 0;
+
+    render = window.FloeRender.create($('arena'), { me: 'you' });
+
+    function setup(startFight) {
+      const oldCi = new Map();
+      game = createGame({ cfg: Object.assign({}, cfg) });
+      if (startFight) game.cfg.MELT_MID = Math.max(game.cfg.MELT_START + 5, game.cfg.FIGHT_T - 10);
+      humans = [{ id: 'you', name: $('p1name').value.trim() || 'Вы', ci: 0 }];
+      if ($('p2on').checked) humans.push({ id: 'p2', name: $('p2name').value.trim() || 'Второй', ci: 7 });
+      humans.forEach(h => game.addPlayer(h.id, h.name, h.ci));
+      bots = new Map();
+      const n = lab.bots;
+      const style = lab.style;
+      const pool = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
+      const used = new Set(humans.map(h => h.ci));
+      for (let i = 0; i < n; i++) {
+        const id = 'bot' + i;
+        let ci = 1; while (used.has(ci)) ci++;
+        used.add(ci);
+        const st = style === 'mix' ? Bots.STYLE_KEYS[i % Bots.STYLE_KEYS.length] : style;
+        game.addPlayer(id, pool[i % pool.length], ci);
+        bots.set(id, Bots.createBot(st));
+      }
+      render.reset();
+      allEvents = [];
+      replay = null;
+      $('feed').innerHTML = '';
+      $('results').classList.remove('show');
+      $('replayBtn').disabled = true;
+      $('replayTag').classList.remove('show');
+      if (startFight) game.start();
+      lastPhase = '';
+    }
+
+    $('startBtn').onclick = (e) => { e.currentTarget.blur(); Sound.ensure(); setup(true); if (isTouch) $('panel').classList.add('hidden'); };
+    $('lobbyBtn').onclick = (e) => { e.currentTarget.blur(); Sound.ensure(); setup(false); };
+    $('replayBtn').onclick = (e) => { e.currentTarget.blur(); startReplay(); };
+    const syncPanel = () => document.body.classList.toggle('with-panel', !$('panel').classList.contains('hidden'));
+    new MutationObserver(syncPanel).observe($('panel'), { attributes: true, attributeFilter: ['class'] });
+    syncPanel();
+    $('closePanel').onclick = () => $('panel').classList.add('hidden');
+    $('openPanel').onclick = () => $('panel').classList.remove('hidden');
+
+    // ----- Ввод: клавиатура -----
+    const down = new Set();
+    const dashReq = { you: false, p2: false };
+    const GAME_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Enter', 'NumpadEnter', 'ShiftRight'];
+    addEventListener('keydown', (e) => {
+      if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'text') return;
+      if (!GAME_KEYS.includes(e.code)) return;
+      e.preventDefault();
+      Sound.ensure();
+      if (!e.repeat) {
+        if (e.code === 'Space') dashReq.you = true;
+        if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'ShiftRight') { if ($('p2on').checked) dashReq.p2 = true; else dashReq.you = true; }
+      }
+      down.add(e.code);
+    });
+    addEventListener('keyup', (e) => down.delete(e.code));
+    addEventListener('blur', () => down.clear());
+
+    function keyVec(up, dn, lf, rt) {
+      let x = 0, y = 0;
+      if (up.some(k => down.has(k))) y -= 1;
+      if (dn.some(k => down.has(k))) y += 1;
+      if (lf.some(k => down.has(k))) x -= 1;
+      if (rt.some(k => down.has(k))) x += 1;
+      const l = Math.hypot(x, y) || 1;
+      return [x / l, y / l];
+    }
+
+    // ----- Ввод: тач — джойстик там, где коснулись, и кнопка рывка -----
+    const touch = { id: null, ox: 0, oy: 0, x: 0, y: 0 };
+    const stick = $('stick'), knob = $('knob');
+    const STICK_R = 50;
+    $('arena').addEventListener('touchstart', (e) => {
+      Sound.ensure();
+      for (const t of e.changedTouches) {
+        if (touch.id !== null) break;
+        if (t.clientX > innerWidth * 0.6) continue;
+        touch.id = t.identifier; touch.ox = t.clientX; touch.oy = t.clientY; touch.x = 0; touch.y = 0;
+        stick.style.left = t.clientX + 'px'; stick.style.top = t.clientY + 'px';
+        stick.classList.add('on');
+        knob.style.transform = '';
+      }
+      e.preventDefault();
+    }, { passive: false });
+    addEventListener('touchmove', (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== touch.id) continue;
+        let dx = t.clientX - touch.ox, dy = t.clientY - touch.oy;
+        const l = Math.hypot(dx, dy);
+        if (l > STICK_R) { dx *= STICK_R / l; dy *= STICK_R / l; }
+        touch.x = dx / STICK_R; touch.y = dy / STICK_R;
+        if (Math.hypot(touch.x, touch.y) < 0.18) touch.x = touch.y = 0;
+        knob.style.transform = `translate(${dx}px, ${dy}px)`;
+      }
+    }, { passive: true });
+    const endTouch = (e) => {
+      for (const t of e.changedTouches) if (t.identifier === touch.id) { touch.id = null; touch.x = touch.y = 0; stick.classList.remove('on'); }
+    };
+    addEventListener('touchend', endTouch);
+    addEventListener('touchcancel', endTouch);
+    $('dashBtn').addEventListener('touchstart', (e) => { e.preventDefault(); Sound.ensure(); dashReq.you = true; }, { passive: false });
+    $('dashBtn').addEventListener('mousedown', () => { dashReq.you = true; });
+
+    function feedInputs(dt) {
+      const two = $('p2on').checked;
+      let v1 = two ? keyVec(['KeyW'], ['KeyS'], ['KeyA'], ['KeyD']) : keyVec(['KeyW', 'ArrowUp'], ['KeyS', 'ArrowDown'], ['KeyA', 'ArrowLeft'], ['KeyD', 'ArrowRight']);
+      if (touch.id !== null) v1 = [touch.x, touch.y];
+      if (game.byId.has('you')) game.setInput('you', v1[0], v1[1], dashReq.you);
+      dashReq.you = false;
+      if (two && game.byId.has('p2')) {
+        const v2 = keyVec(['ArrowUp'], ['ArrowDown'], ['ArrowLeft'], ['ArrowRight']);
+        game.setInput('p2', v2[0], v2[1], dashReq.p2);
+      }
+      dashReq.p2 = false;
+      for (const [id, b] of bots) {
+        const p = game.byId.get(id);
+        if (!p) continue;
+        Bots.think(game, p, b, dt);
+        game.setInput(id, b.mx, b.my, b.dash);
+      }
+    }
+
+    // ----- Плашки -----
+    const nameOf = (id) => { const p = game.byId.get(id); return p ? p.name : '?'; };
+    const ciOf = (id) => { const p = game.byId.get(id); return p ? p.ci : 0; };
+    let bigTimer = 0;
+    function big(text, word) {
+      const el = $('big');
+      el.textContent = text;
+      el.classList.toggle('word', !!word);
+      el.classList.remove('show');
+      void el.offsetWidth;
+      el.classList.add('show');
+    }
+    let bannerTimer = 0;
+    function flashBanner(title, note, color) {
+      const el = $('banner');
+      el.innerHTML = '';
+      el.append(document.createTextNode(title));
+      if (note) { const s = document.createElement('small'); s.textContent = note; el.append(s); }
+      el.style.background = color || '';
+      el.classList.add('show');
+      clearTimeout(bannerTimer);
+      bannerTimer = setTimeout(() => el.classList.remove('show'), 2400);
+    }
+    function pushFeed(html, mine) {
+      const el = document.createElement('div');
+      if (mine) el.className = 'mine';
+      el.innerHTML = html;
+      const f = $('feed');
+      f.appendChild(el);
+      while (f.children.length > 5) f.firstChild.remove();
+    }
+    const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const tag = (id) => `<span class="dot" style="background:${HAT[ciOf(id) % HAT.length][0]}"></span>${esc(nameOf(id))}`;
+
+    function onEvents(events) {
+      for (const e of events) {
+        if (game.phase !== 'lobby') allEvents.push(e);
+        if (e.type === 'fall' && !e.practice) {
+          const mine = humans.some(h => h.id === e.id || h.id === e.by);
+          if (e.offline) pushFeed(`📡 ${tag(e.id)} снят`);
+          else if (e.by) pushFeed(`${tag(e.by)} 💨 → ${tag(e.id)}`, mine);
+          else pushFeed(`${tag(e.id)} 🙃 сам`, mine);
+        }
+        // стоп-кадр на своём попадании: удар чувствуется
+        if (e.type === 'hit' && humans.some(h => h.id === e.a) && (e.power || 0) > 0.5) freezeUntil = performance.now() + 75;
+        if (e.type === 'removed') pushFeed(`📡 ${tag(e.id)} снят`);
+        if (e.type === 'host') {
+          const note = e.lottery ? 'решил жребий' : e.tie === 'hits' ? 'упали вместе — меньше попаданий' : e.tie === 'lottery' ? 'ничья — жребий' : 'упал первым';
+          flashBanner('🎤 Дейлик ведёт: ' + nameOf(e.id), note);
+          Sound.host();
+        }
+        if (e.type === 'go') { big('Толкайся!', true); Sound.go(); }
+        if (e.type === 'phase' && e.phase === 'overtime') { big('Добивание!', true); }
+        if (e.type === 'over') { $('replayBtn').disabled = !game.replay; showResultsAt = performance.now() + 1400; }
+      }
+    }
+
+    // ----- Итог -----
+    function showResults() {
+      const s = game.stats, h = game.host;
+      if (!s || !h) return;
+      const note = h.lottery ? 'решил жребий' : h.tie === 'hits' ? 'упали одновременно — у него меньше попаданий' : h.tie === 'lottery' ? 'упали одновременно — ничья, решил жребий' : `упал первым, на ${h.at.toFixed(1)} с`;
+      const kings = game.kings.map(nameOf).join(', ');
+      const pusher = s.pusher.length ? `<b>${s.pusher.map(id => esc(nameOf(id))).join(', ')}</b> — столкнул ${s.maxKos}` : '—';
+      const selfs = s.selfFallers.length ? s.selfFallers.map(id => esc(nameOf(id))).join(', ') : '—';
+      const rows = s.players.slice().sort((a, b) => a.place - b.place).map(p =>
+        `<li><span class="pl">${p.place}</span><span class="dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${HAT[ciOf(p.id) % HAT.length][0]}"></span><span class="nm">${esc(p.name)}${p.id === h.id ? ' 🎤' : ''}${game.kings.includes(p.id) ? ' 👑' : ''}</span><span class="ex">${p.kos ? '💨 ' + p.kos : ''}${p.selfFall ? ' 🙃' : ''}${p.removed ? ' 📡' : ''}</span></li>`).join('');
+      $('card').innerHTML = `
+        <div class="host"><div class="lbl">Дейлик ведёт</div><div class="nm">🎤 ${esc(nameOf(h.id))}</div><div class="note">${note}</div></div>
+        <div class="king">👑 Царь льдины: ${esc(kings || '—')}</div>
+        <ul>${rows}</ul>
+        <div class="noms">Больше всех столкнул: ${pusher}<br>Сам себе враг: <b>${selfs}</b></div>
+        <button class="btn" id="againBtn">Реванш</button>
+        <div class="btns2"><button class="btn ghost" id="replayBtn2">Повтор</button><button class="btn ghost" id="lobbyBtn2">Разминка</button></div>
+        <div class="debug">партия ${s.duration.toFixed(1)} с · первое падение на ${h.at.toFixed(1)} с</div>`;
+      $('results').classList.add('show');
+      $('againBtn').onclick = () => { Sound.ensure(); setup(true); };
+      $('replayBtn2').onclick = () => { $('results').classList.remove('show'); startReplay(); };
+      $('lobbyBtn2').onclick = () => setup(false);
+      Sound.win();
+    }
+
+    // ----- Повтор первого падения: до падения — обычная скорость, за секунду до — замедление -----
+    function startReplay() {
+      if (!game || !game.replay || !game.replay.frames.length) return;
+      const fr = game.replay.frames;
+      replay = { frames: fr, t: fr[0].t, at: game.replay.at, end: fr[fr.length - 1].t, i: 0, lastT: fr[0].t, fallT: new Map() };
+      $('replayTag').classList.add('show');
+      $('results').classList.remove('show');
+      render.reset();
+    }
+
+    function replayStep(dt) {
+      const r = replay;
+      const slow = r.t > r.at - 1.2;
+      const prevT = r.t;
+      r.t += dt * (slow ? 0.35 : 1);
+      while (r.i < r.frames.length - 1 && r.frames[r.i + 1].t <= r.t) r.i++;
+      const f = r.frames[r.i];
+      const players = f.p.map(([id, x, y, vx, vy, dir, st, dash]) => {
+        const p = game.byId.get(id);
+        if (st === 'fall' && !r.fallT.has(id)) r.fallT.set(id, f.t);
+        if (st === 'ice') r.fallT.delete(id);
+        return { id, name: p ? p.name : '?', ci: p ? p.ci : 0, x, y, vx, vy, dir, st, dash, cd: 0, online: true, fallT: r.fallT.has(id) ? f.t - r.fallT.get(id) : 0 };
+      });
+      const snap = { phase: 'replay', seed: game.seed, R: game.floe.R, sh: f.sh, host: r.t >= r.at ? game.host : null, kings: [], players };
+      const evs = allEvents.filter(e => e.clock > prevT && e.clock <= r.t && ['hit', 'bump', 'fall', 'crack', 'sink', 'dash'].includes(e.type));
+      render.apply(snap, evs, r.i === 0);
+      if (r.t >= r.end + 0.4) {
+        replay = null;
+        $('replayTag').classList.remove('show');
+        render.apply(game.snapshot(), [], true);
+        showResults();
+      }
+    }
+
+    // ----- Верх -----
+    function hud() {
+      const s = game.phase;
+      const t = $('timer');
+      if (s === 'lobby') { t.textContent = 'разминка'; t.className = 'pill timer'; }
+      else if (s === 'countdown') { t.textContent = String(Math.max(0, Math.ceil(game.cfg.FIGHT_T))) ; t.className = 'pill timer'; }
+      else if (s === 'overtime') { t.textContent = 'добивание'; t.className = 'pill timer ot'; }
+      else if (s === 'over') { t.textContent = 'конец'; t.className = 'pill timer'; }
+      else {
+        const left = Math.max(0, game.cfg.FIGHT_T - game.clock);
+        t.textContent = left.toFixed(left < 10 ? 1 : 0);
+        t.className = 'pill timer' + (left < 10 ? ' low' : '');
+      }
+      const inGame = game.players.filter(p => s === 'lobby' || p.inGame);
+      $('alive').textContent = `На льдине: ${inGame.filter(p => p.st === 'ice').length} из ${inGame.length}`;
+      const you = game.byId.get('you');
+      $('dashBtn').classList.toggle('cd', !!you && you.cd > 0);
+    }
+
+    // ----- Цикл -----
+    let last = performance.now();
+    function frame(now) {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const t = now / 1000;
+      if (game) {
+        if (replay) {
+          replayStep(dt);
+        } else {
+          const frozen = now < freezeUntil;
+          if (!frozen) { feedInputs(dt); game.step(dt); }
+          const evs = game.drainEvents();
+          onEvents(evs);
+          if (game.phase === 'countdown') {
+            const n = Math.ceil(game.cfg.COUNTDOWN - game.phaseT);
+            if (n !== lastCount && n > 0) { lastCount = n; big(String(n)); Sound.tick(); }
+          } else lastCount = 0;
+          render.apply(game.snapshot(), evs);
+          if (game.phase === 'over' && showResultsAt && now >= showResultsAt) {
+            showResultsAt = 0;
+            if (game.replay && game.replay.done) startReplay(); else showResults();
+          }
+        }
+        hud();
+      }
+      render.draw(t, dt);
+      requestAnimationFrame(frame);
+    }
+    setup(false);
+    requestAnimationFrame(frame);
+    // для headless-проверки
+    window.__lab = { get game() { return game; } };
+  })();
+  </script>
+</body>
+</html>

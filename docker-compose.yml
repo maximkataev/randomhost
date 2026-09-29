@@ -34,6 +34,7 @@ services:
       - fibs
       - quip
       - wave
+      - floe
       - storm
 
   # сервер онлайн-аукциона (WebSocket + API); nginx проксирует в него /auction/ws и /auction/api/
@@ -208,6 +209,29 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # сервер «Царя льдины» (WebSocket, 20 тиков в секунду); nginx проксирует в него /floe/ws и /floe/api/.
+  # В дампе — только комнаты с людьми и токенами: идущая партия после рестарта отменяется.
+  floe:
+    build: ./floe
+    image: randomhostfloe:latest
+    container_name: randomhost-floe
+    cpuset: "2-5"
+    restart: always
+    mem_limit: 128m
+    volumes:
+      - floe-state:/app/state
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3700/floe/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   auction-state:
   roulette-state:
@@ -215,3 +239,4 @@ volumes:
   fibs-state:
   quip-state:
   wave-state:
+  floe-state:

@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a2d4d">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f427.svg" type="image/svg+xml">
+<title>Царь льдины — кто ведёт дейлик: сумо пингвинов онлайн</title>
+<meta name="robots" content="index,follow">
+<meta name="description" content="🐧 Царь льдины: мультиплеерное сумо пингвинов на тающей льдине. Каждый управляет своим пингвином с телефона или компьютера, партия — минута. Кто первым упал в воду — ведёт дейлик." data-i18n-meta="_meta">
+<!-- ссылки на комнаты (?r=КОД) — та же страница: в выдаче должна быть одна, без кода -->
+<link rel="canonical" href="https://randomhost.online/floe-battle.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Царь льдины — кто ведёт дейлик">
+<meta property="og:description" content="Сумо пингвинов на тающей льдине. Минута на партию, первый упавший ведёт дейлик.">
+<meta property="og:url" content="https://randomhost.online/floe-battle.html">
+<meta property="og:site_name" content="Рандомайзер Онлайн">
+<meta property="og:locale" content="ru_RU">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@700&family=Montserrat:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  /* Мир — тот же, что у «Пингвинов на льдине»: ночное море, льдина, шапки. Интерфейс — тёмное стекло поверх арены
+     (floe-battle-spec.md §7). Арена всегда на весь экран, панели её не сдвигают. */
+  :root {
+    --ink: #f4fbff;
+    --muted: #9cc3dc;
+    --panel: rgba(6, 24, 44, 0.9);
+    --line: rgba(160, 215, 245, 0.18);
+    --gold: #ffd23f;
+    --red: #e0414b;
+    --ice: #8ee8ff;
+    --lang-switch-bg: rgba(6, 24, 44, 0.85);
+    --lang-switch-border: rgba(160, 215, 245, 0.25);
+    --lang-switch-font: Montserrat, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; background: #051b31; color: var(--ink); font: 500 15px/1.4 Montserrat, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  body { touch-action: manipulation; }
+  body.playing { touch-action: none; user-select: none; -webkit-user-select: none; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  #arena { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  /* на широком экране арена справа от панели, а не под ней */
+  @media (min-width: 900px) { body.with-panel #arena { left: 340px; width: calc(100% - 340px); } body.with-panel .hud, body.with-panel .banner, body.with-panel .big { margin-left: 170px; } }
+  @media (max-height: 500px) and (min-width: 600px) { body.with-panel #arena { left: 300px; width: calc(100% - 300px); } body.with-panel .verdict, body.with-panel .hud { margin-left: 150px; } }
+
+  /* ----- Шапка ----- */
+  .util { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); right: 118px; z-index: 12; display: flex; gap: 8px; }
+  .sound-toggle-btn { width: 40px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); display: grid; place-items: center; }
+  body.playing .util, body.playing .lang-switch { display: none !important; }
+
+  /* ----- Левая панель: вход, лобби, итог ----- */
+  .panel { position: fixed; top: 12px; left: 12px; bottom: 12px; width: 316px; z-index: 10; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(10, 36, 64, 0.96), rgba(6, 24, 44, 0.96)); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 18px 50px rgba(0,0,0,0.35); overflow: hidden; transition: transform 0.3s ease, opacity 0.3s; }
+  body.playing .panel { transform: translateX(calc(-100% - 24px)); opacity: 0; pointer-events: none; }
+  .p-body { flex: 1; overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; scrollbar-color: rgba(160,215,245,0.25) transparent; }
+  .p-foot { padding: 12px 14px; border-top: 1px solid var(--line); background: rgba(4, 16, 30, 0.5); display: grid; gap: 8px; }
+  .p-foot:empty { display: none; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand .logo { font-size: 30px; line-height: 1; }
+  .brand h1 { font-family: 'Comfortaa', sans-serif; font-size: 21px; line-height: 1.1; }
+  .brand small { display: block; font: 600 12px Montserrat, sans-serif; color: var(--muted); margin-top: 3px; }
+  .back { color: var(--muted); font-size: 13px; font-weight: 600; text-decoration: none; }
+  .back:hover { color: var(--ink); }
+  .lede { color: #d6ebf7; font-size: 14px; line-height: 1.5; }
+  .rules { list-style: none; display: grid; gap: 8px; counter-reset: r; }
+  .rules li { display: grid; grid-template-columns: 26px 1fr; gap: 8px; font-size: 13.5px; color: #d6ebf7; line-height: 1.45; }
+  .rules li::before { counter-increment: r; content: counter(r); width: 24px; height: 24px; border-radius: 50%; background: rgba(142,232,255,0.15); color: var(--ice); font-weight: 800; font-size: 12px; display: grid; place-items: center; }
+  .sec { padding: 12px 2px 2px; border-top: 1px solid var(--line); box-shadow: inset 0 2px 0 rgba(142,232,255,0.08); }
+  .sec h3 { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px; }
+  .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; border: 0; border-radius: 14px; padding: 14px 12px; font: 800 16px Montserrat, sans-serif; color: #3b2400; background: linear-gradient(135deg, #ffe27a, #ffc21a); box-shadow: 0 4px 0 #b88400; text-decoration: none; }
+  .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #b88400; }
+  .btn:disabled { opacity: 0.45; cursor: default; transform: none; box-shadow: 0 4px 0 #b88400; }
+  .btn.ghost { background: rgba(255,255,255,0.08); color: var(--ink); box-shadow: none; font-weight: 700; font-size: 14px; padding: 11px 12px; border-radius: 12px; }
+  .btn.ghost:hover { background: rgba(255,255,255,0.14); }
+  .row2 { display: flex; gap: 8px; }
+  .row2 > * { flex: 1; }
+  .field { width: 100%; background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 12px; padding: 12px; font: 700 16px Montserrat, sans-serif; color: var(--ink); }
+  .field:focus { outline: none; border-color: var(--ice); }
+  .field.code { text-transform: uppercase; letter-spacing: 0.08em; }
+  .err { color: #ff9a9a; font-size: 13px; font-weight: 600; min-height: 18px; }
+  .fine { color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .link { background: none; border: 0; color: var(--ice); font-weight: 700; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; padding: 4px 0; }
+
+  /* шапки */
+  .hats { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; }
+  .hatb { aspect-ratio: 1; border-radius: 50%; border: 0; background: radial-gradient(circle at 35% 30%, #fff8, transparent 55%), var(--c); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.2); position: relative; }
+  .hatb.on { outline: 3px solid #fff; outline-offset: 2px; }
+  .hatb:disabled { opacity: 0.35; cursor: default; }
+  .hatb:disabled::after { content: ''; position: absolute; left: 12%; right: 12%; top: 50%; height: 2px; background: rgba(6,24,44,0.8); transform: rotate(-45deg); }
+  .hat-now { display: flex; align-items: center; gap: 10px; }
+  .hat-now .hatb { width: 30px; flex: none; }
+
+  /* комната */
+  .code-box { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+  .code-box .code { font: 900 26px Montserrat, sans-serif; letter-spacing: 0.06em; }
+  .code-box .qr { width: 76px; height: 76px; background: #fff; border-radius: 10px; padding: 5px; }
+  .code-box .qr img, .code-box .qr canvas { width: 100% !important; height: 100% !important; }
+  .plist { display: grid; gap: 5px; }
+  .pl { display: grid; grid-template-columns: 26px 1fr auto auto; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 11px; background: rgba(255,255,255,0.04); }
+  .pl.me { background: rgba(255,255,255,0.1); }
+  .pl.off { opacity: 0.45; }
+  .pl .dot { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff8, transparent 55%), var(--c); }
+  .pl b { font-weight: 700; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pl .ping { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .pl .ping.bad { color: var(--gold); }
+  .pl .x { width: 22px; height: 22px; border-radius: 6px; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
+  .pl .x:hover { background: rgba(255,90,90,0.2); color: #fff; }
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 7px 10px; align-items: center; font-size: 12.5px; color: var(--muted); }
+  .keys b { color: var(--ink); }
+  .kk { display: flex; gap: 3px; }
+  kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; background: rgba(255,255,255,0.1); border-radius: 5px; box-shadow: inset 0 -2px 0 rgba(0,0,0,0.3); font: 700 10px Montserrat, sans-serif; color: var(--ink); }
+  .waitline { text-align: center; color: var(--muted); font-size: 13px; font-weight: 600; }
+
+  /* итог */
+  .host-card { background: rgba(224, 65, 75, 0.18); border: 1px solid rgba(255, 90, 90, 0.5); border-radius: 16px; padding: 14px; text-align: center; }
+  .host-card .lbl { color: #ffb3b3; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; }
+  .host-card .nm { font-size: 36px; font-weight: 900; margin-top: 4px; line-height: 1.1; overflow-wrap: anywhere; }
+  .host-card .note { color: #ffb3b3; font-size: 12px; margin-top: 4px; }
+  .king-line { text-align: center; color: var(--muted); font-size: 13px; font-weight: 600; }
+  .king-line b { color: var(--ink); }
+  .noms div { display: flex; justify-content: space-between; gap: 8px; }
+  .table { display: grid; gap: 3px; }
+  .table .r { display: grid; grid-template-columns: 22px 14px 1fr auto; gap: 8px; align-items: center; font-size: 14px; padding: 5px 4px; border-bottom: 1px solid var(--line); }
+  .table .r.me { background: rgba(255,255,255,0.06); border-radius: 8px; }
+  .table .pl-n { color: var(--muted); font-weight: 800; text-align: right; }
+  .table .d { width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
+  .table .nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .table .ex { color: var(--muted); font-size: 12px; }
+  .noms { font-size: 13px; color: var(--muted); line-height: 1.6; }
+  .noms b { color: var(--ink); }
+
+  /* ----- Во время боя ----- */
+  .hud { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 5; display: none; gap: 8px; align-items: center; pointer-events: none; }
+  body.playing .hud, body.watching .hud { display: flex; }
+  .pill { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: 14px; white-space: nowrap; }
+  .timer { font-variant-numeric: tabular-nums; font-size: 18px; min-width: 72px; text-align: center; }
+  .timer.low { color: var(--gold); }
+  .timer.ot { color: #fff; background: rgba(205, 48, 58, 0.92); }
+  .quit { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 12px; z-index: 6; display: none; width: 40px; height: 38px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 16px; }
+  body.playing .quit { display: block; }
+  .big { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 8; pointer-events: none; font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: min(22vw, 150px); color: #06182c; -webkit-text-stroke: 4px #fff; paint-order: stroke fill; text-shadow: 0 6px 0 rgba(6,24,44,0.25); opacity: 0; white-space: nowrap; }
+  .big.show { animation: pop 0.9s ease-out forwards; }
+  .big.word { font-size: min(11vw, 76px); }
+  @keyframes pop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); } 18% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); } }
+  .banner { position: fixed; left: 50%; top: 70px; transform: translateX(-50%) translateY(-20px); z-index: 8; pointer-events: none; background: rgba(205, 48, 58, 0.96); color: #fff; border-radius: 16px; padding: 12px 22px; font-weight: 800; font-size: 20px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4); opacity: 0; transition: opacity 0.25s, transform 0.25s; max-width: calc(100vw - 32px); }
+  .banner small { display: block; font-weight: 600; font-size: 12px; opacity: 0.85; margin-top: 2px; }
+  .banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .tag { position: fixed; top: 62px; left: 50%; transform: translateX(-50%); z-index: 8; background: rgba(255,255,255,0.93); color: #06182c; font-weight: 800; border-radius: 999px; padding: 6px 14px; font-size: 13px; display: none; white-space: nowrap; }
+  .tag.show { display: block; }
+  .tag.top { top: 12px; }
+  .feed { position: fixed; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 5; display: flex; flex-direction: column; gap: 5px; align-items: flex-end; pointer-events: none; }
+  .feed div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 5px 10px; font-size: 13px; font-weight: 600; animation: feedIn 0.25s ease-out; max-width: 70vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .feed .mine { border-color: var(--gold); background: rgba(60, 44, 6, 0.92); }
+  .feed .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+  @keyframes feedIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+
+  /* тач: джойстик там, где коснулись, и кнопка рывка */
+  .touch { display: none; }
+  body.is-touch.playing .touch, body.is-touch.inlobby .touch { display: block; }
+  body.inlobby .hud { display: flex; }
+  body.inlobby .hud #alive { display: none; }
+  @media (min-width: 600px) and (max-height: 500px) { body.inlobby .stick-ghost { left: calc(300px + 18%); } }
+  .stick { position: fixed; z-index: 4; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: rgba(255,255,255,0.08); pointer-events: none; opacity: 0; transition: opacity 0.15s; }
+  .stick.on { opacity: 1; }
+  .stick i { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(255,255,255,0.55); }
+  .stick-ghost { position: fixed; z-index: 4; left: 22%; bottom: 20%; width: 110px; height: 110px; margin: 0 0 -55px -55px; border-radius: 50%; border: 2px dashed rgba(255,255,255,0.5); background: rgba(255,255,255,0.06); pointer-events: none; transition: opacity 0.4s; }
+  .stick-ghost span { position: absolute; left: 50%; top: calc(100% + 8px); transform: translateX(-50%); white-space: nowrap; background: var(--panel); border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700; }
+  .stick-ghost.gone { opacity: 0; }
+  .dash-btn { position: fixed; right: calc(22px + env(safe-area-inset-right, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 5; width: 94px; height: 94px; border-radius: 50%; border: 0; background: radial-gradient(circle at 35% 30%, #ffe27a, #ffb000); color: #3b2400; font: 900 14px Montserrat, sans-serif; box-shadow: 0 6px 0 #b88400, 0 10px 24px rgba(0,0,0,0.4); touch-action: none; }
+  .dash-btn.cd { filter: grayscale(0.85) brightness(0.65); }
+  /* кольцо перезарядки вокруг кнопки */
+  .dash-btn::after { content: ''; position: absolute; inset: -7px; border-radius: 50%; background: conic-gradient(#fff calc(var(--k, 1) * 1turn), rgba(255,255,255,0.15) 0); -webkit-mask: radial-gradient(circle, transparent 52px, #000 53px); mask: radial-gradient(circle, transparent 52px, #000 53px); pointer-events: none; }
+  .dash-btn.ready { animation: readyPulse 0.45s ease-out; }
+  @keyframes readyPulse { 50% { transform: scale(1.08); } }
+  /* выбыл — смотрит, без кнопок */
+  body.out .touch { display: none !important; }
+  .outpill { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 6; display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 9px 16px; font-weight: 700; font-size: 14px; white-space: nowrap; }
+  body.out .outpill { display: block; }
+  /* вердикт поверх арены на итоге */
+  .verdict { position: fixed; left: 50%; bottom: 7%; transform: translateX(-50%); z-index: 7; pointer-events: none; font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: min(44px, 4.2vw); color: #fff; text-align: center; text-shadow: 0 0 2px #06182c, 0 3px 0 #06182c, 0 6px 24px rgba(0,0,0,0.6); display: none; max-width: calc(100vw - 32px); line-height: 1.15; }
+  .verdict.show { display: block; animation: verdictIn 0.5s cubic-bezier(.2,1.4,.4,1); }
+  @keyframes verdictIn { from { opacity: 0; transform: translate(-50%, 20px) scale(0.9); } }
+  @media (min-width: 900px) { body.with-panel .verdict { margin-left: 170px; } }
+  .skip { position: fixed; right: 16px; bottom: 16px; z-index: 9; display: none; }
+  .skip.show { display: block; }
+  body.is-touch.playing .feed { bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
+  .rotate { position: fixed; inset: 0; z-index: 40; background: #051b31; display: none; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 18px; padding: 30px; line-height: 1.5; }
+  @media (orientation: portrait) and (max-width: 700px) { body.is-touch.playing .rotate { display: flex; } }
+
+  .conn { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: rgba(205, 48, 58, 0.95); color: #fff; font-weight: 800; font-size: 14px; padding: 9px 14px; border-radius: 12px; display: none; white-space: nowrap; }
+  .conn.on { display: block; }
+  .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: #fff; color: #06182c; font-weight: 800; font-size: 14px; padding: 10px 16px; border-radius: 12px; max-width: calc(100% - 32px); display: none; }
+  .toast.on { display: block; animation: toastIn 0.3s ease-out; }
+  @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 10px); } }
+
+  /* узкий экран в портрете: панель — лист снизу, арена видна сверху */
+  @media (max-width: 700px) and (orientation: portrait) {
+    .panel { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 64vh; border-radius: 22px 22px 0 0; border-bottom: 0; }
+    .util { right: 110px; }
+  }
+  /* телефон в ландшафте: панель уже, шрифты плотнее */
+  @media (max-height: 500px) {
+    .brand small, .code-box .qr, .brand .logo { display: none; }
+    .brand h1 { font-size: 17px; }
+    .code-box .code { font-size: 20px; }
+    .verdict { font-size: 22px; bottom: 5%; white-space: nowrap; }
+    .outpill { bottom: auto; top: 44px; font-size: 12px; padding: 6px 12px; }
+    .feed div { font-size: 11px; padding: 3px 8px; }
+    .feed div:nth-last-child(n+4) { display: none; }
+    .panel { top: 8px; bottom: 8px; left: 8px; width: 290px; }
+    .p-body { padding: 12px; gap: 9px; }
+    .hud { top: calc(6px + env(safe-area-inset-top, 0px)); }
+    .pill { padding: 5px 11px; font-size: 12px; }
+    .timer { font-size: 15px; min-width: 60px; }
+    .banner { top: auto; bottom: 14px; font-size: 14px; padding: 7px 14px; border-radius: 12px; max-width: 42vw; }
+    .banner small { font-size: 11px; }
+    .tag { top: 44px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .big.show { animation-duration: 0.01s; } }
+</style>
+</head>
+<body>
+<canvas id="arena" aria-hidden="true"></canvas>
+<div class="util"><button class="sound-toggle-btn" type="button"></button></div>
+<aside class="panel" id="panel"><div class="p-body" id="pbody"></div><div class="p-foot" id="pfoot"></div></aside>
+<button class="quit" id="quit" type="button" aria-label="Выйти">✕</button>
+<div class="hud"><span class="pill timer" id="timer">—</span><span class="pill" id="alive"></span></div>
+<div class="big" id="big"></div>
+<div class="banner" id="banner"></div>
+<div class="tag" id="tag"></div>
+<div class="feed" id="feed"></div>
+<div class="touch">
+  <div class="stick" id="stick"><i id="knob"></i></div>
+  <div class="stick-ghost" id="stickHint"><span id="stickHintT"></span></div>
+  <button class="dash-btn" id="dashBtn" type="button"></button>
+</div>
+<div class="outpill" id="outpill"></div>
+<div class="verdict" id="verdict"></div>
+<button class="btn ghost skip" id="skip" type="button"></button>
+<div class="rotate" id="rotate"></div>
+<div class="conn" id="conn"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Царь льдины — кто ведёт дейлик: сумо пингвинов онлайн`,
+    _meta: `🐧 Царь льдины: мультиплеерное сумо пингвинов на тающей льдине. Каждый управляет своим пингвином с телефона или компьютера, партия — минута. Кто первым упал в воду — ведёт дейлик.`,
+    game: `Царь льдины`, sub: `сумо пингвинов · кто ведёт дейлик`, back: `← Все игры`,
+    lede: `Все заходят по ссылке, каждый управляет своим пингвином — с телефона или компьютера. Партия — минута.`,
+    rule1: `Толкайте соперников в воду рывком и не упадите сами — лёд скользкий.`,
+    rule2: `Льдина тает с краёв, места всё меньше.`,
+    rule3: `<b>Кто первым упал — ведёт дейлик.</b> Последний на льдине — царь.`,
+    create: `Создать комнату`, have_code: `У меня есть код`, code_ph: `Код комнаты`, go: `Войти`,
+    name_title: `Как вас зовут?`, name_ph: `Имя`, hat: `Шапка`, join: `Встать на льдину`,
+    room: `Комната`, copy: `Скопировать ссылку`, copied: `Ссылка скопирована — киньте её в чат созвона`,
+    players: `На льдине`, of_max: `{n} из {m}`, start: `Начать партию`, need_two: `Нужно хотя бы двое`,
+    wait_host: `Ждём, пока {name} начнёт`, you_host: `Вы ведущий комнаты`, practice: `Пока ждём — разминайтесь: падать можно, это не считается.`,
+    controls: `Управление`, k_move: `<b>ход</b> — WASD или стрелки`, k_dash: `<b>рывок</b> туда, куда смотрит стрелка`,
+    k_touch_move: `<b>ход</b> — палец слева, где удобно`, k_touch_dash: `<b>рывок</b> — жёлтая кнопка справа`,
+    dash: `РЫВОК`, stick_hint: `ведите пальцем здесь`,
+    alive: `На льдине: {n} из {m}`, practice_pill: `разминка`, overtime: `добивание`, end: `конец`,
+    go_word: `Толкайся!`, overtime_word: `Добивание!`,
+    host_banner: `🎤 Дейлик ведёт: {name}`, host_first: `первое падение`, host_hits: `упали вместе — меньше попаданий`, host_tie: `ничья — жребий`, host_lottery: `решил жребий`,
+    you_host_banner: `🎤 Дейлик ведёте вы!`,
+    feed_self: `сам`, feed_off: `снят`,
+    replay: `▶ Повтор · замедленно`, skip: `Пропустить`,
+    res_host: `Дейлик ведёт`, res_king: `👑 Царь льдины: {names}`, res_first_at: `первое падение — на {s} с`,
+    res_hits: `упали одновременно — меньше попаданий рывком`, res_tie: `упали одновременно — ничья, решил жребий`, res_lottery: `все отвалились от сети — решил жребий`,
+    nom_push: `Больше всех столкнул: {who} — {n}`, nom_self: `Сам себе враг: {who}`,
+    again: `Реванш`, to_lobby: `В лобби`, show_replay: `Повтор`, wait_again: `Ждём, пока {name} начнёт реванш`,
+    watching: `Партия уже идёт — вы смотрите. Следующая — с вами`,
+    rotate: `Поверните телефон горизонтально 🔄`,
+    conn_lost: `Связь пропала — переподключаемся…`, conn_blocked: `Нет связи с игрой. Проверьте интернет или зайдите через мобильную сеть`,
+    no_room: `Комнаты нет`, no_room_text: `Код неверный или комната закрылась: она живёт полчаса без игры.`, new_game: `Новая комната`,
+    kicked: `Ведущий убрал вас из комнаты`, replaced: `Вы вошли с другой вкладки`, play_here: `Играть здесь`,
+    room_full: `В комнате уже 12 пингвинов`, busy: `Сервер занят — попробуйте через минуту`, bad_name: `Введите имя`,
+    too_many_rooms: `Слишком много комнат — попробуйте позже`, server_error: `Что-то сломалось на сервере`,
+    quit_confirm: `Выйти из партии? Пингвин останется на льдине без управления.`,
+    ping_bad: `может подлагивать`, you: ` · вы`, place: `{n}`,
+    made_room: `создал комнату`, change_hat: `сменить`, practice_hud: `Разминка — падать можно`, out_pill: `Вы в воде — смотрите, кто станет царём`,
+    verdict: `🎤 {name} ведёт дейлик`, verdict_you: `🎤 Дейлик ведёте вы`, kos: `{n} в воду`, look_here: `смотрите сюда`,
+    w_bang: `БАХ!`, w_graze: `вскользь`, w_miss: `мимо`, w_ouch: `ОЙ!`, w_ko: `+1 в воду!`, w_splash: `ПЛЮХ!`, w_clash: `ЛОБ В ЛОБ!`,
+  },
+  en: {
+    _title: `King of the Floe — who hosts the stand-up: online penguin sumo`,
+    _meta: `🐧 King of the Floe: multiplayer penguin sumo on a melting ice floe. Everyone controls their own penguin from a phone or computer, one-minute rounds. First one in the water hosts the daily.`,
+    game: `King of the Floe`, sub: `penguin sumo · who hosts the daily`, back: `← All games`,
+    lede: `Everyone joins by link and controls their own penguin — from a phone or computer. A round takes a minute.`,
+    rule1: `Dash into rivals to knock them into the water, and don't fall yourself — the ice is slippery.`,
+    rule2: `The floe melts from the edges, space keeps shrinking.`,
+    rule3: `<b>First one to fall hosts the daily.</b> Last one standing is the King of the Floe.`,
+    create: `Create a room`, have_code: `I have a code`, code_ph: `Room code`, go: `Enter`,
+    name_title: `What's your name?`, name_ph: `Name`, hat: `Hat`, join: `Step onto the ice`,
+    room: `Room`, copy: `Copy link`, copied: `Link copied — drop it in the call chat`,
+    players: `On the floe`, of_max: `{n} of {m}`, start: `Start the round`, need_two: `Need at least two`,
+    wait_host: `Waiting for {name} to start`, you_host: `You host this room`, practice: `While you wait, warm up: falls don't count.`,
+    controls: `Controls`, k_move: `<b>move</b> — WASD or arrows`, k_dash: `<b>dash</b> where the arrow points`,
+    k_touch_move: `<b>move</b> — drag on the left side`, k_touch_dash: `<b>dash</b> — the yellow button on the right`,
+    dash: `DASH`, stick_hint: `drag here`,
+    alive: `On the floe: {n} of {m}`, practice_pill: `warm-up`, overtime: `sudden death`, end: `finished`,
+    go_word: `Push!`, overtime_word: `Sudden death!`,
+    host_banner: `🎤 Daily host: {name}`, host_first: `first to fall`, host_hits: `fell together — fewer hits`, host_tie: `a tie — drawn by lot`, host_lottery: `drawn by lot`,
+    you_host_banner: `🎤 You host the daily!`,
+    feed_self: `on their own`, feed_off: `dropped`,
+    replay: `▶ Replay · slow motion`, skip: `Skip`,
+    res_host: `Daily host`, res_king: `👑 King of the Floe: {names}`, res_first_at: `first to fall — at {s} s`,
+    res_hits: `fell at the same time — fewer hits`, res_tie: `fell at the same time — a tie, drawn by lot`, res_lottery: `everyone disconnected — drawn by lot`,
+    nom_push: `Most knockouts: {who} — {n}`, nom_self: `Own worst enemy: {who}`,
+    again: `Rematch`, to_lobby: `To lobby`, show_replay: `Replay`, wait_again: `Waiting for {name} to start a rematch`,
+    watching: `A round is on — you're watching. You'll play the next one`,
+    rotate: `Turn your phone sideways 🔄`,
+    conn_lost: `Connection lost — reconnecting…`, conn_blocked: `Can't reach the game. Check your internet or try mobile data`,
+    no_room: `No such room`, no_room_text: `Wrong code, or the room closed: it lives half an hour without a game.`, new_game: `New room`,
+    kicked: `The host removed you from the room`, replaced: `You joined from another tab`, play_here: `Play here`,
+    room_full: `The room already has 12 penguins`, busy: `The server is busy — try again in a minute`, bad_name: `Enter a name`,
+    too_many_rooms: `Too many rooms — try later`, server_error: `Something broke on the server`,
+    quit_confirm: `Leave the round? Your penguin stays on the ice with no one steering.`,
+    ping_bad: `may lag`, you: ` · you`, place: `{n}`,
+    made_room: `created the room`, change_hat: `change`, practice_hud: `Warm-up — falls don't count`, out_pill: `You're in the water — watch who becomes king`,
+    verdict: `🎤 {name} hosts the daily`, verdict_you: `🎤 You host the daily`, kos: `{n} knocked out`, look_here: `watch here`,
+    w_bang: `BAM!`, w_graze: `glancing`, w_miss: `miss`, w_ouch: `OUCH!`, w_ko: `+1 in the water!`, w_splash: `SPLASH!`, w_clash: `HEAD-ON!`,
+  },
+  el: {
+    _title: `Ο βασιλιάς του πάγου — ποιος κάνει το daily: σούμο πιγκουίνων online`,
+    _meta: `🐧 Ο βασιλιάς του πάγου: σούμο πιγκουίνων για πολλούς σε πάγο που λιώνει. Ο καθένας οδηγεί τον πιγκουίνο του από κινητό ή υπολογιστή, γύρος ενός λεπτού. Όποιος πέσει πρώτος στο νερό κάνει το daily.`,
+    game: `Ο βασιλιάς του πάγου`, sub: `σούμο πιγκουίνων · ποιος κάνει το daily`, back: `← Όλα τα παιχνίδια`,
+    lede: `Όλοι μπαίνουν με σύνδεσμο και ο καθένας οδηγεί τον πιγκουίνο του — από κινητό ή υπολογιστή. Ένας γύρος κρατά ένα λεπτό.`,
+    rule1: `Σπρώξε τους αντιπάλους στο νερό με ορμή και μην πέσεις εσύ — ο πάγος γλιστράει.`,
+    rule2: `Ο πάγος λιώνει από τις άκρες, ο χώρος στενεύει.`,
+    rule3: `<b>Όποιος πέσει πρώτος κάνει το daily.</b> Ο τελευταίος πάνω στον πάγο είναι ο Βασιλιάς.`,
+    create: `Νέο δωμάτιο`, have_code: `Έχω κωδικό`, code_ph: `Κωδικός δωματίου`, go: `Είσοδος`,
+    name_title: `Πώς σε λένε;`, name_ph: `Όνομα`, hat: `Σκουφί`, join: `Πάνω στον πάγο`,
+    room: `Δωμάτιο`, copy: `Αντιγραφή συνδέσμου`, copied: `Ο σύνδεσμος αντιγράφηκε — στείλ' τον στο chat της κλήσης`,
+    players: `Στον πάγο`, of_max: `{n} από {m}`, start: `Έναρξη γύρου`, need_two: `Χρειάζονται τουλάχιστον δύο`,
+    wait_host: `Περιμένουμε τον/την {name} να ξεκινήσει`, you_host: `Είσαι ο οικοδεσπότης`, practice: `Όσο περιμένετε, προθέρμανση: οι πτώσεις δεν μετράνε.`,
+    controls: `Χειρισμός`, k_move: `<b>κίνηση</b> — WASD ή βελάκια`, k_dash: `<b>ορμή</b> προς το βέλος`,
+    k_touch_move: `<b>κίνηση</b> — σύρε το δάχτυλο αριστερά`, k_touch_dash: `<b>ορμή</b> — το κίτρινο κουμπί δεξιά`,
+    dash: `ΟΡΜΗ`, stick_hint: `σύρε εδώ`,
+    alive: `Στον πάγο: {n} από {m}`, practice_pill: `προθέρμανση`, overtime: `ξαφνικός θάνατος`, end: `τέλος`,
+    go_word: `Σπρώξε!`, overtime_word: `Ξαφνικός θάνατος!`,
+    host_banner: `🎤 Το daily κάνει: {name}`, host_first: `πρώτη πτώση`, host_hits: `έπεσαν μαζί — λιγότερα χτυπήματα`, host_tie: `ισοπαλία — κλήρωση`, host_lottery: `κλήρωση`,
+    you_host_banner: `🎤 Το daily το κάνεις εσύ!`,
+    feed_self: `μόνος του`, feed_off: `αποσυνδέθηκε`,
+    replay: `▶ Επανάληψη · αργή κίνηση`, skip: `Παράλειψη`,
+    res_host: `Το daily κάνει`, res_king: `👑 Βασιλιάς του πάγου: {names}`, res_first_at: `πρώτη πτώση — στα {s} δ`,
+    res_hits: `έπεσαν ταυτόχρονα — λιγότερα χτυπήματα`, res_tie: `έπεσαν ταυτόχρονα — ισοπαλία, κλήρωση`, res_lottery: `όλοι αποσυνδέθηκαν — κλήρωση`,
+    nom_push: `Τους περισσότερους έριξε: {who} — {n}`, nom_self: `Εχθρός του εαυτού του: {who}`,
+    again: `Ρεβάνς`, to_lobby: `Στο λόμπι`, show_replay: `Επανάληψη`, wait_again: `Περιμένουμε τον/την {name} για ρεβάνς`,
+    watching: `Ο γύρος τρέχει — παρακολουθείς. Στον επόμενο παίζεις`,
+    rotate: `Γύρισε το κινητό οριζόντια 🔄`,
+    conn_lost: `Χάθηκε η σύνδεση — επανασύνδεση…`, conn_blocked: `Δεν υπάρχει σύνδεση με το παιχνίδι. Έλεγξε το ίντερνετ ή δοκίμασε δεδομένα κινητού`,
+    no_room: `Δεν υπάρχει τέτοιο δωμάτιο`, no_room_text: `Λάθος κωδικός ή το δωμάτιο έκλεισε: ζει μισή ώρα χωρίς παιχνίδι.`, new_game: `Νέο δωμάτιο`,
+    kicked: `Ο οικοδεσπότης σε έβγαλε`, replaced: `Μπήκες από άλλη καρτέλα`, play_here: `Παίξε εδώ`,
+    room_full: `Το δωμάτιο έχει ήδη 12 πιγκουίνους`, busy: `Ο διακομιστής είναι απασχολημένος — δοκίμασε σε ένα λεπτό`, bad_name: `Γράψε όνομα`,
+    too_many_rooms: `Πάρα πολλά δωμάτια — δοκίμασε αργότερα`, server_error: `Κάτι χάλασε στον διακομιστή`,
+    quit_confirm: `Να φύγεις από τον γύρο; Ο πιγκουίνος σου μένει στον πάγο χωρίς οδηγό.`,
+    ping_bad: `ίσως κολλάει`, you: ` · εσύ`, place: `{n}`,
+    made_room: `έφτιαξε το δωμάτιο`, change_hat: `αλλαγή`, practice_hud: `Προθέρμανση — οι πτώσεις δεν μετράνε`, out_pill: `Είσαι στο νερό — δες ποιος θα γίνει βασιλιάς`,
+    verdict: `🎤 Το daily κάνει: {name}`, verdict_you: `🎤 Το daily το κάνεις εσύ`, kos: `{n} στο νερό`, look_here: `κοίτα εδώ`,
+    w_bang: `ΜΠΑΜ!`, w_graze: `ξυστά`, w_miss: `άστοχο`, w_ouch: `ΑΟΥΣ!`, w_ko: `+1 στο νερό!`, w_splash: `ΠΛΑΤΣ!`, w_clash: `ΚΕΦΑΛΙ ΜΕ ΚΕΦΑΛΙ!`,
+  },
+};
+</script>
+<script src="i18n.js"></script>
+<script src="floe/game.js"></script>
+<script src="floe-render.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const T = (k) => (window.I18N ? I18N.t(k) : k);
+  const tpl = (k, v) => String(T(k)).replace(/\{(\w+)\}/g, (_, n) => (v[n] ?? ""));
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const { createGame, moveBody, DEFAULTS } = window.FloeGame;
+  const HAT = window.FloeRender.HAT_COLORS;
+  const Sound = window.FloeRender.Sound;
+  const isTouch = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+  if (isTouch) document.body.classList.add("is-touch");
+
+  const params = new URLSearchParams(location.search);
+  // код идёт в разметку — только алфавит кодов
+  let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 14);
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+
+  const WORDS = () => ({ bang: T("w_bang"), graze: T("w_graze"), miss: T("w_miss"), ouch: T("w_ouch"), ko: T("w_ko"), splash: T("w_splash"), clash: T("w_clash") });
+  const render = window.FloeRender.create($("arena"), { me: null, meSuffix: T("you"), words: WORDS(), topGap: 56 });
+
+  // ===================================================================
+  // Витрина на главном экране: своя партия ботов в браузере, без сервера
+  // ===================================================================
+  let demo = null;
+  function startDemo() {
+    const B = window.FloeBots;
+    demo = { g: createGame({}), bots: new Map() };
+    const names = ["Шкипер", "Ковальски", "Рико", "Прапор", "Кеша", "Пинго"];
+    names.forEach((n, i) => demo.g.addPlayer("d" + i, n, i * 3 % 20));
+    render.reset();
+  }
+  // боты для витрины подгружаем лениво — на странице комнаты они не нужны
+  function loadBots(cb) {
+    if (window.FloeBots) return cb();
+    const s = document.createElement("script");
+    s.src = "floe/bots.js";
+    s.onload = cb;
+    document.head.appendChild(s);
+  }
+
+  // ===================================================================
+  // Сеть
+  // ===================================================================
+  const net = {
+    ws: null, open: false, everOpen: false, retry: 0, dead: false,
+    me: null, token: null, hostId: null, roster: [], cfg: Object.assign({}, DEFAULTS),
+    snaps: [], sh: "", offset: null, rtt: 0, rtts: [], lastPingAt: 0,
+    events: [], replay: null,
+  };
+  const tokenKey = () => "floe-token-" + CODE;
+  const hostKey = () => "floe-host-" + CODE;
+
+  function connect() {
+    if (net.dead) return;
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    const ws = new WebSocket(`${proto}://${location.host}/floe/ws?r=${encodeURIComponent(CODE)}`);
+    net.ws = ws;
+    ws.onopen = () => {
+      net.open = true; net.everOpen = true; net.retry = 0;
+      $("conn").classList.remove("on");
+      if (net.token || net.wantJoin) sendJoin();
+    };
+    ws.onmessage = (e) => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+    ws.onclose = () => {
+      net.open = false;
+      if (net.dead) return;
+      if (!net.everOpen && net.retry === 0) {
+        // не открылось ни разу: либо комнаты нет, либо сети нет — спросим сервер
+        fetch("/floe/api/health", { cache: "no-store" }).then((r) => (r.ok ? showDead("no_room") : Promise.reject())).catch(() => retryLater());
+        net.retry = 1;
+        return;
+      }
+      retryLater();
+    };
+  }
+  function retryLater() {
+    if (net.dead) return;
+    net.retry++;
+    $("conn").textContent = net.retry > 6 ? T("conn_blocked") : T("conn_lost");
+    $("conn").classList.add("on");
+    setTimeout(connect, Math.min(4000, 400 * net.retry));
+  }
+  function send(m) { if (net.ws && net.ws.readyState === 1) net.ws.send(JSON.stringify(m)); }
+  function sendJoin() {
+    send({ type: "join", name: ui.name, ci: ui.ci, token: net.token, hostToken: store.get(hostKey()) || undefined });
+  }
+
+  function onMsg(m) {
+    switch (m.type) {
+      case "hello": Object.assign(net.cfg, m.cfg); break;
+      case "joined":
+        net.me = m.playerId; net.token = m.token;
+        store.set(tokenKey(), m.token);
+        render.setMe(net.me);
+        ui.joinErr = null;
+        redraw();
+        break;
+      case "roster": net.roster = m.players; net.hostId = m.hostId; applyMode(); if (!document.body.classList.contains("playing")) redraw(); break;
+      case "s": onSnap(m); break;
+      case "ev": net.events.push({ at: performance.now() + INTERP_MS, list: m.list }); break;
+      case "replay": net.replay = m; break;
+      case "pong": {
+        const rtt = performance.now() - m.c;
+        net.rtts.push({ rtt, off: m.t - (performance.now() - rtt / 2 - performance.timeOrigin) });
+        if (net.rtts.length > 10) net.rtts.shift();
+        const best = net.rtts.reduce((a, b) => (b.rtt < a.rtt ? b : a));
+        net.offset = best.off; net.rtt = net.rtts.reduce((a, b) => a + b.rtt, 0) / net.rtts.length;
+        break;
+      }
+      case "error":
+        if (m.error === "room_expired") return showDead("no_room");
+        if (!net.me) { ui.joinErr = m.error; net.wantJoin = false; redraw(); }
+        else toast(T(m.error));
+        break;
+      case "kicked": net.me = null; store.set(tokenKey(), ""); net.token = null; showDead("kicked"); break;
+      case "replaced": net.me = null; showDead("replaced"); break;
+    }
+  }
+
+  // ----- снимки и интерполяция -----
+  const INTERP_MS = 100;
+  const serverNow = () => (net.offset == null ? null : performance.timeOrigin + performance.now() + net.offset);
+  function onSnap(m) {
+    if (m.sh) net.sh = m.sh;
+    if (net.offset == null) net.offset = m.t - (performance.timeOrigin + performance.now()) - 40;
+    net.snaps.push(m);
+    if (net.snaps.length > 40) net.snaps.shift();
+    const mine = net.me && m.p.find((p) => p[0] === net.me);
+    if (mine) reconcile(mine, m);
+    if (m.ph !== ui.phase) onPhase(m.ph, ui.phase, m);
+  }
+  const lerpAng = (a, b, t) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * t; };
+  const nameOf = (id) => { const p = net.roster.find((x) => x.id === id); return p ? p.name : "?"; };
+  const ciOf = (id) => { const p = net.roster.find((x) => x.id === id); return p ? p.ci : 0; };
+
+  function sampled() {
+    const S = net.snaps;
+    if (!S.length) return null;
+    const last = S[S.length - 1];
+    const now = serverNow();
+    const rt = now == null ? last.t : now - INTERP_MS;
+    let a = S[0], b = null;
+    for (let i = 0; i < S.length; i++) { if (S[i].t <= rt) a = S[i]; else { b = S[i]; break; } }
+    let k = 0;
+    if (b && b !== a) k = Math.max(0, Math.min(1, (rt - a.t) / (b.t - a.t)));
+    else { b = a; k = 0; }
+    const map = new Map(a.p.map((p) => [p[0], p]));
+    const players = b.p.map((pb) => {
+      const pa = map.get(pb[0]) || pb;
+      const sameSt = pa[6] === pb[6];
+      const t = sameSt ? k : 1;
+      return {
+        id: pb[0], name: nameOf(pb[0]), ci: ciOf(pb[0]),
+        x: pa[1] + (pb[1] - pa[1]) * t, y: pa[2] + (pb[2] - pa[2]) * t,
+        vx: pb[3], vy: pb[4], dir: lerpAng(pa[5], pb[5], t), st: pb[6], dash: pb[7], cd: pb[8], fallT: pb[9], online: !!pb[10],
+      };
+    });
+    return { phase: last.ph, phaseT: last.pt, clock: last.cl, seed: last.sd, R: last.R, sh: net.sh, host: last.host, kings: last.kings, players, t: last.t };
+  }
+
+  // ----- свой пингвин: предсказание -----
+  // Свой пингвин двигается сразу по нажатию той же физикой, что на сервере (moveBody), а каждый снимок мягко подтягивает его
+  // к серверному положению, вынесенному вперёд на полпути пинга. Столкновения и падения решает только сервер.
+  const pred = { on: false, x: 0, y: 0, vx: 0, vy: 0, dir: 0, dashT: 0, cd: 0 };
+  function reconcile(p, m) {
+    const st = p[6];
+    const controlled = m.ph === "lobby" || m.ph === "fight" || m.ph === "overtime";
+    if (st !== "ice" || !controlled) { pred.on = false; return; }
+    const lead = (net.rtt / 2 + 25) / 1000;
+    const tx = p[1] + p[3] * lead, ty = p[2] + p[4] * lead;
+    if (!pred.on) {
+      Object.assign(pred, { on: true, x: tx, y: ty, vx: p[3], vy: p[4], dir: p[5], dashT: p[7] ? net.cfg.DASH_T : 0, cd: p[8] * net.cfg.DASH_CD });
+      return;
+    }
+    const ex = tx - pred.x, ey = ty - pred.y;
+    if (Math.hypot(ex, ey) > 45) { pred.x = tx; pred.y = ty; pred.vx = p[3]; pred.vy = p[4]; }
+    else { pred.x += ex * 0.3; pred.y += ey * 0.3; pred.vx += (p[3] - pred.vx) * 0.3; pred.vy += (p[4] - pred.vy) * 0.3; }
+    const scd = p[8] * net.cfg.DASH_CD;
+    if (Math.abs(scd - pred.cd) > 0.25) pred.cd = scd;
+    if (p[7] && pred.dashT <= 0 && pred.cd < net.cfg.DASH_CD - 0.3) pred.dashT = 0;
+  }
+
+  // ===================================================================
+  // Ввод
+  // ===================================================================
+  const input = { ix: 0, iy: 0, dash: false, seq: 0, sentX: 9, sentY: 9, sentAt: 0 };
+  const down = new Set();
+  const KEYS = ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"];
+  addEventListener("keydown", (e) => {
+    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+    if (!KEYS.includes(e.code)) return;
+    if (!document.body.classList.contains("playing") && ui.phase !== "lobby") return;
+    e.preventDefault();
+    Sound.ensure();
+    if (e.code === "Space" && !e.repeat) input.dash = true;
+    down.add(e.code);
+  });
+  addEventListener("keyup", (e) => down.delete(e.code));
+  addEventListener("blur", () => down.clear());
+  const touch = { id: null, ox: 0, oy: 0, x: 0, y: 0 };
+  const STICK_R = 50;
+  $("arena").addEventListener("touchstart", (e) => {
+    if (!net.me) return;
+    Sound.ensure();
+    for (const t of e.changedTouches) {
+      const left = document.body.classList.contains("inlobby") ? $("panel").getBoundingClientRect().right : 0;
+      if (touch.id !== null || t.clientX > innerWidth * 0.62 || t.clientX < left) continue;
+      touch.id = t.identifier; touch.ox = t.clientX; touch.oy = t.clientY; touch.x = touch.y = 0;
+      $("stick").style.left = t.clientX + "px"; $("stick").style.top = t.clientY + "px";
+      $("stick").classList.add("on"); $("knob").style.transform = "";
+      $("stickHint").classList.add("gone");
+    }
+    if (document.body.classList.contains("playing")) e.preventDefault();
+  }, { passive: false });
+  addEventListener("touchmove", (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier !== touch.id) continue;
+      let dx = t.clientX - touch.ox, dy = t.clientY - touch.oy;
+      const l = Math.hypot(dx, dy);
+      if (l > STICK_R) { dx *= STICK_R / l; dy *= STICK_R / l; }
+      touch.x = dx / STICK_R; touch.y = dy / STICK_R;
+      if (Math.hypot(touch.x, touch.y) < 0.18) touch.x = touch.y = 0;
+      $("knob").style.transform = `translate(${dx}px, ${dy}px)`;
+    }
+  }, { passive: true });
+  const endTouch = (e) => { for (const t of e.changedTouches) if (t.identifier === touch.id) { touch.id = null; touch.x = touch.y = 0; $("stick").classList.remove("on"); } };
+  addEventListener("touchend", endTouch);
+  addEventListener("touchcancel", endTouch);
+  $("dashBtn").addEventListener("touchstart", (e) => { e.preventDefault(); Sound.ensure(); input.dash = true; }, { passive: false });
+  $("dashBtn").addEventListener("mousedown", () => { input.dash = true; });
+
+  function readInput() {
+    let x = 0, y = 0;
+    if (down.has("KeyW") || down.has("ArrowUp")) y -= 1;
+    if (down.has("KeyS") || down.has("ArrowDown")) y += 1;
+    if (down.has("KeyA") || down.has("ArrowLeft")) x -= 1;
+    if (down.has("KeyD") || down.has("ArrowRight")) x += 1;
+    const l = Math.hypot(x, y) || 1;
+    x /= l; y /= l;
+    if (touch.id !== null) { x = touch.x; y = touch.y; }
+    input.ix = Math.round(x * 20) / 20; input.iy = Math.round(y * 20) / 20;
+  }
+
+  function pushInput(dt) {
+    readInput();
+    const dash = input.dash;
+    input.dash = false;
+    const t = performance.now();
+    const changed = input.ix !== input.sentX || input.iy !== input.sentY;
+    if (net.me && (changed || dash || t - input.sentAt > 500)) {
+      send({ type: "i", mx: input.ix, my: input.iy, d: dash ? 1 : 0, s: ++input.seq });
+      input.sentX = input.ix; input.sentY = input.iy; input.sentAt = t;
+    }
+    // предсказание
+    const snap = net.snaps[net.snaps.length - 1];
+    const controlled = snap && (snap.ph === "lobby" || snap.ph === "fight" || snap.ph === "overtime");
+    if (pred.on) {
+      const r = moveBody(pred, net.cfg, dt, input.ix, input.iy, dash, !!controlled);
+      if (r.dashed) Sound.dash();
+    }
+  }
+
+  // ===================================================================
+  // Экран
+  // ===================================================================
+  const ui = {
+    phase: null, name: store.get("floe-name") || "", ci: Number(store.get("floe-hat") || 0), joinErr: null,
+    showResults: false, replay: null, codeOpen: false, lastCount: 0, resultsAt: 0, over: null,
+  };
+
+  function setPanel(body, foot) {
+    $("pbody").innerHTML = body;
+    $("pfoot").innerHTML = foot || "";
+  }
+  const brand = () => `<div class="brand"><span class="logo">🐧</span><h1>${esc(T("game"))}<small>${esc(T("sub"))}</small></h1></div>`;
+  const rulesHtml = (hostFirst) => `<ol class="rules">${(hostFirst ? ["rule3", "rule1", "rule2"] : ["rule1", "rule2", "rule3"]).map((k) => `<li><span>${k === "rule3" ? T(k) : esc(T(k))}</span></li>`).join("")}</ol>`;
+  const controlsHtml = () => `<div class="keys">${isTouch
+    ? `<span>👈</span><span>${T("k_touch_move")}</span><span>🟡</span><span>${T("k_touch_dash")}</span>`
+    : `<span class="kk"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>${T("k_move")}</span><span class="kk"><kbd>Space</kbd></span><span>${T("k_dash")}</span>`}</div>`;
+  const hatGrid = (sel, taken) => `<div class="hats">${HAT.map((c, i) => `<button type="button" class="hatb${i === sel ? " on" : ""}" data-ci="${i}" style="--c:${c[0]}" ${taken.has(i) && i !== sel ? "disabled" : ""} aria-label="${esc(T("hat"))} ${i + 1}"></button>`).join("")}</div>`;
+
+  function redraw() {
+    if (net.dead) return;
+    if (!CODE) return drawHome();
+    if (!net.me) return drawJoin();
+    const ph = ui.phase;
+    if (ph === "over" && ui.showResults) return drawResults();
+    if (ph === "lobby" || ph === "over" || ph == null) return drawLobby();
+  }
+
+  function drawHome() {
+    setPanel(`<a class="back" href="index.html">${esc(T("back"))}</a>${brand()}
+      <p class="lede">${esc(T("lede"))}</p>
+      ${rulesHtml(false)}
+      <div class="sec"><h3>${esc(T("controls"))}</h3>${controlsHtml()}</div>
+      <div class="sec" id="codeSec" ${ui.codeOpen ? "" : "hidden"}>
+        <div class="row2"><input class="field code" id="codeIn" maxlength="14" placeholder="${esc(T("code_ph"))}" autocomplete="off" autocapitalize="characters"><button class="btn ghost" id="codeGo" type="button" style="flex:0 0 auto;width:auto">${esc(T("go"))}</button></div>
+      </div>
+      <div class="err" id="err">${ui.joinErr ? esc(T(ui.joinErr)) : ""}</div>`,
+      `<button class="btn" id="create" type="button">${esc(T("create"))}</button>${ui.codeOpen ? "" : `<button class="link" id="haveCode" type="button">${esc(T("have_code"))}</button>`}`);
+    $("create").onclick = createRoom;
+    if ($("haveCode")) $("haveCode").onclick = () => { ui.codeOpen = true; drawHome(); $("codeIn").focus(); };
+    if ($("codeGo")) {
+      const go = () => { const c = $("codeIn").value.toUpperCase().replace(/[^A-Z2-9]/g, ""); if (c) enterRoom(c); };
+      $("codeGo").onclick = go;
+      $("codeIn").onkeydown = (e) => { if (e.key === "Enter") go(); };
+    }
+  }
+
+  function drawJoin() {
+    const taken = new Set(net.roster.map((p) => p.ci));
+    if (taken.has(ui.ci)) { for (let i = 0; i < HAT.length; i++) if (!taken.has(i)) { ui.ci = i; break; } }
+    setPanel(`<a class="back" href="index.html">${esc(T("back"))}</a>${brand()}
+      <div class="sec"><h3>${esc(T("room"))} <span>${esc(CODE)}</span></h3>
+        <label class="fine" for="nameIn">${esc(T("name_title"))}</label>
+        <input class="field" id="nameIn" maxlength="15" placeholder="${esc(T("name_ph"))}" value="${esc(ui.name)}" autocomplete="nickname" enterkeyhint="go" style="margin-top:6px">
+        <div class="fine" style="margin:12px 0 6px">${esc(T("hat"))}</div>${hatGrid(ui.ci, taken)}
+      </div>
+      <div class="sec">${rulesHtml(true)}</div>
+      ${net.roster.length ? `<div class="sec"><h3>${esc(T("players"))} <span>${esc(tpl("of_max", { n: net.roster.length, m: 12 }))}</span></h3>${playerList(false)}</div>` : ""}
+      <div class="err" id="err">${ui.joinErr ? esc(T(ui.joinErr)) : ""}</div>`,
+      `<button class="btn" id="joinBtn" type="button">${esc(T("join"))}</button>`);
+    const go = () => {
+      const n = $("nameIn").value.trim();
+      if (!n) { ui.joinErr = "bad_name"; $("err").textContent = T("bad_name"); return; }
+      ui.name = n; store.set("floe-name", n); store.set("floe-hat", String(ui.ci));
+      Sound.ensure();
+      net.wantJoin = true;
+      sendJoin();
+    };
+    $("joinBtn").onclick = go;
+    $("nameIn").onkeydown = (e) => { if (e.key === "Enter") go(); };
+    $("nameIn").oninput = () => { ui.name = $("nameIn").value; };
+    document.querySelectorAll(".hatb").forEach((b) => (b.onclick = () => { ui.ci = Number(b.dataset.ci); drawJoin(); }));
+  }
+
+  function playerList(withKick) {
+    const iAmHost = net.me && net.me === net.hostId;
+    return `<div class="plist">${net.roster.map((p) => `<div class="pl${p.id === net.me ? " me" : ""}${p.online ? "" : " off"}">
+      <span class="dot" style="--c:${HAT[p.ci % HAT.length][0]}"></span>
+      <b title="${p.id === net.hostId ? esc(T("made_room")) : ""}">${p.id === net.hostId ? "🔑 " : ""}${esc(p.name)}${p.id === net.me ? esc(T("you")) : ""}</b>
+      <span class="ping${p.ping > 200 ? " bad" : ""}" title="${p.ping > 200 ? esc(T("ping_bad")) : ""}">${p.online ? (p.ping ? p.ping + " ms" : "") : "📡"}</span>
+      ${withKick && iAmHost && p.id !== net.me ? `<button class="x" type="button" data-kick="${esc(p.id)}" aria-label="kick">✕</button>` : "<span></span>"}
+    </div>`).join("")}</div>`;
+  }
+
+  let qrFor = "";
+  function drawLobby() {
+    const iAmHost = net.me === net.hostId;
+    const host = net.roster.find((p) => p.id === net.hostId);
+    const n = net.roster.filter((p) => p.online).length;
+    const meP = net.roster.find((p) => p.id === net.me);
+    const taken = new Set(net.roster.filter((p) => p.id !== net.me).map((p) => p.ci));
+    const url = location.origin + location.pathname + "?r=" + CODE;
+    setPanel(`${brand()}
+      <div class="sec"><h3>${esc(T("room"))}</h3>
+        <div class="code-box"><div><div class="code">${esc(CODE)}</div><button class="link" id="copy" type="button">${esc(T("copy"))}</button></div><div class="qr" id="qr"></div></div>
+      </div>
+      <div class="sec"><h3>${esc(T("players"))} <span>${esc(tpl("of_max", { n: net.roster.length, m: 12 }))}</span></h3>${playerList(true)}</div>
+      <div class="sec"><h3>${esc(T("controls"))}</h3>${controlsHtml()}<p class="fine" style="margin-top:8px">${esc(T("practice"))}</p></div>
+      <div class="sec"><h3>${esc(T("hat"))}</h3>${ui.hatOpen ? hatGrid(meP ? meP.ci : 0, taken)
+        : `<div class="hat-now"><span class="hatb on" style="--c:${HAT[(meP ? meP.ci : 0) % HAT.length][0]}"></span><button class="link" id="hatOpen" type="button">${esc(T("change_hat"))}</button></div>`}</div>`,
+      iAmHost
+        ? `<button class="btn" id="startBtn" type="button" ${n < 2 ? "disabled" : ""}>${esc(n < 2 ? T("need_two") : T("start"))}</button>`
+        : `<div class="waitline">${esc(tpl("wait_host", { name: host ? host.name : "…" }))}</div>`);
+    if ($("startBtn")) $("startBtn").onclick = () => { Sound.ensure(); send({ type: "start" }); };
+    $("copy").onclick = () => copyLink(url);
+    document.querySelectorAll("[data-kick]").forEach((b) => (b.onclick = () => send({ type: "kick", playerId: b.dataset.kick })));
+    if ($("hatOpen")) $("hatOpen").onclick = () => { ui.hatOpen = true; drawLobby(); };
+    document.querySelectorAll(".hats .hatb").forEach((b) => (b.onclick = () => { ui.ci = Number(b.dataset.ci); ui.hatOpen = false; store.set("floe-hat", String(ui.ci)); send({ type: "hat", ci: ui.ci }); }));
+    if (window.QRCode) { new QRCode($("qr"), { text: url, width: 120, height: 120, colorDark: "#06182c", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M }); qrFor = url; }
+    else setTimeout(() => { if ($("qr") && !$("qr").children.length && window.QRCode) new QRCode($("qr"), { text: url, width: 120, height: 120, colorDark: "#06182c", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M }); }, 800);
+  }
+
+  function copyLink(url) {
+    const ok = () => toast(T("copied"));
+    if (navigator.clipboard) navigator.clipboard.writeText(url).then(ok, () => prompt("", url));
+    else prompt("", url);
+  }
+
+  function drawResults() {
+    const ov = ui.over;
+    if (!ov || !ov.stats || !ov.host) return drawLobby();
+    const s = ov.stats, h = ov.host;
+    const note = h.lottery ? T("res_lottery") : h.tie === "hits" ? T("res_hits") : h.tie === "lottery" ? T("res_tie") : tpl("res_first_at", { s: h.at.toFixed(1) });
+    const nm = (id) => { const p = s.players.find((x) => x.id === id); return p ? p.name : nameOf(id); };
+    const kings = ov.kings.map(nm).join(", ");
+    const rows = s.players.slice().sort((a, b) => a.place - b.place).map((p) => `<div class="r${p.id === net.me ? " me" : ""}"><span class="pl-n">${p.place}</span><span class="d" style="--c:${HAT[ciOf(p.id) % HAT.length][0]}"></span><span class="nm">${esc(p.name)}${p.id === h.id ? " 🎤" : ""}${ov.kings.includes(p.id) ? " 👑" : ""}</span><span class="ex">${p.kos ? esc(tpl("kos", { n: p.kos })) : ""}${p.selfFall ? " 🙃" : ""}${p.removed ? " 📡" : ""}</span></div>`).join("");
+    const nomLine = (key, who, n) => { const [label] = String(T(key)).split(":"); return `<div><span>${esc(label)}</span><b>${esc(who || "—")}${n ? " · " + n : ""}</b></div>`; };
+    const noms = [nomLine("nom_push", s.pusher.map(nm).join(", "), s.maxKos || 0), nomLine("nom_self", s.selfFallers.map(nm).join(", "))];
+    const iAmHost = net.me === net.hostId;
+    const host = net.roster.find((p) => p.id === net.hostId);
+    setPanel(`${brand()}
+      <div class="host-card"><div class="lbl">${esc(T("res_host"))}</div><div class="nm">🎤 ${esc(nm(h.id))}</div><div class="note">${esc(note)}</div></div>
+      <div class="king-line">${esc(String(T("res_king")).split("{names}")[0])}<b>${esc(kings || "—")}</b></div>
+      <div class="table">${rows}</div>
+      <div class="noms">${noms.join("")}</div>`,
+      iAmHost
+        ? `<button class="btn" id="again" type="button">${esc(T("again"))}</button><div class="row2"><button class="btn ghost" id="rep" type="button">${esc(T("show_replay"))}</button><button class="btn ghost" id="lob" type="button">${esc(T("to_lobby"))}</button></div>`
+        : `<div class="waitline">${esc(tpl("wait_again", { name: host ? host.name : "…" }))}</div>${net.replay ? `<button class="btn ghost" id="rep" type="button">${esc(T("show_replay"))}</button>` : ""}`);
+    if ($("again")) $("again").onclick = () => { Sound.ensure(); send({ type: "start" }); };
+    if ($("lob")) $("lob").onclick = () => send({ type: "lobby" });
+    if ($("rep")) $("rep").onclick = startReplay;
+    // сцена: камера и луч на ведущем дейлика, крупный вердикт поверх арены
+    render.setFocus(h.id, "host");
+    $("verdict").textContent = h.id === net.me ? T("verdict_you") : tpl("verdict", { name: nm(h.id) });
+    $("verdict").classList.add("show");
+    $("feed").innerHTML = "";
+  }
+  function clearResultsScene() {
+    render.setFocus(null);
+    $("verdict").classList.remove("show");
+  }
+
+  function showDead(kind) {
+    net.dead = true;
+    try { net.ws && net.ws.close(); } catch (e) {}
+    $("conn").classList.remove("on");
+    document.body.classList.remove("playing", "watching");
+    const map = { no_room: ["no_room", "no_room_text"], kicked: ["kicked", ""], replaced: ["replaced", ""] };
+    const [title, text] = map[kind] || [kind, ""];
+    setPanel(`<a class="back" href="index.html">${esc(T("back"))}</a>${brand()}<h2 style="font-size:20px">${esc(T(title))}</h2>${text ? `<p class="lede">${esc(T(text))}</p>` : ""}`,
+      kind === "replaced" ? `<button class="btn" id="here" type="button">${esc(T("play_here"))}</button>` : `<a class="btn" href="floe-battle.html">${esc(T("new_game"))}</a>`);
+    if ($("here")) $("here").onclick = () => { net.dead = false; net.retry = 0; net.everOpen = false; connect(); redraw(); };
+  }
+
+  async function createRoom() {
+    Sound.ensure();
+    $("create").disabled = true;
+    try {
+      const r = await fetch("/floe/api/rooms", { method: "POST" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "server_error");
+      store.set("floe-host-" + j.code, j.hostToken);
+      enterRoom(j.code);
+    } catch (e) {
+      ui.joinErr = /too_many/.test(e.message) ? "too_many_rooms" : "conn_blocked";
+      drawHome();
+    }
+  }
+
+  function enterRoom(code) {
+    CODE = code;
+    history.pushState(null, "", "?r=" + code);
+    demo = null;
+    net.token = store.get(tokenKey()) || null;
+    net.wantJoin = !!net.token;
+    render.reset();
+    connect();
+    redraw();
+  }
+
+  // ----- фазы -----
+  function onPhase(ph, prev, m) {
+    ui.phase = ph;
+    if (ph === "countdown") { ui.showResults = false; stopReplay(); clearResultsScene(); $("feed").innerHTML = ""; document.body.classList.remove("out"); }
+    if (ph === "lobby") { ui.showResults = false; stopReplay(); clearResultsScene(); document.body.classList.remove("out"); }
+    applyMode();
+    redraw();
+  }
+  // играю / смотрю / панель: зависит и от фазы, и от списка игроков — зовётся на обоих
+  function applyMode() {
+    const ph = ui.phase;
+    const inGame = net.roster.find((p) => p.id === net.me)?.inGame;
+    const play = (ph === "countdown" || ph === "fight" || ph === "overtime");
+    document.body.classList.toggle("inlobby", ph === "lobby" && !!net.me && !net.dead);
+    document.body.classList.toggle("playing", play && !!inGame);
+    document.body.classList.toggle("watching", play && !inGame && !!net.me);
+    document.body.classList.toggle("with-panel", !play && !(ph === "over" && ui.replay));
+    $("tag").classList.toggle("show", play && !inGame && !!net.me);
+    if (play && !inGame && net.me) $("tag").textContent = T("watching");
+    else if (!ui.replay) $("tag").classList.remove("show");
+  }
+
+  // ----- события: лента, плашки, звуки -----
+  function onEvents(list) {
+    for (const e of list) {
+      if (e.type === "fall" && !e.practice && e.id === net.me) document.body.classList.add("out");
+      if (e.type === "fall" && !e.practice) {
+        const mine = e.id === net.me || e.by === net.me;
+        if (e.offline) pushFeed(`📡 ${tag(e.id)} ${esc(T("feed_off"))}`);
+        else if (e.by) pushFeed(`${tag(e.by)} → ${tag(e.id)}`, mine);
+        else pushFeed(`${tag(e.id)} 🙃 ${esc(T("feed_self"))}`, mine);
+      }
+      if (e.type === "removed") pushFeed(`📡 ${tag(e.id)} ${esc(T("feed_off"))}`);
+      if (e.type === "host") {
+        const note = e.lottery ? T("host_lottery") : e.tie === "hits" ? T("host_hits") : e.tie === "lottery" ? T("host_tie") : T("host_first");
+        banner(e.id === net.me ? T("you_host_banner") : tpl("host_banner", { name: nameOf(e.id) }), note);
+        Sound.host();
+      }
+      if (e.type === "go") { big(T("go_word"), true); Sound.go(); }
+      if (e.type === "phase" && e.phase === "overtime") big(T("overtime_word"), true);
+      if (e.type === "over") { ui.over = e; ui.resultsAt = performance.now() + 1400; document.body.classList.remove("out"); }
+    }
+  }
+  function tag(id) { return `<span class="dot" style="background:${HAT[ciOf(id) % HAT.length][0]}"></span>${esc(nameOf(id))}`; }
+  function pushFeed(html, mine) {
+    const el = document.createElement("div");
+    if (mine) el.className = "mine";
+    el.innerHTML = html;
+    $("feed").appendChild(el);
+    while ($("feed").children.length > 5) $("feed").firstChild.remove();
+  }
+  function big(text, word) {
+    const el = $("big");
+    el.textContent = text;
+    el.classList.toggle("word", !!word);
+    el.classList.remove("show"); void el.offsetWidth; el.classList.add("show");
+  }
+  let bannerT = 0;
+  function banner(title, note) {
+    const el = $("banner");
+    el.innerHTML = "";
+    el.append(document.createTextNode(title));
+    if (note) { const s = document.createElement("small"); s.textContent = note; el.append(s); }
+    el.classList.add("show");
+    clearTimeout(bannerT);
+    bannerT = setTimeout(() => el.classList.remove("show"), 2600);
+  }
+  let toastT = 0;
+  function toast(text) {
+    const el = $("toast");
+    el.textContent = text; el.classList.add("on");
+    clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 2600);
+  }
+
+  // ----- повтор первого падения -----
+  function startReplay() {
+    const r = net.replay;
+    if (!r || !r.frames || r.frames.length < 2) { ui.showResults = true; redraw(); return; }
+    ui.replay = { frames: r.frames, t: r.frames[0].t, at: r.at, end: r.frames[r.frames.length - 1].t, i: 0, fallT: new Map(), ev: allEvents.slice() };
+    document.body.classList.remove("with-panel");
+    $("panel").style.display = "none";
+    $("tag").textContent = T("replay");
+    $("tag").classList.add("show", "top");
+    $("skip").classList.add("show");
+    $("feed").style.visibility = "hidden";
+    render.reset();
+    render.setFocus(r.host, "mark");
+  }
+  function stopReplay() {
+    if (!ui.replay) return;
+    ui.replay = null;
+    $("panel").style.display = "";
+    $("tag").classList.remove("show", "top");
+    $("skip").classList.remove("show");
+    $("feed").style.visibility = "";
+    render.setFocus(null);
+    render.reset();
+  }
+  const allEvents = [];
+  function replayStep(dt) {
+    const r = ui.replay;
+    const prevT = r.t;
+    r.t += dt * (r.t > r.at - 1.2 ? 0.35 : 1);
+    while (r.i < r.frames.length - 1 && r.frames[r.i + 1].t <= r.t) r.i++;
+    const f = r.frames[r.i], g = r.frames[Math.min(r.i + 1, r.frames.length - 1)];
+    const k = g.t > f.t ? Math.max(0, Math.min(1, (r.t - f.t) / (g.t - f.t))) : 0;
+    const gm = new Map(g.p.map((q) => [q[0], q]));
+    const players = f.p.map(([id, x, y, vx, vy, dir, st, dash]) => {
+      const q = gm.get(id);
+      if (q && q[6] === st) { x += (q[1] - x) * k; y += (q[2] - y) * k; }
+      if (st === "fall" && !r.fallT.has(id)) r.fallT.set(id, f.t);
+      if (st === "ice") r.fallT.delete(id);
+      return { id, name: nameOf(id), ci: ciOf(id), x, y, vx, vy, dir, st, dash, cd: 0, online: true, fallT: r.fallT.has(id) ? r.t - r.fallT.get(id) : 0 };
+    });
+    const last = net.snaps[net.snaps.length - 1];
+    const snap = { phase: "replay", seed: last.sd, R: last.R, sh: f.sh, host: r.t >= r.at ? last.host : null, kings: [], players };
+    const evs = r.ev.filter((e) => e.clock > prevT && e.clock <= r.t && ["hit", "bump", "fall", "crack", "sink", "dash", "whiff"].includes(e.type));
+    render.apply(snap, evs, r.i === 0);
+    if (r.t >= r.end + 0.4) finishReplay();
+  }
+  function finishReplay() {
+    stopReplay(); ui.showResults = true; document.body.classList.add("with-panel"); redraw();
+  }
+
+  // ----- верх экрана -----
+  function hud(snap) {
+    const t = $("timer");
+    const ph = snap.phase;
+    if (ph === "countdown") { t.textContent = String(net.cfg.FIGHT_T); t.className = "pill timer"; }
+    else if (ph === "overtime") { t.textContent = T("overtime"); t.className = "pill timer ot"; }
+    else if (ph === "fight") {
+      const left = Math.max(0, net.cfg.FIGHT_T - snap.clock);
+      t.textContent = left.toFixed(left < 10 ? 1 : 0);
+      t.className = "pill timer" + (left < 10 ? " low" : "");
+    } else { t.textContent = ph === "over" ? T("end") : T("practice_hud"); t.className = "pill timer"; }
+    const inGame = new Set(net.roster.filter((p) => p.inGame).map((p) => p.id));
+    const list = snap.players.filter((p) => inGame.has(p.id));
+    $("alive").textContent = tpl("alive", { n: list.filter((p) => p.st === "ice").length, m: list.length });
+    const k = 1 - Math.max(0, Math.min(1, pred.cd / net.cfg.DASH_CD));
+    const db = $("dashBtn");
+    db.style.setProperty("--k", k.toFixed(3));
+    const wasCd = db.classList.contains("cd");
+    db.classList.toggle("cd", pred.cd > 0);
+    if (wasCd && pred.cd <= 0) { db.classList.remove("ready"); void db.offsetWidth; db.classList.add("ready"); }
+    if (ph === "countdown") {
+      const n = Math.ceil(net.cfg.COUNTDOWN - snap.phaseT);
+      if (n !== ui.lastCount && n > 0) { ui.lastCount = n; big(String(n)); Sound.tick(); }
+    } else ui.lastCount = 0;
+  }
+
+  // ===================================================================
+  // Цикл
+  // ===================================================================
+  let last = performance.now(), pingAt = 0;
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    const t = now / 1000;
+    if (demo) {
+      for (const [id, p] of demo.g.byId) {
+        let b = demo.bots.get(id);
+        if (!b && window.FloeBots) { b = FloeBots.createBot(FloeBots.STYLE_KEYS[demo.bots.size % 4]); demo.bots.set(id, b); }
+        if (b) { FloeBots.think(demo.g, p, b, dt); demo.g.setInput(id, b.mx, b.my, b.dash); }
+      }
+      demo.g.step(dt);
+      render.apply(demo.g.snapshot(), demo.g.drainEvents().filter((e) => e.type !== "fall" || true));
+    } else if (CODE) {
+      if (net.open && now - pingAt > 2000) { pingAt = now; send({ type: "ping", c: now, rtt: Math.round(net.rtt) }); }
+      if (ui.replay) replayStep(dt);
+      else {
+        pushInput(dt);
+        const snap = sampled();
+        if (snap) {
+          if (pred.on && net.me) {
+            const me = snap.players.find((p) => p.id === net.me);
+            if (me && me.st === "ice") Object.assign(me, { x: pred.x, y: pred.y, vx: pred.vx, vy: pred.vy, dir: pred.dir, cd: pred.cd / net.cfg.DASH_CD, dash: pred.dashT > 0 ? 1 : me.dash });
+          }
+          const ready = [];
+          while (net.events.length && net.events[0].at <= now) ready.push(...net.events.shift().list);
+          for (const e of ready) allEvents.push(e);
+          if (allEvents.length > 3000) allEvents.splice(0, 1500);
+          // свой рывок уже прозвучал при нажатии
+          render.apply(snap, ready.filter((e) => !(e.type === "dash" && e.id === net.me)));
+          onEvents(ready);
+          hud(snap);
+          if (ui.phase === "over" && ui.resultsAt && now >= ui.resultsAt) {
+            ui.resultsAt = 0;
+            if (net.replay) startReplay(); else { ui.showResults = true; redraw(); }
+          }
+        }
+      }
+    }
+    render.draw(t, dt);
+    requestAnimationFrame(frame);
+  }
+
+  $("skip").onclick = () => { if (ui.replay) finishReplay(); };
+  $("quit").onclick = () => { if (confirm(T("quit_confirm"))) { send({ type: "leave" }); store.set(tokenKey(), ""); location.href = "floe-battle.html"; } };
+  addEventListener("popstate", () => location.reload());
+  addEventListener("langchange", () => { render.setMe(net.me); applyStatic(); redraw(); });
+  function applyStatic() {
+    $("dashBtn").textContent = T("dash");
+    $("stickHintT").textContent = T("stick_hint");
+    $("rotate").textContent = T("rotate");
+    $("outpill").textContent = T("out_pill");
+    $("skip").textContent = T("skip") + " ›";
+    render.setWords(WORDS());
+    placeSound();
+  }
+  // кнопка звука — сразу слева от переключателя языка, ширина которого зависит от языка
+  function placeSound() {
+    const sw = document.querySelector(".lang-switch");
+    if (!sw) return setTimeout(placeSound, 300);
+    const r = sw.getBoundingClientRect();
+    const u = document.querySelector(".util");
+    u.style.right = Math.ceil(innerWidth - r.left + 8) + "px";
+    u.style.top = Math.round(r.top + (r.height - 36) / 2) + "px";
+  }
+  addEventListener("resize", placeSound);
+
+  // ----- старт -----
+  applyStatic();
+  if (CODE) {
+    net.token = store.get(tokenKey()) || null;
+    net.wantJoin = !!net.token;
+    document.body.classList.add("with-panel");
+    connect();
+    redraw();
+  } else {
+    document.body.classList.add("with-panel");
+    loadBots(() => {});
+    startDemo();
+    drawHome();
+  }
+  requestAnimationFrame(frame);
+  // для проверок headless-ом
+  window.__floe = { net, ui, pred, input, render, get events() { return allEvents; }, get demo() { return demo; } };
+})();
+</script>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+  ym(104849796, 'init', { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+</body>
+</html>
