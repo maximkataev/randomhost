@@ -164,6 +164,7 @@
   @keyframes wipeIn { to { clip-path: inset(0); } }
   .intro p { font-size: clamp(20px, 3vh, 36px); font-weight: 800; max-width: 26em; margin: 0; text-wrap: balance; }
   .intro .eyebrow { font-size: clamp(18px, 2.6vh, 30px); }
+  .intro .leaders { display: grid; gap: 1vh; animation: rise .5s var(--press) both; animation-delay: .9s; }
   .intro h1 span { display: inline-block; animation: rise .55s var(--press) both; }
   @keyframes rise { from { transform: translateY(60%); opacity: 0; } }
 
@@ -486,7 +487,13 @@ function drawIntro() {
   const words = String(T("r_" + state.ri)).split(" ");
   main.innerHTML = `<div class="screen"><div class="intro"><div class="eyebrow">${escapeHtml(tpl("round_n", { n: state.ri + 1 }))}</div>
     <h1 class="shout">${words.map((w, i) => `<span style="animation-delay:${i * 0.12}s">${escapeHtml(w)}</span>`).join(" ")}</h1>
-    <div><span class="mult">×${state.mult}</span></div><p>${escapeHtml(T("r_" + state.ri + "_d"))}</p></div></div>`;
+    <div><span class="mult">×${state.mult}</span></div><p>${escapeHtml(T("r_" + state.ri + "_d"))}</p>${state.ri > 0 ? leadersHtml() : ""}</div></div>`;
+}
+// перед удвоением — кто впереди: подогревает второй раунд
+function leadersHtml() {
+  const list = present().slice().sort((a, b) => b.score - a.score).slice(0, 3);
+  if (!list.length || !list[0].score) return "";
+  return `<div class="leaders"><div class="eyebrow">${T("leaders")}</div><div class="chips" style="justify-content:center">${list.map((p) => `<span class="pc">${avHtml(p)}<b>${escapeHtml(p.name)}</b><span class="pts">${p.score}</span></span>`).join("")}</div></div>`;
 }
 
 // ---------- все пишут подсказки ----------
@@ -528,6 +535,21 @@ function drawGuess() {
   }
 }
 
+// реплика ведущего на раскрытии, когда нет ни «в яблочко», ни «на одной волне» (просьба игроков: «после промаха нет соли»)
+function hostLine(card, guesses) {
+  if (guesses.length < 2) return "";
+  const pick = (k) => { const v = T(k); return Array.isArray(v) ? v[card.n % v.length] : v; };
+  const as = guesses.map((g) => g.a);
+  const spread = Math.max(...as) - Math.min(...as);
+  if (guesses.every((g) => !g.pts)) {
+    if (as.every((a) => a > card.target) || as.every((a) => a < card.target)) return pick("c_side");
+    return spread >= 60 ? pick("c_split") : pick("c_miss");
+  }
+  if (spread >= 70) return pick("c_split");
+  if (guesses.every((g) => g.pts)) return pick("c_close");
+  return "";
+}
+
 // ---------- раскрытие ----------
 // стрелки падают на закрытую ширму → дробь → ширма уезжает → очки по одной от дальнего промаха к ближнему → итог в плашке подсказки
 function drawReveal() {
@@ -544,6 +566,7 @@ function drawReveal() {
   let flash = "";
   if (card.wave) flash = escapeHtml(T("wave"));
   else if (bulls.length) flash = `${escapeHtml(T("bull"))} ${bulls.map((g) => `${escapeHtml(g.avatar)} ${escapeHtml((player(g.id) || {}).name || "")}`).join(" ")}`;
+  else flash = escapeHtml(hostLine(card, guesses));
   const a = player(card.author);
   // очки игроков в нижней строке появляются вместе с табличками на шкале
   const chips = guesses.map((g, i) => { const p = player(g.id); return p ? `<span class="pc" style="animation:slam .35s var(--press) both;animation-delay:${plan.badgeAt(i)}ms">${avHtml(p)}<b>${escapeHtml(p.name)}</b><span class="pts">${g.pts ? "+" + g.pts : "0"}</span></span>` : ""; });
@@ -609,6 +632,12 @@ function drawFinal() {
   const firstAv = (ids) => { const p = player(ids[0]); return p ? avHtml(p) : ""; };
   const rows = [];
   if (aw.telepath) rows.push(`<div class="aw">${firstAv(aw.telepath.ids)}<div><div class="eyebrow">${T("aw_telepath")}</div><b>${escapeHtml(names(aw.telepath.ids))}</b><p>${escapeHtml(tpl("aw_telepath_d", { n: aw.telepath.n }))}</p></div></div>`);
+  if (aw.split && !aw.miss) {
+    const gs = Object.entries(aw.split.guesses).map(([id, a]) => { const p = player(id) || { color: "#111", avatar: "?" }; return { a, color: p.color, avatar: p.avatar }; });
+    rows.push(`<div class="replay"><div class="eyebrow">⚡ ${T("aw_split")} · ${escapeHtml(tpl("aw_split_d", { n: aw.split.spread }))}</div><q>${escapeHtml(aw.split.clue)}</q>
+      <div class="dialwrap"><div class="dialbox">${wvDialSvg({ uid: "split", target: aw.split.target, guesses: gs })}</div></div>
+      <div class="dp"><span>← ${wvPole(aw.split.l)}</span><span>${wvPole(aw.split.r)} →</span></div></div>`);
+  } else if (aw.split) rows.push(`<div class="aw"><i class="av" style="--pc:#111">⚡</i><div><div class="eyebrow">${T("aw_split")}</div><b><q>${escapeHtml(aw.split.clue)}</q></b><p>${escapeHtml(aw.split.l)} ↔ ${escapeHtml(aw.split.r)} — ${escapeHtml(tpl("aw_split_d", { n: aw.split.spread }))}</p></div></div>`);
   if (aw.clear) rows.push(`<div class="aw">${firstAv(aw.clear.ids)}<div><div class="eyebrow">${T("aw_clear")}</div><b>${escapeHtml(names(aw.clear.ids))}</b><p>${escapeHtml(tpl("aw_clear_d", { n: aw.clear.n }))}</p></div></div>`);
   // «Мимо кассы» — повтор той самой шкалы: сектор и промахнувшаяся стрелка, над этим смеются
   let replay = "";

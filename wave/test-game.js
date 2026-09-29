@@ -315,6 +315,9 @@ test("итоги: награды и пьедестал; шкалы не повт
   assert.strictEqual(snap.phase, "finished");
   assert.ok(snap.awards.telepath.ids.includes("P1"));
   assert.ok(snap.awards.miss && snap.awards.miss.dist >= 40);
+  // P1 всегда в центр, остальные в дальний край — стрелки расходятся сильно
+  assert.ok(snap.awards.split && snap.awards.split.spread >= 60, "«Раскол» найден");
+  assert.ok(snap.awards.split.clue && snap.awards.split.guesses);
   assert.strictEqual(snap.history.length, 6);
   // ещё партия
   assert.ok(g.start(1).ok);

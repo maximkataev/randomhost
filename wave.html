@@ -333,6 +333,8 @@ let clueErr = null;
 let needle = 90; // стрелка на экране угадывания, пока не зафиксирована
 let needleKey = null;
 let sentLock = false;
+let onKeys = null; // клавиатура на экране угадывания
+document.addEventListener("keydown", (e) => { if (onKeys && screenKey.startsWith("guess:")) onKeys(e); });
 const tokenKey = () => "wave-token-" + CODE;
 try { token = localStorage.getItem(tokenKey()); } catch (e) {}
 
@@ -651,6 +653,12 @@ function renderGuess() {
   };
   hold(document.getElementById("left"), -1);
   hold(document.getElementById("right"), 1);
+  // с ноутбука: ← → по градусу, с Shift — по 5°, Enter — зафиксировать
+  onKeys = (e) => {
+    if (e.target && e.target.tagName === "INPUT") return;
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); set(needle + (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 5 : 1)); }
+    if (e.key === "Enter") { e.preventDefault(); document.getElementById("lock").click(); }
+  };
   document.getElementById("lock").onclick = () => {
     if (sentLock) return;
     sentLock = true;

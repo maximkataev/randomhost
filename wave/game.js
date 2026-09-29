@@ -494,10 +494,19 @@ class Game {
       return max > 0 && ids.length <= 2 ? { ids, n: Math.round(max) } : null;
     };
     const w = this.s.worstMiss;
+    // «Раскол»: шкала, на которой стрелки разошлись сильнее всего (от двух стрелок и хотя бы на 60°)
+    let split = null;
+    for (const h of this.s.history || []) {
+      const as = Object.values(h.guesses || {});
+      if (as.length < 2) continue;
+      const spread = Math.round(Math.max(...as) - Math.min(...as));
+      if (spread >= 60 && (!split || spread > split.spread)) split = { spread, author: h.author, clue: h.clue, l: h.l, r: h.r, target: h.target, guesses: h.guesses };
+    }
     return {
       telepath: top((p) => p.stats.bulls),
       clear: top((p) => (p.stats.authorN ? p.stats.authorSum / p.stats.authorN : null)),
       miss: w && w.dist >= 40 && this.player(w.playerId) ? w : null,
+      split,
     };
   }
 
