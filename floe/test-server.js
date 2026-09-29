@@ -133,7 +133,9 @@ function rawWs(code) {
       const old = bots[0];
       old.close();
       await bots[1].until((b) => b.hostId && b.hostId !== old.id, 14000);
-      assert.strictEqual(bots[1].hostId, bots[1].id);
+      // боты входили одновременно — кто «следующий по времени входа», решает случай; важно, что права у живого игрока
+      const online = bots[1].roster.filter((p) => p.online).map((p) => p.id);
+      assert(online.includes(bots[1].hostId) && bots[1].hostId !== old.id);
     });
 
     await test("мусор не роняет сервер; сверхдлинное сообщение рвёт только этот сокет", async () => {

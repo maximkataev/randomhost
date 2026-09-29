@@ -165,7 +165,7 @@
     let words = Object.assign({ bang: 'БАХ!', graze: 'вскользь', miss: 'мимо', ouch: 'ОЙ!', ko: '+1 в воду!', splash: 'ПЛЮХ!', clash: 'ЛОБ В ЛОБ!' }, opts.words || {});
     const WC = { good: '#ffd23f', bad: '#ff5a5a', dim: '#cfe3f0', water: '#8ee8ff', white: '#ffffff' };
     // фокус камеры: ведущий дейлика на итоге (прожектор) или метка «смотрите сюда» в повторе
-    let focus = null, focusMode = null;
+    let focus = null, focusMode = null, camSnap = false;
     let floe = null, floeKey = '';
     let shardVis = [];
     let iceTex = null, TEX_R = 200;
@@ -368,7 +368,9 @@
             shake(mine ? 6 + 6 * pw : 2 + 3 * pw);
             Sound.hit(0.6 + 0.4 * pw);
             const v = vis.get(e.b);
-            if (v) { v.streak = 0.8; v.streakC = hatOf(e.a); }
+            if (v) { v.streak = 0.8; v.streakC = hatOf(e.a); v.hitAt = simT; }
+            const va = vis.get(e.a);
+            if (va) va.hitAt = simT;
             // надписи — только когда участвует свой пингвин, чужие драки не засоряют экран
             if (mine) popup(vp[0], vp[1], pw > 0.6 ? words.bang : words.graze, pw > 0.6 ? WC.good : WC.dim, true);
             else if (onMe) popup(vp[0], vp[1], words.ouch, WC.bad, true);
@@ -485,10 +487,16 @@
         tz = clamp((floe.R * 1.1) / (rad + 40), 1, 2.3);
       }
       const fp = focus && focusMode === 'host' && snap && snap.players.find(p => p.id === focus);
-      if (fp) { tx = fp.x; ty = fp.y - 10; tz = 2.1; }
+      if (fp) {
+        const c = floe ? floeCenter() : [0, 0];
+        tx = lerp(fp.x, c[0], 0.4); ty = lerp(fp.y, c[1], 0.4) - 10;
+        tz = clamp((view.h * 0.42) / ((Math.hypot(fp.x - c[0], (fp.y - c[1]) * YS) * 0.6 + 60) * view.base), 1, 1.8);
+      }
       shakeFx.a *= Math.exp(-dt * 9);
       shakeFx.x = (rnd() - 0.5) * 2 * shakeFx.a;
       shakeFx.y = (rnd() - 0.5) * 2 * shakeFx.a;
+      // после итога камера не «доезжает» секундами до отсчёта — прыгает на место сразу
+      if (camSnap) { cam.x = tx; cam.y = ty; cam.zoom = tz; camSnap = false; return; }
       const k = 1 - Math.exp(-dt * 1.6);
       cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k; cam.zoom += (tz - cam.zoom) * k;
     }
@@ -1064,9 +1072,10 @@
         if (v.la < 0.03) continue;
         const king = snap.phase === 'over' && snap.kings && snap.kings.includes(p.id);
         const host = snap.host && snap.host.id === p.id;
-        const text = (king ? '👑 ' : host ? '🎤 ' : '') + (p.online === false ? '📡 ' : '') + p.name + (p.id === me ? (opts.meSuffix || ' · вы') : '');
+        const crowd = list.length > 5 && p.st === 'ice' && p.id !== me && !king && !host && !(v.streak > 0) && (simT - (v.hitAt || -9) > 2) && edgeDist(p.x, p.y) > 28;
+        const text = crowd ? String(p.name).trim().charAt(0).toUpperCase() : (king ? '👑 ' : host ? '🎤 ' : '') + (p.online === false ? '📡 ' : '') + p.name + (p.id === me ? (opts.meSuffix || ' · вы') : '');
         const h = 18;
-        const w = ctx.measureText(text).width + 24;
+        const w = crowd ? 22 : ctx.measureText(text).width + 24;
         const X = sx(p.x);
         const top = p.st === 'swim' ? 22 : p.st === 'fall' ? 40 : king ? 50 : 42;
         const Y0 = sy(p.y) - top * s - h / 2 - 2;
@@ -1079,10 +1088,13 @@
         // далеко от своего пингвина подпись не уезжает и не лезет под таймер сверху
         Y = Math.max(Y, Y0 - 2 * (h + 2), (opts.topGap || 52) + h / 2);
         boxes.push({ x: X, y: Y, w });
-        drawn.push({ p, X, Y, Y0, w, h, text, king, host, a: v.la });
+        drawn.push({ p, X, Y, Y0, w, h, text, king, host, a: v.la, crowd });
       }
-      for (const L of drawn.reverse()) {
-        const { p, X, Y, Y0, w, h, text, king, host, a } = L;
+      drawn.reverse();
+      const mi = drawn.findIndex(L => L.p.id === me);
+      if (mi >= 0) drawn.push(drawn.splice(mi, 1)[0]);
+      for (const L of drawn) {
+        const { p, X, Y, Y0, w, h, text, king, host, a, crowd } = L;
         if (Math.abs(Y - Y0) > 1) {
           ctx.globalAlpha = a * 0.6;
           ctx.strokeStyle = 'rgba(230,246,255,0.7)';
@@ -1094,6 +1106,15 @@
         ctx.fillStyle = king ? 'rgba(255,210,63,0.97)' : host ? 'rgba(205,48,58,0.94)' : mine ? 'rgba(255,255,255,0.95)' : p.st !== 'ice' ? 'rgba(8,28,48,0.7)' : 'rgba(6,24,44,0.82)';
         rrect(ctx, X - w / 2, Y - h / 2, w, h, h / 2);
         ctx.fill();
+        if (crowd) {
+          ctx.strokeStyle = HAT_COLORS[p.ci % HAT_COLORS.length][0];
+          ctx.lineWidth = 2;
+          rrect(ctx, X - w / 2, Y - h / 2, w, h, h / 2);
+          ctx.stroke();
+          ctx.fillStyle = '#f4fbff';
+          ctx.fillText(text, X, Y + 0.5);
+          continue;
+        }
         ctx.fillStyle = HAT_COLORS[p.ci % HAT_COLORS.length][0];
         circle(ctx, X - w / 2 + 8, Y, 3.2);
         ctx.fillStyle = king ? '#3b2400' : mine ? '#06182c' : p.st !== 'ice' ? '#b9d4e6' : '#f4fbff';
@@ -1123,9 +1144,9 @@
       drawPenguins(t, dt);
       drawFx();
       drawSnow(t, dt);
-      drawLabels(t, dt);
       drawSpotlight(t);
       drawPopups();
+      drawLabels(t, dt);
       drawVignette(t);
     }
 
@@ -1137,7 +1158,7 @@
       get perf() { return perf.last; },
       setMe(id) { me = id; },
       setWords(w) { Object.assign(words, w); },
-      setFocus(id, mode) { focus = id || null; focusMode = mode || null; },
+      setFocus(id, mode) { if (focus && !id) camSnap = true; focus = id || null; focusMode = mode || null; },
       reset() { rings.length = drops.length = bursts.length = puffs.length = later.length = popups.length = pulses.length = 0; vignette.hit = 0; danger = 0; vis.clear(); snap = null; },
       get cam() { return cam; },
     };

@@ -52,7 +52,7 @@
 
   /* ----- Левая панель: вход, лобби, итог ----- */
   .panel { position: fixed; top: 12px; left: 12px; bottom: 12px; width: 316px; z-index: 10; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(10, 36, 64, 0.96), rgba(6, 24, 44, 0.96)); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 18px 50px rgba(0,0,0,0.35); overflow: hidden; transition: transform 0.3s ease, opacity 0.3s; }
-  body.playing .panel { transform: translateX(calc(-100% - 24px)); opacity: 0; pointer-events: none; }
+  body.playing .panel, body.watching .panel { transform: translateX(calc(-100% - 24px)); opacity: 0; pointer-events: none; }
   .p-body { flex: 1; overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; scrollbar-color: rgba(160,215,245,0.25) transparent; }
   .p-foot { padding: 12px 14px; border-top: 1px solid var(--line); background: rgba(4, 16, 30, 0.5); display: grid; gap: 8px; }
   .p-foot:empty { display: none; }
@@ -149,6 +149,8 @@
   .tag { position: fixed; top: 62px; left: 50%; transform: translateX(-50%); z-index: 8; background: rgba(255,255,255,0.93); color: #06182c; font-weight: 800; border-radius: 999px; padding: 6px 14px; font-size: 13px; display: none; white-space: nowrap; }
   .tag.show { display: block; }
   .tag.top { top: 12px; }
+  /* «вы смотрите» у зрителя — внизу, чтобы не спорить с баннером ведущего сверху */
+  .tag:not(.top) { top: auto; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
   .feed { position: fixed; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 5; display: flex; flex-direction: column; gap: 5px; align-items: flex-end; pointer-events: none; }
   .feed div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 5px 10px; font-size: 13px; font-weight: 600; animation: feedIn 0.25s ease-out; max-width: 70vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .feed .mine { border-color: var(--gold); background: rgba(60, 44, 6, 0.92); }
@@ -164,7 +166,7 @@
   .stick { position: fixed; z-index: 4; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: rgba(255,255,255,0.08); pointer-events: none; opacity: 0; transition: opacity 0.15s; }
   .stick.on { opacity: 1; }
   .stick i { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(255,255,255,0.55); }
-  .stick-ghost { position: fixed; z-index: 4; left: 22%; bottom: 20%; width: 110px; height: 110px; margin: 0 0 -55px -55px; border-radius: 50%; border: 2px dashed rgba(255,255,255,0.5); background: rgba(255,255,255,0.06); pointer-events: none; transition: opacity 0.4s; }
+  .stick-ghost { position: fixed; z-index: 4; left: 22%; bottom: 30%; width: 110px; height: 110px; margin: 0 0 -55px -55px; border-radius: 50%; border: 2px dashed rgba(255,255,255,0.5); background: rgba(255,255,255,0.06); pointer-events: none; transition: opacity 0.4s; }
   .stick-ghost span { position: absolute; left: 50%; top: calc(100% + 8px); transform: translateX(-50%); white-space: nowrap; background: var(--panel); border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700; }
   .stick-ghost.gone { opacity: 0; }
   .dash-btn { position: fixed; right: calc(22px + env(safe-area-inset-right, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 5; width: 94px; height: 94px; border-radius: 50%; border: 0; background: radial-gradient(circle at 35% 30%, #ffe27a, #ffb000); color: #3b2400; font: 900 14px Montserrat, sans-serif; box-shadow: 0 6px 0 #b88400, 0 10px 24px rgba(0,0,0,0.4); touch-action: none; }
@@ -182,7 +184,7 @@
   .verdict.show { display: block; animation: verdictIn 0.5s cubic-bezier(.2,1.4,.4,1); }
   @keyframes verdictIn { from { opacity: 0; transform: translate(-50%, 20px) scale(0.9); } }
   @media (min-width: 900px) { body.with-panel .verdict { margin-left: 170px; } }
-  .skip { position: fixed; right: 16px; bottom: 16px; z-index: 9; display: none; }
+  .skip { position: fixed; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 9; display: none; width: auto; }
   .skip.show { display: block; }
   body.is-touch.playing .feed { bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
   .rotate { position: fixed; inset: 0; z-index: 40; background: #051b31; display: none; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 18px; padding: 30px; line-height: 1.5; }
@@ -279,7 +281,7 @@ window.I18N_DICT = {
     too_many_rooms: `Слишком много комнат — попробуйте позже`, server_error: `Что-то сломалось на сервере`,
     quit_confirm: `Выйти из партии? Пингвин останется на льдине без управления.`,
     ping_bad: `может подлагивать`, you: ` · вы`, place: `{n}`,
-    made_room: `создал комнату`, change_hat: `сменить`, practice_hud: `Разминка — падать можно`, out_pill: `Вы в воде — смотрите, кто станет царём`,
+    made_room: `создал комнату`, change_hat: `сменить`, practice_hud: `Разминка — падать можно`, out_pill: `Вы в воде — смотрите, кто станет царём`, out_pill_host: `🎤 Дейлик ведёте вы — смотрите, кто станет царём`,
     verdict: `🎤 {name} ведёт дейлик`, verdict_you: `🎤 Дейлик ведёте вы`, kos: `{n} в воду`, look_here: `смотрите сюда`,
     w_bang: `БАХ!`, w_graze: `вскользь`, w_miss: `мимо`, w_ouch: `ОЙ!`, w_ko: `+1 в воду!`, w_splash: `ПЛЮХ!`, w_clash: `ЛОБ В ЛОБ!`,
   },
@@ -318,7 +320,7 @@ window.I18N_DICT = {
     too_many_rooms: `Too many rooms — try later`, server_error: `Something broke on the server`,
     quit_confirm: `Leave the round? Your penguin stays on the ice with no one steering.`,
     ping_bad: `may lag`, you: ` · you`, place: `{n}`,
-    made_room: `created the room`, change_hat: `change`, practice_hud: `Warm-up — falls don't count`, out_pill: `You're in the water — watch who becomes king`,
+    made_room: `created the room`, change_hat: `change`, practice_hud: `Warm-up — falls don't count`, out_pill: `You're in the water — watch who becomes king`, out_pill_host: `🎤 You host the daily — watch who becomes king`,
     verdict: `🎤 {name} hosts the daily`, verdict_you: `🎤 You host the daily`, kos: `{n} knocked out`, look_here: `watch here`,
     w_bang: `BAM!`, w_graze: `glancing`, w_miss: `miss`, w_ouch: `OUCH!`, w_ko: `+1 in the water!`, w_splash: `SPLASH!`, w_clash: `HEAD-ON!`,
   },
@@ -357,7 +359,7 @@ window.I18N_DICT = {
     too_many_rooms: `Πάρα πολλά δωμάτια — δοκίμασε αργότερα`, server_error: `Κάτι χάλασε στον διακομιστή`,
     quit_confirm: `Να φύγεις από τον γύρο; Ο πιγκουίνος σου μένει στον πάγο χωρίς οδηγό.`,
     ping_bad: `ίσως κολλάει`, you: ` · εσύ`, place: `{n}`,
-    made_room: `έφτιαξε το δωμάτιο`, change_hat: `αλλαγή`, practice_hud: `Προθέρμανση — οι πτώσεις δεν μετράνε`, out_pill: `Είσαι στο νερό — δες ποιος θα γίνει βασιλιάς`,
+    made_room: `έφτιαξε το δωμάτιο`, change_hat: `αλλαγή`, practice_hud: `Προθέρμανση — οι πτώσεις δεν μετράνε`, out_pill: `Είσαι στο νερό — δες ποιος θα γίνει βασιλιάς`, out_pill_host: `🎤 Το daily το κάνεις εσύ — δες ποιος θα γίνει βασιλιάς`,
     verdict: `🎤 Το daily κάνει: {name}`, verdict_you: `🎤 Το daily το κάνεις εσύ`, kos: `{n} στο νερό`, look_here: `κοίτα εδώ`,
     w_bang: `ΜΠΑΜ!`, w_graze: `ξυστά`, w_miss: `άστοχο`, w_ouch: `ΑΟΥΣ!`, w_ko: `+1 στο νερό!`, w_splash: `ΠΛΑΤΣ!`, w_clash: `ΚΕΦΑΛΙ ΜΕ ΚΕΦΑΛΙ!`,
   },
@@ -761,7 +763,7 @@ window.I18N_DICT = {
     const kings = ov.kings.map(nm).join(", ");
     const rows = s.players.slice().sort((a, b) => a.place - b.place).map((p) => `<div class="r${p.id === net.me ? " me" : ""}"><span class="pl-n">${p.place}</span><span class="d" style="--c:${HAT[ciOf(p.id) % HAT.length][0]}"></span><span class="nm">${esc(p.name)}${p.id === h.id ? " 🎤" : ""}${ov.kings.includes(p.id) ? " 👑" : ""}</span><span class="ex">${p.kos ? esc(tpl("kos", { n: p.kos })) : ""}${p.selfFall ? " 🙃" : ""}${p.removed ? " 📡" : ""}</span></div>`).join("");
     const nomLine = (key, who, n) => { const [label] = String(T(key)).split(":"); return `<div><span>${esc(label)}</span><b>${esc(who || "—")}${n ? " · " + n : ""}</b></div>`; };
-    const noms = [nomLine("nom_push", s.pusher.map(nm).join(", "), s.maxKos || 0), nomLine("nom_self", s.selfFallers.map(nm).join(", "))];
+    const noms = [nomLine("nom_push", s.pusher.map((id) => nm(id) + " ×" + s.maxKos).join(", ")), nomLine("nom_self", s.selfFallers.map(nm).join(", "))];
     const iAmHost = net.me === net.hostId;
     const host = net.roster.find((p) => p.id === net.hostId);
     setPanel(`${brand()}
@@ -850,6 +852,7 @@ window.I18N_DICT = {
   function onEvents(list) {
     for (const e of list) {
       if (e.type === "fall" && !e.practice && e.id === net.me) document.body.classList.add("out");
+      if (e.type === "host") $("outpill").textContent = e.id === net.me ? T("out_pill_host") : T("out_pill");
       if (e.type === "fall" && !e.practice) {
         const mine = e.id === net.me || e.by === net.me;
         if (e.offline) pushFeed(`📡 ${tag(e.id)} ${esc(T("feed_off"))}`);
@@ -902,7 +905,7 @@ window.I18N_DICT = {
   function startReplay() {
     const r = net.replay;
     if (!r || !r.frames || r.frames.length < 2) { ui.showResults = true; redraw(); return; }
-    ui.replay = { frames: r.frames, t: r.frames[0].t, at: r.at, end: r.frames[r.frames.length - 1].t, i: 0, fallT: new Map(), ev: allEvents.slice() };
+    ui.replay = { frames: r.frames, t: Math.max(r.frames[0].t, r.at - 2.2), at: r.at, end: Math.min(r.frames[r.frames.length - 1].t, r.at + 0.8), i: 0, fallT: new Map(), ev: allEvents.slice() };
     document.body.classList.remove("with-panel");
     $("panel").style.display = "none";
     $("tag").textContent = T("replay");
@@ -926,7 +929,7 @@ window.I18N_DICT = {
   function replayStep(dt) {
     const r = ui.replay;
     const prevT = r.t;
-    r.t += dt * (r.t > r.at - 1.2 ? 0.35 : 1);
+    r.t += dt * (r.t > r.at - 0.9 && r.t < r.at + 0.8 ? 0.5 : 1);
     while (r.i < r.frames.length - 1 && r.frames[r.i + 1].t <= r.t) r.i++;
     const f = r.frames[r.i], g = r.frames[Math.min(r.i + 1, r.frames.length - 1)];
     const k = g.t > f.t ? Math.max(0, Math.min(1, (r.t - f.t) / (g.t - f.t))) : 0;
@@ -942,7 +945,7 @@ window.I18N_DICT = {
     const snap = { phase: "replay", seed: last.sd, R: last.R, sh: f.sh, host: r.t >= r.at ? last.host : null, kings: [], players };
     const evs = r.ev.filter((e) => e.clock > prevT && e.clock <= r.t && ["hit", "bump", "fall", "crack", "sink", "dash", "whiff"].includes(e.type));
     render.apply(snap, evs, r.i === 0);
-    if (r.t >= r.end + 0.4) finishReplay();
+    if (r.t >= r.end + 0.3) finishReplay();
   }
   function finishReplay() {
     stopReplay(); ui.showResults = true; document.body.classList.add("with-panel"); redraw();

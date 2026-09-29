@@ -18,6 +18,7 @@ function fight(n, seed = 1, cfg) {
   assert(g.start());
   for (let t = 0; t < DEFAULTS.COUNTDOWN + 0.02; t += 0.1) g.step(0.1);
   assert.strictEqual(g.phase, 'fight');
+  g.players.forEach(p => { p.cd = 0; });   // защиту старта проверяет отдельный тест
   g.drainEvents();
   return g;
 }
@@ -129,6 +130,18 @@ test('рывок в пустоту — событие промаха, попад
   let ev2 = [];
   run(g2, 0.4, () => { ev2 = ev2.concat(g2.drainEvents()); });
   assert(ev2.some(e => e.type === 'hit') && !ev2.some(e => e.type === 'whiff'));
+});
+
+test('первые 2 с боя рывка нет — соседа не сбить сразу после старта', () => {
+  const g = createGame({ seed: 4 });
+  for (let i = 0; i < 3; i++) g.addPlayer('p' + i, 'P' + i, i);
+  g.start();
+  for (let t = 0; t < DEFAULTS.COUNTDOWN + 0.02; t += 0.1) g.step(0.1);
+  let dashes = 0;
+  for (let k = 0; k < 110; k++) { g.setInput('p0', 0, 0, true); g.step(1 / 60); dashes += g.drainEvents().filter(e => e.type === 'dash' && e.clock < DEFAULTS.START_GUARD - 0.05).length; }
+  assert.strictEqual(dashes, 0);
+  run(g, 0.6, () => g.setInput('p0', 0, 0, true));
+  assert(g.drainEvents().some(e => e.type === 'dash'));
 });
 
 console.log('Ведущий и конец партии');

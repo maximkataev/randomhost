@@ -35,6 +35,7 @@
     DASH_CD: 1.5,        // перезарядка рывка
     DASH_HIT: 150,       // добавка скорости цели от попадания рывком
     DASH_BUFFER: 0.12,   // нажал чуть раньше конца перезарядки — рывок всё равно случится
+    START_GUARD: 2,      // первые секунды боя рывок «перезаряжается»: соседа не сбить сразу после «Толкайся!» (плейтест 30.09)
     REST: 0.55,          // упругость обычного столкновения
     TOUCH_WINDOW: 2,     // «кто столкнул» — последнее касание за столько секунд до падения
     AREA_PER_PLAYER: 13500, // площадь льда на пингвина на старте
@@ -522,13 +523,13 @@
       // по кругу на равном расстоянии от центра, порядок и поворот — жребий
       const order = list.slice();
       for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
-      const rot = rng() * TAU, rad = g.floe.R * 0.52;
+      const rot = rng() * TAU, rad = g.floe.R * 0.45;
       g.players.forEach(p => { p.inGame = false; p.st = 'gone'; });
       order.forEach((p, k) => {
         const a = rot + (k / order.length) * TAU;
         Object.assign(p, {
           x: Math.cos(a) * rad, y: Math.sin(a) * rad, vx: 0, vy: 0, dir: a + Math.PI,
-          dashT: 0, cd: 0, wantDash: -1, st: 'ice', inGame: true, removed: false,
+          dashT: 0, cd: cfg.START_GUARD, wantDash: -1, st: 'ice', inGame: true, removed: false,
           lastTouch: null, fellAt: -1, fallT: 0, by: null, hits: 0, kos: 0, selfFall: false, place: 0,
         });
       });
