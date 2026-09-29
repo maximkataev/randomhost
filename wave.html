@@ -147,8 +147,11 @@
   .nudge button.n:active { background: var(--ink); color: var(--paper); }
 
   .pick { display: grid; gap: 12px; }
-  .pick button { min-height: 22vh; border: 4px solid var(--ink); background: var(--paper); padding: 16px 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; font-weight: 1000; font-size: 18px; text-transform: uppercase; line-height: 1.05; box-shadow: 0 7px 0 rgba(0, 0, 0, .28); }
+  /* четыре шкалы на выбор: карточки ниже, чтобы влезали вместе с «Другие шкалы» */
+  .pick button { min-height: 11vh; border: 4px solid var(--ink); background: var(--paper); padding: 16px 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; font-weight: 1000; font-size: 18px; text-transform: uppercase; line-height: 1.05; box-shadow: 0 7px 0 rgba(0, 0, 0, .28); }
   .pick button span { overflow-wrap: anywhere; hyphens: auto; }
+  #reroll { font-size: clamp(15px, 4.8vw, 20px); white-space: nowrap; padding: 14px 10px; }
+  @media (max-height: 720px) { .pick { gap: 8px; } .pick button { min-height: 0; padding: 10px 12px; font-size: 16px; } }
   .pick button span:first-child { text-align: left; }
   .pick button span:last-child { text-align: right; }
   .pick button i { font-style: normal; font-size: 22px; }
@@ -214,7 +217,7 @@ window.I18N_DICT = {
     btn_home: `Главная`,
     lobby_in: `Ты в игре`, lobby_wait: `Все в сборе — ждём, пока ведущий начнёт`, lobby_need: `Нужно ещё {n}: зови друзей`, lobby_look: `Главное — на большом экране. Телефон — твой пульт`,
     intro_mult: `Очки ×{n}`,
-    pick_title: `Выбери шкалу`, pick_sub: `Сектор на ней увидишь только ты`,
+    pick_title: `Выбери шкалу`, pick_sub: `Сектор на ней увидишь только ты`, btn_reroll: `Другие шкалы (ещё {n})`, btn_reroll_none: `Больше перетасовок нет`,
     clue_title: `Подскажи, где сектор`, clue_ph: `Одна фраза, без цифр`, btn_send: `Отправить`,
     clue_help: `Чёрный центр — {a} очков, рядом {b} и {c}. Назови то, что, по-твоему, лежит ровно там. Конкретная вещь угадывается лучше, чем ситуация`,
     clue_sent: `Подсказка ушла`, clue_wait: `Написали {n} из {m}`,
@@ -251,7 +254,7 @@ window.I18N_DICT = {
     btn_home: `Home`,
     lobby_in: `You're in`, lobby_wait: `Everyone's here — waiting for the host to start`, lobby_need: `{n} more needed — invite friends`, lobby_look: `The action is on the big screen. Your phone is the remote`,
     intro_mult: `Points ×{n}`,
-    pick_title: `Pick a scale`, pick_sub: `Only you will see the target on it`,
+    pick_title: `Pick a scale`, pick_sub: `Only you will see the target on it`, btn_reroll: `Other scales ({n} left)`, btn_reroll_none: `No more shuffles`,
     clue_title: `Hint where the target is`, clue_ph: `One phrase, no numbers`, btn_send: `Send`,
     clue_help: `The black center is {a} points, then {b} and {c}. Name something you think sits right there. A concrete thing beats a situation`,
     clue_sent: `Clue sent`, clue_wait: `{n} of {m} done`,
@@ -288,7 +291,7 @@ window.I18N_DICT = {
     btn_home: `Αρχική`,
     lobby_in: `Είσαι μέσα`, lobby_wait: `Όλοι εδώ — περιμένουμε τον οικοδεσπότη`, lobby_need: `Χρειάζονται ακόμα {n} — φώναξε φίλους`, lobby_look: `Η δράση είναι στη μεγάλη οθόνη. Το κινητό είναι το τηλεχειριστήριο`,
     intro_mult: `Πόντοι ×{n}`,
-    pick_title: `Διάλεξε κλίμακα`, pick_sub: `Τον στόχο θα τον δεις μόνο εσύ`,
+    pick_title: `Διάλεξε κλίμακα`, pick_sub: `Τον στόχο θα τον δεις μόνο εσύ`, btn_reroll: `Άλλες κλίμακες (ακόμα {n})`, btn_reroll_none: `Τέλος οι αλλαγές`,
     clue_title: `Δείξε πού είναι ο στόχος`, clue_ph: `Μία φράση, χωρίς αριθμούς`, btn_send: `Αποστολή`,
     clue_help: `Το μαύρο κέντρο δίνει {a} πόντους, δίπλα {b} και {c}. Γράψε κάτι που κατά τη γνώμη σου είναι ακριβώς εκεί. Ένα συγκεκριμένο πράγμα μαντεύεται πιο εύκολα από μια κατάσταση`,
     clue_sent: `Το στοιχείο στάλθηκε`, clue_wait: `Έγραψαν {n} από {m}`,
@@ -542,13 +545,17 @@ function renderClue() {
     return;
   }
   if (c.pick == null) {
-    const key = "pick:" + roundKey() + wvLang();
+    // ключ с остатком перетасовок: после «Другие шкалы» экран перерисовывается с новыми вариантами
+    const key = "pick:" + roundKey() + ":" + c.rerollsLeft + ":" + c.options.map((o) => o.l).join("|") + wvLang();
     if (screenKey === key) return;
     show(`${headHtml(roundLabel())}<div><h2 class="shout">${T("pick_title")}</h2><p class="fine" style="margin-top:8px">${T("pick_sub")}</p></div>
-      <div class="pick">${c.options.map((o, i) => `<button type="button" data-i="${i}" lang="${wvLang()}"><span>${wvPole(o.l)}</span><i>↔</i><span>${wvPole(o.r)}</span></button>`).join("")}</div>`, key);
+      <div class="pick">${c.options.map((o, i) => `<button type="button" data-i="${i}" lang="${wvLang()}"><span>${wvPole(o.l)}</span><i>↔</i><span>${wvPole(o.r)}</span></button>`).join("")}</div>
+      <button class="btn ghost" type="button" id="reroll"${c.rerollsLeft > 0 ? "" : " disabled"}>🔄 ${escapeHtml(c.rerollsLeft > 0 ? tpl("btn_reroll", { n: c.rerollsLeft }) : T("btn_reroll_none"))}</button>`, key);
     app.querySelectorAll(".pick button").forEach((b) => {
-      b.onclick = () => { wvSfx.tap(); wvVibrate(10); app.querySelectorAll(".pick button").forEach((x) => (x.disabled = true)); conn.send({ type: "pick", i: Number(b.dataset.i) }); };
+      b.onclick = () => { wvSfx.tap(); wvVibrate(10); app.querySelectorAll(".pick button, #reroll").forEach((x) => (x.disabled = true)); conn.send({ type: "pick", i: Number(b.dataset.i) }); };
     });
+    const rr = document.getElementById("reroll");
+    rr.onclick = () => { if (rr.disabled) return; wvSfx.whoosh(); wvVibrate(8); rr.disabled = true; conn.send({ type: "reroll" }); };
     return;
   }
   if (c.clue) {
@@ -794,7 +801,7 @@ function onMessage(m) {
         break;
       }
       if (m.action === "lock") { sentLock = false; screenKey = ""; }
-      if (m.action === "pick") screenKey = "";
+      if (m.action === "pick" || m.action === "reroll") screenKey = "";
       if (T("rj_" + m.reason) !== "rj_" + m.reason) toast(T("rj_" + m.reason));
       render();
       break;

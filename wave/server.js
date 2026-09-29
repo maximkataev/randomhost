@@ -548,6 +548,7 @@ function handle(room, client, msg) {
     }
     // ---- игрок ----
     case "pick": return me ? act("pick", g.pickScale(me, msg.i, t)) : undefined;
+    case "reroll": return me ? act("reroll", g.reroll(me, t)) : undefined;
     case "clue": return me ? act("clue", g.clue(me, msg.text, t)) : undefined;
     case "lock": return me ? act("lock", g.lock(me, msg.angle, t)) : undefined;
     case "react": {

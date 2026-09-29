@@ -5,7 +5,8 @@
  *   node play.js <base> <code> <name> join
  *   node play.js <base> <code> <name> state            — что сейчас на экране у этого игрока
  *   node play.js <base> <code> <name> wait [сек]       — ждать смены фазы/шкалы (по умолчанию до 90 с), потом state
- *   node play.js <base> <code> <name> pick 0|1
+ *   node play.js <base> <code> <name> pick 0..3
+ *   node play.js <base> <code> <name> reroll          — другие шкалы (до трёх раз за раунд)
  *   node play.js <base> <code> <name> clue "текст"
  *   node play.js <base> <code> <name> lock <угол 0..180>
  *   node play.js <base> <code> host <hostToken> start|short|end
@@ -67,7 +68,7 @@ function describe(s, me) {
   if (s.phase === "lobby") out.push(`В лобби: ${s.players.filter((p) => !p.left).map((p) => p.name).join(", ")}`);
   if (s.phase === "clue") {
     if (!my || !my.card) out.push("Ты вошёл посреди раунда — подсказку не пишешь, жди угадывания.");
-    else if (my.card.pick == null) out.push(`ВЫБЕРИ ШКАЛУ: 0) ${my.card.options[0].l} ↔ ${my.card.options[0].r}   1) ${my.card.options[1].l} ↔ ${my.card.options[1].r}   → команда: pick 0|1`);
+    else if (my.card.pick == null) out.push(`ВЫБЕРИ ШКАЛУ: ${my.card.options.map((o, i) => `${i}) ${o.l} ↔ ${o.r}`).join("   ")}   → команда: pick <номер>${my.card.rerollsLeft ? ` (или reroll — другие шкалы, осталось ${my.card.rerollsLeft})` : ""}`);
     else if (!my.card.clue) out.push(`ТВОЯ ШКАЛА: ${my.card.l} (0°) ↔ ${my.card.r} (180°). Тайный центр сектора: ${my.card.target}°. 400 очков — ±4°, 300 — ±12°, 200 — ±20°.\nНапиши подсказку (одна фраза до 40 символов, без цифр, без слов полюсов) — вещь, которая по-твоему лежит на ${my.card.target}° → команда: clue "…"`);
     else out.push(`Твоя подсказка «${my.card.clue}» отправлена (шкала ${my.card.l} ↔ ${my.card.r}, центр ${my.card.target}°). Ждём остальных: ${s.clued.length}/${s.roster.length}.`);
   }
@@ -121,6 +122,7 @@ function describe(s, me) {
   }
   const sig = (s) => s.phase + ":" + s.ri + ":" + (s.card ? s.card.n : "");
   if (cmd === "pick") await act({ type: "pick", i: Number(rest[0]) });
+  if (cmd === "reroll") await act({ type: "reroll" });
   if (cmd === "clue") await act({ type: "clue", text: rest.join(" ") });
   if (cmd === "lock") await act({ type: "lock", angle: Number(rest[0]) });
   if (cmd === "wait") {

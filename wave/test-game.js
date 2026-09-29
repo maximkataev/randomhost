@@ -3,7 +3,7 @@
 // Тесты движка «На одной волне»: node --test test-game.js
 const test = require("node:test");
 const assert = require("node:assert");
-const { Game, T, WAVE_BONUS, clampSettings, cleanText, checkClue, points } = require("./game");
+const { Game, T, OPTIONS, REROLLS, WAVE_BONUS, clampSettings, cleanText, checkClue, points } = require("./game");
 
 // Детерминированная случайность: простой LCG
 function rig(seed = 1) {
@@ -91,15 +91,37 @@ test("подсказка: без цифр, без полюсов, не пуст�
   assert.ok(checkClue("full moon party", { l: "Not the vibe", r: "The vibe" }).ok);
 });
 
-test("каждому две разные шкалы и сектор 10…170", () => {
+test("каждому четыре разные шкалы и сектор 10…170", () => {
   const g = game(6);
   const ids = new Set();
   for (const c of Object.values(g.s.cards)) {
-    assert.strictEqual(c.options.length, 2);
+    assert.strictEqual(c.options.length, OPTIONS);
     for (const o of c.options) ids.add(o.id);
     assert.ok(c.target >= 10 && c.target <= 170);
   }
-  assert.strictEqual(ids.size, 12);
+  assert.strictEqual(ids.size, 6 * OPTIONS);
+});
+
+test("«Другие шкалы»: новые варианты, не больше трёх раз, после выбора нельзя", () => {
+  const g = game(3);
+  const c = g.s.cards.P1;
+  const target = c.target;
+  const before = c.options.map((o) => o.id);
+  for (let k = 0; k < REROLLS; k++) {
+    const ids = c.options.map((o) => o.id);
+    assert.ok(g.reroll("P1", 1).ok);
+    assert.strictEqual(c.options.length, OPTIONS);
+    assert.ok(c.options.every((o) => !ids.includes(o.id)), "варианты новые");
+  }
+  assert.strictEqual(g.reroll("P1", 1).reason, "no_rerolls");
+  assert.strictEqual(c.target, target, "сектор не меняется");
+  assert.ok(before.every((id) => !c.options.some((o) => o.id === id)));
+  assert.strictEqual(g.snapshot(1, "P1").me.card.rerollsLeft, 0);
+  assert.ok(g.pickScale("P1", 3, 1).ok);
+  assert.strictEqual(g.reroll("P2", 1).ok, true);
+  g.pickScale("P2", 0, 1);
+  assert.strictEqual(g.reroll("P2", 1).reason, "picked");
+  assert.strictEqual(g.pickScale("P3", 4, 1).reason, "bad_pick");
 });
 
 test("подсказка требует выбранной шкалы, выбор не меняется", () => {
@@ -211,7 +233,7 @@ test("тайны: сектор только автору, чужие стрел�
   assert.ok(!board0.includes(c1.options[0].l + '"'), "доска не видит шкалы на выбор");
   const p2 = g.snapshot(1, "P2");
   assert.ok(!JSON.stringify(p2).includes(`"${c1.options[0].l}"`), "чужие шкалы не видны");
-  assert.strictEqual(g.snapshot(1, "P1").me.card.options.length, 2);
+  assert.strictEqual(g.snapshot(1, "P1").me.card.options.length, OPTIONS);
   toGuess(g);
   const a = g.author();
   const target = g.s.cards[a].target;
@@ -277,6 +299,7 @@ test("вошёл посреди партии — угадывает со сле�
 test("итоги: награды и пьедестал; шкалы не повторяются в комнате", () => {
   const g = game(3);
   const seen = new Set(Object.values(g.s.cards).flatMap((c) => c.options.map((o) => o.id)));
+  const perGame = 3 * OPTIONS * 2;
   for (let guard = 0; g.s.phase !== "finished" && guard < 100; guard++) {
     if (g.s.phase === "clue") {
       for (const c of Object.values(g.s.cards)) for (const o of c.options) seen.add(o.id);
@@ -287,7 +310,7 @@ test("итоги: награды и пьедестал; шкалы не повт
       for (const id of g.s.queue) if (id !== a) g.lock(id, id === "P1" ? t : t > 90 ? 0 : 180, 0);
     } else g.tick(g.s.phaseEnd);
   }
-  assert.strictEqual(seen.size, 12);
+  assert.strictEqual(seen.size, perGame);
   const snap = g.snapshot(0, "board");
   assert.strictEqual(snap.phase, "finished");
   assert.ok(snap.awards.telepath.ids.includes("P1"));

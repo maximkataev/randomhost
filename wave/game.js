@@ -30,6 +30,8 @@ const DEFAULTS = {
 };
 
 const MAX_PLAYERS = 12;
+const OPTIONS = 4; // шкал на выбор каждому (решение владельца 30.09: «больше вариантов + ещё»)
+const REROLLS = 3; // «Другие шкалы» — сколько раз за раунд можно перетасовать
 const MIN_PLAYERS = 3;
 const CLUE_MAX = 40;
 const CLUE_MIN = 2;
@@ -280,11 +282,12 @@ class Game {
   openClues(now) {
     const s = this.s;
     const ps = this.present();
-    const scales = this.takeScales(ps.length * 2);
+    const scales = this.takeScales(ps.length * OPTIONS);
     s.cards = {};
     ps.forEach((p, i) => {
-      const options = [scales[i * 2], scales[i * 2 + 1] || scales[0]];
-      s.cards[p.id] = { options, pick: null, target: TARGET_MIN + this.rnd(TARGET_MAX - TARGET_MIN + 1), clue: null, at: null };
+      const options = scales.slice(i * OPTIONS, (i + 1) * OPTIONS);
+      while (options.length < 2) options.push(scales[options.length % scales.length]);
+      s.cards[p.id] = { options, pick: null, rerolls: 0, target: TARGET_MIN + this.rnd(TARGET_MAX - TARGET_MIN + 1), clue: null, at: null };
     });
     s.phase = "clue";
     s.phaseStart = now;
@@ -299,8 +302,26 @@ class Game {
     if (!c) return { ok: false, reason: "not_in_round" };
     if (c.pick != null) return { ok: false, reason: "picked" };
     const n = Number(i);
-    if (n !== 0 && n !== 1) return { ok: false, reason: "bad_pick" };
+    if (!Number.isInteger(n) || n < 0 || n >= c.options.length) return { ok: false, reason: "bad_pick" };
     c.pick = n;
+    return { ok: true, events: [] };
+  }
+
+  // «Другие шкалы»: новые варианты вместо нынешних, пока шкала не выбрана; не больше REROLLS за раунд
+  reroll(id, now) {
+    const s = this.s;
+    if (s.phase !== "clue") return { ok: false, reason: "not_clue" };
+    const c = s.cards[id];
+    if (!c) return { ok: false, reason: "not_in_round" };
+    if (c.pick != null) return { ok: false, reason: "picked" };
+    if ((c.rerolls || 0) >= REROLLS) return { ok: false, reason: "no_rerolls" };
+    const was = new Set(c.options.map((o) => o.id));
+    // нынешние варианты уже помечены сыгранными, так что свежие с ними не совпадут (разве что колода кончилась и пошла по кругу)
+    let fresh = this.takeScales(OPTIONS).filter((o) => !was.has(o.id));
+    if (fresh.length < OPTIONS) fresh = fresh.concat(this.takeScales(OPTIONS).filter((o) => !was.has(o.id) && !fresh.some((f) => f.id === o.id))).slice(0, OPTIONS);
+    if (fresh.length < 2) return { ok: false, reason: "no_rerolls" };
+    c.options = fresh;
+    c.rerolls = (c.rerolls || 0) + 1;
     return { ok: true, events: [] };
   }
 
@@ -542,6 +563,7 @@ class Game {
         // своя карточка: на выбор — пока не выбрал, дальше — выбранная шкала, сектор и подсказка
         card: c && (s.phase === "clue" || s.phase === "guess" || s.phase === "reveal") ? {
           options: c.pick == null ? c.options.map((o) => ({ l: o.l, r: o.r })) : null,
+          rerollsLeft: c.pick == null ? Math.max(0, REROLLS - (c.rerolls || 0)) : 0,
           pick: c.pick,
           l: c.pick != null ? c.options[c.pick].l : null,
           r: c.pick != null ? c.options[c.pick].r : null,
@@ -590,4 +612,4 @@ class Game {
   }
 }
 
-module.exports = { Game, ROUNDS, T, REVEAL_STEP, DEFAULTS, MAX_PLAYERS, MIN_PLAYERS, CLUE_MAX, BANDS, WAVE_BONUS, REACTIONS, COLORS, AVATARS, clampSettings, cleanName, cleanText, checkClue, points, nameKey };
+module.exports = { Game, ROUNDS, T, REVEAL_STEP, DEFAULTS, OPTIONS, REROLLS, MAX_PLAYERS, MIN_PLAYERS, CLUE_MAX, BANDS, WAVE_BONUS, REACTIONS, COLORS, AVATARS, clampSettings, cleanName, cleanText, checkClue, points, nameKey };

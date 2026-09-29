@@ -140,12 +140,23 @@ async function joinPhones(code, names, sizes) {
 const PHASE = "(() => { const s = window.wvPhone && window.wvPhone.state; return s ? s.phase : null; })()";
 
 async function clueRound(phones, ri, label, silent) {
-  let triedDigits = false, triedPole = false;
+  let triedDigits = false, triedPole = false, rerolled = false;
   for (const ph of phones) {
     if (silent && silent.includes(ph.name)) continue;
     const pick = await waitFor(ph, "document.querySelector('.pick button') ? 'pick' : (document.getElementById('clue') ? 'write' : null)", 4000);
     if (pick === "pick") {
       if (!ph.shotPick) { ph.shotPick = true; await ph.shot(`${label}_p_pick_${ph.name}`); }
+      check((await ph.evaluate("document.querySelectorAll('.pick button').length")) === 4, `${ph.name}: четыре шкалы на выбор`);
+      if (!rerolled) {
+        // «Другие шкалы»: варианты сменились, остаток уменьшился
+        rerolled = true;
+        const before = await ph.evaluate("[...document.querySelectorAll('.pick button')].map((b) => b.textContent).join('|')");
+        await click(ph, "#reroll");
+        const after = await waitFor(ph, `(() => { const t = [...document.querySelectorAll('.pick button')].map((b) => b.textContent).join('|'); return t && t !== ${JSON.stringify(before)} ? t : null; })()`, 3000);
+        check(!!after, `${ph.name}: «Другие шкалы» дают новые варианты`);
+        check(/2/.test(await ph.evaluate("document.getElementById('reroll').textContent")), `${ph.name}: перетасовок осталось 2`);
+        await ph.shot(`${label}_p_pick_rerolled`);
+      }
       await click(ph, `.pick button[data-i="${ph.name.length % 2}"]`);
     }
     await waitFor(ph, "!!document.getElementById('clue')", 4000);
