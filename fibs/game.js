@@ -44,6 +44,9 @@ const DEFAULTS = {
 };
 
 const MAX_PLAYERS = 16;
+// Всего записей об игроках, вместе с ушедшими посреди партии. Вход открыт и во время игры, так что
+// вход/выход в цикле раздувал список (и каждый снимок, и дамп) без предела: стенд — +32 записи за 12 с.
+const MAX_PLAYER_RECORDS = MAX_PLAYERS * 4;
 const MIN_PLAYERS = 3;
 const MIN_OPTIONS = 6; // вариантов на экране не меньше, недостающее — ловушки игры (§4)
 const TOPICS_OFFERED = 4;
@@ -184,7 +187,7 @@ class Game {
     const s = this.s;
     const have = this.player(id);
     if (have) return { ok: true, player: have };
-    if (this.present().length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
+    if (this.present().length >= MAX_PLAYERS || s.players.length >= MAX_PLAYER_RECORDS) return { ok: false, reason: "room_full" };
     name = cleanName(name);
     if (!name) return { ok: false, reason: "bad_name" };
     const used = new Set(this.present().map((p) => p.color));
@@ -747,10 +750,12 @@ class Game {
         online: p.online,
         left: p.left,
         score: p.score,
-        hintsUsed: p.hintsUsed,
+        // Сколько «Соври за меня» взял — только в итогах: посреди партии счётчик выдавал бы,
+        // кто сейчас подал заготовку (§4: «подсказку от своей лжи не отличить»).
+        ...(s.phase === "finished" ? { hintsUsed: p.hintsUsed } : {}),
       })),
     };
   }
 }
 
-module.exports = { Game, EXTRA_MS, ROUNDS, PLAN, T, DEFAULTS, MAX_PLAYERS, MIN_PLAYERS, MIN_OPTIONS, TOPICS_OFFERED, LIE_MAX, LIKE_GRACE, LIKES_PER_FACT, LIKE_POINTS, REACTIONS, COLORS, AVATARS, clampSettings, cleanName, cleanText, displayText, isTruth, levenshtein };
+module.exports = { Game, EXTRA_MS, ROUNDS, PLAN, T, DEFAULTS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, MIN_OPTIONS, TOPICS_OFFERED, LIE_MAX, LIKE_GRACE, LIKES_PER_FACT, LIKE_POINTS, REACTIONS, COLORS, AVATARS, clampSettings, cleanName, cleanText, displayText, isTruth, levenshtein };

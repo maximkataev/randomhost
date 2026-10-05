@@ -205,6 +205,21 @@ function rawWs(code) {
       ws.close();
     });
 
+    await test("флуд «hat»/«join» не размножает рассылку списка: не чаще раза за тик", async () => {
+      const r7 = await NetBot.createRoom(BASE);
+      const obs = await rawWs(r7.code), att = await rawWs(r7.code);
+      obs.send(JSON.stringify({ type: "join", name: "Зритель" }));
+      att.send(JSON.stringify({ type: "join", name: "Флудер" }));
+      await wait(300);
+      const tok = att.msgs.find((m) => m.type === "joined").token;
+      const before = obs.msgs.filter((m) => m.type === "roster").length;
+      for (let i = 0; i < 60; i++) att.send(JSON.stringify(i % 2 ? { type: "hat", ci: i % 20 } : { type: "join", token: tok }));
+      await wait(500);
+      const n = obs.msgs.filter((m) => m.type === "roster").length - before;
+      assert(n <= 12, "списков за 0.5 с: " + n);
+      obs.close(); att.close();
+    });
+
     await test("с одного адреса не больше 10 анонимных сокетов в комнате", async () => {
       const r6 = await NetBot.createRoom(BASE);
       const list = [];

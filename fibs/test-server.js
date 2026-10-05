@@ -267,3 +267,128 @@ test("чужой токен ведущего не даёт управлять, �
   const r = await fetch(`http://127.0.0.1:${port}/fibs/api/session?r=NOPE22`);
   assert.strictEqual(r.status, 404);
 });
+
+test("тело запроса не объект (null, массив, строка) — ответ, а не падение процесса", async () => {
+  for (const body of ["null", "[]", "\"x\"", "42", "{\"sid\":null,\"msg\":null}"]) {
+    for (const p of ["/fibs/api/msg", "/fibs/api/rooms"]) {
+      const r = await fetch(`http://127.0.0.1:${port}${p}`, { method: "POST", body });
+      assert.ok(r.status < 500, `${p} ${body} → ${r.status}`);
+    }
+  }
+  assert.ok((await (await fetch(`http://127.0.0.1:${port}/fibs/api/health`)).json()).ok, "сервер жив");
+});
+
+test("токены «__proto__»/«constructor» не находят игрока; перехват токена — не чаще раза в секунду", async () => {
+  const room = await createRoom({}, 1);
+  const x = client(room.code);
+  await x.open;
+  for (const token of ["__proto__", "constructor", "toString"]) {
+    x.send({ type: "join", token });
+    const m = await x.wait((mm) => mm.type === "error" || mm.type === "joined");
+    assert.strictEqual(m.error, "token_gone", token);
+    x.msgs.length = 0;
+  }
+  x.close();
+  // ждём сообщение, пришедшее после отметки mark (могло прийти раньше, чем мы начали ждать)
+  const after = (c, mark, pred) => c.msgs.slice(mark).find(pred) || c.wait((m) => pred(m) && c.msgs.indexOf(m) >= mark);
+  const res = (m) => m.type === "joined" || m.type === "error";
+  const a = await player(room.code, "A");
+  let ma = a.msgs.length;
+  const b = await player(room.code, "", a.token);
+  assert.strictEqual(b.id, a.id);
+  await after(a, ma, (m) => m.type === "replaced");
+  await sleep(1100);
+  // a возвращает игрока (последний вход на этом сокете был больше секунды назад) — сразу
+  ma = a.msgs.length;
+  let mb = b.msgs.length;
+  a.send({ type: "join", token: a.token });
+  assert.strictEqual((await after(a, ma, res)).type, "joined");
+  await after(b, mb, (m) => m.type === "replaced");
+  // b забирает обратно (его вход был давно) — можно; a тут же снова — уже нет
+  ma = a.msgs.length; mb = b.msgs.length;
+  b.send({ type: "join", token: a.token });
+  assert.strictEqual((await after(b, mb, res)).type, "joined");
+  await after(a, ma, (m) => m.type === "replaced");
+  ma = a.msgs.length;
+  a.send({ type: "join", token: a.token });
+  assert.strictEqual((await after(a, ma, res)).error, "slow_down");
+  await sleep(1100);
+  ma = a.msgs.length;
+  a.send({ type: "join", token: a.token });
+  assert.strictEqual((await after(a, ma, res)).type, "joined");
+  for (const c of [a, b]) c.close();
+});
+
+test("пересадка доски не обходит лимит анонимов; команды ведущего — не чаще 5 в секунду", async () => {
+  const room = await createRoom({}, 1);
+  const socks = [];
+  let refused = 0;
+  for (let i = 0; i < 14; i++) {
+    const c = client(room.code);
+    try { await c.open; } catch { refused++; continue; }
+    c.send({ type: "host", token: room.hostToken });
+    await c.wait((m) => m.type === "host_ok");
+    socks.push(c);
+  }
+  assert.ok(refused > 0 && socks.length <= 11, `бывшие доски копятся: открыто ${socks.length}, отказов ${refused}`);
+  const host = socks[socks.length - 1];
+  const watcher = socks[0];
+  await sleep(200);
+  const before = watcher.msgs.filter((m) => m.type === "state").length;
+  for (let i = 0; i < 30; i++) host.send({ type: "settings", settings: { hints: 1 + (i % 3) } });
+  await sleep(400);
+  const got = watcher.msgs.filter((m) => m.type === "state").length - before;
+  assert.ok(got >= 1 && got <= 5, `снимков от 30 команд: ${got}`);
+  for (const c of socks) c.close();
+});
+
+test("long-poll: второй опрос той же сессии отпускает первый, сообщения приходят сразу", async () => {
+  const room = await createRoom({}, 1);
+  const B = `http://127.0.0.1:${port}/fibs/api`;
+  const s = await (await fetch(`${B}/session?r=${room.code}`)).json();
+  await fetch(`${B}/msg`, { method: "POST", body: JSON.stringify({ sid: s.sid, msg: { type: "join", name: "Поллер" } }) });
+  await (await fetch(`${B}/poll?sid=${s.sid}`)).json();
+  const t0 = Date.now();
+  const first = fetch(`${B}/poll?sid=${s.sid}`).then((r) => r.json()).then((j) => ({ ms: Date.now() - t0, n: j.messages.length }));
+  await sleep(100);
+  const second = fetch(`${B}/poll?sid=${s.sid}`).then((r) => r.json()).then((j) => ({ ms: Date.now() - t0, n: j.messages.length }));
+  await sleep(200);
+  await fetch(`${B}/msg`, { method: "POST", body: JSON.stringify({ sid: s.sid, msg: { type: "react", emoji: "😂" } }) });
+  const [a, b] = await Promise.all([first, second]);
+  assert.ok(a.ms < 1000 && a.n === 0, `первый опрос отпущен пустым: ${JSON.stringify(a)}`);
+  assert.ok(b.ms < 2000 && b.n >= 1, `второй получил событие сразу: ${JSON.stringify(b)}`);
+});
+
+test("кривой путь запроса (//[) — ни обычный запрос, ни WebSocket не роняют процесс", async () => {
+  const net = require("node:net");
+  for (const extra of ["", "Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n"]) {
+    await new Promise((resolve) => {
+      const s = net.connect(port, "127.0.0.1", () => s.write(`GET //[ HTTP/1.1\r\nHost: x\r\n${extra}\r\n`));
+      s.on("data", () => s.destroy());
+      s.on("error", resolve);
+      s.on("close", resolve);
+      setTimeout(() => { s.destroy(); resolve(); }, 1000);
+    });
+  }
+  await sleep(100);
+  assert.ok((await (await fetch(`http://127.0.0.1:${port}/fibs/api/health`)).json()).ok, "сервер жив");
+});
+
+test("перебор кодов: промахи считаются на сеть IPv6 /64, кривой путь «//fibs%2Fws» не роняет процесс", async () => {
+  const room = await createRoom({}, 1);
+  const B = `http://127.0.0.1:${port}/fibs/api`;
+  const as = (ip) => ({ headers: { "x-real-ip": ip } });
+  // 60 промахов с разных адресов одной /64 — блок для всей сети, соседний адрес настоящий код уже не получает
+  for (let i = 0; i < 61; i++) await fetch(`${B}/session?r=NOPE${i}`, as(`2001:db8:5:6::${(i + 1).toString(16)}`));
+  assert.strictEqual((await fetch(`${B}/session?r=${room.code}`, as("2001:db8:5:6:ffff::9"))).status, 404, "сосед по /64 обошёл блок");
+  assert.strictEqual((await fetch(`${B}/session?r=${room.code}`, as("2001:db8:5:7::1"))).status, 200, "другая /64 не заблокирована");
+  const net = require("node:net");
+  await new Promise((resolve) => {
+    const s = net.connect(port, "127.0.0.1", () => s.write("GET //fibs%2Fws?r=X HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"));
+    s.on("error", resolve);
+    s.on("close", resolve);
+    setTimeout(() => { s.destroy(); resolve(); }, 1000);
+  });
+  await sleep(100);
+  assert.ok((await (await fetch(`${B}/health`)).json()).ok, "сервер жив");
+});

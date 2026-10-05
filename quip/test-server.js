@@ -376,3 +376,22 @@ test("кривой путь запроса (//[) — ни обычный зап�
   await sleep(100);
   assert.ok((await (await fetch(`http://127.0.0.1:${port}/quip/api/health`)).json()).ok, "сервер жив");
 });
+
+test("перебор кодов: промахи считаются на сеть IPv6 /64, кривой путь «//quip%2Fws» не роняет процесс", async () => {
+  const room = await createRoom({}, 1);
+  const B = `http://127.0.0.1:${port}/quip/api`;
+  const as = (ip) => ({ headers: { "x-real-ip": ip } });
+  // 60 промахов с разных адресов одной /64 — блок для всей сети, соседний адрес настоящий код уже не получает
+  for (let i = 0; i < 61; i++) await fetch(`${B}/session?r=NOPE${i}`, as(`2001:db8:5:6::${(i + 1).toString(16)}`));
+  assert.strictEqual((await fetch(`${B}/session?r=${room.code}`, as("2001:db8:5:6:ffff::9"))).status, 404, "сосед по /64 обошёл блок");
+  assert.strictEqual((await fetch(`${B}/session?r=${room.code}`, as("2001:db8:5:7::1"))).status, 200, "другая /64 не заблокирована");
+  const net = require("node:net");
+  await new Promise((resolve) => {
+    const s = net.connect(port, "127.0.0.1", () => s.write("GET //quip%2Fws?r=X HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"));
+    s.on("error", resolve);
+    s.on("close", resolve);
+    setTimeout(() => { s.destroy(); resolve(); }, 1000);
+  });
+  await sleep(100);
+  assert.ok((await (await fetch(`${B}/health`)).json()).ok, "сервер жив");
+});

@@ -303,7 +303,10 @@ const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; cha
 function serveStatic(req, res) {
   const urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
   const file = path.join(STATIC, urlPath === "/" ? "index.html" : urlPath);
-  if (!file.startsWith(STATIC) || path.basename(file).startsWith(".")) { res.writeHead(404); return res.end(); }
+  // Скрытое — в любом сегменте пути, не только в имени файла: иначе отдавались /.git/config и
+  // /.env/…; startsWith(STATIC) пропускал и соседний каталог с тем же префиксом (STATIC + "-old").
+  const rel = path.relative(STATIC, file);
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel) || rel.split(path.sep).some((x) => x.startsWith("."))) { res.writeHead(404); return res.end(); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end("not found"); }
     const type = MIME[path.extname(file)] || "application/octet-stream";
@@ -333,11 +336,26 @@ function readJson(req) {
 
 const looksLikeIp = (s) => /^[0-9a-fA-F:.]{3,45}$/.test(s) && /[.:]/.test(s);
 
+// Ключ адреса для лимитов (перебор кодов, комнаты и сокеты на адрес). IPv6 — по сети /64: её целиком
+// выдают одному абоненту, и с адресами внутри неё счётчик промахов обнулялся бы сменой адреса
+// (проверено: 200 промахов с одной /64 без единой блокировки). IPv4 внутри IPv6 — как обычный IPv4.
+function ipKey(ip) {
+  const v = String(ip).toLowerCase();
+  if (!v.includes(":")) return v;
+  const v4 = v.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (v4) return v4[1];
+  const [head, tail] = v.split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  const groups = tail === undefined ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t];
+  return groups.slice(0, 4).map((x) => (parseInt(x, 16) || 0).toString(16)).join(":") + "::/64";
+}
+
 function clientIp(req) {
   const real = String(req.headers["x-real-ip"] || "").trim();
-  if (looksLikeIp(real)) return real;
+  if (looksLikeIp(real)) return ipKey(real);
   const chain = String(req.headers["x-forwarded-for"] || "").split(",").map((s) => s.trim()).filter(looksLikeIp);
-  return chain.length ? chain[chain.length - 1] : (req.socket.remoteAddress || "");
+  return ipKey(chain.length ? chain[chain.length - 1] : (req.socket.remoteAddress || ""));
 }
 
 // ---------- запасной транспорт: long-polling ----------
@@ -468,7 +486,8 @@ async function route(req, res) {
 const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MSG_BYTES, perMessageDeflate: false });
 
 server.on("upgrade", (req, socket, head) => {
-  // new URL бросает на путях вроде «//[»: в синхронном обработчике это непойманное исключение
+  // new URL бросает на путях вроде «//[» или «//quip%2Fws» (nginx склеит слэши и раскодирует — локация
+  // совпадёт, а сюда придёт сырой путь): в синхронном обработчике это непойманное исключение
   let url;
   try { url = new URL(req.url, "http://x"); } catch { return socket.destroy(); }
   if (url.pathname !== "/quip/ws") return socket.destroy();

@@ -200,7 +200,14 @@ function rosterMsg(room) {
     }),
   };
 }
-function sendRoster(room) { broadcast(room, JSON.stringify(rosterMsg(room))); }
+// Рассылка списка копится и уходит раз за тик: иначе один сокет флудом «hat»/«join» (до MSG_RATE в секунду)
+// заставлял сервер слать roster каждому сокету комнаты 70 раз в секунду (ревью безопасности 05.10)
+function sendRoster(room) { room.rosterDirty = true; }
+function flushRoster(room) {
+  if (!room.rosterDirty) return;
+  room.rosterDirty = false;
+  broadcast(room, JSON.stringify(rosterMsg(room)));
+}
 
 // Снимок: одинаковый для всех, собирается один раз за тик. Трасса — только сид: клиент строит ту же реку сам
 function snapMsg(room, t) {
@@ -225,22 +232,31 @@ function loop() {
   const t0 = process.hrtime.bigint();
   const t = now();
   for (const room of rooms.values()) {
-    const g = room.game;
-    const online = g.players.some((p) => p.online);
-    // пустое лобби и законченная партия без игроков не тикают
-    if (!online && !isActive(room)) continue;
-    room.tickN++;
-    g.step(TICK_MS / 1000);
-    maintain(room, t);
-    const events = g.drainEvents().filter((e) => EVENT_TYPES.has(e.type));
-    // список игроков — раньше снимка: клиент по нему решает, играет он в этой партии или смотрит
-    if (events.some((e) => e.type === "phase" || e.type === "removed" || e.type === "offline" || e.type === "online")) sendRoster(room);
-    if (events.length) broadcast(room, JSON.stringify({ type: "ev", list: events.map(slimEvent) }));
-    broadcast(room, snapMsg(room, t));
-    if (events.some((e) => e.type === "over")) console.log(`${LOG} ${room.code}: заплыв окончен за ${g.clock.toFixed(1)} с`);
+    // ошибка в одной комнате не должна ронять процесс со всеми остальными: закрываем только её
+    try { tickRoom(room, t); } catch (err) {
+      console.error(`${LOG} ${room.code}: тик упал, комната закрыта:`, err);
+      destroyRoom(room);
+    }
   }
   const dt = Number(process.hrtime.bigint() - t0) / 1e6;
   tickCost += dt; tickCount++; tickMax = Math.max(tickMax, dt);
+}
+
+function tickRoom(room, t) {
+  const g = room.game;
+  const online = g.players.some((p) => p.online);
+  // пустое лобби и законченная партия без игроков не тикают
+  if (!online && !isActive(room)) return flushRoster(room);
+  room.tickN++;
+  g.step(TICK_MS / 1000);
+  maintain(room, t);
+  const events = g.drainEvents().filter((e) => EVENT_TYPES.has(e.type));
+  // список игроков — раньше снимка: клиент по нему решает, играет он в этой партии или смотрит
+  if (events.some((e) => e.type === "phase" || e.type === "removed" || e.type === "offline" || e.type === "online")) sendRoster(room);
+  flushRoster(room);
+  if (events.length) broadcast(room, JSON.stringify({ type: "ev", list: events.map(slimEvent) }));
+  broadcast(room, snapMsg(room, t));
+  if (events.some((e) => e.type === "over")) console.log(`${LOG} ${room.code}: заплыв окончен за ${g.clock.toFixed(1)} с`);
 }
 
 function slimEvent(e) {
@@ -303,7 +319,8 @@ const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; cha
 function serveStatic(req, res) {
   const urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
   const file = path.join(STATIC, urlPath === "/" ? "index.html" : urlPath);
-  if (!file.startsWith(STATIC) || path.basename(file).startsWith(".")) { res.writeHead(404); return res.end(); }
+  // только внутри STATIC (с разделителем: «/../randomhost-x» иначе проходил по префиксу) и без скрытых путей вроде .git/
+  if (!file.startsWith(STATIC + path.sep) || path.relative(STATIC, file).split(path.sep).some((s) => s.startsWith("."))) { res.writeHead(404); return res.end(); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end("not found"); }
     const type = MIME[path.extname(file)] || "application/octet-stream";
@@ -320,11 +337,26 @@ function serveStatic(req, res) {
 }
 
 const looksLikeIp = (s) => /^[0-9a-fA-F:.]{3,45}$/.test(s) && /[.:]/.test(s);
+// Ключ адреса для лимитов (перебор кодов, комнаты и сокеты на адрес). IPv6 — по сети /64: её целиком
+// выдают одному абоненту, и с адресами внутри неё счётчик промахов обнулялся бы сменой адреса
+// (проверено: 200 промахов с одной /64 без единой блокировки). IPv4 внутри IPv6 — как обычный IPv4.
+function ipKey(ip) {
+  const v = String(ip).toLowerCase();
+  if (!v.includes(":")) return v;
+  const v4 = v.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (v4) return v4[1];
+  const [head, tail] = v.split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  const groups = tail === undefined ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t];
+  return groups.slice(0, 4).map((x) => (parseInt(x, 16) || 0).toString(16)).join(":") + "::/64";
+}
+
 function clientIp(req) {
   const real = String(req.headers["x-real-ip"] || "").trim();
-  if (looksLikeIp(real)) return real;
+  if (looksLikeIp(real)) return ipKey(real);
   const chain = String(req.headers["x-forwarded-for"] || "").split(",").map((s) => s.trim()).filter(looksLikeIp);
-  return chain.length ? chain[chain.length - 1] : (req.socket.remoteAddress || "");
+  return ipKey(chain.length ? chain[chain.length - 1] : (req.socket.remoteAddress || ""));
 }
 
 // одна кривая строка запроса не должна ронять процесс со всеми комнатами (ревью безопасности 29.09, как в bomb)

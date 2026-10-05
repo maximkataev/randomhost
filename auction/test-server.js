@@ -26,6 +26,7 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
 (async () => {
   const room = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings: { intro: 0 } }) })).json();
   console.log("room", room.code);
+  check(/^[A-Z]{3,7}[2-9]{2}$/.test(room.code), `код комнаты — слово и две цифры (${room.code})`);
   const host = await connect(room.code, { type: "host", token: room.hostToken });
   const bad = await connect(room.code, { type: "host", token: "wrong" });
   check(has(bad, "error", (m) => /token/.test(m.error)), "неверный хост-токен отклоняется");
@@ -725,6 +726,7 @@ async function dumpSuite() {
     if (!(await up())) return check(false, "дамп-сервер поднялся на старом формате");
     const h2 = await (await fetch(B + "/auction/api/health")).json();
     check(h2.rooms === 1, "дамп прежнего формата читается — деплой не теряет идущую партию");
+    check((await fetch(B + "/auction/api/session?r=oldf")).status === 200, "комната со старым 4-символьным кодом из дампа открывается");
   } finally {
     child.kill("SIGKILL");
     try { require("fs").rmSync(DUMP, { force: true }); } catch {}
@@ -1121,7 +1123,7 @@ async function anonIpSuite() {
   const PORT = 3700 + Math.floor(Math.random() * 90);
   const B = `http://127.0.0.1:${PORT}`;
   const child = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(PORT), NODE_ENV: "production", MAX_ANON_PER_IP: "3", MAX_ANON_PER_ROOM: "30",
+    env: { ...process.env, PORT: String(PORT), NODE_ENV: "production", MAX_ANON_PER_IP: "3", MAX_ANON_PER_ROOM: "30", GUESS_LIMIT: "5",
       DUMP_FILE: path.join(require("os").tmpdir(), `anonip-${PORT}.json`) },
     stdio: "ignore",
   });
@@ -1160,6 +1162,46 @@ async function anonIpSuite() {
     for (let i = 0; i < 3; i++) anonAfter.push(await open("10.0.0.1"));
     check(anonAfter.filter(Boolean).length === 3, "вошедшие игроки не занимают места анонимов своего адреса");
     for (const ws of [other, ...players, ...anonAfter]) if (ws) ws.close();
+
+    // перебор кодов: после GUESS_LIMIT промахов адрес не находит даже настоящую комнату, другой адрес — находит
+    const guess = (code, ip) => fetch(B + "/auction/api/session?r=" + code, { headers: { "X-Real-IP": ip } });
+    for (let i = 0; i < 5; i++) await guess("NOPE" + (22 + i), "10.9.9.9");
+    check((await guess(room.code, "10.9.9.9")).status === 404, "после 5 промахов адрес не получает комнату даже по верному коду");
+    const wsBlocked = await new Promise((done) => { const ws = new WebSocket(url, { headers: { "X-Real-IP": "10.9.9.9" } }); ws.on("open", () => { ws.close(); done(false); }); ws.on("error", () => done(true)); });
+    check(wsBlocked, "WebSocket тоже закрыт для адреса-перебирателя");
+    check((await guess(room.code.toLowerCase(), "10.9.9.8")).status === 200, "другой адрес входит, код без учёта регистра");
+
+    // категория-ключ прототипа: не принимается ни при создании, ни в настройках, дамп не ломает
+    const proto = await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "__proto__" }) });
+    check(proto.status === 400, "категория __proto__ при создании → 400");
+    const hostWs = await open("10.0.0.5", { type: "host", token: room.hostToken });
+    let st = null;
+    hostWs.on("message", (raw) => { const m = JSON.parse(raw); if (m.type === "state" || m.type === "hello") st = m.state; });
+    for (const kind of ["__proto__", "constructor", "toString"]) hostWs.send(JSON.stringify({ type: "settings", kind, settings: { budget: 77 } }));
+    await until(() => st && st.settings && st.settings.budget === 77);
+    check(st && st.kind === "animal" && st.settings.budget === 77, `категория из прототипа в настройках игнорируется (kind ${st && st.kind})`);
+    hostWs.close();
+
+    // кривой путь апгрейда (`//`) не роняет процесс
+    await new Promise((done) => {
+      const sock = require("net").connect(PORT, "127.0.0.1", () => sock.write("GET // HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"));
+      sock.on("close", done); sock.on("error", done); setTimeout(done, 1500);
+    });
+    await wait(300);
+    let alive = false;
+    try { alive = (await fetch(B + "/auction/api/health")).ok; } catch {}
+    check(alive, "апгрейд на `//` не роняет сервер");
+
+    // resume без паузы от игрока (доски нет) не рассылает state всей комнате
+    const spam = await open("10.0.0.6", { type: "join", name: "Спам" });
+    const watcher = await open("10.0.0.7", { type: "join", name: "Зритель" });
+    await wait(400);
+    let states = 0;
+    watcher.on("message", (raw) => { if (JSON.parse(raw).type === "state") states++; });
+    for (let i = 0; i < 20; i++) spam.send(JSON.stringify({ type: "resume" }));
+    await wait(500);
+    check(states === 0, `resume без паузы не рассылает state (рассылок ${states})`);
+    spam.close(); watcher.close();
   } finally {
     child.kill("SIGKILL");
   }

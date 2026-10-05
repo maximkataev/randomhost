@@ -222,6 +222,9 @@ class Game {
       lastChat: null,
       lastReact: null,
     };
+    // ушедшие посреди партии копятся в списке (их очки нужны итогам); но не бесконечно — иначе пара join/leave в цикле
+    // раздувает каждый снимок до мегабайт (как в wave)
+    if (s.players.length >= MAX_PLAYERS * 3) return { ok: false, reason: "room_full" };
     s.players.push(p);
     return { ok: true, player: p };
   }

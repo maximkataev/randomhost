@@ -151,6 +151,9 @@ class Game {
       stats: Game.freshStats(),
       lastReact: null,
     };
+    // ушедшие посреди партии копятся в списке (их очки нужны итогам); но не бесконечно — иначе пара join/leave в цикле
+    // раздувает каждый снимок до мегабайт (как в wave)
+    if (s.players.length >= MAX_PLAYERS * 3) return { ok: false, reason: "room_full" };
     s.players.push(p);
     // вошёл посреди партии — отвечает со следующего вопроса с 0 очков (§8)
     return { ok: true, player: p };

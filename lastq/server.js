@@ -30,6 +30,9 @@ const MAX_ROOMS = Number(process.env.MAX_ROOMS || 200);
 const MAX_ROOMS_PER_IP = Number(process.env.MAX_ROOMS_PER_IP || 20);
 const MAX_SOCKETS_PER_ROOM = Number(process.env.MAX_SOCKETS_PER_ROOM || 100);
 const MAX_TOTAL_SOCKETS = Number(process.env.MAX_TOTAL_SOCKETS || 3000);
+// с одного адреса — не больше этого во всех комнатах: доска в своей комнате (по hostToken) не анонимна и не истекает,
+// и один адрес сотней «досок» в двадцати своих комнатах занимал весь MAX_TOTAL_SOCKETS — сервер вставал для всех
+const MAX_SOCKETS_PER_IP = Number(process.env.MAX_SOCKETS_PER_IP || 300);
 const EVICT_GRACE_MS = Number(process.env.EVICT_GRACE_MS || 10000);
 const OFFLINE_GRACE_MS = Number(process.env.OFFLINE_GRACE_MS || 8000);
 const PONG_MISSES = Number(process.env.PONG_MISSES || 3);
@@ -81,6 +84,8 @@ function guessMissed(ip) {
   if (!g || Date.now() - g.since > GUESS_WINDOW_MS) guesses.set(ip, { n: 1, since: Date.now() });
   else g.n += 1;
   if (guesses.size > 10000) for (const [k, v] of guesses) if (Date.now() - v.since > GUESS_WINDOW_MS) guesses.delete(k);
+  // и потолок памяти: при распределённом переборе выкидываем самые старые записи
+  if (guesses.size > 50000) for (const k of guesses.keys()) { guesses.delete(k); if (guesses.size <= 40000) break; }
 }
 function roomFor(req, url) {
   const ip = clientIp(req);
@@ -88,6 +93,12 @@ function roomFor(req, url) {
   const room = rooms.get((url.searchParams.get("r") || "").toUpperCase());
   if (!room) guessMissed(ip);
   return room || null;
+}
+
+function socketsFrom(ip) {
+  let n = 0;
+  for (const r of rooms.values()) for (const c of r.sockets) if (c.ip === ip) n++;
+  return n;
 }
 
 function totalSockets() {
@@ -132,6 +143,9 @@ function evictOldestEmpty(ip) {
 function pruneTokens(room) {
   const ids = new Set(room.game.s.players.map((p) => p.id));
   for (const [t, id] of Object.entries(room.tokens)) if (!ids.has(id)) delete room.tokens[t];
+  // и счётчики обрывов и адреса ушедших: иначе цикл join/leave в лобби копил их без конца
+  for (const id of room.dropCounts.keys()) if (!ids.has(id)) room.dropCounts.delete(id);
+  if (room.lastIp) for (const id of Object.keys(room.lastIp)) if (!ids.has(id)) delete room.lastIp[id];
 }
 
 function newRoom({ code, ip = "", hostToken, game, tokens = {}, touched = Date.now(), speed = 1 }) {
@@ -281,7 +295,8 @@ const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; cha
 function serveStatic(req, res) {
   const urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
   const file = path.join(STATIC, urlPath === "/" ? "index.html" : urlPath);
-  if (!file.startsWith(STATIC) || path.basename(file).startsWith(".")) { res.writeHead(404); return res.end(); }
+  // с разделителем: иначе «/../randomhost-old/x» проходил проверку префикса как соседний каталог
+  if (!file.startsWith(STATIC + path.sep) || path.basename(file).startsWith(".")) { res.writeHead(404); return res.end(); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end("not found"); }
     const type = MIME[path.extname(file)] || "application/octet-stream";
@@ -302,7 +317,9 @@ function readJson(req) {
     let body = "", done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
     req.on("data", (c) => { body += c; if (body.length > 10000) { finish({}); req.destroy(); } });
-    req.on("end", () => { try { finish(JSON.parse(body || "{}")); } catch { finish({}); } });
+    // Только объект: тело `null` превращало `body.sid` в TypeError в async-обработчике —
+    // unhandledRejection и падение процесса со всеми комнатами от одного запроса.
+    req.on("end", () => { try { const v = JSON.parse(body || "{}"); finish(v && typeof v === "object" && !Array.isArray(v) ? v : {}); } catch { finish({}); } });
     req.on("error", () => finish({}));
   });
 }
@@ -311,9 +328,21 @@ const looksLikeIp = (s) => /^[0-9a-fA-F:.]{3,45}$/.test(s) && /[.:]/.test(s);
 
 function clientIp(req) {
   const real = String(req.headers["x-real-ip"] || "").trim();
-  if (looksLikeIp(real)) return real;
+  if (looksLikeIp(real)) return netKey(real);
   const chain = String(req.headers["x-forwarded-for"] || "").split(",").map((s) => s.trim()).filter(looksLikeIp);
-  return chain.length ? chain[chain.length - 1] : (req.socket.remoteAddress || "");
+  return netKey(chain.length ? chain[chain.length - 1] : (req.socket.remoteAddress || ""));
+}
+
+// IPv6: у абонента обычно целая /64 (2^64 адресов) — лимиты по адресу (перебор кодов, комнаты, сокеты)
+// ведём по ней, иначе каждый промах шёл бы с нового адреса и счётчик guessBlocked не набирался бы никогда
+function netKey(ip) {
+  ip = String(ip).replace(/^::ffff:(?=\d+\.)/i, "");
+  if (!ip.includes(":")) return ip;
+  const [head, tail] = ip.split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  const groups = tail === undefined ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t];
+  return groups.slice(0, 4).map((x) => (parseInt(x, 16) || 0).toString(16)).join(":") + "::/64";
 }
 
 // ---------- запасной транспорт: long-polling ----------
@@ -357,11 +386,12 @@ function anonCount(room, ip) {
 }
 function roomHasSpace(room, ip) {
   if (room.sockets.size >= MAX_SOCKETS_PER_ROOM || totalSockets() >= MAX_TOTAL_SOCKETS) return false;
+  if (ip && socketsFrom(ip) >= MAX_SOCKETS_PER_IP) return false;
   if (anonCount(room) >= MAX_ANON_PER_ROOM) return false;
   return !ip || anonCount(room, ip) < MAX_ANON_PER_IP;
 }
 
-const server = http.createServer(async (req, res) => {
+async function route(req, res) {
   const url = new URL(req.url, "http://x");
   const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json" }); res.end(JSON.stringify(obj)); };
   if (url.pathname === "/lastq/api/session") {
@@ -376,7 +406,10 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/lastq/api/poll") {
     const client = pollClients.get(String(url.searchParams.get("sid") || ""));
     if (!client) return json(410, { error: "session gone" });
+    if (!rateOk(client)) return json(429, { error: "slow down" });
     client.lastSeen = now();
+    // один висящий запрос на сессию: новый закрывает прежний (иначе 300 запросов на один sid держали 300 таймеров)
+    if (client.ws.waiter) client.ws.waiter();
     const flush = () => { client.inflight = false; client.lastSeen = now(); json(200, { messages: client.ws.queue.splice(0).map((d) => JSON.parse(d)) }); };
     if (client.ws.queue.length) return flush();
     let done = false;
@@ -412,6 +445,16 @@ const server = http.createServer(async (req, res) => {
   if (STATIC && req.method === "GET") return serveStatic(req, res);
   res.writeHead(404);
   res.end();
+}
+
+// Любая ошибка в обработке запроса — 500 этому запросу, а не падение процесса со всеми комнатами
+const server = http.createServer(async (req, res) => {
+  try {
+    await route(req, res);
+  } catch (err) {
+    console.error(`${LOG} запрос ${req.method} ${String(req.url).slice(0, 80)} упал:`, err);
+    try { if (!res.headersSent) res.writeHead(500); res.end(); } catch {}
+  }
 });
 
 // ---------- WebSocket ----------
@@ -419,7 +462,10 @@ const server = http.createServer(async (req, res) => {
 const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MSG_BYTES, perMessageDeflate: false });
 
 server.on("upgrade", (req, socket, head) => {
-  const url = new URL(req.url, "http://x");
+  let url;
+  // кривой адрес («//%5B/../lastq/ws» nginx нормализует и пропускает как есть) — new URL бросает,
+  // а исключение в обработчике upgrade непойманное и роняет процесс со всеми комнатами
+  try { url = new URL(req.url, "http://x"); } catch { return socket.destroy(); }
   if (url.pathname !== "/lastq/ws") return socket.destroy();
   const room = roomFor(req, url);
   if (!room) { socket.write("HTTP/1.1 404 Not Found\r\n\r\n"); return socket.destroy(); }

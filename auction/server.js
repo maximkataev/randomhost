@@ -106,6 +106,9 @@ try {
 } catch (err) {
   console.warn(`[auction] popularity.json не прочитан (${err.message}) — хит после серии пустых лотов выключен`);
 }
+// Категория из сети — только собственный ключ KINDS: "__proto__"/"constructor" проходили проверку
+// `KINDS[kind]`, ломали тасовку посреди настроек, а комната с такой категорией роняла дамп всех комнат
+const isKind = (k) => typeof k === "string" && Object.hasOwn(KINDS, k);
 const cardsFor = (kind, lang) => (KINDS_BY_LANG[lang] || KINDS_BY_LANG.ru)[kind] || KINDS[kind];
 if (!OPENAI_API_KEY) console.warn("[auction] OPENAI_API_KEY не задан — судья будет через голосование");
 
@@ -129,14 +132,46 @@ const langOf = (state) => (state && state.settings && state.settings.lang) || "r
 // ---------- комнаты ----------
 
 const rooms = new Map(); // code → room
-const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // без похожих символов
+// Код комнаты — слово с двумя цифрами, как в остальных играх: читается вслух и не перебирается
+// (см. guessBlocked). Старые 4-символьные коды из дампа восстанавливаются как есть — формат не проверяем.
+const ROOM_WORDS = (
+  "BID LOT GAVEL HAMMER SOLD DEAL OFFER PRICE BARGAIN BUYER DEALER BROKER TOKEN COIN DOLLAR CASH " +
+  "VAULT SAFE GOLD SILVER BRONZE RUBY PEARL JEWEL AMBER JADE OPAL CROWN TIARA SCEPTER THRONE VASE " +
+  "STATUE CANVAS EASEL ANTIQUE RELIC TROPHY MEDAL STAMP VINYL RECORD GUITAR PIANO CELLO BANJO VIOLIN " +
+  "DRUM TANGO DISCO JAZZ OPERA PANDA OTTER LLAMA ZEBRA FALCON RAVEN EAGLE BISON BADGER GECKO COBRA " +
+  "SHARK WHALE MANGO LEMON PEACH COMET ORBIT PLANET NOVA LUNA CASTLE TOWER PALACE HARBOR CACTUS WAFFLE"
+).trim().split(/\s+/);
+const CODE_DIGITS = "23456789";
 
 function newCode() {
   for (;;) {
-    let code = "";
-    for (let i = 0; i < 4; i++) code += CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)];
+    const code = ROOM_WORDS[crypto.randomInt(ROOM_WORDS.length)] +
+      CODE_DIGITS[crypto.randomInt(CODE_DIGITS.length)] + CODE_DIGITS[crypto.randomInt(CODE_DIGITS.length)];
     if (!rooms.has(code)) return code;
   }
+}
+
+// Перебор кодов: адрес, промахнувшийся GUESS_LIMIT раз за окно, до конца окна не получает ни одной комнаты
+const GUESS_LIMIT = Number(process.env.GUESS_LIMIT || 60);
+const GUESS_WINDOW_MS = 10 * 60 * 1000;
+const guesses = new Map();
+function guessBlocked(ip) {
+  const g = guesses.get(ip);
+  if (g && Date.now() - g.since > GUESS_WINDOW_MS) { guesses.delete(ip); return false; }
+  return !!g && g.n >= GUESS_LIMIT;
+}
+function guessMissed(ip) {
+  const g = guesses.get(ip);
+  if (!g || Date.now() - g.since > GUESS_WINDOW_MS) guesses.set(ip, { n: 1, since: Date.now() });
+  else g.n += 1;
+  if (guesses.size > 10000) for (const [k, v] of guesses) if (Date.now() - v.since > GUESS_WINDOW_MS) guesses.delete(k);
+}
+// комната по ?r= — единственная точка поиска по коду (WebSocket и poll-сессия)
+function roomFor(url, ip) {
+  if (guessBlocked(ip)) return null;
+  const room = rooms.get((url.searchParams.get("r") || "").toUpperCase());
+  if (!room) guessMissed(ip);
+  return room || null;
 }
 
 // суммарное число живых соединений (WebSocket + long-polling) по всем комнатам
@@ -194,7 +229,7 @@ function pruneTokens(room) {
 }
 
 function createRoom({ kind = "artist", settings = {}, speed = 1, ip = "" } = {}) {
-  if (!KINDS[kind]) throw new Error("unknown kind");
+  if (!isKind(kind)) throw new Error("unknown kind");
   if (ip) {
     let mine = 0;
     for (const r of rooms.values()) if (r.ip === ip) mine++;
@@ -515,7 +550,9 @@ const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; cha
 function serveStatic(req, res) {
   const urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
   let file = path.join(STATIC, urlPath === "/" ? "index.html" : urlPath);
-  if (!file.startsWith(STATIC) || path.basename(file).startsWith(".")) { res.writeHead(404); return res.end(); }
+  // Граница — STATIC с разделителем (иначе `/../randomhost-old/x` уходил в соседнюю папку с тем же
+  // префиксом) и ни одного скрытого сегмента пути: basename пропускал `/.git/config`
+  if (!file.startsWith(STATIC + path.sep) || path.relative(STATIC, file).split(path.sep).some((p) => p.startsWith("."))) { res.writeHead(404); return res.end(); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end("not found"); }
     const type = MIME[path.extname(file)] || "application/octet-stream";
@@ -549,16 +586,31 @@ function readJson(req) {
 // адрес клиента похож на IP; всё остальное — подделка, её игнорируем
 const looksLikeIp = (s) => /^[0-9a-fA-F:.]{3,45}$/.test(s) && /[.:]/.test(s);
 
+// Ключ адреса для лимитов (перебор кодов, комнаты и сокеты на адрес). IPv6 — по сети /64: её целиком
+// выдают одному абоненту, и с адресами внутри неё счётчик промахов обнулялся бы сменой адреса
+// (проверено: 200 промахов с одной /64 без единой блокировки). IPv4 внутри IPv6 — как обычный IPv4.
+function ipKey(ip) {
+  const v = String(ip).toLowerCase();
+  if (!v.includes(":")) return v;
+  const v4 = v.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (v4) return v4[1];
+  const [head, tail] = v.split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  const groups = tail === undefined ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t];
+  return groups.slice(0, 4).map((x) => (parseInt(x, 16) || 0).toString(16)).join(":") + "::/64";
+}
+
 function clientIp(req) {
   // Главный источник — X-Real-IP: его ставит ВНЕШНИЙ nginx ($remote_addr) и затирает всё,
   // что прислал клиент, а внутренний nginx пробрасывает как есть. Хвост X-Forwarded-For для
   // этого не годится: при двух прокси там лежит адрес внешнего nginx, один на всех, и лимит
   // комнат на адрес схлопнулся бы на весь сайт.
   const real = String(req.headers["x-real-ip"] || "").trim();
-  if (looksLikeIp(real)) return real;
+  if (looksLikeIp(real)) return ipKey(real);
   // Запасной путь для одного прокси: последний элемент цепочки дописал он сам, подделать его нельзя.
   const chain = String(req.headers["x-forwarded-for"] || "").split(",").map((s) => s.trim()).filter(looksLikeIp);
-  return chain.length ? chain[chain.length - 1] : (req.socket.remoteAddress || "");
+  return ipKey(chain.length ? chain[chain.length - 1] : (req.socket.remoteAddress || ""));
 }
 
 // ---------- запасной транспорт: long-polling (когда прокси не пропускает WebSocket и буферизует потоки) ----------
@@ -599,9 +651,9 @@ async function route(req, res) {
   const url = new URL(req.url, "http://x");
   const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json" }); res.end(JSON.stringify(obj)); };
   if (url.pathname === "/auction/api/session") {
-    const room = rooms.get((url.searchParams.get("r") || "").toUpperCase());
-    if (!room) return json(404, { error: "no such room" });
     const ip = clientIp(req);
+    const room = roomFor(url, ip);
+    if (!room) return json(404, { error: "no such room" });
     if (!roomHasSpace(room, ip)) return json(503, { error: "busy" });
     const client = openPoll(room, { ip, delta: url.searchParams.get("d") === "1" });
     const first = client.ws.queue.splice(0);
@@ -697,12 +749,15 @@ const wss = new WebSocketServer({
 });
 
 server.on("upgrade", (req, socket, head) => {
-  const url = new URL(req.url, "http://x");
+  // Обработчик апгрейда вне try сервера: `GET //` или `/\\` давали Invalid URL — непойманное
+  // исключение и выход процесса со всеми комнатами от одного запроса
+  let url;
+  try { url = new URL(req.url, "http://x"); } catch { return socket.destroy(); }
   if (url.pathname !== "/auction/ws") return socket.destroy();
-  const room = rooms.get((url.searchParams.get("r") || "").toUpperCase());
+  const ip = clientIp(req);
+  const room = roomFor(url, ip);
   if (!room) { socket.write("HTTP/1.1 404 Not Found\r\n\r\n"); return socket.destroy(); }
   // потолок соединений на комнату и на процесс: без него один клиент открывает тысячи сокетов
-  const ip = clientIp(req);
   if (!roomHasSpace(room, ip)) {
     socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
     return socket.destroy();
@@ -864,6 +919,8 @@ function handle(room, client, msg) {
     }
     case "vote": {
       if (!client.playerId) return;
+      // повтор того же голоса ничего не меняет — не гоняем из-за него state по всей комнате
+      if (g.s.phase === "finished" && !g.s.results && g.s.votes[client.playerId] === msg.for) return;
       const r = g.vote(client.playerId, msg.for);
       if (!r.ok) return reply({ type: "rejected", action: "vote", ...r });
       afterChange(room, r.events);
@@ -884,7 +941,7 @@ function handle(room, client, msg) {
       if (!client.host) return;
       if (g.s.phase !== "lobby") return reply({ type: "error", error: "game_started" });
       const wasKind = g.s.kind, wasLang = g.s.settings.lang;
-      if (msg.kind && KINDS[msg.kind]) g.s.kind = msg.kind;
+      if (isKind(msg.kind)) g.s.kind = msg.kind;
       // clampSettings знает категорию и сам сбрасывает задание, доступное только прежней;
       // пересчитываем и когда пришла одна категория без настроек — иначе задание осталось бы чужим
       if (msg.settings) {
@@ -914,8 +971,12 @@ function handle(room, client, msg) {
       // они меняют исход, а «Продолжить» лишь возвращает то, что и так шло.
       const noBoard = ![...room.sockets].some((c) => c.host);
       if (!isHost(client) && !noBoard) return;
+      const ev = g.resume(t);
+      // Не на паузе — ничего не рассылаем: иначе любой подключённый слал бы resume 40 раз в секунду,
+      // и каждый превращался в рассылку полного состояния всем сокетам комнаты
+      if (!ev.length && !isHost(client)) return;
       if (!isHost(client)) console.log(`[auction] ${room.code}: доски нет — партию продолжил ${g.player(client.playerId)?.name || "игрок"}`);
-      return afterChange(room, g.resume(t));
+      return afterChange(room, ev);
     }
     case "kick": {
       if (!isHost(client)) return;
@@ -935,7 +996,7 @@ function handle(room, client, msg) {
     }
     case "next_game": {
       if (!client.host) return;
-      const kind = KINDS[msg.kind] ? msg.kind : g.s.kind;
+      const kind = isKind(msg.kind) ? msg.kind : g.s.kind;
       const fresh = Game.create({ kind, cards: cardsFor(kind, g.s.settings.lang), settings: g.s.settings });
       for (const p of g.activePlayers()) fresh.addPlayer({ id: p.id, name: p.name });
       // онлайн определяем по живым соединениям (боты считаются подключёнными всегда)

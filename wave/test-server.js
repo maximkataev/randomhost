@@ -158,4 +158,22 @@ test("сервер", async (t) => {
     assert.strictEqual(p1.state.phase, "clue", "фаза ждёт остальных после рестарта");
     p1.close();
   });
+
+  await t.test("кривые запросы не роняют процесс; перебор кодов считается по /64", async () => {
+    const base = `http://127.0.0.1:${port}/wave`;
+    // тело null: раньше TypeError в async-обработчике → unhandledRejection → выход процесса со всеми комнатами
+    assert.equal((await fetch(`${base}/api/msg`, { method: "POST", body: "null" })).status, 410);
+    assert.equal((await fetch(`${base}/api/rooms`, { method: "POST", body: "null" })).status, 200);
+    // адрес, на котором new URL бросает, — обычным запросом и рукопожатием WebSocket
+    const net = require("node:net");
+    for (const extra of ["", "Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n"]) {
+      await new Promise((res) => { const s = net.connect(port, "127.0.0.1", () => s.write(`GET //[ HTTP/1.1\r\nHost: x\r\n${extra}\r\n`)); s.on("data", () => s.destroy()); s.on("close", res); s.on("error", res); setTimeout(() => { s.destroy(); res(); }, 500); });
+    }
+    assert.equal((await (await fetch(`${base}/api/health`)).json()).ok, true);
+    // промахи с разных адресов одной IPv6 /64 копятся в один счётчик: верный код после 60 промахов закрыт
+    const room = await (await fetch(`${base}/api/rooms`, { method: "POST", body: "{}" })).json();
+    for (let i = 1; i <= 60; i++) await fetch(`${base}/api/session?r=NOPE${i}`, { headers: { "x-real-ip": `2001:db8:7:7::${i.toString(16)}` } });
+    const r = await fetch(`${base}/api/session?r=${room.code}`, { headers: { "x-real-ip": "2001:db8:7:7:abcd::1" } });
+    assert.equal(r.status, 404);
+  });
 });

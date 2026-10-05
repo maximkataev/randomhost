@@ -432,3 +432,23 @@ test("варианты на экране — строчными и без зна
   assert.strictEqual(displayText("ΓΑΤΑ!"), "γατα");
   assert.strictEqual(displayText("..."), "...");
 });
+
+test("записей об игроках не больше MAX_PLAYER_RECORDS: вход/выход посреди партии не раздувает список", () => {
+  const { MAX_PLAYER_RECORDS } = require("./game");
+  const g = game(3);
+  for (let i = 0; i < MAX_PLAYER_RECORDS * 2; i++) {
+    const r = g.addPlayer({ id: "x" + i, name: "x" + i });
+    if (r.ok) g.removePlayer("x" + i, 5000);
+  }
+  assert.ok(g.s.players.length <= MAX_PLAYER_RECORDS);
+  assert.strictEqual(g.addPlayer({ id: "y", name: "y" }).reason, "room_full");
+});
+
+test("посреди партии снимок не выдаёт, кто брал «Соври за меня»; в итогах — есть", () => {
+  const g = game(4);
+  assert.ok(g.pickTopic(g.s.chooser, g.s.topics[0], 6000).ok);
+  assert.ok(g.hint("P1", 6000).ok);
+  for (const view of ["board", "P2"]) assert.ok(!/hintsUsed/.test(JSON.stringify(g.snapshot(6000, view).players)), "счётчик подсказок утёк в " + view);
+  g.abort(7000);
+  assert.strictEqual(g.snapshot(7000, "board").players.find((p) => p.id === "P1").hintsUsed, 1);
+});
