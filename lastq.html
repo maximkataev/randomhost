@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b120e">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/2753.svg" type="image/svg+xml">
+<title>Последний вопрос — квиз для компании с Камерой и отлётами</title>
+<meta name="robots" content="index,follow">
+<meta name="description" content="❓ Мультиплеерный квиз для компании: вопрос на общем экране, ответ с телефона. Ошибся — попадаешь в Камеру и пытаешься выбраться за 12 секунд. Не выбрался — отлетаешь назад по шкале, хоть в минус. Бесплатно, в браузере." data-i18n-meta="_meta">
+<!-- ссылки на комнаты (?r=КОД) — та же страница: в выдаче должна быть одна, без кода -->
+<link rel="canonical" href="https://randomhost.online/lastq.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Последний вопрос — квиз для компании">
+<meta property="og:description" content="Вопрос на общем экране, ответ с телефона. Ошибся — в Камеру. Не выбрался — отлетаешь назад. Бесплатно, в браузере.">
+<meta property="og:url" content="https://randomhost.online/lastq.html">
+<meta property="og:site_name" content="Рандомайзер Онлайн">
+<meta property="og:locale" content="ru_RU">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- неблокирующие шрифты: Geologica (текст) и JetBrains Mono (табло, цифры) — оба с кириллицей и греческим -->
+<link href="https://fonts.googleapis.com/css2?family=Geologica:wght@500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Geologica:wght@500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet"></noscript>
+<link rel="stylesheet" href="lastq-challenges.css">
+<style>
+  /* Мир «Последнего вопроса» (дизайн 05.10): ночной стадион, квиз — забег. Телефон — номер на груди бегуна
+     (тот же номер, что у его дорожки на общем экране) и крупные клавиши ответов. Камера — бетонная стена в стальной раме.
+     Всё под большой палец, игровые экраны влезают в 320×568 без прокрутки. Токены испытаний — в lastq-challenges.css. */
+  :root {
+    --night: #0b120e;
+    --infield: #13221a;
+    --infield-2: #1c3125;
+    --edge: #2f4a3b;
+    --chalk: #f2eee3;
+    --chalk-2: #b4beb5;
+    --track: #b2432a;
+    --track-2: #a23c25;
+    --sand: #dcbd80;
+    --sand-ink: #5d4317;
+    --ok: #52d07a;
+    --bad: #ff6b4f;
+    --gold: #f0c75e;
+    --c0: #ffcf3f; --c1: #4aa9ff; --c2: #ff8a66; --c3: #c6a0ff; /* буквы A–D, те же на доске */
+    --lang-switch-bg: var(--night);
+    --lang-switch-border: var(--edge);
+    --lang-switch-fg: var(--chalk-2);
+    --lang-switch-active-bg: var(--chalk);
+    --lang-switch-active-fg: var(--night);
+    --lang-switch-active-border: var(--chalk);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; }
+  body { background: var(--night); color: var(--chalk); font: 500 18px/1.3 var(--font); -webkit-font-smoothing: antialiased; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; touch-action: manipulation; }
+  button:disabled { cursor: default; }
+  :focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+  .hidden { display: none !important; }
+  /* справа — место под переключатель языка из i18n.js (--lsw меряет lastq-shared.js) */
+  .util { display: flex; align-items: center; gap: 12px; height: calc(var(--lsc, 30px) * 2); padding: 0 var(--lsw, 150px) 0 14px; }
+  .util a { color: var(--chalk-2); text-decoration: none; font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .sound-toggle-btn { flex: none; width: calc(var(--lsh, 44px) * 1.25); height: var(--lsh, 44px); border: 2px solid var(--edge); background: var(--infield); color: var(--chalk); font-size: 17px; display: grid; place-items: center; padding: 0; }
+  /* Камера — на весь экран: шапку и переключатель языка прячем, каждый пиксель высоты у испытания */
+  body.cellmode { background: #15191b; }
+  body.cellmode .util, body.cellmode .lang-switch { display: none !important; }
+  .conn { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 30; background: var(--bad); color: var(--night); font-weight: 800; font-size: 15px; padding: 8px 12px; visibility: hidden; width: max-content; max-width: calc(100% - 16px); text-align: center; }
+  .conn.on { visibility: visible; }
+  .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: var(--chalk); color: var(--night); font-weight: 700; padding: 11px 14px; max-width: calc(100% - 32px); visibility: hidden; }
+  .toast.on { visibility: visible; }
+  #app { max-width: 520px; margin: 0 auto; padding: 0 14px 16px; min-height: calc(100vh - var(--lsc, 30px) * 2); min-height: calc(100dvh - var(--lsc, 30px) * 2); display: flex; flex-direction: column; justify-content: center; gap: 12px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .util a { min-height: 44px; display: inline-flex; align-items: center; }
+  .lang-switch button { min-height: 44px !important; }
+  #app { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .leave { display: block; margin: 0 auto; min-height: 44px; background: none; border: 0; color: inherit; opacity: .7; text-decoration: underline; text-underline-offset: 3px; font: inherit; font-size: 16px; padding: 10px 16px; }
+  #app.top { justify-content: flex-start; padding-top: 2px; }
+  body.cellmode #app { min-height: 100vh; min-height: 100dvh; height: 100dvh; padding-top: 10px; justify-content: flex-start; }
+
+  h1, h2, h3 { margin: 0; }
+  .brand { font: 900 clamp(40px, 13vw, 60px)/.95 var(--font); text-transform: uppercase; letter-spacing: -.02em; }
+  .brand em { font-style: normal; display: inline-block; background: var(--chalk); color: var(--night); padding: 0 .12em .06em; margin-top: .06em; }
+  .kicker { font: 700 13px/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--gold); }
+  .lede { margin: 0; font-size: 19px; }
+  .lede b { color: var(--gold); }
+  .fine { color: var(--chalk-2); font-size: 15px; }
+  .center { text-align: center; }
+  .rules { margin: 0; padding-left: 22px; color: var(--chalk-2); display: grid; gap: 6px; }
+  .rules li::marker { color: var(--track); font-family: var(--mono); font-weight: 800; }
+
+  /* главная клавиша — тартан с нижней кромкой: нажатие уходит вниз */
+  .btn { display: block; width: 100%; border: 0; background: var(--track); color: #fff; font: 900 22px/1 var(--font); text-transform: uppercase; letter-spacing: .02em; padding: 17px 14px; box-shadow: 0 5px 0 #5e2214, inset 0 0 0 2px rgba(242, 238, 227, .85); text-align: center; text-decoration: none; }
+  .btn:not(:disabled):active { transform: translateY(4px); box-shadow: 0 1px 0 #5e2214, inset 0 0 0 2px rgba(242, 238, 227, .85); }
+  .btn:disabled { opacity: .5; }
+  .btn.ghost { background: transparent; color: var(--chalk); box-shadow: none; border: 2px dashed var(--chalk-2); font-size: 18px; }
+  .link { display: block; min-height: 44px; margin: 2px auto 0; background: none; border: 0; color: var(--chalk); text-decoration: underline; text-decoration-color: var(--track); text-decoration-thickness: 3px; text-underline-offset: 4px; padding: 10px 16px; font-weight: 700; font-size: 18px; }
+
+  .card { background: var(--infield); border: 2px solid var(--edge); padding: 14px; }
+  .card .k { font: 700 12px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--gold); margin-bottom: 6px; }
+  .card .k:empty { display: none; }
+
+  /* вход */
+  .enter .room { font: 800 15px/1 var(--mono); letter-spacing: .16em; color: var(--gold); }
+  .enter h2 { margin: 6px 0 10px; font: 900 30px/1.05 var(--font); }
+  .enter input { width: 100%; border: 0; border-bottom: 3px solid var(--chalk); background: transparent; color: var(--chalk); font: 700 28px/1.2 var(--font); padding: 4px 0; border-radius: 0; }
+  .enter input::placeholder { color: var(--chalk-2); opacity: .6; }
+  .enter input:focus { outline: none; border-bottom-color: var(--gold); }
+  .err { min-height: 22px; color: var(--bad); font-weight: 700; }
+
+  /* игроки */
+  .players { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pl { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 0; background: var(--infield); border-left: 6px solid var(--pc); font-weight: 700; font-size: 16px; max-width: 100%; }
+  .pl .emo { margin-left: 6px; }
+  .pl b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .pl.me { background: var(--infield-2); box-shadow: inset 0 0 0 2px var(--chalk-2); }
+  .pl.off { opacity: .45; }
+  .emo { font-style: normal; line-height: 1; }
+  /* номер на груди: белый лоскут, четыре булавки, номер дорожки — как на общем экране */
+  .me-badge { position: relative; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 12px; padding: 14px 16px 12px; background: #f5f2ea; color: var(--night); border-top: 8px solid var(--pc, var(--track));
+    background-image: radial-gradient(circle at 10px 10px, #8e979e 3px, transparent 3.5px), radial-gradient(circle at calc(100% - 10px) 10px, #8e979e 3px, transparent 3.5px), radial-gradient(circle at 10px calc(100% - 10px), #8e979e 3px, transparent 3.5px), radial-gradient(circle at calc(100% - 10px) calc(100% - 10px), #8e979e 3px, transparent 3.5px); }
+  .me-badge .emo { font-size: 42px; }
+  .me-badge .kicker { color: #6b5520; }
+  .me-badge b { font: 900 28px/1.05 var(--font); display: block; overflow-wrap: anywhere; }
+  .me-badge .bibno { font: 800 56px/.9 var(--mono); letter-spacing: -.04em; }
+  .status h2 { font: 900 28px/1.05 var(--font); overflow-wrap: anywhere; }
+  .status p { margin: 6px 0 0; color: var(--chalk-2); }
+
+  /* шапка игрового экрана: где мы и сколько осталось */
+  .qhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-weight: 600; font-size: 15px; color: var(--chalk-2); }
+  .myno { flex: none; align-self: center; min-width: 26px; height: 22px; padding: 0 5px; background: var(--pc); color: var(--night); font: 800 14px/22px var(--mono); text-align: center; }
+  .cellhead .myno { margin-right: -2px; }
+  .qhead .where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .qhead b { color: var(--chalk); font-weight: 800; }
+  .qhead .tl { font: 800 24px/1 var(--mono); color: var(--chalk); font-variant-numeric: tabular-nums; flex: none; }
+  .qhead .tl.hot { color: var(--bad); }
+  .timer { height: 6px; background: var(--infield-2); overflow: hidden; flex: none; }
+  .timer i { display: block; height: 100%; background: var(--chalk); transform-origin: 0 50%; }
+  .timer.hot i { background: var(--bad); }
+  /* бонус за скорость: тает от открытия кнопок до конца таймера */
+  .bonus { display: flex; align-items: center; gap: 8px; font: 700 12px/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--chalk-2); height: 18px; flex: none; }
+  .bonus .bb { flex: 1; height: 6px; background: var(--infield-2); overflow: hidden; }
+  .bonus .bb i { display: block; height: 100%; background: var(--ok); transform-origin: 0 50%; }
+  .bonus b { color: var(--ok); min-width: 3.2em; text-align: right; font: 800 15px/1 var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* вопрос — прямо на ночном фоне, без рамки: рамки у клавиш */
+  .qcard { flex: none; background: transparent; border: 0; padding: 4px 0 2px; }
+  .qt { font: 800 22px/1.17 var(--font); overflow-wrap: break-word; hyphens: auto; }
+  .qt.long { font-size: 19px; }
+  .answers { display: grid; gap: 9px; flex: none; }
+  .ans { position: relative; display: flex; align-items: center; gap: 10px; text-align: left; background: var(--infield); border: 2px solid var(--edge); padding: 6px 10px 6px 6px; min-height: 58px; font: 700 19px/1.13 var(--font); box-shadow: 0 4px 0 #050906; overflow-wrap: break-word; hyphens: auto; transition: opacity .2s; }
+  .ans .lt { flex: none; width: 36px; height: 36px; background: var(--lc); color: var(--night); font: 800 20px/36px var(--mono); text-align: center; }
+  .ans .tx { flex: 1; min-width: 0; }
+  .ans:not(:disabled):active { transform: translateY(3px); box-shadow: 0 1px 0 #050906; }
+  /* 3 секунды на чтение: кнопки на месте, но пустые и закрытые — без скачка вёрстки, когда откроются */
+  .ans.closed { background: transparent; box-shadow: none; border-style: dashed; }
+  .ans.closed .tx { visibility: hidden; }
+  .ans.closed .lt { opacity: .35; }
+  .ans.sel { background: var(--chalk); color: var(--night); border-color: var(--chalk); }
+  .ans.dim { opacity: .35; box-shadow: none; }
+  .ans.right { background: var(--ok); color: var(--night); border-color: var(--ok); opacity: 1; }
+  .ans.wrong { background: #4b1b12; border-color: var(--bad); }
+  .note { text-align: center; font-weight: 700; color: var(--chalk-2); min-height: 24px; flex: none; }
+  .note b { color: var(--chalk); }
+
+  /* раскрытие */
+  .big { font: 900 clamp(44px, 14vw, 66px)/.95 var(--font); text-transform: uppercase; letter-spacing: -.02em; }
+  .big.ok { color: var(--ok); }
+  .big.bad { color: var(--bad); }
+  .sub { font: 800 24px/1.12 var(--font); }
+  .rightans { display: flex; align-items: center; gap: 10px; font: 700 19px/1.2 var(--font); }
+  .rightans .lt { flex: none; width: 32px; height: 32px; background: var(--lc); color: var(--night); font: 800 18px/32px var(--mono); text-align: center; }
+  .groups { display: grid; gap: 10px; }
+  .grp { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 2px 12px; text-align: left; background: var(--infield); border: 2px solid var(--edge); padding: 10px 12px; box-shadow: 0 4px 0 #050906; color: var(--chalk); }
+  .grp i { grid-row: span 2; font-style: normal; font-size: 38px; text-align: center; }
+  .grp b { font: 900 24px/1 var(--font); text-transform: uppercase; }
+  .grp span { color: var(--chalk-2); font-size: 15px; }
+  .grp:not(:disabled):active { transform: translateY(3px); box-shadow: 0 1px 0 #050906; }
+  .grp:disabled { opacity: .5; }
+  .big.palach { font-size: clamp(30px, 10.5vw, 44px); overflow-wrap: break-word; hyphens: auto; }
+  .betres { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; text-align: left; }
+  .betres li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px 8px; padding: 6px 10px; background: var(--infield); border-left: 6px solid var(--ok); font-weight: 700; }
+  .betres li.lost { border-left-color: var(--bad); }
+  .betres li b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .betres li span { color: var(--chalk-2); font-size: 15px; }
+  .betres li em { grid-column: 2 / -1; font: 800 14px/1 var(--mono); font-style: normal; text-transform: uppercase; color: var(--ok); }
+  .betres li.lost em { color: var(--bad); }
+  .chosen { font: 900 32px/1 var(--font); text-transform: uppercase; color: var(--gold); }
+
+  /* Камера: красная лампа у заголовка, прогресс — три засова */
+  .cellhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex: none; }
+  .cellhead .ttl { display: flex; align-items: center; gap: 8px; font: 900 22px/1 var(--font); text-transform: uppercase; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cellhead .ttl::before { content: ""; flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 0 3px rgba(255, 107, 79, .25); }
+  .cellhead .prog { display: flex; gap: 5px; flex: none; }
+  .cellhead .prog i { width: 22px; height: 14px; border: 2.5px solid #8e979e; background: transparent; }
+  .cellhead .prog i.on { background: var(--ok); border-color: var(--ok); }
+  .cellhead .tl { font: 800 26px/1 var(--mono); font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: right; flex: none; }
+  .cellhead .tl.hot { color: var(--bad); }
+  .task { font: 800 20px/1.1 var(--font); min-height: 2.2em; display: flex; align-items: flex-end; flex: none; overflow-wrap: break-word; hyphens: auto; color: var(--gold); }
+  #cellwrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #cellwrap .pad { flex: 1; min-height: 0; }
+  .ready { font: 900 42px/1 var(--font); text-transform: uppercase; text-align: center; align-self: center; }
+  .bet .two button:disabled:not(.on) { opacity: .35; }
+  .pad.okflash::before { content: "✓"; position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; font: 900 120px/1 var(--font); color: var(--green); background: rgba(233, 229, 218, .92); animation: fadeout .4s ease-in forwards; pointer-events: none; }
+  @keyframes fadeout { 60% { opacity: 1; } to { opacity: 0; } }
+  @media (prefers-reduced-motion: no-preference) { .cellhead .ttl::before { animation: lamp 1s steps(2, jump-none) infinite; } }
+  @keyframes lamp { 50% { opacity: .25; } }
+
+  /* ставки на спасение и «Передачка» */
+  .hint { background: var(--sand); color: var(--night); padding: 10px 12px; }
+  .hint .h { font-weight: 700; font-size: 16px; }
+  .hint .code { font: 800 50px/1 var(--mono); letter-spacing: .14em; margin: 4px 0; }
+  .hint .mybet { font-size: 15px; font-weight: 700; color: var(--sand-ink); }
+  .bets { display: grid; gap: 8px; }
+  .bet { background: var(--infield); border-left: 8px solid var(--pc); padding: 8px 10px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; align-items: center; }
+  .bet .who { display: flex; align-items: center; gap: 8px; min-width: 0; font: 800 20px/1.1 var(--font); }
+  .bet .who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .bet .mini { display: flex; gap: 4px; }
+  .bet .mini i { width: 14px; height: 10px; border: 2px solid var(--chalk-2); }
+  .bet .mini i.on { background: var(--ok); border-color: var(--ok); }
+  .bet .two { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .bet .two button { min-height: 46px; border: 2px solid var(--chalk-2); background: transparent; font: 800 17px/1 var(--font); text-transform: uppercase; }
+  .bet .two button.on.y { background: var(--ok); border-color: var(--ok); color: var(--night); }
+  .bet .two button.on.n { background: var(--bad); border-color: var(--bad); color: var(--night); }
+  .bet .done { grid-column: 1 / -1; font: 800 19px/1 var(--font); text-transform: uppercase; }
+  .bet .done.y { color: var(--ok); } .bet .done.n { color: var(--bad); }
+
+  /* своя дорожка на приговоре */
+  .mylane { position: relative; height: 64px; margin: 16px 0 4px; background: var(--track); border-top: 3px solid var(--chalk); border-bottom: 3px solid var(--chalk); overflow: hidden; }
+  .mylane .pit { position: absolute; left: 0; top: 0; bottom: 0; background: var(--sand) radial-gradient(circle, rgba(93, 67, 23, .22) 1.2px, transparent 1.8px) 0 0 / 9px 9px; box-shadow: inset -6px 0 0 #fff; }
+  .mylane .ghost { position: absolute; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 3px dashed rgba(242, 238, 227, .7); }
+  .mylane .t { position: absolute; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; background: var(--chalk); border: 4px solid var(--pc); display: grid; place-items: center; font-size: 22px; font-style: normal; line-height: 1; }
+  .mylane .t.sunk::after { content: ""; position: absolute; left: -9px; right: -9px; bottom: -7px; height: 52%; background: var(--sand); border-radius: 50% 50% 5px 5px / 70% 70% 5px 5px; animation: sandin .3s .95s both; }
+  @media (prefers-reduced-motion: no-preference) { .mylane .t { animation: knock 1.1s cubic-bezier(.25, .6, .35, 1) both; } }
+  @keyframes knock { 0% { left: var(--from); transform: translateY(0) rotate(0); } 45% { transform: translateY(-60%) rotate(-200deg); } 80% { transform: translateY(0) rotate(-360deg); } 100% { transform: rotate(-360deg); } }
+  @keyframes sandin { from { transform: scaleY(0); transform-origin: 50% 100%; } }
+
+  /* финальная ставка */
+  .theme { font: 900 clamp(34px, 11vw, 52px)/1 var(--font); text-transform: uppercase; letter-spacing: -.02em; overflow-wrap: break-word; hyphens: auto; color: var(--gold); }
+  .stakev { font: 800 60px/1 var(--mono); text-align: center; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; height: 44px; accent-color: var(--track); margin: 0; }
+  .quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .quick button { min-height: 46px; border: 2px solid var(--chalk-2); background: transparent; font: 800 17px/1 var(--font); text-transform: uppercase; }
+  .quick button:active { background: var(--chalk); color: var(--night); }
+
+  /* таблица счёта */
+  .table ol { list-style: none; margin: 0; padding: 0; display: grid; }
+  .table li { display: flex; align-items: center; gap: 8px; min-height: 32px; font-weight: 700; font-size: 17px; border-bottom: 2px solid var(--edge); }
+  .table li:last-child { border-bottom: 0; }
+  .table li .n { width: 22px; flex: none; color: var(--chalk-2); font-family: var(--mono); }
+  .table li b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .table li .s { flex: none; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .table li .s.neg { color: var(--bad); }
+  .table li.me { color: var(--gold); }
+  .awards { display: grid; gap: 6px; }
+  .award { background: var(--infield); border-top: 3px solid var(--gold); padding: 8px 10px; font-weight: 600; color: var(--chalk-2); }
+  .award b { font: 900 20px/1.1 var(--font); text-transform: uppercase; display: block; color: var(--chalk); }
+
+  .reacts { display: flex; justify-content: center; gap: 10px; flex: none; }
+  .reacts button { width: 52px; height: 52px; border: 2px solid var(--edge); border-radius: 50%; background: var(--infield); font-size: 25px; padding: 0; }
+  .reacts button:not(:disabled):active { transform: scale(.9); }
+  .reacts button:disabled { opacity: .4; }
+
+  /* пример на стартовом экране: кусочек шкалы — три дорожки, ноль и яма; один уже сидит в песке */
+  .sample { padding: 0; background: transparent; border: 0; }
+  .mini-track { position: relative; height: 138px; margin-top: 2px; background: var(--track); overflow: hidden; }
+  .mini-track .pit { position: absolute; left: 0; top: 0; bottom: 0; width: 30%; background: var(--sand) radial-gradient(circle, rgba(93, 67, 23, .22) 1.2px, transparent 1.8px) 0 0 / 9px 9px; box-shadow: inset -6px 0 0 #fff; }
+  .mini-track .pit span { position: absolute; left: 8px; top: 24px; font: 900 13px/1 var(--font); letter-spacing: .25em; text-transform: uppercase; color: var(--sand-ink); }
+  .mini-track .ln { position: absolute; left: 0; right: 0; height: 40px; border-top: 2px solid rgba(242, 238, 227, .9); }
+  .mini-track .zero { position: absolute; left: 30%; top: 4px; margin-left: 8px; font: 800 12px/1 var(--mono); color: #fff; }
+  .mini-track .t { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: var(--chalk); border: 3px solid var(--pc); display: grid; place-items: center; font-size: 17px; font-style: normal; }
+  .mini-track .t.sunk::after { content: ""; position: absolute; left: -8px; right: -8px; bottom: -6px; height: 52%; background: var(--sand); border-radius: 50% 50% 4px 4px / 70% 70% 4px 4px; }
+  .mini-track .fly { position: absolute; font: 800 14px/1 var(--mono); color: var(--sand-ink); }
+
+  /* узкие телефоны: «← Все игры» не влезает рядом со звуком и языком — остаётся одна стрелка (текст остаётся для чтения с экрана) */
+  @media (max-width: 400px) {
+    .util a { font-size: 0; min-width: 44px; height: 44px; display: grid; place-items: center start; }
+    .util a::before { content: "←"; font-size: 24px; font-weight: 700; }
+    body .lang-switch { right: 8px; }
+  }
+  .quick button { font-size: clamp(14px, 4.6vw, 17px); padding: 0 4px; }
+  .btn { font-size: clamp(17px, 6vw, 22px); }
+  .big { overflow-wrap: break-word; hyphens: auto; }
+
+  /* невысокие экраны (SE с панелями Safari): вопрос, четыре кнопки и таймер — без прокрутки */
+  @media (max-height: 640px) {
+    #app { gap: 9px; }
+    .card { padding: 11px 12px; }
+    .qt { font-size: 20px; }
+    .qt.long { font-size: 17px; }
+    .ans { min-height: 50px; font-size: 17px; padding: 5px 9px 5px 5px; }
+    .ans .lt { width: 32px; height: 32px; line-height: 32px; font-size: 18px; }
+    .answers { gap: 7px; }
+    .big { font-size: 42px; }
+    .grp { padding: 7px 10px; }
+    .grp i { font-size: 30px; }
+    .stakev { font-size: 48px; }
+    .me-badge .emo { font-size: 36px; }
+    .me-badge .bibno { font-size: 44px; }
+    .sample { display: none; }
+  }
+  @media (max-height: 520px) {
+    .qt { font-size: 18px; }
+    .qt.long { font-size: 16px; }
+    .ans { min-height: 44px; font-size: 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="util"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
+<div class="conn" id="conn"></div>
+<div class="conn" id="pausebar"></div>
+<div id="app"></div>
+<div class="toast" id="toast" role="status"></div>
+<div class="sr-only" id="live" aria-live="polite"></div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    err_send: `Нет связи — не отправилось, попробуй ещё раз`, btn_leave: `Выйти из игры`, leave_q: `Выйти из игры? Вернуться можно будет только новым игроком`, stake_label: `Сколько ставишь`, stake_vt: `{n} очков`,
+    _title: `Последний вопрос — квиз для компании с Камерой и отлётами`,
+    _meta: `❓ Мультиплеерный квиз для компании: вопрос на общем экране, ответ с телефона. Ошибся — попадаешь в Камеру и пытаешься выбраться за 12 секунд. Не выбрался — отлетаешь назад по шкале, хоть в минус. Бесплатно, в браузере.`,
+    nav_all_games: `← Все игры`,
+    kicker: `Квиз для компании · телефоны + общий экран`,
+    lede: `Вопрос на общем экране, отвечаешь с телефона. Ошибка — <b>в Камеру</b>: три испытания за 12 секунд. Не вышло — <b>отлетаешь назад</b>, хоть в минус.`,
+    btn_create: `Создать комнату`, btn_creating: `Создаём…`,
+    cta_sub: `Открывай на ноутбуке или ТВ — там будет общий экран`,
+    have_code: `У меня есть код`, prompt_code: `Код комнаты`,
+    rule1: `От двух человек, все заходят с телефонов по QR`,
+    rule2: `Кто ответил верно и быстро — тот получил больше`,
+    rule3: `В конце — последний вопрос: ставишь очки и отвечаешь`,
+    sample_pit: `яма`, bib_no: `Номер {n}`, sample_k: `Так выглядит шкала`, sample_q: `Сколько сердец у осьминога?`, sample_a: `Одно|Три|Восемь|Зависит от настроения`,
+    enter_title: `Как тебя зовут?`, enter_ph: `Имя`, btn_join: `Войти`,
+    err_name: `Напиши имя`, err_room_full: `В комнате уже 10 игроков`, err_token_gone: `Тебя нет в этой партии — войди заново`,
+    wait_title: `Подключаемся…`,
+    btn_home: `Главная`,
+    lobby_in: `Ты в игре`, lobby_wait: `Ждём, пока ведущий начнёт. Нужно хотя бы двое`,
+    how_k: `Пока ждём — как играть`,
+    intro_pts: `Верно: +{r} и до +{s} за скорость · отлёт: −{k}`,
+    read_wait: `Варианты через {s}…`,
+    bonus: `бонус`,
+    answered: `Ответ принят. Ждём остальных`,
+    late_title: `Ты со следующего вопроса`, late_sub: `Пока смотри на общий экран`,
+    right_t: `Верно!`, wrong_t: `Мимо.`, none_t: `Без ответа.`, to_cell: `Тебе в Камеру`,
+    right_was: `Верный ответ`, f_right_sub: `Ставка {n} — твоя`, f_to_cell: `В финальную Камеру. Выберешься — потеряешь только половину ставки`,
+    clean: `Чисто! Все ответили верно — Камеры не будет`,
+    palach_t: `Ты палач!`, palach_sub: `Твой ответ — самый быстрый. Выбери, что достанется узникам:`,
+    picking: `{name} выбирает испытания…`, picked_by: `Палач — {name}. Набор:`, picked_auto: `Набор выпал случайно:`, you_picked: `Твой выбор для узников:`,
+    cell_t: `Камера`, cell_final: `Камера`, cell_go: `Выбирайся!`,
+    esc_title: `Свобода!`, esc_sub: `Смотри на экран: остальные ещё сидят`,
+    gone_t: `Время вышло`,
+    bets_t: `Кто выберется?`, bets_sub: `Одна ставка на каждого, угадал — +20`,
+    bet_y: `Спасётся`, bet_n: `Сгорит`, bet_none: `Без ставки`, bets_closed: `Ставки сделаны — смотри, кто выберется`, cell_ready: `Приготовься…`, betleft: `ещё {s} с`,
+    pass_h: `{name} ждёт передачку — продиктуй код вслух!`, pass_bet: `Твоя ставка: {b}`, pass_nobet: `ставки нет`,
+    watch_t: `Смотри на экран`, watch_sub: `В этот раз ты не участвуешь — со следующего вопроса`,
+    verdict_t: `Приговор`,
+    v_escaped: `Свобода!`, v_burned: `Не вышло`, v_knock: `Отлетаешь: {n}`,
+    v_bets: `Ставки: +{n}`, v_bets0: `Ставки не сыграли`, bet_won: `угадано`, bet_lost: `мимо`, my_no: `№{n}`, v_free: `Ты на свободе`,
+    stake_k: `Последний вопрос`, stake_theme: `Тема`, stake_score: `У тебя {n}`, stake_hint: `Верно — получишь ставку. Мимо — потеряешь её (выберешься из Камеры — только половину)`,
+    q_all: `Всё`, q_half: `Половина`, q_zero: `Ноль`, btn_stake: `Ставлю {n}`, staked: `Ставка принята: {n}`, btn_change: `Изменить`,
+    stake_late: `В финале ты не участвуешь — смотри на экран`,
+    fq: `Последний вопрос`,
+    fr_wait: `Раскрываем ставки по одному…`, fr_stake: `Ставка {n}`, fr_right: `Верно! +{n}`, fr_half: `Мимо, но выбрался: {n}`, fr_burn: `Мимо: {n}`, fr_now: `Теперь у тебя {n}`,
+    final_title: `Игра окончена`, place: `{n} место`, final_sub: `Ведущий может начать ещё партию`,
+    final_few: `Игроков стало меньше двух — игра закончилась`, final_host: `Ведущий закончил игру`,
+    table: `Счёт`, my_awards: `Твои награды`,
+    kicked_title: `Ведущий убрал тебя из комнаты`,
+    replaced_title: `Игра открыта в другой вкладке`, replaced_text: `Играть можно только в одной.`, btn_back_here: `Играть здесь`,
+    expired_title: `Комната закрыта`, expired_text: `Она пустовала полчаса или ведущий её закрыл.`, expired_new: `Создать новую`,
+    paused: `Все отключились — ждём`,
+    rj_not_now: `Уже поздно`, rj_closed: `Ставки уже закрыты`, rj_already: `Уже выбрано`, rj_not_in_question: `Ты со следующего вопроса`,
+  },
+  en: {
+    err_send: `No connection — not sent, try again`, btn_leave: `Leave the game`, leave_q: `Leave the game? You can only come back as a new player`, stake_label: `How much you bet`, stake_vt: `{n} points`,
+    _title: `Last Question — the party quiz with a Cell and knockbacks`,
+    _meta: `❓ A multiplayer party quiz: the question is on the shared screen, you answer on your phone. Wrong — you're thrown in the Cell and have 12 seconds to break out. Fail — you get knocked back down the track, even below zero. Free, in the browser.`,
+    nav_all_games: `← All games`,
+    kicker: `Party quiz · phones + shared screen`,
+    lede: `The question is on the shared screen, you answer on your phone. Wrong — <b>into the Cell</b>: three challenges in 12 seconds. Don't break out — you get <b>knocked back</b>, even below zero.`,
+    btn_create: `Create a room`, btn_creating: `Creating…`,
+    cta_sub: `Open it on a laptop or TV — that's the shared screen`,
+    have_code: `I have a code`, prompt_code: `Room code`,
+    rule1: `Two or more players, everyone joins by phone via the QR`,
+    rule2: `Right and fast scores the most`,
+    rule3: `At the end — the last question: bet your points, then answer`,
+    sample_pit: `the pit`, bib_no: `Number {n}`, sample_k: `This is the score track`, sample_q: `How many hearts does an octopus have?`, sample_a: `One|Three|Eight|Depends on its mood`,
+    enter_title: `What's your name?`, enter_ph: `Name`, btn_join: `Join`,
+    err_name: `Type a name`, err_room_full: `The room already has 10 players`, err_token_gone: `You're not in this game — join again`,
+    wait_title: `Connecting…`,
+    btn_home: `Home`,
+    lobby_in: `You're in`, lobby_wait: `Waiting for the host to start. At least two players needed`,
+    how_k: `While we wait — how to play`,
+    intro_pts: `Right: +{r} and up to +{s} for speed · knockback: −{k}`,
+    read_wait: `Answers in {s}…`,
+    bonus: `bonus`,
+    answered: `Answer locked in. Waiting for the others`,
+    late_title: `You're in from the next question`, late_sub: `Watch the shared screen for now`,
+    right_t: `Right!`, wrong_t: `Nope.`, none_t: `Too slow.`, to_cell: `Off to the Cell`,
+    right_was: `The answer`, f_right_sub: `Your bet of {n} pays off`, f_to_cell: `Off to the final Cell. Break out and you lose only half your bet`,
+    clean: `Clean sweep! Everyone got it — no Cell this time`,
+    palach_t: `You're the warden!`, palach_sub: `You were the fastest. Pick what the prisoners get:`,
+    picking: `{name} is picking the challenges…`, picked_by: `Warden: {name}. Set:`, picked_auto: `Fate picked for the prisoners:`, you_picked: `You picked for the prisoners:`,
+    cell_t: `The Cell`, cell_final: `The Cell`, cell_go: `Break out!`,
+    esc_title: `Free!`, esc_sub: `Watch the screen: the others are still inside`,
+    gone_t: `Time's up`,
+    bets_t: `Who breaks out?`, bets_sub: `One bet each, call it right — +20`,
+    bet_y: `Escapes`, bet_n: `Busted`, bet_none: `No bet`, bets_closed: `Bets are in — see who breaks out`, cell_ready: `Get ready…`, betleft: `{s} s left`,
+    pass_h: `{name} is waiting for a message — read the code out loud!`, pass_bet: `Your bet: {b}`, pass_nobet: `no bet`,
+    watch_t: `Watch the screen`, watch_sub: `You're not in this one — you play from the next question`,
+    verdict_t: `Verdict`,
+    v_escaped: `Free!`, v_burned: `Didn't make it`, v_knock: `Knocked back: {n}`,
+    v_bets: `Bets: +{n}`, v_bets0: `Your bets didn't land`, bet_won: `called it`, bet_lost: `missed`, my_no: `#{n}`, v_free: `You're free`,
+    stake_k: `The Last Question`, stake_theme: `Topic`, stake_score: `You have {n}`, stake_hint: `Right — you win your bet. Wrong — you lose it (break out of the Cell — only half)`,
+    q_all: `All`, q_half: `Half`, q_zero: `Zero`, btn_stake: `Bet {n}`, staked: `Bet locked in: {n}`, btn_change: `Change`,
+    stake_late: `You're not in the final — watch the screen`,
+    fq: `The Last Question`,
+    fr_wait: `Revealing bets one by one…`, fr_stake: `Bet {n}`, fr_right: `Right! +{n}`, fr_half: `Wrong, but escaped: {n}`, fr_burn: `Wrong: {n}`, fr_now: `Now you have {n}`,
+    final_title: `Game over`, place: `#{n}`, final_sub: `The host can start another game`,
+    final_few: `Fewer than two players left — game over`, final_host: `The host ended the game`,
+    table: `Scores`, my_awards: `Your awards`,
+    kicked_title: `The host removed you from the room`,
+    replaced_title: `You opened the game in another tab`, replaced_text: `You can only play in one.`, btn_back_here: `Play here`,
+    expired_title: `Room closed`, expired_text: `It sat empty for half an hour or the host closed it.`, expired_new: `Create a new one`,
+    paused: `Everyone dropped — waiting`,
+    rj_not_now: `Too late`, rj_closed: `Betting is closed`, rj_already: `Already picked`, rj_not_in_question: `You're in from the next question`,
+  },
+  el: {
+    err_send: `Χωρίς σύνδεση — δεν στάλθηκε, δοκίμασε ξανά`, btn_leave: `Έξοδος από το παιχνίδι`, leave_q: `Έξοδος από το παιχνίδι; Θα μπορείς να γυρίσεις μόνο ως νέος παίκτης`, stake_label: `Πόσα ποντάρεις`, stake_vt: `{n} πόντοι`,
+    _title: `Τελευταία ερώτηση — κουίζ για παρέες με Κελί και πισωγυρίσματα`,
+    _meta: `❓ Κουίζ για παρέες: η ερώτηση στην κοινή οθόνη, απαντάς από το κινητό. Λάθος — μπαίνεις στο Κελί και έχεις 12 δευτερόλεπτα να το σκάσεις. Αν δεν τα καταφέρεις, πας πίσω στη διαδρομή, ακόμα και κάτω από το μηδέν. Δωρεάν, στον browser.`,
+    nav_all_games: `← Όλα τα παιχνίδια`,
+    kicker: `Κουίζ για παρέες · κινητά + κοινή οθόνη`,
+    lede: `Η ερώτηση στην κοινή οθόνη, απαντάς από το κινητό. Λάθος — <b>στο Κελί</b>: τρεις δοκιμασίες σε 12 δευτερόλεπτα. Δεν το σκας — <b>πας πίσω</b>, ακόμα και κάτω από το μηδέν.`,
+    btn_create: `Φτιάξε δωμάτιο`, btn_creating: `Δημιουργία…`,
+    cta_sub: `Άνοιξέ το σε laptop ή τηλεόραση — εκεί θα είναι η κοινή οθόνη`,
+    have_code: `Έχω κωδικό`, prompt_code: `Κωδικός δωματίου`,
+    rule1: `Από δύο παίκτες, όλοι μπαίνουν από το κινητό με το QR`,
+    rule2: `Όποιος απαντά σωστά και γρήγορα, παίρνει περισσότερα`,
+    rule3: `Στο τέλος η τελευταία ερώτηση: ποντάρεις πόντους και απαντάς`,
+    sample_pit: `λάκκος`, bib_no: `Αριθμός {n}`, sample_k: `Έτσι μοιάζει η διαδρομή`, sample_q: `Πόσες καρδιές έχει το χταπόδι;`, sample_a: `Μία|Τρεις|Οκτώ|Ανάλογα με τη διάθεση`,
+    enter_title: `Πώς σε λένε;`, enter_ph: `Όνομα`, btn_join: `Μπες`,
+    err_name: `Γράψε όνομα`, err_room_full: `Το δωμάτιο έχει ήδη 10 παίκτες`, err_token_gone: `Δεν είσαι σε αυτή την παρτίδα — μπες ξανά`,
+    wait_title: `Σύνδεση…`,
+    btn_home: `Αρχική`,
+    lobby_in: `Είσαι μέσα`, lobby_wait: `Περιμένουμε να ξεκινήσει ο οικοδεσπότης. Χρειάζονται τουλάχιστον δύο`,
+    how_k: `Όσο περιμένουμε — πώς παίζεται`,
+    intro_pts: `Σωστό: +{r} και έως +{s} για ταχύτητα · πισωγύρισμα: −{k}`,
+    read_wait: `Οι απαντήσεις σε {s}…`,
+    bonus: `μπόνους`,
+    answered: `Η απάντηση καταχωρήθηκε. Περιμένουμε τους άλλους`,
+    late_title: `Παίζεις από την επόμενη ερώτηση`, late_sub: `Μέχρι τότε κοίτα την κοινή οθόνη`,
+    right_t: `Σωστό!`, wrong_t: `Άστοχο.`, none_t: `Άργησες.`, to_cell: `Στο Κελί`,
+    right_was: `Η σωστή απάντηση`, f_right_sub: `Το ποντάρισμα των {n} είναι δικό σου`, f_to_cell: `Στο τελικό Κελί. Αν το σκάσεις, χάνεις μόνο το μισό ποντάρισμα`,
+    clean: `Καθαρά! Όλοι απάντησαν σωστά — δεν υπάρχει Κελί αυτή τη φορά`,
+    palach_t: `Δεσμοφύλακας: εσύ!`, palach_sub: `Η απάντησή σου ήταν η πιο γρήγορη. Διάλεξε τι θα πάρουν οι κρατούμενοι:`,
+    picking: `Διαλέγει δοκιμασίες: {name}…`, picked_by: `Δεσμοφύλακας: {name}. Σετ:`, picked_auto: `Η τύχη διάλεξε για τους κρατούμενους:`, you_picked: `Η επιλογή σου για τους κρατούμενους:`,
+    cell_t: `Το Κελί`, cell_final: `Το Κελί`, cell_go: `Σκάσ' το!`,
+    esc_title: `Ελευθερία!`, esc_sub: `Κοίτα την οθόνη: οι άλλοι είναι ακόμα μέσα`,
+    gone_t: `Τέλος χρόνου`,
+    bets_t: `Ποιος θα το σκάσει;`, bets_sub: `Ένα στοίχημα για τον καθένα, σωστό — +20`,
+    bet_y: `Θα το σκάσει`, bet_n: `Θα πιαστεί`, bet_none: `Χωρίς στοίχημα`, bets_closed: `Τα στοιχήματα έκλεισαν — δες ποιος θα το σκάσει`, cell_ready: `Ετοιμάσου…`, betleft: `ακόμα {s} δ`,
+    pass_h: `Ο/Η {name} περιμένει μήνυμα — πες τον κωδικό δυνατά!`, pass_bet: `Το στοίχημά σου: {b}`, pass_nobet: `κανένα`,
+    watch_t: `Κοίτα την οθόνη`, watch_sub: `Αυτή τη φορά δεν παίζεις — από την επόμενη ερώτηση`,
+    verdict_t: `Ετυμηγορία`,
+    v_escaped: `Ελευθερία!`, v_burned: `Δεν τα κατάφερες`, v_knock: `Πας πίσω: {n}`,
+    v_bets: `Στοιχήματα: +{n}`, v_bets0: `Τα στοιχήματα δεν βγήκαν`, v_free: `Δεν μπήκες στο Κελί`, bet_won: `σωστό`, bet_lost: `άστοχο`, my_no: `Νο {n}`,
+    stake_k: `Η τελευταία ερώτηση`, stake_theme: `Θέμα`, stake_score: `Έχεις {n}`, stake_hint: `Σωστό — κερδίζεις το ποντάρισμα. Λάθος — το χάνεις (αν το σκάσεις από το Κελί, μόνο το μισό)`,
+    q_all: `Όλα`, q_half: `Μισά`, q_zero: `Μηδέν`, btn_stake: `Ποντάρω {n}`, staked: `Ποντάρισμα: {n}`, btn_change: `Αλλαγή`,
+    stake_late: `Δεν παίζεις στον τελικό — κοίτα την οθόνη`,
+    fq: `Η τελευταία ερώτηση`,
+    fr_wait: `Αποκαλύπτουμε τα πονταρίσματα ένα ένα…`, fr_stake: `Ποντάρισμα {n}`, fr_right: `Σωστό! +{n}`, fr_half: `Λάθος, αλλά το έσκασες: {n}`, fr_burn: `Λάθος: {n}`, fr_now: `Τώρα έχεις {n}`,
+    final_title: `Τέλος παιχνιδιού`, place: `{n}η θέση`, final_sub: `Ο οικοδεσπότης μπορεί να ξεκινήσει νέα παρτίδα`,
+    final_few: `Έμειναν λιγότεροι από δύο — τέλος`, final_host: `Ο οικοδεσπότης τελείωσε το παιχνίδι`,
+    table: `Σκορ`, my_awards: `Τα βραβεία σου`,
+    kicked_title: `Ο οικοδεσπότης σε έβγαλε από το δωμάτιο`,
+    replaced_title: `Άνοιξες το παιχνίδι σε άλλη καρτέλα`, replaced_text: `Μπορείς να παίζεις μόνο σε μία.`, btn_back_here: `Παίξε εδώ`,
+    expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης.`, expired_new: `Φτιάξε καινούργιο`,
+    paused: `Όλοι αποσυνδέθηκαν — περιμένουμε`,
+    rj_not_now: `Πολύ αργά`, rj_closed: `Τα στοιχήματα έκλεισαν`, rj_already: `Έχει ήδη επιλεγεί`, rj_not_in_question: `Παίζεις από την επόμενη ερώτηση`,
+  },
+};
+</script>
+<script src="lastq-shared.js"></script>
+<script src="lastq-challenges.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script>
+"use strict";
+const params = new URLSearchParams(location.search);
+// код идёт в разметку — только алфавит кодов, иначе ?r=<img onerror> даёт XSS
+const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const app = document.getElementById("app");
+const T = (k) => lqT(k);
+const tpl = (k, v) => lqTpl(k, v);
+const GROUP_ICON = { hands: "✋", eyes: "👁️", head: "🧠" };
+
+let conn = null, state = null, me = null, token = null, dead = false;
+let screen = null, screenKey = "", screenHead = "";
+let joinErr = null;
+// replacedHere — игру забрала другая вкладка: на переподключении сами не входим, пока не нажмут «Играть здесь».
+// rejoining — после обрыва входим своим токеном заново: экран не трогаем до joined (иначе мелькает вход и сбивается Камера)
+let replacedHere = false, rejoining = false;
+let stakeDraft = null, stakeEdit = false; // финальная ставка: черновик ползунка
+const tokenKey = () => "lastq-token-" + CODE;
+try { token = localStorage.getItem(tokenKey()); } catch (e) {}
+
+const player = (id) => state && state.players.find((p) => p.id === id);
+const mine = () => (state && me ? player(me) : null);
+const emo = (p) => `<i class="emo">${escapeHtml(p ? p.avatar : "❔")}</i>`;
+const qid = () => (state ? state.game + ":" + state.qn + ":" + state.act : "");
+const isFinal = () => state && state.act === 3;
+
+function toast(text) {
+  const t = document.getElementById("toast");
+  t.textContent = text;
+  t.classList.add("on");
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove("on"), 2400);
+}
+function show(html, key, top) {
+  // новый экран (другая фаза) — с самого верха
+  const head = key.split(":")[0], fresh = head !== screenHead;
+  screenHead = head;
+  screenKey = key;
+  app.classList.toggle("top", !!top);
+  document.body.classList.toggle("cellmode", head === "cell");
+  app.innerHTML = html;
+  if (fresh && scrollY > 0) scrollTo(0, 0);
+  // экранным чтецам — заголовок нового экрана
+  if (fresh) {
+    const h = app.querySelector("h1, h2, .big, .theme, .sub, .qt, .ttl");
+    const live = document.getElementById("live");
+    if (h && live) live.textContent = h.textContent.trim().slice(0, 140);
+  }
+}
+
+// ---------- стартовый экран ----------
+function renderLanding() {
+  screen = "landing";
+  show(`<div><div class="kicker">${T("kicker")}</div><h1 class="brand">${escapeHtml(T("game_name")).replace(/(\S+)$/, "<em>$1</em>")}</h1></div>
+    <p class="lede">${T("lede")}</p>
+    <div class="card sample" aria-hidden="true"><div class="k">${T("sample_k")}</div>
+      <div class="mini-track"><div class="pit"><span>${T("sample_pit")}</span></div><span class="zero">0</span>
+        <div class="ln" style="top:18px"></div><div class="ln" style="top:58px"></div><div class="ln" style="top:98px"></div>
+        <i class="t" style="--pc:#ffcf3f;left:78%;top:38px">🦊</i><i class="t" style="--pc:#4aa9ff;left:48%;top:78px">🐸</i><i class="t sunk" style="--pc:#c6a0ff;left:9%;top:118px">🦉</i>
+        <span class="fly" style="left:16%;top:104px">−250</span></div></div>
+    <div><button class="btn" id="create" type="button">${T("btn_create")}</button>
+      <div class="fine center" style="margin-top:10px;text-wrap:balance">${T("cta_sub")}</div><button class="link" id="havecode" type="button">${T("have_code")}</button></div>
+    <ol class="rules"><li>${T("rule1")}</li><li>${T("rule2")}</li><li>${T("rule3")}</li></ol>`, "landing");
+  document.getElementById("create").onclick = async () => {
+    const btn = document.getElementById("create");
+    btn.disabled = true;
+    btn.textContent = T("btn_creating");
+    try {
+      const res = await fetch("/lastq/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: lqLang() } }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "error");
+      try { localStorage.setItem("lastq-host-" + data.code, data.hostToken); } catch (e) {}
+      location.href = `lastq-board.html?r=${data.code}`;
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = T("btn_create");
+      toast(String(err.message || err));
+    }
+  };
+  document.getElementById("havecode").onclick = () => {
+    const c = prompt(T("prompt_code"));
+    if (c) location.href = `lastq.html?r=${encodeURIComponent(c.trim().toUpperCase())}`;
+  };
+}
+
+// ---------- вход ----------
+function renderEnter() {
+  screen = "enter";
+  let saved = "";
+  try { saved = localStorage.getItem("lastq-name") || ""; } catch (e) {}
+  show(`<form class="enter" id="enterform" autocomplete="off" style="display:grid;gap:14px">
+    <div class="card"><div class="room">${escapeHtml(CODE)}</div><h2>${T("enter_title")}</h2>
+      <input id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}"></div>
+    <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
+    <button class="btn" type="submit">${T("btn_join")}</button>
+    <ol class="rules"><li>${T("rule1")}</li><li>${T("rule2")}</li><li>${T("rule3")}</li></ol>
+  </form>`, "enter");
+  const input = document.getElementById("name");
+  document.getElementById("enterform").onsubmit = (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    if (!name) { document.getElementById("err").textContent = T("err_name"); return; }
+    try { localStorage.setItem("lastq-name", name); } catch (e2) {}
+    joinErr = null;
+    conn.send({ type: "join", name });
+    lqWake.on();
+  };
+}
+
+function renderCenter(titleKey, textKey, extra, key) {
+  show(`<div class="card status"><h2>${T(titleKey)}</h2>${textKey ? `<p>${T(textKey)}</p>` : ""}${extra || ""}</div>`, key || "c:" + titleKey);
+}
+function renderExpired() {
+  dead = true;
+  screen = "expired";
+  try { localStorage.removeItem(tokenKey()); } catch (e) {}
+  renderCenter("expired_title", "expired_text", `<a class="btn" style="margin-top:14px" href="lastq.html">${T("expired_new")}</a>`);
+}
+
+// ---------- общие куски ----------
+function playersHtml() {
+  return `<div class="players">${state.players.filter((p) => !p.left).map((p) => `<span class="pl${p.id === me ? " me" : ""}${p.online ? "" : " off"}" style="--pc:${p.color}">${emo(p)}<b>${escapeHtml(p.name)}</b></span>`).join("")}</div>`;
+}
+function reactsHtml() {
+  return `<div class="reacts">${LQ_REACTIONS.map((e) => `<button type="button" data-e="${e}" aria-label="${e}">${e}</button>`).join("")}</div>`;
+}
+function bindReacts() {
+  app.querySelectorAll(".reacts button").forEach((b) => {
+    b.onclick = () => { conn.send({ type: "react", emoji: b.dataset.e }); lqVibrate(8); b.disabled = true; setTimeout(() => (b.disabled = false), 2000); };
+  });
+}
+// номер на груди = номер дорожки на общем экране (дорожки идут в порядке входа)
+// явный выход: остаёшься в таблице серым (в лобби — исчезаешь), токен забываем
+function bindLeave() {
+  const b = document.getElementById("leave");
+  if (!b) return;
+  b.onclick = () => {
+    if (!confirm(T("leave_q"))) return;
+    conn.send({ type: "leave" });
+    try { localStorage.removeItem(tokenKey()); } catch (e) {}
+    token = null;
+    me = null;
+    screen = null;
+    renderEnter();
+  };
+}
+function meBadge() {
+  const p = mine();
+  const no = state.players.filter((x) => !x.left).findIndex((x) => x.id === me) + 1;
+  return `<div class="me-badge" style="--pc:${p.color}">${emo(p)}<div style="min-width:0"><span class="kicker">${T("lobby_in")}</span><b>${escapeHtml(p.name)}</b></div><span class="bibno" aria-label="${escapeHtml(tpl("bib_no", { n: no }))}">${no || ""}</span></div>`;
+}
+const timerHtml = () => `<div class="timer" id="timer"><i></i></div>`;
+function whereHtml() {
+  if (isFinal()) return `<b>${escapeHtml(T("fq"))}</b>`;
+  return `${escapeHtml(tpl("q_of", { i: state.qn + 1, n: state.qTotal }))} · <b>${escapeHtml(lqActName(state.act))}</b>`;
+}
+// номер дорожки (как на общем экране) — маленькой плашкой цвета игрока
+function myNoHtml() {
+  const p = mine();
+  const no = state.players.filter((x) => !x.left).findIndex((x) => x.id === me) + 1;
+  return p && no ? `<span class="myno" style="--pc:${p.color}" title="${escapeHtml(tpl("bib_no", { n: no }))}">${no}</span>` : "";
+}
+const headHtml = () => `<div class="qhead">${myNoHtml()}<span class="where">${whereHtml()}</span><span class="tl" id="tleft"></span></div>${timerHtml()}`;
+const qCardHtml = () => {
+  const q = state.question;
+  return `<div class="card qcard"><div class="k">${escapeHtml(lqTopic(q.tag))}</div><div class="qt${q.text.length > 80 ? " long" : ""}">${escapeHtml(q.text)}</div></div>`;
+};
+const letterCss = (i) => `--lc:var(--c${i})`;
+
+// ---------- экраны по фазам ----------
+function renderLobby() {
+  const key = "lobby:" + state.players.map((p) => p.id + p.online).join(",") + lqLang();
+  if (screenKey === key) return;
+  show(`${meBadge()}<div class="status"><p>${T("lobby_wait")}</p></div>${playersHtml()}${reactsHtml()}
+    <div class="card"><div class="k">${T("how_k")}</div><ol class="rules"><li>${T("rule2")}</li><li>${escapeHtml(T("act1_d"))}</li><li>${T("rule3")}</li></ol></div><button type="button" class="leave" id="leave">${T("btn_leave")}</button>`, "lobby:" + key, true);
+  screenKey = key;
+  bindReacts();
+  bindLeave();
+}
+
+function renderIntro() {
+  const key = "intro:" + state.game + ":" + state.act + lqLang();
+  if (screenKey === key) return;
+  const pts = state.points;
+  show(`<div class="center"><div class="kicker">${escapeHtml(tpl("act_n", { n: state.act }))}</div>
+    <h1 class="big" style="margin-top:8px">${escapeHtml(lqActName(state.act))}</h1>
+    <p class="lede" style="margin-top:14px">${escapeHtml(T("act" + state.act + "_d"))}</p>
+    ${pts ? `<p class="fine" style="margin-top:12px;font-weight:700">${escapeHtml(tpl("intro_pts", { r: pts.right, s: pts.speed, k: pts.knock }))}</p>` : ""}</div>`, key);
+}
+
+// вопрос: 3 с текст без вариантов, потом четыре кнопки; после нажатия — «Ответ принят»
+function renderQuestion() {
+  const s = state.me;
+  const q = state.question;
+  if (!q || !s) return;
+  const open = state.phase === "answer" || state.phase === "fanswer";
+  const late = !s.inQuestion;
+  const mineA = s.answer;
+  const key = "q:" + qid() + ":" + open + ":" + mineA + ":" + late + lqLang();
+  if (screenKey === key) return;
+  const btns = q.options.map((o, i) => {
+    const cls = !open ? " closed" : mineA != null ? (mineA === i ? " sel" : " dim") : late ? " dim" : "";
+    return `<button type="button" class="ans${cls}" data-i="${i}" style="${letterCss(i)}"${!open || mineA != null || late ? " disabled" : ""}><span class="lt">${LQ_LETTERS[i]}</span><span class="tx">${escapeHtml(o)}</span></button>`;
+  }).join("");
+  const note = late ? `<b>${isFinal() ? T("watch_t") : T("late_title")}</b>` : mineA != null ? T("answered") : open ? "" : `<span id="readwait"></span>`;
+  const bonus = !isFinal() && state.points ? `<div class="bonus" id="bonus"><span>${T("bonus")}</span><span class="bb"><i></i></span><b></b></div>` : "";
+  show(`${headHtml()}${bonus}${qCardHtml()}<div class="answers">${btns}</div><div class="note" id="note">${note}</div>`, key, true);
+  app.querySelectorAll(".ans:not(:disabled)").forEach((b) => {
+    b.onclick = () => {
+      const i = Number(b.dataset.i);
+      conn.send({ type: "answer", i });
+      lqSfx.click();
+      lqVibrate(15);
+      // сразу отмечаем выбор: сервер подтвердит снимком
+      app.querySelectorAll(".ans").forEach((x) => { x.disabled = true; x.classList.add(Number(x.dataset.i) === i ? "sel" : "dim"); });
+      document.getElementById("note").textContent = T("answered");
+    };
+  });
+}
+
+function groupCards(disabled) {
+  return `<div class="groups">${["hands", "eyes", "head"].map((g) => `<button type="button" class="grp" data-g="${g}"${disabled ? " disabled" : ""}><i>${GROUP_ICON[g]}</i><b>${escapeHtml(lqGroup(g))}</b><span>${escapeHtml(T("g_" + g + "_d"))}</span></button>`).join("")}</div>`;
+}
+
+function renderReveal() {
+  const s = state.me;
+  if (!s || !state.question) return;
+  const key = "rev:" + qid() + ":" + s.palach + ":" + state.group + ":" + state.palach + lqLang();
+  if (screenKey === key) return;
+  const r = state.right;
+  const iWasRight = s.inQuestion && s.answer === r;
+  const rightPick = (state.picks || [])[r] || [];
+  const clean = state.eligible.filter((id) => { const p = player(id); return p && !p.left; }).every((id) => rightPick.includes(id));
+  let head;
+  if (!s.inQuestion) head = `<div class="status center"><h2>${T("watch_t")}</h2></div>`;
+  else if (iWasRight) head = `<div class="center"><div class="big ok">${T("right_t")}</div><div class="sub" style="margin-top:6px">${escapeHtml(tpl("pts", { n: s.gain || 0 }))}</div></div>`;
+  else head = `<div class="center"><div class="big bad">${s.answer == null ? T("none_t") : T("wrong_t")}</div><div class="sub" style="margin-top:6px">${T("to_cell")}</div></div>`;
+  const ans = `<div class="card"><div class="k">${T("right_was")}</div><div class="rightans" style="${letterCss(r)}"><span class="lt">${LQ_LETTERS[r]}</span><span>${escapeHtml(state.question.options[r])}</span></div></div>`;
+  let tail = "";
+  if (clean) tail = `<div class="status center"><p style="font-weight:700">${T("clean")}</p></div>`;
+  else if (s.palach) tail = `<div class="center"><div class="big palach">${T("palach_t")}</div><p class="fine" style="margin:6px 0 0;font-weight:700">${T("palach_sub")}</p></div>${groupCards(false)}`;
+  else if (state.group) {
+    const by = state.palach && state.palach === me ? T("you_picked") : state.groupAuto || !state.palach ? T("picked_auto") : tpl("picked_by", { name: (player(state.palach) || {}).name || "?" });
+    tail = `<div class="center"><p class="fine" style="margin:0;font-weight:700">${escapeHtml(by)}</p><div class="chosen">${GROUP_ICON[state.group]} ${escapeHtml(lqGroup(state.group))}</div></div>`;
+  } else if (state.palach) tail = `<div class="center fine" style="font-weight:700">${escapeHtml(tpl("picking", { name: (player(state.palach) || {}).name || "?" }))}</div>`;
+  show(`${head}${ans}${tail}`, key, true);
+  app.querySelectorAll(".grp:not(:disabled)").forEach((b) => {
+    b.onclick = () => { conn.send({ type: "group", group: b.dataset.g }); lqSfx.click(); lqVibrate(20); app.querySelectorAll(".grp").forEach((x) => (x.disabled = true)); b.style.background = "var(--yellow)"; };
+  });
+  if (s.palach) lqVibrate([30, 40, 30]);
+}
+
+// финал: верный ответ на экране, потом Камера для ошибившихся или раскрытие ставок
+function renderFshow() {
+  const s = state.me;
+  if (!s || !state.question || state.right == null) return;
+  const key = "fshow:" + qid() + lqLang();
+  if (screenKey === key) return;
+  const r = state.right;
+  const right = s.inQuestion && s.answer === r;
+  const ans = `<div class="card"><div class="k">${T("right_was")}</div><div class="rightans" style="${letterCss(r)}"><span class="lt">${LQ_LETTERS[r]}</span><span>${escapeHtml(state.question.options[r])}</span></div></div>`;
+  let head;
+  if (!s.inQuestion) head = `<div class="status center"><h2>${T("watch_t")}</h2></div>`;
+  else if (right) head = `<div class="center"><div class="big ok">${T("right_t")}</div><div class="sub" style="margin-top:6px">${escapeHtml(tpl("f_right_sub", { n: s.stake || 0 }))}</div></div>`;
+  else head = `<div class="center"><div class="big bad">${s.answer == null ? T("none_t") : T("wrong_t")}</div><div class="sub" style="margin-top:6px">${T("f_to_cell")}</div></div>`;
+  show(`${head}${ans}`, key, true);
+  if (s.inQuestion) { if (right) lqSfx.gong(); else lqSfx.buzz(); }
+}
+
+// ---------- Камера ----------
+// Испытание приходит в снимке (me.cell.ch). c.at — момент выдачи по часам сервера: после ошибки он в будущем —
+// до него решётка. Ответ уходит не раньше at + minMs (быстрее сервер не примет); «рано» и «решётка» — тихо повторяем.
+let run = null; // { ch, sent, ans, done, tries }
+let mountTimer = 0, resendTimer = 0;
+const lqcCtx = {
+  now: () => lqNow(),
+  solved: () => !!(run && run.sent),
+  playerName: (id) => ((player(id) || {}).name || "?"),
+  sfx: { tap: () => lqSfx.tap(), tick: (h) => lqSfx.tick(h), pop: () => lqSfx.pop(), buzz: () => lqSfx.buzz() },
+  vibrate: lqVibrate,
+  submit(ans) {
+    if (!run || run.sent || !run.mounted) return;
+    run.sent = true;
+    run.ans = ans;
+    run.tries = 0;
+    sendCell();
+  },
+  wrong() { const pad = document.getElementById("pad"); if (!pad) return; lqSfx.buzz(); pad.classList.remove("shake"); void pad.offsetWidth; pad.classList.add("shake"); },
+};
+function sendCell(extra) {
+  clearTimeout(resendTimer);
+  const r = run;
+  if (!r || !r.sent) return;
+  const wait = Math.max(0, r.ch.at + (r.ch.minMs || 0) + 80 + (extra || 0) - lqNow());
+  resendTimer = setTimeout(() => { if (run === r) conn.send({ type: "cell", cid: r.ch.id, ans: r.ans }); }, wait);
+}
+function mountCh(ch) {
+  const pad = document.getElementById("pad"), task = document.getElementById("task");
+  if (!pad || !run || run.ch.id !== ch.id) return;
+  run.mounted = true;
+  pad.classList.remove("shake");
+  LQC.mount(ch, pad, task, lqcCtx);
+}
+function progressDots(done, need) {
+  let h = "";
+  for (let i = 0; i < need; i++) h += `<i class="${i < done ? "on" : ""}"></i>`;
+  return h;
+}
+let waitTag = null;
+function renderPrisoner() {
+  const c = state.me.cell;
+  const key = "cell:" + qid() + ":p" + lqLang();
+  if (screenKey !== key) {
+    show(`<div class="cellhead">${myNoHtml()}<span class="ttl">${escapeHtml(T("cell_t"))}</span><span class="prog" id="prog"></span><span class="tl" id="tleft"></span></div>
+      <div class="timer" id="timer"><i></i></div>
+      <div class="task" id="task"></div>
+      <div id="cellwrap"><div class="pad" id="pad"></div></div>`, key, true);
+    // новый экран (или смена языка) — текущее испытание монтируем заново
+    run = null;
+    waitTag = null;
+  }
+  document.getElementById("prog").innerHTML = progressDots(c.done, c.need);
+  const pad = document.getElementById("pad"), task = document.getElementById("task");
+  const ch = c.ch;
+  if (!ch) {
+    // испытания ещё нет: «Приготовься» в начале Камеры или решётка после ошибки — до readyAt
+    const at = c.readyAt || c.lockUntil || 0;
+    const delay = at - lqNow();
+    const tag = String(at);
+    if (waitTag === tag) return;
+    waitTag = tag;
+    clearTimeout(resendTimer);
+    if (run) run.mounted = false;
+    pad.replaceChildren();
+    if (c.lockUntil > lqNow()) {
+      task.textContent = "";
+      LQC.bars(pad, Math.max(300, delay));
+      lqSfx.clang();
+      lqVibrate([60, 40, 90]);
+    } else {
+      task.textContent = T("cell_go");
+      pad.append(el("div", "ready", T("cell_ready")));
+    }
+    return;
+  }
+  if (!run || run.ch.id !== ch.id) {
+    const prev = run;
+    run = { ch, sent: false, done: c.done, mounted: false };
+    waitTag = null;
+    clearTimeout(mountTimer);
+    clearTimeout(resendTimer);
+    if (prev && c.done > prev.done) { lqSfx.ok(); lqVibrate(20); pad.classList.remove("okflash"); void pad.offsetWidth; pad.classList.add("okflash"); setTimeout(() => pad.classList.remove("okflash"), 520); }
+    mountCh(ch);
+  } else if (ch.type === "pass" && run.ch.view.where !== ch.view.where) {
+    run.ch = ch;
+    LQC.update(ch, pad, task);
+  }
+}
+function renderEscaped() {
+  const key = "esc:" + qid() + lqLang();
+  if (screenKey === key) return;
+  run = null;
+  show(`<div class="center"><div class="big ok">${T("esc_title")}</div><p class="lede" style="margin-top:10px">${T("esc_sub")}</p></div>${reactsHtml()}`, key);
+  lqSfx.escape();
+  lqVibrate([30, 30, 60]);
+  bindReacts();
+}
+// свободные: ставки на каждого узника «спасётся / сгорит» — одна на узника, без умолчания, только до betUntil;
+// подсказчику «Передачки» — код и его ставка
+const betsOpen = () => state.betUntil != null && lqNow() < state.betUntil;
+function renderBets() {
+  const s = state.me;
+  const cell = state.cell || [];
+  const open = betsOpen();
+  const hints = (s.passHints || []).map((h) => h.prisoner + h.code).join(",");
+  // свои ставки в ключ не входят: после тапа кнопки блокируются сразу, а перерисовка съедала бы следующий тап
+  const key = "bets:" + qid() + ":" + open + ":" + hints + lqLang();
+  if (screenKey !== key) {
+    const hintHtml = (s.passHints || []).map((h) => {
+      const p = player(h.prisoner);
+      const b = h.bet == null ? T("pass_nobet") : h.bet ? T("bet_y") : T("bet_n");
+      return `<div class="hint"><div class="h">${escapeHtml(tpl("pass_h", { name: p ? p.name : "?" }))}</div><div class="code">${escapeHtml(h.code)}</div><div class="mybet" data-p="${escapeHtml(h.prisoner)}">${escapeHtml(tpl("pass_bet", { b }))}</div></div>`;
+    }).join("");
+    const rows = cell.map((x) => {
+      const p = player(x.id) || { avatar: "❔", name: "?", color: "#999" };
+      const my = s.bets[x.id];
+      const locked = my != null || !open;
+      const btn = (v, cls, label) => `<button type="button" class="${cls}${my === v ? " on" : ""}" data-v="${v ? 1 : 0}"${locked ? " disabled" : ""}>${label}</button>`;
+      const body = !open && my == null ? `<div class="done">${T("bet_none")}</div>` : `<div class="two">${btn(true, "y", T("bet_y"))}${btn(false, "n", T("bet_n"))}</div>`;
+      return `<div class="bet" style="--pc:${p.color}" data-id="${escapeHtml(x.id)}"><div class="who">${emo(p)}<b>${escapeHtml(p.name)}</b></div><div class="mini">${progressDots(x.done, x.need)}</div>${body}</div>`;
+    }).join("");
+    const sub = open ? `${T("bets_sub")} · <b id="betleft"></b>` : T("bets_closed");
+    show(`${headHtml()}${hintHtml}<div><h2 style="font:900 26px/1.05 var(--font)">${T("bets_t")}</h2><p class="fine" style="margin:4px 0 0">${sub}</p></div><div class="bets">${rows}</div>`, key, true);
+    app.querySelectorAll(".bet .two button:not(:disabled)").forEach((b) => {
+      b.onclick = () => {
+        const id = b.closest(".bet").dataset.id;
+        conn.send({ type: "bet", prisoner: id, escape: b.dataset.v === "1" });
+        lqSfx.tap();
+        lqVibrate(10);
+        // ставка одна и навсегда: обе кнопки сразу закрываем
+        b.parentNode.querySelectorAll("button").forEach((x) => { x.classList.toggle("on", x === b); x.disabled = true; });
+      };
+    });
+    if (hints && renderBets.vib !== hints) { renderBets.vib = hints; lqVibrate([40, 40, 40]); }
+  }
+  for (const h of s.passHints || []) {
+    const mb = app.querySelector(`.mybet[data-p="${CSS.escape(h.prisoner)}"]`);
+    const b = h.bet == null ? T("pass_nobet") : h.bet ? T("bet_y") : T("bet_n");
+    if (mb) mb.textContent = tpl("pass_bet", { b });
+  }
+  // прогресс узников — на месте: перерисовка списка сбивала бы нажатия
+  for (const x of cell) {
+    const row = app.querySelector(`.bet[data-id="${CSS.escape(x.id)}"] .mini`);
+    if (row) row.innerHTML = x.escaped ? `<b style="color:var(--green)">${escapeHtml(T("escaped"))}</b>` : progressDots(x.done, x.need);
+  }
+}
+function renderCell() {
+  const s = state.me;
+  if (s && s.cell && !s.cell.escaped && !s.cell.burned && state.phase !== "verdict") return renderPrisoner();
+  if (s && s.cell && s.cell.escaped) return renderEscaped();
+  run = null;
+  if (s && s.free) return renderBets();
+  const key = "watch:" + qid() + lqLang();
+  if (screenKey === key) return;
+  show(`${headHtml()}<div class="card status"><h2>${T(s && s.cell ? "gone_t" : "watch_t")}</h2>${s && s.cell ? "" : `<p>${T("watch_sub")}</p>`}</div>${reactsHtml()}`, key);
+  bindReacts();
+}
+
+// своя дорожка на приговоре: откуда отбросило и куда (ниже нуля — в песок)
+function myLaneHtml(p, from, to) {
+  const lo = Math.min(-300, Math.floor((Math.min(from, to) - 150) / 250) * 250);
+  const hi = Math.max(1000, Math.ceil((Math.max(from, to) + 150) / 500) * 500);
+  const x = (v) => (((v - lo) / (hi - lo)) * 100).toFixed(1) + "%";
+  return `<div class="mylane" aria-hidden="true"><div class="pit" style="width:${x(0)}"></div><span class="ghost" style="left:${x(from)}"></span>`
+    + `<i class="t${to < 0 ? " sunk" : ""}" style="--pc:${p.color};--from:${x(from)};left:${x(to)}">${escapeHtml(p.avatar)}</i></div>`;
+}
+function renderVerdict() {
+  const s = state.me;
+  if (!s) return;
+  const v = state.verdict || {};
+  const key = "verdict:" + qid() + lqLang();
+  if (screenKey === key) return;
+  run = null;
+  const escaped = (v.escaped || []).includes(me), burned = (v.burned || []).includes(me);
+  const bg = (v.betGain || {})[me] || 0;
+  const betted = Object.keys(s.bets || {}).length > 0 || Object.keys(((v.bets || {})[me]) || {}).length > 0;
+  let head;
+  if (escaped) head = `<div class="big ok">${T("v_escaped")}</div>`;
+  else if (burned) head = `<div class="big bad">${T("v_burned")}</div>${(v.delta || {})[me] ? `<div class="sub" style="margin-top:8px">${escapeHtml(tpl("v_knock", { n: lqNum(v.delta[me]) }))}</div>` : ""}`;
+  else head = `<div class="kicker">${T("verdict_t")}</div><div class="sub" style="margin-top:6px">${s.inQuestion ? T("v_free") : T("watch_t")}</div>`;
+  const myBets = (v.bets || {})[me] || {};
+  const betRows = Object.keys(myBets).map((pid) => {
+    const x = player(pid) || { avatar: "❔", name: "?" };
+    const won = myBets[pid] === (v.escaped || []).includes(pid);
+    return `<li class="${won ? "won" : "lost"}">${emo(x)}<b>${escapeHtml(x.name)}</b><span>${escapeHtml(myBets[pid] ? T("bet_y") : T("bet_n"))}</span><em>${won ? "✓ " + escapeHtml(T("bet_won")) : "✗ " + escapeHtml(T("bet_lost"))}</em></li>`;
+  }).join("");
+  const bets = !escaped && !burned ? `<p class="lede" style="margin-top:12px;font-weight:700">${bg ? escapeHtml(tpl("v_bets", { n: bg })) : betted ? T("v_bets0") : ""}</p>${betRows ? `<ul class="betres">${betRows}</ul>` : ""}` : "";
+  const p = mine();
+  const lane = burned && (v.delta || {})[me] ? myLaneHtml(p, p.score - v.delta[me], p.score) : "";
+  show(`<div class="center">${head}${lane}${bets}<p class="fine" style="margin-top:10px">${emo(p)} ${escapeHtml(p.name)} · <b>${lqNum(p.score)}</b></p></div>${reactsHtml()}`, key);
+  bindReacts();
+  if (burned) { lqSfx.whoosh(); lqVibrate([80, 50, 120]); }
+}
+
+function renderStake() {
+  const s = state.me;
+  const q = state.question;
+  if (!s || !q) return;
+  if (!s.inQuestion) {
+    const key = "stake:" + qid() + ":late" + lqLang();
+    if (screenKey === key) return;
+    show(`${headHtml()}<div class="center"><div class="kicker">${T("stake_k")}</div><div class="theme" style="margin-top:8px">${escapeHtml(lqTopic(q.tag))}</div></div><div class="card status"><p>${T("stake_late")}</p></div>`, key);
+    return;
+  }
+  const max = s.maxStake || 0;
+  const done = s.stake != null && !stakeEdit;
+  const key = "stake:" + qid() + ":" + done + ":" + s.stake + ":" + max + lqLang();
+  if (screenKey === key) return;
+  const p = mine();
+  const themeHtml = `<div class="center"><div class="kicker">${T("stake_k")} · ${T("stake_theme")}</div><div class="theme" style="margin-top:6px">${escapeHtml(lqTopic(q.tag))}</div><div class="fine" style="margin-top:6px;font-weight:700">${escapeHtml(tpl("stake_score", { n: lqNum(p.score) }))}</div></div>`;
+  if (done) {
+    show(`${headHtml()}${themeHtml}<div class="card center"><div class="sub">${escapeHtml(tpl("staked", { n: s.stake }))}</div></div><button class="btn ghost" type="button" id="chg">${T("btn_change")}</button>`, key, true);
+    document.getElementById("chg").onclick = () => { stakeEdit = true; stakeDraft = s.stake; render(); };
+    return;
+  }
+  if (stakeDraft == null || stakeDraft > max) stakeDraft = Math.min(max, Math.round(max / 2 / 10) * 10);
+  show(`${headHtml()}${themeHtml}
+    <div class="stakev" id="sv">${stakeDraft}</div>
+    <input type="range" id="sr" min="0" max="${max}" step="10" value="${stakeDraft}" aria-label="${escapeHtml(T("stake_label"))}" aria-valuetext="${escapeHtml(tpl("stake_vt", { n: stakeDraft }))}">
+    <div class="quick"><button type="button" data-k="all">${T("q_all")}</button><button type="button" data-k="half">${T("q_half")}</button><button type="button" data-k="zero">${T("q_zero")}</button></div>
+    <button class="btn" type="button" id="stakebtn">${escapeHtml(tpl("btn_stake", { n: stakeDraft }))}</button>
+    <p class="fine center" style="margin:0">${T("stake_hint")}</p>`, key, true);
+  const sr = document.getElementById("sr");
+  const setV = (v) => { stakeDraft = Math.max(0, Math.min(max, Math.round(v))); sr.value = stakeDraft; sr.setAttribute("aria-valuetext", tpl("stake_vt", { n: stakeDraft })); document.getElementById("sv").textContent = stakeDraft; document.getElementById("stakebtn").textContent = tpl("btn_stake", { n: stakeDraft }); };
+  sr.oninput = () => setV(Number(sr.value));
+  app.querySelectorAll(".quick button").forEach((b) => {
+    b.onclick = () => { lqSfx.tap(); setV(b.dataset.k === "all" ? max : b.dataset.k === "half" ? Math.floor(max / 2) : 0); };
+  });
+  document.getElementById("stakebtn").onclick = () => {
+    conn.send({ type: "stake", n: stakeDraft });
+    lqSfx.click();
+    lqVibrate(15);
+    stakeEdit = false;
+    document.getElementById("stakebtn").disabled = true;
+  };
+}
+
+// раскрытие финала: доска идёт по одному снизу вверх, каждый шаг — 3 с; свой итог телефон показывает в свой черёд
+const FSTEP_MS = 3000;
+function myFstep() {
+  const st = state.fsteps || [];
+  const i = st.findIndex((x) => x.id === me);
+  return i < 0 ? null : { i, x: st[i], at: state.phaseStart + FSTEP_MS * i + 1500 };
+}
+function renderFreveal() {
+  const f = myFstep();
+  const shown = f && lqNow() >= f.at;
+  const key = "frev:" + state.game + ":" + shown + lqLang();
+  if (screenKey === key) return;
+  const p = mine();
+  if (!f || !shown) {
+    show(`<div class="center"><div class="kicker">${T("fq")}</div><div class="sub" style="margin-top:10px">${T("fr_wait")}</div>${f ? `<p class="fine" style="margin-top:10px">${escapeHtml(tpl("fr_stake", { n: f.x.stake }))}</p>` : ""}</div>`, key);
+    return;
+  }
+  const x = f.x;
+  const head = x.right ? `<div class="big ok">${escapeHtml(tpl("fr_right", { n: x.stake }))}</div>`
+    : `<div class="big bad" style="font-size:40px">${escapeHtml(tpl(x.escaped ? "fr_half" : "fr_burn", { n: lqNum(x.delta) }))}</div>`;
+  show(`<div class="center"><div class="kicker">${escapeHtml(tpl("fr_stake", { n: x.stake }))}</div><div style="margin-top:10px">${head}</div>
+    <p class="lede" style="margin-top:12px;font-weight:700">${escapeHtml(tpl("fr_now", { n: lqNum(x.after) }))}</p><p class="fine">${emo(p)} ${escapeHtml(p.name)}</p></div>`, key);
+  if (x.right) lqSfx.gong(); else lqSfx.whoosh();
+}
+
+function tableHtml() {
+  const rank = state.ranking || state.players.filter((p) => !p.left).slice().sort((a, b) => b.score - a.score).map((p, i) => ({ id: p.id, place: i + 1, score: p.score }));
+  return `<div class="card table"><div class="k">${T("table")}</div><ol>${rank.map((r) => { const x = player(r.id) || { avatar: "❔", name: "?" }; return `<li class="${r.id === me ? "me" : ""}"><span class="n">${r.place}</span>${emo(x)}<b>${escapeHtml(x.name)}</b><span class="s${r.score < 0 ? " neg" : ""}">${lqNum(r.score)}</span></li>`; }).join("")}</ol></div>`;
+}
+function myAwards() {
+  const a = state.awards || {};
+  const out = [];
+  for (const k of ["unkillable", "regular", "rocket", "kamikaze", "seer", "bottom"]) {
+    const x = a[k];
+    if (!x || !x.ids.includes(me)) continue;
+    const n = k === "rocket" ? null : k === "bottom" ? lqNum(x.n) : x.n;
+    out.push(`<div class="award"><b>${escapeHtml(T("aw_" + k))}</b>${escapeHtml(tpl("aw_" + k + "_d", { n, s: k === "rocket" ? lqSec(x.n) : "" }))}</div>`);
+  }
+  return out.length ? `<div class="awards"><div class="kicker">${T("my_awards")}</div>${out.join("")}</div>` : "";
+}
+function renderFinal() {
+  const key = "final:" + state.game + ":" + state.finishedReason + lqLang();
+  if (screenKey === key) return;
+  run = null;
+  const p = mine();
+  const r = (state.ranking || []).find((x) => x.id === me);
+  const place = r ? r.place : 1 + state.players.filter((x) => !x.left && x.score > p.score).length;
+  const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : T("final_sub");
+  show(`<div class="center"><div class="kicker">${T("final_title")}</div>
+    <div class="big${place === 1 ? " ok" : ""}" style="margin:8px 0 4px">${escapeHtml(tpl("place", { n: place }))}</div>
+    <div class="lede">${emo(p)} ${escapeHtml(p.name)} · <strong>${lqNum(p.score)}</strong></div>
+    <p class="fine" style="margin:6px 0 0">${escapeHtml(sub)}</p></div>${myAwards()}${tableHtml()}${reactsHtml()}
+    <a class="btn ghost" href="index.html">${T("btn_home")}</a><button type="button" class="leave" id="leave">${T("btn_leave")}</button>`, key, true);
+  bindReacts();
+  bindLeave();
+  if (place === 1 && state.finishedReason === "done") lqSfx.fanfare();
+}
+
+// ---------- выбор экрана ----------
+function render() {
+  if (dead || !state) return;
+  if (rejoining) return;
+  if (!me) {
+    if (screen === "kicked" || screen === "replaced" || screen === "enter") return;
+    return renderEnter();
+  }
+  if (!mine()) return renderEnter();
+  // снимок без «меня» (hello до входа) — ждём свой
+  if (!state.me) return;
+  screen = "game";
+  const pb = document.getElementById("pausebar");
+  pb.textContent = T("paused");
+  pb.classList.toggle("on", !!state.paused);
+  switch (state.phase) {
+    case "lobby": return renderLobby();
+    case "intro": return renderIntro();
+    case "read": case "answer": case "fread": case "fanswer": return renderQuestion();
+    case "reveal": return renderReveal();
+    case "fshow": return renderFshow();
+    case "cell": case "fcell": return renderCell();
+    case "verdict": return renderVerdict();
+    case "stake": return renderStake();
+    case "freveal": return renderFreveal();
+    case "finished": return renderFinal();
+  }
+}
+
+// таймер фазы: полоска и секунды; последние 5 с — красным и с тиканьем
+let lastTickSec = null;
+function frame() {
+  requestAnimationFrame(frame);
+  if (!state || dead || !state.phaseEnd) return;
+  const now = lqNow();
+  const ph = state.phase;
+  if (ph === "freveal") { const f = myFstep(); if (f && now >= f.at && screenKey.indexOf(":true") < 0) render(); return; }
+  if (state.paused) return;
+  const end = (ph === "cell" || ph === "fcell") && state.cellEnd ? state.cellEnd : state.phaseEnd;
+  const left = end - now;
+  const total = Math.max(1, end - state.phaseStart);
+  const bar = document.getElementById("timer");
+  const hot = left < 5000 && ["answer", "fanswer", "cell", "fcell", "stake"].includes(ph);
+  if (bar) {
+    bar.firstChild.style.transform = `scaleX(${Math.max(0, Math.min(1, left / total))})`;
+    bar.classList.toggle("hot", hot);
+  }
+  const tl = document.getElementById("tleft");
+  if (tl) { tl.textContent = Math.max(0, Math.ceil(left / 1000)); tl.classList.toggle("hot", hot); }
+  const bl = document.getElementById("betleft");
+  if (bl && state.betUntil) { const l = state.betUntil - now; if (l <= 0) render(); else bl.textContent = tpl("betleft", { s: Math.ceil(l / 1000) }); }
+  const rw = document.getElementById("readwait");
+  if (rw) rw.textContent = tpl("read_wait", { s: Math.max(1, Math.ceil(left / 1000)) });
+  const bonus = document.getElementById("bonus");
+  if (bonus && state.points) {
+    const k = ph === "answer" && state.openAt ? Math.max(0, 1 - (now - state.openAt) / Math.max(1, state.phaseEnd - state.openAt)) : ph === "read" ? 1 : 0;
+    const answered = state.me && state.me.answer != null;
+    if (!answered) {
+      bonus.querySelector("i").style.transform = `scaleX(${k})`;
+      bonus.querySelector("b").textContent = "+" + Math.round((state.points.speed * k) / 10) * 10;
+    }
+  }
+  // тикаем, только если от игрока что-то ждут
+  const waiting = ((ph === "answer" || ph === "fanswer") && state.me && state.me.inQuestion && state.me.answer == null)
+    || ((ph === "cell" || ph === "fcell") && run) || (ph === "stake" && state.me && state.me.stake == null && state.me.inQuestion);
+  if (hot && waiting && left > 0) {
+    const sec = Math.ceil(left / 1000);
+    if (sec !== lastTickSec) { lastTickSec = sec; lqSfx.tick(true); }
+  }
+}
+
+window.addEventListener("langchange", () => {
+  if (!CODE) return renderLanding();
+  if (screen === "enter") return renderEnter();
+  screenKey = "";
+  screen === "expired" ? renderExpired() : render();
+});
+
+// ---------- связь ----------
+let prevPhase = null;
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+    case "state":
+      state = m.state;
+      if (m.type === "hello" && token && !replacedHere && screen !== "kicked") { rejoining = !!me; conn.send({ type: "join", token }); }
+      if (state.phase !== prevPhase) {
+        if (state.phase === "stake") { stakeDraft = null; stakeEdit = false; }
+        if (state.phase === "answer" || state.phase === "fanswer") lqVibrate(30);
+        if (state.phase === "reveal" && state.me && state.me.inQuestion) { if (state.me.answer === state.right) lqSfx.gong(); else lqSfx.buzz(); }
+        if (state.phase !== "cell" && state.phase !== "fcell") { run = null; clearTimeout(mountTimer); clearTimeout(resendTimer); }
+        prevPhase = state.phase;
+      }
+      render();
+      break;
+    case "joined": {
+      const same = me === m.playerId && screen === "game";
+      me = m.playerId;
+      token = m.token;
+      joinErr = null;
+      rejoining = false;
+      replacedHere = false;
+      try { localStorage.setItem(tokenKey(), token); } catch (e) {}
+      lqWake.on();
+      // тот же игрок после обрыва — экран оставляем как есть (Камера не перемонтируется); ответ испытания, если не дошёл, — ещё раз
+      if (!same) { screen = null; screenKey = ""; }
+      else if (run && run.sent && run.lost) { run.lost = false; sendCell(); }
+      // снимок из hello — ещё без «меня»: рисуем по следующему state
+      if (state && state.me) render();
+      break;
+    }
+    case "rejected":
+      if (m.action === "cell") {
+        // «рано» и «решётка» — не провал: тот же ответ уйдёт ещё раз чуть позже
+        if (run && run.sent && m.cid === run.ch.id && (m.reason === "early" || m.reason === "locked") && run.tries++ < 8) {
+          const lock = state.me && state.me.cell ? state.me.cell.lockUntil - lqNow() : 0;
+          sendCell(m.reason === "locked" ? Math.max(0, lock) + 60 : 150 * run.tries);
+        }
+        break;
+      }
+      if (m.action === "stake" || m.action === "bet") { screenKey = ""; render(); }
+      if (m.action === "answer" || m.action === "group") { screenKey = ""; render(); }
+      if (T("rj_" + m.reason) !== "rj_" + m.reason) toast(T("rj_" + m.reason));
+      break;
+    case "event":
+      break;
+    case "error":
+      if (m.error === "room_expired") return renderExpired();
+      if (["room_full", "token_gone", "bad_name"].includes(m.error)) {
+        rejoining = false;
+        if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
+        joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
+        me = null;
+        renderEnter();
+      }
+      break;
+    case "kicked":
+      me = null;
+      try { localStorage.removeItem(tokenKey()); } catch (e) {}
+      token = null;
+      screen = "kicked";
+      renderCenter("kicked_title");
+      break;
+    case "replaced":
+      me = null;
+      run = null;
+      rejoining = false;
+      replacedHere = true;
+      screen = "replaced";
+      renderCenter("replaced_title", "replaced_text", `<button class="btn" style="margin-top:14px" id="here" type="button">${T("btn_back_here")}</button>`);
+      document.getElementById("here").onclick = () => { replacedHere = false; conn.send({ type: "join", token }); };
+      break;
+  }
+}
+
+// не ушло (связь оборвалась): ответ на вопрос можно дать ещё раз, ответ испытания уйдёт сам после переподключения
+function onSendFail(msg) {
+  if (!msg || msg.type === "react") return;
+  toast(T("err_send"));
+  if (msg.type === "answer" || msg.type === "group" || msg.type === "stake" || msg.type === "bet") { screenKey = ""; render(); }
+  if (msg.type === "cell" && run && run.ch.id === msg.cid) run.lost = true;
+}
+
+function start() {
+  if (!CODE) return renderLanding();
+  renderCenter("wait_title");
+  const banner = document.getElementById("conn");
+  conn = lqConnect({
+    code: CODE,
+    onMessage,
+    onGone: renderExpired,
+    // переподключились — снова входим своим токеном (hello придёт первым); me не обнуляем: экран и Камера остаются
+    onOpen: () => {},
+    onSendFail,
+    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+  });
+  requestAnimationFrame(frame);
+  // ручка для стенда: состояние и отправка
+  window.lqPhone = { send: (msg) => conn.send(msg), get state() { return state; }, get me() { return me; }, get run() { return run; } };
+}
+start();
+</script>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+  ym(104849796, 'init', { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+</body>
+</html>

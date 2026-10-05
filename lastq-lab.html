@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Камера: лаборатория</title>
+<link rel="stylesheet" href="lastq-challenges.css">
+<link href="https://fonts.googleapis.com/css2?family=Geologica:wght@500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  /* Лаборатория испытаний Камеры: не выкатывается (.dockerignore), открывать локально через http-сервер из корня. */
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; background: #e9e2d2; color: var(--ink); font: 500 16px/1.3 var(--font); }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  .lab { display: flex; flex-wrap: wrap; gap: 20px; padding: 16px; align-items: flex-start; }
+  .ctl { display: grid; gap: 10px; width: 300px; max-width: 100%; }
+  .ctl label { display: grid; gap: 4px; font-weight: 700; }
+  .ctl select, .ctl button { font: 700 16px/1 var(--font); padding: 10px; border: 2.5px solid var(--ink); background: #fff; }
+  .ctl button.go { background: var(--yellow); }
+  .ctl .row { display: flex; gap: 8px; }
+  .ctl .row > * { flex: 1; }
+  .log { font: 13px/1.35 var(--mono); background: #fff; border: 2px solid var(--ink); padding: 8px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
+  .hint { background: var(--yellow); border: var(--line); padding: 10px; text-align: center; display: none; }
+  .hint.on { display: block; }
+  .hint b { display: block; font: 900 44px/1 var(--mono); letter-spacing: .12em; }
+  /* «телефон» */
+  .phone { width: 390px; max-width: 100%; height: 760px; max-height: calc(100vh - 32px); background: #15191b; border: 4px solid var(--ink); border-radius: 26px; padding: 14px 14px 18px; display: grid; grid-template-rows: auto auto auto 1fr; gap: 10px; color: #fff; overflow: hidden; }
+  .phone.w360 { width: 360px; } .phone.w320 { width: 320px; height: 568px; }
+  @media (max-width: 440px) { .lab { padding: 0; gap: 0; flex-direction: column-reverse; } .phone { width: 100%; height: 100vh; max-height: none; border-radius: 0; border: 0; } .ctl { padding: 16px; } }
+  .head { display: flex; justify-content: space-between; align-items: center; font: italic 900 24px/1 var(--font); text-transform: uppercase; text-shadow: 2px 2px 0 var(--ink); }
+  .head .prog { font-style: normal; background: var(--ink); padding: 5px 9px; text-shadow: none; font-variant-numeric: tabular-nums; }
+  .task { font: 900 22px/1.1 var(--font); text-shadow: 2px 2px 0 var(--ink); min-height: 2.2em; display: flex; align-items: flex-end; }
+  .ttl { height: 8px; background: rgba(22, 18, 12, .35); border: 2px solid var(--ink); overflow: hidden; }
+  .ttl i { display: block; height: 100%; background: var(--yellow); transform-origin: left; }
+  .result { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; font: 900 120px/1 var(--font); }
+  .result.ok { color: var(--green); background: rgba(251, 241, 217, .88); }
+  .result.esc { font-size: 46px; color: var(--green); background: var(--paper); text-align: center; }
+  .result.burn { font-size: 46px; color: var(--red); background: var(--paper); text-align: center; }
+</style>
+</head>
+<body>
+<div class="lab">
+  <div class="ctl">
+    <b style="font-size:22px">Камера: лаборатория</b>
+    <label>Набор <select id="group"><option value="hands">Ловкость</option><option value="eyes">Внимание</option><option value="head">Голова</option></select></label>
+    <label>Испытание <select id="type"></select></label>
+    <label>Уровень <select id="lvl"><option value="1">1 — Акт 1</option><option value="2">2 — Акт 2</option><option value="3">3 — финал</option></select></label>
+    <label>Ширина <select id="width"><option value="">390</option><option value="w360">360</option><option value="w320">320 × 568</option></select></label>
+    <label>Язык <select id="lang"><option>ru</option><option>en</option><option>el</option></select></label>
+    <div class="row"><button id="one" class="go" type="button">Показать</button><button id="cell" type="button">Камера Акта 1</button></div>
+    <div class="row"><button id="cell2" type="button">Камера Акта 2</button><button id="final" type="button">Финальная</button></div>
+    <div class="hint" id="hint"></div>
+    <div class="log" id="log"></div>
+  </div>
+  <div class="phone" id="phone">
+    <div class="head"><span id="title">Камера</span><span class="prog" id="prog"></span></div>
+    <div class="task" id="task"></div>
+    <div class="ttl"><i id="ttl"></i></div>
+    <div class="pad" id="pad"></div>
+  </div>
+</div>
+<script>window.I18N_DICT = { ru: {}, en: {}, el: {} };</script>
+<script src="lastq/challenges.js"></script>
+<script src="lastq-challenges.js"></script>
+<script>
+"use strict";
+const C = window.LQ_CHALLENGES;
+const $ = (id) => document.getElementById(id);
+const pad = $("pad"), task = $("task"), log = $("log");
+const rnd = (n) => Math.floor(Math.random() * n);
+let lang = "ru";
+// i18n.js на лабе не нужен: подставляем свой минимальный I18N
+window.I18N = { get lang() { return lang; }, t: (k) => { const d = window.I18N_DICT[lang] || {}; return k in d ? d[k] : (window.I18N_DICT.ru[k] ?? k); } };
+
+const used = {};
+let cur = null, solved = false, run = null, seq = 0;
+const say = (s) => { log.textContent = s + "\n" + log.textContent; };
+
+function fillTypes() {
+  const g = $("group").value;
+  $("type").innerHTML = `<option value="">— случайное —</option>` + C.GROUPS[g].map((t) => `<option>${t}</option>`).join("");
+}
+$("group").onchange = fillTypes;
+$("lang").onchange = () => { lang = $("lang").value; };
+$("width").onchange = () => { $("phone").className = "phone " + $("width").value; };
+fillTypes();
+
+function issue(opts) {
+  const lvl = Number($("lvl").value);
+  const ch = C.generate({ lvl, stage: opts.stage || 3, rnd, group: $("group").value, only: opts.only || $("type").value || undefined, used, seen: opts.seen, last: opts.last, canPass: true });
+  ch.id = ++seq;
+  ch.at = Date.now();
+  if (ch.type === "pass") { ch.view.where = "phone"; ch.view.helper = "p2"; showHint(ch); }
+  else showHint(null);
+  cur = ch; solved = false;
+  $("title").textContent = window.I18N.t("ch_" + ch.type);
+  LQC.mount(ch, pad, task, ctx);
+  say(`${ch.type} ур.${lvl} minMs ${ch.minMs} ответ ${JSON.stringify(ch.answer)}`);
+  return ch;
+}
+// «Передачка»: код на телефоне «Пети», через 4 с тишины — на доске
+let hintT = 0;
+function showHint(ch) {
+  clearTimeout(hintT);
+  const h = $("hint");
+  if (!ch) { h.className = "hint"; return; }
+  h.className = "hint on";
+  h.innerHTML = `Телефон Пети: <b>${ch.answer}</b><small>через 4 с код уйдёт на доску</small>`;
+  hintT = setTimeout(() => { if (cur !== ch) return; ch.view.where = "tv"; LQC.update(ch, pad, task); h.innerHTML = `Доска: <b>${ch.answer}</b>`; }, 4000);
+}
+
+const ctx = {
+  now: () => Date.now(),
+  solved: () => solved,
+  playerName: () => "Петя",
+  submit(ans) {
+    if (solved) return;
+    solved = true;
+    const ch = cur;
+    // как bomb.html: ответ уходит не раньше minMs от выдачи
+    const wait = Math.max(0, ch.at + ch.minMs + 60 - Date.now());
+    setTimeout(() => verdict(ch, ans), wait);
+  },
+  wrong() { pad.classList.remove("shake"); void pad.offsetWidth; pad.classList.add("shake"); },
+};
+
+function verdict(ch, ans) {
+  if (ch !== cur) return;
+  const r = C.check(ch, ans, Date.now() - ch.at);
+  say(`  → ${r}  ${JSON.stringify(ans)}`);
+  if (run) return run.onResult(r);
+  const d = document.createElement("div");
+  d.className = "result " + (r === "ok" ? "ok" : "burn");
+  d.textContent = r === "ok" ? "✓" : r;
+  pad.append(d);
+}
+
+$("one").onclick = () => { stopRun(); issue({}); };
+// Камера по ступеням: уровень испытаний — по таблице LEVELS набора, число и время — CELL (§4.3)
+const stage = (k) => () => { const g = $("group").value; $("lvl").value = String(C.levelFor(g, k)); startRun(C.CELL[k - 1].need, C.cellMs(g, k), k); };
+$("cell").onclick = stage(1);
+$("cell2").onclick = stage(2);
+$("final").onclick = stage(3);
+
+// Камера: need испытаний за ms, ошибка — решётка 1,5 с (§4.1)
+function startRun(need, ms, stage) {
+  stopRun();
+  const t0 = Date.now(), seen = [];
+  let done = 0, last = null, raf = 0;
+  run = {
+    onResult(r) {
+      if (r === "ok") {
+        done++;
+        $("prog").textContent = `${done}/${need}`;
+        if (done >= need) return finish(true);
+        next();
+      } else {
+        LQC.bars(pad, C.WRONG_LOCK_MS);
+        setTimeout(() => run && next(), C.WRONG_LOCK_MS);
+      }
+    },
+  };
+  function next() {
+    const ch = issue({ seen, last, stage });
+    seen.push(ch.type);
+    last = ch.type;
+  }
+  function finish(ok) {
+    cancelAnimationFrame(raf);
+    const left = ((ms - (Date.now() - t0)) / 1000).toFixed(1);
+    run = null; cur = null;
+    showHint(null);
+    pad.replaceChildren();
+    const d = document.createElement("div");
+    d.className = "result " + (ok ? "esc" : "burn");
+    d.textContent = ok ? `Вырвался! (${left} с в запасе)` : "Сгорел";
+    pad.append(d);
+    say(ok ? `ВЫРВАЛСЯ, осталось ${left} с` : "СГОРЕЛ");
+  }
+  run.finish = finish;
+  (function tick() {
+    if (!run) return;
+    const k = 1 - (Date.now() - t0) / ms;
+    $("ttl").style.transform = `scaleX(${Math.max(0, k)})`;
+    if (k <= 0) return finish(false);
+    raf = requestAnimationFrame(tick);
+  })();
+  $("prog").textContent = `0/${need}`;
+  next();
+}
+function stopRun() { run = null; $("prog").textContent = ""; $("ttl").style.transform = ""; }
+
+// для автопрогона: нарисовать конкретный тип и уровень
+window.labRender = (type, lvl) => { stopRun(); $("lvl").value = String(lvl); return issue({ only: type }); };
+window.labReady = fetch("lastq/questions.json").then((r) => r.json()).then((b) => { C.setBank(b); say("банк вопросов загружен"); });
+</script>
+</body>
+</html>

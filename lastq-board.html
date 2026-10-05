@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/2753.svg" type="image/svg+xml">
+<title>Последний вопрос — общий экран</title>
+<!-- доска ведущего с кодом комнаты: в поиске ей делать нечего -->
+<meta name="robots" content="noindex,nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geologica:wght@500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Geologica:wght@500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet"></noscript>
+<link rel="stylesheet" href="lastq-challenges.css">
+<style>
+  /* Мир «Последнего вопроса» (дизайн 05.10, DESIGNER-SKILL.md): ночной стадион. Квиз — забег по дорожкам.
+     Лицо игры — шкала очков: тартановые дорожки с белыми линиями, ноль — стартовая линия, всё, что ниже нуля, —
+     песчаная яма (как у прыжков в длину): отлетевший падает в песок и сидит в нём по пояс.
+     Ближайший сосед — «Бомба» (те же испытания): у неё светлая бумага, комикс, сдвинутые тени, узкий курсив.
+     Здесь — тёмная сцена, плоская краска без обводок-теней, Geologica + моноширинное табло JetBrains Mono.
+     Читается с другого конца комнаты: крупный кегль, контраст ≥ 7:1 у основного текста. */
+  :root {
+    --night: #0b120e;      /* фон: ночь над стадионом */
+    --infield: #13221a;    /* газон внутри овала — панели */
+    --infield-2: #1c3125;
+    --edge: #2f4a3b;       /* кромки панелей */
+    --chalk: #f2eee3;      /* разметка и основной текст */
+    --chalk-2: #b4beb5;
+    --track: #b2432a;      /* тартан */
+    --track-2: #a23c25;
+    --sand: #dcbd80;       /* яма */
+    --sand-ink: #5d4317;
+    --ok: #52d07a;
+    --bad: #ff6b4f;
+    --gold: #f0c75e;
+    --c0: #ffcf3f; --c1: #4aa9ff; --c2: #ff8a66; --c3: #c6a0ff; /* буквы A–D, те же на телефоне */
+    --lang-switch-bg: var(--night);
+    --lang-switch-border: var(--edge);
+    --lang-switch-fg: var(--chalk-2);
+    --lang-switch-active-bg: var(--chalk);
+    --lang-switch-active-fg: var(--night);
+    --lang-switch-active-border: var(--chalk);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--night); color: var(--chalk); font: 600 20px/1.25 var(--font); -webkit-font-smoothing: antialiased; overflow: hidden; display: flex; flex-direction: column; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:disabled { opacity: .4; cursor: default; }
+  :focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+  .hidden { display: none !important; }
+  .mono, .clock, .chip, .bigcode { font-family: var(--mono); }
+
+  /* шапка — полоса табло над стадионом */
+  .top { flex: none; display: flex; align-items: center; gap: 14px; height: calc(var(--lsc, 32px) * 2); padding: 0 var(--lsw, 160px) 0 22px; background: #060a08; border-bottom: 4px solid var(--track); }
+  .top h1 { margin: 0; font: 900 28px/1 var(--font); text-transform: uppercase; letter-spacing: -.01em; white-space: nowrap; }
+  .top h1 em { font-style: normal; background: var(--chalk); color: var(--night); padding: 1px 8px 3px; margin-left: 2px; }
+  .chip { font: 800 18px/1 var(--mono); padding: 8px 12px; border: 2px solid var(--edge); background: var(--infield); white-space: nowrap; color: var(--chalk); }
+  .chip b { color: var(--gold); letter-spacing: .08em; }
+  .top .grow { flex: 1; }
+  .sound-toggle-btn { flex: none; width: calc(var(--lsh, 44px) * 1.25); height: var(--lsh, 44px); border: 2px solid var(--edge); background: var(--infield); color: var(--chalk); font-size: 17px; display: grid; place-items: center; padding: 0; }
+  .endbtn { flex: none; border: 2px dashed var(--chalk-2); background: transparent; padding: 8px 12px; font: 700 16px/1 var(--font); color: var(--chalk-2); }
+  .banner { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 50; background: var(--bad); color: var(--night); padding: 8px 14px; font-weight: 800; }
+  .conn { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 50; background: var(--bad); color: var(--night); padding: 6px 12px; font-weight: 800; visibility: hidden; }
+  .conn.on { visibility: visible; }
+
+  main { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 22px 16px; gap: 14px; }
+  #stage { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; gap: 14px; }
+  .box { background: var(--infield); border: 2px solid var(--edge); }
+  .kicker { font: 700 18px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
+
+  /* ---------- лобби: стартовый лист слева (правило владельца), подключение справа ---------- */
+  .lobby { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(380px, 1fr); gap: 22px; }
+  .panel { padding: 20px; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
+  .panel h2 { margin: 0; font: 900 30px/1 var(--font); text-transform: uppercase; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 3px solid var(--chalk); padding-bottom: 10px; }
+  .panel h2 span { color: var(--chalk-2); font: 700 20px/1 var(--mono); text-transform: none; }
+  /* места — дорожки 1…10: номер краской, занятая дорожка — тартан */
+  .seats { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(5, minmax(0, 1fr)); grid-auto-flow: column; gap: 8px 12px; flex: 1; min-height: 0; counter-reset: lane; }
+  .seat { position: relative; display: flex; align-items: center; gap: 12px; padding: 6px 14px 6px 0; background: var(--track); border-top: 3px solid var(--chalk); border-bottom: 3px solid var(--chalk); min-width: 0; }
+  .seat::before { counter-increment: lane; content: counter(lane); flex: none; align-self: stretch; display: grid; place-items: center; width: 1.9em; background: var(--pc, transparent); color: var(--night); font: 800 clamp(20px, 3vh, 30px)/1 var(--mono); }
+  .seat .emo { font-size: clamp(28px, 4vh, 44px); }
+  .seat b { font: 800 clamp(20px, 2.8vh, 30px)/1.05 var(--font); overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-width: 0; flex: 1; color: #fff; }
+  .seat .off { color: var(--chalk); font: 700 15px/1 var(--mono); opacity: .8; }
+  .seat .x { position: absolute; right: 4px; top: 4px; background: none; border: 0; color: var(--chalk); padding: 2px 6px; visibility: hidden; }
+  .host .seat:hover .x, .host .seat:focus-within .x { visibility: visible; }
+  .seat.empty { background: transparent; border-top-color: var(--edge); border-bottom-color: var(--edge); color: var(--chalk-2); font: 600 18px/1 var(--font); }
+  .seat.empty::before { background: transparent; color: var(--edge); }
+  .seat.empty.next { border-color: var(--chalk-2); }
+  .seat.empty.next::before { color: var(--chalk-2); }
+  .emo { font-style: normal; line-height: 1; }
+  .join { display: flex; gap: 22px; align-items: center; }
+  /* QR крупный и на белом: его сканируют с дивана, метров с трёх */
+  #qr { flex: none; width: clamp(150px, 27vh, 250px); height: clamp(150px, 27vh, 250px); background: #fff; padding: 10px; }
+  #qr img, #qr canvas { width: 100% !important; height: 100% !important; display: block; image-rendering: pixelated; }
+  .bigcode { font: 800 var(--code-fs, 64px)/1 var(--mono); letter-spacing: .06em; white-space: nowrap; overflow: hidden; color: var(--gold); }
+  .url { color: var(--chalk-2); font: 500 17px/1.3 var(--mono); overflow-wrap: anywhere; margin-top: 6px; }
+  .scan { font-size: 20px; margin-top: 8px; }
+  .toggles { display: grid; gap: 10px; }
+  .tog { display: flex; align-items: center; gap: 14px; text-align: left; background: transparent; border: 2px solid var(--edge); padding: 10px 14px; }
+  .tog .bx { flex: none; width: 34px; height: 34px; border: 3px solid var(--chalk); display: grid; place-items: center; font: 900 24px/1 var(--font); color: var(--night); }
+  .tog.on .bx { background: var(--ok); border-color: var(--ok); }
+  .tog b { display: block; font: 800 24px/1.1 var(--font); }
+  .tog span { color: var(--chalk-2); font-size: 17px; font-weight: 500; }
+  .startbox { margin-top: auto; display: grid; gap: 8px; }
+  /* пример шкалы в лобби: пока ждём, все видят, куда отлетают (подписан как пример) */
+  .demo { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden; container-type: size; }
+  .demo .mt { position: relative; flex: 1; min-height: 0; max-height: 170px; background: var(--track); }
+  .demo .pit { position: absolute; left: 0; top: 0; bottom: 0; width: 28%; background: var(--sand) radial-gradient(circle, rgba(93, 67, 23, .22) 1.4px, transparent 2px) 0 0 / 11px 11px; box-shadow: inset -8px 0 0 #fff; }
+  .demo .pit span { position: absolute; left: 10px; top: 8px; font: 900 18px/1 var(--font); letter-spacing: .25em; text-transform: uppercase; color: var(--sand-ink); }
+  .demo .ln { position: absolute; left: 0; right: 0; border-top: 3px solid rgba(242, 238, 227, .9); }
+  .demo .t { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: var(--chalk); border: 4px solid var(--pc); display: grid; place-items: center; font-size: 24px; font-style: normal; box-shadow: 0 4px 0 rgba(0, 0, 0, .35); }
+  .demo .t.sunk { box-shadow: none; }
+  .demo .t.sunk::after { content: ""; position: absolute; left: -10px; right: -10px; bottom: -8px; height: 52%; background: var(--sand); border-radius: 50% 50% 6px 6px / 70% 70% 6px 6px; }
+  .demo .fly { position: absolute; font: 800 18px/1 var(--mono); color: var(--sand-ink); }
+  @container (max-height: 90px) { .demo > * { visibility: hidden; } }
+  /* «Старт» — клавиша стартёра: тартан, нижняя кромка, нажатие уходит вниз */
+  .start { width: 100%; border: 0; background: var(--track); color: #fff; font: 900 40px/1 var(--font); text-transform: uppercase; letter-spacing: .02em; padding: 20px; box-shadow: 0 7px 0 #5e2214, inset 0 0 0 3px var(--chalk); }
+  .start:not(:disabled):active { transform: translateY(5px); box-shadow: 0 2px 0 #5e2214, inset 0 0 0 3px var(--chalk); }
+  .fine { color: var(--chalk-2); font-size: 19px; font-weight: 500; }
+
+  /* ---------- заставка акта: название и полоса тартана «прокрашивается» слева направо ---------- */
+  .intro { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 14px; }
+  .intro .kicker { font-size: 26px; }
+  .intro h2 { margin: 0; font: 900 clamp(70px, 13vh, 150px)/.95 var(--font); text-transform: uppercase; letter-spacing: -.02em; }
+  .intro h2::after { content: ""; display: block; height: 16px; margin: 22px auto 0; width: 70%; background: var(--track); border-top: 3px solid var(--chalk); border-bottom: 3px solid var(--chalk); transform-origin: 0 50%; }
+  .intro .desc { font: 600 30px/1.25 var(--font); max-width: 1100px; color: var(--chalk-2); }
+  .intro .pts { font: 800 26px/1 var(--mono); color: var(--gold); }
+  @media (prefers-reduced-motion: no-preference) {
+    .intro h2 { animation: slam .55s cubic-bezier(.2, .9, .3, 1.15) both; }
+    .intro h2::after { animation: paint .7s .25s cubic-bezier(.6, 0, .2, 1) both; }
+  }
+  @keyframes slam { from { transform: translateY(-30px) scale(1.25); opacity: 0; } }
+  @keyframes paint { from { transform: scaleX(0); } }
+
+  /* ---------- вопрос ---------- */
+  .qbar { flex: none; display: flex; align-items: center; gap: 18px; height: 56px; }
+  .qbar .what { font: 700 26px/1.1 var(--font); color: var(--chalk-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+  .qbar .what b { color: var(--chalk); font-weight: 900; text-transform: uppercase; }
+  .clock { font: 800 62px/1 var(--mono); min-width: 120px; text-align: right; font-variant-numeric: tabular-nums; }
+  .clock.hot { color: var(--bad); }
+  .timeline { flex: none; height: 8px; background: var(--infield-2); overflow: hidden; }
+  .timeline i { display: block; height: 100%; background: var(--chalk); transform-origin: 0 50%; }
+  .timeline.hot i { background: var(--bad); }
+  .qtext { flex: 1 1 0; min-height: 0; display: flex; align-items: center; padding: 6px 8px; }
+  .qtext .t { font: 800 var(--qfs, 64px)/1.08 var(--font); letter-spacing: -.01em; overflow-wrap: break-word; overflow: hidden; max-height: 100%; width: 100%; padding-bottom: .22em; /* у Geologica высокие выносные: без запаса подгонка кегля считает их переполнением */ }
+  .qtext .tag { display: block; font: 700 20px/1.2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--gold); margin-bottom: 10px; }
+  .bopts { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .bopt { position: relative; display: flex; align-items: center; gap: 16px; min-height: 92px; padding: 10px 18px 10px 10px; background: var(--infield); border: 2px solid var(--edge); transition: opacity .3s, background .3s, border-color .3s; }
+  .bopt .lt { flex: none; width: 58px; height: 58px; background: var(--lc); color: var(--night); font: 800 36px/58px var(--mono); text-align: center; }
+  .bopt .tx { flex: 1; min-width: 0; font: 800 var(--ofs, 36px)/1.08 var(--font); overflow-wrap: anywhere; }
+  .bopt.closed { background: transparent; border-style: dashed; }
+  .bopt.closed .tx { visibility: hidden; }
+  .bopt.closed .lt { opacity: .35; }
+  .bopt.right { background: var(--ok); border-color: var(--ok); color: var(--night); }
+  .bopt.right .lt { background: var(--night); color: var(--ok); }
+  .bopt.right .tx::after { content: " ✓"; }
+  .bopt.dim { opacity: .38; }
+  .bopt .who { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 45%; }
+  .bopt .who:empty { display: none; }
+  .bopt .who span { display: flex; align-items: center; gap: 2px; background: var(--night); color: var(--chalk); border: 2px solid var(--chalk-2); border-radius: 22px; padding: 2px 8px 2px 4px; font: 800 20px/1 var(--mono); }
+  .bopt .who span i { font-style: normal; font-size: 28px; }
+  .bopt .who span.g { background: var(--night); border-color: var(--night); color: var(--ok); }
+  @media (prefers-reduced-motion: no-preference) { .bopt .who span { animation: drop .4s cubic-bezier(.3, 1.6, .5, 1) both; animation-delay: var(--d, 0s); } }
+  @keyframes drop { from { transform: translateY(-18px); opacity: 0; } }
+  .strip { flex: none; display: flex; align-items: center; justify-content: center; gap: 14px; min-height: 52px; font: 700 28px/1.1 var(--font); text-align: center; }
+  .strip .dots { display: flex; gap: 6px; }
+  .strip .dots i { font-style: normal; font-size: 34px; opacity: .25; transition: opacity .2s, transform .2s; }
+  .strip .dots i.on { opacity: 1; transform: translateY(-4px); }
+  .strip .big { font: 900 40px/1 var(--font); text-transform: uppercase; color: var(--bad); }
+  .strip .ok { color: var(--ok); }
+
+  /* ---------- Камера: плитки — клетки со стальными прутьями; вырвался — прутья уезжают вверх ---------- */
+  .cellwrap { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; }
+  .tiles { display: grid; grid-template-columns: repeat(var(--tc, 3), minmax(0, 1fr)); grid-template-rows: repeat(var(--tr, 1), minmax(0, 250px)); gap: 12px; min-height: 0; align-content: center; }
+  .tile { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 10px 16px; background: #1a1f22; border: 4px solid #59626a; border-left: 12px solid var(--pc); min-width: 0; min-height: 0; overflow: hidden; transition: background .3s, border-color .3s; }
+  .tile::before { content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background: repeating-linear-gradient(90deg, transparent 0 34px, rgba(0, 0, 0, .55) 34px 36px, rgba(160, 170, 178, .55) 36px 39px, rgba(70, 78, 85, .55) 39px 46px);
+    transition: transform .7s cubic-bezier(.5, -0.3, .7, 1); }
+  .tile > * { position: relative; z-index: 1; }
+  .tile .nm { display: flex; align-items: center; gap: 10px; font: 800 clamp(20px, 3vh, 32px)/1.05 var(--font); min-width: 0; text-shadow: 0 2px 0 #000; }
+  .tile .nm b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile .nm .emo { font-size: 1.3em; }
+  .tile .pr { display: flex; gap: 6px; }
+  .tile .pr i { flex: 1; max-width: 46px; height: clamp(10px, 1.6vh, 18px); border: 2.5px solid var(--chalk); background: #1a1f22; }
+  .tile .pr i.on { background: var(--ok); border-color: var(--ok); }
+  .tile .st { align-self: flex-start; max-width: 100%; font: 700 clamp(17px, 2.3vh, 24px)/1.1 var(--font); color: var(--chalk); background: #1a1f22; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile.locked { background: #4b1b12; border-color: var(--bad); }
+  .tile.locked .st { color: var(--bad); }
+  .tile.esc { background: #163b25; border-color: var(--ok); }
+  .tile.esc::before { transform: translateY(-105%); }
+  .tile.esc .st { color: var(--ok); background: transparent; font-weight: 900; text-transform: uppercase; }
+  .tile.burn { opacity: .55; }
+  .side { width: min(520px, 36vw); display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .headq { flex: 1; min-height: 0; padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+  .headq .who { font: 800 24px/1.1 var(--font); }
+  .headq .task { font: 900 26px/1.1 var(--font); color: var(--gold); }
+  .headq .zoom { flex: 1; min-height: 0; overflow: hidden; display: flex; justify-content: center; }
+  .headq .pad { width: 400px; pointer-events: none; min-height: 0; }
+  .passcode { background: var(--sand); color: var(--night); padding: 10px 14px; }
+  .passcode .h { font: 700 20px/1.2 var(--font); }
+  .passcode .code { font: 800 64px/1 var(--mono); letter-spacing: .14em; }
+  .betbox { flex: none; padding: 12px 16px; font: 800 26px/1.1 var(--font); text-align: center; }
+  .betbox small { display: block; font: 600 18px/1.2 var(--font); color: var(--chalk-2); }
+
+  /* ---------- приговор: списки — строкой сверху, а шкала растёт и забирает экран: отлёт видно из угла ---------- */
+  .verdict { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 22px; align-content: start; overflow: hidden; }
+  .vcol { display: flex; flex-wrap: wrap; align-items: center; align-content: flex-start; gap: 8px 10px; min-width: 0; }
+  .vcol h3 { flex: 0 0 100%; margin: 0; font: 900 40px/1 var(--font); text-transform: uppercase; }
+  .vcol.y h3 { color: var(--ok); }
+  .vcol.n h3 { color: var(--bad); }
+  .vrow { display: flex; align-items: center; gap: 10px; max-width: 100%; padding: 6px 14px 6px 10px; background: var(--infield); border-left: 10px solid var(--pc); font: 800 30px/1.1 var(--font); }
+  .vrow b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vrow .d { color: var(--bad); font-family: var(--mono); }
+  .vrow.wait { visibility: hidden; }
+  @media (prefers-reduced-motion: no-preference) { .vrow.go { animation: drop .45s cubic-bezier(.3, 1.6, .5, 1) both; } }
+  .seers { grid-column: 1 / -1; font: 700 24px/1.2 var(--font); color: var(--chalk-2); }
+  .vcol .fine { font-size: 24px; }
+
+  /* ---------- финал: тема на ставках, раскрытие ставок ---------- */
+  .theme { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; }
+  .theme .kicker { font-size: 28px; }
+  .theme h2 { margin: 0; font: 900 clamp(70px, 14vh, 170px)/.95 var(--font); text-transform: uppercase; letter-spacing: -.02em; color: var(--gold); }
+  .theme .sub { font: 700 32px/1.2 var(--mono); color: var(--chalk-2); }
+  .fsteps { flex: 1; min-height: 0; display: grid; grid-auto-rows: minmax(0, var(--rh, 64px)); gap: 8px; align-content: center; width: min(1300px, 100%); align-self: center; }
+  .frow { display: grid; grid-template-columns: minmax(0, 1fr) 7em 3em 6em 6em; align-items: center; gap: 14px; padding: 0 16px; background: var(--infield); border-left: 12px solid var(--pc); font: 800 clamp(22px, calc(var(--rh, 64px) * .42), 36px)/1 var(--font); transition: background .3s; }
+  .frow .n { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .frow .n b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .frow span { text-align: right; font-variant-numeric: tabular-nums; }
+  .frow span:not(.n) { font-family: var(--mono); }
+  .frow .q { color: var(--chalk-2); opacity: .6; }
+  .frow.now { background: var(--infield-2); box-shadow: inset 0 0 0 3px var(--gold); }
+  .frow .plus { color: var(--ok); } .frow .minus { color: var(--bad); }
+
+  /* ---------- итоги: пьедестал из тартана, награды ---------- */
+  .final { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; }
+  .podium { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: 6px; }
+  .step { text-align: center; display: flex; flex-direction: column; justify-content: flex-end; min-height: 0; min-width: 0; }
+  .step .emo { font-size: clamp(54px, 9vh, 92px); display: block; }
+  .step b { display: block; font: 800 30px/1.1 var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 6px; }
+  .step .sc { font: 800 30px/1 var(--mono); margin-top: 6px; color: var(--chalk-2); }
+  .step .col { flex: none; margin-top: 12px; background: var(--track); color: #fff; border-top: 6px solid var(--pc); display: grid; place-items: start center; padding-top: 14px; font: 800 64px/1 var(--mono); }
+  .step.p1 .col { height: 46%; background: var(--chalk); color: var(--night); } .step.p2 .col { height: 34%; } .step.p3 .col { height: 24%; background: var(--track-2); }
+  @media (prefers-reduced-motion: no-preference) {
+    .step .col { animation: rise .7s cubic-bezier(.2, .9, .3, 1.2) both; transform-origin: 50% 100%; }
+    .step.p3 .col { animation-delay: .1s; } .step.p2 .col { animation-delay: .25s; } .step.p1 .col { animation-delay: .45s; }
+  }
+  @keyframes rise { from { transform: scaleY(0); } }
+  .awards { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .awcards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .award { padding: 12px 16px; min-width: 0; background: var(--infield); border-top: 4px solid var(--gold); }
+  .award .k { font: 700 18px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--gold); }
+  .award .a { font: 800 28px/1.1 var(--font); overflow-wrap: anywhere; margin-top: 6px; }
+  .award .by { margin-top: 2px; font-size: 18px; color: var(--chalk-2); font-weight: 500; }
+  .table { flex: 1; padding: 12px 16px; min-height: 0; overflow: hidden; }
+  .table ol { list-style: none; margin: 6px 0 0; padding: 0; display: grid; }
+  .table li { display: flex; align-items: center; gap: 10px; min-width: 0; font: 800 var(--tfs, 26px)/1.7 var(--font); border-bottom: 2px solid var(--edge); }
+  .table li .n { width: 1.6em; color: var(--chalk-2); flex: none; font-family: var(--mono); }
+  .table li b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .table li > span:last-child { font-family: var(--mono); }
+  .table li .neg { color: var(--bad); }
+  .hostbtns { display: flex; gap: 12px; }
+  .hostbtns > * { flex: 1; }
+  .ghostbtn { border: 2px dashed var(--chalk-2); background: transparent; padding: 14px; font: 800 24px/1 var(--font); text-transform: uppercase; display: grid; place-items: center; color: inherit; text-decoration: none; }
+  .hostbtns .start { font-size: 30px; padding: 14px; }
+
+  /* ---------- шкала очков: дорожки из тартана, старт = ноль, левее — песчаная яма ---------- */
+  #track { --namew: clamp(240px, 18vw, 340px); flex: none; height: var(--trh, 30vh); position: relative; display: grid; grid-template-columns: var(--namew, 230px) minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr); background: var(--track); padding: 30px 0 6px; overflow: hidden; container-type: size; transition: height .6s cubic-bezier(.3, .8, .3, 1); }
+  #track.off { display: none; }
+  /* приговор: шкала забирает экран — отлёт главное событие */
+  body[data-phase="verdict"] #stage { flex: 0 0 auto; max-height: 36vh; }
+  body[data-phase="verdict"] .verdict { flex: none; }
+  body[data-phase="verdict"] #track { flex: 1 1 auto; }
+  #track::before { content: ""; position: absolute; left: 0; top: 0; width: var(--namew, 230px); bottom: 0; background: #0f1a14; }
+  #track .road { position: absolute; left: var(--namew, 230px); right: 34px; top: 0; bottom: 0; pointer-events: none; }
+  #track .pit { position: absolute; top: 0; bottom: 0; left: 0; background: var(--sand) radial-gradient(circle, rgba(93, 67, 23, .22) 1.4px, transparent 2px) 0 0 / 11px 11px; box-shadow: inset -10px 0 0 #fff; transition: width .8s ease; }
+  #track .pit span { position: absolute; left: 14px; right: 22px; bottom: 10px; overflow: hidden; color: var(--sand-ink); font: 900 24px/1 var(--font); text-transform: uppercase; letter-spacing: .18em; white-space: nowrap; }
+  #track .tick { position: absolute; top: 0; bottom: 0; border-left: 2px dashed rgba(242, 238, 227, .35); transition: left .8s ease; }
+  #track .tick span { position: absolute; top: 6px; left: 6px; font: 800 17px/1 var(--mono); color: var(--chalk); }
+  #track .tick:last-child span { left: auto; right: 6px; }
+  #track .tick.zero { border-left: 0; }
+  #track .tick.zero span { left: 10px; color: var(--chalk); }
+  .lane { display: contents; }
+  .lname { position: relative; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 0; min-width: 0; z-index: 2; font: 800 var(--lfs, 22px)/1 var(--font); border-top: 3px solid #0f1a14; }
+  .lname .no { flex: none; align-self: stretch; display: grid; place-items: center; width: 1.7em; background: var(--pc); color: var(--night); font: 800 1em/1 var(--mono); }
+  .lname b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lname .sc { flex: none; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .lname .sc.neg { color: var(--bad); }
+  .lname.off { opacity: .45; }
+  .lroad { position: relative; border-top: 3px solid rgba(242, 238, 227, .9); margin-right: 34px; --tk: clamp(26px, calc((100cqh - 36px) / var(--n, 3) - 8px), 76px); }
+  .lane:nth-child(odd) .lroad { background: rgba(0, 0, 0, .07); }
+  .tok { position: absolute; top: 50%; left: 0; width: var(--tk, 40px); height: var(--tk, 40px); margin: calc(var(--tk, 40px) / -2) 0 0 calc(var(--tk, 40px) / -2); border-radius: 50%; background: var(--chalk); border: 4px solid var(--pc); display: grid; place-items: center; font-size: calc(var(--tk, 40px) * .58); line-height: 1; z-index: 3; box-shadow: 0 4px 0 rgba(0, 0, 0, .35); }
+  /* ниже нуля — сидит в песке по пояс */
+  .tok.sunk { box-shadow: none; }
+  .tok.sunk::after { content: ""; position: absolute; left: -10px; right: -10px; bottom: -8px; height: 52%; background: var(--sand); border-radius: 50% 50% 6px 6px / 70% 70% 6px 6px; box-shadow: inset 0 3px 0 rgba(93, 67, 23, .35); }
+  .fly { position: absolute; z-index: 4; font: 800 34px/1 var(--mono); color: var(--bad); pointer-events: none; white-space: nowrap; text-shadow: 0 2px 0 var(--night), 0 0 6px var(--night); }
+  .fly.plus { color: var(--ok); }
+  .dust { position: absolute; z-index: 2; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--sand); pointer-events: none; }
+
+  /* реакции взлетают снизу */
+  .floater { position: fixed; bottom: -60px; z-index: 40; font-size: 46px; pointer-events: none; display: flex; flex-direction: column; align-items: center; }
+  .floater small { font: 700 15px/1.2 var(--font); background: var(--chalk); color: var(--night); padding: 2px 6px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @media (prefers-reduced-motion: no-preference) { .floater { animation: floatup 2.6s ease-out forwards; } }
+  @keyframes floatup { to { transform: translateY(-62vh); opacity: 0; } }
+
+  /* невысокие экраны (ноутбук 1280×720 по HDMI): вопросу — больше места, шкала и варианты плотнее */
+  @media (max-height: 800px) {
+    main { padding: 10px 18px 12px; gap: 10px; }
+    #stage { gap: 10px; }
+    .qbar { height: 46px; }
+    .clock { font-size: 50px; }
+    .bopt { min-height: 72px; padding-block: 6px; }
+    .bopt .lt { width: 48px; height: 48px; font-size: 30px; line-height: 48px; }
+    .bopts { gap: 10px; }
+    .strip { min-height: 44px; font-size: 24px; }
+    .strip .big { font-size: 34px; }
+    #track { padding-top: 26px; }
+  }
+  @media (max-width: 1000px) {
+    body { overflow: auto; }
+    main { min-height: calc(100vh - 70px); }
+    .lobby, .final, .verdict { grid-template-columns: 1fr; }
+    .cellwrap { grid-template-columns: 1fr; }
+    .side { width: auto; }
+    .top h1 { display: none; }
+    .seats { grid-template-rows: none; grid-auto-flow: row; }
+    .seat { min-height: 56px; }
+  }
+
+  /* ---------- правки 05.10 по ревью ---------- */
+  /* полоса под вариантами — одна строка фиксированной высоты, кегль подгоняет fitStrip() */
+  .strip { height: 60px; min-height: 0; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; font-size: var(--sfs, 28px); }
+  .strip > * { flex: none; }
+  .strip .big { font-size: 1.4em; }
+  .strip .dots i { font-size: 1.2em; }
+  /* узники — аватары за прутьями, красная рамка: видно из угла, кто идёт в Камеру */
+  .jail { display: flex; gap: .4em; }
+  .jl { display: inline-flex; align-items: center; gap: .3em; padding: .12em .5em .12em .25em; background: #1a1f22; border: 3px solid var(--bad); color: var(--chalk); font-weight: 800; }
+  .jl i { position: relative; font-style: normal; font-size: 1.4em; line-height: 1; }
+  .jl i::after { content: ""; position: absolute; inset: -3px -4px; background: repeating-linear-gradient(90deg, transparent 0 6px, #111 6px 7px, #aab2b8 7px 9px, transparent 9px 11px); }
+  .jail.many .jl { padding: .12em .25em; }
+  .jail.many .jl b { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  /* раскрытие: гаснет текст неверного варианта, но не аватарки тех, кто его выбрал — они идут в Камеру */
+  .bopt.dim { opacity: 1; background: transparent; }
+  .bopt.dim .lt, .bopt.dim .tx { opacity: .35; }
+  .bopt.dim .who span { border-color: var(--bad); box-shadow: 0 0 0 2px var(--bad); }
+  /* больше шести игроков: шкала выше, варианты — в один ряд */
+  body.dense .bopts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  body.dense .bopt { min-height: 64px; gap: 10px; padding-left: 8px; }
+  body.dense .bopt .lt { width: 44px; height: 44px; font-size: 28px; line-height: 44px; }
+  /* подписи очков на шкале — на тёмной плашке справа от жетона */
+  .fly { background: var(--night); padding: 3px 8px; text-shadow: none; font-size: clamp(20px, calc(var(--tk, 40px) * .7), 36px); }
+  /* узник на шкале — жетон за прутьями */
+  .tok.jailed::before { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 3px solid #59626a; background: repeating-linear-gradient(90deg, transparent 0 22%, #2b3136 22% 30%); pointer-events: none; }
+  /* Камера: плитки заполняют высоту, имя в две строки, статус — иконкой испытания */
+  .tiles { grid-template-rows: repeat(var(--tr, 1), minmax(0, 1fr)); align-content: stretch; }
+  .tile .nm b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: break-word; hyphens: auto; line-height: 1.05; }
+  .tile .st { display: flex; align-items: center; gap: .35em; }
+  .tile .st .ic { flex: none; font-style: normal; font-size: 1.5em; line-height: 1; }
+  .tile .st span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .cellwrap.dense .side { width: min(400px, 27vw); }
+  .cellwrap.dense .tile .nm { font-size: clamp(16px, 2.6vh, 28px); gap: 6px; }
+  .cellwrap.dense .side:has(.headq:not(.hidden)) .warden { display: none; }
+  .cellwrap.dense .side > * { grid-column: 1 / -1; }
+  @media (max-height: 800px) { .strip { height: 46px; } }
+  .cellwrap.dense .tile { padding: 8px 10px; gap: 6px; }
+  .cellwrap.dense .tile .st span { display: none; }
+  .cellwrap.dense .tile .st .ic { font-size: clamp(26px, 3.6vh, 40px); }
+  .cellwrap.few .tiles { grid-template-columns: repeat(var(--tc, 1), minmax(0, 440px)); justify-content: center; gap: 22px; }
+  .cellwrap.few .tile { align-items: center; text-align: center; gap: 14px; }
+  .cellwrap.few .tile .nm { flex-direction: column; font-size: clamp(28px, 4.6vh, 50px); }
+  .cellwrap.few .tile .nm .emo { font-size: 1.9em; }
+  .cellwrap.few .tile .pr { justify-content: center; width: 100%; }
+  .cellwrap.few .tile .pr i { max-width: 80px; height: clamp(16px, 2.4vh, 26px); }
+  .cellwrap.few .tile .st { align-self: center; font-size: clamp(20px, 3vh, 32px); }
+  /* в боковой колонке всегда живое: палач и его набор крупно */
+  .warden { flex: none; padding: 10px 16px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 14px; }
+  .warden .kicker { grid-column: 1 / -1; }
+  .warden .wp { display: flex; align-items: center; gap: 10px; min-width: 0; font: 900 clamp(24px, 3.4vh, 40px)/1.05 var(--font); }
+  .warden .wp b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .warden .wp .emo { font-size: 1.3em; }
+  .warden .wp.auto { font: 700 22px/1.2 var(--font); color: var(--chalk-2); }
+  .warden .wg { display: flex; align-items: center; gap: 8px; font: 900 clamp(24px, 3.4vh, 40px)/1 var(--font); text-transform: uppercase; color: var(--gold); }
+  .warden .wg i { font-style: normal; }
+  /* вопрос «Головы» на доске — крупно: стену ужимаем, zoom растягивает её до колонки */
+  .headq .pad { width: 320px; min-height: 0; }
+  .side .betbox { padding: 8px 14px; font-size: 22px; display: grid; align-content: center; }
+  /* палач и ставки — одной строкой, чтобы вопросу «Головы» досталась почти вся колонка */
+  .side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); align-content: start; }
+  .side > #passes, .side > .headq { grid-column: 1 / -1; }
+  .side > .warden:has(+ .betbox.hidden) { grid-column: 1 / -1; }
+  .side .warden { grid-template-columns: minmax(0, 1fr); }
+  .side .warden .wg { font-size: clamp(22px, 3vh, 34px); }
+  .side .headq { height: 100%; }
+  .cellwrap.few { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
+  .cellwrap.few .side { width: auto; }
+  .headq .pad { padding: 10px; gap: 10px; width: 100%; }
+  /* на доске стена «Головы» — во всю колонку, кегль крупный сам по себе (зум только ужимает, если не влезло) */
+  .headq .pad .qtext { font-size: clamp(34px, 4.6vh, 52px); padding: 0; flex: none; display: block; }
+  .headq .pad .opt { min-height: 0; padding: 10px 8px; font-size: clamp(26px, 3.6vh, 40px); }
+  .headq .pad .clue, .headq .pad .rule { font-size: clamp(20px, 2.6vh, 30px); }
+  .headq .pad .eq { font-size: clamp(36px, 5vh, 56px); }
+  .headq .pad .opts.code .opt { font-size: clamp(30px, 4.2vh, 46px); }
+  .hostbtns .start { font-size: clamp(20px, 2vw, 30px); }
+  .headq .who { font-size: clamp(22px, 2.8vh, 30px); }
+  /* раскрытие ставок: шапка колонок */
+  .frow { grid-template-columns: minmax(0, 1fr) 7em 5em 6em 6em; }
+  .frow.fhead { background: transparent; border-left-color: transparent; color: var(--chalk-2); align-items: end; padding-bottom: 6px; }
+  .frow.fhead span { font: 700 clamp(13px, 1.6vh, 18px)/1.1 var(--mono); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1 id="brand">Последний <em>вопрос</em></h1>
+  <span class="chip hidden" id="actchip"></span>
+  <span class="grow"></span>
+  <button class="endbtn hidden" id="endbtn" type="button"></button>
+  <span class="chip hidden" id="codechip"></span>
+  <button class="sound-toggle-btn" type="button"></button>
+</div>
+<div class="banner hidden" id="banner"></div>
+<div class="conn" id="conn"></div>
+<main id="main"><div id="stage"></div><div id="track" class="off"></div></main>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    end_q: `Закончить партию? Сразу покажем итоги`, rj_start_few_players: `Нужно хотя бы двое игроков`, rj_start_no_content: `Вопросы не загрузились — попробуйте позже`, rj_start_started: `Партия уже идёт`,
+    _title: `Последний вопрос — общий экран`,
+    lobby_who: `Игроки`, lobby_n: `{n} из 10`, lobby_empty: `свободно`, offline: `не в сети`, kick: `Убрать`,
+    lobby_scan: `Наведи камеру телефона на QR или открой ссылку и введи имя.`,
+    set_short: `Короткая партия`, set_short_d: `2 + 2 вопроса и финал, минут пять`,
+    set_final: `Финал со ставками`, set_final_d: `В конце — один трудный вопрос на все очки`,
+    btn_start: `Старт!`, need_more: `Нужен ещё хотя бы один игрок`, viewer: `Начать может только ведущий — тот, кто открыл этот экран`,
+    creating: `Создаём комнату…`,
+    btn_end: `Закончить`,
+    answered_n: `Ответили {n} из {m}`,
+    read_in: `Варианты через {s}`,
+    clean: `Чисто! Все верно — Камеры не будет`,
+    all_wrong: `Все ошиблись — в Камеру идут все!`,
+    picking: `{name} выбирает испытания…`, picked: `Палач — {name}. Набор:`, picked_auto: `Набор выпал случайно:`,
+    to_cell: `В Камеру: {names}`, f_cell: `В Камеру:`, f_clean: `Все верно — раскрываем ставки`, warden_k: `Палач`, warden_auto: `Палача нет — набор выпал случайно`, fr_h: `Ставка|Ответ|±|Итог`,
+    cell_t: `Камера`, cell_ready: `Приготовьтесь…`, cell_locked: `🔒 решётка`, cell_wait: `готовится`,
+    bets_n: `Ставки сделали {n} из {m}`, bets_closed: `Ставки закрыты`, bets_sub: `кто выберется? ставьте с телефонов`,
+    head_k: `Подсказывайте вслух: {name}!`,
+    pass_h: `Сокамерник молчит! Код для {name}:`,
+    v_title_y: `Вырвались`, v_title_n: `Отлетают`, v_nobody_y: `никто`, v_nobody_n: `никто — все спаслись!`,
+    v_seers: `Угадали исход: {list}`,
+    stake_k: `Последний вопрос · тема`, stake_n: `Ставки сделали {n} из {m}`,
+    fq_k: `Последний вопрос`,
+    fr_cols: `Ставка`,
+    final_title: `Итоги`, final_few: `игроков меньше двух`, final_host: `ведущий закончил`,
+    btn_again: `Ещё партия`, btn_lobby: `В лобби`, btn_home: `Главная`,
+    no_awards: `Наград нет — все слишком ровные`,
+    table: `Счёт`,
+    pit: `яма`, demo_k: `Так выглядит шкала: ниже нуля — яма`,
+    expired: `Комната закрыта: она пустовала полчаса или ведущий её закрыл`,
+    paused: `Все отключились — ждём`,
+  },
+  en: {
+    end_q: `End the game? Results will show right away`, rj_start_few_players: `At least two players needed`, rj_start_no_content: `Questions failed to load — try again later`, rj_start_started: `The game is already on`,
+    _title: `Last Question — shared screen`,
+    lobby_who: `Players`, lobby_n: `{n} of 10`, lobby_empty: `free`, offline: `offline`, kick: `Remove`,
+    lobby_scan: `Point your phone camera at the QR or open the link and type your name.`,
+    set_short: `Short game`, set_short_d: `2 + 2 questions and the final, about five minutes`,
+    set_final: `Final with bets`, set_final_d: `One hard question at the end for all your points`,
+    btn_start: `Start!`, need_more: `Need at least one more player`, viewer: `Only the host — whoever opened this screen — can start`,
+    creating: `Creating a room…`,
+    btn_end: `End game`,
+    answered_n: `Answered: {n} of {m}`,
+    read_in: `Answers in {s}`,
+    clean: `Clean sweep! Everyone got it — no Cell`,
+    all_wrong: `Everyone missed — all into the Cell!`,
+    picking: `{name} is picking the challenges…`, picked: `Warden: {name}. Set:`, picked_auto: `Set picked at random:`,
+    to_cell: `Into the Cell: {names}`, f_cell: `Into the Cell:`, f_clean: `All correct — revealing the bets`, warden_k: `Warden`, warden_auto: `No warden — the set was random`, fr_h: `Bet|Answer|±|Total`,
+    cell_t: `The Cell`, cell_ready: `Get ready…`, cell_locked: `🔒 locked`, cell_wait: `getting ready`,
+    bets_n: `Bets placed: {n} of {m}`, bets_closed: `Betting closed`, bets_sub: `who breaks out? bet on your phones`,
+    head_k: `Help out loud: {name}!`,
+    pass_h: `The cellmate is silent! Code for {name}:`,
+    v_title_y: `Escaped`, v_title_n: `Knocked back`, v_nobody_y: `nobody`, v_nobody_n: `nobody — everyone made it!`,
+    v_seers: `Called it: {list}`,
+    stake_k: `The Last Question · topic`, stake_n: `Bets placed: {n} of {m}`,
+    fq_k: `The Last Question`,
+    fr_cols: `Bet`,
+    final_title: `Results`, final_few: `fewer than two players`, final_host: `the host ended it`,
+    btn_again: `Play again`, btn_lobby: `To lobby`, btn_home: `Home`,
+    no_awards: `No awards — everyone played too evenly`,
+    table: `Scores`,
+    pit: `the pit`, demo_k: `The score track: below zero is the pit`,
+    expired: `Room closed: it sat empty for half an hour or the host closed it`,
+    paused: `Everyone dropped — waiting`,
+  },
+  el: {
+    end_q: `Τέλος παρτίδας; Θα δείξουμε αμέσως τα αποτελέσματα`, rj_start_few_players: `Χρειάζονται τουλάχιστον δύο παίκτες`, rj_start_no_content: `Οι ερωτήσεις δεν φορτώθηκαν — δοκιμάστε αργότερα`, rj_start_started: `Η παρτίδα έχει ήδη ξεκινήσει`,
+    _title: `Τελευταία ερώτηση — κοινή οθόνη`,
+    lobby_who: `Παίκτες`, lobby_n: `{n} από 10`, lobby_empty: `ελεύθερη`, offline: `εκτός σύνδεσης`, kick: `Αφαίρεση`,
+    lobby_scan: `Στρέψε την κάμερα του κινητού στο QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.`,
+    set_short: `Σύντομη παρτίδα`, set_short_d: `2 + 2 ερωτήσεις και τελικός, περίπου πέντε λεπτά`,
+    set_final: `Τελικός με πονταρίσματα`, set_final_d: `Στο τέλος μία δύσκολη ερώτηση για όλους τους πόντους`,
+    btn_start: `Πάμε!`, need_more: `Χρειάζεται τουλάχιστον ένας ακόμα παίκτης`, viewer: `Μόνο ο οικοδεσπότης — όποιος άνοιξε αυτή την οθόνη — μπορεί να ξεκινήσει`,
+    creating: `Δημιουργία δωματίου…`,
+    btn_end: `Τέλος`,
+    answered_n: `Απάντησαν {n} από {m}`,
+    read_in: `Οι απαντήσεις σε {s}`,
+    clean: `Καθαρά! Όλοι σωστά — δεν υπάρχει Κελί`,
+    all_wrong: `Όλοι λάθος — όλοι στο Κελί!`,
+    picking: `Διαλέγει δοκιμασίες: {name}…`, picked: `Δεσμοφύλακας: {name}. Σετ:`, picked_auto: `Το σετ βγήκε τυχαία:`,
+    to_cell: `Στο Κελί: {names}`, f_cell: `Στο Κελί:`, f_clean: `Όλοι σωστά — αποκαλύπτουμε τα πονταρίσματα`, warden_k: `Δεσμοφύλακας`, warden_auto: `Χωρίς δεσμοφύλακα — το σετ βγήκε τυχαία`, fr_h: `Ποντάρισμα|Απάντηση|±|Σύνολο`,
+    cell_t: `Το Κελί`, cell_ready: `Ετοιμαστείτε…`, cell_locked: `🔒 κάγκελα`, cell_wait: `ετοιμάζεται`,
+    bets_n: `Πόνταραν {n} από {m}`, bets_closed: `Τα στοιχήματα έκλεισαν`, bets_sub: `ποιος θα το σκάσει; ποντάρετε από τα κινητά`,
+    head_k: `Βοηθήστε φωναχτά: {name}!`,
+    pass_h: `Ο συγκρατούμενος σωπαίνει! Κωδικός για: {name}`,
+    v_title_y: `Το έσκασαν`, v_title_n: `Πάνε πίσω`, v_nobody_y: `κανείς`, v_nobody_n: `κανείς — όλοι γλίτωσαν!`,
+    v_seers: `Το μάντεψαν: {list}`,
+    stake_k: `Η τελευταία ερώτηση · θέμα`, stake_n: `Πόνταραν {n} από {m}`,
+    fq_k: `Η τελευταία ερώτηση`,
+    fr_cols: `Ποντάρισμα`,
+    final_title: `Αποτελέσματα`, final_few: `λιγότεροι από δύο παίκτες`, final_host: `τελείωσε ο οικοδεσπότης`,
+    btn_again: `Νέα παρτίδα`, btn_lobby: `Στο λόμπι`, btn_home: `Αρχική`,
+    no_awards: `Χωρίς βραβεία — όλοι έπαιξαν πολύ ισορροπημένα`,
+    table: `Σκορ`,
+    pit: `ο λάκκος`, demo_k: `Η διαδρομή: κάτω από το μηδέν είναι ο λάκκος`,
+    expired: `Το δωμάτιο έκλεισε: έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης`,
+    paused: `Όλοι αποσυνδέθηκαν — περιμένουμε`,
+  },
+};
+</script>
+<script src="lastq-shared.js"></script>
+<script src="lastq-challenges.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<!-- QR — асинхронно: медленный CDN не должен держать всю доску; доехал — лобби перерисует QR -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" async onload="window.lqQrReady && window.lqQrReady()"></script>
+<script>
+"use strict";
+const T = (k) => lqT(k);
+const tpl = (k, v) => lqTpl(k, v);
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const hostKey = () => "lastq-host-" + CODE;
+const stage = $("stage");
+const GROUP_ICON = { hands: "✋", eyes: "👁️", head: "🧠" };
+// иконки испытаний для плиток узников (спека §4.1): по ним зал видит, кто чем занят
+const CH_ICON = { wires: "✂️", swipe: "👆", hold: "✊", order: "🔢", nopress: "🚫", catch: "🔑", color: "🎨", odd: "🔍", code: "🔢", count: "🦆", letter: "🔤", sad: "😢",
+  quiz: "❓", sudoku: "🔢", seq: "➡️", math: "➕", tf: "⚖️", heavy: "🏋️", chrono: "📜", spark: "⚡", rhythm: "🧱", coward: "🏃", shells: "🥤", simon: "🚥", blink: "👁️",
+  flashes: "💡", diff: "🔍", manual: "📋", rebus: "🧩", oddmeaning: "🤔", dice: "🎲", dig: "⛏️", saw: "🪚", lockpick: "🔓", searchlight: "🔦", lineup: "🕵️",
+  rollcall: "📢", keys: "🗝️", cipher: "🔣", codelock: "🔐", scales: "⚖️", clock: "🕰️", guard: "💂", pass: "📨" };
+const FSTEP_MS = 3000;
+window.lqQrReady = () => { if (state && state.phase === "lobby") { qrDrawn = false; drawLobby(); } };
+
+let conn = null, state = null, isHost = false, dead = false;
+let viewKey = "";
+
+const player = (id) => state && state.players.find((p) => p.id === id);
+const present = () => state.players.filter((p) => !p.left);
+const qid = () => state.game + ":" + state.qn + ":" + state.act;
+const emo = (p) => `<i class="emo">${escapeHtml(p ? p.avatar : "❔")}</i>`;
+const nameOf = (id) => ((player(id) || {}).name || "?");
+
+// ---------- создание комнаты, если доску открыли без кода ----------
+async function ensureRoom() {
+  if (CODE) return true;
+  showBanner(T("creating"));
+  try {
+    const res = await fetch("/lastq/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: lqLang() } }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "error");
+    CODE = data.code;
+    try { localStorage.setItem(hostKey(), data.hostToken); } catch (e) {}
+    history.replaceState(null, "", `?r=${CODE}`);
+    showBanner(null);
+    return true;
+  } catch (err) {
+    showBanner(String(err.message || err));
+    return false;
+  }
+}
+function showBanner(text) {
+  const b = $("banner");
+  b.classList.toggle("hidden", !text);
+  b.textContent = text || "";
+}
+
+// подогнать шрифт под коробку: уменьшаем, пока текст не влезет (коробка не растёт — без скачков)
+function fit(box, holder, varName, max, min) {
+  let fs = max;
+  holder.style.setProperty(varName, fs + "px");
+  let guard = 0;
+  while (fs > min && (box.scrollHeight > box.clientHeight + 1 || box.scrollWidth > box.clientWidth + 1) && guard++ < 80) {
+    fs -= 2;
+    holder.style.setProperty(varName, fs + "px");
+  }
+}
+
+// ---------- лобби ----------
+let qrDrawn = false;
+const seen = new Set();
+function drawLobby() {
+  const url = `${location.origin}/lastq.html?r=${CODE}`;
+  const key = "lobby:" + lqLang() + ":" + isHost;
+  if (viewKey !== key) {
+    viewKey = key;
+    qrDrawn = false;
+    stage.innerHTML = `<div class="lobby">
+      <div class="panel box"><h2>${T("lobby_who")}<span id="seatn"></span></h2><div class="seats" id="seats"></div></div>
+      <div class="panel box">
+        <div class="join"><div id="qr"></div><div style="min-width:0;flex:1"><div class="bigcode" id="bigcode">${escapeHtml(CODE)}</div><div class="url">${escapeHtml(url.replace(/^https?:\/\//, ""))}</div><div class="scan">${T("lobby_scan")}</div></div></div>
+        <div class="toggles" id="toggles"></div>
+        <div class="demo" aria-hidden="true"><div class="kicker">${T("demo_k")}</div><div class="mt"><div class="pit"><span>${T("pit")}</span></div>
+          <div class="ln" style="top:0"></div><div class="ln" style="top:33.3%"></div><div class="ln" style="top:66.6%"></div>
+          <i class="t" style="--pc:var(--c0);left:80%;top:16.6%">🦊</i><i class="t" style="--pc:var(--c1);left:46%;top:50%">🐸</i><i class="t sunk" style="--pc:var(--c3);left:9%;top:83.3%">🦉</i>
+          <span class="fly" style="left:15%;top:76%">−250</span></div></div>
+        <div class="startbox"><div class="fine" id="starthint"></div><button class="start" id="startbtn" type="button">${T("btn_start")}</button></div>
+      </div></div>`;
+    $("startbtn").onclick = () => conn.send({ type: "start" });
+    const code = $("bigcode");
+    let fs = 96;
+    code.style.setProperty("--code-fs", fs + "px");
+    while (fs > 30 && code.scrollWidth > code.clientWidth + 1) { fs -= 4; code.style.setProperty("--code-fs", fs + "px"); }
+  }
+  if (!qrDrawn && window.QRCode) {
+    qrDrawn = true;
+    $("qr").replaceChildren();
+    new QRCode($("qr"), { text: url, width: 240, height: 240, colorDark: "#16120c", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+  }
+  const ps = present();
+  if (ps.some((p) => !seen.has(p.id)) && seen.size) lqSfx.pop();
+  const nodes = ps.map((p) => {
+    const d = el("div", "seat");
+    d.style.setProperty("--pc", p.color);
+    d.innerHTML = emo(p) + `<b>${escapeHtml(p.name)}</b>` + (p.online ? "" : `<span class="off">${escapeHtml(T("offline"))}</span>`);
+    if (isHost) { const x = el("button", "x", "✕"); x.type = "button"; x.title = T("kick"); x.setAttribute("aria-label", T("kick")); x.onclick = () => conn.send({ type: "kick", playerId: p.id }); d.append(x); }
+    return d;
+  });
+  for (let i = ps.length; i < state.maxPlayers; i++) nodes.push(el("div", "seat empty" + (i === ps.length ? " next" : ""), T("lobby_empty")));
+  $("seats").replaceChildren(...nodes);
+  ps.forEach((p) => seen.add(p.id));
+  $("seatn").textContent = tpl("lobby_n", { n: ps.length });
+  const st = state.settings;
+  $("toggles").innerHTML = [["short", "set_short"], ["final", "set_final"]].map(([k, l]) =>
+    `<button type="button" class="tog${st[k] ? " on" : ""}" data-k="${k}" aria-pressed="${!!st[k]}"${isHost ? "" : " disabled"}><span class="bx">${st[k] ? "✓" : ""}</span><span><b>${T(l)}</b><span>${T(l + "_d")}</span></span></button>`).join("");
+  $("toggles").querySelectorAll(".tog").forEach((b) => {
+    b.onclick = () => conn.send({ type: "settings", settings: { [b.dataset.k]: !state.settings[b.dataset.k] } });
+  });
+  const need = Math.max(0, state.minPlayers - ps.length);
+  $("startbtn").disabled = !isHost || need > 0;
+  $("starthint").textContent = !isHost ? T("viewer") : need > 0 ? T("need_more") : "";
+}
+
+// ---------- заставка акта ----------
+function drawIntro() {
+  const key = "intro:" + qid() + lqLang();
+  if (viewKey === key) return;
+  viewKey = key;
+  const p = state.points;
+  stage.innerHTML = `<div class="intro"><div class="kicker">${escapeHtml(tpl("act_n", { n: state.act }))}</div><h2>${escapeHtml(lqActName(state.act))}</h2>
+    <div class="desc">${escapeHtml(T("act" + state.act + "_d"))}</div>
+    ${p ? `<div class="pts">+${p.right} · ${escapeHtml(tpl("pts", { n: p.speed }))} ⚡ · ${escapeHtml(tpl("minus", { n: p.knock }))}</div>` : ""}</div>`;
+  lqSfx.fanfare();
+}
+
+// ---------- вопрос и раскрытие ----------
+function whatHtml() {
+  if (state.act === 3) return `<b>${escapeHtml(T("fq_k"))}</b>`;
+  return `${escapeHtml(tpl("q_of", { i: state.qn + 1, n: state.qTotal }))} · <b>${escapeHtml(lqActName(state.act))}</b>`;
+}
+function drawQuestion() {
+  const q = state.question;
+  if (!q) return;
+  const open = state.phase === "answer" || state.phase === "fanswer";
+  const rev = state.right != null;
+  const key = "q:" + qid() + ":" + open + ":" + rev + ":" + lqLang() + ":" + innerWidth + "x" + innerHeight;
+  if (viewKey !== key) {
+    viewKey = key;
+    const opts = q.options.map((o, i) => `<div class="bopt${!open && !rev ? " closed" : ""}" id="bo${i}" style="--lc:var(--c${i})"><span class="lt">${LQ_LETTERS[i]}</span><span class="tx">${escapeHtml(o)}</span><div class="who"></div></div>`).join("");
+    stage.innerHTML = `<div class="qbar"><div class="what">${whatHtml()}</div><div class="clock" id="clock"></div></div>
+      <div class="timeline" id="timeline"><i></i></div>
+      <div class="qtext" id="qtext"><div class="t"><span class="tag">${escapeHtml(lqTopic(q.tag))}</span>${escapeHtml(q.text)}</div></div>
+      <div class="bopts" id="bopts">${opts}</div>
+      <div class="strip" id="strip"></div>`;
+    // варианты — одним кеглем: подгоняем по самому длинному; сначала они (их высота решает, сколько места вопросу)
+    let ofs = Math.round(innerHeight / 24);
+    const box = $("bopts");
+    box.style.setProperty("--ofs", ofs + "px");
+    const over = () => [...box.querySelectorAll(".bopt")].some((b) => b.scrollHeight > Math.max(92, innerHeight / 9) + 2);
+    while (ofs > 20 && over()) { ofs -= 2; box.style.setProperty("--ofs", ofs + "px"); }
+    fit($("qtext").firstChild, $("qtext"), "--qfs", Math.round(innerHeight / 12), 24);
+  }
+  if (rev) drawRevealParts(); else drawAnswered();
+}
+function drawAnswered() {
+  const strip = $("strip");
+  if (!strip) return;
+  if (state.phase === "read" || state.phase === "fread") { strip.innerHTML = `<span id="readin"></span>`; return; }
+  const elig = state.eligible.filter((id) => { const p = player(id); return p && !p.left; });
+  const ans = state.answered || [];
+  const k = ans.join(",");
+  if (strip.dataset.k === k) return;
+  strip.dataset.k = k;
+  strip.innerHTML = `<span>${escapeHtml(tpl("answered_n", { n: ans.filter((id) => elig.includes(id)).length, m: elig.length }))}</span><span class="dots">${elig.map((id) => `<i class="${ans.includes(id) ? "on" : ""}" title="${escapeHtml(nameOf(id))}">${escapeHtml((player(id) || {}).avatar || "❔")}</i>`).join("")}</span>`;
+  fitStrip(strip);
+}
+function drawRevealParts() {
+  const r = state.right;
+  const key = r + ":" + state.group + ":" + state.palach + ":" + (state.phase);
+  const strip = $("strip");
+  if (!strip || strip.dataset.k === key) return;
+  const first = !strip.dataset.k || !strip.dataset.k.startsWith(r + ":");
+  strip.dataset.k = key;
+  const picks = state.picks || [[], [], [], []];
+  for (let i = 0; i < 4; i++) {
+    const b = $("bo" + i);
+    b.classList.remove("closed");
+    b.classList.toggle("right", i === r);
+    b.classList.toggle("dim", i !== r);
+    if (first) b.querySelector(".who").innerHTML = picks[i].map((id, k) => {
+      const g = state.gain && state.gain[id];
+      return `<span class="${g ? "g" : ""}" style="--d:${0.6 + k * 0.12}s"><i>${escapeHtml((player(id) || {}).avatar || "❔")}</i>${g ? escapeHtml(tpl("pts", { n: g })) : ""}</span>`;
+    }).join("");
+  }
+  const elig = state.eligible.filter((id) => { const p = player(id); return p && !p.left; });
+  const wrong = state.prisoners || elig.filter((id) => !picks[r].includes(id));
+  if (state.phase === "fshow") {
+    strip.innerHTML = wrong.length ? `<span class="big">${escapeHtml(T("f_cell"))}</span>${jailHtml(wrong)}` : `<span class="big ok">${escapeHtml(T("f_clean"))}</span>`;
+    fitStrip(strip);
+    return;
+  }
+  let html;
+  if (!wrong.length) html = `<span class="big ok">${escapeHtml(T("clean"))}</span>`;
+  else if (!state.palach) html = `<span>${escapeHtml(T("all_wrong"))}</span>${state.group ? `<span class="big">${GROUP_ICON[state.group]} ${escapeHtml(lqGroup(state.group))}</span>` : ""}`;
+  else if (!state.group) html = `<span>${emo(player(state.palach))} ${escapeHtml(tpl("picking", { name: nameOf(state.palach) }))}</span>`;
+  else html = `<span>${state.groupAuto ? escapeHtml(T("picked_auto")) : emo(player(state.palach)) + " " + escapeHtml(tpl("picked", { name: nameOf(state.palach) }))}</span><span class="big">${GROUP_ICON[state.group]} ${escapeHtml(lqGroup(state.group))}</span>`;
+  if (wrong.length && state.group) html += jailHtml(wrong);
+  strip.innerHTML = html;
+  fitStrip(strip);
+}
+// узники — аватары за прутьями с красной рамкой; имена видны, пока их немного (текст есть всегда — для чтения с экрана)
+function jailHtml(ids) {
+  return `<span class="jail${ids.length > 4 ? " many" : ""}">${ids.map((id) => { const p = player(id) || {}; return `<span class="jl" style="--pc:${p.color || "#999"}"><i>${escapeHtml(p.avatar || "❔")}</i><b>${escapeHtml(p.name || "?")}</b></span>`; }).join("")}</span>`;
+}
+// полоса — одна строка фиксированной высоты: не влезает — уменьшаем кегль, а не переносим
+function fitStrip(strip) {
+  let fs = Math.round(Math.min(30, innerHeight / 30));
+  strip.style.setProperty("--sfs", fs + "px");
+  while (fs > 13 && strip.scrollWidth > strip.clientWidth + 1) { fs -= 1; strip.style.setProperty("--sfs", fs + "px"); }
+}
+
+// ---------- Камера ----------
+// Вопрос «Головы» на доске — по одному узнику, по очереди (зал подсказывает вслух); испытания на память доска не получает
+let headCur = null; // { pid, chId, since }
+const boardCtx = { now: () => lqNow(), solved: () => true, playerName: (id) => nameOf(id), submit() {}, wrong() {}, sfx: {}, vibrate() {} };
+function drawCell() {
+  const cell = state.cell || [];
+  const key = "cell:" + qid() + ":" + lqLang() + ":" + innerWidth + "x" + innerHeight;
+  if (viewKey !== key) {
+    viewKey = key;
+    headCur = null;
+    const n = cell.length;
+    const cols = n <= 2 ? n || 1 : n <= 4 ? 2 : n <= 6 ? 3 : n <= 8 ? 4 : 5;
+    const pal = state.palach && player(state.palach);
+    const warden = `<div class="warden box"><div class="kicker">${escapeHtml(T("warden_k"))}</div>${pal && !state.groupAuto ? `<div class="wp">${emo(pal)}<b>${escapeHtml(pal.name)}</b></div>` : `<div class="wp auto">${escapeHtml(T("warden_auto"))}</div>`}${state.group ? `<div class="wg"><i>${GROUP_ICON[state.group]}</i>${escapeHtml(lqGroup(state.group))}</div>` : ""}</div>`;
+    stage.innerHTML = `<div class="qbar"><div class="what"><b>${escapeHtml(T("cell_t"))}</b>${state.group ? ` · ${GROUP_ICON[state.group]} ${escapeHtml(lqGroup(state.group))}` : ""}</div><div class="clock" id="clock"></div></div>
+      <div class="timeline" id="timeline"><i></i></div>
+      <div class="cellwrap${n > 6 ? " dense" : ""}${n <= 2 ? " few" : ""}"><div class="tiles" id="tiles" style="--tc:${cols};--tr:${Math.ceil(Math.max(1, n) / cols)}">${cell.map((x) => { const p = player(x.id) || {}; return `<div class="tile" id="tl_${escapeHtml(x.id)}" style="--pc:${p.color || "#999"}"><div class="nm">${emo(p)}<b>${escapeHtml(p.name || "?")}</b></div><div class="pr"></div><div class="st"></div></div>`; }).join("")}</div>
+      <div class="side">${warden}<div class="betbox box" id="betbox"></div><div id="passes" style="display:grid;gap:10px"></div><div class="headq box hidden" id="headq"><div class="who" id="hqwho"></div><div class="task" id="hqtask"></div><div class="zoom" id="hqzoom"><div class="pad" id="hqpad"></div></div></div></div></div>`;
+  }
+  const now = lqNow();
+  // плитки и ставки — только когда данные поменялись (кадр зовёт drawCell 60 раз в секунду)
+  const open = !!(state.betUntil && now < state.betUntil);
+  const sig = JSON.stringify(cell.map((x) => [x.id, x.done, x.escaped, x.burned, x.locked, x.type, x.passCode || ""])) + state.betN + ":" + state.freeN + ":" + open;
+  if ($("tiles").dataset.sig !== sig) { $("tiles").dataset.sig = sig; drawCellData(cell, open); }
+  drawHeadQ(cell, now);
+}
+function drawCellData(cell, open) {
+  for (const x of cell) {
+    const t = $("tl_" + x.id);
+    if (!t) continue;
+    let pr = "";
+    for (let i = 0; i < x.need; i++) pr += `<i class="${i < x.done ? "on" : ""}"></i>`;
+    t.querySelector(".pr").innerHTML = pr;
+    t.classList.toggle("esc", x.escaped);
+    t.classList.toggle("burn", x.burned);
+    t.classList.toggle("locked", !x.escaped && x.locked);
+    // статус — иконкой испытания (её видно из угла) и подписью, которая на тесных плитках уходит
+    const ic = x.escaped ? "🕊️" : x.burned ? "💨" : x.locked ? "🔒" : x.type ? (CH_ICON[x.type] || "❔") : "⏳";
+    const tx = x.escaped ? T("escaped") : x.burned ? T("burned") : x.locked ? T("cell_locked").replace(/^🔒\s*/, "") : x.type ? lqChLabel(x.type) : T("cell_wait");
+    t.querySelector(".st").innerHTML = `<i class="ic">${ic}</i><span>${escapeHtml(tx)}</span>`;
+  }
+  // ставки на спасение
+  const bb = $("betbox");
+  const freeN = state.freeN || 0;
+  if (!freeN) bb.classList.add("hidden");
+  else {
+    bb.classList.remove("hidden");
+    bb.innerHTML = `${escapeHtml(tpl("bets_n", { n: state.betN || 0, m: freeN }))}<small>${escapeHtml(open ? T("bets_sub") : T("bets_closed"))}</small>`;
+  }
+  // «Передачка»: подсказчик молчит 4 с — код на доску
+  const passes = cell.filter((x) => x.passCode && !x.escaped);
+  const pk = passes.map((x) => x.id + x.passCode).join(",");
+  if ($("passes").dataset.k !== pk) {
+    $("passes").dataset.k = pk;
+    $("passes").innerHTML = passes.map((x) => `<div class="passcode"><div class="h">${escapeHtml(tpl("pass_h", { name: nameOf(x.id) }))}</div><div class="code">${escapeHtml(x.passCode)}</div></div>`).join("");
+  }
+}
+function drawHeadQ(cell, now) {
+  const box = $("headq");
+  const cands = cell.filter((x) => x.ch && !x.escaped && !x.burned);
+  if (!cands.length) { box.classList.add("hidden"); headCur = null; return; }
+  let cur = headCur && cands.find((x) => x.id === headCur.pid);
+  // узник на доске — 6 с (считаем от его появления, а не от нового испытания), потом следующий
+  if (cur && now - headCur.since > 6000 && cands.length > 1) cur = cands[(cands.indexOf(cur) + 1) % cands.length];
+  if (!cur) cur = cands[0];
+  if (headCur && headCur.pid === cur.id && headCur.chId === cur.ch.id) return;
+  headCur = { pid: cur.id, chId: cur.ch.id, since: headCur && headCur.pid === cur.id ? headCur.since : now };
+  box.classList.remove("hidden");
+  $("hqwho").innerHTML = `${emo(player(cur.id))} ${escapeHtml(tpl("head_k", { name: nameOf(cur.id) }))}`;
+  const pad = $("hqpad");
+  pad.style.zoom = 1;
+  LQC.mount(cur.ch, pad, $("hqtask"), boardCtx);
+  // крупнее, насколько влезает в колонку
+  requestAnimationFrame(() => {
+    const z = $("hqzoom");
+    if (!z) return;
+    const k = Math.max(0.6, Math.min(2, z.clientWidth / pad.offsetWidth, z.clientHeight / Math.max(1, pad.scrollHeight)));
+    pad.style.zoom = k.toFixed(2);
+  });
+}
+
+// ---------- приговор ----------
+// спасшиеся сразу, отлетевшие — по одному, в такт шкале (verdictAt)
+const VERDICT_LEAD = 1000, VERDICT_STEP = 600;
+const knockAt = (i) => state.phaseStart + VERDICT_LEAD + VERDICT_STEP * i;
+function drawVerdict() {
+  const v = state.verdict || { escaped: [], burned: [], delta: {}, betGain: {} };
+  const key = "verdict:" + qid() + lqLang();
+  if (viewKey !== key) {
+    viewKey = key;
+    const row = (id, d) => { const p = player(id) || {}; return `<div class="vrow${d != null ? " wait" : ""}" data-id="${escapeHtml(id)}" style="--pc:${p.color || "#999"}">${emo(p)}<b>${escapeHtml(p.name || "?")}</b>${d != null && d ? `<span class="d">${escapeHtml(lqNum(d))}</span>` : ""}</div>`; };
+    const seers = Object.entries(v.betGain || {}).filter(([, n]) => n > 0).map(([id, n]) => `${(player(id) || {}).avatar || ""} ${nameOf(id)} +${n}`);
+    stage.innerHTML = `<div class="verdict">
+      <div class="vcol y"><h3>${T("v_title_y")}</h3>${(v.escaped || []).map((id) => row(id, null)).join("") || `<div class="fine">${T("v_nobody_y")}</div>`}</div>
+      <div class="vcol n"><h3>${T("v_title_n")}</h3>${(v.burned || []).map((id) => row(id, (v.delta || {})[id] || 0)).join("") || `<div class="fine">${T("v_nobody_n")}</div>`}</div>
+      ${seers.length ? `<div class="seers">${escapeHtml(tpl("v_seers", { list: seers.join(", ") }))}</div>` : ""}</div>`;
+    if ((v.escaped || []).length) lqSfx.escape();
+  }
+  const now = lqNow();
+  (v.burned || []).forEach((id, i) => {
+    const r = stage.querySelector(`.vrow.wait[data-id="${CSS.escape(id)}"]`);
+    if (r && now >= knockAt(i)) { r.classList.remove("wait"); r.classList.add("go"); }
+  });
+}
+
+// ---------- финал ----------
+function drawStake() {
+  const key = "stake:" + qid() + lqLang();
+  if (viewKey !== key) {
+    viewKey = key;
+    stage.innerHTML = `<div class="qbar"><div class="what"><b>${escapeHtml(T("fq_k"))}</b></div><div class="clock" id="clock"></div></div>
+      <div class="timeline" id="timeline"><i></i></div>
+      <div class="theme"><div class="kicker">${escapeHtml(T("stake_k"))}</div><h2>${escapeHtml(lqTopic(state.question.tag))}</h2><div class="sub" id="stn"></div></div>`;
+    lqSfx.drumroll(0.8);
+  }
+  const elig = state.eligible.filter((id) => { const p = player(id); return p && !p.left; });
+  $("stn").textContent = tpl("stake_n", { n: state.stakedN || 0, m: elig.length });
+}
+let frShown = -1;
+function drawFreveal() {
+  const st = state.fsteps || [];
+  const key = "frev:" + state.game + lqLang() + ":" + innerHeight;
+  if (viewKey !== key) {
+    viewKey = key;
+    frShown = -1;
+    // снизу таблицы вверх: первым раскрывается последний — он и стоит внизу
+    stage.innerHTML = `<div class="qbar"><div class="what"><b>${escapeHtml(T("fq_k"))}</b> · ${escapeHtml(state.question.options[state.right] || "")}</div></div>
+      <div class="fsteps" id="fsteps" style="--rh:${Math.max(28, Math.min(76, Math.floor((stage.clientHeight - 80) / Math.max(1, st.length + 1)) - 8))}px"><div class="frow fhead"><span class="n"></span>${T("fr_h").split("|").map((h) => `<span>${escapeHtml(h)}</span>`).join("")}</div>${st.slice().reverse().map((x) => { const p = player(x.id) || {}; return `<div class="frow" id="fr_${escapeHtml(x.id)}" style="--pc:${p.color || "#999"}"><span class="n">${emo(p)}<b>${escapeHtml(p.name || "?")}</b></span><span class="q s">?</span><span class="q a">?</span><span class="q d"></span><span class="sc">${lqNum(x.before)}</span></div>`; }).join("")}</div>`;
+    lqSfx.drumroll(1.2);
+  }
+  const now = lqNow();
+  st.forEach((x, i) => {
+    const t0 = state.phaseStart + FSTEP_MS * i;
+    const row = $("fr_" + x.id);
+    if (!row) return;
+    const phase = now < t0 ? 0 : now < t0 + 1000 ? 1 : now < t0 + 1500 ? 2 : 3;
+    row.classList.toggle("now", phase > 0 && phase < 3 || (phase === 3 && now < t0 + FSTEP_MS));
+    if (phase >= 1) { const s = row.querySelector(".s"); s.textContent = x.stake; s.classList.remove("q"); }
+    if (phase >= 2) { const a = row.querySelector(".a"); a.textContent = x.right ? "✓" : x.escaped ? "½" : "✗"; a.className = "a " + (x.right ? "plus" : "minus"); }
+    if (phase >= 3) {
+      const d = row.querySelector(".d");
+      if (d.textContent === "") { d.textContent = lqSigned(x.delta); d.className = "d " + (x.delta > 0 ? "plus" : x.delta < 0 ? "minus" : ""); row.querySelector(".sc").textContent = lqNum(x.after); if (i > frShown) { frShown = i; if (x.right) lqSfx.gong(); else if (x.delta) lqSfx.whoosh(); } }
+    }
+  });
+}
+
+// ---------- итоги ----------
+function ranked() {
+  if (state.ranking) return state.ranking.map((r) => Object.assign({}, player(r.id), { place: r.place, score: r.score }));
+  return present().slice().sort((a, b) => b.score - a.score).map((p, i) => Object.assign({ place: i + 1 }, p));
+}
+function drawFinal() {
+  const key = "final:" + state.game + ":" + state.finishedReason + ":" + isHost + lqLang();
+  if (viewKey === key) return;
+  viewKey = key;
+  const list = ranked();
+  const top = [list[1], list[0], list[2]];
+  const a = state.awards || {};
+  const names = (x) => x.ids.map((id) => { const p = player(id) || { avatar: "?", name: "?" }; return `${p.avatar} ${p.name}`; }).join(", ");
+  const cards = ["unkillable", "regular", "rocket", "kamikaze", "seer", "bottom"].filter((k) => a[k]).map((k) => {
+    const x = a[k];
+    const d = tpl("aw_" + k + "_d", { n: k === "bottom" ? lqNum(x.n) : x.n, s: k === "rocket" ? lqSec(x.n) : "" });
+    return `<div class="award"><div class="k">${escapeHtml(T("aw_" + k))}</div><div class="a">${escapeHtml(names(x))}</div><div class="by">${escapeHtml(d)}</div></div>`;
+  }).join("");
+  const reason = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : "";
+  stage.innerHTML = `<div class="final">
+    <div class="panel box"><h2>${T("final_title")}<span>${escapeHtml(reason)}</span></h2>
+      <div class="podium">${top.map((p, i) => (p ? `<div class="step p${Math.min(3, p.place)}" style="--pc:${p.color}">${emo(p)}<b>${escapeHtml(p.name)}</b><div class="sc">${lqNum(p.score)}</div><div class="col">${p.place}</div></div>` : `<div class="step"></div>`)).join("")}</div>
+      <div class="hostbtns">${isHost ? `<button class="start" id="again" type="button">${T("btn_again")}</button><button class="ghostbtn" id="tolobby" type="button">${T("btn_lobby")}</button>` : ""}<a class="ghostbtn" id="homebtn" href="index.html">${T("btn_home")}</a></div>
+    </div>
+    <div class="awards"><div class="awcards">${cards || `<div class="award" style="grid-column:1/-1"><div class="a">${T("no_awards")}</div></div>`}</div>
+      ${cards ? "" : `<div class="table box" id="ftable"><div class="kicker">${T("table")}</div><ol>${list.map((p) => `<li><span class="n">${p.place}</span>${emo(p)}<b>${escapeHtml(p.name || "?")}</b><span class="${p.score < 0 ? "neg" : ""}">${lqNum(p.score)}</span></li>`).join("")}</ol></div>`}
+    </div></div>`;
+  const ft = $("ftable");
+  if (ft) ft.style.setProperty("--tfs", Math.max(16, Math.min(36, Math.floor((ft.clientHeight - 60) / (list.length * 1.75)))) + "px");
+  if (isHost) {
+    $("again").onclick = () => conn.send({ type: "start" });
+    $("tolobby").onclick = () => conn.send({ type: "lobby" });
+  }
+  if (state.finishedReason === "done") lqSfx.fanfare();
+}
+
+// ---------- шкала очков ----------
+// Дорожка на каждого игрока в порядке входа (не переезжают), аватар стоит на своём счёте.
+// Ниже нуля — яма. Верный ответ — плавно вперёд; отлёт — назад с кувырком, отскоком и пылью.
+const track = $("track");
+let trk = null; // { ids, lo, hi, toks: {id: {x, score}} }
+function trackDomain(scores) {
+  const min = Math.min(0, ...scores), max = Math.max(0, ...scores);
+  // шаг 500 — шкала меняется редко; нижний край — хотя бы один отлёт Акта 2
+  const lo = Math.min(-300, Math.floor((min - 150) / 250) * 250);
+  const hi = Math.max(1000, Math.ceil((max * 1.12 + 50) / 500) * 500);
+  return [lo, hi];
+}
+function buildTrack(ids) {
+  trk = { ids, lo: trk ? trk.lo : -300, hi: trk ? trk.hi : 1000, toks: {}, game: state.game };
+  const n = ids.length;
+  // мало игроков — шкала ниже, вопросу больше места; больше шести — до 44 % высоты, чтобы имена читались из угла
+  // (варианты тогда встают в один ряд — body.dense)
+  const h = n > 6 ? Math.round(Math.min(innerHeight * (innerHeight < 800 ? 0.4 : 0.44), n * 58 + 40)) : Math.round(Math.min(innerHeight * (innerHeight < 800 ? 0.27 : 0.3), Math.max(170, n * 66 + 40)));
+  track.style.setProperty("--trh", h + "px");
+  document.body.classList.toggle("dense", n > 6);
+  const laneH = (h - 32) / Math.max(1, n);
+  track.style.setProperty("--tk", Math.max(22, Math.min(48, laneH - 6)) + "px");
+  track.style.setProperty("--lfs", Math.round(Math.min(laneH * 0.8, Math.max(15, innerHeight * 0.024, Math.min(28, laneH * 0.6)))) + "px");
+  track.style.setProperty("--n", Math.max(1, n));
+  track.innerHTML = `<div class="road" id="road"><div class="pit" id="pit"><span>${escapeHtml(T("pit"))}</span></div><div id="ticks"></div></div>` + ids.map((id, i) => {
+    const p = player(id) || {};
+    return `<div class="lane" style="--pc:${p.color || "#999"}"><div class="lname" id="ln_${escapeHtml(id)}"><span class="no">${i + 1}</span>${emo(p)}<b>${escapeHtml(p.name || "?")}</b><span class="sc">0</span></div><div class="lroad" id="lr_${escapeHtml(id)}"><div class="tok" id="tk_${escapeHtml(id)}">${escapeHtml(p.avatar || "❔")}</div></div></div>`;
+  }).join("");
+  drawScale();
+}
+function drawScale() {
+  const span = trk.hi - trk.lo;
+  const pct = (v) => ((v - trk.lo) / span) * 100;
+  $("pit").style.width = pct(0) + "%";
+  const step = span > 3000 ? 1000 : 500;
+  let h = "";
+  for (let v = Math.ceil(trk.lo / step) * step; v <= trk.hi; v += step) h += `<div class="tick${v === 0 ? " zero" : ""}" style="left:${pct(v)}%"><span>${lqNum(v)}</span></div>`;
+  $("ticks").innerHTML = h;
+}
+const xOf = (score) => ((score - trk.lo) / (trk.hi - trk.lo)) * 100;
+// счёт, который шкала должна показывать сейчас: прибавку раскрытия — после гонга, отлёты — по одному в такт приговору,
+// финал — по шагам раскрытия ставок
+function trackTargets() {
+  const now = lqNow();
+  const out = {};
+  const ph = state.phase;
+  for (const p of state.players) {
+    let s = p.score;
+    if (ph === "reveal" && state.gain && state.gain[p.id] && now < state.phaseStart + 1300) s -= state.gain[p.id];
+    if (ph === "verdict" && state.verdict) {
+      const i = (state.verdict.burned || []).indexOf(p.id);
+      if (i >= 0 && now < knockAt(i)) s -= (state.verdict.delta || {})[p.id] || 0;
+    }
+    if (ph === "freveal" && state.fsteps) {
+      const i = state.fsteps.findIndex((x) => x.id === p.id);
+      if (i >= 0 && now >= state.phaseStart + FSTEP_MS * i + 1500) s = state.fsteps[i].after;
+    }
+    out[p.id] = s;
+  }
+  return out;
+}
+function syncTrack() {
+  // шкала видна всегда, кроме лобби: и в итогах — там она и есть финиш
+  const inGame = state && state.phase !== "lobby";
+  track.classList.toggle("off", !inGame);
+  if (!inGame) { trk = null; return; }
+  const inCell = state.phase === "cell" || state.phase === "fcell";
+  const jailed = new Set(inCell ? (state.cell || []).filter((x) => !x.escaped).map((x) => x.id) : []);
+  const ids = state.players.filter((p) => !p.left).map((p) => p.id);
+  if (!trk || trk.game !== state.game || trk.ids.join(",") !== ids.join(",")) buildTrack(ids);
+  const target = trackTargets();
+  const [lo, hi] = trackDomain(ids.map((id) => target[id]));
+  // шкала только расширяется: сжатие двигало бы всех без повода
+  if (lo < trk.lo || hi > trk.hi) { trk.lo = Math.min(lo, trk.lo); trk.hi = Math.max(hi, trk.hi); drawScale(); for (const id of ids) if (trk.toks[id]) trk.toks[id].x = null; }
+  ids.forEach((id) => {
+    const tok = $("tk_" + id);
+    if (!tok) return;
+    const s = target[id];
+    const cur = trk.toks[id];
+    const x = xOf(s);
+    const ln = $("ln_" + id);
+    if (ln) ln.classList.toggle("off", !(player(id) || {}).online);
+    tok.classList.toggle("jailed", jailed.has(id));
+    if (!cur) { trk.toks[id] = { x, score: s }; tok.style.left = x + "%"; tok.classList.toggle("sunk", s < 0); setScore(id, s, s); return; }
+    if (cur.score === s && cur.x === x) return;
+    const fromX = cur.x == null ? parseFloat(tok.style.left) || x : cur.x;
+    const knock = s < cur.score;
+    moveTok(tok, fromX, x, knock, s - cur.score, id);
+    setScore(id, cur.score, s);
+    cur.x = x;
+    cur.score = s;
+  });
+}
+function setScore(id, from, to) {
+  const sc = document.querySelector(`#ln_${CSS.escape(id)} .sc`);
+  if (!sc) return;
+  sc.classList.toggle("neg", to < 0);
+  if (from === to || matchMedia("(prefers-reduced-motion: reduce)").matches) { sc.textContent = lqNum(to); return; }
+  const t0 = performance.now(), dur = 900;
+  const step = () => {
+    const k = Math.min(1, (performance.now() - t0) / dur);
+    sc.textContent = lqNum(Math.round((from + (to - from) * (1 - Math.pow(1 - k, 3))) / 10) * 10);
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+function moveTok(tok, fromX, toX, knock, delta, id) {
+  tok.style.left = toX + "%";
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches || !tok.animate;
+  // ниже нуля — по пояс в песке; после отлёта песок «насыпается», когда аватар приземлился
+  const sunk = (trk.toks[id] ? trk.toks[id].score : 0) + delta < 0;
+  clearTimeout(tok.sunkT);
+  if (knock && !still) { tok.classList.remove("sunk"); tok.sunkT = setTimeout(() => tok.classList.toggle("sunk", sunk), 950); }
+  else tok.classList.toggle("sunk", sunk);
+  const road = $("lr_" + id);
+  if (!still) {
+    if (knock) {
+      // отлёт: подлёт вверх с кувырком, перелёт за цель, отскок
+      const over = Math.max(0, toX - Math.max(1.5, (fromX - toX) * 0.12));
+      tok.animate([
+        { left: fromX + "%", transform: "translateY(0) rotate(0)" },
+        { left: (fromX + toX) / 2 + "%", transform: "translateY(-70%) rotate(-200deg)", offset: 0.45 },
+        { left: over + "%", transform: "translateY(0) rotate(-360deg)", offset: 0.75 },
+        { left: (toX + 0.8) + "%", transform: "translateY(-18%) rotate(-360deg)", offset: 0.88 },
+        { left: toX + "%", transform: "translateY(0) rotate(-360deg)" },
+      ], { duration: 1100, easing: "cubic-bezier(.25,.6,.35,1)" });
+      setTimeout(() => dust(road, toX), 800);
+      // дорожка вспыхивает красным в момент приземления — отлёт видно и краем глаза
+      if (road) road.animate([{ backgroundColor: "rgba(255, 107, 79, .55)" }, { backgroundColor: "rgba(255, 107, 79, 0)" }], { duration: 700, delay: 750, easing: "ease-out" });
+      lqSfx.whoosh();
+    } else {
+      tok.animate([{ left: fromX + "%" }, { left: toX + "%" }], { duration: 900, easing: "cubic-bezier(.2,.8,.3,1)" });
+    }
+  }
+  if (delta && road && !still) {
+    const f = el("div", "fly" + (delta > 0 ? " plus" : ""), lqSigned(delta));
+    // подпись — справа от жетона на тёмной плашке, а не под ним
+    f.style.left = `calc(${toX}% + var(--tk, 40px) / 2 + 10px)`;
+    f.style.top = "calc(50% - .65em)";
+    road.append(f);
+    f.animate([{ transform: "translateY(0)", opacity: 1 }, { transform: "translateY(-40px)", opacity: 0 }], { duration: 1600, delay: knock ? 700 : 200, easing: "ease-out", fill: "both" }).onfinish = () => f.remove();
+  }
+}
+function dust(road, x) {
+  if (!road || !road.isConnected) return;
+  for (let i = 0; i < 7; i++) {
+    const d = el("div", "dust");
+    d.style.left = x + "%";
+    d.style.top = "60%";
+    road.append(d);
+    const a = Math.PI * (0.9 + Math.random() * 1.2);
+    const r = 20 + Math.random() * 30;
+    d.animate([{ transform: "translate(0,0) scale(1)", opacity: 0.9 }, { transform: `translate(${Math.cos(a) * r}px, ${Math.sin(a) * r * 0.5 - 6}px) scale(1.8)`, opacity: 0 }], { duration: 600 + Math.random() * 300, easing: "ease-out", fill: "both" }).onfinish = () => d.remove();
+  }
+}
+
+// ---------- кадр: часы, шкала, пошаговые экраны ----------
+let lastTick = null;
+function frame() {
+  requestAnimationFrame(frame);
+  if (!state || dead) return;
+  syncTrack();
+  if (state.phase === "verdict") drawVerdict();
+  if (state.phase === "freveal") drawFreveal();
+  if (state.phase === "cell" || state.phase === "fcell") drawCell();
+  if (!state.phaseEnd || state.paused) return;
+  const now = lqNow();
+  const ph = state.phase;
+  const end = state.cellEnd || state.phaseEnd;
+  const left = end - now;
+  const total = Math.max(1, end - state.phaseStart);
+  const hot = left < 5000 && ["answer", "fanswer", "cell", "fcell", "stake"].includes(ph);
+  const clock = $("clock");
+  const shows = ["read", "answer", "fread", "fanswer", "cell", "fcell", "stake"].includes(ph);
+  if (clock) { clock.textContent = shows ? Math.max(0, Math.ceil(left / 1000)) : ""; clock.classList.toggle("hot", hot); }
+  const tl = $("timeline");
+  if (tl) { tl.firstChild.style.transform = `scaleX(${shows ? Math.max(0, Math.min(1, left / total)) : 0})`; tl.classList.toggle("hot", hot); }
+  const ri = $("readin");
+  if (ri) ri.textContent = tpl("read_in", { s: Math.max(1, Math.ceil(left / 1000)) });
+  if (hot && left > 0) {
+    const s = Math.ceil(left / 1000);
+    if (s !== lastTick) { lastTick = s; lqSfx.tick(true); }
+  }
+}
+
+// ---------- отрисовка ----------
+function render() {
+  if (!state || dead) return;
+  document.body.dataset.phase = state.phase;
+  $("brand").innerHTML = escapeHtml(T("game_name")).replace(/(\S+)$/, "<em>$1</em>");
+  $("codechip").innerHTML = `<b>${escapeHtml(CODE)}</b>`;
+  const inGame = !["lobby", "finished"].includes(state.phase);
+  $("codechip").classList.toggle("hidden", !inGame);
+  $("actchip").classList.toggle("hidden", !inGame || !state.act);
+  if (inGame && state.act) $("actchip").textContent = state.act === 3 ? T("act_final") : tpl("act_n", { n: state.act }) + " · " + lqActName(state.act);
+  $("endbtn").classList.toggle("hidden", !(isHost && inGame));
+  $("endbtn").textContent = T("btn_end");
+  showBanner(state.paused ? T("paused") : null);
+  switch (state.phase) {
+    case "lobby": drawLobby(); break;
+    case "intro": drawIntro(); break;
+    case "read": case "answer": case "reveal": case "fread": case "fanswer": case "fshow": drawQuestion(); break;
+    case "cell": case "fcell": drawCell(); break;
+    case "verdict": drawVerdict(); break;
+    case "stake": drawStake(); break;
+    case "freveal": drawFreveal(); break;
+    case "finished": drawFinal(); break;
+  }
+  syncTrack();
+}
+$("endbtn").onclick = () => { if (confirm(T("end_q"))) conn.send({ type: "end" }); };
+
+window.addEventListener("resize", () => { viewKey = ""; if (trk) trk.ids = []; if (state) render(); });
+window.addEventListener("langchange", () => {
+  viewKey = "";
+  if (trk) trk.ids = [];
+  // язык доски — язык вопросов комнаты: в лобби ведущий переключает и вопросы
+  if (isHost && state && (state.phase === "lobby" || state.phase === "finished") && state.settings.lang !== lqLang()) conn.send({ type: "settings", settings: { lang: lqLang() } });
+  render();
+});
+
+// реакции: эмодзи взлетает снизу с именем
+function floatReact(playerId, emoji) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const p = player(playerId);
+  const f = el("div", "floater");
+  f.style.left = (8 + Math.random() * 84) + "vw";
+  f.append(el("span", null, emoji), el("small", null, p ? p.name : ""));
+  document.body.append(f);
+  setTimeout(() => f.remove(), 2700);
+}
+
+// ---------- связь ----------
+let prevPhase = null;
+function onEvent(e) {
+  switch (e.type) {
+    case "react": return floatReact(e.playerId, e.emoji);
+    case "answered": return lqSfx.tap();
+    case "reveal": return e.clean ? lqSfx.fanfare() : lqSfx.gong();
+    case "group": return lqSfx.pop();
+    case "cellWrong": return lqSfx.clang();
+    case "cellOk": return lqSfx.ok();
+    case "escaped": return lqSfx.escape();
+  }
+}
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+      state = m.state;
+      if (!isHost) {
+        let token = null;
+        try { token = localStorage.getItem(hostKey()); } catch (e) {}
+        if (token) conn.send({ type: "host", token });
+      }
+      render();
+      break;
+    case "state":
+      state = m.state;
+      if (state.phase !== prevPhase) { prevPhase = state.phase; if (state.phase === "fshow") lqSfx.gong(); }
+      render();
+      break;
+    case "host_ok":
+      isHost = true;
+      document.body.classList.add("host");
+      viewKey = "";
+      lqWake.on();
+      // язык доски главнее: комнату создали на одном языке, а доску переключили — синхронизируем
+      if (state && state.phase === "lobby" && state.settings.lang !== lqLang()) conn.send({ type: "settings", settings: { lang: lqLang() } });
+      render();
+      break;
+    case "host_lost":
+      isHost = false;
+      document.body.classList.remove("host");
+      viewKey = "";
+      render();
+      break;
+    case "event":
+      onEvent(m.event);
+      break;
+    case "rejected":
+      if (m.action === "start") { const k = "rj_start_" + m.reason; showBanner(T(k) !== k ? T(k) : m.reason); setTimeout(() => showBanner(null), 4000); }
+      break;
+    case "error":
+      if (m.error === "room_expired") gone();
+      break;
+  }
+}
+
+function gone() {
+  dead = true;
+  stage.innerHTML = "";
+  track.classList.add("off");
+  showBanner(T("expired"));
+}
+
+async function boot() {
+  // ?h=токен — ссылка ведущего на другое устройство: токен кладём в хранилище и убираем из адреса
+  const h = params.get("h");
+  if (h && CODE) {
+    try { localStorage.setItem(hostKey(), h); } catch (e) {}
+    history.replaceState(null, "", `?r=${CODE}`);
+  }
+  if (!(await ensureRoom())) return;
+  const banner = $("conn");
+  conn = lqConnect({
+    code: CODE,
+    onMessage,
+    onGone: gone,
+    onOpen: () => { isHost = false; },
+    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+  });
+  requestAnimationFrame(frame);
+  // ручка для отладки и стенда: те же сообщения, что шлют кнопки доски
+  window.lqBoard = { send: (m) => conn.send(m), get state() { return state; }, get code() { return CODE; } };
+}
+boot();
+</script>
+</body>
+</html>
