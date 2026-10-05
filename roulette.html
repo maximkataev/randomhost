@@ -103,10 +103,11 @@
   .link { background: none; border: 0; color: var(--text); font-weight: 700; text-decoration: none; padding: 10px 14px; font-size: 14px; min-height: 40px; border-radius: 12px; border: 1px solid var(--line-2); }
 
   /* ---------- стартовый экран ---------- */
-  .landing { flex: 1; display: grid; grid-template-areas: "head" "demo" "body"; grid-template-columns: minmax(0, 1fr); align-content: start; row-gap: 20px; padding: 64px 18px 26px; max-width: 1180px; margin: 0 auto; width: 100%; }
-  .lhead { grid-area: head; min-width: 0; } .demo { grid-area: demo; min-width: 0; } .lbody { grid-area: body; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+  /* «Создать» сразу под заголовком: на телефоне демо-стол (264px) уталкивал её за первый экран даже на 375×667 */
+  .landing { flex: 1; display: grid; grid-template-areas: "head" "cta" "demo" "body"; grid-template-columns: minmax(0, 1fr); align-content: start; row-gap: 20px; padding: 64px 18px 26px; max-width: 1180px; margin: 0 auto; width: 100%; }
+  .lhead { grid-area: head; min-width: 0; } .demo { grid-area: demo; min-width: 0; } .lbody { grid-area: body; min-width: 0; display: flex; flex-direction: column; gap: 18px; } .landing .cta { grid-area: cta; min-width: 0; }
   @media (min-width: 900px) {
-    .landing { grid-template-areas: "head demo" "body demo"; grid-template-columns: minmax(0, 1fr) clamp(380px, 46%, 580px); column-gap: clamp(28px, 5vw, 72px); align-content: center; min-height: 100dvh; }
+    .landing { grid-template-areas: "head demo" "cta demo" "body demo"; grid-template-columns: minmax(0, 1fr) clamp(380px, 46%, 580px); column-gap: clamp(28px, 5vw, 72px); align-content: center; min-height: 100dvh; }
     .demo { align-self: center; }
     .dfelt .c span { width: 40px; height: 28px; font-size: 16px; }
     .dfelt .rchip { width: 30px; height: 30px; margin: -15px 0 0 -15px; font-size: 10px; }
@@ -193,6 +194,8 @@
   /* ---------- игра ---------- */
   .game { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 100dvh; padding: calc(56px + env(safe-area-inset-top)) 8px calc(6px + env(safe-area-inset-bottom)); gap: 6px; }
   body.m-game { overflow: hidden; }
+  /* clip, а не hidden: body не становится прокручиваемым контейнером, и sticky-кнопка «Готов» липнет к экрану */
+  @supports (overflow: clip) { body, body.m-game { overflow-x: clip; overflow-y: visible; } }
   body.m-game .util a { display: none; }
   .hud { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 136px 48px; gap: 10px; align-items: center; padding: 0 4px; height: 48px; }
   .hud .me { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -500,6 +503,72 @@
     .hud .me { gap: 5px; }
     .mystack { zoom: .75; }
     .hud .stack { font-size: 25px; }
+  }
+  /* узкий телефон: вкладки дока — одной иконкой, иначе реакции сжимались до 19–27px в ширину */
+  @media (max-width: 400px) {
+    .dock .tab { min-width: 44px; justify-content: center; }
+    .dock .tab .tl { display: none; }
+  }
+  /* 320px: пять реакций по ~38px вместо шести по ~32px — палец попадает */
+  @media (max-width: 340px) {
+    .dock .reacts button:nth-child(n+6) { display: none; }
+    /* «← Όλα τα παιχνίδια» длиннее русского: на 320px кнопка звука наезжала на языки на 5px */
+    .util { left: 6px; gap: 4px; }
+    .util a { font-size: 12px; padding: 10px 2px; }
+  }
+  /* 320×460: в доке ещё звук и язык — реакций четыре, каждая не уже 36px */
+  @media (max-width: 340px) and (max-height: 500px) {
+    .dock .reacts button:nth-child(n+5) { display: none; }
+    body .dock, body .dock .reacts { gap: 2px; } /* 4×36 + 4×36 + зазоры = 302 из 304 */
+  }
+  /* низкий экран (iPhone SE с панелями Safari): стол не влезал — нижние ряды 25–36 и «2:1» обрезались.
+     Ужимаем лоток и ряды, а если и так не влезает — страница прокручивается, а не прячет числа */
+  @media (max-height: 600px) {
+    .game { height: auto; min-height: 100dvh; }
+    .table-wrap { min-height: 284px; }
+    .felt { grid-template-rows: minmax(22px, 1fr) repeat(12, minmax(19px, 1fr)) minmax(22px, 1fr); }
+    .hud { height: 40px; }
+    .rack { height: 50px; }
+    .rack .den { width: 38px; height: 38px; }
+    .act { height: 40px; }
+    .dock .tab, .dock .reacts button { height: 38px; }
+    .dock .reacts button { max-width: 38px; }
+    /* брифинг: одна прокрутка страницы вместо карт в крошечном окошке, «Готов» всегда под пальцем */
+    .brief { height: auto; min-height: 100dvh; }
+    .bcards { flex: 1 0 auto; overflow: visible; }
+    .bfoot { position: sticky; bottom: 0; z-index: 2; padding: 10px 0 8px; background: linear-gradient(rgba(10, 11, 13, 0), var(--bg) 14px); }
+    /* финал: медаль поменьше, чтобы тройка и «ждём ведущего» влезали без прокрутки */
+    .final { padding: 60px 18px 18px; gap: 8px; }
+    .medal { width: 92px; height: 92px; font-size: 44px; }
+    .medal.cup { font-size: 46px; }
+    .final h2 { font-size: 30px; }
+  }
+  /* SE 1-го поколения с панелями Safari (320×460): стол целиком только без верхней полосы —
+     звук и языки в игре прячем (они есть в лобби и на финале), ряды ужимаем до 16px */
+  .dock .dutil { display: none; }
+  @media (max-height: 500px) {
+    body.m-table .util, body.m-table .lang-switch { display: none; }
+    .game { padding-top: calc(8px + env(safe-area-inset-top)); }
+    /* звук и язык — в доке, иконками 36px; док в одну строку: карты · чат · звук · язык · реакции */
+    .dock { gap: 4px; }
+    .dock .tab { min-width: 36px; padding: 0; justify-content: center; }
+    .dock .dutil { display: flex; width: 36px; flex: none; border: 0; border-radius: 14px; color: var(--text); }
+    .dock .dlang { font: 800 12px/1 var(--cond); letter-spacing: .02em; }
+    .dock .reacts button { min-width: 36px; }
+    .table-wrap { min-height: 248px; }
+    .felt { grid-template-rows: minmax(22px, 1fr) repeat(12, minmax(16px, 1fr)) minmax(22px, 1fr); }
+    .num span { font-size: 13px; }
+    .medal { width: 76px; height: 76px; font-size: 36px; }
+    .medal.cup { font-size: 38px; }
+    /* финал целиком в 460px и с длинными именами: «Ждём ведущего» в две строки уже не вылезает за экран */
+    .final { padding: calc(52px + env(safe-area-inset-top)) 14px 10px; gap: 6px; }
+    .final h2 { font-size: 26px; margin-top: 2px; }
+    .final .winner { max-width: 100%; }
+    .final .winner span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .final .quip { font-size: 14px !important; }
+    .top3 { gap: 4px; margin-top: 2px; }
+    .top3 div { padding: 4px 12px; }
+    .final .fwait { margin-top: 2px !important; font-size: 14px; line-height: 1.3; }
   }
   @media (prefers-reduced-motion: reduce) {
     .cell.flash, .chip.pop, .chip.pop::after, .timer.hot, .splash .rays, .burst .rchip, .rain, .veil .wave, .icon.wink, .greenflash, .act.ready.stamp, .numball, .medal, .veil .nomore, .splash .stamp, .ghost.pop, .table-wrap.hot, .bubble, .chip.won, .act.ready.arm, .btn.shine::after, .bcard.deal, .cardtoast, .cardtoast .ic, .bfoot .btn.stamp, .live i, .dfelt .rchip, .lobby-list .rchip, .dstamp b, .dwin { animation: none !important; }
@@ -918,8 +987,12 @@ const tokenKey = () => "roulette-token-" + CODE;
 try { token = localStorage.getItem(tokenKey()); } catch (e) {}
 
 function screenMode(m) {
+  // смена режима (лобби → брифинг → стол → финал): на низком экране страница могла остаться прокрученной вниз
+  if (document.body.classList.contains("m-game") !== (m === "game")) scrollTo(0, 0);
   document.body.classList.remove("m-game");
   if (m === "game") document.body.classList.add("m-game");
+  // m-table — именно стол (не брифинг): на низком экране звук и язык переезжают с верхней полосы в док
+  document.body.classList.toggle("m-table", m === "game" && screen === "game");
 }
 
 let toastT = null;
@@ -1079,11 +1152,11 @@ function renderLanding() {
       </div></div>
       <div class="demo-foot"><div class="numball idle" id="dnum"></div><div class="say" id="dsay"></div><div class="t" id="dt"></div></div>
     </div>
+    <div class="cta">
+      <button class="btn shine" id="create">${T("btn_create")}</button>
+      <div class="sub2"><span>${T("cta_sub")}</span><button class="link" id="havecode">${T("have_code")}</button></div>
+    </div>
     <div class="lbody">
-      <div class="cta">
-        <button class="btn shine" id="create">${T("btn_create")}</button>
-        <div class="sub2"><span>${T("cta_sub")}</span><button class="link" id="havecode">${T("have_code")}</button></div>
-      </div>
       <div class="rules">
         <div class="r">${chipHtml("#cf2331", "37", "k")}<div class="t">${T("rule1")}</div></div>
         <div class="r">${chipHtml("#4ea8f2", "👀", "k")}<div class="t">${T("rule2")}</div></div>
@@ -1295,6 +1368,7 @@ const lobbySeen = new Set();
 function buildGame() {
   screen = "game";
   screenMode("game");
+  scrollTo(0, 0); // с брифинга, прокрученного к «Готов», — стол с самого верха
   app.innerHTML = `<div class="game">
     <div class="hud">
       <div class="me"><div class="mystack" id="mystack"><i></i><i></i><i></i><i></i></div><div class="stack" id="stack">0</div></div>
@@ -1390,7 +1464,12 @@ function buildFelt() {
   hit.addEventListener("pointerdown", (e) => {
     if (!canBet()) return;
     const r = hit.getBoundingClientRect();
-    press = { x: e.clientX, y: e.clientY, fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height, w: r.width, h: r.height, long: false };
+    // строка — по настоящим границам: на низком экране зеро выше рядов (min-height), и равные 1/13 съезжали на 4–5px — тап по низу «1» ставил на «4»
+    const edges = rowEdges(), y = e.clientY - r.top;
+    let k = 0;
+    while (k < 12 && y >= edges[k + 1]) k++;
+    const rh = Math.max(1, edges[k + 1] - edges[k]);
+    press = { x: e.clientX, y: e.clientY, fx: (e.clientX - r.left) / r.width, fy: (k + Math.max(0, Math.min(0.9999, (y - edges[k]) / rh))) / 13, w: r.width, h: rh * 13, long: false };
     press.timer = setTimeout(() => {
       if (!press) return;
       press.long = true;
@@ -1432,7 +1511,21 @@ function chipAt(key) {
     return { x: cr.left - fr.left + cr.width / 2, y: cr.top - fr.top + cr.height / 2 };
   }
   const hr = els.felt.querySelector(".hitlayer").getBoundingClientRect();
-  return { x: hr.left - fr.left + p.x * hr.width, y: hr.top - fr.top + p.y * hr.height };
+  return { x: hr.left - fr.left + p.x * hr.width, y: hr.top - fr.top + rowY(p.y * 13) };
+}
+
+// Границы 13 строк зоны чисел в px от её верха (14 значений): строки не всегда равны — зеро держит min-height
+function rowEdges() {
+  const top = els.felt.querySelector(".hitlayer").getBoundingClientRect().top;
+  const e = [0, els.felt.querySelector(".num.zero").getBoundingClientRect().bottom - top];
+  for (let r = 0; r < 12; r++) e.push(els.felt.querySelector(`.num[data-n="${3 * r + 1}"]`).getBoundingClientRect().bottom - top);
+  return e;
+}
+// u — позиция в строках (0…13) → px
+function rowY(u) {
+  const e = rowEdges();
+  const k = Math.max(0, Math.min(12, Math.floor(u)));
+  return e[k] + (u - k) * (e[k + 1] - e[k]);
 }
 
 function drawChips(animate) {
@@ -1598,7 +1691,8 @@ function buildDock() {
   cards.id = "cardstab";
   cards.onclick = openCards;
   const chat = el("button", "tab");
-  chat.innerHTML = `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12z"/></svg>${escapeHtml(T("tab_chat"))}`;
+  chat.innerHTML = `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12z"/></svg><span class="tl">${escapeHtml(T("tab_chat"))}</span>`;
+  chat.setAttribute("aria-label", T("tab_chat"));
   chat.onclick = openChat;
   const reacts = el("div", "reacts");
   for (const e of RL_REACTIONS) {
@@ -1617,7 +1711,17 @@ function buildDock() {
     };
     reacts.append(b);
   }
-  els.dock.replaceChildren(cards, chat, reacts);
+  // звук и язык прямо в доке — для низкого экрана, где верхней полосы нет (показываются только там, см. CSS)
+  const snd = el("button", "tab dutil sound-toggle-btn");
+  const top = document.querySelector(".util .sound-toggle-btn");
+  if (top) { snd.innerHTML = top.innerHTML; snd.setAttribute("aria-label", top.getAttribute("aria-label") || "Sound"); }
+  snd.onclick = (e) => { e.stopPropagation(); if (window.SoundToggle) SoundToggle.toggle(); };
+  const langs = (window.I18N && I18N.supported) || ["ru", "en", "el"];
+  const cur = (window.I18N && I18N.lang) || "ru";
+  const lng = el("button", "tab dutil dlang", cur === "el" ? "GR" : cur.toUpperCase());
+  lng.setAttribute("aria-label", "Language");
+  lng.onclick = () => { if (window.I18N) I18N.setLang(langs[(langs.indexOf(cur) + 1) % langs.length]); };
+  els.dock.replaceChildren(cards, chat, snd, lng, reacts);
   drawCardsTab();
 }
 
@@ -1627,7 +1731,8 @@ function drawCardsTab() {
   const n = state.me ? state.me.hand.length : 0;
   const pl = mine();
   const on = state.settings.cards && !(pl && pl.out);
-  t.innerHTML = `<span class="fan${n ? "" : " empty"}"><b></b><b></b><b></b>${on ? `<span class="n">${n}</span>` : ""}</span>${escapeHtml(T("tab_cards"))}`;
+  t.innerHTML = `<span class="fan${n ? "" : " empty"}"><b></b><b></b><b></b>${on ? `<span class="n">${n}</span>` : ""}</span><span class="tl">${escapeHtml(T("tab_cards"))}</span>`;
+  t.setAttribute("aria-label", T("tab_cards"));
 }
 
 let lastReady = false;
@@ -2197,7 +2302,7 @@ function render() {
       ${won ? `<p class="winner">${chipHtml(p.color, initials(p.name))}<b>${rlNum(p.stack)}</b></p>` : w ? `<p class="winner">${chipHtml(w.color, initials(w.name))}<span>${escapeHtml(tpl("fin_winner", { name: w.name }))}</span></p>` : ""}
       <p class="quip">${T("fin_quip")}</p>
       <div class="top3">${state.players.filter((x) => !x.left && x.place && x.place <= 3).sort((x, y) => x.place - y.place).map((x) => `<div class="${x.id === me ? "me" : ""}"><span class="pl">${x.place}</span>${chipHtml(x.color, initials(x.name))}<b>${escapeHtml(x.name)}</b><span class="st">${rlNum(x.stack)}</span></div>`).join("")}</div>
-      <p style="color:var(--muted);margin-top:8px">${T("fin_wait")}</p></div>`;
+      <p class="fwait" style="color:var(--muted);margin-top:8px">${T("fin_wait")}</p></div>`;
     if (won) rlSfx.win(true);
     return;
   }

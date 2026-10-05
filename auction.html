@@ -38,6 +38,11 @@
   .status { display: flex; align-items: center; gap: 10px; min-height: 26px; font-size: 13px; color: var(--muted); flex: none; }
   .status b { color: var(--text); font-weight: 600; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .status .money { flex: none; font: 900 18px/1 var(--display); color: var(--text); }
+  /* в доборе вместо суммы строка «добор · слот 3/3 · $0»: плакатным кеглем без сжатия она уезжала
+     за правый край (320px: до 409px) — мельче, сжимается и при нехватке места переносится по пробелам */
+  /* точки слотов в доборе не нужны: «слот 3/3» уже написан в этой строке */
+  .status.drafting .slots { display: none; }
+  .status .money.draft { flex: 0 1 auto; font: 700 12px/1.15 var(--body); text-align: right; }
   .status #lotno { flex: none; white-space: nowrap; }
   .status .spacer { flex: 1; }
   .slots { flex: none; display: flex; gap: 4px; }
@@ -153,6 +158,12 @@
   .ownbid .mid { width: auto; flex: none; padding: 14px 16px; }
   .ownbid .plus5[hidden] { display: none; }
   .ownbid input::placeholder { color: var(--muted); font-weight: 600; font-size: 15px; }
+  /* 320px, русский, сумма трёхзначная: «+$5 → $156» и «Ставлю» оставляли полю 30px — сумму не видно.
+     Кнопки ужимаем по бокам и по кеглю, полю — меньше внутренних отступов (шрифт поля не меньше 16px) */
+  @media (max-width: 380px) {
+    .ownbid .mid { padding: 14px 11px; font-size: 13px; letter-spacing: .02em; }
+    .ownbid input { padding: 14px 6px; }
+  }
   .linkbtn { background: none; border: 0; color: var(--c1); font: 600 13px var(--body); padding: 8px; min-height: 44px; text-decoration: underline; }
   .roomname { text-align: center; font: 700 17px/1.25 var(--body); color: var(--c1); margin: -4px 0 2px; overflow-wrap: anywhere; }
   .expired-new { display: block; text-align: center; text-decoration: none; }
@@ -176,7 +187,9 @@
   .note { text-align: center; font-size: 13px; color: var(--muted); min-height: 18px; }
 
   /* ===== стартовый экран: «аукционный зал» ===== */
-  body.m-start, body.m-enter, body.m-final { height: auto; min-height: 100vh; min-height: 100dvh; overflow-y: auto; }
+  /* лобби и заставка тоже прокручиваются: на 320×460 (SE с панелями Safari) список игроков и «Начать игру»
+     ведущего уходили под нижнюю кромку, а body.overflow:hidden не давал до них долистать */
+  body.m-start, body.m-enter, body.m-wait, body.m-final { height: auto; min-height: 100vh; min-height: 100dvh; overflow-y: auto; }
 
   /* Переключатель языка (его вставляет i18n.js) висит в правом верхнем углу — ровно там, где
      во время торгов стоят номер лота и деньги. Свободного места в этой строке нет даже на 320px,
@@ -350,7 +363,8 @@
   /* вход и лобби: экран ожидания стоит ровно по центру по вертикали */
   /* 52px сверху — зазор под переключателем языка: на 320px длинный заголовок («Δημοπρασία»)
      иначе подлезал под него, когда содержимого много и центрирование упирается в верх экрана */
-  .center { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 12px; padding-top: 52px; }
+  /* safe center: если экран выше окна, центрирование не выталкивает заголовок вверх под переключатель */
+  .center { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; justify-content: safe center; align-items: stretch; gap: 12px; padding-top: 52px; }
   /* экран ввода имени: страница должна скроллиться, иначе мобильная клавиатура накрывает поле */
 
   /* 62px снизу — гарантированный зазор под служебной строкой «Все игры / звук» (в том числе в ландшафте) */
@@ -366,7 +380,8 @@
   .link { color: var(--c1); }
 
   /* финал */
-  .final { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; justify-content: safe center; gap: 4px; }
+  /* 52px сверху — как у .center: заголовок «Голосуй» на 320–375px уходил под переключатель языка */
+  .final { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; justify-content: safe center; gap: 4px; padding-top: 52px; }
   .place { font: 900 64px/1 var(--display); text-align: center; }
   .place.none { font-size: 34px; color: var(--muted); }
   .score { font: 900 40px/1 var(--display); color: var(--c1); text-align: center; }
@@ -391,7 +406,7 @@
   /* «Закрыть» всегда под рукой, даже если факт длинный и шторка прокручивается */
   .sheet .mid { position: sticky; bottom: calc(-20px - env(safe-area-inset-bottom)); margin-top: 16px; background: #1a1822; box-shadow: 0 -12px 18px 6px #1a1822; }
   /* ведущий с телефона (§10.4): маленькая кнопка в статус-строке и шторка управления поверх паузы */
-  .hostpill { flex: none; min-height: 32px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--c1); background: rgba(12, 10, 20, .5); color: var(--c1); font: 700 11px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+  .hostpill { flex: none; min-height: 36px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--c1); background: rgba(12, 10, 20, .5); color: var(--c1); font: 700 11px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
   .hostpill[hidden] { display: none; }
   .sheet.host { z-index: 60; }
   .hostsheet h2 { font: 900 20px var(--display); margin: 0 0 12px; }
@@ -421,12 +436,52 @@
   /* крупный системный шрифт: игровой экран прокручивается, а не сминает карточку лота */
   body.m-game { overflow-y: auto; }
 
+  /* Имя лидера — одной строкой: «Константинопол» рвалось посреди слова («Константи/нопол»).
+     fitLead() уменьшает кегль, пока имя не влезет; если и так не влезло — многоточие */
+  .lead .who b { display: inline-block; max-width: 100%; vertical-align: top; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* в «продано/забрали» «Скипа» нет — его пустое место отдаём имени и печати */
+  .bidinfo.sold .skipbtn { display: none; }
+
+  /* 52px сверху не хватало: переключатель языка кончается на 62px (телефон) / 68px (шире 520px),
+     и «АУКЦИОН» в лобби и «Голосуй» на финале подлезали под него на 2–4px */
+  .center, .final { padding-top: 66px; }
+  @media (min-width: 521px) { .center, .final { padding-top: 72px; } }
+
+  /* Ведущий с телефона: «Начать игру» прилипает к низу экрана — на 320×460 под задание и
+     список игроков она уезжала на 300px вниз. display: contents — чтобы кнопка липла в
+     пределах всего экрана лобби, а не своей обёртки */
+  .hostlobby { display: contents; }
+  /* липнуть кнопкам мешал сам body: overflow-x: hidden + overflow-y: auto делали его контейнером
+     прокрутки, который никогда не прокручивается (листается окно). Здесь body не обрезает сам —
+     по горизонтали обрезает html (overflow-x: hidden уходит на окно), clip — где браузер его знает */
+  body.m-start, body.m-wait { overflow: visible; overflow-x: clip; }
+  .hostlobby #hoststart { position: -webkit-sticky; position: sticky; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 5; }
+
+  /* Стартовый экран на телефоне: «Создать комнату» прилипает к низу, пока до неё не долистали —
+     заголовок, лента и категории занимали 900–1100px, кнопку на 320–375px никто не видел.
+     Категория уже выбрана случайно, её можно сменить ниже. Обёртки разворачиваем (contents),
+     иначе кнопка липла бы только внутри своего блока, который целиком за первым экраном */
+  @media (max-width: 899px) {
+    .start-body, .start .cta { display: contents; }
+    .start .cta .big { position: -webkit-sticky; position: sticky; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 5; }
+    .start .cta .sub2 { margin-top: -9px; }
+  }
+  /* 320px: «СОЗДАТЬ КОМНАТУ» во всю ширину кнопки, кружок со стрелкой ложился на последнюю букву */
+  @media (max-width: 380px) { .cta .big::before { display: none; } }
+
+  /* заставка на низком экране (568×320): цифра отсчёта и её место меньше — без прокрутки на 22px */
+  .icount { min-height: clamp(56px, 18vh, 96px); }
+  .icount.go { font-size: clamp(52px, 16vh, 84px); }
+  @media (max-height: 420px) { .center.intro { gap: 8px; } }
+
   /* ===== телефон боком: лот слева, ставка справа (иначе всё налезает друг на друга) =====
      Условие по пропорции, а не по orientation: открытая клавиатура делает экран «шире, чем выше»
      (320×300), и orientation: landscape перекладывал пульт в две колонки прямо во время ввода суммы.
      Строке с кольцом и лидером — гарантированная высота: иначе «ЛИДЕР» налезал на строку статуса. */
   @media (min-aspect-ratio: 3/2) and (max-height: 520px) {
-    .screen { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 38%); grid-template-rows: auto auto minmax(76px, 1fr) auto auto; column-gap: 14px; }
+    /* правая колонка 280px+: при 250px имени лидера оставалось 112px, и «Константинопол» даже
+       в 12px обрезалось многоточием; карточке лота слева хватает и 246px (568×320) */
+    .screen { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 46%); grid-template-rows: auto auto minmax(76px, 1fr) auto auto; column-gap: 14px; }
     /* экраны из одного блока (старт, вход, ожидание, финал) занимают всю сетку */
     .screen > .start, .screen > .center, .screen > .final { grid-column: 1 / -1; grid-row: 1 / -1; }
     .status { grid-column: 1 / -1; grid-row: 1; }
@@ -444,6 +499,20 @@
     .lead .who { font-size: 18px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .lead.sold .who { font-size: 16px; }
     .bidinfo { gap: 10px; }
+    /* на 568×320 «Скип» в 88px оставлял лидеру ~70px: «MINIMUM $1» рвался посреди слова в три
+       строки и подпирал строку статуса — кнопку ужимаем, как на узких портретах */
+    .skipbtn { min-width: 0; padding: 0 10px; font-size: 12px; letter-spacing: .02em; }
+    .lead .cap { letter-spacing: .06em; }
+    /* правая колонка ~240px: «+$5 → $9», поле и «Ставлю» в один ряд не влезали — поле сжималось
+       в 30px, а кнопка уезжала за правый край (667×375). «+$5» — своей строкой, поле с кнопкой — под ней */
+    .ownbid { flex-wrap: wrap; }
+    .ownbid .plus5 { flex: 1 1 100%; }
+    /* имени лидера здесь оставалось 85px — кольцо поменьше, чтобы имя влезало крупнее */
+    .ring { width: 54px; height: 54px; }
+    .bidinfo { min-height: 54px; gap: 8px; }
+    /* молоток с печатью поворачивались и задевали строку статуса (568×320, на 2–3px) */
+    .lead.sold::before { font-size: 20px; }
+    .lead.sold .cap { padding: 5px 6px; font-size: 10px; }
   }
 </style>
 </head>
@@ -579,6 +648,7 @@ window.I18N_DICT = {
     draft_take_free: `Забрать`,
     draft_skip: `Скип · {n}`,
     skip_btn: `Скип`,
+    lone_none: `Скипов нет`,
     skip_done: `Скип ✓`,
     hot_tag: `🔥 самый популярный`,
     draft_must: `Скипы кончились — этот лот твой`,
@@ -739,6 +809,7 @@ window.I18N_DICT = {
     draft_take_free: `Take it`,
     draft_skip: `Skip · {n}`,
     skip_btn: `Skip`,
+    lone_none: `No skips left`,
     skip_done: `Skipped ✓`,
     hot_tag: `🔥 most popular`,
     draft_must: `No skips left — this lot is yours`,
@@ -896,6 +967,7 @@ window.I18N_DICT = {
     draft_take_free: `Πάρ' το`,
     draft_skip: `Πάσο · {n}`,
     skip_btn: `Πάσο`,
+    lone_none: `Δεν έχεις πάσο`,
     skip_done: `Πάσο ✓`,
     hot_tag: `🔥 το πιο δημοφιλές`,
     draft_must: `Τα πάσα τελείωσαν — αυτό το λοτ είναι δικό σου`,
@@ -949,10 +1021,30 @@ window.I18N_DICT = {
 
 <script>
 // какой экран открыт: от этого зависит, скроллится ли страница (важно для мобильной клавиатуры)
+// Имя лидера в одну строку: кегль уменьшаем ровно настолько, чтобы имя влезло по ширине (не мельче
+// 12px — как строка статуса), дальше CSS ставит многоточие. Так «Константинопол» не рвётся посреди слова.
+function fitLead() {
+  const b = document.querySelector("#lead .who b");
+  if (!b) return;
+  b.style.fontSize = "";
+  const avail = b.parentNode.clientWidth, need = b.scrollWidth;
+  if (!avail || need <= avail) return;
+  // только имя: цена рядом остаётся крупной
+  const fs = parseFloat(getComputedStyle(b).fontSize) || 20;
+  b.style.fontSize = Math.max(12, Math.floor(fs * avail / need * 10) / 10) + "px";
+}
+window.addEventListener("resize", fitLead);
+// фирменный шрифт приезжает позже системного и шире его — перемеряем
+try { document.fonts.addEventListener("loadingdone", fitLead); } catch (e) {}
+
 function screenMode(mode) {
   const b = document.body;
-  b.classList.remove("m-start", "m-enter", "m-final", "m-game");
+  // новый экран открывается сверху: после ввода имени страница оставалась прокрученной (клавиатура),
+  // и лобби начиналось с середины — заголовок уезжал под переключатель языка
+  const changed = mode ? !b.classList.contains("m-" + mode) : /\bm-/.test(b.className);
+  b.classList.remove("m-start", "m-enter", "m-wait", "m-final", "m-game");
   if (mode) b.classList.add("m-" + mode);
+  if (changed && (window.scrollY || document.documentElement.scrollTop)) window.scrollTo(0, 0);
 }
 const params = new URLSearchParams(location.search);
 // код комнаты идёт в innerHTML — оставляем только буквы алфавита кодов, иначе ?r=<img onerror> даёт XSS
@@ -1415,7 +1507,7 @@ const COUNTDOWN_MS = 3000;
 let introShown = null, introLoop = false, timerLoop = false;
 
 function renderIntro() {
-  screenMode("");
+  screenMode("wait");
   lastLot = -1;
   const s = state, m = modeNow();
   if (!document.getElementById("introbox")) {
@@ -1442,7 +1534,7 @@ function tickIntro() {
 }
 
 function renderLobby() {
-  screenMode("");
+  screenMode("wait");
   lastLot = -1;
   const m = modeNow(), slots = state.settings.slots;
   const roomTitle = (state.settings.title || "").trim();
@@ -1547,7 +1639,10 @@ function renderGame() {
   document.getElementById("myname").textContent = p.name;
   const hb = document.getElementById("hostbtn");
   if (hb) { hb.hidden = !isHostRemote; hb.onclick = openHostSheet; }
-  document.getElementById("mymoney").textContent = drafting(p)
+  const mm = document.getElementById("mymoney");
+  mm.classList.toggle("draft", drafting(p));
+  mm.parentNode.classList.toggle("drafting", drafting(p));
+  mm.textContent = drafting(p)
     ? tpl("draft_status", { n: Math.min(p.lots.length + 1, s.settings.slots), total: s.settings.slots, money: money(p.money) })
     : money(p.money);
   document.getElementById("lotno").textContent = tpl("lot_counter", { n: s.round + 1 });
@@ -1585,12 +1680,17 @@ function renderGame() {
   // у скипа свой счётчик и своя кнопка в блоке действий — эта там не показывается.
   const sk = document.getElementById("skipbtn");
   if (sk) {
-    const show = !s.paused && (p.canSkip || p.skipped);
-    sk.className = "skipbtn" + (show ? " on" : "") + (p.skipped ? " done" : "");
-    sk.textContent = I18N.t(p.skipped ? "skip_done" : "skip_btn");
+    // деньги только у меня, у остальных добирающих $0 — скипы со счётчиком, как в доборе (game.js, loneBidder);
+    // кончились — кнопка гаснет с пометкой: по таймеру лот уйдёт мне за $1
+    const lone = s.lone && s.lone.playerId === me ? s.lone : null;
+    const show = !s.paused && (p.canSkip || p.skipped || !!lone);
+    sk.className = "skipbtn" + (show ? " on" : "") + (p.skipped || (lone && !lone.skips) ? " done" : "");
+    sk.textContent = p.skipped ? I18N.t("skip_done") : lone ? (lone.skips ? tpl("draft_skip", { n: lone.skips }) : I18N.t("lone_none")) : I18N.t("skip_btn");
     sk.disabled = !p.canSkip || s.paused;
     sk.onclick = () => act({ type: "skip", round: s.round }, sk);
   }
+  lead.parentNode.classList.toggle("sold", s.phase === "sold" || s.phase === "taken");
+  fitLead();
 
   renderActions(p);
 }

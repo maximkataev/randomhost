@@ -63,7 +63,6 @@
   .seal.on { visibility: visible; }
   .seal .k { font-weight: 900; text-transform: uppercase; font-size: 15px; white-space: nowrap; }
   .seal button { border: 0; background: none; padding: 0; font: 600 15px/1 var(--mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-  .seal .r { font-weight: 700; color: var(--ink-2); white-space: nowrap; }
   .tools { display: flex; align-items: center; gap: 10px; }
   .code-chip { font: 900 22px/1 var(--font); letter-spacing: .06em; padding: 6px 10px; border: var(--line); background: var(--yellow); box-shadow: var(--shift); white-space: nowrap; }
   /* звук — «таблетка» как переключатель языка, той же высоты */
@@ -105,7 +104,6 @@
   .seg { display: flex; flex-wrap: wrap; gap: 6px; }
   .seg button { border: 2.5px solid var(--ink); background: #fff; padding: 6px 10px; font-weight: 700; font-size: 17px; line-height: 1.1; }
   .seg button.on { background: var(--ink); color: var(--paper); }
-  .seg button small { display: block; font-weight: 500; font-size: 13px; opacity: .8; }
   .opt .d { font-size: 15px; color: var(--ink-2); min-height: 1.2em; }
   .startbox { position: sticky; bottom: 0; margin-top: auto; background: var(--paper); padding: 8px 0 16px; display: grid; gap: 6px; }
   .start { border: var(--line); background: var(--red); color: #fff; font: italic 900 30px/1 var(--font); text-transform: uppercase; padding: 14px 18px; box-shadow: 6px 6px 0 var(--ink); letter-spacing: .02em; text-shadow: 2px 2px 0 var(--ink); }
@@ -230,7 +228,7 @@
 <body>
 <header class="top">
   <div class="brand"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><span class="logo" data-i18n="logo">Бомба</span><button class="sound-toggle-btn" type="button"></button></div>
-  <div class="seal" id="seal"><span class="k" data-i18n="seal_title">Печать раунда</span><button id="sealhash" type="button"></button><span class="r" id="sealrange"></span></div>
+  <div class="seal" id="seal"><span class="k" data-i18n="seal_title">Печать раунда</span><button id="sealhash" type="button"></button></div>
   <div class="tools"><span class="code-chip hidden" id="codechip"></span></div>
 </header>
 <div class="conn" id="conn"></div>
@@ -425,7 +423,6 @@ function drawSeal() {
   const commits = state.bombs.map((x) => x.commit);
   $("sealhash").textContent = sealFull ? commits.join(" · ") : commits.map((c) => c.slice(0, 8) + "…").join(" · ");
   $("sealhash").title = T("seal_full");
-  $("sealrange").textContent = tpl("fuse_range", { a: state.fuse.min, b: state.fuse.max });
 }
 $("sealhash").onclick = () => { sealFull = !sealFull; drawSeal(); };
 
@@ -509,8 +506,8 @@ function drawOpts(players) {
   $("opts").replaceChildren(
     opt(T("opt_mode"), ["classic", "elim", "two", "quiz"].map((m) => btn(escapeHtml(T("mode_" + m)), s.mode === m, { mode: m })), T("mode_" + s.mode + "_d")),
     opt(T("opt_fuse"), ["short", "normal", "long"].map((f) => {
-      const r = { short: [20, 45], normal: [30, 90], long: [60, 150] }[f];
-      return btn(`${escapeHtml(T("fuse_" + f))}<small>${escapeHtml(tpl("fuse_range", { a: r[0], b: r[1] }))}</small>`, s.fuse === f, { fuse: f });
+      // границы фитиля не пишем нигде: зная нижнюю, игроки не торопятся первые полминуты
+      return btn(escapeHtml(T("fuse_" + f)), s.fuse === f, { fuse: f });
     })),
     opt(T("opt_return"), [true, false].map((v) => { const b = btn(escapeHtml(T(v ? "on" : "off")), s.returnOk === v, { returnOk: v }); if (two) b.disabled = true; return b; }), two ? T("return_two") : T("return_d")),
     opt(T("opt_groups"), ["hands", "eyes", "head", "crowd"].map((g) => {
@@ -652,7 +649,7 @@ function drawCenter() {
       c.dataset.mode = "cd" + state.round;
       c.innerHTML = `<div class="lbl">${escapeHtml(tpl("round_n", { n: state.roundInGame }))}</div>
         <div class="sealcard"><div class="t">${T("seal_title")}</div>${state.bombs.map((b) => `<div class="h">${escapeHtml(b.commit)}</div>`).join("")}
-        <div class="s">${escapeHtml(tpl("fuse_range", { a: state.fuse.min, b: state.fuse.max }))} · ${escapeHtml(T("seal_line"))}</div></div>
+        <div class="s">${escapeHtml(T("seal_line"))}</div></div>
         <div class="count" id="count"></div>`;
     }
     return;
@@ -861,17 +858,17 @@ function frame() {
     be.el.style.setProperty("--heat", heatOn ? (1 - left).toFixed(3) : "0");
   }
   const elapsed = heatOn && state.startedAt ? now - state.startedAt : 0;
-  // после нижней границы взрыв возможен в любую секунду — это знают все, фитиль ничего не выдаёт
-  document.body.classList.toggle("hot", heatOn && elapsed >= state.fuse.min * 1000);
+  // «может рвануть» горит с первой секунды: включаться на нижней границе — значит выдать её
+  document.body.classList.toggle("hot", heatOn);
   if (heatOn) {
     const m = $("m-el");
     if (m) m.textContent = `${Math.floor(elapsed / 60000)}:${String(Math.floor(elapsed / 1000) % 60).padStart(2, "0")}`;
     const ih = $("m-ih");
     const b = state.bombs.find((x) => x.alive);
     if (ih && b && b.since) ih.textContent = bmSec(now - b.since);
-    // тиканье чаще по прошедшему времени (одинаково в любом раунде)
-    const gap = 720 - 540 * Math.min(1, elapsed / (state.fuse.max * 1000));
-    if (now - lastTick > gap) { lastTick = now; bmSfx.tick(elapsed >= state.fuse.min * 1000); }
+    // тиканье чаще вместе с фитилём: по верхней границе нельзя — она выдала бы конец
+    const gap = 720 - 540 * (1 - left);
+    if (now - lastTick > gap) { lastTick = now; bmSfx.tick(true); }
     for (const p of arenaPlayers()) {
       const c = cards.get(p.id);
       if (!c) continue;

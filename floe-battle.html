@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a2d4d">
 <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f427.svg" type="image/svg+xml">
 <title>Царь льдины — кто ведёт дейлик: сумо пингвинов онлайн</title>
@@ -43,7 +43,7 @@
   #arena { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   /* на широком экране арена справа от панели, а не под ней */
   @media (min-width: 900px) { body.with-panel #arena { left: 340px; width: calc(100% - 340px); } body.with-panel .hud, body.with-panel .banner, body.with-panel .big { margin-left: 170px; } }
-  @media (max-height: 500px) and (min-width: 600px) { body.with-panel #arena { left: 300px; width: calc(100% - 300px); } body.with-panel .verdict, body.with-panel .hud { margin-left: 150px; } }
+  @media (max-height: 500px) and (min-width: 600px) and (orientation: landscape) { body.with-panel #arena { left: 300px; width: calc(100% - 300px); } body.with-panel .verdict, body.with-panel .hud { margin-left: 150px; } }
 
   /* ----- Шапка ----- */
   .util { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); right: 118px; z-index: 12; display: flex; gap: 8px; }
@@ -79,11 +79,19 @@
   .field:focus { outline: none; border-color: var(--ice); }
   .field.code { text-transform: uppercase; letter-spacing: 0.08em; }
   .err { color: #ff9a9a; font-size: 13px; font-weight: 600; min-height: 18px; }
+  /* ошибка входа — в строке подписи над полем имени: видна рядом с полем и не добавляет высоты */
+  .name-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .name-row .err { min-height: 0; min-width: 0; text-align: right; }
   .fine { color: var(--muted); font-size: 12px; line-height: 1.45; }
-  .link { background: none; border: 0; color: var(--ice); font-weight: 700; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; padding: 4px 0; }
+  .link { background: none; border: 0; color: var(--ice); font-weight: 700; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; padding: 4px 0; min-height: 36px; }
 
   /* шапки */
   .hats { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; }
+  /* на тач-экране кружок шапки 36px, иначе в узкой панели они по 21–23px; все 20 — одной
+     лентой с прокруткой вбок, а не четырьмя рядами на полэкрана */
+  body.is-touch .hats { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 36px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none; padding: 6px 6px 7px; margin: -6px -6px -7px; }
+  body.is-touch .hats::-webkit-scrollbar { display: none; }
+  body.is-touch .hats .hatb { scroll-snap-align: start; scroll-margin-left: 6px; }
   .hatb { aspect-ratio: 1; border-radius: 50%; border: 0; background: radial-gradient(circle at 35% 30%, #fff8, transparent 55%), var(--c); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.2); position: relative; }
   .hatb.on { outline: 3px solid #fff; outline-offset: 2px; }
   .hatb:disabled { opacity: 0.35; cursor: default; }
@@ -113,9 +121,11 @@
   .waitline { text-align: center; color: var(--muted); font-size: 13px; font-weight: 600; }
 
   /* итог */
-  .host-card { background: rgba(224, 65, 75, 0.18); border: 1px solid rgba(255, 90, 90, 0.5); border-radius: 16px; padding: 14px; text-align: center; }
+  .host-card { background: rgba(224, 65, 75, 0.18); border: 1px solid rgba(255, 90, 90, 0.5); border-radius: 16px; padding: 14px; text-align: center; container-type: inline-size; }
   .host-card .lbl { color: #ffb3b3; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; }
   .host-card .nm { font-size: 36px; font-weight: 900; margin-top: 4px; line-height: 1.1; overflow-wrap: anywhere; }
+  /* имя в одну строку: шрифт по ширине карточки и длине имени (--n), а не «Константи/нопол» */
+  .host-card .nm { font-size: clamp(18px, calc(100cqi / var(--n, 8) / 0.8), 36px); }
   .host-card .note { color: #ffb3b3; font-size: 12px; margin-top: 4px; }
   .king-line { text-align: center; color: var(--muted); font-size: 13px; font-weight: 600; }
   .king-line b { color: var(--ink); }
@@ -162,7 +172,10 @@
   body.is-touch.playing .touch, body.is-touch.inlobby .touch { display: block; }
   body.inlobby .hud { display: flex; }
   body.inlobby .hud #alive { display: none; }
-  @media (min-width: 600px) and (max-height: 500px) { body.inlobby .stick-ghost { left: calc(300px + 18%); } }
+  /* греческая «разминка» шире 320px — обрезаем многоточием, а не за край экрана */
+  body.inlobby .hud { max-width: calc(100% - 24px); }
+  body.inlobby .hud .pill { overflow: hidden; text-overflow: ellipsis; }
+  @media (min-width: 600px) and (max-height: 500px) and (orientation: landscape) { body.inlobby .stick-ghost { left: calc(300px + 18%); } }
   .stick { position: fixed; z-index: 4; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: rgba(255,255,255,0.08); pointer-events: none; opacity: 0; transition: opacity 0.15s; }
   .stick.on { opacity: 1; }
   .stick i { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(255,255,255,0.55); }
@@ -200,9 +213,29 @@
   @media (max-width: 700px) and (orientation: portrait) {
     .panel { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 64vh; border-radius: 22px 22px 0 0; border-bottom: 0; }
     .util { right: 110px; }
+    .panel { max-height: 64svh; }
+    /* разминка в лобби и «Повтор» — под переключателем языка, а не на нём */
+    body.inlobby .hud, .tag.top { top: calc(64px + env(safe-area-inset-top, 0px)); }
+    /* вердикт ушёл бы под панель — его и так повторяет карточка ведущего */
+    body.with-panel .verdict { display: none; }
+    /* лобби: лист пониже, чтобы над ним было видно льдину для разминки; рывок и джойстик —
+       над листом (--sheet ставит скрипт по высоте панели), чуть компактнее */
+    body.inlobby .panel { max-height: 54svh; }
+    body.is-touch.inlobby .dash-btn { bottom: calc(var(--sheet, 0px) + 12px); right: 14px; width: 72px; height: 72px; font-size: 12px; }
+    body.is-touch.inlobby .dash-btn::after { inset: -5px; -webkit-mask: radial-gradient(circle, transparent 39px, #000 40px); mask: radial-gradient(circle, transparent 39px, #000 40px); }
+    body.is-touch.inlobby .stick-ghost { left: 26%; bottom: calc(var(--sheet, 0px) + 64px); width: 76px; height: 76px; margin: 0 0 -38px -38px; }
+    body.is-touch.inlobby .stick-ghost span { top: calc(100% + 4px); font-size: 11px; padding: 3px 8px; }
   }
-  /* телефон в ландшафте: панель уже, шрифты плотнее */
-  @media (max-height: 500px) {
+  /* низкий портрет (SE с панелями Safari, 460px): без подзаголовка, отступы плотнее, а лист входа
+     чуть выше, чтобы лента шапок помещалась без прокрутки; льдина остаётся видна над листом */
+  @media (max-width: 700px) and (orientation: portrait) and (max-height: 520px) {
+    .brand small { display: none; }
+    .p-body { padding-top: 12px; gap: 9px; }
+    body:not(.inlobby) .panel { max-height: 72svh; }
+  }
+  /* телефон в ландшафте: панель уже, шрифты плотнее. Только ландшафт: iPhone SE в портрете
+     с панелями Safari тоже ниже 500px, и панель уезжала влево под переключатель языка */
+  @media (max-height: 500px) and (orientation: landscape) {
     .brand small, .code-box .qr, .brand .logo { display: none; }
     .brand h1 { font-size: 17px; }
     .code-box .code { font-size: 20px; }
@@ -218,7 +251,12 @@
     .banner { top: auto; bottom: 14px; font-size: 14px; padding: 7px 14px; border-radius: 12px; max-width: 42vw; }
     .banner small { font-size: 11px; }
     .tag { top: 44px; }
+    /* разминка в лобби — по центру видимой арены справа от панели и под переключателем языка */
+    body.inlobby .hud { left: calc(50% + 149px); margin-left: 0; top: calc(62px + env(safe-area-inset-top, 0px)); max-width: calc(100% - 316px); }
+    .tag.top { top: calc(62px + env(safe-area-inset-top, 0px)); }
   }
+  /* узкий ландшафт (SE 1): арена не отъезжает от панели, вердикт ушёл бы под неё */
+  @media (max-width: 599px) and (orientation: landscape) { body.with-panel .verdict { display: none; } }
   @media (prefers-reduced-motion: reduce) { .big.show { animation-duration: 0.01s; } }
 </style>
 </head>
@@ -579,8 +617,10 @@ window.I18N_DICT = {
     if (!net.me) return;
     Sound.ensure();
     for (const t of e.changedTouches) {
-      const left = document.body.classList.contains("inlobby") ? $("panel").getBoundingClientRect().right : 0;
-      if (touch.id !== null || t.clientX > innerWidth * 0.62 || t.clientX < left) continue;
+      const lobby = document.body.classList.contains("inlobby"), pr = lobby ? $("panel").getBoundingClientRect() : null;
+      // в лобби панель слева (ландшафт, десктоп) или листом снизу (портрет) — под ней джойстик не ловим
+      const left = lobby && !sheetMq.matches ? pr.right : 0, bottomY = lobby && sheetMq.matches ? pr.top : innerHeight;
+      if (touch.id !== null || t.clientX > innerWidth * 0.62 || t.clientX < left || t.clientY > bottomY) continue;
       touch.id = t.identifier; touch.ox = t.clientX; touch.oy = t.clientY; touch.x = touch.y = 0;
       $("stick").style.left = t.clientX + "px"; $("stick").style.top = t.clientY + "px";
       $("stick").classList.add("on"); $("knob").style.transform = "";
@@ -683,22 +723,34 @@ window.I18N_DICT = {
     }
   }
 
+  // лента шапок на телефоне прокручивается вбок: после перерисовки — на прежнее место,
+  // а при первом показе — так, чтобы выбранная шапка была видна
+  let hatsScroll = -1;
+  function keepHatInView(prev) {
+    const row = document.querySelector(".hats"); if (!row) { hatsScroll = -1; return; }
+    const on = row.querySelector(".hatb.on");
+    if (prev >= 0) row.scrollLeft = prev;
+    else if (on) row.scrollLeft = Math.max(0, on.offsetLeft - row.offsetLeft - (row.clientWidth - on.offsetWidth) / 2);
+    row.onscroll = () => { hatsScroll = row.scrollLeft; };
+    hatsScroll = row.scrollLeft;
+  }
+
   function drawJoin() {
+    const prevHats = document.querySelector(".hats") ? hatsScroll : -1;
     const taken = new Set(net.roster.map((p) => p.ci));
     if (taken.has(ui.ci)) { for (let i = 0; i < HAT.length; i++) if (!taken.has(i)) { ui.ci = i; break; } }
     setPanel(`<a class="back" href="index.html">${esc(T("back"))}</a>${brand()}
       <div class="sec"><h3>${esc(T("room"))} <span>${esc(CODE)}</span></h3>
-        <label class="fine" for="nameIn">${esc(T("name_title"))}</label>
+        <div class="name-row"><label class="fine" for="nameIn">${esc(T("name_title"))}</label><span class="err" id="err">${ui.joinErr ? esc(T(ui.joinErr)) : ""}</span></div>
         <input class="field" id="nameIn" maxlength="15" placeholder="${esc(T("name_ph"))}" value="${esc(ui.name)}" autocomplete="nickname" enterkeyhint="go" style="margin-top:6px">
         <div class="fine" style="margin:12px 0 6px">${esc(T("hat"))}</div>${hatGrid(ui.ci, taken)}
       </div>
       <div class="sec">${rulesHtml(true)}</div>
-      ${net.roster.length ? `<div class="sec"><h3>${esc(T("players"))} <span>${esc(tpl("of_max", { n: net.roster.length, m: 12 }))}</span></h3>${playerList(false)}</div>` : ""}
-      <div class="err" id="err">${ui.joinErr ? esc(T(ui.joinErr)) : ""}</div>`,
+      ${net.roster.length ? `<div class="sec"><h3>${esc(T("players"))} <span>${esc(tpl("of_max", { n: net.roster.length, m: 12 }))}</span></h3>${playerList(false)}</div>` : ""}`,
       `<button class="btn" id="joinBtn" type="button">${esc(T("join"))}</button>`);
     const go = () => {
       const n = $("nameIn").value.trim();
-      if (!n) { ui.joinErr = "bad_name"; $("err").textContent = T("bad_name"); return; }
+      if (!n) { ui.joinErr = "bad_name"; $("err").textContent = T("bad_name"); errInView(); return; }
       ui.name = n; store.set("floe-name", n); store.set("floe-hat", String(ui.ci));
       Sound.ensure();
       net.wantJoin = true;
@@ -708,6 +760,17 @@ window.I18N_DICT = {
     $("nameIn").onkeydown = (e) => { if (e.key === "Enter") go(); };
     $("nameIn").oninput = () => { ui.name = $("nameIn").value; };
     document.querySelectorAll(".hatb").forEach((b) => (b.onclick = () => { ui.ci = Number(b.dataset.ci); drawJoin(); }));
+    keepHatInView(prevHats);
+    if (ui.joinErr && ui.joinErr !== errShown) errInView();
+    errShown = ui.joinErr;
+  }
+  let errShown = null;
+  // на низком экране строка ошибки под полем имени может быть ниже края листа — докручиваем к ней
+  function errInView() {
+    const pb = $("pbody"), e = $("err"); if (!pb || !e) return;
+    const er = e.getBoundingClientRect(), br = pb.getBoundingClientRect();
+    if (er.bottom > br.bottom) pb.scrollTop += er.bottom - br.bottom + 8;
+    else if (er.top < br.top) pb.scrollTop -= br.top - er.top + 8;
   }
 
   function playerList(withKick) {
@@ -722,6 +785,7 @@ window.I18N_DICT = {
 
   let qrFor = "";
   function drawLobby() {
+    const prevHats = document.querySelector(".hats") ? hatsScroll : -1;
     const iAmHost = net.me === net.hostId;
     const host = net.roster.find((p) => p.id === net.hostId);
     const n = net.roster.filter((p) => p.online).length;
@@ -743,6 +807,7 @@ window.I18N_DICT = {
     $("copy").onclick = () => copyLink(url);
     document.querySelectorAll("[data-kick]").forEach((b) => (b.onclick = () => send({ type: "kick", playerId: b.dataset.kick })));
     if ($("hatOpen")) $("hatOpen").onclick = () => { ui.hatOpen = true; drawLobby(); };
+    keepHatInView(prevHats);
     document.querySelectorAll(".hats .hatb").forEach((b) => (b.onclick = () => { ui.ci = Number(b.dataset.ci); ui.hatOpen = false; store.set("floe-hat", String(ui.ci)); send({ type: "hat", ci: ui.ci }); }));
     if (window.QRCode) { new QRCode($("qr"), { text: url, width: 120, height: 120, colorDark: "#06182c", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M }); qrFor = url; }
     else setTimeout(() => { if ($("qr") && !$("qr").children.length && window.QRCode) new QRCode($("qr"), { text: url, width: 120, height: 120, colorDark: "#06182c", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M }); }, 800);
@@ -767,7 +832,7 @@ window.I18N_DICT = {
     const iAmHost = net.me === net.hostId;
     const host = net.roster.find((p) => p.id === net.hostId);
     setPanel(`${brand()}
-      <div class="host-card"><div class="lbl">${esc(T("res_host"))}</div><div class="nm">🎤 ${esc(nm(h.id))}</div><div class="note">${esc(note)}</div></div>
+      <div class="host-card"><div class="lbl">${esc(T("res_host"))}</div><div class="nm" style="--n:${[...nm(h.id)].length + 2}">🎤 ${esc(nm(h.id))}</div><div class="note">${esc(note)}</div></div>
       <div class="king-line">${esc(String(T("res_king")).split("{names}")[0])}<b>${esc(kings || "—")}</b></div>
       <div class="table">${rows}</div>
       <div class="noms">${noms.join("")}</div>`,
@@ -1019,8 +1084,30 @@ window.I18N_DICT = {
         }
       }
     }
+    syncInsets(t);
     render.draw(t, dt);
     requestAnimationFrame(frame);
+  }
+
+  // портрет на телефоне: лист панели снизу закрывает до 64% экрана — льдину ставим в открытое окно
+  // над ним, а кнопку рывка и подсказку джойстика поднимаем над листом (переменная --sheet)
+  const sheetMq = matchMedia("(max-width: 700px) and (orientation: portrait)");
+  let insetAt = -1, sheetPx = -1;
+  function syncInsets(t) {
+    if (t - insetAt < 0.12 && insetAt >= 0) return;   // t — в секундах
+    insetAt = t;
+    const cl = document.body.classList;
+    let top = 0, bottom = 0;
+    if (sheetMq.matches && cl.contains("with-panel") && !cl.contains("playing") && !cl.contains("watching") && $("panel").style.display !== "none") {
+      const pr = $("panel").getBoundingClientRect();
+      bottom = Math.max(0, innerHeight - pr.top);
+      const hudEl = document.querySelector(".hud"), ur = document.querySelector(".util").getBoundingClientRect();
+      top = ur.bottom + 6;
+      if (cl.contains("inlobby") && getComputedStyle(hudEl).display !== "none") top = Math.max(top, hudEl.getBoundingClientRect().bottom + 4);
+    }
+    render.setInsets(top, bottom);
+    const sh = Math.round(bottom);
+    if (sh !== sheetPx) { sheetPx = sh; document.documentElement.style.setProperty("--sheet", sh + "px"); }
   }
 
   $("skip").onclick = () => { if (ui.replay) finishReplay(); };

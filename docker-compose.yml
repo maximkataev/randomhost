@@ -32,9 +32,11 @@ services:
       - roulette
       - bomb
       - fibs
+      - lastq
       - quip
       - wave
       - floe
+      - rapids
       - storm
 
   # сервер онлайн-аукциона (WebSocket + API); nginx проксирует в него /auction/ws и /auction/api/
@@ -126,6 +128,9 @@ services:
     cpuset: "2-5"
     restart: always
     mem_limit: 128m
+    # добавка (с) ко времени на ответ в раундах; 0 — прежние таймеры. Задаётся в .env, по умолчанию 15
+    environment:
+      - ROUND_EXTRA_SEC=${ROUND_EXTRA_SEC:-15}
     volumes:
       - quip-state:/app/state
     healthcheck:
@@ -172,10 +177,37 @@ services:
     cpuset: "2-5"
     restart: always
     mem_limit: 128m
+    # добавка (с) ко времени на ответ в раундах; 0 — прежние таймеры. Задаётся в .env, по умолчанию 15
+    environment:
+      - ROUND_EXTRA_SEC=${ROUND_EXTRA_SEC:-15}
     volumes:
       - fibs-state:/app/state
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3500/fibs/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # сервер «Последний вопрос» (WebSocket + API); nginx проксирует в него /lastq/ws и /lastq/api/.
+  # Устроен как fibs. В дампе — верный ответ до раскрытия и ответы испытаний Камеры: снимки их не отдают.
+  # mem_limit 160m: на нагрузочном прогоне (200 комнат) RSS доходил до ~123 МБ — снять docker stats после выкатки.
+  lastq:
+    build: ./lastq
+    image: randomhostlastq:latest
+    container_name: randomhost-lastq
+    cpuset: "2-5"
+    restart: always
+    mem_limit: 160m
+    volumes:
+      - lastq-state:/app/state
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3800/lastq/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -195,6 +227,9 @@ services:
     cpuset: "2-5"
     restart: always
     mem_limit: 128m
+    # добавка (с) ко времени на ответ в раундах; 0 — прежние таймеры. Задаётся в .env, по умолчанию 15
+    environment:
+      - ROUND_EXTRA_SEC=${ROUND_EXTRA_SEC:-15}
     volumes:
       - wave-state:/app/state
     healthcheck:
@@ -232,11 +267,36 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # сервер «Утиного сплава» (WebSocket, 20 тиков в секунду); nginx проксирует в него /rapids/ws и /rapids/api/.
+  # Устроен как floe: в дампе только комнаты с людьми и токенами, идущий заплыв после рестарта отменяется.
+  rapids:
+    build: ./rapids
+    image: randomhostrapids:latest
+    container_name: randomhost-rapids
+    cpuset: "2-5"
+    restart: always
+    mem_limit: 128m
+    volumes:
+      - rapids-state:/app/state
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3800/rapids/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   auction-state:
   roulette-state:
   bomb-state:
   fibs-state:
+  lastq-state:
   quip-state:
   wave-state:
   floe-state:
+  rapids-state:

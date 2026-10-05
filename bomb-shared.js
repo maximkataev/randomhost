@@ -34,7 +34,6 @@ const BM_SHARED_I18N = {
     mode_two_d: "С 6 игроков: две бомбы, первый взрыв решает",
     mode_quiz_d: "Каждое испытание — вопрос на эрудицию",
     fuse_short: "Короткий", fuse_normal: "Обычный", fuse_long: "Длинный",
-    fuse_range: "{a}–{b} с",
     grp_hands: "Ловкость", grp_eyes: "Внимание", grp_head: "Голова",
     ch_wires: "режет провода", ch_swipe: "смахивает", ch_hold: "держит кнопку", ch_order: "жмёт по порядку",
     ch_nopress: "не жмёт кнопку", ch_catch: "ловит мишень", ch_color: "угадывает цвет", ch_odd: "ищет лишнего",
@@ -74,7 +73,6 @@ const BM_SHARED_I18N = {
     mode_two_d: "6+ players: two bombs, first blast decides",
     mode_quiz_d: "Every challenge is a trivia question",
     fuse_short: "Short", fuse_normal: "Normal", fuse_long: "Long",
-    fuse_range: "{a}–{b} s",
     grp_hands: "Reflexes", grp_eyes: "Attention", grp_head: "Brains",
     ch_wires: "is cutting wires", ch_swipe: "is swiping", ch_hold: "is holding the button", ch_order: "is tapping in order",
     ch_nopress: "is NOT pressing", ch_catch: "is catching the target", ch_color: "is naming the colour", ch_odd: "is spotting the odd one",
@@ -114,7 +112,6 @@ const BM_SHARED_I18N = {
     mode_two_d: "Από 6 παίκτες: δύο βόμβες, κρίνει η πρώτη έκρηξη",
     mode_quiz_d: "Κάθε δοκιμασία είναι ερώτηση γνώσεων",
     fuse_short: "Κοντό", fuse_normal: "Κανονικό", fuse_long: "Μακρύ",
-    fuse_range: "{a}–{b} δ",
     grp_hands: "Αντανακλαστικά", grp_eyes: "Προσοχή", grp_head: "Μυαλό",
     ch_wires: "κόβει καλώδια", ch_swipe: "σέρνει", ch_hold: "κρατά το κουμπί", ch_order: "πατά με τη σειρά",
     ch_nopress: "ΔΕΝ πατά", ch_catch: "πιάνει τον στόχο", ch_color: "βρίσκει το χρώμα", ch_odd: "ψάχνει το παράταιρο",
@@ -182,7 +179,7 @@ const BM_WIRE = { red: "#e0271f", blue: "#1f5fd6", yellow: "#ffc21a", green: "#1
 const BM_INK = { red: "#e0271f", blue: "#1f5fd6", green: "#16924a", yellow: "#e2a400", purple: "#8a3fd1", orange: "#f06a0f" };
 
 // ---------- бомба (SVG) ----------
-// Фитиль укорачивается к верхней границе диапазона: длина = (max − прошло) / max (§7).
+// Фитиль укорачивается неравномерно и границ не выдаёт — см. bmFuseLeft.
 // fuse: 0..1 — доля оставшегося фитиля. Искра — на конце фитиля.
 function bmBombSvg(cls) {
   return `<svg class="${cls || "bomb"}" viewBox="0 0 120 120" aria-hidden="true">
@@ -205,11 +202,18 @@ function bmSetFuse(svg, frac) {
   const p = path.getPointAtLength(len * k);
   spark.setAttribute("transform", `translate(${p.x} ${p.y})`);
 }
-// доля оставшегося фитиля по публичным данным: сколько прошло и верхняя граница
+// доля оставшегося фитиля: зависит только от прошедшего времени и печати раунда, границ не знает.
+// Горит рывками (то почти замирает, то бежит) и тает всё медленнее, до нуля не доходит —
+// по длине нельзя угадать ни нижнюю, ни верхнюю границу.
 function bmFuseLeft(state, now) {
   if (!state || !state.startedAt || state.phase !== "live") return state && state.phase === "countdown" ? 1 : 0;
-  const max = state.fuse.max * 1000;
-  return Math.max(0, (max - (now - state.startedAt)) / max);
+  const t = (now - state.startedAt) / 1000;
+  // фазы рывков свои в каждом раунде, но одинаковые на всех экранах: берём их из хеша печати
+  const c = (state.bombs[0] && state.bombs[0].commit) || "";
+  const f1 = (parseInt(c.slice(0, 4), 16) || 0) / 65536 * 6.283, f2 = (parseInt(c.slice(4, 8), 16) || 0) / 65536 * 6.283;
+  // скорость = 1 + 0.59·cos(t/3.7 + f1) + 0.27·cos(t/11 + f2) > 0 — фитиль никогда не отрастает обратно
+  const burnt = t + 2.2 * (Math.sin(t / 3.7 + f1) - Math.sin(f1)) + 3 * (Math.sin(t / 11 + f2) - Math.sin(f2));
+  return Math.exp(-burnt / 45);
 }
 
 // ---------- проверка печати ----------

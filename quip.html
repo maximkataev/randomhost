@@ -2,7 +2,8 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- maximum-scale=1: iOS не приближает страницу при фокусе в поле и не оставляет её «растянутой»; щипок в новых iOS работает -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#3d0b16">
 <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f3a4.svg" type="image/svg+xml">
@@ -77,10 +78,12 @@
   button:disabled { opacity: .5; cursor: default; }
   :focus-visible { outline: 4px solid var(--ink); outline-offset: 3px; }
   .hidden { display: none !important; }
+  /* переключатель языка из i18n.js — fixed в углу; на пульте он уезжает вместе с шапкой, а не висит поверх ответов и вариантов при прокрутке */
+  html .lang-switch { position: absolute; }
   /* справа — место под переключатель языка из i18n.js (--lsw меряет quip-shared.js) */
   .util { display: flex; align-items: center; gap: 12px; height: calc(var(--lsc, 30px) * 2); padding: 0 var(--lsw, 150px) 0 14px; }
   /* ссылка «все игры» не переносится на вторую строку (греческая длинная) — обрезается */
-  .util a { color: var(--ink); text-decoration: none; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .util a { color: var(--ink); text-decoration: none; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; padding: 8px 0; }
   .sound-toggle-btn { flex: none; width: calc(var(--lsh, 44px) * 1.25); height: var(--lsh, 44px); border: 2px solid rgba(255, 225, 77, .45); border-radius: 999px; background: var(--deep); color: var(--text); font-size: 17px; display: grid; place-items: center; padding: 0; }
   .conn { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 30; background: var(--pink); color: #fff; font-weight: 700; padding: 7px 14px; visibility: hidden; white-space: nowrap; border-radius: 999px; }
   .conn.on { visibility: visible; }
@@ -134,7 +137,7 @@
   .btn.ghost.sure { background: var(--pink); box-shadow: 0 7px 0 var(--pink-edge); color: #fff; }
   @media (prefers-reduced-motion: no-preference) { .btn.ghost.sure { animation: shake .45s ease-in-out 2; } }
   @keyframes shake { 20% { transform: translateX(-5px) rotate(-1deg); } 40% { transform: translateX(5px) rotate(1deg); } 60% { transform: translateX(-3px); } 80% { transform: translateX(3px); } }
-  .link { background: none; border: 0; color: var(--ink); text-decoration: underline; text-decoration-thickness: 2px; padding: 6px; font-weight: 700; }
+  .link { background: none; border: 0; color: var(--ink); text-decoration: underline; text-decoration-thickness: 2px; padding: 6px; min-height: 36px; font-weight: 700; }
 
   /* табличка: белое лицо, бирюзовый торец */
   .card { position: relative; background: var(--tile); color: var(--ink); border-radius: 18px; padding: 16px 18px; box-shadow: 0 7px 0 var(--teal-edge); }
@@ -183,7 +186,8 @@
   .me-badge { display: flex; align-items: center; gap: 14px; }
   /* своя аватарка — кнопка: тап открывает выбор (владелец, 27.09) */
   .me-badge .avbtn { border: 0; background: none; padding: 0; cursor: pointer; border-radius: 50%; }
-  .avpick { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
+  /* gap 6: на 375px восемь кружков выходят 37px, а не 35.9 — палец попадает */
+  .avpick { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
   .avpick button { aspect-ratio: 1; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .85); font-size: 24px; line-height: 1; padding: 0; box-shadow: 0 3px 0 rgba(0, 0, 0, .25); }
   .avpick button.on { background: var(--bulb); box-shadow: 0 0 0 3px #fff, 0 3px 0 rgba(0, 0, 0, .25); }
   .avpick button:disabled { opacity: .3; }
@@ -278,7 +282,8 @@
 
   /* реакции — круглые кнопки пульта */
   .reacts { display: flex; justify-content: center; gap: 10px; }
-  .reacts button { width: 54px; height: 54px; border-radius: 50%; border: 0; background: var(--deep); font-size: 26px; box-shadow: 0 5px 0 var(--ink); transition: transform .1s; }
+  /* на 320px пять кнопок по 54 не влезали (310 > 288): пятая и очки на табличке обрезались. Сжимаются, оставаясь кругами */
+  .reacts button { flex: 0 1 54px; min-width: 0; aspect-ratio: 1; border-radius: 50%; border: 0; background: var(--deep); font-size: 26px; box-shadow: 0 5px 0 var(--ink); transition: transform .1s; }
   .reacts button:not(:disabled):active { transform: translateY(4px) scale(.94); box-shadow: 0 1px 0 var(--ink); }
   .reacts button:disabled { opacity: .5; }
 
@@ -301,8 +306,53 @@
   /* узкий телефон: «← Все игры» не обрезается до «Все …» — кнопка звука квадратная, текст чуть мельче */
   @media (max-width: 359px) {
     .util { gap: 8px; padding-left: 10px; }
+    .reacts { gap: 8px; }
     .util a { font-size: 15px; }
     .util .sound-toggle-btn { width: var(--lsh, 44px); }
+  }
+  /* повёрнутые таблички (пример на старте, штамп «джинкс») не выступают за колонку на 320px:
+     у повёрнутого прямоугольника рамка шире на высоту × sin угла — оставляем под это место */
+  .sample { padding-inline: 4px; }
+  .stamp { max-width: calc(100% - 12px); }
+  /* короткий экран телефона (SE с панелями Safari, 320×460 … 375×548): всё сжато, вид тот же.
+     Порог — по max-height, размеры — в svh: при скрытии панелей Safari они не меняются, раскладка не прыгает */
+  @media (max-height: 620px) and (max-width: 899px) {
+    /* старт: кнопка «Открыть студию» сразу после описания, пример — под ней (иначе она на втором экране) */
+    .stage.landing { gap: 14px; }
+    .landing > .l-cta { order: 1; } .landing > .sample { order: 2; } .landing > .rules { order: 3; }
+    .hero .rebrik { width: clamp(72px, 22vw, 110px); }
+    .hero .sign { font-size: clamp(38px, 12vw, 56px); }
+    .lede { font-size: 17px; }
+    /* экран ответа: «Отправить» в первом экране и на 320×460 */
+    .stage { gap: 10px; }
+    .ahead + .timer { margin-top: -2px; }
+    .card.qcard { padding: 14px 18px; }
+    .card.qcard::before { inset: 4px; }
+    .card .q { font-size: 20px; line-height: 1.18; }
+    .write textarea { height: clamp(64px, 17svh, 104px); }
+    /* счётчик символов — в углу поля, а не отдельной строкой под ним */
+    .write .cnt { height: 0; margin: 0; padding-right: 14px; transform: translateY(-26px); pointer-events: none; }
+    .write .three { gap: 9px; }
+    .write .three input { padding: 8px 12px; }
+    .card .q .scene { font-size: 46px; padding: 2px 0; }
+    .row2 { margin-top: 10px; }
+    .btn { padding: 13px 14px 14px; }
+  }
+  /* самый низкий (320×460): длинный вопрос финала в 4 строки — ещё на ступень мельче */
+  @media (max-height: 500px) and (max-width: 899px) {
+    .card.qcard { padding: 12px 16px; }
+    .card .q { font-size: 18px; }
+    #tleft { height: 28px; }
+    .write .three { gap: 7px; }
+    .row2 { margin-top: 8px; }
+    /* заставка раунда, табло и итоги — без прокрутки: Ребрик и крупные надписи на ступень меньше */
+    .introrow { margin-top: 6px; }
+    .introrow .rebrik { width: 88px; }
+    .burst { width: 96px; height: 96px; font-size: 36px; }
+    .big { font-size: clamp(34px, 11vw, 48px); }
+    .center > .big { margin: 4px 0 2px !important; }
+    .sign.sm { font-size: 26px; }
+    .center > .fine { margin: 6px 0 0; }
   }
   /* стартовый экран на ноутбуке: две колонки — слева вывеска и кнопка, справа пример схватки. Не узкая лента посередине */
   @media (min-width: 900px) {
@@ -333,7 +383,7 @@ window.I18N_DICT = {
     _meta: `🎤 Мультиплеерная игра для компании: на общем экране вопрос, каждый с телефона пишет самый смешной ответ или вытягивает вслепую подсказку, потом все голосуют. Как Quiplash, только бесплатно и в браузере.`,
     nav_all_games: `← Все игры`,
     eyebrow: `Игра для компании · телефоны + общий экран`,
-    lede: `На экране вопрос. У тебя тридцать секунд, чтобы ответить <b>смешнее всех</b>. Потом зал голосует.`,
+    lede: `На экране вопрос. У тебя меньше минуты, чтобы ответить <b>смешнее всех</b>. Потом зал голосует.`,
     btn_create: `Открыть студию`, btn_creating: `Открываем…`,
     cta_sub: `Открывай на ноутбуке или ТВ — там будет сцена`,
     have_code: `У меня есть код`, prompt_code: `Код комнаты`,
@@ -378,7 +428,7 @@ window.I18N_DICT = {
     _meta: `🎤 A multiplayer party game: a prompt on the shared screen, everyone writes the funniest answer on their phone or blindly draws a hint, then everybody votes. Like Quiplash, but free and in the browser.`,
     nav_all_games: `← All games`,
     eyebrow: `Party game · phones + shared screen`,
-    lede: `A prompt hits the screen. You have thirty seconds to be <b>the funniest in the room</b>. Then the room votes.`,
+    lede: `A prompt hits the screen. You have under a minute to be <b>the funniest in the room</b>. Then the room votes.`,
     btn_create: `Open the studio`, btn_creating: `Opening…`,
     cta_sub: `Open it on a laptop or TV — that's the stage`,
     have_code: `I have a code`, prompt_code: `Room code`,
@@ -423,7 +473,7 @@ window.I18N_DICT = {
     _meta: `🎤 Παιχνίδι για παρέες: στην κοινή οθόνη μια ερώτηση, ο καθένας γράφει από το κινητό την πιο αστεία απάντηση ή τραβά στα τυφλά βοήθεια, μετά ψηφίζουν όλοι. Σαν το Quiplash, δωρεάν στον browser.`,
     nav_all_games: `← Όλα τα παιχνίδια`,
     eyebrow: `Παιχνίδι για παρέες · κινητά + κοινή οθόνη`,
-    lede: `Στην οθόνη μια ερώτηση. Έχεις τριάντα δευτερόλεπτα να γίνεις <b>ο πιο αστείος</b>. Μετά ψηφίζει η αίθουσα.`,
+    lede: `Στην οθόνη μια ερώτηση. Έχεις λιγότερο από ένα λεπτό να γίνεις <b>ο πιο αστείος</b>. Μετά ψηφίζει η αίθουσα.`,
     btn_create: `Άνοιξε το στούντιο`, btn_creating: `Ανοίγουμε…`,
     cta_sub: `Άνοιξέ το σε laptop ή τηλεόραση — εκεί είναι η σκηνή`,
     have_code: `Έχω κωδικό`, prompt_code: `Κωδικός δωματίου`,

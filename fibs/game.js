@@ -22,10 +22,14 @@ const ROUNDS = {
 };
 const PLAN = ["r1", "r2", "final"];
 
+// Добавка ко времени на ответ (просьба владельца 04.10: «дольше на 10–20 с»). Настраивается
+// переменной окружения ROUND_EXTRA_SEC (0…60), по умолчанию +15 с; голосования и раскрытия не трогает.
+const EXTRA_MS = Math.round(Math.max(0, Math.min(60, Number(process.env.ROUND_EXTRA_SEC ?? 15) || 0)) * 1000);
+
 const T = {
   intro: 3500, // заставка раунда
   topic: 8000,
-  lie: 33000, // 3 с на чтение факта + 30 с на ложь (§3)
+  lie: 33000 + EXTRA_MS, // 3 с на чтение факта + 30 с на ложь (§3) + добавка
   choose: 15000,
   step: 2500, // раскрытие варианта, который кто-то выбрал
   stepEmpty: 1000, // вариант, который никто не выбрал
@@ -749,4 +753,4 @@ class Game {
   }
 }
 
-module.exports = { Game, ROUNDS, PLAN, T, DEFAULTS, MAX_PLAYERS, MIN_PLAYERS, MIN_OPTIONS, TOPICS_OFFERED, LIE_MAX, LIKE_GRACE, LIKES_PER_FACT, LIKE_POINTS, REACTIONS, COLORS, AVATARS, clampSettings, cleanName, cleanText, displayText, isTruth, levenshtein };
+module.exports = { Game, EXTRA_MS, ROUNDS, PLAN, T, DEFAULTS, MAX_PLAYERS, MIN_PLAYERS, MIN_OPTIONS, TOPICS_OFFERED, LIE_MAX, LIKE_GRACE, LIKES_PER_FACT, LIKE_POINTS, REACTIONS, COLORS, AVATARS, clampSettings, cleanName, cleanText, displayText, isTruth, levenshtein };

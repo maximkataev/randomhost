@@ -16,10 +16,14 @@ const { normalize } = require("./normalize");
 
 const ROUNDS = [{ mult: 1 }, { mult: 2 }];
 
+// Добавка ко времени на ответ (просьба владельца 04.10: «дольше на 10–20 с»). Настраивается
+// переменной окружения ROUND_EXTRA_SEC (0…60), по умолчанию +15 с; голосования и раскрытия не трогает.
+const EXTRA_MS = Math.round(Math.max(0, Math.min(60, Number(process.env.ROUND_EXTRA_SEC ?? 15) || 0)) * 1000);
+
 const T = {
   intro: 3000, // заставка раунда
-  clue: 45000, // выбор шкалы + подсказка (§3)
-  guess: 25000,
+  clue: 45000 + EXTRA_MS, // выбор шкалы + подсказка (§3) + добавка
+  guess: 25000 + EXTRA_MS,
   reveal: 3800, // + REVEAL_STEP на каждую стрелку: очки вскрываются по одной, от дальнего промаха к ближнему
   scores: 6000,
 };
@@ -621,4 +625,4 @@ class Game {
   }
 }
 
-module.exports = { Game, ROUNDS, T, REVEAL_STEP, DEFAULTS, OPTIONS, REROLLS, MAX_PLAYERS, MIN_PLAYERS, CLUE_MAX, BANDS, WAVE_BONUS, REACTIONS, COLORS, AVATARS, clampSettings, cleanName, cleanText, checkClue, points, nameKey };
+module.exports = { Game, EXTRA_MS, ROUNDS, T, REVEAL_STEP, DEFAULTS, OPTIONS, REROLLS, MAX_PLAYERS, MIN_PLAYERS, CLUE_MAX, BANDS, WAVE_BONUS, REACTIONS, COLORS, AVATARS, clampSettings, cleanName, cleanText, checkClue, points, nameKey };

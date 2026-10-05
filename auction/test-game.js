@@ -523,6 +523,68 @@ test("соло-добор: бездействие = скип и списывае
   assert.equal(g.player("p0").lots.length, 0);
 });
 
+// деньги только у одного, у остальных добирающих $0 (просьба владельца 04.10): правило добора — 5 скипов
+function lone() {
+  const g = setup(3, { slots: 3 });
+  g.player("p1").money = 0;
+  g.player("p2").money = 0;
+  return g;
+}
+
+// пропустить лот: скип одинокого → РАЗБОР → безденежные тоже скипают → отбой → следующий лот
+function passLot(g, silent = false) {
+  if (silent) g.tick(g.s.deadline);
+  else assert.equal(g.skip("p0", g.s.lotStartedAt + 1).ok, true);
+  assert.equal(g.s.phase, "pickup", "лот достаётся безденежным, как и раньше");
+  g.skip("p1", g.s.lotStartedAt + 2);
+  g.skip("p2", g.s.lotStartedAt + 2);
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "lot");
+}
+
+test("одинокий с деньгами: 5 скипов (молчание тоже скип), потом лот его за $1", () => {
+  const g = lone();
+  assert.deepEqual(g.snapshot(0).lone, { playerId: "p0", skips: 5 });
+  passLot(g);
+  passLot(g, true);
+  assert.equal(g.snapshot(0).lone.skips, 3, "и «Скип», и молчание списывают счётчик");
+  passLot(g); passLot(g); passLot(g);
+  const snap = g.snapshot(0);
+  assert.equal(snap.lone.skips, 0);
+  assert.equal(snap.players.find((p) => p.id === "p0").canSkip, false);
+  assert.equal(g.skip("p0", g.s.lotStartedAt + 1).reason, "must_take");
+  const money = g.player("p0").money;
+  const ev = g.tick(g.s.deadline);
+  assert.ok(ev.some((e) => e.type === "sold" && e.playerId === "p0" && e.amount === 1 && e.auto), "истёкший таймер = покупка за $1");
+  assert.equal(g.player("p0").money, money - 1);
+  g.tick(g.s.deadline);
+  assert.equal(g.snapshot(0).lone.skips, 5, "новый слот — полный счётчик");
+});
+
+test("одинокий с деньгами: можно и поставить — покупка обнуляет счётчик; при двух богатых лимита нет", () => {
+  const g = lone();
+  passLot(g); passLot(g);
+  assert.equal(g.bid("p0", 3, g.s.lotStartedAt + 1).ok, true);
+  g.tick(g.s.deadline);
+  assert.equal(g.player("p0").lots[0].price, 3);
+  g.tick(g.s.deadline);
+  assert.equal(g.snapshot(0).lone.skips, 5);
+
+  const two = setup(3, { slots: 3 });
+  two.player("p2").money = 0;
+  assert.equal(two.snapshot(0).lone, null, "деньги у двоих — торги как обычно");
+});
+
+test("одинокий с деньгами: остаток скипов переходит в добор", () => {
+  const g = lone();
+  passLot(g); passLot(g);
+  for (const id of ["p1", "p2"]) for (let i = 0; i < 3; i++) g.player(id).lots.push({ name: `Чужой ${i}`, emoji: "🎲", meta: [], price: 0, round: -1 });
+  g.hostSkip(g.s.lotStartedAt + 1); // слоты у остальных уже полны — это не «одинокий», скип не списан
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "draft");
+  assert.equal(g.s.solo.skips, 3, "в добор приходит с тем, что осталось, а не с полным счётчиком");
+});
+
 test("соло-добор: кнопки только у добирающего, на паузе их нет", () => {
   const g = solo();
   assert.equal(g.skip("p1", g.s.lotStartedAt + 1).reason, "cannot_skip");

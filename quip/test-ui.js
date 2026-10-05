@@ -18,6 +18,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const WebSocket = require("ws");
+const { EXTRA_MS } = require("./game");
 
 const OUT = process.argv[2] || path.join(__dirname, "state", "ui");
 const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -200,7 +201,7 @@ async function playGame(board, phones, label, plan) {
         }
       }
       await answerRound(phones, { ...key, jinx });
-      const moved = await waitFor(board, "state.phase !== 'answer'", key.silent ? 45000 / SPEED + 5000 : 8000);
+      const moved = await waitFor(board, "state.phase !== 'answer'", key.silent ? (45000 + EXTRA_MS) / SPEED + 5000 : 8000);
       check(!!moved, `${label}: раунд ${Number(ri) + 1} — ответы собраны`);
       rounds++;
       continue;

@@ -365,7 +365,9 @@ function qpHostSvg(cls) {
       const root = document.documentElement.style;
       root.setProperty("--lsw", Math.ceil(window.innerWidth - r.left + 10) + "px");
       // центр и высота переключателя: кнопка звука встаёт с ним на одну линию и той же высоты
-      root.setProperty("--lsc", Math.round(r.top + r.height / 2) + "px");
+      // на пульте он absolute (уезжает с шапкой) — его место от верха страницы, а не окна
+      const top = r.top + (getComputedStyle(sw).position === "fixed" ? 0 : window.scrollY);
+      root.setProperty("--lsc", Math.round(top + r.height / 2) + "px");
       root.setProperty("--lsh", Math.round(r.height) + "px");
     }
     if (sw !== seen && window.ResizeObserver) { seen = sw; new ResizeObserver(measure).observe(sw); }

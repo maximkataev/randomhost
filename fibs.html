@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#efe8d8">
 <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f925.svg" type="image/svg+xml">
@@ -72,7 +72,9 @@
   .util { display: flex; align-items: center; gap: 12px; height: calc(var(--lsc, 30px) * 2); padding: 0 var(--lsw, 150px) 0 14px; }
   .util a { color: var(--ink-2); text-decoration: none; font: 700 14px/1 var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .sound-toggle-btn { flex: none; width: calc(var(--lsh, 44px) * 1.25); height: var(--lsh, 44px); border: 1.5px solid var(--ink); border-radius: 2px; background: var(--sheet); font-size: 17px; display: grid; place-items: center; padding: 0; }
-  .conn { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 30; background: var(--red); color: #fff; font: 700 14px/1 var(--mono); padding: 8px 12px; visibility: hidden; white-space: nowrap; }
+  /* под шапкой (сверху её закрывает переключатель языка) и в ширину экрана: на 320 px русский текст в одну строку — 352 px,
+     а невидимая плашка вылезала за край и iOS растягивал страницу */
+  .conn { position: fixed; left: 50%; top: calc(var(--lsc, 30px) * 2); transform: translateX(-50%); z-index: 30; background: var(--red); color: #fff; font: 700 14px/1.3 var(--mono); padding: 8px 12px; visibility: hidden; width: max-content; max-width: calc(100% - 16px); text-align: center; }
   .conn.on { visibility: visible; }
   .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: var(--ink); color: var(--sheet); font: 700 15px/1.3 var(--mono); padding: 11px 14px; max-width: calc(100% - 32px); visibility: hidden; box-shadow: 4px 4px 0 var(--red); }
   .toast.on { visibility: visible; animation: toast .3s var(--press); }
@@ -131,7 +133,8 @@
   .me-badge .av { font-size: 44px; }
   .me-badge b { font: 900 28px/1.1 var(--head); display: block; overflow-wrap: anywhere; }
 
-  .status h2 { margin: 0 0 4px; font: 900 28px/1.1 var(--head); }
+  /* «ΑΛΕΞΑΝΔΡΟΥΠΟΛΗ выбирает тему»: длинное имя одним словом вылезало за карточку на 320 px */
+  .status h2 { margin: 0 0 4px; font: 900 28px/1.1 var(--head); overflow-wrap: anywhere; }
   .status p { margin: 0; color: var(--ink-2); }
 
   /* ложь */
@@ -206,6 +209,44 @@
   .sample .clips { display: flex; flex-wrap: wrap; gap: 8px; }
   .sample .clip { background: var(--sheet); border: 1px dashed var(--ink); padding: 6px 10px; font: 700 16px/1.2 var(--mono); }
   .sample .clip.t { border: 2px solid var(--ok); color: var(--ok); }
+  /* повёрнутая на 1° карточка шире своей колонки на 2–3 px (на 320 px вылезала за край) — поле по бокам её вмещает */
+  .sample { padding: 0 4px; }
+
+  /* невысокие экраны (SE, телефоны с панелями Safari, ландшафт): главная кнопка — на первом экране, пример под ней */
+  @media (max-height: 760px) {
+    .sample { order: 1; }
+    .rules { order: 2; }
+  }
+  /* невысокие экраны (SE 2/3 и 12 mini с панелями Safari, 548 px): на экране «Соври» факт, поле и «Отправить» без прокрутки.
+     Место под счётчик символов не убираем — иначе поле прыгало бы при наборе */
+  @media (max-height: 620px) {
+    #app { gap: 12px; }
+    .card { padding: 14px; }
+    .fact { font-size: 21px; line-height: 1.18; }
+    .fact.long { font-size: 19px; }
+    .write .truthmsg:empty { min-height: 0; }
+    .write .cnt { margin-top: 4px; }
+    .write .row2 { margin-top: 0 !important; }
+    .mini .fact.long { font-size: 17px; }
+  }
+  /* SE 1-го поколения с панелями Safari (~460 px) */
+  @media (max-height: 520px) {
+    #app { gap: 10px; padding-bottom: 16px; }
+    .card { padding: 12px; }
+    .card .k { margin-bottom: 4px; }
+    .fact { font-size: 19px; }
+    .fact.long { font-size: 18px; }
+    .mini .fact.long { font-size: 17px; }
+    .fact .gap { border-bottom-width: 2px; }
+    .write input { padding: 11px 12px; }
+    .btn { padding: 15px 14px; }
+  }
+  /* телефон боком: шапка газеты ниже, чтобы «Открыть редакцию» влезла в первый экран */
+  @media (max-height: 420px) and (orientation: landscape) {
+    .masthead { padding: 4px 0 3px; }
+    .masthead h1 { font-size: 38px; }
+    .lede { font-size: 16px; }
+  }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -368,7 +409,7 @@ const tpl = (k, v) => qpTpl(k, v);
 const REACTIONS = ["😂", "😱", "🤥", "👏", "🤯"];
 
 let conn = null, state = null, me = null, token = null, dead = false;
-let screen = null, screenKey = "";
+let screen = null, screenKey = "", screenHead = ""; // screenHead — фаза экрана, её смена сбрасывает прокрутку
 let joinErr = null;
 let draft = ""; // черновик лжи: переживает перерисовки
 let draftFact = null; // к какому факту черновик
@@ -394,10 +435,32 @@ function toast(text) {
   toast.t = setTimeout(() => t.classList.remove("on"), 2400);
 }
 function show(html, key, top) {
+  // новый экран (другая фаза) — с самого верха: на SE прокрутка от прошлого экрана прятала факт и первые варианты
+  const head = key.split(":")[0], fresh = head !== screenHead;
+  screenHead = head;
   screenKey = key;
   app.classList.toggle("top", !!top);
   app.innerHTML = html;
+  if (fresh && scrollY > 0) scrollTo(0, 0);
 }
+
+// клавиатура открыта: поле и кнопка под ним должны быть видны вместе (на SE кнопка уходила под клавиатуру)
+let kbPair = null; // [поле, кнопка] текущего экрана
+function fitAction() {
+  if (!kbPair) return;
+  const [input, btn] = kbPair;
+  if (document.activeElement !== input || !btn.isConnected) return;
+  const vv = window.visualViewport;
+  const top = vv ? vv.offsetTop : 0, bottom = top + (vv ? vv.height : innerHeight);
+  const over = btn.getBoundingClientRect().bottom + 8 - bottom;
+  const room = input.getBoundingClientRect().top - 8 - top; // поле при этом не уезжает за верх
+  if (over > 0 && room > 0) scrollBy(0, Math.min(over, room));
+}
+function keepActionVisible(input, btn) {
+  kbPair = [input, btn];
+  input.addEventListener("focus", () => setTimeout(fitAction, 350));
+}
+if (window.visualViewport) visualViewport.addEventListener("resize", fitAction);
 
 // экран не гаснет, пока идёт игра (где поддерживается)
 let wakeLock = null;
@@ -452,6 +515,7 @@ function renderEnter() {
     <button class="btn" type="submit">${T("btn_join")}</button>
   </form>`, "enter");
   const input = document.getElementById("name");
+  keepActionVisible(input, document.querySelector("#enterform .btn"));
   document.getElementById("enterform").onsubmit = (e) => {
     e.preventDefault();
     const name = input.value.trim();
@@ -491,7 +555,7 @@ function meBadge() {
 }
 const timerHtml = () => `<div class="timer" id="timer"><i></i></div>`;
 const factHead = () => `<div class="ahead"><span>${escapeHtml(tpl("fact_of", { i: state.fi + 1, n: state.factsInRound }))} · <b>${escapeHtml(qpRoundName(state.roundKey))}</b></span><span id="tleft"></span></div>`;
-const factCard = (ans) => `<div class="card"><div class="k">${escapeHtml(state.fact.final ? T("r_final") : qpTopic(state.fact.topic))}</div><div class="fact">${qpFactHtml(state.fact.text, ans)}</div></div>`;
+const factCard = (ans) => `<div class="card"><div class="k">${escapeHtml(state.fact.final ? T("r_final") : qpTopic(state.fact.topic))}</div><div class="fact${state.fact.text.length > 110 ? " long" : ""}">${qpFactHtml(state.fact.text, ans)}</div></div>`;
 
 // ---------- экраны по фазам ----------
 function renderLobby() {
@@ -566,6 +630,7 @@ function renderLie() {
   const upd = () => { draft = inp.value; cnt.textContent = inp.value.length > max - 8 ? `${inp.value.length}/${max}` : ""; };
   inp.oninput = upd;
   upd();
+  keepActionVisible(inp, document.getElementById("sendbtn"));
   if (!matchMedia("(pointer: coarse)").matches || truthMsg) inp.focus();
   form.onsubmit = (e) => {
     e.preventDefault();

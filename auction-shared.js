@@ -15,9 +15,9 @@
 
 // Подписи общих виджетов (плеер на доске). Язык берём у i18n.js страницы; без него — русский.
 const SHARED_I18N = {
-  ru: { now_playing: "Сейчас играет", finding: "Ищу главный хит…", no_preview: "Превью не нашлось 🤷", no_music: "Музыка недоступна 🤷", toggle: "Пауза / играть" },
-  en: { now_playing: "Now playing", finding: "Looking for the big hit…", no_preview: "No preview found 🤷", no_music: "Music unavailable 🤷", toggle: "Pause / play" },
-  el: { now_playing: "Παίζει τώρα", finding: "Ψάχνω τη μεγάλη επιτυχία…", no_preview: "Δεν βρέθηκε δείγμα 🤷", no_music: "Η μουσική δεν είναι διαθέσιμη 🤷", toggle: "Παύση / αναπαραγωγή" },
+  ru: { now_playing: "Сейчас играет", finding: "Ищу главный хит…", finding_theme: "Ищу музыку из сериала…", no_preview: "Превью не нашлось 🤷", no_music: "Музыка недоступна 🤷", toggle: "Пауза / играть" },
+  en: { now_playing: "Now playing", finding: "Looking for the big hit…", finding_theme: "Looking for the theme tune…", no_preview: "No preview found 🤷", no_music: "Music unavailable 🤷", toggle: "Pause / play" },
+  el: { now_playing: "Παίζει τώρα", finding: "Ψάχνω τη μεγάλη επιτυχία…", finding_theme: "Ψάχνω τη μουσική της σειράς…", no_preview: "Δεν βρέθηκε δείγμα 🤷", no_music: "Η μουσική δεν είναι διαθέσιμη 🤷", toggle: "Παύση / αναπαραγωγή" },
 };
 function sharedT(key) {
   const lang = (window.I18N && window.I18N.lang) || "ru";
@@ -137,11 +137,11 @@ async function wikiFile(file, pick, size) {
   const ii = page && page.imageinfo && page.imageinfo[0];
   if (!ii) return null;
   const link = "https://en.wikipedia.org/wiki/" + encodeURIComponent(String(pick.wiki_en || "").replace(/ /g, "_"));
-  return { src: ii.thumburl || ii.url, link, portrait: ii.height > ii.width * 1.15, logo: false };
+  return { src: ii.thumburl || ii.url, link, portrait: ii.height > ii.width * 1.15, logo: /\.svg|logo/i.test(file) };
 }
 
 async function findImage(pick, kind, size) {
-  // noimg — картинка статьи 18+ (обнажёнка, жесть, откровенный постер): на общий экран её не тащим,
+  // noimg — картинка статьи 18+ (обнажёнка, жесть, откровенный постер) или подходящей нет вовсе:
   // лот остаётся с эмодзи, как когда Википедия ничего не нашла
   if (pick.noimg) return null;
   const q = encodeURIComponent;
@@ -152,14 +152,15 @@ async function findImage(pick, kind, size) {
     () => wikiImage("en", `generator=search&gsrlimit=3&gsrsearch=${q(pick.wiki_en)}`, opts),
     () => wikiImage("ru", `generator=search&gsrlimit=3&gsrsearch=${q(pick.name)}`, opts),
   ];
-  // у части карточек (русские картины) есть точное название статьи в русской Википедии — оно надёжнее
-  if (pick.wiki_ru) attempts.unshift(() => wikiImage("ru", `titles=${q(pick.wiki_ru)}`, opts));
-  if (pick.img) attempts.unshift(() => wikiFile(pick.img, pick, size));
   if (kind === "country") {
     // заглавная картинка страны — всегда флаг; сначала пробуем пейзаж из статьи о туризме, флаг — запасной вариант
     attempts.unshift(() => wikiImage("en", `titles=${q("Tourism in " + pick.wiki_en)}`, { size }));
     attempts.push(() => wikiImage("en", `titles=${q(pick.wiki_en)}`, { allowFlag: true, size }));
   }
+  // у части карточек (русские картины) есть точное название статьи в русской Википедии — оно надёжнее
+  if (pick.wiki_ru) attempts.unshift(() => wikiImage("ru", `titles=${q(pick.wiki_ru)}`, opts));
+  // файл, заданный вручную, главнее всего — в том числе «туризма» у стран
+  if (pick.img) attempts.unshift(() => wikiFile(pick.img, pick, size));
   for (const attempt of attempts) {
     const found = await Promise.resolve(attempt()).catch(() => null);
     if (found) return found;
@@ -252,6 +253,17 @@ function unlockAudio() {
 
 // У поиска iTunes нет CORS-заголовков, fetch не пройдёт — только JSONP.
 function itunesSearch(term, country) {
+  return itunesJsonp(`search?media=music&entity=song&limit=25&country=${country}&term=${encodeURIComponent(term)}`);
+}
+// Трек по точному номеру: у сериалов в карточке theme_id — заглавная тема, найденная и проверенная
+// заранее. Искать по названию тут нельзя: поиск «Friends theme» отдаёт каверы и колыбельные.
+async function itunesLookup(id, country) {
+  const query = `lookup?id=${encodeURIComponent(id)}&country=${country || "US"}`;
+  // первый запрос к iTunes на холодную иногда не укладывается в тайм-аут — одна повторная попытка
+  const found = await itunesJsonp(query).catch(() => itunesJsonp(query));
+  return found.find((r) => r.previewUrl) || null;
+}
+function itunesJsonp(query) {
   return new Promise((resolve, reject) => {
     const cb = "__itunes_" + Math.random().toString(36).slice(2);
     const script = document.createElement("script");
@@ -265,7 +277,7 @@ function itunesSearch(term, country) {
     }, 8000);
     window[cb] = (data) => { cleanup(); resolve(data.results || []); };
     script.onerror = () => { cleanup(); reject(new Error("iTunes недоступен")); };
-    script.src = `https://itunes.apple.com/search?media=music&entity=song&limit=25&country=${country}&term=${encodeURIComponent(term)}&callback=${cb}`;
+    script.src = `https://itunes.apple.com/${query}&callback=${cb}`;
     document.head.append(script);
   });
 }
@@ -296,12 +308,12 @@ async function findPreview(artist, song, country) {
   return null;
 }
 
-function playerWidget() {
+function playerWidget(finding) {
   const box = el("div", "player");
   const toggle = el("button", "toggle", "▶");
   toggle.setAttribute("aria-label", sharedT("toggle"));
   const info = el("div", "info");
-  const song = el("div", "song", sharedT("finding"));
+  const song = el("div", "song", sharedT(finding || "finding"));
   info.append(el("div", "cap", sharedT("now_playing")), song);
   const eq = el("div", "eq");
   for (let i = 0; i < 4; i++) eq.append(el("i"));
@@ -326,7 +338,9 @@ async function startMusic(pick, widget) {
   try {
     // у русских исполнителей в US-витрине имена транслитом (Kino, Zemfira), в RU — кириллицей.
     // В переводных колодах имя в карточке транслитом, поэтому ищем по оригиналу (name_ru от сервера).
-    const track = await findPreview(pick.ru ? pick.name_ru || pick.name : pick.name, pick.top_song || "", pick.ru ? "RU" : "US");
+    const track = pick.theme_id
+      ? await itunesLookup(pick.theme_id, pick.theme_cc)
+      : await findPreview(pick.ru ? pick.name_ru || pick.name : pick.name, pick.top_song || "", pick.ru ? "RU" : "US");
     if (token !== musicToken) return;
     if (!track) { widget.song.textContent = sharedT("no_preview"); return; }
     widget.song.textContent = `${track.trackName} — ${track.artistName}`;

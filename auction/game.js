@@ -120,6 +120,7 @@ class Game {
       lotStartedAt: null,
       lotCapAt: null,
       solo: null, // соло-добор: {playerId, skips} (§6.5)
+      lone: null, // единственный с деньгами среди добирающих: {playerId, skips} (см. loneBidder)
       skips: [], // кто нажал «Скип» на текущем лоте (торги/разбор; в доборе у скипа своя логика)
       dry: 0, // сколько лотов подряд ушло «мимо» (см. HOT_AFTER)
       hot: false, // текущий лот выставлен как самый популярный после серии пустых
@@ -276,6 +277,22 @@ class Game {
     return this.s.players.filter((p) => p.online && !p.left && p.lots.length < this.s.settings.slots);
   }
 
+  // Единственный, у кого есть деньги, когда добирающих ещё несколько, а у остальных $0 (просьба
+  // владельца 04.10): торговаться ему не с кем, и без лимита он скипал бы всё подряд. Поэтому
+  // правило добора — 5 скипов на слот, бездействие тоже скип, скипы кончились — лот его за $1.
+  // Отключившиеся с деньгами в счёт: они могут вернуться и перебить.
+  loneBidder() {
+    if (this.drafters().length < 2) return null;
+    const rich = this.contenders().filter((p) => p.money >= SOLO_PRICE);
+    return rich.length === 1 && this.canBid(rich[0]) ? rich[0] : null;
+  }
+
+  // счётчик скипов одинокого: свой на каждый слот, у нового одинокого — полный
+  loneSkips(p) {
+    const s = this.s;
+    return s.lone && s.lone.playerId === p.id ? s.lone.skips : SOLO_SKIPS;
+  }
+
   // ---------- старт и лоты ----------
 
   start(now) {
@@ -333,7 +350,9 @@ class Game {
     // тот, с которым он подошёл к этому лоту (обнуляется взятием, см. draftTake).
     if (drafters.length === 1) {
       const id = drafters[0].id;
-      s.solo = { playerId: id, skips: drafters[0].money < SOLO_PRICE ? 0 : s.solo && s.solo.playerId === id ? s.solo.skips : SOLO_SKIPS };
+      // скипы, оставшиеся у одинокого с деньгами (loneBidder), переходят в добор — счётчик тот же
+      const carried = s.solo && s.solo.playerId === id ? s.solo.skips : s.lone && s.lone.playerId === id ? s.lone.skips : SOLO_SKIPS;
+      s.solo = { playerId: id, skips: drafters[0].money < SOLO_PRICE ? 0 : carried };
       s.phase = "draft";
       s.deadline = now + SOLO_T4;
       return [{ type: "draft", round: s.round, playerId: id }];
@@ -464,6 +483,8 @@ class Game {
     const p = this.player(playerId);
     if (s.phase === "pickup" ? !this.canTake(p) : !this.canBid(p)) return { ok: false, reason: "cannot_skip" };
     if (s.leaderId === playerId && s.phase === "bidding") return { ok: false, reason: "already_leader" };
+    // одинокий с деньгами: скип списывается в tick, когда лот закроется; скипов нет — лот обязателен
+    if (s.phase === "lot") { const lone = this.loneBidder(); if (lone && lone.id === playerId && this.loneSkips(lone) <= 0) return { ok: false, reason: "must_take" }; }
     s.skips = s.skips || [];
     if (s.skips.includes(playerId)) return { ok: true, events: [] };
     s.skips.push(playerId);
@@ -485,6 +506,21 @@ class Game {
       s.deadline = Math.min(s.deadline, now + LAST_BID_DELAY);
     }
     return [];
+  }
+
+  // Обязательный лот одинокого с деньгами: продажа за $1, счётчик снова полный (новый слот).
+  loneTake(p, now) {
+    const s = this.s;
+    p.money -= SOLO_PRICE;
+    p.spent += SOLO_PRICE;
+    p.lots.push(this.lotRecord(SOLO_PRICE));
+    s.lone = { playerId: p.id, skips: SOLO_SKIPS };
+    s.dry = 0;
+    s.price = SOLO_PRICE;
+    s.leaderId = p.id;
+    s.phase = "sold";
+    s.deadline = now + s.settings.showDelay;
+    return [{ type: "sold", playerId: p.id, amount: SOLO_PRICE, lot: s.lot.name, auto: true }];
   }
 
   // Соло-скип: лот в отбой и не возвращается, счётчик −1. Скипов не осталось — лот обязателен.
@@ -534,12 +570,20 @@ class Game {
         p.money -= s.price;
         p.spent += s.price;
         p.lots.push(this.lotRecord(s.price));
+        if (s.lone && s.lone.playerId === p.id) s.lone.skips = SOLO_SKIPS; // новый слот — полный счётчик
         s.dry = 0;
         s.phase = "sold";
         s.deadline = now + s.settings.showDelay;
         return [{ type: "sold", playerId: p.id, amount: s.price, lot: s.lot.name }];
       }
       case "lot": {
+        // одинокий с деньгами пропустил лот («Скип» или молчание) — минус скип; скипов нет — лот его
+        const lone = this.loneBidder();
+        if (lone) {
+          const left = this.loneSkips(lone);
+          if (left <= 0) return this.loneTake(lone, now);
+          s.lone = { playerId: lone.id, skips: left - 1 };
+        }
         if (s.players.some((p) => this.canTake(p))) {
           s.phase = "pickup";
           s.deadline = now + s.settings.t3;
@@ -693,6 +737,8 @@ class Game {
     const s = this.s;
     const skipPhase = s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup";
     const skips = s.skips || [];
+    const lone = s.phase === "lot" ? this.loneBidder() : null;
+    const loneLeft = lone ? this.loneSkips(lone) : 0;
     return {
       kind: s.kind,
       phase: s.phase,
@@ -706,6 +752,8 @@ class Game {
       // но клиентам нужно знать длину фазы, чтобы нарисовать кольцо таймера.
       solo: s.phase === "draft" && s.solo ? { playerId: s.solo.playerId, skips: s.solo.skips, price: (this.player(s.solo.playerId)?.money || 0) >= SOLO_PRICE ? SOLO_PRICE : 0 } : null,
       t4: SOLO_T4,
+      // одинокий с деньгами (loneBidder): сколько скипов осталось; 0 — по таймеру лот уйдёт ему за $1
+      lone: lone ? { playerId: lone.id, skips: loneLeft } : null,
       hot: !!s.hot && !!s.lot, // лот выставлен как хит после серии пустых (HOT_AFTER)
       lot: s.lot && (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "draft" || s.phase === "sold" || s.phase === "taken" || s.phase === "unsold") ? s.lot : null,
       price: s.price,
@@ -736,7 +784,7 @@ class Game {
         canDraft: s.phase === "draft" && !!s.solo && s.solo.playerId === p.id,
         // «Скип» в торгах: скипнул ли уже и может ли скипнуть сейчас (см. skip)
         skipped: skipPhase && skips.includes(p.id),
-        canSkip: skipPhase && !skips.includes(p.id) && (s.phase === "pickup" ? this.canTake(p) : this.canBid(p) && !(s.phase === "bidding" && s.leaderId === p.id)),
+        canSkip: skipPhase && !skips.includes(p.id) && (s.phase === "pickup" ? this.canTake(p) : this.canBid(p) && !(s.phase === "bidding" && s.leaderId === p.id)) && !(lone && lone.id === p.id && loneLeft <= 0),
       })),
     };
   }

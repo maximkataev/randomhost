@@ -157,7 +157,10 @@
   // ===================================================================
   function create(canvas, opts = {}) {
     const ctx = canvas.getContext('2d');
-    let view = { w: 0, h: 0, dpr: 1, base: 1 };
+    let view = { w: 0, h: 0, dpr: 1, base: 1, cy: 0 };
+    // заслонённые края экрана (лист панели снизу в портрете, таймер сверху): льдина вписывается
+    // и центрируется в оставшемся окне; к новым значениям камера подъезжает плавно, без скачка
+    const inset = { t: 0, b: 0, tt: 0, tb: 0, set: false };
     const cam = { x: 0, y: 0, zoom: 1 };
     const shakeFx = { a: 0, x: 0, y: 0 };
     let me = opts.me || null;
@@ -181,7 +184,7 @@
 
     const S = () => view.base * cam.zoom;
     const sx = (x) => view.w / 2 + shakeFx.x + (x - cam.x) * S();
-    const sy = (y) => view.h / 2 + VIEW_DY + shakeFx.y + (y - cam.y) * S() * YS;
+    const sy = (y) => view.cy + shakeFx.y + (y - cam.y) * S() * YS;
 
     function rrect(g, x, y, w, h, r) {
       r = Math.min(r, w / 2, h / 2);
@@ -196,19 +199,29 @@
     function circle(g, x, y, r) { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); }
     function ell(g, x, y, rx, ry, rot = 0) { g.beginPath(); g.ellipse(x, y, rx, ry, rot, 0, TAU); g.fill(); }
 
-    function resize() {
+    function resize(dt) {
       const w = Math.max(200, canvas.clientWidth);
       const h = Math.max(150, canvas.clientHeight);
+      if (!inset.set || !dt) { inset.t = inset.tt; inset.b = inset.tb; inset.set = true; }
+      else { const k = 1 - Math.exp(-dt * 6); inset.t += (inset.tt - inset.t) * k; inset.b += (inset.tb - inset.b) * k; if (Math.abs(inset.t - inset.tt) < 0.5) inset.t = inset.tt; if (Math.abs(inset.b - inset.tb) < 0.5) inset.b = inset.tb; }
       // на телефонах плотность пикселей ограничена 1,5: разница на глаз мала, а кадр вдвое дешевле
       const coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
       const dpr = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
       const R = floe ? floe.R : 150;
-      const top = h < 500 ? 44 : 70;   // место под таймер сверху
-      const base = Math.min(w / (R * 2 * 1.14), (h - top) / (R * 2 * YS * 1.08 + 30));
-      if (w === view.w && h === view.h && dpr === view.dpr && Math.abs(base - view.base) < 1e-6) return;
-      view = { w, h, dpr, base };
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
+      const top = Math.max(h < 500 ? 44 : 70, inset.t);   // место под таймер сверху
+      const avail = Math.max(90, h - top - inset.b);
+      const base = Math.min(w / (R * 2 * 1.14), avail / (R * 2 * YS * 1.08 + 30));
+      // без заслонок — как раньше (центр чуть ниже середины); с листом снизу — середина открытого окна
+      const cy = inset.b > 0 || inset.t > 0
+        ? (inset.t + h - inset.b) / 2 + VIEW_DY * Math.max(0, 1 - inset.b / 40)
+        : h / 2 + VIEW_DY;
+      const sized = w === view.w && h === view.h && dpr === view.dpr;
+      if (sized && Math.abs(base - view.base) < 1e-6 && Math.abs(cy - view.cy) < 1e-3) return;
+      view = { w, h, dpr, base, cy };
+      if (!sized) {
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+      }
       if (!seaWaves.length) {
         seaWaves = Array.from({ length: 80 }, () => ({ x: rnd(), y: rnd(), l: rr(8, 22), ph: rnd() * TAU, sp: rr(0.4, 1.2) }));
         for (let i = 0; i < 46; i++) snow.push({ x: rnd(), y: rnd(), r: rr(0.8, 2.2), sp: rr(10, 26), ph: rnd() * TAU });
@@ -490,7 +503,7 @@
       if (fp) {
         const c = floe ? floeCenter() : [0, 0];
         tx = lerp(fp.x, c[0], 0.4); ty = lerp(fp.y, c[1], 0.4) - 10;
-        tz = clamp((view.h * 0.42) / ((Math.hypot(fp.x - c[0], (fp.y - c[1]) * YS) * 0.6 + 60) * view.base), 1, 1.8);
+        tz = clamp((Math.max(90, view.h - Math.max(inset.t, 0) - inset.b) * 0.42) / ((Math.hypot(fp.x - c[0], (fp.y - c[1]) * YS) * 0.6 + 60) * view.base), 1, 1.8);
       }
       shakeFx.a *= Math.exp(-dt * 9);
       shakeFx.x = (rnd() - 0.5) * 2 * shakeFx.a;
@@ -505,7 +518,7 @@
     function screenTransform() { ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0); }
     function groundTransform() {
       const s = S(), d = view.dpr;
-      ctx.setTransform(d * s, 0, 0, d * s * YS, d * (view.w / 2 + shakeFx.x - cam.x * s), d * (view.h / 2 + VIEW_DY + shakeFx.y - cam.y * s * YS));
+      ctx.setTransform(d * s, 0, 0, d * s * YS, d * (view.w / 2 + shakeFx.x - cam.x * s), d * (view.cy + shakeFx.y - cam.y * s * YS));
     }
 
     function drawSea(t) {
@@ -1086,7 +1099,7 @@
           Y = hit.y - h - 2;
         }
         // далеко от своего пингвина подпись не уезжает и не лезет под таймер сверху
-        Y = Math.max(Y, Y0 - 2 * (h + 2), (opts.topGap || 52) + h / 2);
+        Y = Math.max(Y, Y0 - 2 * (h + 2), Math.max(opts.topGap || 52, inset.t) + h / 2);
         boxes.push({ x: X, y: Y, w });
         drawn.push({ p, X, Y, Y0, w, h, text, king, host, a: v.la, crowd });
       }
@@ -1134,7 +1147,7 @@
     }
     function drawFrame(t, dt) {
       simT += dt;
-      resize();
+      resize(dt);
       updateParticles(dt);
       updateCamera(dt);
       drawSea(t);
@@ -1157,6 +1170,8 @@
       apply, draw, screenOf,
       get perf() { return perf.last; },
       setMe(id) { me = id; },
+      // top/bottom — сколько пикселей сверху и снизу холста закрыто интерфейсом
+      setInsets(top, bottom) { inset.tt = Math.max(0, top || 0); inset.tb = Math.max(0, bottom || 0); },
       setWords(w) { Object.assign(words, w); },
       setFocus(id, mode) { if (focus && !id) camSnap = true; focus = id || null; focusMode = mode || null; },
       reset() { rings.length = drops.length = bursts.length = puffs.length = later.length = popups.length = pulses.length = 0; vignette.hit = 0; danger = 0; vis.clear(); snap = null; },

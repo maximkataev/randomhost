@@ -17,6 +17,7 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const WebSocket = require("ws");
+const { EXTRA_MS } = require("./game");
 
 const OUT = process.argv[2] || path.join(__dirname, "state", "ui");
 const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -229,7 +230,7 @@ async function playGame(board, phones, label, silentRound2) {
         await wait(400);
         await board.shot(`${label}_b_clue_waiting`);
         // молчуна ждём до конца таймера
-        await waitFor(board, "wvBoard.state.phase !== 'clue'", 60000 / SPEED, 300);
+        await waitFor(board, "wvBoard.state.phase !== 'clue'", (60000 + EXTRA_MS) / SPEED, 300);
       }
       continue;
     }

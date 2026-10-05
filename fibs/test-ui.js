@@ -18,6 +18,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const WebSocket = require("ws");
+const { T: { lie: T_LIE } } = require("./game");
 
 const OUT = process.argv[2] || path.join(__dirname, "state", "ui");
 const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -215,7 +216,7 @@ async function playGame(board, phones, label, plan) {
       await once(board, `${label}_b_lie_${ri}`);
       const key = plan[facts - 1] || {};
       await lieRound(phones, key, label);
-      const moved = await waitFor(board, "state.phase !== 'lie'", key.silent ? 33000 / SPEED + 5000 : 8000);
+      const moved = await waitFor(board, "state.phase !== 'lie'", key.silent ? T_LIE / SPEED + 5000 : 8000);
       check(!!moved, `${label}: факт ${facts} — ложь собрана`);
       continue;
     }

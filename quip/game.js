@@ -16,13 +16,17 @@ const { normalize, normalizeList } = require("./normalize");
 
 const DECKS = ["duel", "emoji", "final"];
 
+// Добавка ко времени на ответ (просьба владельца 04.10: «дольше на 10–20 с»). Настраивается
+// переменной окружения ROUND_EXTRA_SEC (0…60), по умолчанию +15 с; голосования и раскрытия не трогает.
+const EXTRA_MS = Math.round(Math.max(0, Math.min(60, Number(process.env.ROUND_EXTRA_SEC ?? 15) || 0)) * 1000);
+
 // Раунды партии (§2). Полная: дуэли → сцена → дуэли ×2 → финал (8–12 минут; с одним кругом дуэлей
 // плейтест выходил в 3 минуты — «только разогрелись, а уже пьедестал»). Короткая: дуэли и финал.
 const ROUNDS = {
-  duel: { deck: "duel", mult: 1, votes: 1, answerMs: 30000, shift: 1 },
-  emoji: { deck: "emoji", mult: 2, votes: 2, answerMs: 30000 },
-  duel2: { deck: "duel", mult: 2, votes: 1, answerMs: 30000, shift: 2 },
-  final: { deck: "final", mult: 3, votes: 3, answerMs: 60000 },
+  duel: { deck: "duel", mult: 1, votes: 1, answerMs: 30000 + EXTRA_MS, shift: 1 },
+  emoji: { deck: "emoji", mult: 2, votes: 2, answerMs: 30000 + EXTRA_MS },
+  duel2: { deck: "duel", mult: 2, votes: 1, answerMs: 30000 + EXTRA_MS, shift: 2 },
+  final: { deck: "final", mult: 3, votes: 3, answerMs: 60000 + EXTRA_MS },
 };
 const PLAN_FULL = ["duel", "emoji", "duel2", "final"];
 const PLAN_SHORT = ["duel", "final"];
@@ -675,4 +679,4 @@ class Game {
   }
 }
 
-module.exports = { Game, ROUNDS, PLAN_FULL, PLAN_SHORT, LATE_SHARE, T, DEFAULTS, DECKS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, SMALL, ANSWER_MAX, ITEM_MAX, REACTIONS, POINTS, WIN_BONUS, SWEEP_BONUS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText };
+module.exports = { Game, EXTRA_MS, ROUNDS, PLAN_FULL, PLAN_SHORT, LATE_SHARE, T, DEFAULTS, DECKS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, SMALL, ANSWER_MAX, ITEM_MAX, REACTIONS, POINTS, WIN_BONUS, SWEEP_BONUS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText };

@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#5b8cff">
 <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f30a.svg" type="image/svg+xml">
@@ -78,8 +78,11 @@
   .lede { overflow-wrap: anywhere; }
   /* узкий экран: вместо «← Все и…» — просто стрелка */
   @media (max-width: 380px) { .util a { font-size: 0; } .util a::before { content: "←"; font-size: 24px; } }
+  /* «← Все игры» — под палец: не меньше 36 px в обе стороны (стрелка на узком экране была 24×32) */
+  .util a { min-height: 36px; min-width: 36px; display: inline-flex; align-items: center; }
   /* низкий экран (iPhone SE): шкала ужимается, чтобы подсказка, полюса и кнопка влезали без прокрутки */
-  @media (max-height: 720px) { .dialbox { width: min(100%, calc((100svh - 440px) * 1.85)); margin-inline: auto; } }
+  /* пол 160 px: на iPhone SE с панелями Safari (320×460) формула давала шкалу в 37 px */
+  @media (max-height: 720px) { .dialbox { width: min(100%, max(160px, calc((100svh - 440px) * 1.85))); margin-inline: auto; } }
   /* совсем низкий экран: подсказка компактнее, а панель внизу идёт обычным потоком — никогда не закрывает полюса */
   @media (max-height: 640px) {
     #app .clue { padding: 10px 12px 12px; } #app .clue q { font-size: 21px; margin-top: 4px; }
@@ -92,7 +95,7 @@
   .btn:active:not(:disabled) { transform: translateY(5px); box-shadow: 0 2px 0 rgba(0, 0, 0, .28); }
   .btn:disabled { opacity: .45; box-shadow: none; }
   .btn.ghost { background: var(--paper); color: var(--ink); }
-  .link { background: none; border: 0; padding: 12px 0 0; font-weight: 800; text-decoration: underline; text-underline-offset: 4px; display: block; margin: 0 auto; }
+  .link { background: none; border: 0; padding: 8px 12px 0; min-height: 44px; font-weight: 800; text-decoration: underline; text-underline-offset: 4px; display: block; margin: 0 auto; }
 
   input.field { width: 100%; border: 4px solid var(--ink); background: var(--paper); font-weight: 800; font-size: 22px; padding: 14px 14px; border-radius: 0; outline: none; }
   input.field:focus { box-shadow: 0 0 0 4px var(--paper), 0 0 0 8px var(--ink); }
@@ -100,7 +103,7 @@
   .err:not(:empty)::before { content: "✋ "; }
 
   /* шкала */
-  .dialbox { position: relative; }
+  .dialbox { position: relative; margin-inline: auto; }
   .dial { display: block; width: 100%; height: auto; overflow: visible; }
   .dial .bandnum { font: 1000 44px/1 var(--f); font-stretch: 151%; font-variation-settings: "wdth" 151; text-anchor: middle; dominant-baseline: central; }
   .dial .avtxt { font-size: 34px; text-anchor: middle; }
@@ -113,11 +116,11 @@
   @keyframes grow { from { transform: scale(0); } }
   @keyframes swing { from { transform: rotate(90deg); } }
   @keyframes pop { from { transform: scale(0); } }
-  .poles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
-  .poles span { font-weight: 1000; font-stretch: 120%; font-variation-settings: "wdth" 120; font-size: 17px; line-height: 1.05; text-transform: uppercase; }
-  .poles span:first-child::before { content: "← "; }
+  .poles { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-top: 6px; }
+  .poles span { overflow-wrap: anywhere; font-weight: 1000; font-stretch: 120%; font-variation-settings: "wdth" 120; font-size: 17px; line-height: 1.05; text-transform: uppercase; }
+  .poles span:first-child::before { content: "←\a0"; }
   .poles span:last-child { text-align: right; }
-  .poles span:last-child::after { content: " →"; }
+  .poles span:last-child::after { content: "\a0→"; } /* неразрывный пробел: стрелка не уезжает одна на вторую строку */
   .dial.grab { touch-action: none; cursor: grab; }
 
   /* подсказка на экране угадывания */
@@ -138,6 +141,8 @@
   #app.guess .grow { flex: 1; }
   .dock { position: sticky; bottom: 0; display: grid; gap: 8px; padding: 8px 0 calc(4px + env(safe-area-inset-bottom)); background: var(--card); }
   .dock .btn { white-space: nowrap; font-size: clamp(17px, 5.6vw, 22px); }
+  /* итоги: «Главная» прилипает к низу экрана, пока таблица длиннее экрана (на SE она была только после прокрутки) */
+  #app .dock.endbar { position: sticky; z-index: 2; }
   /* полоса подстройки: тянешь по ней — стрелка едет на треть градуса за пиксель, палец не закрывает шкалу */
   .scrub { display: grid; grid-template-columns: 56px 1fr 56px; height: 54px; border: 4px solid var(--ink); background: var(--paper); touch-action: none; user-select: none; }
   .scrub button { border: 0; background: var(--paper); font-weight: 1000; font-size: 20px; padding: 0; }
@@ -152,6 +157,42 @@
   .pick button span { overflow-wrap: anywhere; hyphens: auto; }
   #reroll { font-size: clamp(15px, 4.8vw, 20px); white-space: nowrap; padding: 14px 10px; }
   @media (max-height: 720px) { .pick { gap: 8px; } .pick button { min-height: 0; padding: 10px 12px; font-size: 16px; } }
+  /* низкий экран (iPhone SE, 375×548 с панелями Safari): старт и выбор шкалы ужимаются, чтобы главная кнопка
+     и «Другие шкалы» были на первом экране без прокрутки; стиль тот же, только кегли и поля меньше */
+  @media (max-height: 640px) {
+    #app[data-screen="landing"] h1.shout { font-size: clamp(30px, 10.6vw, 52px); }
+    #app[data-screen="landing"] .lede { font-size: 16px; line-height: 1.3; }
+    #app[data-screen="landing"] #create { padding: 12px 12px; font-size: clamp(18px, 5.9vw, 22px); }
+    #app[data-screen="landing"] .fine { margin-top: 6px !important; }
+    #app[data-screen="landing"] .link { padding-top: 4px; min-height: 40px; }
+    #app[data-screen="pick"] h2.shout { font-size: clamp(22px, 7vw, 30px); }
+    #app[data-screen="pick"] .fine { margin-top: 4px !important; }
+    .pick { gap: 6px; } .pick button { padding: 6px 10px; font-size: 14px; line-height: 1; gap: 6px; box-shadow: 0 5px 0 rgba(0, 0, 0, .28); }
+    .pick button i { font-size: 18px; }
+    #reroll { padding: 10px 10px; }
+    /* короткие подписи — карточки растут на свободное место, чтобы под «Другие шкалы» не оставалось пустоты */
+    #app[data-screen="pick"] .pick { flex: 1 0 auto; grid-auto-rows: 1fr; }
+  }
+  /* iPhone SE с панелями Safari (видно 460–520 px): ужимаем всё вокруг шкалы, чтобы шкала была крупной, а кнопка — на экране */
+  @media (max-height: 520px) {
+    #app { gap: 6px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+    #app .clue { padding: 8px 10px 10px; } #app .clue q { font-size: 18px; margin-top: 2px; }
+    #app .scrub { height: 44px; } #app .dock { gap: 6px; padding-top: 4px; } #app .dock .btn { padding: 9px 10px; }
+    .dialbox { width: min(100%, max(160px, calc((100svh - 345px) * 1.85))); }
+    .poles { margin-top: 2px; } .poles span { font-size: 15px; }
+    .pick button { padding: 5px 8px; font-size: 13px; } #reroll { padding: 8px 10px; } #sendbtn { padding: 10px 10px; }
+    #app[data-screen="pick"] h2.shout { font-size: 22px; }
+    /* выбор шкалы: четыре карточки в три строки («Смело в микроволновку ↔ Микроволновка взорвётся») не влезали на 11 px —
+       стрелка уже, поля и тени тоньше; высота карточки по своему тексту, свободное место делится поровну */
+    #app[data-screen="pick"] .fine { font-size: 13px; margin-top: 2px !important; }
+    #app[data-screen="pick"] .pick { gap: 5px; grid-auto-rows: auto; }
+    #app .pick button { gap: 4px; padding: 4px 8px; box-shadow: 0 4px 0 rgba(0, 0, 0, .28); }
+    #app .pick button i { font-size: 15px; }
+    #app #reroll { padding: 6px 10px; }
+    /* подсказка: заголовок, поле и кнопка компактнее — «Отправить» целиком на экране */
+    #app[data-screen="write"] h2.shout { font-size: 22px; }
+    #write { gap: 6px !important; } #write .err { min-height: 20px; font-size: 15px; } #write input.field { padding: 9px 12px; font-size: 20px; }
+  }
   .pick button span:first-child { text-align: left; }
   .pick button span:last-child { text-align: right; }
   .pick button i { font-style: normal; font-size: 22px; }
@@ -355,8 +396,12 @@ function show(html, key, mid) {
   screenKey = key;
   app.classList.toggle("mid", !!mid);
   app.classList.toggle("guess", /^(guess|locked|mine|reveal):/.test(key));
+  app.dataset.screen = key.split(":")[0]; // для CSS: компактные правила отдельных экранов на низких телефонах
   app.innerHTML = html;
   fitShouts();
+  fitDial();
+  // счётчики («Зафиксировали 2 из 3», секунды) вписываются уже после show — перемеряем перед отрисовкой кадра
+  requestAnimationFrame(fitDial);
 }
 // крупные заголовки не шире экрана: «НАСТРОЙКА» широким кеглем на 360 px уезжала вбок
 function fitShouts() {
@@ -365,8 +410,27 @@ function fitShouts() {
     let fs = parseFloat(getComputedStyle(h).fontSize), guard = 0;
     while (h.scrollWidth > h.clientWidth + 1 && fs > 18 && guard++ < 40) { fs -= 2; h.style.fontSize = fs + "px"; }
   });
+  // полюса: длинное слово («ΕΡΩΤΕΥΜΕΝΟΥΣ») на 320–375 px не влезало в полстроки и уезжало за край — уменьшаем кегль
+  app.querySelectorAll(".poles span").forEach((h) => {
+    h.style.fontSize = "";
+    h.style.overflowWrap = "normal"; // меряем без переноса посреди слова; он остаётся запасным, если и 11 px не хватило
+    let fs = parseFloat(getComputedStyle(h).fontSize), guard = 0;
+    while (h.scrollWidth > h.clientWidth + 1 && fs > 11 && guard++ < 20) { fs -= 1; h.style.fontSize = fs + "px"; }
+    h.style.overflowWrap = "";
+  });
 }
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitShouts());
+// шкала не выталкивает кнопку за экран: CSS задаёт ширину по высоте экрана, а если подсказка длинная
+// и всё равно не влезло — ужимаем шкалу ещё на сколько вылезло (до 140 px). Считаем до отрисовки — без скачка
+function fitDial() {
+  const box = app.querySelector(":scope > .dialbox");
+  if (!box) return;
+  box.style.width = "";
+  const over = document.documentElement.scrollHeight - innerHeight;
+  if (over > 0) box.style.width = Math.max(140, box.getBoundingClientRect().width - over / 0.54) + "px";
+}
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fitShouts(); fitDial(); });
+// поворот и панели браузера; пока открыта клавиатура (Android сжимает окно) — не трогаем, иначе шкала дёргается
+window.addEventListener("resize", () => { if (document.activeElement && document.activeElement.tagName === "INPUT") return; fitDial(); });
 
 // ---------- цвет экрана ----------
 // у каждой шкалы свой цвет, смена — шторкой из центра шкалы
@@ -719,7 +783,7 @@ function renderFinal() {
   const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : T("final_sub");
   show(`<div class="center" style="display:grid;gap:10px"><div class="eyebrow">${T("final_title")}</div><h1 class="shout">${escapeHtml(tpl("place", { n: place }))}</h1>
     <p class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></p><p class="fine">${escapeHtml(sub)}</p></div>${tableHtml(list)}${reactsHtml()}
-    <a class="btn ghost" id="homebtn" href="index.html">${T("btn_home")}</a>`, key);
+    <div class="dock endbar"><a class="btn ghost" id="homebtn" href="index.html">${T("btn_home")}</a></div>`, key);
   bindReacts();
   if (place === 1 && state.finishedReason === "done") wvSfx.fanfare();
 }
