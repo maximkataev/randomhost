@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b3a2e">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f986.svg" type="image/svg+xml">
+<title>Утиный сплав — кто ведёт дейлик: гонка уток онлайн</title>
+<meta name="robots" content="index,follow">
+<meta name="description" content="🦆 Утиный сплав: мультиплеерная гонка уток по горной речке. Каждый рулит своей уткой с телефона или компьютера, заплыв — полминуты. Кто приплыл последним — ведёт дейлик." data-i18n-meta="_meta">
+<!-- ссылки на комнаты (?r=КОД) — та же страница: в выдаче должна быть одна, без кода -->
+<link rel="canonical" href="https://randomhost.online/duck-rapids.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Утиный сплав — кто ведёт дейлик">
+<meta property="og:description" content="Гонка уток по речке: каждый рулит своей. Полминуты на заплыв, последний ведёт дейлик.">
+<meta property="og:url" content="https://randomhost.online/duck-rapids.html">
+<meta property="og:site_name" content="Рандомайзер Онлайн">
+<meta property="og:locale" content="ru_RU">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@700&family=Montserrat:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  /* Мир — речка из «Утиных бегов». Интерфейс — тёмное стекло цвета глубокой воды поверх реки (duck-rapids-spec.md).
+     Река всегда на весь экран, панели её не сдвигают. Устроено как floe-battle.html. */
+  :root {
+    --ink: #f3fff8;
+    --muted: #a7d6c3;
+    --panel: rgba(8, 40, 32, 0.9);
+    --line: rgba(170, 235, 205, 0.18);
+    --gold: #ffd23f;
+    --red: #e0414b;
+    --leaf: #8be8b5;
+    --lang-switch-bg: rgba(8, 40, 32, 0.85);
+    --lang-switch-border: rgba(170, 235, 205, 0.25);
+    --lang-switch-font: Montserrat, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; background: #0b2a22; color: var(--ink); font: 500 15px/1.4 Montserrat, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  body { touch-action: manipulation; }
+  body.playing { touch-action: none; user-select: none; -webkit-user-select: none; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  /* река не масштабируется и не прокручивается пальцем: застрявший с лобби зум закрывал весь заплыв (плейтест 04.10) */
+  #river { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  /* на широком экране река справа от панели, а не под ней */
+  @media (min-width: 900px) { body.with-panel #river { left: 340px; width: calc(100% - 340px); } body.with-panel .hud, body.with-panel .banner, body.with-panel .big { margin-left: 170px; } }
+  @media (max-height: 500px) and (min-width: 600px) { body.with-panel #river { left: 300px; width: calc(100% - 300px); } body.with-panel .verdict, body.with-panel .hud { margin-left: 150px; } }
+
+  /* ----- Шапка ----- */
+  .util { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); right: 118px; z-index: 12; display: flex; gap: 8px; }
+  .sound-toggle-btn { width: 40px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); display: grid; place-items: center; }
+  body.playing .util, body.playing .lang-switch, body.watching .util, body.watching .lang-switch { display: none !important; }
+
+  /* ----- Левая панель: вход, лобби, итог ----- */
+  .panel { position: fixed; top: 12px; left: 12px; bottom: 12px; width: 316px; z-index: 10; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(12, 52, 42, 0.96), rgba(8, 36, 29, 0.96)); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 18px 50px rgba(0,0,0,0.35); overflow: hidden; transition: transform 0.3s ease, opacity 0.3s; }
+  body.playing .panel, body.watching .panel { transform: translateX(calc(-100% - 24px)); opacity: 0; pointer-events: none; }
+  .p-body { flex: 1; overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; scrollbar-color: rgba(170,235,205,0.25) transparent; }
+  .p-foot { padding: 12px 14px; border-top: 1px solid var(--line); background: rgba(4, 22, 17, 0.5); display: grid; gap: 8px; }
+  .p-foot:empty { display: none; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand .logo { font-size: 30px; line-height: 1; }
+  .brand h1 { font-family: 'Comfortaa', sans-serif; font-size: 21px; line-height: 1.1; }
+  .brand small { display: block; font: 600 12px Montserrat, sans-serif; color: var(--muted); margin-top: 3px; }
+  .back { color: var(--muted); font-size: 13px; font-weight: 600; text-decoration: none; }
+  .back:hover { color: var(--ink); }
+  .lede { color: #d9f3e7; font-size: 14px; line-height: 1.5; }
+  .rules { list-style: none; display: grid; gap: 8px; counter-reset: r; }
+  .rules li { display: grid; grid-template-columns: 26px 1fr; gap: 8px; font-size: 13.5px; color: #d9f3e7; line-height: 1.45; }
+  .rules li::before { counter-increment: r; content: counter(r); width: 24px; height: 24px; border-radius: 50%; background: rgba(139,232,181,0.15); color: var(--leaf); font-weight: 800; font-size: 12px; display: grid; place-items: center; }
+  .sec { padding: 12px 2px 2px; border-top: 1px solid var(--line); box-shadow: inset 0 2px 0 rgba(139,232,181,0.08); }
+  .sec h3 { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px; }
+  .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; border: 0; border-radius: 14px; padding: 14px 12px; font: 800 16px Montserrat, sans-serif; color: #3b2400; background: linear-gradient(135deg, #ffe27a, #ffc21a); box-shadow: 0 4px 0 #b88400; text-decoration: none; }
+  .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #b88400; }
+  .btn:disabled { opacity: 0.45; cursor: default; transform: none; box-shadow: 0 4px 0 #b88400; }
+  .btn.ghost { background: rgba(255,255,255,0.08); color: var(--ink); box-shadow: none; font-weight: 700; font-size: 14px; padding: 11px 12px; border-radius: 12px; }
+  .btn.ghost:hover { background: rgba(255,255,255,0.14); }
+  .row2 { display: flex; gap: 8px; }
+  .row2 > * { flex: 1; }
+  .field { width: 100%; background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 12px; padding: 12px; font: 700 16px Montserrat, sans-serif; color: var(--ink); }
+  .field:focus { outline: none; border-color: var(--leaf); }
+  .field.code { text-transform: uppercase; letter-spacing: 0.08em; }
+  .err { color: #ff9a9a; font-size: 13px; font-weight: 600; min-height: 18px; }
+  .fine { color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .link { background: none; border: 0; color: var(--leaf); font-weight: 700; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; padding: 4px 0; }
+
+  /* цвет утки */
+  .colors { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; }
+  .cb { aspect-ratio: 1; border-radius: 50%; border: 0; background: radial-gradient(circle at 35% 30%, #fff8, transparent 55%), var(--c); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.2); position: relative; }
+  .cb.on { outline: 3px solid #fff; outline-offset: 2px; }
+  .cb:disabled { opacity: 0.35; cursor: default; }
+  .cb:disabled::after { content: ''; position: absolute; left: 12%; right: 12%; top: 50%; height: 2px; background: rgba(8,36,29,0.8); transform: rotate(-45deg); }
+  .color-now { display: flex; align-items: center; gap: 10px; }
+  .color-now .cb { width: 30px; flex: none; }
+
+  /* комната */
+  .code-box { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+  .code-box .code { font: 900 26px Montserrat, sans-serif; letter-spacing: 0.06em; overflow-wrap: anywhere; }
+  .code-box .qr { width: 76px; height: 76px; background: #fff; border-radius: 10px; padding: 5px; }
+  .code-box .qr img, .code-box .qr canvas { width: 100% !important; height: 100% !important; }
+  .plist { display: grid; gap: 5px; }
+  .pl { display: grid; grid-template-columns: 26px 1fr auto auto; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 11px; background: rgba(255,255,255,0.04); }
+  .pl.me { background: rgba(255,255,255,0.1); }
+  .pl.off { opacity: 0.45; }
+  .pl .dot { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff8, transparent 55%), var(--c); }
+  .pl b { font-weight: 700; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pl .ping { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .pl .ping.bad { color: var(--gold); }
+  .pl .x { width: 22px; height: 22px; border-radius: 6px; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
+  .pl .x:hover { background: rgba(255,90,90,0.2); color: #fff; }
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 7px 10px; align-items: center; font-size: 12.5px; color: var(--muted); }
+  .keys b { color: var(--ink); }
+  .kk { display: flex; gap: 3px; }
+  kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; background: rgba(255,255,255,0.1); border-radius: 5px; box-shadow: inset 0 -2px 0 rgba(0,0,0,0.3); font: 700 10px Montserrat, sans-serif; color: var(--ink); }
+  .waitline { text-align: center; color: var(--muted); font-size: 13px; font-weight: 600; }
+
+  /* итог */
+  .host-card { background: rgba(224, 65, 75, 0.18); border: 1px solid rgba(255, 90, 90, 0.5); border-radius: 16px; padding: 14px; text-align: center; }
+  .host-card .lbl { color: #ffb3b3; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; }
+  .host-card .nm { font-size: 36px; font-weight: 900; margin-top: 4px; line-height: 1.1; overflow-wrap: anywhere; }
+  .host-card .note { color: #ffb3b3; font-size: 12px; margin-top: 4px; }
+  .champ-line { text-align: center; color: var(--muted); font-size: 13px; font-weight: 600; }
+  .champ-line b { color: var(--ink); }
+  .table { display: grid; gap: 3px; }
+  .table .r { display: grid; grid-template-columns: 22px 14px 1fr auto; gap: 8px; align-items: center; font-size: 14px; padding: 5px 4px; border-bottom: 1px solid var(--line); }
+  .table .r.me { background: rgba(255,255,255,0.06); border-radius: 8px; }
+  .table .pl-n { color: var(--muted); font-weight: 800; text-align: right; }
+  .table .d { width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
+  .table .nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .table .ex { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .noms { font-size: 13px; color: var(--muted); line-height: 1.6; }
+  .noms div { display: flex; justify-content: space-between; gap: 8px; }
+  .noms span { flex: none; }
+  .noms b { color: var(--ink); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+  .finish-wait { text-align: center; font-weight: 800; font-size: 20px; padding: 24px 0; color: var(--muted); }
+
+  /* ----- Во время заплыва ----- */
+  .hud { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 5; display: none; gap: 8px; align-items: center; pointer-events: none; }
+  body.playing .hud, body.watching .hud, body.inlobby .hud { display: flex; }
+  body.inlobby .hud #pos { display: none; }
+  .pill { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: 14px; white-space: nowrap; }
+  .timer { font-variant-numeric: tabular-nums; font-size: 18px; min-width: 72px; text-align: center; }
+  .timer.low { color: var(--gold); }
+  .pos b { font-size: 18px; }
+  .quit { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 12px; z-index: 6; display: none; width: 40px; height: 38px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 16px; }
+  body.playing .quit { display: block; }
+  .big { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 8; pointer-events: none; font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: min(22vw, 150px); color: #0b2a22; -webkit-text-stroke: 4px #fff; paint-order: stroke fill; text-shadow: 0 6px 0 rgba(8,36,29,0.25); opacity: 0; white-space: nowrap; }
+  .big.show { animation: pop 0.9s ease-out forwards; }
+  .big.word { font-size: min(11vw, 76px); }
+  @keyframes pop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); } 18% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); } }
+  .banner { position: fixed; left: 50%; top: 64px; transform: translateX(-50%) translateY(-20px); z-index: 8; pointer-events: none; background: rgba(205, 48, 58, 0.96); color: #fff; border-radius: 16px; padding: 12px 22px; font-weight: 800; font-size: 20px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4); opacity: 0; transition: opacity 0.25s, transform 0.25s; max-width: calc(100vw - 32px); }
+  .banner.gold { background: rgba(255, 196, 30, 0.97); color: #3b2400; }
+  .banner small { display: block; font-weight: 600; font-size: 12px; opacity: 0.85; margin-top: 2px; }
+  .banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .tag { position: fixed; left: 50%; transform: translateX(-50%); z-index: 8; background: rgba(255,255,255,0.93); color: #0b2a22; font-weight: 800; border-radius: 14px; padding: 6px 14px; font-size: 13px; display: none; text-align: center; width: max-content; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); max-width: calc(100vw - 24px); }
+  .tag.show { display: block; }
+  .feed { position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 5; display: flex; flex-direction: column; gap: 5px; align-items: flex-start; pointer-events: none; }
+  .feed div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 5px 10px; font-size: 13px; font-weight: 600; animation: feedIn 0.25s ease-out; max-width: 70vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .feed .mine { border-color: var(--gold); background: rgba(60, 44, 6, 0.92); }
+  .feed .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+  @keyframes feedIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: none; } }
+
+  /* тач: держите палец слева или справа — утка рулит туда. Кнопки — подсказка, работает вся половина экрана */
+  .touch { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; pointer-events: none; }
+  body.is-touch.playing:not(.out) .touch { display: block; }
+  .tb { position: absolute; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,0.14); border: 2px solid rgba(255,255,255,0.45); color: #fff; font-size: 38px; font-weight: 900; transition: background 0.08s, transform 0.08s; text-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+  .tb.l { left: calc(20px + env(safe-area-inset-left, 0px)); }
+  .tb.r { right: calc(20px + env(safe-area-inset-right, 0px)); }
+  .tb.on { background: rgba(255, 210, 63, 0.6); border-color: #ffe27a; transform: scale(0.94); }
+  /* доплыл — смотрит, без кнопок */
+  .outpill { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 6; display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 9px 16px; font-weight: 700; font-size: 14px; text-align: center; width: max-content; max-width: calc(100vw - 24px); }
+  body.out .outpill { display: block; }
+  /* вердикт поверх реки на итоге */
+  .verdict { position: fixed; left: 50%; bottom: 7%; transform: translateX(-50%); z-index: 7; pointer-events: none; font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: min(44px, 4.2vw); color: #fff; text-align: center; text-shadow: 0 0 2px #0b2a22, 0 3px 0 #0b2a22, 0 6px 24px rgba(0,0,0,0.6); display: none; max-width: calc(100vw - 32px); line-height: 1.15; }
+  .verdict.show { display: block; animation: verdictIn 0.5s cubic-bezier(.2,1.4,.4,1); }
+  @keyframes verdictIn { from { opacity: 0; transform: translate(-50%, 20px) scale(0.9); } }
+  @media (min-width: 900px) { body.with-panel .verdict { margin-left: 170px; } }
+  /* на телефоне лента — под верхними плашками: снизу река впереди утки, её закрывать нельзя */
+  body.is-touch .feed { bottom: auto; top: calc(56px + env(safe-area-inset-top, 0px)); }
+  body.is-touch .feed div { font-size: 12px; padding: 4px 9px; }
+  /* подсказка в отсчёте — над кнопками руля и не ловит касания */
+  .toast { pointer-events: none; }
+  body.is-touch.playing .toast { bottom: calc(130px + env(safe-area-inset-bottom, 0px)); }
+
+  .conn { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: rgba(205, 48, 58, 0.95); color: #fff; font-weight: 800; font-size: 14px; padding: 9px 14px; border-radius: 12px; display: none; white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; }
+  .conn.on { display: block; }
+  .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: #fff; color: #0b2a22; font-weight: 800; font-size: 14px; padding: 10px 16px; border-radius: 12px; max-width: calc(100% - 32px); display: none; }
+  .toast.on { display: block; animation: toastIn 0.3s ease-out; }
+  @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 10px); } }
+
+  /* узкий экран в портрете: панель — лист снизу, река видна сверху */
+  @media (max-width: 899px) and (orientation: portrait) {
+    .panel { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 64vh; border-radius: 22px 22px 0 0; border-bottom: 0; }
+    .util { right: 110px; }
+    .verdict { display: none !important; }
+    body.with-panel .hud { display: none; }
+  }
+  /* телефон в ландшафте: панель уже, шрифты плотнее */
+  @media (max-height: 500px) {
+    .brand small, .code-box .qr, .brand .logo { display: none; }
+    .brand h1 { font-size: 17px; }
+    .code-box .code { font-size: 20px; }
+    .verdict { font-size: 20px; bottom: 5%; max-width: calc(100vw - 340px); }
+    body.with-panel .hud { display: none; }
+    body.with-panel .banner { margin-left: 150px; max-width: calc(100vw - 340px); }
+    .outpill { bottom: auto; top: 44px; font-size: 12px; padding: 6px 12px; }
+    .feed div { font-size: 11px; padding: 3px 8px; }
+    .feed div:nth-last-child(n+4) { display: none; }
+    .panel { top: 8px; bottom: 8px; left: 8px; width: 290px; }
+    .p-body { padding: 12px; gap: 9px; }
+    .hud { top: calc(6px + env(safe-area-inset-top, 0px)); }
+    .pill { padding: 5px 11px; font-size: 12px; }
+    .timer { font-size: 15px; min-width: 60px; }
+    .banner { top: auto; bottom: 14px; font-size: 14px; padding: 7px 14px; border-radius: 12px; max-width: 42vw; }
+    .banner small { font-size: 11px; }
+    .tb { width: 72px; height: 72px; font-size: 30px; bottom: 14px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .big.show { animation-duration: 0.01s; } }
+</style>
+</head>
+<body>
+<canvas id="river" aria-hidden="true"></canvas>
+<div class="util"><button class="sound-toggle-btn" type="button"></button></div>
+<aside class="panel" id="panel"><div class="p-body" id="pbody"></div><div class="p-foot" id="pfoot"></div></aside>
+<button class="quit" id="quit" type="button" aria-label="Выйти">✕</button>
+<div class="hud"><span class="pill timer" id="timer">—</span><span class="pill pos" id="pos"></span></div>
+<div class="big" id="big"></div>
+<div class="banner" id="banner"></div>
+<div class="tag" id="tag"></div>
+<div class="feed" id="feed"></div>
+<div class="touch"><span class="tb l" id="tbL">‹</span><span class="tb r" id="tbR">›</span></div>
+<div class="outpill" id="outpill"></div>
+<div class="verdict" id="verdict"></div>
+<div class="conn" id="conn"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Утиный сплав — кто ведёт дейлик: гонка уток онлайн`,
+    _meta: `🦆 Утиный сплав: мультиплеерная гонка уток по горной речке. Каждый рулит своей уткой с телефона или компьютера, заплыв — полминуты. Кто приплыл последним — ведёт дейлик.`,
+    game: `Утиный сплав`, sub: `гонка уток · кто ведёт дейлик`, back: `← Все игры`,
+    lede: `Все заходят по ссылке, каждый рулит своей уткой — с телефона или компьютера. Заплыв — полминуты.`,
+    rule1: `Течение несёт само — вы только рулите: в быструю струю, мимо камней, брёвен и водоворотов.`,
+    rule2: `Соседей можно подтолкнуть — прямо на камень.`,
+    rule3: `<b>Кто приплыл последним — ведёт дейлик.</b> Первый — чемпион заплыва.`,
+    create: `Создать комнату`, have_code: `У меня есть код`, code_ph: `Код комнаты`, go: `Войти`,
+    name_title: `Как вас зовут?`, name_ph: `Имя`, color: `Цвет утки`, join: `На старт`,
+    room: `Комната`, copy: `Скопировать ссылку`, copied: `Ссылка скопирована — киньте её в чат созвона`,
+    players: `В заводи`, of_max: `{n} из {m}`, start: `Открыть шлюз`, need_two: `Нужно хотя бы двое`,
+    wait_host: `Ждём, пока {name} откроет шлюз`, practice: `Пока ждём — порулите в заводи у шлюза.`,
+    controls: `Управление`, k_keys: `<b>руль</b> влево-вправо`, k_touch: `<b>руль</b> — держите палец слева или справа`,
+    hint_steer: `Держите палец слева или справа — утка рулит туда`,
+    pos: `<b>{n}</b> из {m}`, lobby_hud: `Разминка в заводи`, end: `финиш`,
+    go_word: `Плывём!`,
+    champ_banner: `🏆 Первое место: {name}`, you_champ_banner: `🏆 Первое место — ваше!`,
+    host_banner: `🎤 Дейлик ведёт: {name}`, you_host_banner: `🎤 Дейлик ведёте вы!`,
+    host_last: `последняя утка в реке`, host_dnf: `сход с дистанции`, host_time: `дальше всех от финиша`,
+    feed_off: `ушёл`, feed_fin: `{place}-м — {s} с`,
+    res_host: `Дейлик ведёт`, res_champ: `🏆 Чемпион заплыва: {name} — {s} с`,
+    res_last: `последняя утка в реке`, res_dnf: `сход с дистанции`, res_time: `за {s} с — дальше всех от финиша`,
+    t_dnf: `сход`, t_swim: `не на финише`, t_sec: `{s} с`,
+    nom_push: `Главный толкач: {who}`, nom_whirl: `Любимец водоворотов: {who}`,
+    again: `Ещё заплыв`, to_lobby: `В заводь`, wait_again: `Ждём, пока {name} начнёт ещё заплыв`,
+    watching: `Заплыв уже идёт — вы смотрите. Следующий — с вами`,
+    conn_lost: `Связь пропала — переподключаемся…`, conn_blocked: `Нет связи с игрой. Проверьте интернет или зайдите через мобильную сеть`,
+    no_room: `Комнаты нет`, no_room_text: `Код неверный или комната закрылась: она живёт полчаса без игры.`, new_game: `Новая комната`,
+    kicked: `Ведущий убрал вас из комнаты`, replaced: `Вы вошли с другой вкладки`, play_here: `Играть здесь`,
+    room_full: `В комнате уже 12 уток`, busy: `Сервер занят — попробуйте через минуту`, bad_name: `Введите имя`,
+    too_many_rooms: `Слишком много комнат — попробуйте позже`, server_error: `Что-то сломалось на сервере`, need_two_err: `Нужно хотя бы двое`,
+    quit_confirm: `Сойти с дистанции? Тогда ваша утка будет последней.`,
+    ping_bad: `может подлагивать`, you: ` · вы`,
+    made_room: `создатель комнаты`, finish_wait: `Финиш! Итог через секунду…`, quit_aria: `Сойти с дистанции`, code_empty: `Введите код комнаты`, demo_names: [`Кряква`, `Пух`, `Скрудж`, `Чирок`, `Гага`, `Нырок`], n_bumps: `{n} 💥`, n_whirls: `{n} 🌀`, change_color: `сменить`,
+    out_pill: `Вы доплыли {place}-м — смотрим остальных`, out_pill_champ: `🏆 Первое место ваше — смотрим остальных`,
+    verdict: `🎤 {name} ведёт дейлик`, verdict_you: `🎤 Дейлик ведёте вы`,
+    w_bump: `БУМ!`, w_rock: `ОЙ!`, w_whirl: `ВОДОВОРОТ!`,
+  },
+  en: {
+    _title: `Duck Rapids — who runs the daily: online duck race`,
+    _meta: `🦆 Duck Rapids: a multiplayer duck race down a mountain creek. Everyone steers their own duck from a phone or computer, a race takes half a minute. Last one in runs the daily.`,
+    game: `Duck Rapids`, sub: `duck race · who runs the daily`, back: `← All games`,
+    lede: `Everyone joins by link and steers their own duck — from a phone or a computer. A race takes half a minute.`,
+    rule1: `The current carries you — you only steer: into fast streams, around rocks, logs and whirlpools.`,
+    rule2: `You can nudge your neighbours — right into a rock.`,
+    rule3: `<b>Last one in runs the daily.</b> The first is the race champion.`,
+    create: `Create a room`, have_code: `I have a code`, code_ph: `Room code`, go: `Join`,
+    name_title: `What's your name?`, name_ph: `Name`, color: `Duck colour`, join: `To the start`,
+    room: `Room`, copy: `Copy link`, copied: `Link copied — drop it in the call chat`,
+    players: `In the pond`, of_max: `{n} of {m}`, start: `Open the gate`, need_two: `Need at least two`,
+    wait_host: `Waiting for {name} to open the gate`, practice: `While you wait — paddle around the pond by the gate.`,
+    controls: `Controls`, k_keys: `<b>steer</b> left and right`, k_touch: `<b>steer</b> — hold your finger on the left or right`,
+    hint_steer: `Hold your finger left or right — the duck steers there`,
+    pos: `<b>{n}</b> of {m}`, lobby_hud: `Warm-up in the pond`, end: `finish`,
+    go_word: `Go!`,
+    champ_banner: `🏆 {name} is first!`, you_champ_banner: `🏆 You're first!`,
+    host_banner: `🎤 Running the daily: {name}`, you_host_banner: `🎤 You run the daily!`,
+    host_last: `last duck in the river`, host_dnf: `quit the race`, host_time: `didn't make it — furthest from the finish`,
+    feed_off: `left`, feed_fin: `#{place} — {s} s`,
+    res_host: `Runs the daily`, res_champ: `🏆 Race champion: {name} — {s} s`,
+    res_last: `last duck in the river`, res_dnf: `quit the race`, res_time: `didn't finish in {s} s — furthest from the finish`,
+    t_dnf: `quit`, t_swim: `not finished`, t_sec: `{s} s`,
+    nom_push: `Chief bumper: {who}`, nom_whirl: `Whirlpool's favourite: {who}`,
+    again: `Another race`, to_lobby: `Back to the pond`, wait_again: `Waiting for {name} to start another race`,
+    watching: `A race is on — you're watching. You're in the next one`,
+    conn_lost: `Connection lost — reconnecting…`, conn_blocked: `Can't reach the game. Check your internet or try mobile data`,
+    no_room: `No such room`, no_room_text: `Wrong code, or the room closed: it lives half an hour without a game.`, new_game: `New room`,
+    kicked: `The host removed you from the room`, replaced: `You joined from another tab`, play_here: `Play here`,
+    room_full: `The room already has 12 ducks`, busy: `Server is busy — try again in a minute`, bad_name: `Enter a name`,
+    too_many_rooms: `Too many rooms — try later`, server_error: `Something broke on the server`, need_two_err: `Need at least two`,
+    quit_confirm: `Quit the race? Then you come in last.`,
+    ping_bad: `may lag`, you: ` · you`,
+    made_room: `created the room`, finish_wait: `Finish! Results in a second…`, quit_aria: `Quit the race`, code_empty: `Enter the room code`, demo_names: [`Quackers`, `Puddles`, `Waddles`, `Ducky`, `Drake`, `Feathers`], n_bumps: `{n} 💥`, n_whirls: `{n} 🌀`, change_color: `change`,
+    out_pill: `You finished #{place} — watching the rest`, out_pill_champ: `🏆 You're first — watching the rest`,
+    verdict: `🎤 {name} runs the daily`, verdict_you: `🎤 You run the daily`,
+    w_bump: `BUMP!`, w_rock: `OUCH!`, w_whirl: `WHIRLPOOL!`,
+  },
+  el: {
+    _title: `Πάπιες στα ορμητικά — ποιος κάνει το daily: αγώνας με πάπιες online`,
+    _meta: `🦆 Πάπιες στα ορμητικά: αγώνας με πάπιες σε ορμητικό ρυάκι για πολλούς παίκτες. Ο καθένας οδηγεί τη δική του πάπια από κινητό ή υπολογιστή, ο αγώνας κρατά μισό λεπτό. Όποιος φτάσει τελευταίος κάνει το daily.`,
+    game: `Πάπιες στα ορμητικά`, sub: `αγώνας με πάπιες · ποιος κάνει το daily`, back: `← Όλα τα παιχνίδια`,
+    lede: `Όλοι μπαίνουν με σύνδεσμο και οδηγούν τη δική τους πάπια — από κινητό ή υπολογιστή. Ο αγώνας κρατά μισό λεπτό.`,
+    rule1: `Το ρεύμα σε πάει μόνο του — εσύ απλώς στρίβεις: στα γρήγορα νερά, γύρω από πέτρες, κορμούς και δίνες.`,
+    rule2: `Μπορείς να σπρώξεις τους διπλανούς — κατευθείαν σε πέτρα.`,
+    rule3: `<b>Όποιος φτάσει τελευταίος κάνει το daily.</b> Η πρώτη θέση παίρνει το στέμμα.`,
+    create: `Νέο δωμάτιο`, have_code: `Έχω κωδικό`, code_ph: `Κωδικός δωματίου`, go: `Είσοδος`,
+    name_title: `Πώς σε λένε;`, name_ph: `Όνομα`, color: `Χρώμα πάπιας`, join: `Στην αφετηρία`,
+    room: `Δωμάτιο`, copy: `Αντιγραφή συνδέσμου`, copied: `Ο σύνδεσμος αντιγράφηκε — στείλ' τον στο chat της κλήσης`,
+    players: `Στη λιμνούλα`, of_max: `{n} από {m}`, start: `Άνοιξε το φράγμα`, need_two: `Χρειάζονται τουλάχιστον δύο`,
+    wait_host: `Περιμένουμε τον/την {name} να ανοίξει το φράγμα`, practice: `Μέχρι τότε — κάνε βόλτες στη λιμνούλα.`,
+    controls: `Χειρισμός`, k_keys: `<b>τιμόνι</b> αριστερά-δεξιά`, k_touch: `<b>τιμόνι</b> — κράτα το δάχτυλο αριστερά ή δεξιά`,
+    hint_steer: `Κράτα το δάχτυλο αριστερά ή δεξιά — η πάπια στρίβει εκεί`,
+    pos: `<b>{n}</b> από {m}`, lobby_hud: `Προθέρμανση στη λιμνούλα`, end: `τερματισμός`,
+    go_word: `Πάμε!`,
+    champ_banner: `🏆 Πρώτη θέση: {name}`, you_champ_banner: `🏆 Η πρώτη θέση είναι δική σου!`,
+    host_banner: `🎤 Το daily κάνει: {name}`, you_host_banner: `🎤 Το daily το κάνεις εσύ!`,
+    host_last: `η τελευταία πάπια στο ποτάμι`, host_dnf: `εγκατάλειψη`, host_time: `πιο μακριά απ' όλους από τον τερματισμό`,
+    feed_off: `έφυγε`, feed_fin: `θέση {place} — {s} δευτ.`,
+    res_host: `Το daily κάνει`, res_champ: `🏆 Πρώτη θέση: {name} — {s} δευτ.`,
+    res_last: `η τελευταία πάπια στο ποτάμι`, res_dnf: `εγκατάλειψη`, res_time: `σε {s} δευτ. — πιο μακριά απ' όλους`,
+    t_dnf: `εγκατάλειψη`, t_swim: `χωρίς τερματισμό`, t_sec: `{s} δευτ.`,
+    nom_push: `Ο μεγάλος σπρώχτης: {who}`, nom_whirl: `Ο αγαπημένος της δίνης: {who}`,
+    again: `Κι άλλος αγώνας`, to_lobby: `Στη λιμνούλα`, wait_again: `Περιμένουμε τον/την {name} για νέο αγώνα`,
+    watching: `Ο αγώνας τρέχει — παρακολουθείς. Στον επόμενο παίζεις`,
+    conn_lost: `Χάθηκε η σύνδεση — επανασύνδεση…`, conn_blocked: `Δεν υπάρχει σύνδεση με το παιχνίδι. Έλεγξε το ίντερνετ ή δοκίμασε δεδομένα κινητού`,
+    no_room: `Δεν υπάρχει τέτοιο δωμάτιο`, no_room_text: `Λάθος κωδικός ή το δωμάτιο έκλεισε: ζει μισή ώρα χωρίς παιχνίδι.`, new_game: `Νέο δωμάτιο`,
+    kicked: `Ο οικοδεσπότης σε έβγαλε`, replaced: `Μπήκες από άλλη καρτέλα`, play_here: `Παίξε εδώ`,
+    room_full: `Το δωμάτιο έχει ήδη 12 πάπιες`, busy: `Ο διακομιστής είναι απασχολημένος — δοκίμασε σε ένα λεπτό`, bad_name: `Γράψε όνομα`,
+    too_many_rooms: `Πάρα πολλά δωμάτια — δοκίμασε αργότερα`, server_error: `Κάτι χάλασε στον διακομιστή`, need_two_err: `Χρειάζονται τουλάχιστον δύο`,
+    quit_confirm: `Να εγκαταλείψεις; Τότε έρχεσαι τελευταίος.`,
+    ping_bad: `ίσως κολλάει`, you: ` · εσύ`,
+    made_room: `έφτιαξε το δωμάτιο`, finish_wait: `Τερματισμός! Αποτελέσματα σε λίγο…`, quit_aria: `Εγκατάλειψη`, code_empty: `Γράψε τον κωδικό δωματίου`, demo_names: [`Κουάκ`, `Φτερού`, `Λιμνούλα`, `Βουτηχτής`, `Παπάκι`, `Πιτσιρίκος`], n_bumps: `{n} 💥`, n_whirls: `{n} 🌀`, change_color: `αλλαγή`,
+    out_pill: `Θέση {place} — βλέπουμε τους υπόλοιπους`, out_pill_champ: `🏆 Πρώτη θέση — βλέπουμε τους υπόλοιπους`,
+    verdict: `🎤 Το daily κάνει: {name}`, verdict_you: `🎤 Το daily το κάνεις εσύ`,
+    w_bump: `ΜΠΑΜ!`, w_rock: `ΑΟΥΣ!`, w_whirl: `ΔΙΝΗ!`,
+  },
+};
+</script>
+<script src="i18n.js"></script>
+<script src="rapids/game.js"></script>
+<script src="duck-render.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const T = (k) => (window.I18N ? I18N.t(k) : k);
+  const tpl = (k, v) => String(T(k)).replace(/\{(\w+)\}/g, (_, n) => (v[n] ?? ""));
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const { createGame, makeCourse, moveDuck, DEFAULTS } = window.RapidsGame;
+  const COLORS = window.RapidsRender.DUCK_COLORS;
+  const Sound = window.RapidsRender.Sound;
+  const isTouch = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+  if (isTouch) document.body.classList.add("is-touch");
+  const MAX = 12;
+
+  const params = new URLSearchParams(location.search);
+  // код идёт в разметку — только алфавит кодов
+  let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 14);
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+
+  const WORDS = () => ({ bump: T("w_bump"), ouch: T("w_rock"), whirl: T("w_whirl") });
+  const render = window.RapidsRender.create($("river"), { me: null, meSuffix: T("you"), words: WORDS(), topGap: 56, bottomGap: 0 });
+
+  // ===================================================================
+  // Витрина на главном экране: свой заплыв ботов в браузере, без сервера
+  // ===================================================================
+  let demo = null;
+  function startDemo() {
+    demo = { g: createGame({}), bots: new Map(), restartAt: 0 };
+    const names = T("demo_names");
+    names.forEach((n, i) => demo.g.addPlayer("d" + i, n, (i * 3) % 20));
+    render.reset();
+    demo.startAt = performance.now() + 1500;
+  }
+  // боты для витрины подгружаем лениво — на странице комнаты они не нужны
+  function loadBots(cb) {
+    if (window.RapidsBots) return cb();
+    const s = document.createElement("script");
+    s.src = "rapids/bots.js";
+    s.onload = cb;
+    document.head.appendChild(s);
+  }
+  function demoStep(dt, now) {
+    const g = demo.g;
+    if (g.phase === "lobby" && demo.startAt && now >= demo.startAt) { demo.startAt = 0; g.start(); }
+    if (g.phase === "over" && !demo.restartAt) demo.restartAt = now + 4000;
+    if (g.phase === "over" && demo.restartAt && now >= demo.restartAt) { demo.restartAt = 0; g.toLobby(); demo.startAt = now + 2500; }
+    if (window.RapidsBots) {
+      for (const p of g.players) {
+        let b = demo.bots.get(p.id);
+        if (!b) { b = RapidsBots.createBot(RapidsBots.STYLE_KEYS[demo.bots.size % 4]); demo.bots.set(p.id, b); }
+        g.setInput(p.id, RapidsBots.think(g, p, b, dt));
+      }
+    }
+    g.step(dt);
+    render.apply(g.snapshot(), g.drainEvents());
+  }
+
+  // ===================================================================
+  // Сеть
+  // ===================================================================
+  const net = {
+    ws: null, open: false, everOpen: false, retry: 0, dead: false,
+    me: null, token: null, hostId: null, roster: [], cfg: Object.assign({}, DEFAULTS),
+    snaps: [], offset: null, rtt: 0, rtts: [], events: [], known: new Map(), arrivals: [], lastSnapAt: 0,
+  };
+  const tokenKey = () => "rapids-token-" + CODE;
+  const hostKey = () => "rapids-host-" + CODE;
+  let course = null;
+  const courseFor = (seed) => { if (!course || course.seed !== seed) course = makeCourse(seed, net.cfg); return course; };
+
+  function connect() {
+    if (net.dead) return;
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    const ws = new WebSocket(`${proto}://${location.host}/rapids/ws?r=${encodeURIComponent(CODE)}`);
+    net.ws = ws;
+    ws.onopen = () => {
+      net.open = true; net.everOpen = true; net.retry = 0;
+      $("conn").classList.remove("on");
+      if (net.token || net.wantJoin) sendJoin();
+    };
+    ws.onmessage = (e) => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+    ws.onclose = () => {
+      net.open = false;
+      if (net.dead) return;
+      if (!net.everOpen && net.retry === 0) {
+        // не открылось ни разу: либо комнаты нет, либо сети нет — спросим сервер
+        fetch("/rapids/api/health", { cache: "no-store" }).then((r) => (r.ok ? showDead("no_room") : Promise.reject())).catch(() => retryLater());
+        net.retry = 1;
+        return;
+      }
+      retryLater();
+    };
+  }
+  function retryLater() {
+    if (net.dead) return;
+    net.retry++;
+    $("conn").textContent = net.retry > 6 ? T("conn_blocked") : T("conn_lost");
+    $("conn").classList.add("on");
+    setTimeout(connect, Math.min(4000, 400 * net.retry));
+  }
+  function send(m) { if (net.ws && net.ws.readyState === 1) net.ws.send(JSON.stringify(m)); }
+  function sendJoin() {
+    send({ type: "join", name: ui.name, ci: ui.ci, token: net.token, hostToken: store.get(hostKey()) || undefined });
+  }
+
+  function onMsg(m) {
+    switch (m.type) {
+      case "hello": Object.assign(net.cfg, m.cfg); course = null; render.setCfg(net.cfg); break;
+      case "joined":
+        net.me = m.playerId; net.token = m.token;
+        store.set(tokenKey(), m.token);
+        render.setMe(net.me);
+        ui.joinErr = null;
+        redraw();
+        break;
+      case "roster":
+        net.roster = m.players; net.hostId = m.hostId;
+        for (const p of m.players) net.known.set(p.id, { name: p.name, ci: p.ci });
+        applyMode(); if (!document.body.classList.contains("playing")) redraw(); break;
+      case "s": onSnap(m); break;
+      // события приходят вместе со снимком своего тика — показываем их тогда же, когда этот снимок
+      case "ev": net.events.push({ at: performance.now() + INTERP_MS + Math.max(0, (net.lastD ?? 0) - (net.offset ?? 0)), list: m.list }); break;
+      case "pong": {
+        const rtt = performance.now() - m.c;
+        // понги, застрявшие в сетевой паузе, приносят rtt в десятки секунд — такие не считаем
+        if (rtt > 2000) break;
+        net.rtts.push(rtt);
+        if (net.rtts.length > 9) net.rtts.shift();
+        const sorted = net.rtts.slice().sort((a, b) => a - b);
+        net.rtt = sorted[sorted.length >> 1];
+        break;
+      }
+      case "error":
+        if (m.error === "room_expired") return showDead("no_room");
+        if (!net.me) { ui.joinErr = m.error; net.wantJoin = false; redraw(); }
+        else toast(T(m.error === "need_two" ? "need_two_err" : m.error));
+        break;
+      case "kicked": net.me = null; store.set(tokenKey(), ""); net.token = null; showDead("kicked"); break;
+      case "replaced": net.me = null; showDead("replaced"); break;
+    }
+  }
+
+  // ----- снимки и интерполяция -----
+  // Время показа — от прихода снимков, а не от часов сервера: смещение «время снимка − время прихода» берём по самому
+  // запоздавшему за последние 2 с, и показываем на INTERP_MS позже. Тогда и при пинге 300 мс с дрожью между снимками
+  // всегда есть следующий — чужие утки плывут плавно, а не ступеньками (плейтест 04.10)
+  const INTERP_MS = 70;
+  const showTime = () => (net.offset == null ? null : performance.now() + net.offset - INTERP_MS);
+  function onSnap(m) {
+    const now = performance.now();
+    net.lastSnapAt = now;
+    if (net.snaps.length && m.t < net.snaps[net.snaps.length - 1].t) return;
+    net.arrivals.push({ at: now, d: m.t - now });
+    net.lastD = m.t - now;
+    while (net.arrivals.length && now - net.arrivals[0].at > 2000) net.arrivals.shift();
+    let off = Infinity;
+    for (const a of net.arrivals) off = Math.min(off, a.d);
+    // смещение подтягиваем плавно, чтобы время показа не прыгало
+    net.offset = net.offset == null || Math.abs(off - net.offset) > 500 ? off : net.offset + (off - net.offset) * 0.1;
+    net.snaps.push(m);
+    if (net.snaps.length > 40) net.snaps.shift();
+    const mine = net.me && m.p.find((p) => p[0] === net.me);
+    if (mine) reconcile(mine, m); else pred.on = false;
+    if (m.ph !== ui.phase) onPhase(m.ph, ui.phase, m);
+  }
+  const lerpAng = (a, b, t) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * t; };
+  // ушедшие из комнаты пропадают из списка игроков, но в заплыве и итоге остаются — имя и цвет помним
+  const nameOf = (id) => { const p = net.roster.find((x) => x.id === id) || net.known.get(id); return p ? p.name : "?"; };
+  const ciOf = (id) => { const p = net.roster.find((x) => x.id === id) || net.known.get(id); return p ? p.ci : 0; };
+  const colorOf = (id) => COLORS[ciOf(id) % COLORS.length][0];
+
+  function sampled() {
+    const S = net.snaps;
+    if (!S.length) return null;
+    const last = S[S.length - 1];
+    const now = showTime();
+    const rt = now == null ? last.t : now;
+    let a = S[0], b = null;
+    for (let i = 0; i < S.length; i++) { if (S[i].t <= rt) a = S[i]; else { b = S[i]; break; } }
+    let k = 0;
+    if (b && b !== a) k = Math.max(0, Math.min(1, (rt - a.t) / (b.t - a.t)));
+    else { b = a; k = 0; }
+    // новая трасса — без смешивания со старой
+    if (a.sd !== b.sd) { a = b; k = 0; }
+    const map = new Map(a.p.map((p) => [p[0], p]));
+    const inGame = new Set(net.roster.filter((p) => p.inGame).map((p) => p.id));
+    // в заплыве сервер присылает только участников — в том числе ушедших, которых уже нет в списке игроков
+    if (b.ph !== "lobby") for (const p of b.p) inGame.add(p[0]);
+    const players = b.p.map((pb) => {
+      const pa = map.get(pb[0]) || pb;
+      const t = pa[6] === pb[6] ? k : 1;
+      return {
+        id: pb[0], name: nameOf(pb[0]), ci: ciOf(pb[0]),
+        x: pa[1] + (pb[1] - pa[1]) * t, y: pa[2] + (pb[2] - pa[2]) * t,
+        vx: pb[3], vy: pb[4], ang: lerpAng(pa[5], pb[5], t), st: pb[6], place: pb[7], online: !!pb[8],
+        inGame: b.ph === "lobby" || inGame.has(pb[0]),
+      };
+    });
+    return { phase: last.ph, phaseT: last.pt, clock: last.cl, seed: b.sd, champion: last.ch, host: last.host, players, t: last.t };
+  }
+
+  // ----- своя утка: предсказание -----
+  // Своя утка рулит сразу по нажатию той же физикой, что на сервере (moveDuck), а каждый снимок мягко подтягивает её
+  // к серверному положению, вынесенному вперёд на полпути пинга. Соседей, водовороты и финиш решает только сервер.
+  const pred = { on: false, x: 0, y: 0, vx: 0, vy: 0, ang: 0, spin: 0, seed: 0 };
+  function reconcile(p, m) {
+    const st = p[6];
+    const controlled = m.ph === "lobby" || m.ph === "race";
+    if (st !== "w" || !controlled) { pred.on = false; return; }
+    const lead = Math.min(0.25, (net.rtt / 2 + 25) / 1000);
+    const tx = p[1] + p[3] * lead, ty = p[2] + p[4] * lead;
+    if (!pred.on || pred.seed !== m.sd) {
+      Object.assign(pred, { on: true, x: tx, y: ty, vx: p[3], vy: p[4], ang: p[5], spin: 0, seed: m.sd });
+      return;
+    }
+    const ex = tx - pred.x, ey = ty - pred.y;
+    if (Math.hypot(ex, ey) > 90) { pred.x = tx; pred.y = ty; pred.vx = p[3]; pred.vy = p[4]; }
+    else { pred.x += ex * 0.25; pred.y += ey * 0.25; pred.vx += (p[3] - pred.vx) * 0.25; pred.vy += (p[4] - pred.vy) * 0.25; }
+  }
+
+  // ===================================================================
+  // Ввод: один руль, -1…1
+  // ===================================================================
+  const input = { st: 0, seq: 0, sent: 9, sentAt: 0 };
+  const down = new Set();
+  const KEYS = ["KeyA", "KeyD", "ArrowLeft", "ArrowRight"];
+  addEventListener("keydown", (e) => {
+    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+    if (!KEYS.includes(e.code)) return;
+    if (!document.body.classList.contains("playing") && ui.phase !== "lobby") return;
+    e.preventDefault();
+    Sound.ensure();
+    down.add(e.code);
+  });
+  addEventListener("keyup", (e) => down.delete(e.code));
+  addEventListener("blur", () => { down.clear(); touches.clear(); });
+  // Палец слева — влево, справа — вправо, оба — прямо. Руль пропорциональный: у краёв (и на кнопках) — полный,
+  // ближе к середине — мягче, чтобы можно было подправить курс, а не только болтаться «до упора» (плейтест 04.10).
+  // Середина — середина видимой реки: в ландшафте лобби панель слева занимает треть экрана
+  const touches = new Map();
+  function steerOf(x) {
+    let left = 0;
+    if (document.body.classList.contains("with-panel") && !matchMedia("(max-width: 899px) and (orientation: portrait)").matches) left = $("panel").getBoundingClientRect().right;
+    const mid = (left + innerWidth) / 2, half = (innerWidth - left) / 2;
+    const k = (x - mid) / (half * 0.55);
+    return Math.max(-1, Math.min(1, Math.sign(k) * Math.max(0.35, Math.min(1, Math.abs(k)))));
+  }
+  function onTouch(e) {
+    if (!net.me) return;
+    let mine = false;
+    for (const t of e.changedTouches) {
+      if (e.type === "touchend" || e.type === "touchcancel") { if (touches.delete(t.identifier)) mine = true; continue; }
+      if (e.type === "touchmove") { if (touches.has(t.identifier)) { touches.set(t.identifier, steerOf(t.clientX)); mine = true; } continue; }
+      // руль — только касания реки и кнопок ‹ ›: панель, ✕ и прочие кнопки работают как обычно
+      if (e.target !== $("river") && !e.target.closest(".touch")) continue;
+      touches.set(t.identifier, steerOf(t.clientX));
+      mine = true;
+    }
+    if (mine && document.body.classList.contains("playing") && e.cancelable) e.preventDefault();
+    if (mine) Sound.ensure();
+  }
+  for (const ev of ["touchstart", "touchmove", "touchend", "touchcancel"]) addEventListener(ev, onTouch, { passive: false });
+
+  function readInput() {
+    let s = 0;
+    if (down.has("KeyA") || down.has("ArrowLeft")) s -= 1;
+    if (down.has("KeyD") || down.has("ArrowRight")) s += 1;
+    if (touches.size) { let sum = 0; for (const v of touches.values()) sum += v; s = Math.max(-1, Math.min(1, sum)); s = Math.round(s * 20) / 20; }
+    $("tbL").classList.toggle("on", s < 0);
+    $("tbR").classList.toggle("on", s > 0);
+    input.st = s;
+  }
+
+  // Руль уходит на сервер по таймеру, а не из кадра: у вкладки в фоне (или перекрытого окна) кадры встают,
+  // и сервер держал бы последний руль. В фоне — сразу ноль
+  function sendInput() {
+    readInput();
+    const t = performance.now();
+    if (net.me && (input.st !== input.sent || t - input.sentAt > 500)) {
+      send({ type: "i", st: input.st, s: ++input.seq });
+      input.sent = input.st; input.sentAt = t;
+    }
+  }
+  setInterval(sendInput, 100);
+  addEventListener("visibilitychange", () => { if (document.hidden) { down.clear(); touches.clear(); sendInput(); } });
+  addEventListener("blur", sendInput);
+  function pushInput(dt) {
+    sendInput();
+    const snap = net.snaps[net.snaps.length - 1];
+    if (pred.on && snap) {
+      const controlled = snap.ph === "lobby" || snap.ph === "race";
+      moveDuck(pred, courseFor(snap.sd), net.cfg, dt, input.st, controlled, snap.ph === "race" || snap.ph === "over");
+    }
+  }
+
+  // ===================================================================
+  // Экран
+  // ===================================================================
+  const ui = {
+    phase: null, name: store.get("rapids-name") || "", ci: Number(store.get("rapids-color") || 0), joinErr: null,
+    showResults: false, codeOpen: false, lastCount: 0, resultsAt: 0, over: null, colorOpen: false,
+  };
+
+  function setPanel(body, foot, screen) {
+    // смена экрана (лобби → итог) — прокрутка с начала, иначе итог открывался посередине списка
+    const key = screen || ui.nextScreen || body.slice(0, 60);
+    ui.nextScreen = null;
+    if (key !== ui.screen) { ui.screen = key; $("pbody").scrollTop = 0; }
+    $("pbody").innerHTML = body;
+    $("pfoot").innerHTML = foot || "";
+    placeGaps();
+  }
+  const brand = () => `<div class="brand"><span class="logo">🦆</span><h1>${esc(T("game"))}<small>${esc(T("sub"))}</small></h1></div>`;
+  const rulesHtml = (hostFirst) => `<ol class="rules">${(hostFirst ? ["rule3", "rule1", "rule2"] : ["rule1", "rule2", "rule3"]).map((k) => `<li><span>${k === "rule3" ? T(k) : esc(T(k))}</span></li>`).join("")}</ol>`;
+  const controlsHtml = () => `<div class="keys">${isTouch
+    ? `<span>👆</span><span>${T("k_touch")}</span>`
+    : `<span class="kk"><kbd>A</kbd><kbd>D</kbd><kbd>←</kbd><kbd>→</kbd></span><span>${T("k_keys")}</span>`}</div>`;
+  const colorGrid = (sel, taken) => `<div class="colors">${COLORS.map((c, i) => `<button type="button" class="cb${i === sel ? " on" : ""}" data-ci="${i}" style="--c:${c[0]}" ${taken.has(i) && i !== sel ? "disabled" : ""} aria-label="${esc(T("color"))} ${i + 1}"></button>`).join("")}</div>`;
+
+  function redraw() {
+    if (net.dead) return;
+    if (!CODE) return drawHome();
+    if (!net.me) return drawJoin();
+    const ph = ui.phase;
+    if (ph === "over" && ui.showResults) return drawResults();
+    // заплыв только что кончился: пока камера едет к ведущему — без лобби и без кнопки старта,
+    // иначе ведущий комнаты рефлекторно жал «Открыть шлюз» и итог не видел никто (плейтест 04.10)
+    if (ph === "over") return setPanel(`${brand()}<div class="finish-wait">🏁 ${esc(T("finish_wait"))}</div>`, "", "wait");
+    if (ph === "lobby" || ph == null) return drawLobby();
+  }
+
+  function drawHome() {
+    setPanel(`<a class="back" href="index.html">${esc(T("back"))}</a>${brand()}
+      <p class="lede">${esc(T("lede"))}</p>
+      ${rulesHtml(false)}
+      <div class="sec"><h3>${esc(T("controls"))}</h3>${controlsHtml()}</div>
+      <div class="sec" id="codeSec" ${ui.codeOpen ? "" : "hidden"}>
+        <div class="row2"><input class="field code" id="codeIn" maxlength="14" placeholder="${esc(T("code_ph"))}" autocomplete="off" autocapitalize="characters"><button class="btn ghost" id="codeGo" type="button" style="flex:0 0 auto;width:auto">${esc(T("go"))}</button></div>
+      </div>
+      <div class="err" id="err">${ui.joinErr ? esc(T(ui.joinErr)) : ""}</div>`,
+      `<button class="btn" id="create" type="button">${esc(T("create"))}</button>${ui.codeOpen ? "" : `<button class="link" id="haveCode" type="button">${esc(T("have_code"))}</button>`}`);
+    $("create").onclick = createRoom;
+    if ($("haveCode")) $("haveCode").onclick = () => { ui.codeOpen = true; drawHome(); $("codeIn").focus(); };
+    if ($("codeGo")) {
+      const go = () => { const c = $("codeIn").value.toUpperCase().replace(/[^A-Z2-9]/g, ""); if (c) enterRoom(c); else $("err").textContent = T("code_empty"); };
+      $("codeGo").onclick = go;
+      $("codeIn").onkeydown = (e) => { if (e.key === "Enter") go(); };
+    }
+  }
+
+  function drawJoin() {
+    const taken = new Set(net.roster.map((p) => p.ci));
+    if (taken.has(ui.ci)) { for (let i = 0; i < COLORS.length; i++) if (!taken.has(i)) { ui.ci = i; break; } }
+    setPanel(`<a class="back" href="index.html">${esc(T("back"))}</a>${brand()}
+      <div class="sec"><h3>${esc(T("room"))} <span>${esc(CODE)}</span></h3>
+        <label class="fine" for="nameIn">${esc(T("name_title"))}</label>
+        <input class="field" id="nameIn" maxlength="15" placeholder="${esc(T("name_ph"))}" value="${esc(ui.name)}" autocomplete="nickname" enterkeyhint="go" style="margin-top:6px">
+        <div class="fine" style="margin:12px 0 6px">${esc(T("color"))}</div>${colorGrid(ui.ci, taken)}
+      </div>
+      <div class="sec">${rulesHtml(true)}</div>
+      ${net.roster.length ? `<div class="sec"><h3>${esc(T("players"))} <span>${esc(tpl("of_max", { n: net.roster.length, m: MAX }))}</span></h3>${playerList(false)}</div>` : ""}
+      <div class="err" id="err">${ui.joinErr ? esc(T(ui.joinErr)) : ""}</div>`,
+      net.roster.length >= MAX ? `<div class="err">${esc(T("room_full"))}</div><button class="btn" id="joinBtn" type="button" disabled>${esc(T("join"))}</button>`
+        : `${ui.joinErr ? `<div class="err">${esc(T(ui.joinErr))}</div>` : ""}<button class="btn" id="joinBtn" type="button">${esc(T("join"))}</button>`);
+    const go = () => {
+      const n = $("nameIn").value.trim();
+      if (!n) { ui.joinErr = "bad_name"; $("err").textContent = T("bad_name"); return; }
+      ui.name = n; store.set("rapids-name", n); store.set("rapids-color", String(ui.ci));
+      Sound.ensure();
+      net.wantJoin = true;
+      sendJoin();
+    };
+    $("joinBtn").onclick = go;
+    $("nameIn").onkeydown = (e) => { if (e.key === "Enter") go(); };
+    $("nameIn").oninput = () => { ui.name = $("nameIn").value; };
+    document.querySelectorAll(".cb").forEach((b) => (b.onclick = () => { ui.ci = Number(b.dataset.ci); drawJoin(); }));
+  }
+
+  function playerList(withKick) {
+    const iAmHost = net.me && net.me === net.hostId;
+    return `<div class="plist">${net.roster.map((p) => `<div class="pl${p.id === net.me ? " me" : ""}${p.online ? "" : " off"}">
+      <span class="dot" style="--c:${COLORS[p.ci % COLORS.length][0]}"></span>
+      <b title="${p.id === net.hostId ? esc(T("made_room")) : ""}">${p.id === net.hostId ? "🔑 " : ""}${esc(p.name)}${p.id === net.me ? esc(T("you")) : ""}</b>
+      <span class="ping${p.ping > 200 ? " bad" : ""}" title="${p.ping > 200 ? esc(T("ping_bad")) : ""}">${p.online ? (p.ping ? p.ping + " ms" : "") : "📡"}</span>
+      ${withKick && iAmHost && p.id !== net.me ? `<button class="x" type="button" data-kick="${esc(p.id)}" aria-label="kick">✕</button>` : "<span></span>"}
+    </div>`).join("")}</div>`;
+  }
+
+  function drawLobby() {
+    const iAmHost = net.me === net.hostId;
+    const host = net.roster.find((p) => p.id === net.hostId);
+    const n = net.roster.filter((p) => p.online).length;
+    const meP = net.roster.find((p) => p.id === net.me);
+    const taken = new Set(net.roster.filter((p) => p.id !== net.me).map((p) => p.ci));
+    const url = location.origin + location.pathname + "?r=" + CODE;
+    ui.nextScreen = "lobby";
+    setPanel(`${brand()}
+      <div class="sec"><h3>${esc(T("room"))}</h3>
+        <div class="code-box"><div><div class="code">${esc(CODE)}</div><button class="link" id="copy" type="button">${esc(T("copy"))}</button></div><div class="qr" id="qr"></div></div>
+      </div>
+      <div class="sec"><h3>${esc(T("players"))} <span>${esc(tpl("of_max", { n: net.roster.length, m: MAX }))}</span></h3>${playerList(true)}</div>
+      <div class="sec"><h3>${esc(T("controls"))}</h3>${controlsHtml()}<p class="fine" style="margin-top:8px">${esc(T("practice"))}</p></div>
+      <div class="sec"><h3>${esc(T("color"))}</h3>${ui.colorOpen ? colorGrid(meP ? meP.ci : 0, taken)
+        : `<div class="color-now"><span class="cb on" style="--c:${COLORS[(meP ? meP.ci : 0) % COLORS.length][0]}"></span><button class="link" id="colorOpen" type="button">${esc(T("change_color"))}</button></div>`}</div>`,
+      iAmHost
+        ? `<button class="btn" id="startBtn" type="button" ${n < 2 ? "disabled" : ""}>${esc(n < 2 ? T("need_two") : T("start"))}</button>`
+        : `<div class="waitline">${esc(tpl("wait_host", { name: host ? host.name : "…" }))}</div>`);
+    if ($("startBtn")) $("startBtn").onclick = () => { Sound.ensure(); send({ type: "start" }); };
+    $("copy").onclick = () => copyLink(url);
+    document.querySelectorAll("[data-kick]").forEach((b) => (b.onclick = () => send({ type: "kick", playerId: b.dataset.kick })));
+    if ($("colorOpen")) $("colorOpen").onclick = () => { ui.colorOpen = true; drawLobby(); };
+    document.querySelectorAll(".colors .cb").forEach((b) => (b.onclick = () => { ui.ci = Number(b.dataset.ci); ui.colorOpen = false; store.set("rapids-color", String(ui.ci)); send({ type: "color", ci: ui.ci }); }));
+    const qr = () => { if ($("qr") && !$("qr").children.length && window.QRCode) new QRCode($("qr"), { text: url, width: 120, height: 120, colorDark: "#0b2a22", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M }); };
+    if (window.QRCode) qr(); else setTimeout(qr, 800);
+  }
+
+  function copyLink(url) {
+    const ok = () => toast(T("copied"));
+    if (navigator.clipboard) navigator.clipboard.writeText(url).then(ok, () => prompt("", url));
+    else prompt("", url);
+  }
+
+  const secs = (s) => (s == null ? "" : s.toFixed(1));
+  function hostNote(h, kind) {
+    if (h.dnf) return T(kind + "_dnf");
+    if (h.timeUp) return kind === "res" ? tpl("res_time", { s: Math.round(net.cfg.RACE_T) }) : T("host_time");
+    return T(kind === "res" ? "res_last" : "host_last");
+  }
+
+  function drawResults() {
+    const ov = ui.over;
+    if (!ov || !ov.stats || !ov.host) return drawLobby();
+    const s = ov.stats, h = ov.host;
+    const nm = (id) => { const p = s.players.find((x) => x.id === id); return p ? p.name : nameOf(id); };
+    const champ = s.players.find((p) => p.id === ov.champion);
+    const rows = s.players.map((p) => `<div class="r${p.id === net.me ? " me" : ""}"><span class="pl-n">${p.place}</span><span class="d" style="--c:${colorOf(p.id)}"></span><span class="nm">${esc(p.name)}${p.id === h.id ? " 🎤" : ""}${p.id === ov.champion ? " 🏆" : ""}</span><span class="ex">${p.time != null ? esc(tpl("t_sec", { s: secs(p.time) })) : esc(p.dnf ? T("t_dnf") : T("t_swim"))}</span></div>`).join("");
+    // ничья на троих и больше — не номинация
+    const nomLine = (key, ids, n) => { if (ids.length > 2) return ""; const [label] = String(T(key)).split(":"); return `<div><span>${esc(label)}</span><b>${esc(ids.length ? ids.map(nm).join(", ") + (n ? " · " + n : "") : "—")}</b></div>`; };
+    const iAmHost = net.me === net.hostId;
+    const host = net.roster.find((p) => p.id === net.hostId);
+    ui.nextScreen = "results";
+    setPanel(`${brand()}
+      <div class="host-card"><div class="lbl">${esc(T("res_host"))}</div><div class="nm">🎤 ${esc(nm(h.id))}</div><div class="note">${esc(hostNote(h, "res"))}</div></div>
+      ${champ && champ.time != null ? `<div class="champ-line">${esc(tpl("res_champ", { name: champ.name, s: secs(champ.time) }))}</div>` : ""}
+      <div class="table">${rows}</div>
+      <div class="noms">${nomLine("nom_push", s.pusher, s.maxBumps && tpl("n_bumps", { n: s.maxBumps }))}${nomLine("nom_whirl", s.whirler, s.maxWhirls && tpl("n_whirls", { n: s.maxWhirls }))}</div>`,
+      iAmHost
+        ? `<button class="btn" id="again" type="button">${esc(T("again"))}</button><button class="btn ghost" id="lob" type="button">${esc(T("to_lobby"))}</button>`
+        : `<div class="waitline">${esc(tpl("wait_again", { name: host ? host.name : "…" }))}</div>`);
+    if ($("again")) $("again").onclick = () => { Sound.ensure(); send({ type: "start" }); };
+    if ($("lob")) $("lob").onclick = () => send({ type: "lobby" });
+    // сцена: камера на ведущем дейлика, крупный вердикт поверх реки
+    render.setFocus(h.id, "host");
+    $("verdict").textContent = h.id === net.me ? T("verdict_you") : tpl("verdict", { name: nm(h.id) });
+    $("verdict").classList.add("show");
+    $("feed").innerHTML = "";
+  }
+  function clearResultsScene() {
+    render.setFocus(null);
+    $("verdict").classList.remove("show");
+  }
+
+  function showDead(kind) {
+    net.dead = true;
+    try { net.ws && net.ws.close(); } catch (e) {}
+    $("conn").classList.remove("on");
+    document.body.classList.remove("playing", "watching", "inlobby", "out");
+    document.body.classList.add("with-panel");
+    const map = { no_room: ["no_room", "no_room_text"], kicked: ["kicked", ""], replaced: ["replaced", ""] };
+    const [title, text] = map[kind] || [kind, ""];
+    setPanel(`<a class="back" href="index.html">${esc(T("back"))}</a>${brand()}<h2 style="font-size:20px">${esc(T(title))}</h2>${text ? `<p class="lede">${esc(T(text))}</p>` : ""}`,
+      kind === "replaced" ? `<button class="btn" id="here" type="button">${esc(T("play_here"))}</button>` : `<a class="btn" href="duck-rapids.html">${esc(T("new_game"))}</a>`);
+    if ($("here")) $("here").onclick = () => { net.dead = false; net.retry = 0; net.everOpen = false; connect(); redraw(); };
+  }
+
+  async function createRoom() {
+    Sound.ensure();
+    $("create").disabled = true;
+    try {
+      const r = await fetch("/rapids/api/rooms", { method: "POST" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "server_error");
+      store.set("rapids-host-" + j.code, j.hostToken);
+      enterRoom(j.code);
+    } catch (e) {
+      ui.joinErr = /too_many/.test(e.message) ? "too_many_rooms" : "conn_blocked";
+      drawHome();
+    }
+  }
+
+  function enterRoom(code) {
+    CODE = code;
+    history.pushState(null, "", "?r=" + code);
+    demo = null;
+    net.token = store.get(tokenKey()) || null;
+    net.wantJoin = !!net.token;
+    render.reset();
+    connect();
+    redraw();
+  }
+
+  // ----- фазы -----
+  function onPhase(ph, prev) {
+    ui.phase = ph;
+    if (ph === "countdown" || ph === "lobby") {
+      ui.showResults = false; ui.over = null; clearResultsScene();
+      $("feed").innerHTML = "";
+      document.body.classList.remove("out");
+    }
+    if (ph === "countdown" && isTouch) toast(T("hint_steer"));
+    applyMode();
+    redraw();
+  }
+  // играю / смотрю / панель: зависит и от фазы, и от списка игроков — зовётся на обоих
+  function applyMode() {
+    const ph = ui.phase;
+    const inGame = net.roster.find((p) => p.id === net.me)?.inGame;
+    const play = ph === "countdown" || ph === "race";
+    document.body.classList.toggle("inlobby", ph === "lobby" && !!net.me && !net.dead);
+    document.body.classList.toggle("playing", play && !!inGame);
+    document.body.classList.toggle("watching", play && !inGame && !!net.me);
+    document.body.classList.toggle("with-panel", !play);
+    $("tag").classList.toggle("show", play && !inGame && !!net.me);
+    if (play && !inGame && net.me) $("tag").textContent = T("watching");
+    placeGaps();
+  }
+  // что перекрывает реку снизу: кнопки руля в заплыве или лист панели на телефоне в портрете
+  function placeGaps() {
+    let bottom = 0;
+    if (document.body.classList.contains("playing") && !document.body.classList.contains("out") && isTouch) bottom = 120;
+    else if (document.body.classList.contains("with-panel") && matchMedia("(max-width: 899px) and (orientation: portrait)").matches) bottom = Math.round($("panel").getBoundingClientRect().height);
+    render.setGaps(56, bottom);
+  }
+
+  // ----- события: лента, плашки, звуки -----
+  function onEvents(list) {
+    for (const e of list) {
+      if (e.type === "go") { big(T("go_word"), true); Sound.go(); }
+      if (e.type === "finish") {
+        const mine = e.id === net.me;
+        pushFeed(`${tag(e.id)} ${esc(tpl("feed_fin", { place: e.place, s: secs(e.time) }))}`, mine);
+        if (mine) {
+          document.body.classList.add("out");
+          placeGaps();
+          $("outpill").textContent = e.place === 1 ? T("out_pill_champ") : tpl("out_pill", { place: e.place });
+        }
+      }
+      if (e.type === "champion") {
+        banner(e.id === net.me ? T("you_champ_banner") : tpl("champ_banner", { name: nameOf(e.id) }), tpl("t_sec", { s: secs(e.time) }), true);
+      }
+      if (e.type === "bump" && (e.id === net.me || e.by === net.me)) pushFeed(`${tag(e.by)} 💥 ${tag(e.id)}`, true);
+      if (e.type === "removed") pushFeed(`📡 ${tag(e.id)} ${esc(T("feed_off"))}`);
+      if (e.type === "host") {
+        $("feed").innerHTML = "";
+        banner(e.id === net.me ? T("you_host_banner") : tpl("host_banner", { name: nameOf(e.id) }), hostNote(e, "host"));
+        Sound.host();
+      }
+      if (e.type === "over") { ui.over = e; ui.resultsAt = performance.now() + 2200; document.body.classList.remove("out"); }
+    }
+  }
+  function tag(id) { return `<span class="dot" style="background:${colorOf(id)}"></span>${esc(nameOf(id))}`; }
+  // одна и та же пара толкается раз за разом — одна строка «×3», а не столбик одинаковых
+  function pushFeed(html, mine) {
+    const feed = $("feed");
+    const lastEl = feed.lastElementChild;
+    if (lastEl && lastEl.dataset.html === html) {
+      lastEl.dataset.n = String(Number(lastEl.dataset.n || 1) + 1);
+      lastEl.innerHTML = html + ` <b>×${lastEl.dataset.n}</b>`;
+      feed.appendChild(lastEl);
+    } else {
+      const el = document.createElement("div");
+      if (mine) el.className = "mine";
+      el.dataset.html = html;
+      el.innerHTML = html;
+      feed.appendChild(el);
+    }
+    const max = isTouch ? 2 : 4;
+    while (feed.children.length > max) feed.firstChild.remove();
+    clearTimeout(pushFeed.t);
+    // старые строки сами уходят, чтобы не висели над рекой
+    pushFeed.t = setTimeout(() => { while (feed.children.length > 1) feed.firstChild.remove(); }, 5000);
+  }
+  function big(text, word) {
+    const el = $("big");
+    el.textContent = text;
+    el.classList.toggle("word", !!word);
+    el.classList.remove("show"); void el.offsetWidth; el.classList.add("show");
+  }
+  let bannerT = 0;
+  function banner(title, note, gold) {
+    const el = $("banner");
+    el.innerHTML = "";
+    el.classList.toggle("gold", !!gold);
+    el.append(document.createTextNode(title));
+    if (note) { const s = document.createElement("small"); s.textContent = note; el.append(s); }
+    el.classList.add("show");
+    clearTimeout(bannerT);
+    bannerT = setTimeout(() => el.classList.remove("show"), 2800);
+  }
+  let toastT = 0;
+  function toast(text) {
+    const el = $("toast");
+    el.textContent = text; el.classList.add("on");
+    clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 2600);
+  }
+
+  // ----- верх экрана -----
+  // запись в DOM каждый кадр заставляла браузер пересчитывать раскладку — пишем, только когда текст поменялся
+  const domCache = {};
+  const setText = (id, v) => { if (domCache[id + "t"] !== v) { domCache[id + "t"] = v; $(id).textContent = v; } };
+  const setHtml = (id, v) => { if (domCache[id + "h"] !== v) { domCache[id + "h"] = v; $(id).innerHTML = v; } };
+  const setClass = (id, v) => { if (domCache[id + "c"] !== v) { domCache[id + "c"] = v; $(id).className = v; } };
+  function hud(snap) {
+    const ph = snap.phase;
+    if (ph === "countdown") { setText("timer", "0.0"); setClass("timer", "pill timer"); }
+    else if (ph === "race") {
+      const left = net.cfg.RACE_T - snap.clock;
+      setText("timer", left < 10 ? "⏳ " + Math.max(0, left).toFixed(1) : snap.clock.toFixed(1));
+      setClass("timer", "pill timer" + (left < 10 ? " low" : ""));
+    } else { setText("timer", ph === "over" ? T("end") : T("lobby_hud")); setClass("timer", "pill timer"); }
+    // место: доплывшие — по месту, остальные — по пройденному пути
+    const list = snap.players.filter((p) => p.inGame);
+    const me = list.find((p) => p.id === net.me);
+    if (me && ph === "race") {
+      const fin = list.filter((p) => p.st === "f" && p.place).sort((a, b) => a.place - b.place);
+      const swim = list.filter((p) => p.st !== "f").sort((a, b) => b.y - a.y);
+      const n = fin.concat(swim).indexOf(me) + 1;
+      setHtml("pos", tpl("pos", { n, m: list.length }));
+      if ($("pos").style.display) $("pos").style.display = "";
+    } else if ($("pos").style.display !== "none") $("pos").style.display = "none";
+    if (ph === "countdown") {
+      const n = Math.ceil(net.cfg.COUNTDOWN - snap.phaseT);
+      if (n !== ui.lastCount && n > 0) { ui.lastCount = n; big(String(n)); Sound.tick(); }
+    } else ui.lastCount = 0;
+  }
+
+  // ===================================================================
+  // Цикл
+  // ===================================================================
+  const meDisp = { on: false, x: 0, y: 0, seed: 0 };
+  let last = performance.now(), pingAt = 0;
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    const t = now / 1000;
+    try {
+      if (demo) demoStep(dt, now);
+      else if (CODE) {
+        if (net.open && now - pingAt > 2000) { pingAt = now; send({ type: "ping", c: now, rtt: Math.round(net.rtt) }); }
+        // сокет открыт, но снимков нет — сеть встала молча: плашка, а своя утка больше не едет по предсказанию
+        const silent = net.open && net.lastSnapAt && now - net.lastSnapAt > 1500;
+        if (silent) { pred.on = false; $("conn").textContent = T("conn_lost"); }
+        if (net.open) $("conn").classList.toggle("on", !!silent);
+        pushInput(dt);
+        const snap = sampled();
+        if (snap) {
+          const me = net.me && snap.players.find((p) => p.id === net.me);
+          if (me) {
+            if (pred.on && me.st === "w") Object.assign(me, { x: pred.x, y: pred.y, vx: pred.vx, vy: pred.vy, ang: pred.ang });
+            // показанная позиция своей утки догоняет нужную за ~0.1 с: подтяжка предсказания и переход
+            // к снимку (финиш, водоворот) не дают рывков; далеко (новая трасса) — сразу
+            const d = meDisp;
+            if (!d.on || d.seed !== snap.seed || Math.hypot(me.x - d.x, me.y - d.y) > 150) Object.assign(d, { on: true, x: me.x, y: me.y, seed: snap.seed });
+            else { const k = 1 - Math.exp(-dt * 18); d.x += (me.x - d.x) * k; d.y += (me.y - d.y) * k; }
+            me.x = d.x; me.y = d.y;
+          }
+          const ready = [];
+          while (net.events.length && net.events[0].at <= now) ready.push(...net.events.shift().list);
+          render.apply(snap, ready);
+          onEvents(ready);
+          hud(snap);
+          if (ui.phase === "over" && ui.resultsAt && now >= ui.resultsAt) { ui.resultsAt = 0; ui.showResults = true; redraw(); }
+        }
+      }
+    } catch (err) { console.error(err); }
+    render.draw(t, dt);
+    requestAnimationFrame(frame);
+  }
+
+  $("quit").onclick = () => { if (confirm(T("quit_confirm"))) { send({ type: "leave" }); store.set(tokenKey(), ""); location.href = "duck-rapids.html"; } };
+  addEventListener("popstate", () => location.reload());
+  addEventListener("langchange", () => { render.setMe(net.me); applyStatic(); redraw(); });
+  function applyStatic() {
+    render.setWords(WORDS());
+    render.setSuffix(T("you"));
+    $("quit").setAttribute("aria-label", T("quit_aria"));
+    placeSound();
+  }
+  // кнопка звука — сразу слева от переключателя языка, ширина которого зависит от языка
+  function placeSound() {
+    const sw = document.querySelector(".lang-switch");
+    if (!sw) return setTimeout(placeSound, 300);
+    const r = sw.getBoundingClientRect();
+    const u = document.querySelector(".util");
+    u.style.right = Math.ceil(innerWidth - r.left + 8) + "px";
+    u.style.top = Math.round(r.top + (r.height - 36) / 2) + "px";
+  }
+  addEventListener("resize", () => { placeSound(); placeGaps(); });
+
+  // ----- старт -----
+  applyStatic();
+  document.body.classList.add("with-panel");
+  if (CODE) {
+    net.token = store.get(tokenKey()) || null;
+    net.wantJoin = !!net.token;
+    connect();
+    redraw();
+  } else {
+    loadBots(() => {});
+    startDemo();
+    drawHome();
+  }
+  requestAnimationFrame(frame);
+  // для проверок headless-ом
+  window.__rapids = { net, ui, pred, input, render, get demo() { return demo; } };
+})();
+</script>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+  ym(104849796, 'init', { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+</body>
+</html>
