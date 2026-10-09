@@ -20,6 +20,7 @@ function fixture() {
   const lang = {
     duel: Array.from({ length: 30 }, (_, i) => ({ id: "d" + i, q: "Вопрос " + i, h: Array.from({ length: 6 }, (_, j) => `подсказка ${i}.${j}`) })),
     emoji: Array.from({ length: 30 }, (_, i) => ({ id: "e" + i, e: "🐧🏦" + i, h: Array.from({ length: 6 }, (_, j) => `подпись ${i}.${j}`) })),
+    rev: Array.from({ length: 30 }, (_, i) => ({ id: "r" + i, a: i + ",1%", h: Array.from({ length: 6 }, (_, j) => `вопрос ${i}.${j}?`) })),
     final: Array.from({ length: 30 }, (_, i) => ({ id: "f" + i, q: "Три вещи " + i, h: Array.from({ length: 5 }, (_, j) => [`раз ${i}.${j}`, `два ${i}.${j}`, `три ${i}.${j}`]) })),
   };
   return { ru: lang, en: lang, el: lang };
@@ -317,7 +318,7 @@ test("полная партия: интро → ответы → голоса �
   }
   assert.strictEqual(g.s.phase, "finished");
   assert.strictEqual(g.s.finishedReason, "done");
-  assert.deepStrictEqual(g.s.plan, ["duel", "emoji", "duel2", "final"]);
+  assert.deepStrictEqual(g.s.plan, ["duel", "emoji", "rev", "final"]);
   assert.ok(seen.includes("answer:1") && seen.includes("answer:2") && seen.includes("answer:3"));
   const snap = g.snapshot(1e9, "board");
   assert.ok(snap.best && snap.best.votes > 0);
@@ -430,18 +431,55 @@ test("посреди партии снимок не выдаёт, кто бра�
   assert.ok("avgMs" in fin);
 });
 
-test("второй круг дуэлей: пары не повторяют первый круг (5+ игроков), множитель ×2", () => {
+test("«Наоборот» — второй круг дуэлей: пары не повторяют первый круг (5+ игроков), множитель ×2", () => {
   const g = game(6);
   const pairs = (gg) => new Set(gg.s.matchups.map((m) => m.authors.slice().sort().join("-")));
   const first = pairs(g);
   answerAll(g);
-  while (!(g.s.phase === "answer" && g.s.plan[g.s.ri] === "duel2")) {
+  while (!(g.s.phase === "answer" && g.s.plan[g.s.ri] === "rev")) {
     if (g.s.phase === "answer") answerAll(g, g.s.phaseStart + 100);
     else g.tick(g.s.phaseEnd);
   }
   const second = pairs(g);
   for (const k of second) assert.ok(!first.has(k), "пара повторилась: " + k);
   assert.strictEqual(g.round().mult, 2);
+  // на экране — ответ, к которому пишут вопрос; каждый ответ ровно у двоих
+  assert.strictEqual(g.s.matchups.length, 6);
+  for (const m of g.s.matchups) {
+    assert.strictEqual(m.deck, "rev");
+    assert.strictEqual(m.kind, "duel");
+    assert.ok(/%$/.test(m.prompt.a) && m.prompt.q === undefined);
+    assert.strictEqual(m.authors.length, 2);
+  }
+  const me = g.snapshot(1, "P1").me;
+  assert.ok(me.prompts.length === 2 && me.prompts.every((p) => p.prompt.a));
+  // подсказка в «Наоборот» — вопрос из пула этого ответа
+  const m = g.mine("P1")[0];
+  assert.ok(g.hint("P1", m.id, g.s.phaseStart + 10).ok);
+  assert.ok(m.pool.includes(m.answers.P1.text) && m.answers.P1.text.endsWith("?"));
+});
+
+test("«Наоборот» при 3–4 игроках — два ответа на всех; без колоды на языке — обычные вопросы", () => {
+  const g = game(3);
+  answerAll(g);
+  while (!(g.s.phase === "answer" && g.s.plan[g.s.ri] === "rev")) {
+    if (g.s.phase === "answer") answerAll(g, g.s.phaseStart + 100);
+    else g.tick(g.s.phaseEnd);
+  }
+  assert.strictEqual(g.s.matchups.length, 2);
+  assert.ok(g.s.matchups.every((m) => m.kind === "grid" && m.prompt.a && m.authors.length === 3));
+  assert.ok(g.snapshot(1, "board").sharedPrompts.every((p) => p.a));
+
+  const c = fixture();
+  c.ru = { ...c.ru, rev: [] };
+  const h = Game.create({ code: "T", rnd: rig(), content: c });
+  names(5).forEach((id) => h.addPlayer({ id, name: id }));
+  h.start(0);
+  while (!(h.s.phase === "answer" && h.s.plan[h.s.ri] === "rev")) {
+    if (h.s.phase === "answer") answerAll(h, h.s.phaseStart + 100);
+    else h.tick(h.s.phaseEnd);
+  }
+  assert.ok(h.s.matchups.length === 5 && h.s.matchups.every((m) => m.deck === "duel" && m.prompt.q));
 });
 
 test("мало игроков: в сетке голосов не больше половины чужих ответов", () => {

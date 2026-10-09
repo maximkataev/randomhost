@@ -102,7 +102,7 @@ test("колоды загружены на всех языках", async () => {
   const r = await (await fetch(`http://127.0.0.1:${port}/quip/api/health`)).json();
   assert.ok(r.ok);
   const C = require("./content");
-  for (const lang of ["ru", "en", "el"]) for (const d of ["duel", "emoji", "final"]) assert.ok(C[lang][d].length > 0, `${lang}/${d} пустая`);
+  for (const lang of ["ru", "en", "el"]) for (const d of ["duel", "emoji", "rev", "final"]) assert.ok(C[lang][d].length > 0, `${lang}/${d} пустая`);
 });
 
 test("партия втроём до конца; авторы и подсказки не утекают ни в одно сообщение до раскрытия", async () => {

@@ -33,6 +33,10 @@ const QP_SHARED_I18N = {
     r_duel_small: "Вопросы на всех", r_duel2_small: "Ещё вопросы на всех",
     r_duel2_d: "Второй круг, новые соперники. Очки ×2",
     r_duel2_small_d: "Ещё два вопроса на всех. Очки ×2",
+    r_rev: "Наоборот", r_rev_small: "Наоборот: на всех",
+    r_rev_d: "Ответ уже есть — придумай к нему вопрос. Новые соперники, очки ×2",
+    r_rev_small_d: "Два ответа на всех — придумай к ним вопросы. Очки ×2",
+    given_k: "Ответ:",
     q_n: "Вопрос {i} из {n}",
     no_votes: "Никто не проголосовал",
     r_duel_d: "Каждому два вопроса, на каждый отвечает ещё кто-то один. Зал выбирает смешнее",
@@ -58,6 +62,10 @@ const QP_SHARED_I18N = {
     r_duel_small: "Prompts for all", r_duel2_small: "More prompts for all",
     r_duel2_d: "Round two, new rivals. Points ×2",
     r_duel2_small_d: "Two more prompts for everyone. Points ×2",
+    r_rev: "Reverse", r_rev_small: "Reverse: for all",
+    r_rev_d: "Here's the answer — write the question. New rivals, points ×2",
+    r_rev_small_d: "Two answers for everyone — write the questions. Points ×2",
+    given_k: "Answer:",
     q_n: "Prompt {i} of {n}",
     no_votes: "Nobody voted",
     r_duel_d: "Two prompts each, one rival per prompt. The room picks the funnier one",
@@ -83,6 +91,10 @@ const QP_SHARED_I18N = {
     r_duel_small: "Ερωτήσεις για όλους", r_duel2_small: "Κι άλλες ερωτήσεις για όλους",
     r_duel2_d: "Δεύτερος γύρος, νέοι αντίπαλοι. Πόντοι ×2",
     r_duel2_small_d: "Άλλες δύο ερωτήσεις για όλους. Πόντοι ×2",
+    r_rev: "Ανάποδα", r_rev_small: "Ανάποδα: για όλους",
+    r_rev_d: "Η απάντηση υπάρχει — βρες την ερώτηση. Νέοι αντίπαλοι, πόντοι ×2",
+    r_rev_small_d: "Δύο απαντήσεις για όλους — βρες τις ερωτήσεις. Πόντοι ×2",
+    given_k: "Απάντηση:",
     q_n: "Ερώτηση {i} από {n}",
     no_votes: "Κανείς δεν ψήφισε",
     r_duel_d: "Δύο ερωτήσεις ο καθένας, σε κάθε μία απαντά κι ένας αντίπαλος. Η αίθουσα διαλέγει το πιο αστείο",
@@ -124,14 +136,15 @@ function qpAnswerHtml(a) {
   if (a.items) return `<ol class="items">${a.items.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ol>`;
   return escapeHtml(a.text);
 }
-// вопрос: текст или сцена из эмодзи
+// вопрос: текст, сцена из эмодзи или готовый ответ («Наоборот»: к нему пишут вопрос)
 function qpPromptHtml(p) {
   if (!p) return "";
+  if (p.a != null) return `<span class="given"><span class="given-k">${escapeHtml(qpT("given_k"))}</span> ${escapeHtml(p.a)}</span>`;
   return p.e ? `<span class="scene">${escapeHtml(p.e)}</span>` : escapeHtml(p.q);
 }
 // название раунда и описание (дуэли при 3–4 игроках — «на всех»)
 // раунды дуэлей при 3–4 игроках идут «на всех» — и называются так же
-const qpDuelKey = (key) => key === "duel" || key === "duel2";
+const qpDuelKey = (key) => key === "duel" || key === "duel2" || key === "rev";
 function qpRoundName(key, small) { return qpT("r_" + key + (small && qpDuelKey(key) ? "_small" : "")); }
 function qpRoundDesc(key, small) { return qpT("r_" + key + (small && qpDuelKey(key) ? "_small" : "") + "_d"); }
 

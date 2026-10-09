@@ -187,6 +187,11 @@ async function playGame(board, phones, label, plan) {
       const key = plan[Number(ri)] || {};
       await wait(500);
       await once(board, `${label}_b_answer_${ri}`);
+      // «Наоборот»: на экране и на телефоне — ответ, поле просит вопрос
+      if (key.rev) {
+        check((await phones[0].evaluate("!!document.querySelector('.qcard .given') && document.getElementById('ta').placeholder")) === "Твой вопрос", `${label}: «Наоборот» — на телефоне ответ и поле «Твой вопрос»`);
+        await once(phones[0], `${label}_p_rev`);
+      }
       // джинкс: найти дуэль двух наших телефонов и написать одно и то же в разных падежах
       let jinx = null;
       if (key.jinx) {
@@ -312,9 +317,9 @@ async function main() {
     for (const p of phones) check((await p.evaluate(NO_HSCROLL)) === true, `${p.name}: лобби без прокрутки вбок`);
 
     await click(board, "#startbtn");
-    const res = await playGame(board, phones, "g5", [{ jinx: true, hint: ["Оля"] }, { silent: ["Петя"] }, {}, {}]);
+    const res = await playGame(board, phones, "g5", [{ jinx: true, hint: ["Оля"] }, { silent: ["Петя"] }, { rev: true }, {}]);
     check(res.rounds === 4, `партия впятером: четыре раунда (${res.rounds})`);
-    check(res.reveals >= 12, `партия впятером: раскрытий ${res.reveals} (5 дуэлей + сцена + 5 дуэлей + финал)`);
+    check(res.reveals >= 12, `партия впятером: раскрытий ${res.reveals} (5 дуэлей + сцена + 5 «Наоборот» + финал)`);
     check(res.sawJinx, "джинкс случился на одинаковых ответах в разных падежах");
     check(res.sawLate, "молчавший получил 🐌-подсказку");
     check(res.sawHint, "вытянутая подсказка отмечена 🎲 после раскрытия");
