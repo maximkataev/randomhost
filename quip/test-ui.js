@@ -189,7 +189,8 @@ async function playGame(board, phones, label, plan) {
       await once(board, `${label}_b_answer_${ri}`);
       // «Наоборот»: на экране и на телефоне — ответ, поле просит вопрос
       if (key.rev) {
-        check((await phones[0].evaluate("!!document.querySelector('.qcard .given') && document.getElementById('ta').placeholder")) === "Твой вопрос", `${label}: «Наоборот» — на телефоне ответ и поле «Твой вопрос»`);
+        const rv = await phones[0].evaluate("String(!!document.querySelector('.qcard .given')) + '/' + (document.getElementById('ta') || {}).placeholder + '/' + (document.querySelector('.qcard') || {}).textContent");
+        check(/^true\/(Твой вопрос|Your question|Η ερώτησή σου)\//.test(rv), `${label}: «Наоборот» — на телефоне ответ и поле «Твой вопрос» (${rv})`);
         await once(phones[0], `${label}_p_rev`);
       }
       // джинкс: найти дуэль двух наших телефонов и написать одно и то же в разных падежах
