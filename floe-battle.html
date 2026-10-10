@@ -114,6 +114,9 @@
   .pl .ping.bad { color: var(--gold); }
   .pl .x { width: 22px; height: 22px; border-radius: 6px; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
   .pl .x:hover { background: rgba(255,90,90,0.2); color: #fff; }
+  /* на тач-экране крестик «убрать» — палец попадает, высота строки та же */
+  body.is-touch .pl .x { width: 34px; height: 34px; margin: -6px -6px -6px 0; }
+  body.is-touch .back { display: inline-block; padding: 12px 0; margin: -12px 0; }
   .keys { display: grid; grid-template-columns: auto 1fr; gap: 7px 10px; align-items: center; font-size: 12.5px; color: var(--muted); }
   .keys b { color: var(--ink); }
   .kk { display: flex; gap: 3px; }
@@ -201,7 +204,8 @@
   .skip.show { display: block; }
   body.is-touch.playing .feed { bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
   .rotate { position: fixed; inset: 0; z-index: 40; background: #051b31; display: none; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 18px; padding: 30px; line-height: 1.5; }
-  @media (orientation: portrait) and (max-width: 700px) { body.is-touch.playing .rotate { display: flex; } }
+  /* выбывшему управлять нечем — смотрит и в портрете, без просьбы повернуть */
+  @media (orientation: portrait) and (max-width: 700px) { body.is-touch.playing:not(.out) .rotate { display: flex; } }
 
   .conn { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: rgba(205, 48, 58, 0.95); color: #fff; font-weight: 800; font-size: 14px; padding: 9px 14px; border-radius: 12px; display: none; white-space: nowrap; }
   .conn.on { display: block; }
@@ -215,7 +219,16 @@
     .util { right: 110px; }
     .panel { max-height: 64svh; }
     /* разминка в лобби и «Повтор» — под переключателем языка, а не на нём */
-    body.inlobby .hud, .tag.top { top: calc(64px + env(safe-area-inset-top, 0px)); }
+    body.inlobby .hud, body.watching .hud, .tag.top { top: calc(64px + env(safe-area-inset-top, 0px)); }
+    /* «Партия уже идёт — вы смотрите…» в одну строку шире телефона — переносим */
+    .tag { white-space: normal; max-width: calc(100% - 32px); width: max-content; text-align: center; border-radius: 16px; line-height: 1.3; }
+    /* у зрителя разминка-HUD ниже — баннер ведущего под ним, лента событий над плашкой «вы смотрите» */
+    body.watching .banner { top: calc(112px + env(safe-area-inset-top, 0px)); }
+    /* от left: 50% баннеру остаётся пол-экрана, и имя рвётся на три строки — ширина по тексту */
+    .banner { width: max-content; }
+    body.watching .feed { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+    /* «Дейлик ведёте вы — смотрите, кто станет царём» у выбывшего в портрете шире экрана — переносим */
+    .outpill { white-space: normal; width: max-content; max-width: calc(100% - 32px); text-align: center; border-radius: 16px; line-height: 1.3; }
     /* вердикт ушёл бы под панель — его и так повторяет карточка ведущего */
     body.with-panel .verdict { display: none; }
     /* лобби: лист пониже, чтобы над ним было видно льдину для разминки; рывок и джойстик —
@@ -911,6 +924,7 @@ window.I18N_DICT = {
     $("tag").classList.toggle("show", play && !inGame && !!net.me);
     if (play && !inGame && net.me) $("tag").textContent = T("watching");
     else if (!ui.replay) $("tag").classList.remove("show");
+    placeSound();
   }
 
   // ----- события: лента, плашки, звуки -----
@@ -1098,7 +1112,8 @@ window.I18N_DICT = {
     insetAt = t;
     const cl = document.body.classList;
     let top = 0, bottom = 0;
-    if (sheetMq.matches && cl.contains("with-panel") && !cl.contains("playing") && !cl.contains("watching") && $("panel").style.display !== "none") {
+    // with-panel не проверяем: во время боя его нет и у того, кто ещё заполняет форму входа, а лист виден
+    if (sheetMq.matches && !cl.contains("playing") && !cl.contains("watching") && $("panel").style.display !== "none") {
       const pr = $("panel").getBoundingClientRect();
       bottom = Math.max(0, innerHeight - pr.top);
       const hudEl = document.querySelector(".hud"), ur = document.querySelector(".util").getBoundingClientRect();
@@ -1128,6 +1143,9 @@ window.I18N_DICT = {
     const sw = document.querySelector(".lang-switch");
     if (!sw) return setTimeout(placeSound, 300);
     const r = sw.getBoundingClientRect();
+    // в бою переключатель скрыт (нулевой прямоугольник) — если телефон повернули сейчас, кнопка уехала бы
+    // за левый край; переставим, когда он вернётся (applyMode)
+    if (!r.width) return;
     const u = document.querySelector(".util");
     u.style.right = Math.ceil(innerWidth - r.left + 8) + "px";
     u.style.top = Math.round(r.top + (r.height - 36) / 2) + "px";
