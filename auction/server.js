@@ -15,6 +15,8 @@ const path = require("path");
 const crypto = require("crypto");
 const zlib = require("zlib");
 const { WebSocketServer } = require("ws");
+const { roomCode } = require("../lib/codes");
+const { clientIp, createGuessLimiter, rateOk: netRateOk, send } = require("../lib/net");
 const { Game, clampSettings, cleanName } = require("./game");
 const { judge, lineupsFor } = require("./judge");
 const { MODES } = require("./modes");
@@ -134,38 +136,11 @@ const langOf = (state) => (state && state.settings && state.settings.lang) || "r
 const rooms = new Map(); // code → room
 // Код комнаты — слово с двумя цифрами, как в остальных играх: читается вслух и не перебирается
 // (см. guessBlocked). Старые 4-символьные коды из дампа восстанавливаются как есть — формат не проверяем.
-const ROOM_WORDS = (
-  "BID LOT GAVEL HAMMER SOLD DEAL OFFER PRICE BARGAIN BUYER DEALER BROKER TOKEN COIN DOLLAR CASH " +
-  "VAULT SAFE GOLD SILVER BRONZE RUBY PEARL JEWEL AMBER JADE OPAL CROWN TIARA SCEPTER THRONE VASE " +
-  "STATUE CANVAS EASEL ANTIQUE RELIC TROPHY MEDAL STAMP VINYL RECORD GUITAR PIANO CELLO BANJO VIOLIN " +
-  "DRUM TANGO DISCO JAZZ OPERA PANDA OTTER LLAMA ZEBRA FALCON RAVEN EAGLE BISON BADGER GECKO COBRA " +
-  "SHARK WHALE MANGO LEMON PEACH COMET ORBIT PLANET NOVA LUNA CASTLE TOWER PALACE HARBOR CACTUS WAFFLE"
-).trim().split(/\s+/);
-const CODE_DIGITS = "23456789";
 
-function newCode() {
-  for (;;) {
-    const code = ROOM_WORDS[crypto.randomInt(ROOM_WORDS.length)] +
-      CODE_DIGITS[crypto.randomInt(CODE_DIGITS.length)] + CODE_DIGITS[crypto.randomInt(CODE_DIGITS.length)];
-    if (!rooms.has(code)) return code;
-  }
-}
+const newCode = () => roomCode((c) => rooms.has(c));
 
 // Перебор кодов: адрес, промахнувшийся GUESS_LIMIT раз за окно, до конца окна не получает ни одной комнаты
-const GUESS_LIMIT = Number(process.env.GUESS_LIMIT || 60);
-const GUESS_WINDOW_MS = 10 * 60 * 1000;
-const guesses = new Map();
-function guessBlocked(ip) {
-  const g = guesses.get(ip);
-  if (g && Date.now() - g.since > GUESS_WINDOW_MS) { guesses.delete(ip); return false; }
-  return !!g && g.n >= GUESS_LIMIT;
-}
-function guessMissed(ip) {
-  const g = guesses.get(ip);
-  if (!g || Date.now() - g.since > GUESS_WINDOW_MS) guesses.set(ip, { n: 1, since: Date.now() });
-  else g.n += 1;
-  if (guesses.size > 10000) for (const [k, v] of guesses) if (Date.now() - v.since > GUESS_WINDOW_MS) guesses.delete(k);
-}
+const { blocked: guessBlocked, missed: guessMissed } = createGuessLimiter(Number(process.env.GUESS_LIMIT || 60));
 // комната по ?r= — единственная точка поиска по коду (WebSocket и poll-сессия)
 function roomFor(url, ip) {
   if (guessBlocked(ip)) return null;
@@ -264,11 +239,7 @@ function createRoom({ kind = "artist", settings = {}, speed = 1, ip = "" } = {})
 }
 
 // частота входящих сообщений на один сокет: флуд по одному соединению не жжёт CPU всей комнаты
-function rateOk(client) {
-  const t = now();
-  if (!client.rl || t - client.rl.ts >= 1000) client.rl = { ts: t, n: 0 };
-  return ++client.rl.n <= MSG_RATE;
-}
+const rateOk = (client) => netRateOk(client, MSG_RATE);
 
 const now = () => Date.now();
 // Часы комнаты. При speed > 1 (только в разработке) таймер просыпается раньше дедлайна,
@@ -401,9 +372,6 @@ function broadcast(room, msg) {
   }
 }
 
-function send(ws, msg) {
-  if (ws.readyState === 1) ws.send(JSON.stringify(msg));
-}
 
 // ---------- судья ----------
 
@@ -584,34 +552,8 @@ function readJson(req) {
 }
 
 // адрес клиента похож на IP; всё остальное — подделка, её игнорируем
-const looksLikeIp = (s) => /^[0-9a-fA-F:.]{3,45}$/.test(s) && /[.:]/.test(s);
 
-// Ключ адреса для лимитов (перебор кодов, комнаты и сокеты на адрес). IPv6 — по сети /64: её целиком
-// выдают одному абоненту, и с адресами внутри неё счётчик промахов обнулялся бы сменой адреса
-// (проверено: 200 промахов с одной /64 без единой блокировки). IPv4 внутри IPv6 — как обычный IPv4.
-function ipKey(ip) {
-  const v = String(ip).toLowerCase();
-  if (!v.includes(":")) return v;
-  const v4 = v.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (v4) return v4[1];
-  const [head, tail] = v.split("::");
-  const h = head ? head.split(":") : [];
-  const t = tail ? tail.split(":") : [];
-  const groups = tail === undefined ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t];
-  return groups.slice(0, 4).map((x) => (parseInt(x, 16) || 0).toString(16)).join(":") + "::/64";
-}
 
-function clientIp(req) {
-  // Главный источник — X-Real-IP: его ставит ВНЕШНИЙ nginx ($remote_addr) и затирает всё,
-  // что прислал клиент, а внутренний nginx пробрасывает как есть. Хвост X-Forwarded-For для
-  // этого не годится: при двух прокси там лежит адрес внешнего nginx, один на всех, и лимит
-  // комнат на адрес схлопнулся бы на весь сайт.
-  const real = String(req.headers["x-real-ip"] || "").trim();
-  if (looksLikeIp(real)) return ipKey(real);
-  // Запасной путь для одного прокси: последний элемент цепочки дописал он сам, подделать его нельзя.
-  const chain = String(req.headers["x-forwarded-for"] || "").split(",").map((s) => s.trim()).filter(looksLikeIp);
-  return ipKey(chain.length ? chain[chain.length - 1] : (req.socket.remoteAddress || ""));
-}
 
 // ---------- запасной транспорт: long-polling (когда прокси не пропускает WebSocket и буферизует потоки) ----------
 // GET /auction/api/session?r=CODE → {sid, hello}; GET /auction/api/poll?sid=… → ждёт до 20 с и отдаёт накопленные сообщения;

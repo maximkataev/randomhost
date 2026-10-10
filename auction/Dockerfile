@@ -1,10 +1,13 @@
 FROM node:22-alpine
 
-WORKDIR /app
-COPY package.json package-lock.json ./
+# Контекст сборки — корень репозитория (см. docker-compose.yml): серверу нужен общий lib/.
+# Каталог игры лежит в /app/auction, lib — рядом в /app/lib, так require("../lib/…") работает так же, как локально.
+WORKDIR /app/auction
+COPY auction/package.json auction/package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY . .
+COPY lib /app/lib
+COPY auction/ ./
 RUN mkdir -p /app/state
 
 # Куча V8 ограничена ниже лимита контейнера (mem_limit 256m). По умолчанию Node внутри контейнера

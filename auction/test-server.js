@@ -26,7 +26,7 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
 (async () => {
   const room = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings: { intro: 0 } }) })).json();
   console.log("room", room.code);
-  check(/^[A-Z]{3,7}[2-9]{2}$/.test(room.code), `код комнаты — слово и две цифры (${room.code})`);
+  check(/^[A-Z]{3,9}[2-9]{2}$/.test(room.code), `код комнаты — слово и две цифры (${room.code})`);
   const host = await connect(room.code, { type: "host", token: room.hostToken });
   const bad = await connect(room.code, { type: "host", token: "wrong" });
   check(has(bad, "error", (m) => /token/.test(m.error)), "неверный хост-токен отклоняется");

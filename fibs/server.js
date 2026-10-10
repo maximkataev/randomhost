@@ -18,6 +18,8 @@ const path = require("path");
 const crypto = require("crypto");
 const zlib = require("zlib");
 const { WebSocketServer } = require("ws");
+const { roomCode } = require("../lib/codes");
+const { clientIp, createGuessLimiter, rateOk: netRateOk, send } = require("../lib/net");
 const { Game, clampSettings, cleanName } = require("./game");
 const CONTENT = require("./content");
 
@@ -54,38 +56,11 @@ const rnd = (n) => crypto.randomInt(n);
 const rooms = new Map(); // code → room
 
 // Код комнаты — слово с двумя цифрами: читается вслух и не перебирается (см. guessBlocked)
-const ROOM_WORDS = (
-  "FIB LIAR TRUTH FAKE HOAX BLUFF RUMOR NEWS PRESS INK STAMP SCOOP GOSSIP PIXEL ROBOT BRAVO " +
-  "MAGNET DISCO TANGO SALSA RUMBA BANJO CELLO PIANO GUITAR JAZZ BLUES OPERA PANDA OTTER LLAMA ZEBRA " +
-  "FALCON RAVEN EAGLE BISON BADGER GECKO COBRA SHARK WHALE PUFFIN TOUCAN PARROT MANGO LEMON PEACH " +
-  "COMET ORBIT PLANET NOVA LUNA SOLAR STORM OCEAN RIVER CORAL CANYON FOREST MEADOW VALLEY ISLAND " +
-  "HARBOR CASTLE TOWER BRIDGE PALACE CACTUS PEPPER CHILI WASABI TACO NACHO WAFFLE DONUT MUFFIN PRETZEL"
-).trim().split(/\s+/);
-const CODE_DIGITS = "23456789";
 
-function newCode() {
-  for (;;) {
-    const code = ROOM_WORDS[crypto.randomInt(ROOM_WORDS.length)] +
-      CODE_DIGITS[crypto.randomInt(CODE_DIGITS.length)] + CODE_DIGITS[crypto.randomInt(CODE_DIGITS.length)];
-    if (!rooms.has(code)) return code;
-  }
-}
+const newCode = () => roomCode((c) => rooms.has(c));
 
 // Перебор кодов: адрес, промахнувшийся GUESS_LIMIT раз за окно, до конца окна не получает ни одной комнаты
-const GUESS_LIMIT = Number(process.env.GUESS_LIMIT || 60);
-const GUESS_WINDOW_MS = 10 * 60 * 1000;
-const guesses = new Map();
-function guessBlocked(ip) {
-  const g = guesses.get(ip);
-  if (g && Date.now() - g.since > GUESS_WINDOW_MS) { guesses.delete(ip); return false; }
-  return !!g && g.n >= GUESS_LIMIT;
-}
-function guessMissed(ip) {
-  const g = guesses.get(ip);
-  if (!g || Date.now() - g.since > GUESS_WINDOW_MS) guesses.set(ip, { n: 1, since: Date.now() });
-  else g.n += 1;
-  if (guesses.size > 10000) for (const [k, v] of guesses) if (Date.now() - v.since > GUESS_WINDOW_MS) guesses.delete(k);
-}
+const { blocked: guessBlocked, missed: guessMissed } = createGuessLimiter(Number(process.env.GUESS_LIMIT || 60));
 function roomFor(req, url) {
   const ip = clientIp(req);
   if (guessBlocked(ip)) return null;
@@ -187,11 +162,7 @@ function hostRateOk(client) {
   return ++client.hrl.n <= HOST_RATE;
 }
 
-function rateOk(client) {
-  const t = now();
-  if (!client.rl || t - client.rl.ts >= 1000) client.rl = { ts: t, n: 0 };
-  return ++client.rl.n <= MSG_RATE;
-}
+const rateOk = (client) => netRateOk(client, MSG_RATE);
 
 const now = () => Date.now();
 // Часы комнаты: при speed > 1 (только разработка) таймер просыпается раньше и комната «догоняет» дедлайн
@@ -291,9 +262,6 @@ function sendHello(room, c) {
   send(c.ws, { type: "hello", code: room.code, state: room.game.snapshot(clock(room), c.host ? "board" : c.playerId || null) });
 }
 
-function send(ws, msg) {
-  if (ws.readyState === 1) ws.send(JSON.stringify(msg));
-}
 
 // ---------- HTTP ----------
 
@@ -333,29 +301,8 @@ function readJson(req) {
   });
 }
 
-const looksLikeIp = (s) => /^[0-9a-fA-F:.]{3,45}$/.test(s) && /[.:]/.test(s);
 
-// Ключ адреса для лимитов (перебор кодов, комнаты и сокеты на адрес). IPv6 — по сети /64: её целиком
-// выдают одному абоненту, и с адресами внутри неё счётчик промахов обнулялся бы сменой адреса
-// (проверено: 200 промахов с одной /64 без единой блокировки). IPv4 внутри IPv6 — как обычный IPv4.
-function ipKey(ip) {
-  const v = String(ip).toLowerCase();
-  if (!v.includes(":")) return v;
-  const v4 = v.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (v4) return v4[1];
-  const [head, tail] = v.split("::");
-  const h = head ? head.split(":") : [];
-  const t = tail ? tail.split(":") : [];
-  const groups = tail === undefined ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t];
-  return groups.slice(0, 4).map((x) => (parseInt(x, 16) || 0).toString(16)).join(":") + "::/64";
-}
 
-function clientIp(req) {
-  const real = String(req.headers["x-real-ip"] || "").trim();
-  if (looksLikeIp(real)) return ipKey(real);
-  const chain = String(req.headers["x-forwarded-for"] || "").split(",").map((s) => s.trim()).filter(looksLikeIp);
-  return ipKey(chain.length ? chain[chain.length - 1] : (req.socket.remoteAddress || ""));
-}
 
 // ---------- запасной транспорт: long-polling ----------
 
