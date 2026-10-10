@@ -394,7 +394,8 @@ function qpHostSvg(cls) {
 })();
 
 // ---------- вибрация: не везде есть, а где есть — может бросить исключение ----------
-function qpVibrate(p) { if (navigator.vibrate) try { navigator.vibrate(p); } catch (e) {} }
+// до первого касания (телефон перезагрузили посреди партии) Chrome вибрацию блокирует и пишет ошибку в консоль — не зовём
+function qpVibrate(p) { if (navigator.vibrate && !(navigator.userActivation && !navigator.userActivation.hasBeenActive)) try { navigator.vibrate(p); } catch (e) {} }
 
 // ---------- часы сервера ----------
 // Смещение «сервер − устройство» по самому быстрому ping/pong (RTT/2); пока замера нет —

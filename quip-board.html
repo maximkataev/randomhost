@@ -193,6 +193,15 @@
   .howto { flex: 1; display: grid; gap: 10px; font-size: 19px; font-weight: 600; }
   .howto div { display: flex; gap: 14px; align-items: center; }
   .howto i { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--bulb); font-style: normal; font-size: 22px; box-shadow: 0 4px 0 var(--bulb-edge); }
+  /* низкий экран (1280×720, 1024×768): правила не влезали между настройками и «Начать» и наезжали на них —
+     сначала плотнее (tight), не хватило — правила прячем, остаётся Ребрик (fitHow) */
+  .howwrap.tight { gap: 12px; }
+  .howwrap.tight .howto { gap: 6px; font-size: 16px; }
+  .howwrap.tight .howto i { width: 34px; height: 34px; font-size: 17px; box-shadow: 0 3px 0 var(--bulb-edge); }
+  .howwrap.tight .rebrik { height: min(120px, 15vh); }
+  .howwrap.nohow { justify-content: center; overflow: hidden; }
+  .howwrap.nohow .howto { display: none; }
+  .howwrap.nohow .rebrik { height: 100%; max-height: 120px; }
   .join { display: flex; gap: 24px; align-items: center; padding: 8px 0 10px 8px; }
   /* QR крупный: его сканируют с дивана, метров с трёх. Рамка — лампочки */
   #qr { flex: none; position: relative; width: clamp(150px, 27vh, 250px); height: clamp(150px, 27vh, 250px); background: #fff; padding: 10px; border-radius: 14px; box-shadow: 0 0 0 8px var(--bulb), 0 8px 0 8px var(--bulb-edge); }
@@ -439,9 +448,28 @@
   @media (prefers-reduced-motion: no-preference) { .floater { animation: rise 2.6s cubic-bezier(.3, .7, .4, 1) forwards; } }
   @keyframes rise { 30% { transform: translateY(-22vh) scale(1.25); } to { transform: translateY(-64vh) scale(.9); opacity: 0; } }
 
+  /* низкий экран (1024×768, 1280×720, 1366×768): на стене 3–8 табличек при полной высоте вопроса и шапки таблички
+     выходили ниже 120px, текст ответа сжимался до нечитаемого. Ужимаем шапку и вывеску — место отдаём табличкам */
+  @media (min-width: 1001px) and (max-height: 820px) {
+    .screen { gap: 10px; }
+    .bar { height: 50px; }
+    .bar .clock { width: 52px; height: 52px; font-size: 26px; }
+    .screen > .prompt, .screen.dense > .prompt { --ph: 136px; padding: 16px 34px; }
+    /* эмодзи рисуются выше своей строки — подгонка шрифта этого не видит, и сцена вылезала за лампочки */
+    .screen > .prompt .q .scene { font-size: min(calc(var(--pfs, 44px) * 2.1), 60px); }
+    .wall { padding-top: 24px; }
+    .ans { padding: 26px 18px 10px; }
+    .ans .foot { height: 38px; margin-top: 6px; }
+  }
   @media (max-width: 1000px) {
     body { overflow: auto; }
-    .screen { position: static; }
+    /* гирлянда шапки шире окна на 28px: с прокруткой body давала горизонтальную прокрутку (на планшете — уезжал вбок весь экран) */
+    .top { overflow-x: clip; }
+    /* в одну колонку с прокруткой — только лобби и итоги. Игровые экраны остаются во весь экран, как на ТВ:
+       иначе на планшете стоя Ребрик раздувался на весь экран, а длинные ответы вылезали из табличек */
+    body[data-phase=lobby] .screen, body[data-phase=finished] .screen { position: static; }
+    /* итоги без высоты экрана: пьедестал с высотой «по содержимому» сжимался, и корона наезжала на заголовок */
+    .final .podium { flex: none; height: 440px; }
     main { padding: 20px 16px 16px; }
     .lobby, .final { grid-template-columns: 1fr; }
     .intro .sign { font-size: 56px; }
@@ -807,9 +835,18 @@ function fitCode() {
   code.style.setProperty("--code-fs", fs + "px");
   while (fs > 26 && code.scrollWidth > code.clientWidth + 1) { fs -= 4; code.style.setProperty("--code-fs", fs + "px"); }
 }
+// правила в лобби: влезают как есть → плотнее → прячем (Ребрик остаётся)
+function fitHow() {
+  const w = main.querySelector(".lobby .howwrap");
+  if (!w) return;
+  w.classList.remove("tight", "nohow");
+  const over = () => w.querySelector(".howto").scrollHeight > w.clientHeight + 1;
+  if (over()) w.classList.add("tight");
+  if (over()) w.classList.add("nohow");
+}
 if (document.fonts) {
-  document.fonts.ready.then(fitCode);
-  document.fonts.addEventListener && document.fonts.addEventListener("loadingdone", fitCode);
+  document.fonts.ready.then(() => { fitCode(); fitHow(); });
+  document.fonts.addEventListener && document.fonts.addEventListener("loadingdone", () => { fitCode(); fitHow(); });
 }
 let qrDrawn = false;
 const seen = new Set();
@@ -860,6 +897,7 @@ function drawLobby() {
   $("startbtn").disabled = !isHost || need > 0;
   $("startbtn").classList.toggle("hidden", !isHost);
   $("starthint").textContent = !isHost ? T("viewer") : need ? tpl("need_more", { n: need }) : T("ready");
+  fitHow();
 }
 
 function drawOpts() {
@@ -949,10 +987,12 @@ function wallOptions(n, kind) {
   if (w < 560) return [1];
   if (kind === "duel") return [2];
   if (n <= 3) return [n];
+  // низкий экран: в два ряда таблички получались ниже текста — разрешаем таблички поуже, но в один-два ряда
+  const minW = (main.clientHeight || innerHeight) < 760 ? 200 : 250;
   const out = [];
   for (let c = Math.max(2, Math.ceil(Math.sqrt(n)) - 1); c <= Math.min(n, 6); c++) {
     // слишком узкие таблички не берём: имя автора и очки должны влезать
-    if ((w - 28) / c < 250) break;
+    if ((w - 28) / c < minW) break;
     // последний ряд не должен быть одинокой табличкой при многих столбцах
     const rows = Math.ceil(n / c);
     if (rows > 1 && n % c === 1 && c > 2) continue;
@@ -1028,11 +1068,17 @@ function fitWall(ans, prompt) {
   const cards = [...main.querySelectorAll(".ans")];
   let fs = wallFit.ans;
   const over = () => cards.some((x) => { const t = x.querySelector(".t"); return t.scrollHeight > t.clientHeight + 1 || t.scrollWidth > t.clientWidth + 1; });
-  main.style.setProperty("--afs", fs + "px");
+  const shrink = () => {
+    let f = wallFit.ans, guard = 0;
+    main.style.setProperty("--afs", f + "px");
+    while (f > 12 && over() && guard++ < 30) { f -= 2; main.style.setProperty("--afs", f + "px"); }
+    return f;
+  };
   main.classList.add("fitting");
-  let guard = 0;
-  while (fs > 12 && over() && guard++ < 30) { fs -= 2; main.style.setProperty("--afs", fs + "px"); }
+  fs = shrink();
   main.classList.remove("fitting");
+  // одно длинное слово без пробелов («Ааааа…», ссылка) ужимало всю стену до 12–14px — тогда слова рвём
+  if (fs < wallFit.ans * 0.6 && shrink() < fs) main.style.setProperty("--afs", fs + "px");
 }
 if (document.fonts) {
   document.fonts.addEventListener && document.fonts.addEventListener("loadingdone", () => { fitWall(); const pr = $("prompt"); if (pr && !$("wall")) fit(pr, "--pfs", 60, 24); });
@@ -1157,7 +1203,14 @@ function drawFinal() {
   const sl = $("setlist");
   if (sl) {
     const ol = sl.querySelector("ol");
-    const rowsN = Math.max(1, list.length > 8 ? Math.ceil(list.length / 2) : list.length);
+    // низкий экран (1280×720): под наградами на 8 строк оставалось ~110px, строки наезжали друг на друга —
+    // тогда столбцов больше (до трёх), чтобы строка была не ниже ~24px
+    let cols = list.length > 8 ? 2 : 1;
+    while (cols < 3 && list.length > cols && ol.clientHeight / Math.ceil(list.length / cols) < 24) cols++;
+    const rowsN = Math.max(1, Math.ceil(list.length / cols));
+    ol.classList.toggle("two", cols > 1);
+    ol.style.gridTemplateColumns = cols > 1 ? `repeat(${cols}, minmax(0, 1fr))` : "";
+    ol.style.gridTemplateRows = `repeat(${rowsN}, minmax(0, 1fr))`;
     const fs = Math.max(15, Math.min(34, Math.floor((ol.clientHeight / rowsN) * 0.5)));
     sl.style.setProperty("--slfs", fs + "px");
   }
