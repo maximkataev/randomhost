@@ -261,6 +261,38 @@
   @media (prefers-reduced-motion: no-preference) { .floater { animation: rise 2.6s ease-out forwards; } }
   @keyframes rise { to { transform: translateY(-62vh); opacity: 0; } }
 
+  /* большой экран (2560×1440 и выше): кегли под диван, а не под ноутбук — иначе темы, часы и подписи мелкие посреди пустой полосы */
+  @media (min-width: 2200px) and (min-height: 1300px) {
+    .bar { height: 84px; }
+    .bar .what { font-size: 34px; }
+    .bar .clock { font-size: 72px; width: 170px; }
+    .topicwho { font-size: 100px; }
+    .topiclist { width: min(1800px, 100%); gap: 28px; }
+    .topiclist div { font-size: 56px; min-height: 280px; }
+    .intro .kicker { font-size: 30px; }
+    .intro .desc { font-size: 40px; max-width: 1400px; }
+    .intro .pts { font-size: 36px; }
+    .writer { height: 92px; }
+    .writer .av { font-size: 44px; }
+    .writer b, .writer .st { font-size: 30px; }
+    .votebar { font-size: 30px; }
+    .votebar .dot { font-size: 42px; }
+    .clip .who, .clip .pts { font-size: 30px; }
+    .clip .likes { font-size: 26px; }
+    .clip .foot { min-height: 50px; }
+    .board { width: min(1800px, 100%); }
+    .rowx { font-size: clamp(20px, calc(var(--rowh, 56px) * .36), 50px); }
+    .panel h2 { font-size: 36px; }
+    .kicker { font-size: 22px; }
+    .step b { font-size: 36px; }
+    .step .sc { font-size: 42px; }
+    .step .col { font-size: 76px; }
+    .award .a { font-size: 40px; }
+    .award .by { font-size: 26px; }
+    .award .q { font-size: 24px; }
+    .ghostbtn { font-size: 30px; }
+    .start { font-size: 38px; }
+  }
   @media (max-width: 1000px) {
     body { overflow: auto; }
     .screen { position: static; padding: 6px 16px 16px; min-height: calc(100vh - 80px); }
@@ -621,10 +653,23 @@ function headlineHtml(ans, src) {
 }
 function fitHeadline() {
   const hl = $("hl");
-  if (hl) fit(hl, $("headline"), "--hfs", 84, 24);
+  // потолок кегля растёт с экраном: на 2560×1440 факт в 84 px занимал десятую часть полосы
+  if (hl) fit(hl, $("headline"), "--hfs", Math.max(84, Math.round(innerHeight * 0.075)), 24);
 }
 
 // ---------- выбор темы ----------
+// длинное слово («Изобретения») шире карточки — кегль вниз, пока не влезет
+// (scrollWidth не видит текст, залезший на поля карточки, — меряем сам текст)
+function fitTopics() {
+  main.querySelectorAll(".topiclist div").forEach((d) => {
+    d.style.fontSize = "";
+    const cs = getComputedStyle(d), room = d.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const r = document.createRange();
+    r.selectNodeContents(d);
+    let fs = parseFloat(cs.fontSize), guard = 0;
+    while ((r.getBoundingClientRect().width > room + 1 || d.scrollWidth > d.clientWidth + 1) && fs > 14 && guard++ < 30) d.style.fontSize = (fs -= 2) + "px";
+  });
+}
 function drawTopic() {
   const key = "topic:" + factKey() + qpLang();
   if (viewKey === key) return;
@@ -634,6 +679,7 @@ function drawTopic() {
   main.innerHTML = `<div class="screen">${clockHtml(qpRoundName(state.roundKey))}
     <div class="topicwho">${escapeHtml(T("topic_by"))} ${ch ? `<i class="av">${escapeHtml(ch.avatar)}</i> ${escapeHtml(ch.name)}` : "?"}</div>
     <div class="topiclist" style="--tc:${state.topics.length}">${state.topics.map((t) => `<div>${escapeHtml(qpTopic(t))}</div>`).join("")}</div></div>`;
+  fitTopics();
 }
 
 // ---------- ложь ----------
@@ -688,7 +734,7 @@ function fitClips() {
   if (!clips.length) return;
   // один кегль на все вырезки: самая длинная определяет размер
   const h = clips[0].clientHeight;
-  let fs = Math.max(20, Math.min(46, Math.floor(h * 0.28)));
+  let fs = Math.max(20, Math.min(Math.max(46, Math.round(innerHeight * 0.04)), Math.floor(h * 0.28)));
   const setAll = (v) => clips.forEach((c) => c.style.setProperty("--cfs", v + "px"));
   setAll(fs);
   const over = () => clips.some((c) => { const t = c.querySelector(".t"); return t.scrollHeight > t.clientHeight + 1 || t.scrollWidth > t.clientWidth + 1; });
@@ -773,6 +819,8 @@ function showStep(i, live) {
 }
 
 // ---------- счёт ----------
+// место с учётом ничьих (1, 1, 3): как «N место» на телефоне, иначе при равном счёте доска и телефон спорили
+const rankOf = (p) => 1 + present().filter((x) => x.score > p.score).length;
 function ranked() {
   return present().slice().sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 }
@@ -784,12 +832,12 @@ function drawScores() {
   // больше десяти — в две колонки: иначе строки сжимаются до мелкого шрифта или вылезают за низ экрана
   const two = list.length > 10;
   const rows = two ? Math.ceil(list.length / 2) : Math.max(list.length, 1);
-  const rowh = Math.max(40, Math.min(96, Math.floor((main.clientHeight - 110) / rows) - 8));
+  const rowh = Math.max(40, Math.min(Math.max(96, Math.round(innerHeight * 0.085)), Math.floor((main.clientHeight - 110) / rows) - 8));
   const base = roundBase && roundBase.key === factKey() ? roundBase.scores : null;
   const from = (p) => (base && base[p.id] != null ? base[p.id] : p.score);
   main.innerHTML = `<div class="screen">
     <div class="bar"><div class="what">${escapeHtml(T("scores_what"))}</div><div class="clock" id="clock"></div></div>
-    <div class="board${two ? " two" : ""}" style="--rowh:${rowh}px;--rows:${rows}">${list.map((p, i) => { const d = p.score - from(p); return `<div class="rowx${i === 0 && p.score > 0 ? " lead" : ""}" style="--pc:${p.color}"><span class="n">${i + 1}</span><i class="av">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><span class="d" style="--dd:${(0.3 + i * 0.08).toFixed(2)}s">${d > 0 ? escapeHtml(tpl("pts", { n: d })) : ""}</span><span class="s" data-from="${from(p)}" data-to="${p.score}">${p.score}</span></div>`; }).join("")}</div></div>`;
+    <div class="board${two ? " two" : ""}" style="--rowh:${rowh}px;--rows:${rows}">${list.map((p, i) => { const d = p.score - from(p); return `<div class="rowx${i === 0 && p.score > 0 ? " lead" : ""}" style="--pc:${p.color}"><span class="n">${rankOf(p)}</span><i class="av">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><span class="d" style="--dd:${(0.3 + i * 0.08).toFixed(2)}s">${d > 0 ? escapeHtml(tpl("pts", { n: d })) : ""}</span><span class="s" data-from="${from(p)}" data-to="${p.score}">${p.score}</span></div>`; }).join("")}</div></div>`;
   countUp();
 }
 // прибавка «набегает» на табло: числа идут от старого счёта к новому (при reduced-motion — сразу итог)
@@ -816,7 +864,6 @@ function drawFinal() {
   const list = ranked();
   const top = [list[1], list[0], list[2]];
   const cls = ["p2", "p1", "p3"];
-  const num = [2, 1, 3];
   const a = state.awards || {};
   const names = (x) => x.ids.map((id) => { const p = player(id) || { avatar: "?", name: "?" }; return `${p.avatar} ${p.name}`; }).join(", ");
   const award = (label, x, dKey) => (x ? `<div class="award sheet"><div class="kicker">${escapeHtml(label)}</div><div class="a">${escapeHtml(names(x))}</div><div class="by">${escapeHtml(tpl(dKey, { n: x.n }))}</div></div>` : "");
@@ -825,11 +872,11 @@ function drawFinal() {
   const reason = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : "";
   main.innerHTML = `<div class="screen final">
     <div class="panel sheet"><h2>${T("final_title")}<span>${escapeHtml(reason)}</span></h2>
-      <div class="podium">${top.map((p, i) => (p ? `<div class="step ${cls[i]}" style="--pc:${p.color}"><i class="av">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><div class="sc">${p.score}</div><div class="col">${num[i]}</div></div>` : `<div class="step"></div>`)).join("")}</div>
+      <div class="podium">${top.map((p, i) => (p ? `<div class="step ${cls[i]}" style="--pc:${p.color}"><i class="av">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><div class="sc">${p.score}</div><div class="col">${rankOf(p)}</div></div>` : `<div class="step"></div>`)).join("")}</div>
       <div class="hostbtns">${isHost ? `<button class="start" id="again" type="button">${T("btn_again")}</button><button class="ghostbtn" id="tolobby" type="button">${T("btn_lobby")}</button>` : ""}<a class="ghostbtn homebtn" id="homebtn" href="index.html">${T("btn_home")}</a></div>
     </div>
     <div class="awards"><div class="awcards">${cards || `<div class="award sheet wide"><div class="a">${T("no_awards")}</div></div>`}</div>
-      <div class="table sheet" id="ftable"><div class="kicker">${T("scores_what")}</div><ol class="${list.length > 8 ? "two" : ""}" style="grid-template-rows:repeat(${list.length > 8 ? Math.ceil(list.length / 2) : list.length}, auto)">${list.map((p, i) => `<li><span class="n">${i + 1}</span><i style="font-style:normal">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><span>${p.score}</span></li>`).join("")}</ol></div>
+      <div class="table sheet" id="ftable"><div class="kicker">${T("scores_what")}</div><ol class="${list.length > 8 ? "two" : ""}" style="grid-template-rows:repeat(${list.length > 8 ? Math.ceil(list.length / 2) : list.length}, auto)">${list.map((p, i) => `<li><span class="n">${rankOf(p)}</span><i style="font-style:normal">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><span>${p.score}</span></li>`).join("")}</ol></div>
     </div></div>`;
   // сводка тянется до низа колонки: кегль — самый крупный, при котором все строки влезают
   fit($("ftable"), $("ftable"), "--tfs", 36, 12);
@@ -885,6 +932,8 @@ function render() {
 $("endbtn").onclick = () => conn.send({ type: "end" });
 
 window.addEventListener("resize", () => { viewKey = ""; if (state) render(); });
+// шрифты газеты догрузились после первой отрисовки — подгонка кеглей мерила запасной шрифт: подгоняем заново
+if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", () => { fitTopics(); fitHeadline(); fitClips(); });
 window.addEventListener("langchange", () => {
   viewKey = "";
   // язык доски — язык банка фактов комнаты: в лобби ведущий переключает и факты
@@ -935,6 +984,14 @@ function onMessage(m) {
       break;
     case "event":
       if (m.event.type === "react") floatReact(m.event.playerId, m.event.emoji);
+      break;
+    case "rejected":
+      // «Ещё выпуск», когда в комнате меньше трёх: без подсказки кнопка будто не работает
+      if (m.action === "start" && m.reason === "few_players" && state) {
+        showBanner(tpl("need_more", { n: Math.max(1, state.minPlayers - present().length) }));
+        clearTimeout(onMessage.bt);
+        onMessage.bt = setTimeout(() => { if (!dead) showBanner(null); }, 3000);
+      }
       break;
     case "error":
       if (m.error === "room_expired") gone();

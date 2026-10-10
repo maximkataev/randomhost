@@ -595,7 +595,7 @@ function renderTopic() {
     return;
   }
   const ch = player(state.chooser);
-  show(`<div class="card status center"><h2>${escapeHtml(tpl("topic_wait", { name: ch ? ch.name : "?" }))}</h2></div>${timerHtml()}${reactsHtml()}`, key);
+  show(`<div class="card status center"><h2>${escapeHtml(tpl("topic_wait", { name: "\u2068" + (ch ? ch.name : "?") + "\u2069" }))}</h2></div>${timerHtml()}${reactsHtml()}`, key);
   bindReacts();
 }
 
@@ -741,7 +741,7 @@ function standing() {
   return { list, place, p };
 }
 function tableHtml(list) {
-  return `<div class="card table"><div class="k">${T("table")}</div><ol>${list.map((x, i) => `<li class="${x.id === me ? "me" : ""}"><span class="n">${i + 1}</span>${avHtml(x)}<b>${escapeHtml(x.name)}</b><span class="s">${x.score}</span></li>`).join("")}</ol></div>`;
+  return `<div class="card table"><div class="k">${T("table")}</div><ol>${list.map((x, i) => `<li class="${x.id === me ? "me" : ""}"><span class="n">${1 + list.filter((y) => y.score > x.score).length}</span>${avHtml(x)}<b>${escapeHtml(x.name)}</b><span class="s">${x.score}</span></li>`).join("")}</ol></div>`;
 }
 
 function renderScores() {
@@ -749,7 +749,7 @@ function renderScores() {
   if (screenKey === key) return;
   const { list, place, p } = standing();
   show(`<div class="center"><div class="eyebrow">${T("scores_title")}</div>
-    <div class="big" style="margin:10px 0">${escapeHtml(tpl("place", { n: place }))}</div><div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div></div>${tableHtml(list)}${reactsHtml()}`, key, true);
+    <div class="big" style="margin:10px 0">${escapeHtml(tpl("place", { n: place }))}</div><div class="lede">${escapeHtml(p.avatar)} <bdi>${escapeHtml(p.name)}</bdi> · <b>${p.score}</b></div></div>${tableHtml(list)}${reactsHtml()}`, key, true);
   bindReacts();
 }
 
@@ -760,7 +760,7 @@ function renderFinal() {
   const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : T("final_sub");
   show(`<div class="center"><h1 class="headline">${T("final_title")}</h1>
     <div class="big${place === 1 ? " red" : ""}" style="margin:14px 0 6px">${escapeHtml(tpl("place", { n: place }))}</div>
-    <div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div>
+    <div class="lede">${escapeHtml(p.avatar)} <bdi>${escapeHtml(p.name)}</bdi> · <b>${p.score}</b></div>
     <p class="fine">${escapeHtml(sub)}</p></div>${tableHtml(list)}${reactsHtml()}
     <a class="btn ghost" id="homebtn" href="index.html">${T("btn_home")}</a>`, key, true);
   bindReacts();
@@ -864,7 +864,8 @@ function onMessage(m) {
       try { localStorage.removeItem(tokenKey()); } catch (e) {}
       token = null;
       screen = "kicked";
-      renderCenter("kicked_title");
+      // тупик без кнопки: дальше только «Главная»
+      renderCenter("kicked_title", null, `<a class="btn ghost" style="margin-top:14px" href="index.html">${T("btn_home")}</a>`);
       break;
     case "replaced":
       me = null;

@@ -116,7 +116,8 @@ const qpTopic = (t) => qpT("t_" + t);
 function qpRoundName(key) { return qpT("r_" + key); }
 function qpRoundDesc(key) { return qpT("r_" + key + "_d"); }
 // имена через запятую — именительный падеж, не склоняем
-const qpNames = (ids, player) => ids.map((id) => (player(id) || {}).name || "?").join(", ");
+// имя на иврите или арабском без изоляции переставляло соседние имена и знаки (\u2068…\u2069 — FSI/PDI)
+const qpNames = (ids, player) => ids.map((id) => "\u2068" + ((player(id) || {}).name || "?") + "\u2069").join(", ");
 // домен источника для подписи под правдой
 function qpSourceHost(url) { try { return new URL(url).hostname.replace(/^www\./, ""); } catch (e) { return ""; } }
 
@@ -215,7 +216,8 @@ const qpSfx = (function () {
 })();
 
 // ---------- вибрация: не везде есть, а где есть — может бросить исключение ----------
-function qpVibrate(p) { if (navigator.vibrate) try { navigator.vibrate(p); } catch (e) {} }
+// без касания экрана (после перезагрузки) Chrome не вибрирует и пишет ошибку в консоль — не зовём
+function qpVibrate(p) { if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return; if (navigator.vibrate) try { navigator.vibrate(p); } catch (e) {} }
 
 // ---------- часы сервера ----------
 // Смещение «сервер − устройство» по самому быстрому ping/pong (RTT/2); пока замера нет —
