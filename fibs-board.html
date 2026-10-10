@@ -269,6 +269,125 @@
     .top h1 { display: none; }
     .topiclist { --tc: 2 !important; }
   }
+  /* телефон ведущего: лобби одной колонкой. Шапка стоит на месте, прокручивается только main —
+     так фиксированный переключатель языка из i18n.js не наезжает на полосу при прокрутке.
+     Порядок: код + QR + настройки + «В печать!» сверху (это нужно ведущему), места — ниже, правила — в конце. */
+  @media (max-width: 760px) {
+    body:has(.screen.lobby) { overflow: hidden; }
+    main:has(> .lobby) { overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+    .screen.lobby { min-height: 0; padding: 6px 12px 20px; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .lobby > .panel { padding: 16px; gap: 14px; }
+    .lobby > .panel:last-child { order: -1; }
+    .lobby .panel h2 { font-size: 22px; }
+    /* QR слева, код справа; ссылка и подсказка — во всю ширину под ними */
+    .join { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px 16px; align-items: center; }
+    .join > div:last-child { display: contents; }
+    #qr { grid-row: 1; width: 120px; height: 120px; padding: 5px; border-width: 2px; box-shadow: 4px 4px 0 var(--red); }
+    .bigcode { grid-row: 1; grid-column: 2; font-size: min(var(--code-fs, 60px), 64px); }
+    .url, .scan { grid-column: 1 / -1; }
+    .url { font-size: 15px; margin-top: 6px; }
+    .scan { font-size: 16px; margin-top: 0; }
+    .opt-row .lbl { min-width: 0; }
+    .opt-row .lbl b { font-size: 18px; }
+    .opt-row .lbl span { font-size: 15px; display: block; }
+    .seg button { min-height: 44px; min-width: 44px; padding: 8px 12px; }
+    .startbox { margin-top: 4px; }
+    .start { font-size: 24px; padding: 14px; min-height: 56px; box-shadow: 4px 4px 0 var(--red); }
+    .howto { order: 1; margin: 2px 0 0; font-size: 16px; gap: 8px; border-top: 1px solid var(--rule); padding-top: 12px; }
+    .howto i { font-size: 22px; width: 30px; }
+    .seats { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: minmax(52px, auto); flex: none; gap: 12px 10px; padding-top: 4px; }
+    .seat { padding: 8px; gap: 6px; }
+    .seat .av { font-size: 22px; }
+    .seat b { font-size: 15px; }
+    /* на тач-экране нет hover: крестик «выгнать» виден всегда — штампик на углу места, ширину имени не съедает;
+       зона нажатия расширена до 44px псевдоэлементом */
+    .host .seat .x { visibility: visible; top: -7px; right: -7px; width: 26px; height: 26px; padding: 0; display: grid; place-items: center;
+      background: var(--sheet); border: 1.5px solid var(--ink-2); color: var(--ink-2); font: 700 13px/1 var(--mono); z-index: 1; }
+    .host .seat .x::before { content: ""; position: absolute; inset: -9px; }
+    .host .seat:not(.empty) { padding-right: 20px; }
+  }
+  /* телефон ведущего в игре (и телефон боком): полоса не влезает в экран — шапка стоит, main прокручивается,
+     заголовок и вырезки идут столбцом в естественную высоту, кегли — под палец, а не под диван */
+  @media (max-width: 760px), (max-height: 500px) and (max-width: 1000px) {
+    body { overflow: hidden; }
+    main { overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+    .screen:not(.lobby) { min-height: 100%; padding: 4px 14px 18px; gap: 12px; }
+    /* шапка: фишки мельче, «Раунд · название» ужимается многоточием, код и «Закончить» — целиком */
+    .top { gap: 8px; padding-left: 12px; }
+    .top .chip { font-size: 14px; padding: 6px 8px; }
+    #roundchip { flex: 1 1 0; max-width: max-content; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .endbtn { font-size: 14px; padding: 6px 10px; min-height: 44px; }
+    .intro h2 { font-size: clamp(36px, 13vw, 56px); overflow-wrap: anywhere; }
+    .intro .kicker { font-size: 17px; }
+    .intro .desc { font-size: 20px; }
+    .intro .pts { font-size: 18px; line-height: 1.4; }
+    .bar { height: auto; min-height: 48px; gap: 10px; }
+    .bar .what { font-size: 16px; white-space: normal; }
+    .bar .clock { font-size: 36px; width: 64px; }
+    .topicwho { font-size: 30px; margin: 8px 0; }
+    .topiclist { gap: 12px; }
+    .topiclist div { min-height: 88px; padding: 12px; font-size: 22px; box-shadow: 4px 4px 0 var(--ink); }
+    .headline { padding: 10px 4px; }
+    .headline .kicker { font-size: 14px; }
+    /* на ложь заголовок по-прежнему подгоняется под остаток экрана, но не схлопывается на низком экране */
+    .screen.lie .headline { min-height: max(150px, 30vh); }
+    /* подгонка мерит только высоту: длинное слово крупным кеглем рвалось посередине («переливани-й») */
+    .screen.lie .headline .t { font-size: min(var(--hfs, 64px), 11vw); }
+    /* на выбор и раскрытие — естественная высота и ровный кегль: под заголовком ещё варианты */
+    .screen:not(.lie) .headline { height: auto; }
+    .screen:not(.lie) .headline .t { font-size: clamp(20px, 5.6vw, 28px); }
+    .src { font-size: 14px; }
+    .writers { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+    .writer { height: 48px; padding: 6px 10px; gap: 8px; }
+    .writer .av { font-size: 24px; }
+    .writer b { font-size: 16px; }
+    .writer .st, .writer.done .st { font-size: 18px; }
+    /* вырезки — списком (боком — в две колонки), а не узкими столбиками по букве */
+    .clips { flex: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 14px; padding: 12px 2px 4px; }
+    .clips > .clip { width: auto; height: auto; }
+    .clip { padding: 10px 12px 8px 46px; }
+    .clip .l { left: 8px; top: 10px; width: 28px; height: 28px; font-size: 15px; line-height: 24px; }
+    .clip .t { font-size: 20px !important; }
+    .clip .foot { min-height: 30px; }
+    /* пустой подвал под будущую подпись не держим: на телефоне вырезка подрастёт при раскрытии */
+    .clip:not(.shown) .foot { display: none; }
+    .clip .who, .clip .pts { font-size: 16px; }
+    .clip .likes { font-size: 15px; }
+    .clip .pickers { top: -14px; font-size: 20px; }
+    .clip .stamp { font-size: 30px !important; }
+    .votebar { flex-wrap: wrap; font-size: 16px; }
+    .votebar .dot { font-size: 24px; }
+    /* сводка: кегль от высоты строки на телефоне съедал имя целиком */
+    .rowx { font-size: 17px; grid-template-columns: 1.4em 1.5em minmax(0, 1fr) auto 3.4em; }
+    .board.two { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-flow: row; }
+    /* итоги: пьедестал постоянной высоты (в колонке у него нет «остатка» экрана), кнопки переносятся */
+    .final > .panel { padding: 16px; }
+    .final .panel h2 { font-size: 24px; }
+    .podium { flex: none; height: 260px; gap: 8px; }
+    .step .av { font-size: 40px; }
+    .step b { font-size: 15px; }
+    .step .sc { font-size: 20px; }
+    .step .col { font-size: 36px; border-top-width: 6px; }
+    .hostbtns { flex-wrap: wrap; gap: 10px; }
+    .hostbtns .start { flex: 1 1 100%; font-size: 22px; padding: 14px; box-shadow: 4px 4px 0 var(--red); }
+    .ghostbtn { font-size: 18px; padding: 12px; min-height: 48px; }
+    .awcards { gap: 10px; }
+    .award { padding: 12px; }
+    .award .a { font-size: 20px; }
+    .award .by { font-size: 15px; }
+    .award .q { font-size: 15px; }
+    .table { flex: none; }
+    .table li { font-size: 17px !important; line-height: 2.2; }
+    .table ol.two { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; }
+  }
+  @media (max-height: 500px) and (max-width: 1000px) { .podium { height: 210px; } }
+  /* узкий телефон: шапка в две строки — сверху звук рядом с переключателем языка, ниже раунд, «Закончить» и код */
+  @media (max-width: 560px) {
+    .top { flex-wrap: wrap; height: auto; min-height: calc(var(--lsc, 32px) * 2); padding: 0 12px 6px; row-gap: 4px; }
+    .top .grow { order: -2; flex: 1 0 calc(100% - var(--lsh, 44px) * 1.25 - var(--lsw, 160px) + 12px - 9px); height: calc(var(--lsc, 32px) * 2); }
+    .top .sound-toggle-btn { order: -1; margin-right: calc(var(--lsw, 160px) - 12px); }
+    .endbtn { margin-left: auto; }
+  }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
@@ -620,6 +739,9 @@ function revealTick() {
     c.classList.toggle("focus", i === cur && state.phase === "reveal");
     c.classList.toggle("past", i < cur);
   });
+  // на телефоне вырезки идут списком и не влезают в экран — подкручиваем к той, что раскрывается
+  const fc = cur >= 0 && $("clip" + steps[cur].opt);
+  if (fc && getComputedStyle(main).overflowY === "auto" && main.scrollHeight > main.clientHeight + 1) fc.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   revealShown = cur;
 }
 function showStep(i, live) {

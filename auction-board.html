@@ -629,9 +629,26 @@
     body.m-game .bidbar .lead { flex: 1 1 100%; display: block; -webkit-line-clamp: unset; font-size: 24px; }
     body.m-game .bidbar .tape { flex: 1 1 100%; justify-content: flex-start; }
     body.m-final .judging .jtext { font-size: min(8.4vw, 44px); }
+    /* счёт в голосовании — «0 голосов», а не число: в строке с именем он съедал всю ширину и ложился
+       поверх имени, а на плакате победителя (3.3em) рвался на две огромные строки. На телефоне счёт —
+       отдельной строкой под именем и в разумном кегле. */
+    body.m-final .fbody .plhead { grid-template-columns: auto minmax(0, 1fr); row-gap: .15em; }
+    body.m-final .fbody .score { grid-column: 1 / -1; font-size: 1.45em; }
+    body.m-final .fbody > .pl.first .score { font-size: 2.2em; }
+    /* заставка: одно длинное слово задания («Киномарафон») в 46px не влезало в 375px и раздвигало страницу */
+    .intro .ibig { font-size: clamp(24px, 8vw, 46px); max-width: 100%; }
+    /* если и так не влезло (длинное слово по-гречески) — кегль ужимает fitIntro, перенос внутри слова — крайний случай */
+    .intro .ibig .iname { min-width: 0; }
+    .intro .ibig.wrapword .iname { overflow-wrap: anywhere; }
+    /* лобби на 320px: подсказка к «Заданию» в одну строку вылезала за край на 5px — переносим */
+    .set.task > .cap em { flex: 0 1 auto; min-width: 0; line-height: 1.3; }
     /* кнопки — всегда столбиком во всю ширину: в полуширинной «Ещё раз (та же категория)» шла в три строки */
     body.m-final .ffoot .actions { margin-left: 0; width: 100%; flex-direction: column; }
     body.m-final .ffoot .actions .btn { width: 100%; }
+  }
+  /* 320px: переключатель «ChatGPT | Голосование» был шире экрана на полпикселя — страница ездила вбок */
+  @media (max-width: 359px) {
+    .seg button { padding-left: 13px; padding-right: 13px; }
   }
   @media (max-width: 1000px) {
     .layout { grid-template-columns: 1fr; }
@@ -671,8 +688,23 @@
     body.m-game .card .hero:not(.gone) + .text > .emoji { margin-top: 0; font-size: 44px; margin-bottom: 12px; }
     /* «ПРОПУСТИ-ТЬ»: слово рвалось посередине — на узкой доске кнопки мельче и слова целые */
     .hostbar .btn { overflow-wrap: normal; font-size: 10.5px; letter-spacing: .04em; padding: 12px 6px; }
+    /* Доска на телефоне ведущего: карточка лота длиннее экрана, и лидер со ставкой (полоса ставок)
+       и таймер уезжали за край — посреди торгов ведущий видел только описание. Шапка с таймером
+       прилипает к верху, полоса ставок — к низу экрана; карточка прокручивается между ними. */
+    body.m-game .topbar { position: sticky; top: 0; z-index: 6; margin: -18px -18px 0; padding: 10px 18px;
+      background: color-mix(in srgb, var(--bg) 78%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+    body.m-game .bidbar { position: sticky; bottom: 8px; z-index: 6; background: color-mix(in srgb, #1a1822 88%, transparent); -webkit-backdrop-filter: blur(20px); box-shadow: 0 -10px 40px -16px #000; }
     /* «Начать игру» на телефоне-доске всегда под рукой, а не в самом низу длинной страницы */
     .setup-foot { position: sticky; bottom: 0; z-index: 5; margin: 0 -18px -18px; padding: 12px 18px 16px; background: linear-gradient(to top, var(--bg) 70%, transparent); }
+  }
+  /* телефон боком (360px в высоту): обе липкие полосы ужимаются, чтобы между ними оставался лот */
+  @media (max-width: 1000px) and (max-height: 500px) {
+    body.m-game .topbar { padding-top: 6px; padding-bottom: 6px; }
+    body.m-game .timer { width: 46px; height: 46px; }
+    body.m-game .timer .num { font-size: 17px; }
+    body.m-game .bidbar { min-height: 0; padding: 8px 16px; row-gap: 4px; }
+    body.m-game .bidbar .lead { flex: 0 1 auto; font-size: 20px; }
+    body.m-game .bidbar .tape { flex: 1 1 0; }
   }
 </style>
 </head>
@@ -1662,7 +1694,19 @@ function renderIntro() {
       <div class="count" id="count"></div>
     </div>`;
     if (!introTicking) { introTicking = true; requestAnimationFrame(tickIntro); }
+    fitIntro();
   }
+}
+// Название задания одним длинным словом («Киномарафон») на телефоне шире экрана: ужимаем кегль,
+// пока слово не влезет; на ТВ влезает с первого замера и ничего не меняется.
+function fitIntro() {
+  const big = app.querySelector(".intro .ibig");
+  if (!big) return;
+  big.style.fontSize = "";
+  big.classList.remove("wrapword");
+  const box = document.getElementById("intro").clientWidth;
+  for (let fs = parseFloat(getComputedStyle(big).fontSize); big.scrollWidth > box + 1 && fs > 20; fs -= 2) big.style.fontSize = fs - 2 + "px";
+  if (big.scrollWidth > box + 1) big.classList.add("wrapword");
 }
 
 // отсчёт идёт по серверному дедлайну, а не по локальному таймеру: на всех экранах одни и те же цифры
@@ -2183,9 +2227,10 @@ function fitNames(cards) {
 if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", () => {
   if (!state) return;
   if (state.phase === "finished") fitFinal();
+  else if (state.phase === "intro") fitIntro();
   else if (document.getElementById("card")) { fitCard(); if (document.getElementById("players")) fitPlayers(document.getElementById("players")); }
 });
-addEventListener("resize", () => { if (state && state.phase === "finished") fitFinal(); });
+addEventListener("resize", () => { if (state && state.phase === "finished") fitFinal(); else if (state && state.phase === "intro") fitIntro(); });
 function lineupCard(p, res) {
   if (!p) return "";
   const lots = (p.lots.map((l) => `<span class="chip"><span class="cn">${l.emoji} ${escapeHtml(l.name)}</span></span>`).join("") + (p.lots.length > 2 ? `<span class="chip more">+${p.lots.length - 2}</span>` : "")) || `<span style="color:var(--muted)">${T("empty")}</span>`;

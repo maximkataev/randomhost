@@ -218,7 +218,67 @@
     .bubble .q { font-size: 22px; }
     .count { font-size: 100px; height: 100px; }
     .verdict .n { font-size: 48px; }
+    /* шапка на телефоне: вместо «← Все игры» — одна стрелка (палец попадает), в игре логотип уступает место коду комнаты */
+    .brand { gap: 8px; }
+    .brand a { font-size: 0; min-width: 44px; height: 44px; display: grid; place-items: center; }
+    .brand a::before { content: "←"; font-size: 24px; }
+    .tools .code-chip { font-size: 18px; padding: 5px 8px; }
+    body:not([data-phase="lobby"]) .logo { display: none; }
+    /* ведущему внизу — «Остановить раунд»: центр поднимается над ней, а не прячет «Может рвануть» */
+    body.host .center { bottom: 46px; }
+    .hostbar button { min-height: 40px; }
+    .bubble .meta { gap: 16px; font-size: 18px; }
+    .center { grid-template-columns: minmax(0, 1fr); }
+    .danger { font-size: min(20px, 5.4vw); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    .bubble .meta b { font-size: 34px; }
+    .sealcard { padding: 10px 12px; }
+    .sealcard .h { font-size: 15px; }
+    .sealcard .t { font-size: 18px; }
+    .sealcard .s { font-size: 15px; }
+    /* карточки игроков: при нехватке высоты layout() включает компактный ряд */
+    .arena.compact .pc { height: 38px; }
+    .arena.compact .pc b { font-size: 17px; }
+    .arena.compact .pc .av { width: 26px; height: 26px; font-size: 12px; }
+    .arena.compact .pc .st { font-size: 13px; }
+    .arena.tiny .pc { padding: 0 6px; gap: 4px; }
+    .arena.tiny .pc .av { display: none; }
+    .kapow { width: 240px; height: 190px; margin: -95px 0 0 -120px; }
+    .kapow span { font-size: 60px; }
+    /* итоги: кнопки ведущего прилипают к низу карточки — не надо листать до них */
+    .rcard { padding: 14px 16px 0; gap: 10px; }
+    .stats { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+    .stat .v { font-size: 19px; }
+    .verdict .sub { font-size: 17px; }
+    .rbtns, .rcard > .fine { position: sticky; bottom: 0; background: var(--paper); padding: 8px 0 14px; }
+    .rbtns button { font-size: 19px; padding: 11px 14px; }
   }
+  @media (max-width: 380px) {
+    .logo { font-size: 24px; }
+    /* в игре на SE шапке не хватает места: стрелка «назад» уступает коду комнаты */
+    body:not([data-phase="lobby"]) .brand a { display: none; }
+  }
+  @media (max-width: 340px) {
+    .logo { display: none; }
+  }
+  /* низкий узкий экран (SE, телефон боком): центр плотнее */
+  @media (max-width: 760px) and (max-height: 620px) {
+    .center { gap: 4px; }
+    .center .lbl { font-size: 14px; height: 14px; }
+    .holder { height: 44px; }
+    .doing { font-size: 18px; height: 24px; }
+    .bubble { height: 84px; padding: 6px 12px; }
+    .bubble .q { font-size: 18px; }
+    .bubble .q.crowdcode { font-size: 30px; }
+    .bubble .opts { font-size: 15px; margin-top: 4px; }
+    .bubble .meta b { font-size: 28px; }
+    .danger { height: 22px; }
+    .count { font-size: 64px; height: 64px; }
+    .sealcard .s { display: none; }
+    .verdict .n { font-size: 38px; }
+  }
+  /* телефон боком: игроки — в левой половине, центр — справа */
+  .arena.side .center { left: auto; right: 0; top: 50%; bottom: auto; width: calc(50% - 8px); transform: translateY(-50%); }
+  body.host .arena.side .center { top: calc(50% - 23px); }
   @media (prefers-reduced-motion: reduce) {
     .bombwrap .shake, .bomb .spark, body.hot .danger, body.hot main::before, .count.pop, .kapow.on, body.shaking main, .seat.new, .rcard { animation: none !important; }
     .pc { transition: none; }
@@ -536,14 +596,32 @@ function layout() {
   const list = arenaPlayers();
   const n = list.length;
   const narrow = W < 760;
-  const cw = narrow ? Math.floor((W - 8) / Math.max(1, Math.min(3, Math.floor(W / 150)))) - 8 : Math.max(150, Math.min(220, Math.floor(W / 7)));
+  // узкий экран: карточки сеткой сверху, центр прижат книзу. Телефон боком — карточки слева, центр справа.
+  // Колонок и высоту ряда подбираем так, чтобы сетка не залезала под центр
+  const side = narrow && W > H * 1.5;
+  arena.classList.toggle("side", side);
+  const GW = side ? Math.floor(W / 2) : W;
+  const center = $("center");
+  const free = side ? H : H - (center.offsetHeight + (parseFloat(getComputedStyle(center).bottom) || 0)) - 8;
+  let cols = Math.max(1, Math.min(3, Math.floor(GW / 150))), pitch = 66;
+  if (narrow) {
+    const fits = (c, h) => Math.ceil(n / c) * h - 8 <= free;
+    if (!fits(cols, 66)) {
+      if (fits(cols, 46)) pitch = 46;
+      else { cols = Math.max(cols, Math.min(4, Math.floor(GW / 90))); pitch = 46; }
+    }
+  }
+  arena.classList.toggle("compact", narrow && pitch === 46);
+  const ch = narrow ? pitch - 8 : 58;
+  const cw = narrow ? Math.floor((GW - 8) / cols) - 8 : Math.max(150, Math.min(220, Math.floor(W / 7)));
   arena.style.setProperty("--cw", cw + "px");
+  // совсем узкая карточка — без кружка-аватара, чтобы имя читалось
+  arena.classList.toggle("tiny", narrow && cw < 110);
   list.forEach((p, i) => {
     let x, y;
     if (narrow) {
-      const cols = Math.max(1, Math.floor((W + 8) / (cw + 8)));
       x = (i % cols) * (cw + 8) + cw / 2;
-      y = Math.floor(i / cols) * 66 + 29;
+      y = Math.floor(i / cols) * pitch + ch / 2;
     } else {
       const rx = W / 2 - cw / 2 - 8, ry = H / 2 - 29 - 8;
       const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
@@ -552,7 +630,7 @@ function layout() {
     }
     cardPos.set(p.id, { x, y });
     const c = cards.get(p.id);
-    if (c) c.style.transform = `translate(${x - cw / 2}px, ${y - 29}px)`;
+    if (c) c.style.transform = `translate(${x - cw / 2}px, ${y - ch / 2}px)`;
   });
 }
 
@@ -581,10 +659,11 @@ function drawArena() {
     c.classList.toggle("victim", (state.phase === "boom" || state.phase === "finished") && lastVictim() === p.id);
     c.dataset.id = p.id;
   }
-  const key = `${arena.clientWidth}x${arena.clientHeight}:${list.map((p) => p.id).join(",")}`;
+  drawCenter();
+  // высота центра — в ключе: на узком экране сетка карточек подстраивается под неё (отсчёт выше, чем раунд)
+  const key = `${arena.clientWidth}x${arena.clientHeight}:${$("center").offsetHeight}:${list.map((p) => p.id).join(",")}`;
   if (key !== arenaSize) { arenaSize = key; layout(); }
   drawBombs();
-  drawCenter();
   drawHostbar();
 }
 
@@ -599,7 +678,8 @@ function bombSpot(holder) {
   if (!p) return null;
   const arena = $("arena");
   const W = arena.clientWidth, H = arena.clientHeight;
-  if (W < 760) return { x: p.x + (parseFloat(getComputedStyle(arena).getPropertyValue("--cw")) || 150) / 2 - 20, y: p.y - 18 };
+  // узкий экран: на правом краю карточки, но не за краем арены (там её обрезает)
+  if (W < 760) return { x: Math.min(p.x + (parseFloat(getComputedStyle(arena).getPropertyValue("--cw")) || 150) / 2 - 20, W - 50), y: p.y - 18 };
   const dx = W / 2 - p.x, dy = H / 2 - p.y, d = Math.hypot(dx, dy) || 1;
   return { x: p.x + (dx / d) * 92, y: p.y + (dy / d) * 70 };
 }
@@ -827,9 +907,12 @@ function boomFx(victim) {
   if (!pos) return;
   const k = el("div", "kapow on");
   k.innerHTML = `<svg viewBox="0 0 380 300"><path d="M190 8 L222 92 L300 40 L276 124 L372 132 L292 176 L352 262 L252 226 L230 296 L186 234 L126 292 L122 214 L20 244 L84 170 L8 118 L104 110 L70 26 L150 84Z" fill="#e8322b" stroke="#16120c" stroke-width="8" stroke-linejoin="round"/></svg><span>${escapeHtml(T("boom"))}</span>`;
-  k.style.left = pos.x + "px";
-  k.style.top = pos.y + "px";
-  $("arena").append(k);
+  const arena = $("arena");
+  arena.append(k);
+  // у края экрана звезда не должна уходить за арену (на телефоне её там обрезает)
+  const hw = k.offsetWidth / 2, W = arena.clientWidth, narrow = W < 760;
+  k.style.left = (narrow ? Math.min(Math.max(pos.x, hw), W - hw) : pos.x) + "px";
+  k.style.top = (narrow ? Math.max(pos.y, k.offsetHeight / 2) : pos.y) + "px";
   setTimeout(() => k.remove(), 4200);
 }
 
