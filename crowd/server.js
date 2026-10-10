@@ -529,7 +529,7 @@ function handle(room, client, msg) {
         let name = cleanName(msg.name);
         if (!name) return reply({ type: "error", error: "bad_name" });
         const taken = new Set(g.s.players.filter((p) => !p.left).map((p) => nameKey(p.name)));
-        for (let i = 2; taken.has(nameKey(name)); i++) name = `${cleanName(msg.name).slice(0, 13)} ${i}`;
+        for (let i = 2; taken.has(nameKey(name)); i++) name = `${Array.from(cleanName(msg.name)).slice(0, 13).join("")} ${i}`; // по символам: эмодзи не рвём пополам
         playerId = "u_" + crypto.randomBytes(5).toString("hex");
         const r = g.addPlayer({ id: playerId, name, now: t });
         if (!r.ok) return reply({ type: "error", error: r.reason });

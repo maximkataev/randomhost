@@ -76,7 +76,7 @@
   /* «Угадай, что скажет БОЛЬШИНСТВО» — подпись над вопросом */
   .banner { flex: none; text-align: center; color: var(--muted); font: 500 13px/1.2 var(--body); }
   .banner b { font: 900 .95em/1 var(--display); letter-spacing: .06em; background: linear-gradient(100deg, var(--c3), var(--c1) 55%, var(--c2)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
-  .meta { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 10px; font: 700 12px/1 var(--body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: -2px; }
+  .meta { flex: none; min-height: 20px; /* секунды пишет frame() уже после fit(): высота не должна прыгать */ display: flex; justify-content: space-between; align-items: center; gap: 10px; font: 700 12px/1 var(--body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: -2px; }
   .meta b { font: 900 20px/1 var(--display); letter-spacing: 0; font-variant-numeric: tabular-nums; min-width: 3.4ch; text-align: right; display: inline-block; color: var(--text); }
   .meta i { font-style: normal; background: #fff; color: #0b1030; border-radius: 8px; padding: 3px 7px; margin-left: 8px; font-weight: 800; letter-spacing: .02em; }
   .timer { flex: none; height: 8px; background: var(--glass-hi); border: 1px solid var(--glass-line); border-radius: 6px; position: relative; overflow: hidden; }
@@ -244,6 +244,21 @@
     .err { min-height: 4px; }
     ol.rules { gap: 4px; } ol.rules li { font-size: 12.5px; padding: 5px 8px 5px 38px; } ol.rules li::before { width: 22px; height: 22px; font-size: 11px; line-height: 22px; left: 8px; }
   }
+  /* телефон лёжа (высота ≤ 440): голос, ожидание и «Мнение» без прокрутки — ниже кнопки, ожидание в одну строку */
+  @media (orientation: landscape) and (max-height: 440px) {
+    .sides, .side { min-height: 64px; }
+    .sides { flex: 1 1 0; } /* кнопки берут только остаток высоты, а не свою «естественную» */
+    .side { padding: 8px 44px; gap: 2px; }
+    .side .big { font-size: 26px; } /* «ΕΓΩ: ΝΑΙ» и подписи А/Б — в одну строку, кнопка невысокая */
+    .bankrow { min-height: 40px; }
+    .done { min-height: 48px; }
+    .mine { min-height: 64px; padding: 8px 48px; gap: 2px; }
+    .mine .big { font-size: 30px; }
+    .waitbox { flex-direction: row; flex-wrap: wrap; justify-content: center; padding: 8px 12px; gap: 6px 14px; }
+    .rv { width: 30px; height: 30px; font-size: 16px; }
+    .skip { min-height: 44px; }
+    .opnote { min-height: 0; }
+  }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 </head>
@@ -299,7 +314,7 @@ window.I18N_DICT = {
     illusion: `Иллюзия!`, illusion_sub: `Все думали — большинство «{v}», а лично — «{o}»`,
     op_agg: `Лично думают: {n} из {m} — {side}`, op_agg_tie: `Лично думают: поровну`,
     score_label: `Твой счёт`, place: `{n}-е место`,
-    pause_title: `Ждём игроков`, pause_sub: `Нужно хотя бы {n} человека онлайн. Не уходи`,
+    pause_title: `Ждём игроков`, pause_sub: `Нужно хотя бы {n} человека онлайн. Не уходи`, pause_void: `Два вопроса подряд почти без голосов. Продолжим через минуту — не уходи`,
     final_title: `Итоги`, final_paused: `Партия прервана`, final_host: `Ведущий закончил партию`, final_sub: `Ведущий может начать ещё партию`,
     aw_crowd: `Чует толпу`, aw_crow: `Белая ворона`, aw_risk: `Рискнул`, aw_wolf: `Одиночка`,
     pts: `очков`,
@@ -351,7 +366,7 @@ window.I18N_DICT = {
     illusion: `Illusion!`, illusion_sub: `Everyone thought the majority says "{v}", but personally — "{o}"`,
     op_agg: `Personally: {n} of {m} — {side}`, op_agg_tie: `Personally: an even split`,
     score_label: `Your score`, place: `#{n}`,
-    pause_title: `Waiting for players`, pause_sub: `At least {n} people must be online. Stay here`,
+    pause_title: `Waiting for players`, pause_sub: `At least {n} people must be online. Stay here`, pause_void: `Two questions in a row got almost no votes. We’ll continue in a minute — stay here`,
     final_title: `Results`, final_paused: `The game was interrupted`, final_host: `The host ended the game`, final_sub: `The host can start another game`,
     aw_crowd: `Reads the crowd`, aw_crow: `Black sheep`, aw_risk: `Risk taker`, aw_wolf: `Lone wolf`,
     pts: `pts`,
@@ -403,7 +418,7 @@ window.I18N_DICT = {
     illusion: `Ψευδαίσθηση!`, illusion_sub: `Όλοι νόμιζαν ότι η πλειοψηφία λέει «{v}», αλλά προσωπικά — «{o}»`,
     op_agg: `Προσωπικά: {n} από {m} — {side}`, op_agg_tie: `Προσωπικά: ίσα μοιρασμένοι`,
     score_label: `Το σκορ σου`, place: `{n}η θέση`,
-    pause_title: `Περιμένουμε παίκτες`, pause_sub: `Χρειάζονται τουλάχιστον {n} άτομα online. Μη φύγεις`,
+    pause_title: `Περιμένουμε παίκτες`, pause_sub: `Χρειάζονται τουλάχιστον {n} άτομα online. Μη φύγεις`, pause_void: `Δύο ερωτήσεις στη σειρά σχεδόν χωρίς ψήφους. Συνεχίζουμε σε ένα λεπτό — μη φύγεις`,
     final_title: `Αποτελέσματα`, final_paused: `Η παρτίδα διακόπηκε`, final_host: `Ο οικοδεσπότης τερμάτισε την παρτίδα`, final_sub: `Ο οικοδεσπότης μπορεί να ξεκινήσει νέα παρτίδα`,
     aw_crowd: `Μυρίζεται το πλήθος`, aw_crow: `Το μαύρο πρόβατο`, aw_risk: `Ρίσκαρε`, aw_wolf: `Μοναχικός λύκος`,
     pts: `πόντοι`,
@@ -822,7 +837,9 @@ function renderResult() {
 function renderPause() {
   setScene("day");
   setFrame(false);
-  show(`<div class="note"><h2>${escapeHtml(T("pause_title"))}</h2><p class="lede">${escapeHtml(tpl("pause_sub", { n: state.minPlayers }))}</p><p class="fine" id="psec"></p></div>`, "pause", true);
+  // все на связи, а пауза — значит, два вопроса подряд аннулированы
+  const vd = state.players.filter((x) => !x.left && x.online).length >= state.minPlayers;
+  show(`<div class="note"><h2>${escapeHtml(T("pause_title"))}</h2><p class="lede">${escapeHtml(vd ? T("pause_void") : tpl("pause_sub", { n: state.minPlayers }))}</p><p class="fine" id="psec"></p></div>`, "pause:" + vd, true);
 }
 function renderFinal() {
   setScene("day");

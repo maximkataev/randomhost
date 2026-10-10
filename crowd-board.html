@@ -358,6 +358,9 @@
   .ptr .lobby { grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 22px; padding: 4px 36px 30px; }
   .ptr .lb-mid { display: contents; }
   .ptr .lb-top { grid-row: 1; } .ptr .ticket { grid-row: 2; flex-direction: row; flex-wrap: wrap; padding: 18px 26px; }
+  /* стоя QR слева, код и подсказка справа: билет в одну «строку», иначе на планшете и вертикальном ТВ списку игроков не остаётся высоты */
+  .ptr .ticket { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-auto-rows: auto; align-content: center; align-items: center; justify-items: center; gap: 10px 26px; }
+  .ptr .ticket > * { grid-column: 2; } .ptr .ticket #qr { grid-column: 1; grid-row: 1 / span 4; }
   .ptr .lb-players { grid-row: 3; } .ptr .lb-ctl { grid-row: 4; }
   .ptr .lps { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); }
   .ptr .lp b { font-size: 21px; } .ptr .rules { display: none; }
@@ -435,7 +438,7 @@ window.I18N_DICT = {
     intro_final: `Финал`, intro_final_d: `Очки за этот вопрос удваиваются. Ва-банка нет.`,
     intro_extra: `Допвопрос`, intro_extra_d: `Финал закончился расколом. Очки снова ×2.`,
     intro_decider: `Решающий вопрос`, intro_decider_d: `Первое место делят. Голосуют все, очки получают только они:`,
-    pause_title: `Ждём игроков`, pause_d: `Нужно хотя бы {min} на связи, сейчас — {n}. Не вернутся — партия прервётся.`,
+    pause_title: `Ждём игроков`, pause_d: `Нужно хотя бы {min} на связи, сейчас — {n}. Не вернутся — партия прервётся.`, pause_void: `Два вопроса подряд почти без голосов. Продолжим через минуту.`,
     lobby_free: `свободно мест: {n}`, lobby_scan: `Наведи камеру телефона на QR или открой ссылку и введи имя.`, lobby_players: `Игроки`,
     r1: `На экране вопрос. Отвечай не за себя, а за всех: что выберет большинство?`,
     r2: `Угадал большинство — +100. Нет — 0. Поровну — всем по +50.`,
@@ -467,7 +470,7 @@ window.I18N_DICT = {
     intro_final: `Final`, intro_final_d: `Points for this question are doubled. No all-in.`,
     intro_extra: `Bonus question`, intro_extra_d: `The final ended in a split. Points are ×2 again.`,
     intro_decider: `Deciding question`, intro_decider_d: `Tied for first. Everyone votes, only these players score:`,
-    pause_title: `Waiting for players`, pause_d: `At least {min} must be online, now {n}. If they don’t return, the game stops.`,
+    pause_title: `Waiting for players`, pause_d: `At least {min} must be online, now {n}. If they don’t return, the game stops.`, pause_void: `Two questions in a row got almost no votes. We’ll continue in a minute.`,
     lobby_free: `{n} seats left`, lobby_scan: `Point your phone camera at the QR or open the link and type your name.`, lobby_players: `Players`,
     r1: `A question appears. Answer not for yourself but for everyone: what will the majority pick?`,
     r2: `Guessed the majority — +100. Missed — 0. A tie — +50 for all.`,
@@ -499,7 +502,7 @@ window.I18N_DICT = {
     intro_final: `Τελικός`, intro_final_d: `Οι βαθμοί της ερώτησης διπλασιάζονται. Χωρίς ρίσκο.`,
     intro_extra: `Έξτρα ερώτηση`, intro_extra_d: `Ο τελικός έληξε με χωρισμό. Οι βαθμοί ξανά ×2.`,
     intro_decider: `Αποφασιστική ερώτηση`, intro_decider_d: `Ισοπαλία στην κορυφή. Ψηφίζουν όλοι, βαθμούς παίρνουν μόνο:`,
-    pause_title: `Περιμένουμε παίκτες`, pause_d: `Χρειάζονται τουλάχιστον {min} συνδεδεμένοι, τώρα {n}. Αν δεν γυρίσουν, η παρτίδα διακόπτεται.`,
+    pause_title: `Περιμένουμε παίκτες`, pause_d: `Χρειάζονται τουλάχιστον {min} συνδεδεμένοι, τώρα {n}. Αν δεν γυρίσουν, η παρτίδα διακόπτεται.`, pause_void: `Δύο ερωτήσεις στη σειρά σχεδόν χωρίς ψήφους. Συνεχίζουμε σε ένα λεπτό.`,
     lobby_free: `ακόμα {n} θέσεις`, lobby_scan: `Στρέψε την κάμερα του κινητού στο QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.`, lobby_players: `Παίκτες`,
     r1: `Εμφανίζεται μια ερώτηση. Απάντησε όχι για σένα αλλά για όλους: τι θα διαλέξει η πλειοψηφία;`,
     r2: `Βρήκες την πλειοψηφία — +100. Όχι — 0. Ισοπαλία — +50 σε όλους.`,
@@ -578,8 +581,9 @@ const place = (el, r) => { el.style.left = r.x + "px"; el.style.top = r.y + "px"
 function measure() {
   const rawPortrait = innerWidth / innerHeight < 1.25;
   const zz = Math.min(innerWidth / (rawPortrait ? 800 : 1600), innerHeight / (rawPortrait ? 1280 : 900));
-  // ≥1.15 — ТВ (растягиваем); низкий экран (<700px высоты, например ТВ с браузерным зумом 200%) — сжимаем виртуальный экран
-  Z = zz >= 1.15 || (innerHeight < 700 && !rawPortrait) ? Math.round(zz * 100) / 100 : 1;
+  // ≥1.15 — ТВ (растягиваем); экран меньше эталона 1600×900 (800×1280 стоя) — ноутбук, планшет, телефон, ТВ с зумом 200% —
+  // сжимаем виртуальный экран целиком: иначе колонки лобби и плашки налезают друг на друга
+  Z = zz >= 1.15 || zz < 1 ? Math.round(zz * 100) / 100 : 1;
   document.documentElement.style.setProperty("--z", Z);
   const W = main.clientWidth, H = main.clientHeight;
   const portrait = W / H < 1.25;
@@ -1005,15 +1009,18 @@ function drawIntro() {
 function fitIntro() {
   const h = $("ih"), box = h.closest(".full"), poster = h.closest(".poster");
   let fs = M.portrait ? 110 : Math.min(190, M.H * 0.2), g = 0;
-  const over = () => { const kids = [...box.children]; const tot = kids.reduce((a, k) => a + k.offsetHeight, 0) + 28 * (kids.length - 1); return tot > box.clientHeight - 60 || h.scrollWidth > h.clientWidth + 1 || poster.scrollWidth > box.clientWidth - 100; };
+  const over = () => { const kids = [...box.children]; const tot = kids.reduce((a, k) => a + k.offsetHeight, 0) + 28 * (kids.length - 1); return tot > box.clientHeight - 60 || h.scrollWidth > h.clientWidth + 1 || (!M.portrait && poster.scrollWidth > box.clientWidth - 100); }; // стоя плашка и так во всю ширину: смотрим только, влезает ли слово и высота
   h.style.fontSize = fs + "px";
   while (fs > 28 && over() && g++ < 80) { fs -= 4; h.style.fontSize = fs + "px"; }
 }
 function drawPause() {
-  const key = "pause:" + wvLang() + L.sig;
   const online = present().filter((p) => p.online).length;
+  // пауза бывает и при всех на связи — после двух аннулированных вопросов подряд: тогда «сейчас — 6» сбивает с толку
+  const text = online >= state.minPlayers ? T("pause_void") : tpl("pause_d", { min: state.minPlayers, n: online });
+  const key = "pause:" + wvLang() + L.sig + text;
+  if (viewKey === key) return;
   viewKey = key;
-  upper.innerHTML = `<div class="scr full"><div class="poster pnl"><h1 id="ih"><span class="tw">${esc(T("pause_title"))}</span></h1><p>${esc(tpl("pause_d", { min: state.minPlayers, n: online }))}</p></div></div>`;
+  upper.innerHTML = `<div class="scr full"><div class="poster pnl"><h1 id="ih"><span class="tw">${esc(T("pause_title"))}</span></h1><p>${esc(text)}</p></div></div>`;
   fitIntro();
 }
 
