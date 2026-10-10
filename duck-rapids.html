@@ -107,6 +107,7 @@
   .pl .ping.bad { color: var(--gold); }
   .pl .x { width: 22px; height: 22px; border-radius: 6px; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
   .pl .x:hover { background: rgba(255,90,90,0.2); color: #fff; }
+  body.is-touch .pl .x { width: 36px; height: 36px; margin: -7px -6px -7px 0; font-size: 15px; }
   .keys { display: grid; grid-template-columns: auto 1fr; gap: 7px 10px; align-items: center; font-size: 12.5px; color: var(--muted); }
   .keys b { color: var(--ink); }
   .kk { display: flex; gap: 3px; }
@@ -149,6 +150,8 @@
   @keyframes pop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); } 18% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); } }
   .banner { position: fixed; left: 50%; top: 64px; transform: translateX(-50%) translateY(-20px); z-index: 8; pointer-events: none; background: rgba(205, 48, 58, 0.96); color: #fff; border-radius: 16px; padding: 12px 22px; font-weight: 800; font-size: 20px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4); opacity: 0; transition: opacity 0.25s, transform 0.25s; max-width: calc(100vw - 32px); }
   .banner.gold { background: rgba(255, 196, 30, 0.97); color: #3b2400; }
+  /* по центру через left:50% ширина по содержимому упиралась в полэкрана — плашки ломались в столбик на телефоне */
+  .banner, .toast, .verdict { width: max-content; }
   .banner small { display: block; font-weight: 600; font-size: 12px; opacity: 0.85; margin-top: 2px; }
   .banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   .tag { position: fixed; left: 50%; transform: translateX(-50%); z-index: 8; background: rgba(255,255,255,0.93); color: #0b2a22; font-weight: 800; border-radius: 14px; padding: 6px 14px; font-size: 13px; display: none; text-align: center; width: max-content; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); max-width: calc(100vw - 24px); }
@@ -173,7 +176,7 @@
   .verdict { position: fixed; left: 50%; bottom: 7%; transform: translateX(-50%); z-index: 7; pointer-events: none; font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: min(44px, 4.2vw); color: #fff; text-align: center; text-shadow: 0 0 2px #0b2a22, 0 3px 0 #0b2a22, 0 6px 24px rgba(0,0,0,0.6); display: none; max-width: calc(100vw - 32px); line-height: 1.15; }
   .verdict.show { display: block; animation: verdictIn 0.5s cubic-bezier(.2,1.4,.4,1); }
   @keyframes verdictIn { from { opacity: 0; transform: translate(-50%, 20px) scale(0.9); } }
-  @media (min-width: 900px) { body.with-panel .verdict { margin-left: 170px; } }
+  @media (min-width: 900px) { body.with-panel .verdict { margin-left: 170px; } body.with-panel .verdict, body.with-panel .banner { max-width: calc(100vw - 372px); } }
   /* на телефоне лента — под верхними плашками: снизу река впереди утки, её закрывать нельзя */
   body.is-touch .feed { bottom: auto; top: calc(56px + env(safe-area-inset-top, 0px)); }
   body.is-touch .feed div { font-size: 12px; padding: 4px 9px; }
@@ -214,6 +217,7 @@
     .banner small { font-size: 11px; }
     .tb { width: 72px; height: 72px; font-size: 30px; bottom: 14px; }
   }
+  @media (max-width: 380px) { .host-card .nm { font-size: 26px; } }
   @media (prefers-reduced-motion: reduce) { .big.show { animation-duration: 0.01s; } }
 </style>
 </head>
@@ -702,7 +706,7 @@ window.I18N_DICT = {
         <div class="row2"><input class="field code" id="codeIn" maxlength="14" placeholder="${esc(T("code_ph"))}" autocomplete="off" autocapitalize="characters"><button class="btn ghost" id="codeGo" type="button" style="flex:0 0 auto;width:auto">${esc(T("go"))}</button></div>
       </div>
       <div class="err" id="err">${ui.joinErr ? esc(T(ui.joinErr)) : ""}</div>`,
-      `<button class="btn" id="create" type="button">${esc(T("create"))}</button>${ui.codeOpen ? "" : `<button class="link" id="haveCode" type="button">${esc(T("have_code"))}</button>`}`);
+      `<button class="btn" id="create" type="button">${esc(T("create"))}</button>${ui.codeOpen ? "" : `<button class="link" id="haveCode" type="button">${esc(T("have_code"))}</button>`}`, "home");
     $("create").onclick = createRoom;
     if ($("haveCode")) $("haveCode").onclick = () => { ui.codeOpen = true; drawHome(); $("codeIn").focus(); };
     if ($("codeGo")) {
@@ -725,7 +729,7 @@ window.I18N_DICT = {
       ${net.roster.length ? `<div class="sec"><h3>${esc(T("players"))} <span>${esc(tpl("of_max", { n: net.roster.length, m: MAX }))}</span></h3>${playerList(false)}</div>` : ""}
       <div class="err" id="err">${ui.joinErr ? esc(T(ui.joinErr)) : ""}</div>`,
       net.roster.length >= MAX ? `<div class="err">${esc(T("room_full"))}</div><button class="btn" id="joinBtn" type="button" disabled>${esc(T("join"))}</button>`
-        : `${ui.joinErr ? `<div class="err">${esc(T(ui.joinErr))}</div>` : ""}<button class="btn" id="joinBtn" type="button">${esc(T("join"))}</button>`);
+        : `${ui.joinErr ? `<div class="err">${esc(T(ui.joinErr))}</div>` : ""}<button class="btn" id="joinBtn" type="button">${esc(T("join"))}</button>`, "join");
     const go = () => {
       const n = $("nameIn").value.trim();
       if (!n) { ui.joinErr = "bad_name"; $("err").textContent = T("bad_name"); return; }
@@ -891,7 +895,7 @@ window.I18N_DICT = {
   // что перекрывает реку снизу: кнопки руля в заплыве или лист панели на телефоне в портрете
   function placeGaps() {
     let bottom = 0;
-    if (document.body.classList.contains("playing") && !document.body.classList.contains("out") && isTouch) bottom = 120;
+    if (document.body.classList.contains("playing") && !document.body.classList.contains("out") && isTouch) bottom = innerWidth > innerHeight ? 0 : 120;
     else if (document.body.classList.contains("with-panel") && matchMedia("(max-width: 899px) and (orientation: portrait)").matches) bottom = Math.round($("panel").getBoundingClientRect().height);
     render.setGaps(56, bottom);
   }
