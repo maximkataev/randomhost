@@ -415,7 +415,8 @@ function fitShouts() {
     while (h.scrollWidth > h.clientWidth + 1 && fs > 18 && guard++ < 40) { fs -= 2; h.style.fontSize = fs + "px"; }
   });
   // полюса: длинное слово («ΕΡΩΤΕΥΜΕΝΟΥΣ») на 320–375 px не влезало в полстроки и уезжало за край — уменьшаем кегль
-  app.querySelectorAll(".poles span").forEach((h) => {
+  // и полюса в карточках выбора шкалы: «ВОИНСТВЕННОЕ» на 320 px рвалось посреди слова
+  app.querySelectorAll(".poles span, .pick button span").forEach((h) => {
     h.style.fontSize = "";
     h.style.overflowWrap = "normal"; // меряем без переноса посреди слова; он остаётся запасным, если и 11 px не хватило
     let fs = parseFloat(getComputedStyle(h).fontSize), guard = 0;
@@ -434,7 +435,8 @@ function fitDial() {
 }
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fitShouts(); fitDial(); });
 // поворот и панели браузера; пока открыта клавиатура (Android сжимает окно) — не трогаем, иначе шкала дёргается
-window.addEventListener("resize", () => { if (document.activeElement && document.activeElement.tagName === "INPUT") return; fitDial(); });
+// поворот из альбомной в портретную: крупный заголовок (имя в лобби) тоже перемеряем, иначе он уезжал за край
+window.addEventListener("resize", () => { if (document.activeElement && document.activeElement.tagName === "INPUT") return; fitShouts(); fitDial(); });
 
 // ---------- цвет экрана ----------
 // у каждой шкалы свой цвет, смена — шторкой из центра шкалы
@@ -800,6 +802,9 @@ function render() {
     return renderEnter();
   }
   if (!mine()) return renderEnter();
+  // «joined» приходит раньше снимка со «мной»: в последнем снимке (hello до входа) state.me ещё null —
+  // экраны раунда падали на state.me.card; ждём следующий state, он идёт сразу за joined
+  if (!state.me) return;
   screen = "game";
   paint(phaseColor());
   switch (state.phase) {

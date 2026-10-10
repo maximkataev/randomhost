@@ -158,7 +158,7 @@
   .fine { font-size: clamp(17px, 2.4vh, 28px); font-weight: 700; }
 
   /* ---------- заставка раунда ---------- */
-  .intro { flex: 1; display: grid; place-items: center; text-align: center; align-content: center; gap: 3vh; }
+  .intro { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; text-align: center; align-content: center; gap: 3vh; } /* колонка не шире экрана — иначе fitShout не видел, что «ДВОЙНАЯ ВОЛНА» вылезла за край портретного планшета */
   .intro h1 { font-size: clamp(70px, 17vh, 240px); }
   .intro .mult { display: inline-block; background: var(--ink); color: var(--card); font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; font-size: clamp(40px, 8vh, 110px); padding: .5vh 2.4vw; clip-path: inset(0 100% 0 0); animation: wipeIn .45s cubic-bezier(.7, 0, .3, 1) .5s forwards; }
   @keyframes wipeIn { to { clip-path: inset(0); } }
@@ -198,11 +198,11 @@
   .aw { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; }
   .aw .av { width: 60px; height: 60px; font-size: 32px; }
   .aw .eyebrow { opacity: .75; }
-  .aw b { display: block; font-size: clamp(20px, 3vh, 36px); font-weight: 1000; line-height: 1.05; }
+  .aw b { display: block; font-size: clamp(20px, 3vh, 36px); font-weight: 1000; line-height: 1.05; overflow-wrap: anywhere; }
   .aw p { margin: 2px 0 0; font-size: clamp(17px, 2.6vh, 30px); font-weight: 700; }
   .replay { flex: 1; min-height: 0; background: var(--paper); border: 4px solid var(--ink); display: flex; flex-direction: column; padding: 1.4vh 1.4vw; gap: .8vh; }
   .replay .dialwrap { flex: 1; }
-  .replay q { font-weight: 1000; font-size: clamp(20px, 3.2vh, 40px); line-height: 1; quotes: "«" "»" "“" "”"; }
+  .replay q { font-weight: 1000; font-size: clamp(20px, 3.2vh, 40px); line-height: 1; overflow-wrap: anywhere; quotes: "«" "»" "“" "”"; }
   .replay .dp { display: flex; justify-content: space-between; gap: 12px; font-weight: 1000; text-transform: uppercase; font-size: clamp(16px, 2.6vh, 30px); }
   .hostbtns { display: flex; gap: 12px; flex-wrap: wrap; }
   .hostbtns .start { flex: 1; width: auto; }
@@ -212,6 +212,29 @@
   .floater small { background: var(--ink); color: var(--paper); font-weight: 800; padding: 2px 8px; font-size: 15px; }
   @keyframes float { to { transform: translateY(-55vh); opacity: 0; } }
 
+  /* доска на планшете стоймя (768–1100 px): QR с кодом в ряд распирал правую колонку, и имена игроков слева сжимались до одной буквы */
+  @media (min-width: 761px) and (max-width: 1100px) and (orientation: portrait) {
+    .lobby { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .joinbox { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px; }
+    #qr { width: 190px; height: 190px; align-self: center; }
+    .lobby .seats { grid-template-columns: minmax(0, 1fr); }
+    /* итоги: пьедестал и награды рядом не помещались — повтор «Мимо кассы» наезжал на кнопки; одна прокручиваемая колонка, как на телефоне */
+    body[data-phase="finished"] { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }
+    body[data-phase="finished"] .top { position: sticky; top: 0; background: inherit; }
+    body[data-phase="finished"] main { flex: none; }
+    body[data-phase="finished"] .screen { position: static; padding: 4px 26px calc(5vh + 28px); }
+    .final { display: flex; flex-direction: column; gap: 32px; }
+    .step:nth-child(1) .col { height: 24vh !important; }
+    .step:nth-child(2) .col { height: 32vh !important; }
+    .step:nth-child(3) .col { height: 17vh !important; }
+    .replay { flex: none; }
+    .replay .dialwrap { flex: none; height: 260px; }
+    /* нижняя строка: плитки игроков своей строкой — иначе «έγραψαν 0/6» наезжал на столбик плиток */
+    .foot { flex-wrap: wrap; gap: 8px 18px; }
+    .foot .chips { flex: 1 1 100%; }
+    .foot .secs { margin-left: auto; }
+    .foot .count:empty, .foot .secs:empty { display: none; }
+  }
   /* ---------- узкий экран (хост открыл экран игры с телефона): лобби — одна прокручиваемая колонка.
      Сначала то, что нужно хосту: код + QR + ссылка, настройка, кнопка старта; ниже — игроки и пример.
      Только лобби (body:has(.lobby)), остальные фазы и ТВ-раскладка не трогаются. ---------- */
@@ -595,7 +618,13 @@ function fitClue() {
   const q = $("clueq");
   // на телефоне потолок кегля ещё и от ширины: иначе на высоком узком экране подсказка в 90 px упирается в края
   const max = Math.min(110, vh(0.1), Math.round(window.innerWidth * 0.15));
+  // меряем без переноса посреди слова («Бабушк|ин» на портретном планшете): перенос остаётся запасным на минимальном кегле
+  const qq = q.firstChild;
+  if (qq) qq.style.overflowWrap = "normal";
   fit(q, box, "--cfs", max, 22);
+  if (qq) qq.style.overflowWrap = "";
+  // не влезло и на минимуме (слово-монстр «ЖЖЖ…») — подбираем заново уже с переносом посреди слова
+  if (q.scrollHeight > q.clientHeight + 1 || q.scrollWidth > q.clientWidth + 1) fit(q, box, "--cfs", max, 22);
   const f = $("flash");
   if (f) fit(f, box, "--ffs", max, 22);
 }
@@ -689,7 +718,15 @@ function drawClues() {
   }
   const done = new Set(state.clued);
   $("cn").innerHTML = `<small>${T("written")}</small>${state.clued.length}/${state.roster.length}`;
-  $("chips").innerHTML = state.roster.map((id) => { const p = player(id); return p ? `<span class="pc${done.has(id) ? " on" : ""}${p.online ? "" : " off"}">${avHtml(p)}<b>${escapeHtml(p.name)}</b></span>` : ""; }).join("");
+  // перерисовываем только при смене состава — иначе каждый выбор/перетасовка у любого игрока заново «слэмила» все готовые фишки
+  const sig = state.roster.map((id) => { const p = player(id); return p ? id + (done.has(id) ? "+" : "") + (p.online ? "" : "~") + p.name : ""; }).join(",");
+  const box = $("chips");
+  if (box.dataset.sig === sig) return;
+  const before = new Set((box.dataset.on || "").split(",").filter(Boolean));
+  box.dataset.on = state.clued.join(",");
+  box.innerHTML = state.roster.map((id) => { const p = player(id); return p ? `<span class="pc${done.has(id) ? " on" : ""}${p.online ? "" : " off"}" data-id="${escapeHtml(id)}">${avHtml(p)}<b>${escapeHtml(p.name)}</b></span>` : ""; }).join("");
+  box.querySelectorAll(".pc.on").forEach((c) => { if (before.has(c.dataset.id)) c.style.animation = "none"; });
+  box.dataset.sig = sig;
 }
 
 // ---------- угадывание: шкала под ширмой ----------
@@ -804,8 +841,10 @@ function countUp(nodes, dur, delay) {
 
 // ---------- итоги ----------
 function drawFinal() {
+  // меньше трёх (партия кончилась «few») — «Новая партия» сервер отклонит молча: кнопку гасим с подсказкой, пока не доберутся
+  const need = Math.max(0, state.minPlayers - present().length);
   const key = "final:" + state.game + wvLang() + isHost;
-  if (viewKey === key) return;
+  if (viewKey === key) return againState(need);
   viewKey = key;
   const list = present().slice().sort((a, b) => b.score - a.score);
   const top = [list[1], list[0], list[2]];
@@ -840,8 +879,16 @@ function drawFinal() {
   if (isHost) {
     $("again").onclick = () => conn.send({ type: "start" });
     $("tolobby").onclick = () => conn.send({ type: "lobby" });
+    againState(need);
   }
   if (state.finishedReason === "done") later(900, () => wvSfx.fanfare());
+}
+
+function againState(need) {
+  const b = $("again");
+  if (!b) return;
+  b.disabled = need > 0;
+  b.textContent = need > 0 ? tpl("need_more", { n: need }) : T("btn_again");
 }
 
 // ---------- отрисовка ----------
