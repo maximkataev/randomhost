@@ -245,15 +245,25 @@ class Game {
     p.ready = false;
     const ev = [{ type: "left", playerId: id }];
     if (s.phase !== "finished" && this.alive().length <= 1) ev.push(...this.finish("last", now));
-    else ev.push(...this.briefingDone(now));
+    else ev.push(...this.briefingDone(now), ...this.allReady(now));
     return ev;
   }
 
   setOnline(id, online, now) {
     const p = this.player(id);
     if (p) p.online = online;
-    // ушёл последний, кого ждали на знакомстве с картами, — начинаем без него
-    return !online && now != null ? this.briefingDone(now) : [];
+    // ушёл последний, кого ждали на знакомстве с картами (или с «Готово» в ставках), — идём дальше без него
+    return !online && now != null ? [...this.briefingDone(now), ...this.allReady(now)] : [];
+  }
+
+  // Ставки: все живые на связи уже нажали «Готово», а неготовый ушёл или отвалился — закрываем без таймера.
+  // Без этого стол сидел до конца таймера (до 45 с) из-за того, кто закрыл вкладку.
+  allReady(now) {
+    const s = this.s;
+    if (s.phase !== "betting" || s.paused || now == null) return [];
+    const alive = this.alive().filter((x) => x.online);
+    if (!alive.some((x) => x.ready) || alive.some((x) => !x.ready && !x.frozen)) return [];
+    return this.close(now);
   }
 
   // ---------- ход партии ----------

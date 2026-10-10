@@ -220,11 +220,19 @@ function afterChange(room, events = []) {
  * Снимки: доске — полный (число с момента броска), телефонам — общий без числа до revealAt,
  * плюс своя рука карт. Собираем по одному разу на вид, а не на каждый сокет.
  */
+// Есть ли живая доска: без неё телефоны показывают на паузе «Продолжить» (resume от игрока сервер принимает, только пока доски нет)
+const hasBoard = (room) => [...room.sockets].some((c) => c.host && c.ws.readyState === 1);
+function phoneSnapshot(room, t, playerId) {
+  const st = room.game.snapshot(t, playerId || null);
+  st.board = hasBoard(room);
+  return st;
+}
+
 function stateFor(room, c, cache) {
   const t = clock(room);
   if (c.host || c.wasHost) return cache.board || (cache.board = JSON.stringify({ type: "state", state: room.game.snapshot(t, "board") }));
-  const key = c.playerId || "";
-  if (!cache[key]) cache[key] = JSON.stringify({ type: "state", state: room.game.snapshot(t, c.playerId || null) });
+  const key = "p:" + (c.playerId || "");
+  if (!cache[key]) cache[key] = JSON.stringify({ type: "state", state: phoneSnapshot(room, t, c.playerId) });
   return cache[key];
 }
 
@@ -247,7 +255,7 @@ function broadcastEvent(room, e) {
 }
 
 function sendHello(room, c) {
-  send(c.ws, { type: "hello", code: room.code, state: room.game.snapshot(clock(room), c.host ? "board" : c.playerId || null) });
+  send(c.ws, { type: "hello", code: room.code, state: c.host ? room.game.snapshot(clock(room), "board") : phoneSnapshot(room, clock(room), c.playerId) });
 }
 
 
@@ -361,6 +369,7 @@ function closePoll(sid) {
   pollClients.delete(sid);
   if (client.ws.waiter) { const w = client.ws.waiter; client.ws.waiter = null; w(); }
   scheduleOffline(room, client.playerId);
+  if (client.host && rooms.has(room.code)) broadcastState(room); // доска ушла — телефонам нужна кнопка «Продолжить»
 }
 
 const isAnon = (c) => !c.playerId && !c.host && !c.wasHost;
@@ -482,6 +491,7 @@ function onConnection(room, ws, opts = {}) {
   ws.on("close", () => {
     room.sockets.delete(client);
     scheduleOffline(room, client.playerId);
+    if (client.host && rooms.has(room.code)) broadcastState(room); // доска ушла — телефонам нужна кнопка «Продолжить»
   });
 }
 
@@ -507,7 +517,8 @@ function handle(room, client, msg) {
       client.host = true;
       client.wasHost = true;
       reply({ type: "host_ok" });
-      return sendHello(room, client); // доске — полный снимок, с числом
+      sendHello(room, client); // доске — полный снимок, с числом
+      return broadcastState(room); // телефоны узнают, что доска снова есть
     }
     case "join": {
       if (me && g.player(me) && !g.player(me).left) return reply({ type: "joined", playerId: me, token: client.token });

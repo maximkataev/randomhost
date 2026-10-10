@@ -480,3 +480,21 @@ test("дамп: состояние переживает JSON и продолжа
   g2.tick(g2.s.deadline);
   assert.strictEqual(g2.s.phase, "payout");
 });
+
+test("готовы все, кроме отвалившегося или ушедшего, — ставки закрываются без таймера", () => {
+  const g = game(["A", "B", "C"]);
+  g.setReady("A", true, 10);
+  g.setReady("B", true, 10);
+  assert.strictEqual(g.s.phase, "betting");
+  g.setOnline("C", false, 20);
+  assert.strictEqual(g.s.phase, "closing");
+  // все отвалились — не закрываем в пустоту
+  const h = game(["A", "B", "C"]);
+  h.setOnline("A", false, 5); h.setOnline("B", false, 5); h.setOnline("C", false, 5);
+  assert.strictEqual(h.s.phase, "betting");
+  // ушёл последний неготовый
+  const k = game(["A", "B", "C"]);
+  k.setReady("A", true, 10); k.setReady("B", true, 10);
+  k.removePlayer("C", 30);
+  assert.strictEqual(k.s.phase, "closing");
+});

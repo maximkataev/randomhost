@@ -380,7 +380,8 @@
   }
   /* табличка паузы: по центру над сценой, уходит сразу после «Продолжить» */
   /* ниже разметки, на пустом сукне над рядом игроков: по центру она закрывала числа стола */
-  .pauseplate { left: 50%; top: auto; bottom: calc(var(--rail-h, 110px) + 22px); transform: translateX(-50%); z-index: 7; display: flex; align-items: center; gap: 16px; padding: 18px 30px; border-radius: 22px; background: rgba(14, 15, 18, .94); border: 1px solid var(--line-2); font: 900 clamp(26px, 3vw, 44px)/1 var(--cond); letter-spacing: -.03em; text-transform: uppercase; white-space: nowrap; box-shadow: 0 30px 60px -20px rgba(0, 0, 0, .9); animation: platein .4s var(--spring); }
+  /* выше кнопок ведущего справа внизу: на ширине до 1440 табличка закрывала «Продолжить» */
+  .pauseplate { left: 50%; top: auto; bottom: calc(var(--rail-h, 110px) + 76px); transform: translateX(-50%); z-index: 7; display: flex; align-items: center; gap: 16px; padding: 18px 30px; border-radius: 22px; background: rgba(14, 15, 18, .94); border: 1px solid var(--line-2); font: 900 clamp(22px, 2.4vw, 44px)/1 var(--cond); letter-spacing: -.03em; text-transform: uppercase; white-space: nowrap; box-shadow: 0 30px 60px -20px rgba(0, 0, 0, .9); animation: platein .4s var(--spring); }
   @keyframes platein { from { opacity: 0; transform: translateX(-50%) scale(1.25); } }
   .pauseplate .pi { color: var(--accent); }
   .pauseplate.soft { top: auto; bottom: calc(var(--rail-h, 110px) + 22px); font-size: clamp(16px, 1.5vw, 22px); padding: 10px 18px; border-radius: 999px; }
@@ -804,7 +805,7 @@ const T = (k) => rlT(k);
 const tpl = (k, v) => rlTpl(k, v);
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 10);
+let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
 
 let conn = null, state = null, isHost = false, dead = false;
 let scene = null;
@@ -1029,11 +1030,7 @@ function drawLobby() {
       <div class="opts" id="opts"></div></div>
       <div class="lfoot"><button class="btn shine" id="startbtn">${T("btn_start")}</button><div class="fine" id="starthint"></div></div>`;
     $("startbtn").onclick = () => conn.send({ type: "start" });
-    // код во всю ширину таблички: короткий — огромный, длинный — ужимаем, но в одну строку
-    const codeEl = box.querySelector(".code");
-    let fs = 96;
-    codeEl.style.setProperty("--code-fs", fs + "px");
-    while (fs > 36 && codeEl.scrollWidth > codeEl.clientWidth + 1) { fs -= 4; codeEl.style.setProperty("--code-fs", fs + "px"); }
+    fitCode();
   }
   if (!qrDrawn && window.QRCode) {
     qrDrawn = true;
@@ -1062,6 +1059,19 @@ function drawLobby() {
   $("startbtn").classList.toggle("hidden", !isHost);
   $("starthint").textContent = !enough ? T("need_two") : "";
 }
+
+// код во всю ширину таблички: короткий — огромный, длинный — ужимаем, но в одну строку.
+// Заново — при смене размера окна (ноутбук → ТВ, разворот планшета) и после загрузки шрифта:
+// подобранный один раз размер обрезал код («LEOPAR…») в самом важном месте лобби.
+function fitCode() {
+  const codeEl = document.querySelector("#lobby .code");
+  if (!codeEl || $("lobby").classList.contains("hidden")) return;
+  let fs = 96;
+  codeEl.style.setProperty("--code-fs", fs + "px");
+  while (fs > 24 && codeEl.scrollWidth > codeEl.clientWidth + 1) { fs -= 4; codeEl.style.setProperty("--code-fs", fs + "px"); }
+}
+window.addEventListener("resize", fitCode);
+if (document.fonts) { if (document.fonts.ready) document.fonts.ready.then(fitCode); if (document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", fitCode); }
 
 function drawOpts() {
   const s = state.settings;

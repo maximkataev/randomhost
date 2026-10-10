@@ -638,6 +638,7 @@ window.I18N_DICT = {
     frozen_text: `В этом спине ставить нельзя, штраф — {n}.`,
     paused: `Пауза`,
     paused_text: `Ведущий поставил игру на паузу.`,
+    paused_noboard: `Общий экран закрыт. Продолжить может любой за столом.`, btn_resume: `Продолжить`,
     res_plus: `+{n}`, res_minus: `−{n}`, res_zero: `±0`,
     res_share_in: `🧲 Доля от {name}: +{n}`,
     res_share_out: `🧲 {name} забирает долю: −{n}`,
@@ -763,6 +764,7 @@ window.I18N_DICT = {
     frozen_text: `No bets this spin, penalty {n}.`,
     paused: `Paused`,
     paused_text: `The host paused the game.`,
+    paused_noboard: `The shared screen is closed. Anyone at the table can resume.`, btn_resume: `Resume`,
     res_plus: `+{n}`, res_minus: `−{n}`, res_zero: `±0`,
     res_share_in: `🧲 Cut from {name}: +{n}`,
     res_share_out: `🧲 {name} takes a cut: −{n}`,
@@ -888,6 +890,7 @@ window.I18N_DICT = {
     frozen_text: `Χωρίς πόνταρισμα σε αυτό το γύρισμα, ποινή {n}.`,
     paused: `Παύση`,
     paused_text: `Ο οικοδεσπότης έβαλε παύση.`,
+    paused_noboard: `Η κοινή οθόνη έκλεισε. Οποιοσδήποτε στο τραπέζι μπορεί να συνεχίσει.`, btn_resume: `Συνέχεια`,
     res_plus: `+{n}`, res_minus: `−{n}`, res_zero: `±0`,
     res_share_in: `🧲 Μερίδιο από {name}: +{n}`,
     res_share_out: `🧲 {name} παίρνει μερίδιο: −{n}`,
@@ -984,7 +987,7 @@ window.I18N_DICT = {
 "use strict";
 const params = new URLSearchParams(location.search);
 // код идёт в разметку — только алфавит кодов, иначе ?r=<img onerror> даёт XSS
-const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 10);
+const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
 const app = document.getElementById("app");
 const T = (k) => rlT(k);
 const tpl = (k, v) => rlTpl(k, v);
@@ -1863,8 +1866,10 @@ function drawVeil() {
   felt.classList.toggle("locked", s.phase !== "betting");
   let key = null, build = null, cls = "";
   if (s.phase === "betting" && s.paused) {
-    key = "paused";
-    build = () => `<div class="icon">⏸</div><div class="big">${T("paused")}</div><p>${T("paused_text")}</p>`;
+    // доски нет (ведущий закрыл вкладку на паузе) — продолжить может любой за столом, иначе партия стоит навсегда
+    const noBoard = s.board === false;
+    key = "paused:" + noBoard + ":" + ((window.I18N && I18N.lang) || "");
+    build = () => `<div class="icon">⏸</div><div class="big">${T("paused")}</div><p>${T(noBoard ? "paused_noboard" : "paused_text")}</p>${noBoard ? `<button class="btn" id="resumebtn">${T("btn_resume")}</button>` : ""}`;
   } else if (s.phase === "betting" && p.spectator) {
     key = "spec";
     build = () => `<div class="icon">👀</div><div class="big">${T("spec_title")}</div><p>${T("spec_text")}</p>`;
@@ -1915,6 +1920,8 @@ function drawVeil() {
     v.dataset.key = key || "";
     v.className = "veil" + (cls ? " " + cls : "") + (key != null ? " on" : "");
     if (build) v.innerHTML = build();
+    const rb = document.getElementById("resumebtn");
+    if (rb) rb.onclick = () => conn.send({ type: "resume" });
   }
   if (s.phase === "spinning") startSuspense(); else stopSuspense();
 }
