@@ -11,358 +11,363 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="crowd-theme.css">
 <style>
-  /* Мир «Как все»: перетягивание каната на тёмной стеклянной сцене (crowd-spec.md §9). Язык аукциона: тёмный фон с цветными
-     пятнами и зерном (crowd-theme.css), стеклянные панели, Unbounded + Onest, градиентные плашки сторон. Канат — светящийся
-     трос с бусинами, ямка проигрыша — красное кольцо под центром. Общий экран смотрят с трёх метров: крупно и контрастно.
-     Результат остаётся в сцене: маркер у большинства, меньшинство в красной зоне, пока не начнётся следующий вопрос. */
+  /* «Как все», общий экран. Мир: два лагеря и толпа между ними (crowd-spec.md §9).
+     Язык аукциона: крупные цветные пятна света на пол-кадра, плотные стеклянные панели с радиусом 26px, единая сетка
+     (поля ~50px, зазор ~35px), якорь-логотип в шапке. Вся геометрия сцены считается в JS в «виртуальном экране»
+     (1600×900 / портрет 800×1280, растягивается transform'ом под ТВ): зоны А и Б, толпа посередине, шкала-перетягивание
+     над зонами. Голоса скрыты до раскрытия: до него толпа стоит в центре, при раскрытии фишки уходят в свой лагерь,
+     лагерь большинства раздувается, маркер на шкале едет к победителю на пружине. */
   :root {
-    --z: 1;           /* масштаб для ТВ (JS): страница живёт в виртуальном экране (100vw/z × 100vh/z) и растягивается transform'ом */
-    --vh: calc(1vh / var(--z)); --vw: calc(1vw / var(--z));
-    --ry: 130px;      /* y каната в сцене (JS) */
-    --sgw: clamp(150px, calc(17 * var(--vw)), 340px);
-    --sh: 440px;      /* высота сцены (JS) */
-    --gy: 220px;      /* ось сцены (JS) */
-    --sz: 80px;       /* максимальный размер аватара (JS) */
+    --z: 1;
     --pop: cubic-bezier(.2, 1.5, .4, 1);
-    --panel: rgba(255, 255, 255, .06);
-    --hair: rgba(255, 255, 255, .12);
+    --spring: cubic-bezier(.3, 1.25, .45, 1);
+    --hair: rgba(255, 255, 255, .15);
+    --g-main: linear-gradient(100deg, var(--c1), var(--c2) 60%, var(--c3));
+    --nfs: 20px;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
-  body { background: var(--bg); color: var(--text); font: 500 18px/1.3 var(--body); overflow: hidden; -webkit-font-smoothing: antialiased; }
+  body { background: transparent; color: var(--text); font: 500 20px/1.3 var(--body); overflow: hidden; -webkit-font-smoothing: antialiased; }
   button { font: inherit; color: inherit; cursor: pointer; }
   button:disabled { opacity: .45; cursor: default; }
   :focus-visible { outline: 3px solid var(--c3); outline-offset: 3px; }
   .hidden { display: none !important; }
-  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   b, strong { font-weight: 700; }
+
+  /* свет: большие пятна на пол-кадра. Синий слева-сверху, оранжевый справа-снизу, фиолет в центре */
+  .blob { width: 74vmax; height: 74vmax; filter: blur(110px); opacity: .58; transition: opacity 1s ease, background 1s ease; }
+  .blob.a { background: var(--side-a); top: -34vmax; left: -26vmax; }
+  .blob.b { background: var(--side-b); bottom: -38vmax; right: -26vmax; }
+  .blob.c { background: var(--c1); width: 46vmax; height: 46vmax; top: 24%; left: 34%; opacity: .3; }
+  body[data-win="a"] .blob.a { opacity: .78; } body[data-win="a"] .blob.b { opacity: .3; }
+  body[data-win="b"] .blob.b { opacity: .78; } body[data-win="b"] .blob.a { opacity: .3; }
+  body[data-win="tie"] .blob.c { opacity: .5; }
+  body[data-phase="opinion"] .blob.c { opacity: .5; }
 
   #root { position: fixed; left: 0; top: 0; width: calc(100vw / var(--z)); height: calc(100vh / var(--z)); transform: scale(var(--z)); transform-origin: 0 0; overflow: hidden; }
   .lang-switch { transform: scale(var(--z)); transform-origin: top right; }
 
-  /* ---------- шапка ---------- */
-  .top { position: fixed; left: 0; right: 0; top: 0; z-index: 30; display: flex; align-items: center; gap: 14px; height: calc(var(--lsc, 32px) * 2 / var(--z)); padding: 0 calc(var(--lsw, 160px) / var(--z)) 0 26px; pointer-events: none; }
+  /* ---------- шапка: якорь-логотип и код комнаты ---------- */
+  .top { position: fixed; left: 0; right: 0; top: 0; z-index: 30; display: flex; align-items: center; gap: 18px; height: calc(var(--lsc, 32px) * 2 / var(--z)); padding: 0 calc(var(--lsw, 160px) / var(--z)) 0 50px; pointer-events: none; }
   .top > * { pointer-events: auto; }
-  .brand { font: 900 20px/1 var(--display); text-transform: uppercase; letter-spacing: -.01em; white-space: nowrap; display: flex; align-items: center; gap: 12px; min-width: 0; flex: 0 1 auto; }
-  .brand span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .chip, .endbtn, .sound-toggle-btn { flex: none; }
-  @media (max-width: 900px) { .brand { font-size: 15px; gap: 8px; } .brand i { width: 28px; } .top { gap: 8px; } }
-  .brand i { width: 40px; height: 12px; border-radius: 8px; flex: none; position: relative; background: linear-gradient(90deg, var(--side-a), var(--side-a2) 40%, var(--side-b) 60%, var(--side-b2)); box-shadow: 0 0 18px -2px var(--side-a), 0 0 18px -2px var(--side-b); }
-  .brand i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px rgba(255, 255, 255, .8); }
-  .chip { font: 900 17px/1 var(--display); padding: 9px 14px; background: var(--panel); border: 1px solid var(--hair); border-radius: 999px; letter-spacing: .1em; white-space: nowrap; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  .brand { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 0 1 auto; }
+  .brand i { width: 54px; height: 16px; border-radius: 10px; flex: none; position: relative; background: linear-gradient(90deg, var(--side-a), var(--side-a2) 40%, var(--side-b) 60%, var(--side-b2)); box-shadow: 0 0 22px -2px var(--side-a), 0 0 22px -2px var(--side-b); }
+  .brand i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #fff; box-shadow: 0 0 12px rgba(255, 255, 255, .9); }
+  .brand span { font: 900 34px/1 var(--display); text-transform: uppercase; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: .1em 0;
+    background: linear-gradient(100deg, #fff, #dcd6ff 55%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+  .chip { flex: none; font: 900 24px/1 var(--display); padding: 11px 20px; background: rgba(255, 255, 255, .09); border: 1px solid var(--hair); border-radius: 999px; letter-spacing: .12em; white-space: nowrap; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
   .grow { flex: 1; }
-  .top .sound-toggle-btn, .endbtn { flex: none; height: calc(var(--lsh, 44px) / var(--z)); width: calc(var(--lsh, 44px) / var(--z)); border: 1px solid var(--hair); border-radius: 50%; background: var(--panel); color: var(--text); padding: 0; display: grid; place-items: center; font-size: 15px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: background .15s, border-color .15s; }
+  .top .sound-toggle-btn, .endbtn { flex: none; height: calc(var(--lsh, 44px) / var(--z)); width: calc(var(--lsh, 44px) / var(--z)); border: 1px solid var(--hair); border-radius: 50%; background: rgba(255, 255, 255, .08); color: var(--text); padding: 0; display: grid; place-items: center; font-size: 15px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: background .15s, border-color .15s; }
   .sound-toggle-btn svg { width: 20px; height: 20px; }
-  .endbtn:hover, .top .sound-toggle-btn:hover { background: var(--glass-hi); border-color: rgba(255, 255, 255, .28); }
+  .endbtn:hover, .top .sound-toggle-btn:hover { background: var(--glass-hi); border-color: rgba(255, 255, 255, .3); }
   .banner { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 50; background: rgba(14, 14, 24, .92); border: 1px solid var(--hair); color: var(--text); padding: 10px 18px; font-weight: 600; border-radius: 999px; }
   .conn { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 50; background: rgba(14, 14, 24, .92); border: 1px solid var(--bad); color: var(--text); padding: 8px 16px; font-weight: 600; border-radius: 999px; visibility: hidden; }
   .conn.on { visibility: visible; }
 
   main { position: fixed; left: 0; right: 0; top: calc(var(--lsc, 32px) * 2 / var(--z)); bottom: 0; z-index: 2; }
-  #upper { position: absolute; left: 0; right: 0; top: 0; bottom: var(--sh); z-index: 3; }
-  body.fin #upper { bottom: 0; }
-  .up { position: absolute; inset: 0; display: grid; grid-template-columns: var(--sgw) minmax(0, 1fr) var(--sgw); gap: calc(2 * var(--vw)); padding: 0 calc(2 * var(--vw)) calc(1.6 * var(--vh)); min-height: 0; }
+  #upper, #game { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
+  #upper { z-index: 3; }
+  #game { z-index: 2; }
+  .pnl { border-radius: 26px; border: 1px solid var(--hair); background: linear-gradient(160deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .045));
+    box-shadow: 0 34px 90px -44px #000, inset 0 1px 0 rgba(255, 255, 255, .2); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+  .gtext { background: var(--g-main); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
 
-  /* ---------- стороны: плашки ✔ / ✖ или А / Б ---------- */
-  .sign { position: relative; height: min(100%, calc(30 * var(--vh))); align-self: end; min-height: 110px; display: flex; flex-direction: column; }
-  .sign.a { grid-column: 1; grid-row: 1; --c: var(--side-a); --c2: var(--side-a2); }
-  .sign.b { grid-column: 3; grid-row: 1; --c: var(--side-b); --c2: var(--side-b2); }
-  .sg-board { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: calc(1.2 * var(--vh)); padding: calc(1.8 * var(--vh)) 12px calc(1.6 * var(--vh));
-    border-radius: 26px; border: 1px solid color-mix(in srgb, var(--c) 60%, transparent);
-    background: linear-gradient(165deg, color-mix(in srgb, var(--c) 36%, transparent), color-mix(in srgb, var(--c2) 8%, transparent) 75%), var(--panel);
-    box-shadow: 0 0 70px -28px var(--c), inset 0 1px 0 rgba(255, 255, 255, .2); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
-  .sg-ico { flex: none; display: grid; place-items: center; width: clamp(36px, calc(6.4 * var(--vh)), 68px); height: clamp(36px, calc(6.4 * var(--vh)), 68px); border-radius: 50%;
-    background: linear-gradient(135deg, var(--c), var(--c2)); color: #07070c; font: 900 clamp(18px, calc(3.2 * var(--vh)), 36px)/1 var(--display);
-    box-shadow: 0 10px 30px -10px var(--c), inset 0 1px 0 rgba(255, 255, 255, .5); }
-  .sg-word { min-width: 0; min-height: 0; flex: 1; width: 100%; font: 800 clamp(24px, calc(6.4 * var(--vh)), 76px)/1.1 var(--body); display: flex; align-items: center; justify-content: center; text-align: center; }
-  .sg-word > span { min-width: 0; overflow-wrap: normal; word-break: normal; hyphens: manual; text-wrap: balance; }
-  .sg-post { display: none; }
-  .sg-n { position: absolute; top: -.6em; z-index: 2; min-width: 1.6em; height: 1.6em; padding: 0 .4em; border-radius: 999px; background: #0b0b14; color: var(--text); border: 2px solid var(--c);
-    box-shadow: 0 0 24px -4px var(--c); font: 900 clamp(22px, calc(4.4 * var(--vh)), 48px)/1.45 var(--display); text-align: center; font-variant-numeric: tabular-nums; opacity: 0; transform: scale(.4); transition: opacity .25s, transform .35s var(--pop); }
-  .sign.a .sg-n { right: -.3em; }
-  .sign.b .sg-n { left: -.3em; }
-  .sg-n.on { opacity: 1; transform: none; }
-  .sg-n.bump { animation: bump .3s var(--pop); }
-  @keyframes bump { from { transform: scale(1.35); } }
-
-  /* ---------- центральная колонка ---------- */
-  .mid { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: calc(1.2 * var(--vh)); padding-top: calc(1.2 * var(--vh)); }
-  .ribbon { flex: none; font: 700 clamp(11px, calc(1.7 * var(--vh)), 17px)/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); padding: .8em 1.5em; border: 1px solid var(--hair); border-radius: 999px; background: var(--panel);
-    text-align: center; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-  .ribbon b { color: var(--text); font-weight: 700; }
-  .ribbon.think { color: var(--text); border-color: color-mix(in srgb, var(--c1) 55%, transparent); background: color-mix(in srgb, var(--c1) 16%, transparent); }
-  .qbox { flex: 1; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
-  .qtxt { margin: 0; width: 100%; text-align: center; font: 700 var(--qfs, 64px)/1.14 var(--display); letter-spacing: -.02em; text-wrap: balance; overflow-wrap: anywhere; hyphens: manual; }
-  .meta { flex: none; width: 100%; display: flex; align-items: center; justify-content: center; gap: calc(1.6 * var(--vw)); font: 700 clamp(12px, calc(1.9 * var(--vh)), 20px)/1 var(--display); padding-bottom: calc(1 * var(--vh)); }
-  .meta .prog { white-space: nowrap; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
-  .pips { display: flex; gap: 5px; }
-  .pips i { width: 18px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .16); }
+  /* ---------- игровая сцена: вопрос ---------- */
+  #game > .abs, #field { position: absolute; }
+  .qpanel { display: flex; flex-direction: column; padding: 16px 38px 18px; }
+  .qmeta { flex: none; height: 32px; display: flex; align-items: center; justify-content: center; gap: 18px; font: 700 20px/1 var(--display); letter-spacing: .13em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .qmeta .prog { overflow: hidden; text-overflow: ellipsis; }
+  .qmeta .prog.k { color: #0a0a0f; background: var(--g-main); padding: .42em .9em; border-radius: 999px; letter-spacing: .1em; }
+  .pips { display: flex; gap: 6px; }
+  .pips i { width: 24px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .18); }
   .pips i.d { background: linear-gradient(90deg, var(--c1), var(--c3)); }
-  .pips i.c { background: #fff; box-shadow: 0 0 10px rgba(255, 255, 255, .7); }
-  .rdy { min-width: 9.5em; text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; font-family: var(--body); font-weight: 700; font-size: 1.15em; padding: .5em .9em .5em .6em; border-radius: 999px; background: var(--panel); border: 1px solid var(--hair); }
-  .rdy::before { content: "✓"; display: inline-grid; place-items: center; width: 1.4em; height: 1.4em; margin-right: .5em; border-radius: 50%; background: var(--ok); color: #07120c; font-size: .85em; font-weight: 900; }
-  .rdy.ask::before { content: "💭"; background: none; }
+  .pips i.c { background: #fff; box-shadow: 0 0 12px rgba(255, 255, 255, .8); }
+  .qbox { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  .qtxt { margin: 0; width: 100%; text-align: center; font: 700 var(--qfs, 56px)/1.14 var(--display); letter-spacing: -.02em; text-wrap: balance; overflow-wrap: anywhere; hyphens: manual; }
 
-  /* ---------- раскрытие ---------- */
-  .qline { flex: none; width: 100%; display: flex; align-items: baseline; justify-content: center; gap: calc(1.2 * var(--vw)); }
-  .qline .qk { flex: none; font: 700 clamp(11px, calc(1.6 * var(--vh)), 16px)/1 var(--display); text-transform: uppercase; letter-spacing: .12em; white-space: nowrap; color: var(--muted); }
-  .qline .qtxt { width: auto; flex: 0 1 auto; max-height: 2.4em; overflow: hidden; }
-  .verdict { position: relative; flex: 1; min-height: 0; width: 100%; }
-  .verdict > * { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: .3em; opacity: 0; transform: scale(.8); transition: opacity .25s, transform .4s var(--pop); pointer-events: none; }
-  .verdict > .on { opacity: 1; transform: none; }
-  .vd-idle { opacity: 1 !important; transform: none !important; }
-  .stamp { --sc: var(--c1); display: inline-block; font: 900 var(--u, 60px)/1.08 var(--display); text-transform: uppercase; letter-spacing: -.015em; padding: .16em .5em; border-radius: .3em; text-wrap: balance; max-width: 100%; color: #fff;
-    border: 1.5px solid color-mix(in srgb, var(--sc) 70%, transparent);
-    background: linear-gradient(135deg, color-mix(in srgb, var(--sc) 26%, transparent), rgba(255, 255, 255, .04));
-    box-shadow: 0 0 90px -26px var(--sc), inset 0 1px 0 rgba(255, 255, 255, .16); text-shadow: 0 0 26px color-mix(in srgb, var(--sc) 70%, transparent); }
-  .vd-sub { font: 700 max(calc(var(--u, 60px) * .36), 15px)/1.15 var(--body); color: rgba(244, 242, 255, .82); }
-  .stamp.a { --sc: var(--side-a); } .stamp.b { --sc: var(--side-b); }
-  .stamp.tie { --sc: var(--gold); } .stamp.one { --sc: var(--ok); } .stamp.void { --sc: #94a3b8; font-size: calc(var(--u, 60px) * .62); text-shadow: none; }
-  .wolfnote { font: 600 max(calc(var(--u, 60px) * .3), 15px)/1.1 var(--body); color: var(--muted); }
-  .illusion { z-index: 2; }
-  .illusion .plate { padding: calc(.8 * var(--vh)) calc(2 * var(--vw)) calc(1.2 * var(--vh)); border-radius: 26px; max-width: 100%; border: 1.5px solid color-mix(in srgb, var(--c2) 70%, transparent);
-    background: linear-gradient(135deg, color-mix(in srgb, var(--c2) 28%, #0b0b14), color-mix(in srgb, var(--c1) 22%, #0b0b14));
-    box-shadow: 0 0 100px -26px var(--c2), inset 0 1px 0 rgba(255, 255, 255, .2); }
-  .illusion .plate h2 { margin: 0; font: 900 var(--u, 60px)/1.05 var(--display); letter-spacing: -.01em; }
-  .illusion .plate p { margin: .15em 0 0; font: 600 max(calc(var(--u, 60px) * .38), 15px)/1.2 var(--body); text-wrap: balance; color: rgba(244, 242, 255, .9); }
-  .illusion .plate p b { background: rgba(255, 255, 255, .14); color: var(--text); padding: 0 .35em; border-radius: 8px; white-space: nowrap; }
-  .oprope { flex: none; width: 100%; height: clamp(86px, calc(15 * var(--vh)), 170px); position: relative; }
-  .oprope .oh { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: baseline; font: 700 clamp(12px, calc(2 * var(--vh)), 22px)/1 var(--display); text-transform: uppercase; letter-spacing: .08em; }
-  .oprope .oh #opA { color: var(--side-a2); } .oprope .oh #opB { color: var(--side-b2); }
-  .oprope .oh #opT { color: var(--muted); font-size: .8em; }
-  .oprope .oh span { font-variant-numeric: tabular-nums; }
-  .oprope .oc { position: absolute; left: 0; right: 0; top: 0; text-align: center; }
-  .oprope .orope { position: absolute; left: 0; right: 0; top: 58%; height: 4px; border-radius: 4px; background: linear-gradient(90deg, var(--side-a), var(--side-a2) 40%, var(--side-b) 60%, var(--side-b2)); box-shadow: 0 0 18px -2px rgba(255, 255, 255, .25); }
-  .oprope .tk { position: absolute; top: 58%; width: 1.9em; height: 1.9em; margin-top: -2.05em; border-radius: 50%; background: rgba(14, 14, 24, .85); border: 2px solid var(--c); box-shadow: 0 0 12px -2px var(--c); display: grid; place-items: center; font-size: clamp(12px, calc(2 * var(--vh)), 22px); opacity: 0; transform: translateY(-.8em) scale(.5); transition: opacity .2s, transform .35s var(--pop); }
-  .oprope .tk.on { opacity: 1; transform: none; }
-  .oprope .tk.a { --c: var(--side-a); } .oprope .tk.b { --c: var(--side-b); }
-  .oprope .oflag { position: absolute; top: 58%; left: 0; width: 0; height: 0; z-index: 2; }
-  .oprope .oflag svg { position: absolute; left: -.7em; bottom: .15em; width: clamp(24px, calc(4.4 * var(--vh)), 48px); height: auto; overflow: visible; }
+  /* боковые блоки: таймер или прогресс слева, готовность или итог справа */
+  .sb { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; padding: 12px; min-width: 0; overflow: hidden; }
+  .ring { position: relative; flex: none; width: var(--rs, 150px); height: var(--rs, 150px); }
+  .ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
+  .ring circle { fill: none; stroke-width: 11; stroke-linecap: round; }
+  .ring .tr { stroke: rgba(255, 255, 255, .13); }
+  .ring .pg { stroke: url(#rgrad); transition: stroke-dashoffset .25s linear; }
+  .ring.hot .pg { stroke: var(--bad); }
+  .ring .num { position: absolute; inset: 0; display: flex; align-items: baseline; justify-content: center; padding-top: calc(var(--rs, 150px) * .3); font: 900 calc(var(--rs, 150px) * .36)/1 var(--display); font-variant-numeric: tabular-nums; }
+  .ring .num small { font-size: .45em; opacity: .65; font-weight: 700; }
+  .ring.hot .num { color: var(--bad); animation: tpulse .5s ease-in-out infinite alternate; }
+  @keyframes tpulse { to { transform: scale(1.1); } }
+  .sb .big { font: 900 var(--bs, 64px)/1 var(--display); font-variant-numeric: tabular-nums; }
+  .sb .cap { font: 600 var(--cs, 22px)/1.2 var(--body); color: rgba(244, 242, 255, .86); text-wrap: balance; }
+  .sb .big small { font-size: .5em; opacity: .6; margin-left: .05em; }
+  .sb .ico { font-size: calc(var(--bs, 64px) * .8); line-height: 1; }
+  .sb.pop .big, .sb.pop .ico { animation: bump .35s var(--pop); }
+  @keyframes bump { from { transform: scale(1.3); } }
+
+  /* ---------- поле ---------- */
+  .railrow { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 22px; }
+  .rn { flex: none; width: var(--nw, 90px); font: 900 var(--rf, 56px)/1 var(--display); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .rn.a { text-align: left; color: #9cc0ff; text-shadow: 0 0 36px var(--glow-a); }
+  .rn.b { text-align: right; color: #ffb78a; text-shadow: 0 0 36px var(--glow-b); }
+  .rn.bump { animation: bump .3s var(--pop); }
+  .rail { position: relative; flex: 1; height: 30px; border-radius: 16px;
+    background: linear-gradient(90deg, var(--side-a), var(--side-a2) 49.2%, #fff 49.2%, #fff 50.8%, var(--side-b) 50.8%, var(--side-b2));
+    box-shadow: 0 0 50px -14px var(--side-a), 0 0 50px -14px var(--side-b), inset 0 1px 0 rgba(255, 255, 255, .4); }
+  .rail::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(180deg, rgba(255, 255, 255, .28), transparent 55%, rgba(0, 0, 0, .25)); }
+  .puck { position: absolute; left: 0; top: 50%; width: 0; height: 0; z-index: 3; will-change: transform; }
+  .puck .knot { position: absolute; left: -26px; top: -26px; width: 52px; height: 52px; border-radius: 50%; background: radial-gradient(circle at 35% 28%, #fff, #e4e0ff 70%); border: 4px solid #0e0e18;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, .55), 0 0 34px 4px rgba(255, 255, 255, .6); }
+  .puck .knot::after { content: ""; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--c1); }
+  .puck .fl { position: absolute; left: -1px; bottom: 22px; width: 38px; height: 46px; overflow: visible; transform-origin: 2px 100%; transition: transform .35s var(--pop); filter: drop-shadow(0 0 8px rgba(255, 255, 255, .5)); }
+  .puck .rag { transform-origin: 8% 8%; animation: flap .9s ease-in-out infinite alternate; }
+  @keyframes flap { from { transform: skewY(-5deg) scaleX(1); } to { transform: skewY(6deg) scaleX(.93); } }
+  .rail.win-a { box-shadow: -30px 0 70px -6px var(--side-a), 0 0 50px -14px var(--side-b), inset 0 1px 0 rgba(255, 255, 255, .4); }
+  .rail.win-b { box-shadow: 30px 0 70px -6px var(--side-b), 0 0 50px -14px var(--side-a), inset 0 1px 0 rgba(255, 255, 255, .4); }
+  .rail.shake .puck { animation: shake .09s linear infinite alternate; }
+  @keyframes shake { from { margin-top: -3px; } to { margin-top: 3px; } }
+
+  .oprow { position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 22px; opacity: 0; transition: opacity .4s; }
+  .oprow.on { opacity: 1; }
+  .on-n { flex: none; width: var(--nw, 90px); font: 900 var(--of, 30px)/1 var(--display); font-variant-numeric: tabular-nums; }
+  .on-n.a { text-align: left; color: #9cc0ff; } .on-n.b { text-align: right; color: #ffb78a; }
+  .opmid { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .oplab { font: 700 18px/1 var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+  .opbar { position: relative; width: 100%; height: 14px; border-radius: 8px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+  .opbar i { position: absolute; top: 0; bottom: 0; width: 0; transition: width .22s ease-out; }
+  .opbar i.a { left: 0; background: linear-gradient(90deg, var(--side-a), var(--side-a2)); }
+  .opbar i.b { right: 0; background: linear-gradient(270deg, var(--side-b), var(--side-b2)); }
+  .opbar::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: rgba(255, 255, 255, .6); }
+
+  .zone { position: absolute; border-radius: 28px; overflow: hidden; --c: var(--side-a); --c2: var(--side-a2);
+    border: 1.5px solid color-mix(in srgb, var(--c) 75%, #fff 10%);
+    background: linear-gradient(165deg, color-mix(in srgb, var(--c) 58%, transparent), color-mix(in srgb, var(--c2) 18%, transparent) 78%, color-mix(in srgb, var(--c) 8%, transparent));
+    box-shadow: 0 0 110px -30px var(--c), inset 0 1px 0 rgba(255, 255, 255, .3), inset 0 -40px 80px -50px rgba(0, 0, 0, .5);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    transition: left .8s var(--spring), top .8s var(--spring), width .8s var(--spring), height .8s var(--spring), filter .9s, transform .9s var(--spring), opacity .5s, box-shadow .6s; }
+  .zone.b { --c: var(--side-b); --c2: var(--side-b2); }
+  .zone.dead { opacity: .72; }
+  .zone.win { animation: zflash 1.4s ease-out; box-shadow: 0 0 150px -10px var(--c), inset 0 1px 0 rgba(255, 255, 255, .45); }
+  @keyframes zflash { 0% { filter: brightness(1); } 18% { filter: brightness(1.7) saturate(1.3); } 100% { filter: brightness(1.08); } }
+  .zone.lose { filter: saturate(.4) brightness(.78); transform: translateY(10px); }
+  .zone.pre .zhead { flex-direction: column; justify-content: center; top: 0; bottom: 0; height: auto !important; gap: 18px; text-align: center; padding: 0 26px 6%; }
+  .zone.pre .zl { width: calc(var(--bz, 62px) * 1.5); height: calc(var(--bz, 62px) * 1.5); font-size: calc(var(--bz, 62px) * .75); }
+  .zone.pre .zw { flex: none; align-self: stretch; font-size: var(--zfp, 52px) !important; text-align: center; }
+  .zhead { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 18px; padding: 0 24px; z-index: 1; }
+  .zl { flex: none; display: grid; place-items: center; width: var(--bz, 62px); height: var(--bz, 62px); border-radius: 50%; background: linear-gradient(135deg, var(--c), var(--c2)); color: #07070c;
+    font: 900 calc(var(--bz, 62px) * .5)/1 var(--display); box-shadow: 0 12px 34px -10px var(--c), inset 0 1px 0 rgba(255, 255, 255, .55); }
+  .zw { flex: 1; min-width: 0; font: 800 var(--zf, 36px)/1.08 var(--body); overflow-wrap: normal; text-wrap: balance; text-shadow: 0 2px 22px rgba(0, 0, 0, .35); }
+  .zbig { position: absolute; right: .02em; bottom: -.16em; font: 900 var(--gz, 340px)/1 var(--display); color: #fff; opacity: .09; pointer-events: none; }
+  .pen { position: absolute; border-radius: 28px; border: 1.5px dashed rgba(255, 255, 255, .26); background: rgba(10, 10, 20, .28); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    transition: left .8s var(--spring), top .8s var(--spring), width .8s var(--spring), height .8s var(--spring), opacity .4s; }
+  .pen-t { position: absolute; left: 0; right: 0; top: 0; padding: 14px 16px 0; text-align: center; font: 600 21px/1.25 var(--body); color: rgba(244, 242, 255, .9); text-wrap: balance; }
+  .pen-t b { color: #fff; font-weight: 800; text-transform: uppercase; }
+  .pen-t small { display: block; font-size: 19px; color: var(--muted); margin-top: 4px; }
+  #crack { position: absolute; z-index: 5; overflow: visible; pointer-events: none; opacity: 0; transition: opacity .4s; }
+  #crack.on { opacity: 1; }
+
+  /* фишки (в координатах main) */
+  #chips { position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: 4; pointer-events: none; }
+  #chips.off { display: none; }
+  .pl { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 4; transition: transform .75s var(--spring), opacity .45s; will-change: transform; pointer-events: auto; }
+  .pl.inst, .pl.inst * { transition: none !important; }
+  .pl.dim { opacity: .5; }
+  .pl.gone { opacity: 0; pointer-events: none; }
+  .pl.fallen { z-index: 5; }
+  .pl-s { position: absolute; left: 0; top: 0; width: 0; height: 0; transform: scale(var(--k, 1)); transition: transform .75s var(--spring); }
+  .pl-w { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+  .pl-in { position: absolute; left: -56px; top: -56px; width: 112px; height: 112px; }
+  .bub { width: 100%; height: 100%; border-radius: 50%; border: 6px solid var(--pc); display: grid; place-items: center; font-size: 58px; line-height: 1;
+    background: radial-gradient(circle at 35% 25%, rgba(255, 255, 255, .3), rgba(255, 255, 255, .08) 70%), #171726;
+    box-shadow: 0 10px 28px -8px rgba(0, 0, 0, .7), 0 0 34px -4px var(--pc), inset 0 1px 0 rgba(255, 255, 255, .3);
+    animation: sway 3.4s ease-in-out infinite; animation-delay: var(--dl, 0s);
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; transition: filter .6s; }
+  @keyframes sway { 0%, 100% { transform: translateY(0) rotate(-1.5deg); } 50% { transform: translateY(2px) rotate(1.5deg); } }
+  .chk { position: absolute; left: 22px; top: -66px; width: 44px; height: 44px; border-radius: 50%; background: var(--ok); border: 3px solid #0b0b14; box-shadow: 0 0 18px -2px var(--ok); color: #07120c; font: 900 24px/1 var(--body); display: grid; place-items: center; opacity: 0; transform: scale(.3); transition: opacity .2s, transform .35s var(--pop); }
+  .pl.ready .chk { opacity: 1; transform: none; }
+  .wmark { position: absolute; left: -74px; top: -70px; font-size: 48px; line-height: 1; opacity: 0; transform: scale(.3); transition: opacity .3s, transform .4s var(--pop); }
+  .pl.wolf .wmark { opacity: 1; transform: none; }
+  .nm2 { position: absolute; left: 0; top: calc(var(--a, 112px) / 2 + 6px); transform: translateX(-50%); max-width: var(--tw, 140px); transition: top .75s var(--spring);
+    font: 700 var(--nfs)/1.2 var(--body); color: #fff; white-space: nowrap; display: flex; align-items: center; gap: 4px; text-shadow: 0 1px 2px rgba(0, 0, 0, .8), 0 2px 14px rgba(0, 0, 0, .7); }
+  .nm2 > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .nm2 .x { flex: none; display: none; border: 0; background: var(--bad); color: #1a0509; font: 900 13px/1 var(--body); width: 20px; height: 20px; border-radius: 50%; padding: 0; }
+  .pts { position: absolute; left: calc(var(--a, 112px) * .36); top: calc(var(--a, 112px) * -.4); translate: -50% -50%; padding: 2px 11px 3px; border-radius: 999px; border: 2px solid currentColor; background: #0c0c16;
+    font: 900 max(calc(var(--a, 112px) * .22), 20px)/1.2 var(--display); white-space: nowrap; opacity: 0; transform: translateY(14px) scale(.3); transition: opacity .25s, transform .5s var(--pop); z-index: 3; font-variant-numeric: tabular-nums; }
+  .pts.on { opacity: 1; transform: none; }
+  .pts.bk::before { content: "×2"; position: absolute; left: -12px; top: -17px; padding: 0 6px; font-size: .6em; line-height: 1.5; background: var(--g-main); color: #0a0a0f; border-radius: 8px; }
+  .pts.pos { color: var(--ok); } .pts.neg { color: var(--bad); } .pts.zero { color: var(--muted); }
+  .pl.ready .pl-w, .pl.shiver .pl-w { animation: shiver .45s linear; }
+  @keyframes shiver { 0%, 100% { transform: translateX(0); } 15% { transform: translateX(-4px) rotate(-3deg); } 35% { transform: translateX(4px) rotate(3deg); } 55% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+  .pl.hop .pl-w { animation: hop .62s var(--pop) 2; animation-delay: var(--hd, 0s); }
+  @keyframes hop { 40% { transform: translateY(-34px); } 70% { transform: translateY(0) scaleY(.92); } }
+  .pl.enter .pl-w { animation: enter .6s var(--pop) both; }
+  @keyframes enter { from { transform: scale(.2) translateY(-40px); opacity: 0; } }
+  .pl.lost .bub { filter: saturate(.45) brightness(.8); }
+
+  /* вердикт поверх затемнённого поля */
+  #dim { position: absolute; z-index: 6; border-radius: 28px; background: radial-gradient(ellipse at center, rgba(4, 4, 10, .84), rgba(4, 4, 10, .6)); opacity: 0; transition: opacity .35s; pointer-events: none; }
+  #dim.on { opacity: 1; }
+  #vd { position: absolute; z-index: 7; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: .15em; padding: 0 3%; pointer-events: none; opacity: 0; transform: scale(1.35); transition: opacity .22s, transform .55s var(--pop); }
+  #vd.on { opacity: 1; transform: none; }
+  .vd-k { font: 700 var(--ks, 40px)/1.1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: rgba(255, 255, 255, .82); }
+  .vd-w { max-width: 100%; font: 900 var(--u, 150px)/1.04 var(--display); text-transform: uppercase; letter-spacing: -.03em; text-wrap: balance; overflow-wrap: anywhere; padding: .04em .02em;
+    background: linear-gradient(180deg, #fff 25%, var(--vt, #c7d4ff)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; filter: drop-shadow(0 8px 46px var(--vg, rgba(120, 150, 255, .7))); }
+  .vd-w.tie { background: linear-gradient(90deg, #8fb4ff, #fff 42%, #fff 58%, #ffb48a); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 8px 46px rgba(255, 255, 255, .45)); }
+  .vd-w.void { font-weight: 800; background: linear-gradient(180deg, #fff, #9aa4bb); -webkit-background-clip: text; background-clip: text; filter: none; }
+  .vd-s { font: 700 var(--ss, 34px)/1.25 var(--body); color: rgba(244, 242, 255, .92); text-wrap: balance; max-width: 90%; }
+  .vd-s b { background: rgba(255, 255, 255, .16); padding: 0 .35em; border-radius: 10px; white-space: nowrap; }
+
+  /* ---------- общие плашки экранов ---------- */
+  .scr { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
+
+  /* ---------- заставки и пауза ---------- */
+  .full { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 0 50px 36px; text-align: center; }
+  .poster { position: relative; padding: 46px 70px 52px; max-width: 100%; animation: slam .55s var(--pop) both; }
+  .poster::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--c2) 30%, transparent), transparent 70%); pointer-events: none; }
+  .poster h1 { position: relative; display: inline-block; margin: 0; max-width: 100%; font: 900 150px/1.06 var(--display); text-transform: uppercase; letter-spacing: -.03em; padding: .04em .02em;
+    background: linear-gradient(100deg, var(--c1), var(--c2) 60%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+  .poster h1 { background: none; -webkit-text-fill-color: initial; color: #fff; }
+  .poster .tw { background: linear-gradient(100deg, var(--c1), var(--c2) 60%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+  .poster .x2 { display: inline-block; margin-left: .14em; color: #fff; text-shadow: 0 0 60px rgba(255, 255, 255, .55); }
+  .poster p { position: relative; margin: 18px auto 0; font: 600 38px/1.25 var(--body); max-width: 22em; text-wrap: balance; color: rgba(244, 242, 255, .9); }
+  @keyframes slam { from { transform: scale(1.18); opacity: 0; } }
+  .only { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px 18px; }
+  .only span { display: inline-flex; align-items: center; gap: 14px; font: 700 30px/1 var(--body); background: rgba(255, 255, 255, .1); border: 1px solid var(--hair); border-radius: 999px; padding: 10px 26px 10px 10px; }
+  .av { display: grid; place-items: center; width: 1.8em; height: 1.8em; font-size: .62em; border-radius: 50%; background: radial-gradient(circle at 35% 25%, rgba(255, 255, 255, .26), rgba(255, 255, 255, .07) 70%), #171726; border: .1em solid var(--pc); font-style: normal; line-height: 1; flex: none; box-shadow: 0 0 20px -6px var(--pc); }
+  .only .av { font-size: 1em; }
+
+  /* ---------- лобби ---------- */
+  .lobby { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(0, 1.45fr) minmax(300px, .95fr); gap: 35px; padding: 8px 50px 40px; }
+  .lobby > * { min-height: 0; }
+  .lb-players { padding: 22px 24px 24px; display: flex; flex-direction: column; gap: 14px; }
+  .lb-pn { flex: none; display: flex; align-items: baseline; gap: 12px; font: 900 24px/1 var(--display); text-transform: uppercase; letter-spacing: .06em; }
+  .lb-pn .cnt { margin-left: auto; font-size: 30px; font-variant-numeric: tabular-nums; }
+  .free { flex: none; font: 600 18px/1.2 var(--body); color: var(--c3); letter-spacing: 0; text-transform: none; min-height: 1.2em; }
+  .lps { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(6, minmax(0, 1fr)); gap: 10px; }
+  .lp { position: relative; display: flex; align-items: center; gap: 12px; min-width: 0; padding: 0 12px; border-radius: 18px; background: rgba(255, 255, 255, .1); border: 1px solid var(--hair); animation: lpin .5s var(--pop) both; }
+  .lp .av { font-size: 24px; width: 1.75em; height: 1.75em; }
+  .lp b { min-width: 0; font: 700 22px/1.1 var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lp.empty { background: transparent; border: 1.5px dashed rgba(255, 255, 255, .16); animation: none; }
+  .lp.empty::before { content: ""; width: 38px; height: 38px; border-radius: 50%; border: 2px dashed rgba(255, 255, 255, .18); }
+  .lp .x { display: none; position: absolute; right: 8px; top: 50%; margin-top: -11px; border: 0; background: var(--bad); color: #1a0509; font: 900 13px/1 var(--body); width: 22px; height: 22px; border-radius: 50%; padding: 0; }
+  body.host.lobbyp .lp:hover .x { display: block; }
+  @keyframes lpin { from { transform: scale(.6); opacity: 0; } }
+  .lb-mid { display: flex; flex-direction: column; justify-content: space-between; gap: 18px; padding: 4px 0 0; }
+  .lb-top { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .lb-h { margin: 0; font: 900 120px/1.04 var(--display); text-transform: uppercase; letter-spacing: -.03em; text-wrap: balance; overflow-wrap: anywhere; padding: .03em 0;
+    background: linear-gradient(100deg, #fff, #d8d4ff 55%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+  .lb-tag { margin: 0; font: 600 32px/1.25 var(--body); color: rgba(244, 242, 255, .94); }
+  .lb-tag b { color: var(--side-a2); font-weight: 800; text-transform: uppercase; }
+  .rules { margin: 0; padding: 0; list-style: none; counter-reset: r; display: flex; flex-direction: column; gap: 10px; }
+  .rules li { counter-increment: r; display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 14px; font: 500 22px/1.25 var(--body); color: rgba(244, 242, 255, .86); }
+  .rules li::before { content: counter(r); display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: rgba(255, 255, 255, .1); border: 1px solid var(--hair); color: #fff; font: 700 20px var(--display); }
+  .lb-ctl { display: flex; flex-direction: column; gap: 12px; flex: none; }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-radius: 20px; background: rgba(255, 255, 255, .08); border: 1px solid var(--hair); transition: border-color .2s, background .2s; }
+  .opt:has(.tog[aria-pressed="true"]) { border-color: color-mix(in srgb, var(--c1) 75%, transparent); background: linear-gradient(120deg, color-mix(in srgb, var(--c1) 26%, transparent), color-mix(in srgb, var(--c2) 16%, transparent)); }
+  .opt b { display: block; font: 700 24px/1.15 var(--body); }
+  .opt span { font-size: 18px; color: var(--muted); display: block; line-height: 1.25; margin-top: 3px; }
+  .opt span.warn { color: var(--bad); font-weight: 600; }
+  .tog { flex: none; width: 70px; height: 38px; border: 1px solid var(--hair); border-radius: 20px; background: rgba(255, 255, 255, .1); position: relative; padding: 0; transition: background .2s; }
+  .tog::after { content: ""; position: absolute; top: 4px; left: 4px; width: 28px; height: 28px; border-radius: 50%; background: rgba(255, 255, 255, .7); transition: transform .2s var(--pop), background .2s; }
+  .tog[aria-pressed="true"] { background: var(--g-main); border-color: transparent; }
+  .tog[aria-pressed="true"]::after { transform: translateX(32px); background: #fff; }
+  .start, .ghostbtn { border: 0; border-radius: 22px; font: 900 34px/1 var(--display); text-transform: uppercase; letter-spacing: .05em; padding: 26px 20px; text-align: center; text-decoration: none; color: #0a0a0f; }
+  .start { width: 100%; background: var(--g-main); box-shadow: 0 22px 60px -22px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .45); transition: transform .12s; }
+  .start:not(:disabled):active { transform: translateY(2px) scale(.99); }
+  .ghostbtn { background: rgba(255, 255, 255, .09); color: var(--text); border: 1px solid var(--hair); font-size: 24px; padding: 22px 20px; display: grid; place-items: center; }
+  .ghostbtn:hover { background: var(--glass-hi); }
+  .hint { min-height: 1.3em; font: 600 22px/1.3 var(--body); text-align: center; color: var(--muted); }
+  .ticket { padding: 26px 26px 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; }
+  .tk-k { display: flex; align-items: center; gap: 12px; font: 700 20px/1 var(--display); letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+  .tk-k::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--c3); box-shadow: 0 0 14px var(--c3); }
+  .bigcode { font: 900 var(--code-fs, 84px)/1.1 var(--display); letter-spacing: .03em; white-space: nowrap; max-width: 100%; overflow: hidden; text-align: center; padding: .05em 0;
+    background: linear-gradient(100deg, #fff, #cfd6ff 60%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+  #qr { flex: none; width: var(--qrs, 300px); height: var(--qrs, 300px); background: #fff; padding: 12px; border-radius: 22px; box-shadow: 0 0 80px -18px var(--c1), 0 0 0 1px rgba(255, 255, 255, .5); }
+  #qr img, #qr canvas { width: 100% !important; height: 100% !important; display: block; image-rendering: pixelated; }
+  .url { font: 500 20px/1.2 var(--body); color: var(--muted); overflow-wrap: anywhere; }
+  .tk-h { font: 600 22px/1.3 var(--body); color: rgba(244, 242, 255, .86); text-wrap: balance; max-width: 18em; }
 
   /* ---------- счёт ---------- */
-  .sc { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: calc(1.2 * var(--vh)); grid-template-columns: none; padding: calc(1 * var(--vh)) calc(5 * var(--vw)) calc(1.4 * var(--vh)); }
-  .sc-head { flex: none; display: flex; align-items: baseline; justify-content: center; gap: calc(1.6 * var(--vw)); flex-wrap: wrap; text-align: center; }
-  .sc-head h2 { margin: 0; font: 900 clamp(20px, calc(3.8 * var(--vh)), 44px)/1.1 var(--display); letter-spacing: -.02em; text-transform: uppercase; }
-  .sc-head p { margin: 0; font: 600 clamp(14px, calc(2.2 * var(--vh)), 24px)/1.1 var(--body); color: var(--muted); }
-  .sc-tab { font-size: var(--fs, 24px); flex: 0 0 auto; height: var(--th, 300px); min-height: 0; display: grid; grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); grid-template-rows: repeat(var(--rows, 6), minmax(0, 1fr)); grid-auto-flow: column; gap: calc(.6 * var(--vh)) calc(3 * var(--vw)); align-content: stretch; width: 100%; max-width: 1500px; margin: 0 auto; }
-  .row { display: grid; grid-template-columns: 1.4em 1.9em minmax(0, 7.5em) auto minmax(40px, 1fr) 3em 3.4em; align-items: center; gap: .5em; min-height: 0; font: 700 1em/1 var(--display); background: var(--panel); border: 1px solid var(--hair); border-left: 3px solid var(--pc); border-radius: 14px; padding: 0 .6em; }
-  .sc-tab.nb .row { grid-template-columns: 1.4em 1.9em minmax(0, 1fr) auto 3em 3.4em; }
+  .sc { display: flex; flex-direction: column; gap: 22px; padding: 4px 50px 40px; }
+  .sc-head { flex: none; display: flex; align-items: baseline; justify-content: center; gap: 22px; flex-wrap: wrap; text-align: center; }
+  .sc-head h2 { margin: 0; font: 900 48px/1.1 var(--display); letter-spacing: -.02em; text-transform: uppercase; background: linear-gradient(100deg, #fff, #d8d4ff 60%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+  .sc-head p { margin: 0; font: 600 26px/1.1 var(--body); color: var(--muted); }
+  .sc-tab { flex: 1; min-height: 0; font-size: var(--fs, 26px); display: grid; grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); grid-template-rows: repeat(var(--rows, 6), minmax(0, 1fr)); grid-auto-flow: column; gap: 12px 30px; width: 100%; max-width: 1500px; margin: 0 auto; }
+  .row { display: grid; grid-template-columns: 1.4em 2.3em minmax(0, 8em) auto minmax(40px, 1fr) 3em 3.6em; align-items: center; gap: .55em; min-height: 0; font: 700 1em/1 var(--display); background: linear-gradient(160deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .05)); border: 1px solid var(--hair); border-radius: 18px; padding: 0 .75em 0 .55em; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  .sc-tab.nb .row { grid-template-columns: 1.4em 2.3em minmax(0, 1fr) auto 3em 3.6em; }
   .sc-tab.nb .bar { display: none; }
   .row .rk { text-align: center; font-variant-numeric: tabular-nums; color: var(--muted); font-size: .8em; }
   .row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--body); font-weight: 700; }
-  .av { display: grid; place-items: center; width: 1.8em; height: 1.8em; font-size: .62em; border-radius: 50%; background: radial-gradient(circle at 35% 25%, rgba(255, 255, 255, .22), rgba(255, 255, 255, .06) 70%), #14141f; border: .1em solid var(--pc); font-style: normal; line-height: 1; flex: none; }
-  .row .av { font-size: .7em; }
+  .row .av { font-size: .78em; }
   .row .bd { display: flex; gap: .3em; white-space: nowrap; font-size: .7em; }
   .row .bd:empty { visibility: hidden; }
-  .tag2 { background: linear-gradient(100deg, var(--c1), var(--c2)); color: #0a0a0f; border-radius: 6px; padding: .15em .4em; font-weight: 900; }
-  .bar { height: .5em; border-radius: 4px; background: rgba(255, 255, 255, .1); overflow: hidden; }
-  .bar i { display: block; height: 100%; border-radius: 4px; background: var(--pc); transform-origin: left; transform: scaleX(var(--w0, 0)); transition: transform 1s cubic-bezier(.3, 1, .4, 1) .3s; }
+  .tag2 { background: var(--g-main); color: #0a0a0f; border-radius: 6px; padding: .15em .4em; font-weight: 900; }
+  .bar { height: .5em; border-radius: 4px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--c1), var(--c3)); transform-origin: left; transform: scaleX(var(--w0, 0)); transition: transform 1s cubic-bezier(.3, 1, .4, 1) .3s; }
   .row .tot { text-align: right; font-variant-numeric: tabular-nums; }
   .row .tot.neg { color: var(--bad); }
-  .row .dl { text-align: right; font-variant-numeric: tabular-nums; font-size: .8em; opacity: 0; transform: translateY(.4em); transition: opacity .3s .5s, transform .4s var(--pop) .5s; }
+  .row .dl { text-align: right; font-variant-numeric: tabular-nums; font-size: .82em; opacity: 0; transform: translateY(.4em); transition: opacity .3s .5s, transform .4s var(--pop) .5s; }
   .row .dl.on { opacity: 1; transform: none; }
   .row .dl.pos { color: var(--ok); } .row .dl.neg { color: var(--bad); } .row .dl.zero { opacity: .55; }
-  .row.out { opacity: .5; }
-
-  /* ---------- заставки, пауза ---------- */
-  .full { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; grid-template-columns: none; padding: 0 calc(8 * var(--vw)); }
-  .poster { position: relative; background: var(--panel); border: 1px solid var(--hair); border-radius: 32px; padding: calc(3 * var(--vh)) calc(4 * var(--vw)) calc(3.4 * var(--vh)); box-shadow: 0 34px 90px -44px #000, inset 0 1px 0 rgba(255, 255, 255, .14); animation: slam .55s var(--pop) both; max-width: 100%; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
-  .poster h1 { display: inline-block; margin: 0; font: 900 clamp(40px, calc(13 * var(--vh)), 170px)/1.08 var(--display); text-transform: uppercase; letter-spacing: -.03em;
-    background: linear-gradient(100deg, var(--c1), var(--c2) 60%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
-  .poster .x2 { display: inline-block; margin-left: .15em; color: var(--gold); -webkit-text-fill-color: var(--gold); }
-  .poster p { margin: calc(1.4 * var(--vh)) auto 0; font: 600 clamp(18px, calc(3 * var(--vh)), 36px)/1.25 var(--body); max-width: 24em; text-wrap: balance; color: rgba(244, 242, 255, .85); }
-  @keyframes slam { from { transform: scale(1.18); opacity: 0; } }
-  .only { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(1 * var(--vh)) calc(1.2 * var(--vw)); }
-  .only span { display: inline-flex; align-items: center; gap: .5em; font: 700 clamp(16px, calc(2.8 * var(--vh)), 32px)/1 var(--body); background: var(--panel); border: 1px solid var(--hair); border-radius: 999px; padding: .25em .9em .25em .25em; }
-  .only .av { font-size: .8em; }
-  .wait { font: 900 clamp(26px, calc(5 * var(--vh)), 60px)/1 var(--display); }
-
-  /* ---------- лобби ---------- */
-  .lobby { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); gap: calc(2.4 * var(--vw)); padding: calc(1.5 * var(--vh)) calc(3 * var(--vw)) calc(2.4 * var(--vh)); align-items: stretch; }
-  .lobby > div { min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: calc(1.4 * var(--vh)); }
-  .lobby > div:nth-child(1), .lobby > div:nth-child(3) { padding: calc(1.8 * var(--vh)) calc(1.2 * var(--vw)); border-radius: 28px; border: 1px solid var(--hair); background: var(--panel); box-shadow: 0 34px 90px -44px #000, inset 0 1px 0 rgba(255, 255, 255, .12); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
-  .ticket { display: flex; flex-direction: column; align-items: center; gap: calc(1 * var(--vh)); text-align: center; }
-  #qr { width: clamp(110px, calc(22 * var(--vh)), 240px); height: clamp(110px, calc(22 * var(--vh)), 240px); background: #fff; padding: 8px; border-radius: 16px; box-shadow: 0 0 60px -18px var(--c1); }
-  #qr img, #qr canvas { width: 100% !important; height: 100% !important; display: block; image-rendering: pixelated; }
-  .bigcode { font: 900 var(--code-fs, 56px)/1.1 var(--display); letter-spacing: .04em; white-space: nowrap; max-width: 100%; overflow: hidden; text-align: center;
-    background: linear-gradient(100deg, var(--c1), var(--c2) 60%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
-  .url { font: 500 clamp(12px, calc(1.8 * var(--vh)), 18px)/1.2 var(--body); color: var(--muted); overflow-wrap: anywhere; }
-  .lb-h { margin: 0; font: 900 clamp(34px, calc(10 * var(--vh)), 120px)/1.04 var(--display); text-transform: uppercase; letter-spacing: -.03em; text-wrap: balance; overflow-wrap: anywhere;
-    background: linear-gradient(100deg, #fff, #d8d4ff 55%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
-  .lb-tag { margin: 0; font: 600 clamp(17px, calc(3 * var(--vh)), 34px)/1.25 var(--body); color: rgba(244, 242, 255, .9); }
-  .lb-tag b { color: var(--side-a2); font-weight: 700; text-transform: uppercase; }
-  .rules { margin: 0; padding: 0; list-style: none; counter-reset: r; display: flex; flex-direction: column; gap: calc(1 * var(--vh)); }
-  .rules li { counter-increment: r; display: grid; grid-template-columns: 2em 1fr; align-items: center; gap: .7em; font: 500 clamp(14px, calc(2.1 * var(--vh)), 22px)/1.25 var(--body); color: rgba(244, 242, 255, .82); }
-  .rules li::before { content: counter(r); display: grid; place-items: center; width: 1.8em; height: 1.8em; border-radius: 50%; background: var(--panel); border: 1px solid var(--hair); color: var(--text); font: 700 .8em var(--display); }
-  .lb-pn { font: 700 clamp(12px, calc(1.9 * var(--vh)), 20px)/1 var(--display); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
-  .lb-pn #pn { color: var(--text); }
-  .opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--panel); border: 1px solid var(--hair); border-radius: 18px; padding: calc(1 * var(--vh)) 14px; transition: border-color .2s, background .2s; }
-  .opt:has(.tog[aria-pressed="true"]) { border-color: color-mix(in srgb, var(--c1) 70%, transparent); background: linear-gradient(120deg, color-mix(in srgb, var(--c1) 22%, transparent), color-mix(in srgb, var(--c2) 14%, transparent)); }
-  .opt b { display: block; font: 700 clamp(14px, calc(2.2 * var(--vh)), 24px)/1.15 var(--body); }
-  .opt span { font-size: clamp(12px, calc(1.7 * var(--vh)), 17px); color: var(--muted); display: block; line-height: 1.25; }
-  .opt span.warn { color: var(--bad); font-weight: 600; }
-  .tog { flex: none; width: 64px; height: 34px; border: 1px solid var(--hair); border-radius: 20px; background: rgba(255, 255, 255, .08); position: relative; padding: 0; transition: background .2s; }
-  .tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: rgba(255, 255, 255, .7); transition: transform .2s var(--pop), background .2s; }
-  .tog[aria-pressed="true"] { background: linear-gradient(100deg, var(--c1), var(--c2)); border-color: transparent; }
-  .tog[aria-pressed="true"]::after { transform: translateX(30px); background: #fff; }
-  .start, .ghostbtn { border: 0; border-radius: 20px; font: 900 clamp(18px, calc(3.2 * var(--vh)), 32px)/1 var(--display); text-transform: uppercase; letter-spacing: .05em; padding: calc(1.8 * var(--vh)) 20px; text-align: center; text-decoration: none; color: #0a0a0f; }
-  .start { width: 100%; background: linear-gradient(100deg, var(--c1), var(--c2) 60%, var(--c3)); box-shadow: 0 22px 60px -22px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .45); transition: transform .12s; }
-  .start:not(:disabled):active { transform: translateY(2px) scale(.99); }
-  .ghostbtn { background: var(--panel); color: var(--text); border: 1px solid var(--hair); font-size: clamp(13px, calc(2.2 * var(--vh)), 22px); display: grid; place-items: center; }
-  .ghostbtn:hover { background: var(--glass-hi); }
-  .hint { min-height: 1.3em; font: 600 clamp(13px, calc(2 * var(--vh)), 22px)/1.3 var(--body); text-align: center; color: var(--muted); }
-  .free { font: 600 clamp(12px, calc(1.8 * var(--vh)), 18px)/1 var(--body); color: var(--c3); letter-spacing: 0; text-transform: none; }
+  .row.out { opacity: .55; }
+  .sc-out { flex: none; position: relative; width: 100%; max-width: 1500px; margin: 0 auto; padding: 12px 24px; border-radius: 26px; border: 1.5px dashed rgba(251, 113, 133, .5); background: linear-gradient(180deg, rgba(251, 113, 133, .12), rgba(251, 113, 133, .03)); display: flex; flex-direction: column; }
+  .sc-out .ot { font: 700 18px/1 var(--display); letter-spacing: .16em; text-transform: uppercase; color: #ffb3bf; }
+  .sc-out .slots { flex: 1; min-height: 0; }
 
   /* ---------- итоги ---------- */
-  .fin-up { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: calc(3 * var(--vw)); padding: calc(1 * var(--vh)) calc(4 * var(--vw)) calc(3 * var(--vh)); }
-  .fin-l { display: flex; flex-direction: column; min-height: 0; gap: calc(1 * var(--vh)); }
-  .fin-l h1 { align-self: flex-start; margin: 0; font: 900 clamp(30px, calc(7 * var(--vh)), 88px)/1.05 var(--display); text-transform: uppercase; letter-spacing: -.03em;
-    background: linear-gradient(100deg, var(--c1), var(--c2) 60%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
-  .fin-l .sub { margin: 0; font: 600 clamp(15px, calc(2.4 * var(--vh)), 26px)/1.2 var(--body); color: var(--bad); }
-  .podium { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: calc(1.2 * var(--vw)); }
-  .step { display: flex; flex-direction: column; align-items: center; gap: calc(.8 * var(--vh)); min-width: 0; height: 100%; justify-content: flex-end; }
-  .step .who { text-align: center; font: 700 clamp(15px, calc(2.6 * var(--vh)), 30px)/1.1 var(--body); width: 100%; animation: rise .6s var(--pop) both; animation-delay: var(--d, 0s); }
+  .fin { display: grid; padding: 0 50px 34px; gap: 18px 35px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto; grid-template-areas: "t t t" "rl pod rr" "aw aw aw" "bt bt bt"; }
+  .fin h1 { grid-area: t; margin: 0; text-align: center; font: 900 64px/1.05 var(--display); text-transform: uppercase; letter-spacing: -.03em; padding: .04em 0; background: var(--g-main); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+  .fin h1 small { display: block; font: 600 24px/1.2 var(--body); letter-spacing: 0; text-transform: none; color: var(--bad); -webkit-text-fill-color: var(--bad); margin-top: 6px; }
+  .podium { grid-area: pod; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 16px; min-height: 0; border-bottom: 3px solid rgba(255, 255, 255, .35); box-shadow: 0 14px 40px -18px rgba(255, 255, 255, .45); align-self: stretch; width: 100%; }
+  .step { display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0; height: 100%; justify-content: flex-end; }
+  .step .who { text-align: center; width: 100%; font: 700 28px/1.1 var(--body); animation: rise .6s var(--pop) both; animation-delay: var(--d, 0s); }
   .step .who span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .step .who .av { font-size: clamp(30px, calc(6 * var(--vh)), 70px); margin: 0 auto calc(.5 * var(--vh)); }
-  .step .blk { width: 100%; height: var(--h); border: 1px solid var(--hair); border-bottom: 0; border-radius: 22px 22px 0 0; display: flex; flex-direction: column; align-items: center; padding-top: calc(1.2 * var(--vh));
-    background: linear-gradient(180deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, .03)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22);
-    font: 900 clamp(30px, calc(6.4 * var(--vh)), 76px)/1 var(--display); color: var(--text); transform-origin: bottom; animation: up .8s var(--pop) both; animation-delay: var(--d, 0s); }
-  .step .blk small { font: 700 .36em/1 var(--display); color: var(--muted); margin-top: .5em; font-variant-numeric: tabular-nums; }
-  .step.first .blk { border-color: color-mix(in srgb, var(--gold) 70%, transparent); color: var(--gold); box-shadow: 0 0 80px -26px var(--gold), inset 0 1px 0 rgba(255, 255, 255, .3);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 38%, transparent), color-mix(in srgb, var(--gold) 6%, transparent)); }
-  .step.first .blk small { color: rgba(251, 191, 36, .8); }
+  .step .who .av { margin: 0 auto 8px; border-width: 6px; font-size: calc(var(--ava, 150px) * .5); width: var(--ava, 150px); height: var(--ava, 150px); }
+  .step .blk { position: relative; width: 100%; height: calc(var(--bh, 150px) * var(--hf, 1)); border: 1px solid var(--hair); border-bottom: 0; border-radius: 26px 26px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 14px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .22), rgba(255, 255, 255, .05)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3);
+    font: 900 64px/1 var(--display); transform-origin: bottom; animation: up .8s var(--pop) both; animation-delay: var(--d, 0s); }
+  .step .blk small { font: 700 .4em/1 var(--display); color: var(--muted); margin-top: .5em; font-variant-numeric: tabular-nums; }
+  .step.first .blk { border-color: color-mix(in srgb, var(--c2) 70%, #fff 20%); box-shadow: 0 0 90px -26px var(--c2), inset 0 1px 0 rgba(255, 255, 255, .4);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--c1) 55%, transparent), color-mix(in srgb, var(--c2) 18%, transparent)); }
+  .step.first .blk small { color: rgba(255, 255, 255, .8); }
   @keyframes up { from { transform: scaleY(0); } }
   @keyframes rise { from { transform: translateY(-40px); opacity: 0; } }
-  .rest { flex: none; display: flex; flex-wrap: wrap; gap: calc(.6 * var(--vh)) calc(.8 * var(--vw)); font: 600 clamp(13px, calc(2 * var(--vh)), 21px)/1 var(--body); max-height: calc(17 * var(--vh)); overflow: hidden; }
-  .rest span { display: inline-flex; align-items: center; gap: .4em; background: var(--panel); border: 1px solid var(--hair); border-radius: 999px; padding: .2em .8em .2em .2em; max-width: 14em; }
-  .rest .av { font-size: .62em; } .rest span b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-  .fin-r { display: flex; flex-direction: column; min-height: 0; gap: calc(1.6 * var(--vh)); justify-content: center; }
-  .aw { display: grid; grid-template-columns: auto 1fr; gap: calc(1 * var(--vw)); align-items: center; background: var(--panel); border: 1px solid var(--hair); border-radius: 22px; padding: calc(1.1 * var(--vh)) calc(1 * var(--vw)); position: relative; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
-  .aw .rosette { width: clamp(40px, calc(7 * var(--vh)), 76px); height: clamp(40px, calc(7 * var(--vh)), 76px); border-radius: 50%; background: linear-gradient(135deg, color-mix(in srgb, var(--c1) 55%, transparent), color-mix(in srgb, var(--c2) 40%, transparent)); border: 1px solid var(--hair); display: grid; place-items: center; font-size: clamp(20px, calc(3.6 * var(--vh)), 40px); }
-  .aw .ek { font: 700 clamp(10px, calc(1.6 * var(--vh)), 16px)/1 var(--display); text-transform: uppercase; letter-spacing: .12em; color: var(--c3); margin-bottom: .4em; }
-  .aw b { display: block; font: 700 clamp(18px, calc(3 * var(--vh)), 36px)/1.15 var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .aw p { margin: 0; font: 500 clamp(13px, calc(2 * var(--vh)), 21px)/1.2 var(--body); color: var(--muted); }
-  .hostbtns { display: grid; grid-template-columns: 1fr 1fr; gap: calc(1 * var(--vw)); }
-  .hostbtns .start { grid-column: 1 / -1; }
+  .awrow { grid-area: aw; display: flex; justify-content: center; gap: 18px; }
+  .awrow:empty { display: none; }
+  .aw { flex: 1 1 0; max-width: 430px; display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; padding: 12px 18px; border-radius: 22px; border: 1px solid var(--hair); background: linear-gradient(160deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .045)); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); min-width: 0; }
+  .aw .rosette { width: 58px; height: 58px; border-radius: 50%; background: linear-gradient(135deg, color-mix(in srgb, var(--c1) 60%, transparent), color-mix(in srgb, var(--c2) 45%, transparent)); border: 1px solid var(--hair); display: grid; place-items: center; font-size: 30px; }
+  .aw .ek { font: 700 15px/1 var(--display); text-transform: uppercase; letter-spacing: .12em; color: var(--c3); margin-bottom: 6px; }
+  .aw b { display: block; font: 700 25px/1.15 var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .aw p { margin: 2px 0 0; font: 500 18px/1.2 var(--body); color: var(--muted); }
+  .fbtn { grid-area: bt; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
+  .fbtn .start { width: auto; min-width: 420px; padding: 20px 40px; font-size: 28px; }
+  .fbtn .ghostbtn { min-width: 220px; padding: 20px 30px; }
+  .rest { display: flex; flex-direction: column; justify-content: center; gap: 8px; font: 600 22px/1 var(--body); min-height: 0; }
+  .rest.l { grid-area: rl; } .rest.r { grid-area: rr; }
+  .rest span { display: flex; align-items: center; gap: 12px; background: linear-gradient(160deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .05)); border: 1px solid var(--hair); border-radius: 16px; padding: 6px 18px 6px 8px; min-width: 0; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  .rest .av { font-size: 22px; } .rest b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .rest em { font-style: normal; font: 800 22px var(--display); font-variant-numeric: tabular-nums; }
+  .rest .rk { color: var(--muted); font-family: var(--display); font-size: .8em; font-style: normal; width: 1.8em; text-align: center; }
 
-  /* ---------- сцена ---------- */
-  #stage { position: absolute; left: 0; right: 0; bottom: 0; height: var(--sh); z-index: 4; isolation: isolate; overflow: hidden; transition: opacity .5s, transform .6s;
-    background: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .015)); border-top: 1px solid var(--hair);
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
-  body.fin #stage { opacity: 0; transform: translateY(14%); pointer-events: none; }
-  #stage > svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-  #sgBack { z-index: 1; } #sgRope { z-index: 3; } #sgFront { z-index: 7; }
-  #sgRope .strand { fill: none; stroke-linecap: round; }
-  #ropeG.shake { animation: shake .09s linear infinite alternate; }
-  @keyframes shake { from { transform: translateY(-2px); } to { transform: translateY(2px); } }
-  #ropeG.shake2 { animation-duration: .06s; }
-
-  /* таймер: тонкая линия с метками, прогресс заливается слева, маркер несёт секунды */
-  #tstring { position: absolute; left: 0; right: 0; top: 0; height: 44px; z-index: 1; pointer-events: none; }
-  #tstring svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
-  #tdone { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform-origin: 0 0; transform: scaleX(0); }
-  #tflag { position: absolute; left: 0; top: 0; width: 0; height: 0; opacity: 0; transition: opacity .3s; }
-  #tflag.on { opacity: 1; }
-  #tflag .tn { position: absolute; left: -22px; top: -12px; min-width: 44px; height: 26px; padding: 0 8px; border-radius: 999px; background: #0b0b14; border: 1.5px solid var(--c3); box-shadow: 0 0 18px -4px var(--c3);
-    font: 900 13px/23px var(--display); text-align: center; color: var(--text); font-variant-numeric: tabular-nums; transition: border-color .2s, box-shadow .2s, color .2s; }
-  #tflag.hot .tn { border-color: var(--bad); box-shadow: 0 0 22px -2px var(--bad); color: var(--bad); animation: tpulse .5s ease-in-out infinite alternate; }
-  @keyframes tpulse { to { transform: scale(1.12); } }
-
-  /* лобби: счётчик игроков над канатом справа и ✔/✖-превью зон — сцена не пустая, но без шума */
-  #lobbyCount { position: absolute; left: 50%; right: 0; top: 40px; height: calc(var(--ry) - 40px - var(--sz) * .3); z-index: 2; display: flex; align-items: center; justify-content: center; gap: .6em; opacity: 0; transition: opacity .4s; pointer-events: none; font-size: calc(var(--sz) * .5); }
-  body[data-phase="lobby"] #lobbyCount { opacity: 1; }
-  #lobbyCount b { font: 900 1.8em/1 var(--display); font-variant-numeric: tabular-nums; letter-spacing: -.02em; background: linear-gradient(100deg, var(--c1), var(--c2) 60%, var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
-  #lobbyCount span { font: 700 .5em/1.2 var(--display); text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
-  #sgBack .zm { opacity: 0; transition: opacity .5s; }
-  body[data-phase="lobby"] #sgBack .zm { opacity: 1; }
-
-  /* игроки на канате */
-  .pl { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 4; transition: transform .6s cubic-bezier(.3, .8, .3, 1), opacity .4s; will-change: transform; }
-  .pl.b { z-index: 3; }
-  .pl.fallen { z-index: 5; }
-  body[data-phase="lobby"] #flag, body[data-phase="finished"] #flag { display: none; }
-  .pl.inst, .pl.inst * { transition: none !important; }
-  .pl.dim { opacity: .5; }
-  .pl.gone { opacity: 0; }
-  .pl-s { position: absolute; left: 0; top: 0; width: 0; height: 0; transform: scale(var(--k, 1)); }
-  .pl-w { position: absolute; left: 0; top: 0; width: 0; height: 0; }
-  .pl-in { position: absolute; left: calc(var(--sz) / -2); top: calc(var(--sz) / -2); width: var(--sz); height: var(--sz); transform-origin: 50% 100%; transform: rotate(var(--lean, 0deg)); transition: transform .5s cubic-bezier(.3, 1.4, .5, 1); }
-  .pl[data-side="a"] { --ring: var(--side-a); } .pl[data-side="b"] { --ring: var(--side-b); }
-  .bub { width: 100%; height: 100%; border-radius: 50%; border: calc(var(--sz) * .055) solid var(--ring, var(--pc)); display: grid; place-items: center; font-size: calc(var(--sz) * .52); line-height: 1;
-    background: radial-gradient(circle at 35% 25%, rgba(255, 255, 255, .26), rgba(255, 255, 255, .07) 70%), #14141f;
-    box-shadow: 0 0 calc(var(--sz) * .3) calc(var(--sz) * -.06) var(--ring, var(--pc)), inset 0 1px 0 rgba(255, 255, 255, .25);
-    animation: sway 3.4s ease-in-out infinite; animation-delay: var(--dl, 0s); transition: border-color .3s, box-shadow .3s;
-    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
-  @keyframes sway { 0%, 100% { transform: translateY(0) rotate(-1.5deg); } 50% { transform: translateY(calc(var(--sz) * .03)) rotate(1.5deg); } }
-  .hand { position: absolute; width: calc(var(--sz) * .17); height: calc(var(--sz) * .17); border-radius: 50%; background: #e9e6ff; box-shadow: 0 0 8px rgba(255, 255, 255, .5); top: calc(50% - var(--sz) * .38 - var(--sz) * .085); }
-  .hand.l { left: calc(var(--sz) * -.02); } .hand.r { right: calc(var(--sz) * -.02); }
-  .pl.b .hand { top: calc(50% + var(--sz) * .28 - var(--sz) * .085); }
-  .chk { position: absolute; left: calc(var(--sz) * .16); top: calc(var(--sz) * -.6); width: calc(var(--sz) * .38); height: calc(var(--sz) * .38); border-radius: 50%; background: var(--ok); border: 2px solid #0b0b14; box-shadow: 0 0 14px -2px var(--ok); color: #07120c; font: 900 calc(var(--sz) * .22)/1 var(--body); display: grid; place-items: center; opacity: 0; transform: scale(.3); transition: opacity .2s, transform .35s var(--pop); }
-  .pl.ready .chk { opacity: 1; transform: none; }
-  .wmark { position: absolute; left: calc(var(--sz) * -.66); top: calc(var(--sz) * -.62); font-size: calc(var(--sz) * .46); line-height: 1; opacity: 0; transform: scale(.3); transition: opacity .3s, transform .4s var(--pop); }
-  .pl.wolf .wmark { opacity: 1; transform: none; }
-  .nm2 { position: absolute; left: 0; top: calc(var(--sz) * var(--k, 1) * .5 + 5px); transform: translateX(-50%); max-width: var(--tw, 120px); padding: 2px 5px 3px; background: rgba(12, 12, 20, .78); border: 1px solid var(--hair); border-bottom: 2px solid var(--pc); border-radius: 10px;
-    font: 700 var(--nfs, 16px)/1.2 var(--body); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 4px; }
-  .nm2 > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-  .pl.b .nm2, .pl.fallen .nm2 { top: auto; bottom: calc(var(--sz) * var(--k, 1) * .5 + 5px); }
-  .nm2 .x { flex: none; display: none; border: 0; background: var(--bad); color: #1a0509; font: 900 12px/1 var(--body); width: 18px; height: 18px; border-radius: 50%; padding: 0; }
-  body.host.lobbyp .pl:hover .nm2 { max-width: none; }
-  body.host.lobbyp .pl:hover .nm2 .x, body.host.lobbyp .pl:focus-within .nm2 .x { display: block; }
-  .pts { position: absolute; left: 0; top: calc(var(--sz) * var(--k, 1) * -.5 - 36px); margin-left: 0; translate: -50% 0; padding: 1px 7px 2px; border-radius: 999px; border: 1.5px solid currentColor; background: #0b0b14; font: 900 max(calc(var(--sz) * var(--k, 1) * .24), 12px)/1.2 var(--display); white-space: nowrap; opacity: 0; transform: scale(.3); transition: opacity .2s, transform .4s var(--pop); z-index: 3; font-variant-numeric: tabular-nums; }
-  .pts.on { opacity: 1; transform: none; }
-  .pts.bk::before { content: "×2"; position: absolute; left: -10px; top: -15px; padding: 0 5px; font-size: .62em; line-height: 1.5; background: linear-gradient(100deg, var(--c1), var(--c2)); color: #0a0a0f; border-radius: 8px; }
-  .pl.b .pts { top: calc(var(--sz) * var(--k, 1) * -.1); translate: calc(var(--sz) * var(--k, 1) * .5 + 50%) 0; }
-  .pl.fallen .pts { top: calc(var(--sz) * var(--k, 1) * -.5 - 60px); }
-  .pts.pos { color: var(--ok); } .pts.neg { color: var(--bad); } .pts.zero { color: var(--muted); }
-  /* тесная толпа: очки — малый бейдж у верхнего правого края фишки, чтобы соседние не налезали */
-  .pl.dense .pts, .pl.dense.b .pts, .pl.dense.fallen .pts { top: calc(var(--sz) * var(--k, 1) * -.5 - 8px); left: 0; translate: -50% 0; padding: 0 5px 1px; font-size: max(calc(var(--sz) * var(--k, 1) * .22), 10px); border-width: 1px; z-index: 6; }
-  .pl.dense:not(.b):not(.fallen) .pts { top: calc(var(--sz) * var(--k, 1) * .5 - 8px); }
-  .pl.dense:not(.b):not(.fallen) .nm2 { top: calc(var(--sz) * var(--k, 1) * .5 + 13px); }
-  .pl.dense.b .nm2 { bottom: calc(var(--sz) * var(--k, 1) * .5 + 13px); }
-  .pl.dense .pts.bk::before { left: -8px; top: -11px; }
-  .pl.ready .pop, .pl.shiver .pl-w { animation: shiver .45s linear; }
-  @keyframes shiver { 0%, 100% { transform: translateX(0); } 15% { transform: translateX(-4px) rotate(-3deg); } 35% { transform: translateX(4px) rotate(3deg); } 55% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
-  .pl.hop .pl-w { animation: hop .7s var(--pop) 2; animation-delay: var(--hd, 0s); }
-  @keyframes hop { 40% { transform: translateY(calc(var(--sz) * -.22)); } 70% { transform: translateY(0) scaleY(.92); } }
-  .pl.enter .pl-w { animation: enter .6s var(--pop) both; }
-  @keyframes enter { from { transform: scale(.2) translateY(-40px); opacity: 0; } }
-  .pl.pulled .pl-in { transition: transform .4s; }
-  .pl.mud .bub { --ring: var(--bad); filter: saturate(.55) brightness(.85); }
-
-  #flag { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 2; will-change: transform; }
-  #flag .fl { position: absolute; left: calc(var(--sz) * -.2); bottom: -6px; width: calc(var(--sz) * 1.05); height: calc(var(--sz) * 1.3); overflow: visible; transform-origin: calc(var(--sz) * .2) 100%; transition: transform .45s var(--pop); filter: drop-shadow(0 0 8px rgba(255, 255, 255, .5)); }
-  #flag .rag { transform-origin: 20% 6%; animation: flap .9s ease-in-out infinite alternate; }
-  @keyframes flap { from { transform: skewY(-5deg) scaleX(1); } to { transform: skewY(6deg) scaleX(.93); } }
-  #fx { position: absolute; inset: 0; z-index: 9; pointer-events: none; }
-  .drop { position: absolute; width: 8px; height: 8px; margin: -4px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 10px var(--bad); animation: splashd .7s cubic-bezier(.2, .7, .4, 1) forwards; }
-  @keyframes splashd { to { transform: translate(var(--dx), var(--dy)); opacity: 0; } }
-  .ring { position: absolute; margin: 0; border: 2px solid rgba(251, 113, 133, .85); border-radius: 50%; animation: ring .9s ease-out forwards; }
-  @keyframes ring { from { transform: scale(.25); opacity: .9; } to { transform: scale(1.5); opacity: 0; } }
-
-  @media (max-height: 800px) { .rules { display: none; } }
-  @media (max-aspect-ratio: 5/4) {
-    .up { grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr) auto; gap: 0 calc(3 * var(--vw)); }
-    .mid { grid-column: 1 / -1; grid-row: 1; }
-    .sign { grid-row: 2 !important; height: calc(17 * var(--vh)); min-height: 96px; }
-    .sign.a { grid-column: 1; } .sign.b { grid-column: 2; }
-    .sg-board { flex-direction: row; justify-content: center; gap: 12px; padding: calc(1 * var(--vh)) 14px; }
-    .sg-word { width: auto; flex: 1; font-size: clamp(18px, calc(3.4 * var(--vh)), 40px); }
-    .sign.a .sg-n { right: auto; left: -.1em; } .sign.b .sg-n { left: auto; right: -.1em; }
-    .lobby { grid-template-columns: 1fr 1fr; grid-template-rows: auto minmax(0, 1fr); gap: calc(1.5 * var(--vh)) calc(3 * var(--vw)); overflow: hidden; padding-top: 0; }
-    .lobby > div:nth-child(1) { grid-column: 1; grid-row: 2; }
-    .lobby > div:nth-child(2) { grid-column: 1 / -1; grid-row: 1; }
-    .lobby > div:nth-child(3) { grid-column: 2; grid-row: 2; }
-    .rules { display: none; }
-    .lb-h { font-size: clamp(36px, calc(8 * var(--vh)), 100px); }
-    .fin-up { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1.2fr) minmax(0, 1fr); gap: calc(1 * var(--vh)); }
-    .sc { padding: calc(1 * var(--vh)) calc(3 * var(--vw)); }
-    .fin-r { gap: calc(1 * var(--vh)); justify-content: flex-start; overflow: hidden; }
-    .aw { padding: calc(.6 * var(--vh)) calc(2 * var(--vw)); }
-    .aw .rosette { width: clamp(32px, calc(4.6 * var(--vh)), 52px); height: clamp(32px, calc(4.6 * var(--vh)), 52px); font-size: clamp(16px, calc(2.4 * var(--vh)), 28px); }
-    .aw b { font-size: clamp(16px, calc(2.4 * var(--vh)), 28px); } .aw p { font-size: clamp(12px, calc(1.7 * var(--vh)), 18px); } .aw .ek { font-size: clamp(9px, calc(1.4 * var(--vh)), 14px); }
-    .fin-r .start { font-size: clamp(18px, calc(2.6 * var(--vh)), 30px); padding: calc(1.2 * var(--vh)) 12px; } .fin-r .ghostbtn { font-size: clamp(14px, calc(2 * var(--vh)), 22px); padding: calc(1 * var(--vh)) 12px; }
-    .fin-l h1 { font-size: clamp(28px, calc(5.6 * var(--vh)), 70px); }
-  }
+  /* ---------- портрет ---------- */
+  .ptr .lobby { grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 22px; padding: 4px 36px 30px; }
+  .ptr .lb-mid { display: contents; }
+  .ptr .lb-top { grid-row: 1; } .ptr .ticket { grid-row: 2; flex-direction: row; flex-wrap: wrap; padding: 18px 26px; }
+  .ptr .lb-players { grid-row: 3; } .ptr .lb-ctl { grid-row: 4; }
+  .ptr .lps { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); }
+  .ptr .lp b { font-size: 21px; } .ptr .rules { display: none; }
+  .ptr .fin { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto auto; grid-template-areas: "t t" "pod pod" "aw aw" "bt bt" "rl rr"; padding: 0 36px 30px; gap: 16px 20px; }
+  .ptr .fbtn .start { min-width: 0; flex: 1 1 100%; } .ptr .fbtn .ghostbtn { flex: 1 1 40%; min-width: 0; }
+  .ptr .awrow { flex-wrap: wrap; } .ptr .aw { flex: 1 1 45%; max-width: none; }
+  .ptr .rest { justify-content: flex-start; }
+  .ptr .sc { padding: 4px 30px 30px; }
+  .ptr .full { padding: 0 30px 30px; }
+  .ptr .sb { flex-direction: row; gap: 14px; padding: 8px 14px; }
+  .ptr .sb .big { font-size: 38px; }
+  .ptr .sb .cap { font-size: 18px; text-align: left; }
+  .ptr .brand i { display: none; } .ptr .brand span { font-size: 26px; } .ptr .chip { font-size: 18px; padding: 8px 14px; } .ptr .top { gap: 10px; padding-left: 36px; }
+  .ptr .poster { padding: 36px 40px 42px; }
+  @media (max-height: 720px) { .rules { display: none; } }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition: none !important; }
   }
@@ -370,6 +375,7 @@
 </head>
 <body>
 <div class="bg" aria-hidden="true"><i class="blob a"></i><i class="blob b"></i><i class="blob c"></i><div class="grain"></div></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="rgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b5cf6"/><stop offset=".6" stop-color="#ec4899"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs></svg>
 <div id="root">
 <div class="top">
   <div class="brand"><i aria-hidden="true"></i><span id="brand" data-i18n="game_name">Как все</span></div>
@@ -381,22 +387,33 @@
 <div class="banner hidden" id="banner"></div>
 <div class="conn" id="conn"></div>
 <main id="main">
-  <section id="upper"></section>
-  <section id="stage" aria-label="">
-    <svg id="sgBack" aria-hidden="true"></svg>
-    <div id="tstring" aria-hidden="true"><svg id="tsvg"></svg><div id="tflag"><span class="tn" id="tnum"></span></div></div>
-    <svg id="sgRope" aria-hidden="true"><defs><linearGradient id="ropeGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1600" y2="0"><stop offset="0" stop-color="#4f8bff"/><stop offset=".42" stop-color="#22d3ee"/><stop offset=".58" stop-color="#ff7a2f"/><stop offset="1" stop-color="#ec4899"/></linearGradient></defs><g id="ropeG"><path id="ropeSh" class="strand" stroke="url(#ropeGrad)" opacity=".28"/><path id="ropeP" class="strand" stroke="url(#ropeGrad)"/><path id="ropeT" class="strand" stroke="#fff" opacity=".85"/></g></svg>
-    <div id="flag" aria-hidden="true"><svg class="fl" viewBox="0 0 80 100"><rect x="18" y="6" width="3" height="94" rx="1.5" fill="#f4f2ff"/><circle cx="19.5" cy="6" r="4.5" fill="#fff"/><g class="rag"><path d="M22 10 L70 28 L22 46 Z" fill="#f4f2ff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></g></svg></div>
-    <div id="lobbyCount" aria-hidden="true"><b id="lcN"></b><span id="lcT"></span></div>
-    <svg id="sgFront" aria-hidden="true"></svg>
-    <div id="fx"></div>
+  <section id="game" class="hidden" aria-label="">
+    <div class="abs sb pnl" id="sbL"><div class="ring" id="ring"><svg viewBox="0 0 150 150"><circle class="tr" cx="75" cy="75" r="62"/><circle class="pg" id="ringPg" cx="75" cy="75" r="62" stroke-dasharray="389.6" stroke-dashoffset="0"/></svg><div class="num" id="ringNum"></div></div></div>
+    <div class="abs qpanel pnl" id="qpanel">
+      <div class="qmeta"><span class="prog" id="prog"></span><span class="pips" id="pips" aria-hidden="true"></span></div>
+      <div class="qbox" id="qbox"><h1 class="qtxt" id="qtxt"></h1></div>
+    </div>
+    <div class="abs sb pnl" id="sbR"></div>
+    <div id="field">
+      <div class="railrow" id="railrow"><b class="rn a" id="nA">0</b><div class="rail" id="rail"><div class="puck" id="puck"><svg class="fl" viewBox="0 0 80 100"><rect x="6" y="6" width="4" height="94" rx="2" fill="#f4f2ff"/><circle cx="8" cy="6" r="5" fill="#fff"/><g class="rag"><path d="M12 10 L72 30 L12 50 Z" fill="#f4f2ff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></g></svg><div class="knot"></div></div></div><b class="rn b" id="nB">0</b></div>
+      <div class="oprow" id="oprow"><b class="on-n a" id="opA"></b><div class="opmid"><span class="oplab" id="opLab"></span><div class="opbar"><i class="a" id="opbA"></i><i class="b" id="opbB"></i></div></div><b class="on-n b" id="opB"></b></div>
+      <div class="zone a" id="zA"><div class="zhead"><span class="zl" id="zAl"></span><span class="zw" id="zAw"></span></div><i class="zbig" id="zAg"></i></div>
+      <div class="zone b" id="zB"><div class="zhead"><span class="zl" id="zBl"></span><span class="zw" id="zBw"></span></div><i class="zbig" id="zBg"></i></div>
+      <div class="pen" id="pen"><div class="pen-t" id="penT"></div></div>
+      <svg id="crack" aria-hidden="true"><path id="crackP" fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" style="filter:drop-shadow(0 0 12px rgba(255,255,255,.9))"/></svg>
+    </div>
   </section>
+  <section id="upper" class="hidden"></section>
+  <div id="chips" class="off"></div>
+  <div id="dim"></div>
+  <div id="vd"><div class="vd-k" id="vdK"></div><div class="vd-w" id="vdW"></div><div class="vd-s" id="vdS"></div></div>
 </main>
 </div>
 
 <script>
 window.I18N_DICT = {
   ru: {
+    out_title: `Мимо большинства`, votes_lbl: `голоса`, room_lbl: `Комната открыта`,
     _title: `Как все — общий экран`, game_name: `Как все`,
     creating: `Открываем комнату…`, expired: `Комната закрылась — открой новую`, err_connect: `Связь потеряна — переподключаемся…`,
     tagline: `Угадай, что скажет <b>большинство</b>`,
@@ -428,6 +445,7 @@ window.I18N_DICT = {
     tm_left: `Осталось секунд: {n}`,
   },
   en: {
+    out_title: `Missed the crowd`, votes_lbl: `votes`, room_lbl: `Room is open`,
     _title: `Go With the Crowd — shared screen`, game_name: `Go With the Crowd`,
     creating: `Opening a room…`, expired: `The room has closed — open a new one`, err_connect: `Connection lost — reconnecting…`,
     tagline: `Guess what the <b>majority</b> will say`,
@@ -459,6 +477,7 @@ window.I18N_DICT = {
     tm_left: `Seconds left: {n}`,
   },
   el: {
+    out_title: `Έχασαν την πλειοψηφία`, votes_lbl: `ψήφοι`, room_lbl: `Το δωμάτιο είναι ανοιχτό`,
     _title: `Όπως όλοι — κοινή οθόνη`, game_name: `Όπως όλοι`,
     creating: `Άνοιγμα δωματίου…`, expired: `Το δωμάτιο έκλεισε — άνοιξε νέο`, err_connect: `Χάθηκε η σύνδεση — επανασύνδεση…`,
     tagline: `Μάντεψε τι θα πει η <b>πλειοψηφία</b>`,
@@ -504,10 +523,8 @@ const params = new URLSearchParams(location.search);
 let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
 const hostKey = () => "crowd-host-" + CODE;
 const RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const NS = "http://www.w3.org/2000/svg";
-const upper = $("upper"), stage = $("stage");
+const main = $("main"), upper = $("upper"), game = $("game"), field = $("field"), chipsEl = $("chips");
 let Z = 1; // масштаб для ТВ (см. measure)
-const VW = () => innerWidth / Z, VH = () => innerHeight / Z;
 
 let conn = null, state = null, isHost = false, dead = false;
 let viewKey = "";
@@ -548,103 +565,69 @@ function showBanner(text) {
   b.textContent = text || "";
 }
 
-// ---------- геометрия сцены ----------
-const M = { W: 1600, H: 440, sz: 80, ropeY: 160, gy: 220, postL: 120, postR: 1480, px: 800, py: 340, rx: 140, ry: 40, nfs: 16 };
+// ---------- геометрия ----------
+// Всё живёт в виртуальном экране: 1600×900 (портрет 800×1280), main в его координатах. L.f — поле (зоны, шкала, толпа).
+const M = { portrait: false, nfs: 20, W: 1600, H: 800 };
+const L = { f: { x: 50, y: 300, w: 1500, h: 500 } };
+const place = (el, r) => { el.style.left = r.x + "px"; el.style.top = r.y + "px"; el.style.width = r.w + "px"; el.style.height = r.h + "px"; };
 function measure() {
-  // большой экран: верстка живёт в виртуальном 1600x900 (портрет 800x1280) и масштабируется transform'ом — ТВ читается с дивана
   const rawPortrait = innerWidth / innerHeight < 1.25;
   const zz = Math.min(innerWidth / (rawPortrait ? 800 : 1600), innerHeight / (rawPortrait ? 1280 : 900));
-  // ≥1.15 — ТВ (растягиваем); низкий экран (<700px высоты, например ТВ с браузерным зумом 200%) — наоборот, сжимаем виртуальный экран
+  // ≥1.15 — ТВ (растягиваем); низкий экран (<700px высоты, например ТВ с браузерным зумом 200%) — сжимаем виртуальный экран
   Z = zz >= 1.15 || (innerHeight < 700 && !rawPortrait) ? Math.round(zz * 100) / 100 : 1;
   document.documentElement.style.setProperty("--z", Z);
-  const vw = innerWidth / Z, vh = innerHeight / Z;
-  const portrait = vw / vh < 1.25;
-  const sh = Math.round(clamp(vh * (portrait ? 0.38 : 0.44), 300, 560));
-  const gy = Math.round(sh * 0.5);
-  const sz = Math.round(clamp((gy - 40) / 2.35, 40, 88));
-  const ropeY = Math.round(34 + 1.25 * sz);
-  document.documentElement.style.setProperty("--sh", sh + "px");
-  document.documentElement.style.setProperty("--gy", gy + "px");
-  document.documentElement.style.setProperty("--sz", sz + "px");
-  document.documentElement.style.setProperty("--ry", ropeY + "px");
-  const sgw = clamp(vw * 0.17, 150, 340);
-  M.W = vw; M.H = sh; M.sz = sz; M.ropeY = ropeY; M.gy = gy;
-  M.postL = portrait ? vw * 0.05 : vw * 0.03;
-  M.postR = vw - M.postL;
-  M.px = vw / 2;
-  M.py = gy + (sh - gy) * 0.5;
-  M.rx = clamp(vw * 0.085, 80, 220);
-  M.ry = clamp((sh - gy) * 0.3, 30, 90);
-  M.nfs = Math.round(clamp(sz * 0.2, 12, 19));
-  M.portrait = portrait;
-  buildStageSvg();
-}
-const sagAt = (x, sag) => { const u = (x - M.W / 2) / (M.W / 2); return sag * (1 - u * u); };
-let sagNow = 5;
-function ropePath(sag) {
-  const y = M.ropeY, W = M.W;
-  return `M -30 ${y} Q ${W / 2} ${y + sag * 2} ${W + 30} ${y}`;
-}
-function setRope(sag) {
-  sagNow = sag;
-  const d = ropePath(sag);
-  const sw = Math.max(5, M.sz * 0.075);
-  const sh = $("ropeSh"), p = $("ropeP"), t = $("ropeT");
-  sh.setAttribute("d", d); sh.setAttribute("stroke-width", sw * 3.4);
-  p.setAttribute("d", d); p.setAttribute("stroke-width", sw);
-  // бусины на тросе: точки с круглыми концами
-  t.setAttribute("d", d); t.setAttribute("stroke-width", sw * 0.9); t.setAttribute("stroke-dasharray", `0 ${(sw * 4.2).toFixed(1)}`);
-}
-function buildStageSvg() {
-  const { W, H, gy, ropeY, postL, postR, px, py, rx, ry } = M;
-  for (const id of ["sgBack", "sgRope", "sgFront"]) $(id).setAttribute("viewBox", `0 0 ${W} ${H}`);
-  $("ropeGrad").setAttribute("x2", W);
-  // опоры каната: тонкая линия вниз и узел на тросе
-  const post = (x, c) => `<g><rect x="${x - 1}" y="${ropeY}" width="2" height="${H - ropeY}" fill="url(#pg${c})"/><circle cx="${x}" cy="${ropeY}" r="11" fill="#0b0b14" stroke="${c === "a" ? "#4f8bff" : "#ff7a2f"}" stroke-width="2.5"/><circle cx="${x}" cy="${ropeY}" r="4" fill="${c === "a" ? "#22d3ee" : "#ec4899"}"/></g>`;
-  const pitCy = py;
-  // превью зон для лобби: кольцо с ✔ слева и ✖ справа в нижней части сцены, под подписями игроков
-  const zy = ropeY + (H - ropeY) * 0.62, zr = clamp(Math.min((H - ropeY) * 0.3, W * 0.07), 26, 110);
-  const zoneMark = (s, x, y, r) => {
-    const c = s === "a" ? "#4f8bff" : "#ff7a2f", d = r * 0.38;
-    const g = s === "a" ? `M${x - d} ${y} L${x - d * 0.25} ${y + d * 0.8} L${x + d * 1.05} ${y - d * 0.75}` : `M${x - d * 0.8} ${y - d * 0.8} L${x + d * 0.8} ${y + d * 0.8} M${x + d * 0.8} ${y - d * 0.8} L${x - d * 0.8} ${y + d * 0.8}`;
-    return `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}" fill-opacity=".07" stroke="${c}" stroke-opacity=".35" stroke-width="2"/><path d="${g}" fill="none" stroke="${c}" stroke-opacity=".55" stroke-width="${Math.max(5, r * 0.14)}" stroke-linecap="round" stroke-linejoin="round"/>`;
-  };
-  $("sgBack").innerHTML =
-    `<defs>
-      <linearGradient id="zoneA" x1="0" x2="1"><stop offset="0" stop-color="#4f8bff" stop-opacity=".16"/><stop offset="1" stop-color="#4f8bff" stop-opacity="0"/></linearGradient>
-      <linearGradient id="zoneB" x1="0" x2="1"><stop offset="0" stop-color="#ff7a2f" stop-opacity="0"/><stop offset="1" stop-color="#ff7a2f" stop-opacity=".16"/></linearGradient>
-      <linearGradient id="pga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4f8bff" stop-opacity=".7"/><stop offset="1" stop-color="#4f8bff" stop-opacity="0"/></linearGradient>
-      <linearGradient id="pgb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff7a2f" stop-opacity=".7"/><stop offset="1" stop-color="#ff7a2f" stop-opacity="0"/></linearGradient>
-      <radialGradient id="pitG"><stop offset="0" stop-color="#fb7185" stop-opacity=".30"/><stop offset=".7" stop-color="#fb7185" stop-opacity=".08"/><stop offset="1" stop-color="#fb7185" stop-opacity="0"/></radialGradient>
-    </defs>
-    <rect x="0" y="0" width="${px}" height="${H}" fill="url(#zoneA)"/><rect x="${px}" y="0" width="${W - px}" height="${H}" fill="url(#zoneB)"/>
-    <g class="zm">${zoneMark("a", W * 0.21, zy, zr)}${zoneMark("b", W * 0.79, zy, zr)}</g>` +
-    post(postL, "a") + post(postR, "b") +
-    // ямка проигрыша: красное кольцо с тёмным дном
-    `<ellipse cx="${px}" cy="${pitCy}" rx="${rx * 1.7}" ry="${ry * 2.1}" fill="url(#pitG)"/>
-     <ellipse cx="${px}" cy="${pitCy + 2}" rx="${rx * 1.1}" ry="${ry * 1.1}" fill="#06060b" fill-opacity=".75" stroke="#fb7185" stroke-opacity=".7" stroke-width="2" stroke-dasharray="3 8" stroke-linecap="round"/>
-     <ellipse cx="${px}" cy="${pitCy + 2}" rx="${rx * 0.78}" ry="${ry * 0.75}" fill="none" stroke="#fff" stroke-opacity=".07" stroke-width="1.5"/>` +
-    // центральная метка под канатом
-    `<path d="M${px} ${ropeY + 16} V${pitCy - ry * 1.15}" stroke="#fff" stroke-width="2" stroke-dasharray="2 9" stroke-linecap="round" opacity=".45"/>`;
-  // красная зона поверх: упавшие игроки стоят в ней
-  $("sgFront").innerHTML =
-    `<g id="veil" opacity="0" style="transition:opacity .4s"><ellipse cx="${px}" cy="${pitCy + 3}" rx="${rx * 1.02}" ry="${ry * 1.02}" fill="#fb7185" fill-opacity=".14" stroke="#fb7185" stroke-opacity=".55" stroke-width="1.5"/>
-     <path d="M${px - rx * 0.8} ${pitCy + ry * 0.3} q ${rx * 0.2} -8 ${rx * 0.4} 0 t ${rx * 0.4} 0 t ${rx * 0.4} 0 t ${rx * 0.4} 0" fill="none" stroke="#fff" stroke-width="2" opacity=".25" stroke-linecap="round"/></g>`;
-  // дорожка таймера: тонкая линия с метками, прогресс заливается поверх
-  const n = Math.ceil(W / 46), ys = (x) => 22 + 0 * x;
-  let ticks = "";
-  for (let i = 1; i < n; i++) { const x = (i / n) * W; ticks += `<circle cx="${x.toFixed(1)}" cy="22" r="1.8" fill="rgba(255,255,255,.28)"/>`; }
-  const tpath = `M 0 22 H ${W}`;
-  $("tsvg").setAttribute("viewBox", `0 0 ${W} 44`);
-  $("tsvg").innerHTML = `<defs><linearGradient id="tgrad" gradientUnits="userSpaceOnUse" x1="0" x2="${W}"><stop offset="0" stop-color="#8b5cf6"/><stop offset=".6" stop-color="#ec4899"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>
-    <path d="${tpath}" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="3" stroke-linecap="round"/>${ticks}<g id="tdone"><path d="${tpath}" fill="none" stroke="url(#tgrad)" stroke-width="4" stroke-linecap="round"/></g>`;
-  M.tys = ys;
-  setRope(sagNow);
+  const W = main.clientWidth, H = main.clientHeight;
+  const portrait = W / H < 1.25;
+  M.W = W; M.H = H; M.portrait = portrait;
+  document.body.classList.toggle("ptr", portrait);
+  const px = clamp(W * 0.031, 20, 56), gx = clamp(W * 0.022, 14, 36), gy = clamp(H * 0.034, 14, 30), bot = clamp(H * 0.045, 16, 40);
+  let fy;
+  if (!portrait) {
+    const qh = clamp(H * 0.27, 170, 330), sbw = clamp(W * 0.15, 130, 270);
+    L.q = { x: px + sbw + gx, y: 0, w: W - 2 * (px + sbw + gx), h: qh };
+    L.sbL = { x: px, y: 0, w: sbw, h: qh };
+    L.sbR = { x: W - px - sbw, y: 0, w: sbw, h: qh };
+    fy = qh + gy;
+  } else {
+    const qh = clamp(H * 0.2, 190, 330), sbh = clamp(H * 0.085, 80, 116), sw = (W - 2 * px - gx) / 2, y2 = qh + gy * 0.7;
+    L.q = { x: px, y: 0, w: W - 2 * px, h: qh };
+    L.sbL = { x: px, y: y2, w: sw, h: sbh };
+    L.sbR = { x: px + sw + gx, y: y2, w: sw, h: sbh };
+    fy = y2 + sbh + gy;
+  }
+  L.f = { x: px, y: fy, w: W - 2 * px, h: Math.max(220, H - fy - bot) };
+  L.railH = clamp(L.f.h * 0.14, 56, 84);
+  L.opH = clamp(L.f.h * 0.095, 42, 58);
+  L.fgap = clamp(L.f.h * 0.032, 10, 18);
+  L.zg = clamp(L.f.w * 0.014, 12, 22);
+  L.pg = clamp(L.f.w * 0.014, 12, 22);
+  L.penW = clamp(L.f.w * (portrait ? 1 : 0.37), 300, 620);
+  L.pent = 52;
+  L.zhd = portrait ? 96 : 100;
+  const zh0 = L.f.h - L.railH - L.fgap;
+  L.zhv = portrait ? clamp(zh0 * 0.3, L.zhd + 130, 300) : 0;
+  L.sig = [W, H, Z].join("x");
+  M.nfs = portrait ? 19 : 21;
+  document.documentElement.style.setProperty("--nfs", M.nfs + "px");
+  place($("qpanel"), L.q); place($("sbL"), L.sbL); place($("sbR"), L.sbR); place(field, L.f);
+  place(chipsEl, { x: 0, y: 0, w: W, h: H });
+  const rs = Math.min(L.sbL.h - 28, L.sbL.w - 28, portrait ? 76 : 170);
+  $("sbL").style.setProperty("--rs", rs + "px");
+  $("sbR").style.setProperty("--bs", (portrait ? 40 : clamp(L.sbR.h * 0.3, 44, 84)) + "px");
+  $("sbR").style.setProperty("--cs", (portrait ? 18 : 24) + "px");
+  field.style.setProperty("--rf", clamp(L.railH * 0.82, 40, 68) + "px");
+  field.style.setProperty("--nw", clamp(L.railH * 1.35, 70, 110) + "px");
+  field.style.setProperty("--of", clamp(L.opH * 0.62, 24, 34) + "px");
+  field.style.setProperty("--bz", (portrait ? 54 : 64) + "px");
+  field.style.setProperty("--gz", (portrait ? 220 : 340) + "px");
+  place($("railrow"), { x: 0, y: 0, w: L.f.w, h: L.railH });
+  $("railrow").style.right = "auto";
+  $("oprow").style.top = L.railH + 6 + "px"; $("oprow").style.height = L.opH + "px";
+  const R = $("rail"); R.style.height = clamp(L.railH * 0.42, 24, 34) + "px";
 }
 
-// ---------- игроки на канате ----------
-const PL = new Map(); // id → {el, key, ...}
-let mode = ""; // "spread" | "huddle" | "reveal"
+// ---------- фишки ----------
+const PL = new Map(); // id → {el, key}
 function ensurePlayers() {
   const ps = present();
   const ids = new Set(ps.map((p) => p.id));
@@ -653,16 +636,15 @@ function ensurePlayers() {
     let pl = PL.get(p.id);
     if (!pl) {
       const el = document.createElement("div");
-      el.className = "pl f enter inst";
+      el.className = "pl enter inst gone";
       el.id = "pl-" + p.id;
-      el.innerHTML = `<div class="pl-s"><div class="pl-w"><div class="pl-in"><i class="hand l"></i><i class="hand r"></i><div class="bub"></div></div></div><span class="chk">✓</span><span class="wmark">🐺</span></div><div class="nm2"><span></span><button class="x" type="button">✕</button></div><span class="pts"></span>`;
+      el.innerHTML = `<div class="pl-s"><div class="pl-w"><div class="pl-in"><div class="bub"></div></div></div><span class="chk">✓</span><span class="wmark">🐺</span></div><div class="nm2"><span></span></div><span class="pts"></span>`;
       el.style.setProperty("--dl", ((i * 0.37) % 3).toFixed(2) + "s");
-      stage.append(el);
-      pl = { el, id: p.id, key: "", placed: false };
+      chipsEl.append(el);
+      pl = { el, id: p.id, key: "" };
       PL.set(p.id, pl);
       requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove("inst")));
       setTimeout(() => el.classList.remove("enter"), 700);
-      el.querySelector(".x").onclick = (e) => { e.stopPropagation(); if (isHost) conn.send({ type: "kick", playerId: p.id }); };
     }
     pl.el.style.setProperty("--pc", p.color);
     const bub = pl.el.querySelector(".bub");
@@ -671,71 +653,150 @@ function ensurePlayers() {
     pl.p = p;
   });
 }
-// размеры и позиции
-function rowsFor(n) { return n > (M.portrait ? 3 : 6) ? 2 : 1; }
-// слоты в полосе [x0, x1] (x0 — ближний к центру край, x1 — дальний), порядок от x0 к x1
-function layoutRow(n, x0, x1, maxStep) {
-  const R = rowsFor(n), cols = Math.ceil(n / R);
-  const span = Math.abs(x1 - x0), dir = x1 >= x0 ? 1 : -1;
-  const step = Math.min(span / (cols + (R === 2 ? 0.5 : 0)), maxStep);
-  const out = [];
-  for (let j = 0; j < n; j++) {
-    const row = R === 2 ? j % 2 : 0, col = Math.floor(j / R);
-    out.push({ x: x0 + dir * (col + 0.5 + (row ? 0.5 : 0)) * step, row });
-  }
-  return { slots: out, step, k: Math.min(1, (step * 0.94) / M.sz) };
+// подпись игрока: не режем до 2–3 букв — сначала уменьшаем кегль (до 13px), усечение только если и так не влезает
+function fitName(e, tw) {
+  const nm = e.querySelector(".nm2"), sp = nm.firstElementChild;
+  nm.style.fontSize = "";
+  const avail = tw - 4, w = sp.scrollWidth;
+  if (w > avail && avail > 0) nm.style.fontSize = Math.max(13, Math.floor(M.nfs * avail / w * 10) / 10) + "px";
 }
-function centered(n, half, maxStep) {
-  // толпа по обе стороны от центра: посередине оставлен просвет под лоскут и меловую метку
-  const R = rowsFor(n), nl = Math.ceil(n / 2), nr = n - nl, gap = M.sz * 0.62;
-  const cols = Math.ceil(nl / R);
-  const step = Math.min((half - gap) / (cols + (R === 2 ? 0.5 : 0)), maxStep);
-  const out = [];
-  for (let j = 0; j < nl; j++) { const row = R === 2 ? j % 2 : 0, col = Math.floor(j / R); out.push({ x: M.px - gap - (col + 0.5 + (row ? 0.5 : 0)) * step, row }); }
-  for (let j = 0; j < nr; j++) { const row = R === 2 ? j % 2 : 0, col = Math.floor(j / R); out.push({ x: M.px + gap + (col + 0.5 + (row ? 0.5 : 0)) * step, row }); }
-  return { slots: out, step, k: Math.min(1, (step * 0.94) / M.sz) };
-}
-const yFor = (row, k) => M.ropeY + (row ? -0.28 : 0.38) * M.sz * k;
-function setT(pl, t) {
-  const key = [Math.round(t.x), Math.round(t.y), t.k.toFixed(2), t.row, Math.round(t.lean || 0), Math.round(t.tw), t.fallen ? 1 : 0].join();
+function setChip(id, t) {
+  const pl = PL.get(id); if (!pl) return;
+  const key = [Math.round(t.x), Math.round(t.y), t.k.toFixed(2), Math.round(t.tw), t.gone ? 1 : 0].join();
   if (pl.key === key) return;
   pl.key = key;
   const e = pl.el;
   e.style.transform = `translate(${t.x.toFixed(1)}px,${t.y.toFixed(1)}px)`;
   e.style.setProperty("--k", t.k.toFixed(3));
+  e.style.setProperty("--a", (112 * t.k).toFixed(1) + "px");
   e.style.setProperty("--tw", Math.round(t.tw) + "px");
-  e.style.setProperty("--nfs", M.nfs + "px");
-  e.querySelector(".pl-in").style.setProperty("--lean", (t.lean || 0) + "deg");
-  e.classList.toggle("b", t.row === 1);
-  e.classList.toggle("fallen", !!t.fallen);
+  e.classList.toggle("gone", !!t.gone);
   fitName(e, t.tw);
 }
-// подпись игрока: не режем до 2–3 букв — сначала уменьшаем кегль (до 9px), усечение только если и так не влезает
-function fitName(e, tw) {
-  const nm = e.querySelector(".nm2"), sp = nm.firstElementChild;
-  nm.style.fontSize = "";
-  const avail = tw - 12, w = sp.scrollWidth;
-  if (w > avail && avail > 0) nm.style.fontSize = Math.max(9, Math.floor(M.nfs * avail / w * 10) / 10) + "px";
+// сетка фишек в прямоугольнике: больше аватар — лучше; при равенстве — меньше колонок (компактная стопка)
+function gridFit(n, w, h, maxA) {
+  n = Math.max(1, n);
+  const nameH = M.nfs * 1.3 + 16;
+  let best = null;
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols);
+    const a = Math.min(w / cols / 1.08, h / rows - nameH, maxA);
+    const score = a - Math.max(0, 118 - w / cols) * 0.6;   // имена должны читаться: узкие колонки штрафуем
+    if (!best || score > best.score + 0.75) best = { cols, rows, a, score };
+  }
+  const a = clamp(best.a, 36, maxA);
+  return { n, cols: best.cols, rows: best.rows, a, k: a / 112, nameH,
+    pitchX: Math.min(w / best.cols, Math.max(a * 1.2, 140)), pitchY: Math.min(h / best.rows, a + nameH + 6) };
 }
-function groupTargets(ids, lay, lean) {
-  ids.forEach((id, j) => {
-    const pl = PL.get(id); if (!pl) return;
-    const s = lay.slots[j];
-    setT(pl, { x: s.x, y: yFor(s.row, lay.k), k: lay.k, row: s.row, lean: lean || 0, tw: Math.max(54, lay.step * 0.98) });
-  });
+function gridSlot(g, i, R) {
+  const row = Math.floor(i / g.cols), col = i % g.cols;
+  const inRow = row === g.rows - 1 ? g.n - row * g.cols : g.cols;
+  const cx = R.x + R.w / 2 + (col - (inRow - 1) / 2) * g.pitchX;
+  const top = R.y + (R.h - g.rows * g.pitchY) / 2;
+  return { x: cx, y: top + row * g.pitchY + g.pitchY / 2 - g.nameH / 2 };
 }
-function layoutSpread() {
-  // лобби: участники слева, вплотную друг к другу, без дыры посередине
+
+// ---------- поле: зоны, толпа, шкала ----------
+// mode "pen": голоса скрыты, все стоят в центре; "reveal": placed уходят в свой лагерь, остальные ждут в загоне
+const FS = { mode: "pen", placed: new Set(), sides: { a: [], b: [] }, share: 0.5, na: 0, nb: 0, hasOp: false, tie: false, sig: "" };
+function applyField(force) {
+  if (!state) return;
+  const F = L.f, P = M.portrait;
   const ids = [...PL.keys()];
-  const lay = layoutRow(Math.max(1, ids.length), M.postL + M.sz * 0.9, M.W - M.postL - M.sz * 0.9, M.sz * 1.7);
-  groupTargets(ids, lay, 0);
+  const total = Math.max(1, ids.length);
+  const pen = FS.mode === "pen";
+  const left = pen ? ids.length : ids.filter((id) => !FS.placed.has(id)).length;
+  const sig = [pen, left, FS.placed.size, FS.share.toFixed(3), FS.hasOp, FS.tie, FS.na, FS.nb, L.sig, ids.length, FS.sides.a.length, FS.sides.b.length].join();
+  if (!force && sig === FS.sig) return;
+  FS.sig = sig;
+  const opH = FS.hasOp ? L.opH : 0;
+  const zy = L.railH + (opH ? opH + 8 : 0) + L.fgap, zh = Math.max(120, F.h - zy);
+  const sh = pen ? 0.5 : FS.share;
+  const tg = FS.tie ? 2.6 : 1;
+  let A, B, Pn;
+  if (!P) {
+    const penW = left > 0 ? clamp(L.penW * left / total, Math.min(190, L.penW), L.penW) : 0;
+    const gapC = penW > 0 ? penW + 2 * L.pg : L.zg * tg;
+    const span = F.w - gapC;
+    const wA = clamp(span * sh, 170, span - 170);
+    A = { x: 0, y: zy, w: wA, h: zh };
+    B = { x: wA + gapC, y: zy, w: span - wA, h: zh };
+    Pn = { x: wA + L.pg, y: zy, w: penW, h: zh };
+  } else {
+    const pr = pen ? 1 : left > 0 ? Math.max(left / total, 0.3) : 0;
+    const zHt = L.zhv + (zh - L.zhv) * (1 - pr);
+    const gapC = L.zg * tg, span = F.w - gapC;
+    const wA = clamp(span * sh, 150, span - 150);
+    A = { x: 0, y: zy, w: wA, h: zHt };
+    B = { x: wA + gapC, y: zy, w: span - wA, h: zHt };
+    Pn = { x: 0, y: zy + zHt + L.pg, w: F.w, h: Math.max(0, zh - zHt - L.pg) };
+  }
+  place($("zA"), A); place($("zB"), B);
+  const penOn = left > 0 && Pn.w > 60 && Pn.h > 60;
+  place($("pen"), Pn);
+  $("pen").style.opacity = penOn ? 1 : 0;
+  $("penT").style.opacity = pen ? 1 : 0;
+  // трещина по центру зазора
+  const crack = $("crack");
+  if (FS.tie) {
+    const cx = A.x + A.w + (B.x - A.x - A.w) / 2, hh = zh;
+    place(crack, { x: cx - 30, y: zy, w: 60, h: hh });
+    let d = "M30 -10"; const steps = 9;
+    for (let i = 1; i <= steps; i++) d += ` L${30 + (i % 2 ? -1 : 1) * (7 + (i * 5) % 9)} ${(hh + 20) * i / steps - 10}`;
+    $("crackP").setAttribute("d", d);
+  }
+  crack.classList.toggle("on", FS.tie && !!FS.decided);
+  // чипы лагерей
+  const used = new Set();
+  const pad = 14;
+  for (const s of ["a", "b"]) {
+    const list = FS.sides[s]; if (!list.length) continue;
+    const Zr = s === "a" ? A : B;
+    const R = { x: Zr.x + pad, y: Zr.y + L.zhd + 8, w: Zr.w - 2 * pad, h: Zr.h - L.zhd - 8 - pad };
+    const g = gridFit(list.length, R.w, R.h, 112);
+    list.forEach((id, i) => {
+      if (!FS.placed.has(id)) return;
+      used.add(id);
+      const p = gridSlot(g, i, R);
+      setChip(id, { x: p.x + F.x, y: p.y + F.y, k: g.k, tw: g.pitchX - 6 });
+    });
+  }
+  const penIds = ids.filter((id) => !used.has(id));
+  if (penIds.length) {
+    const tt = pen ? L.pent : 10;
+    const R = { x: Pn.x + 12, y: Pn.y + tt, w: Math.max(40, Pn.w - 24), h: Math.max(40, Pn.h - tt - 12) };
+    const g = gridFit(penIds.length, R.w, R.h, 112);
+    penIds.forEach((id, i) => {
+      const p = gridSlot(g, i, R);
+      setChip(id, { x: p.x + F.x, y: p.y + F.y, k: g.k, tw: g.pitchX - 6 });
+    });
+  }
+  // счётчики
+  setNum($("nA"), FS.na, true); setNum($("nB"), FS.nb, true);
+  $("railrow").style.opacity = pen ? 0.55 : 1;
+  $("zA").classList.toggle("pre", pen); $("zB").classList.toggle("pre", pen);
+  $("oprow").classList.toggle("on", FS.hasOp);
 }
-function layoutHuddle() {
-  const ids = [...PL.keys()];
-  const big = ids.length > 6;
-  const lay = centered(ids.length, M.W * (M.portrait ? (big ? 0.3 : 0.22) : (big ? 0.22 : 0.16)), M.sz * 1.7);
-  groupTargets(ids, lay, 0);
-  return lay;
+function setNum(el, n, show) {
+  const t = show ? String(n) : "·";
+  if (el.textContent !== t) { el.textContent = t; if (show && !RM) { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); } }
+}
+
+// ---------- шкала: маркер на пружине ----------
+const SP = { x: 0.5, v: 0, t: 0.5, idle: true };
+function springFrame(dt, now) {
+  const rail = $("rail"), puck = $("puck");
+  const W = rail.clientWidth; if (!W) return;
+  let tgt = SP.t;
+  if (SP.idle && !RM) tgt += 0.012 * Math.sin(now / 650);
+  const k = 34, c = 5.2;
+  let s = Math.min(dt, 50) / 1000, steps = Math.ceil(s / 0.008) || 1, h = s / steps;
+  if (RM) { SP.x = tgt; SP.v = 0; }
+  else for (let i = 0; i < steps; i++) { SP.v += (k * (tgt - SP.x) - c * SP.v) * h; SP.x += SP.v * h; }
+  puck.style.transform = `translateX(${(clamp(SP.x, 0.01, 0.99) * W).toFixed(1)}px)`;
+  const fl = puck.querySelector(".fl");
+  const dir = SP.t < 0.49 ? -1 : 1;
+  fl.style.transform = dir < 0 ? "scaleX(-1) translateX(-6px)" : "none";
 }
 
 // ---------- шапка ----------
@@ -758,67 +819,150 @@ function fitText(box, txt, max, min) {
 }
 function fitOne(el, max, min) {
   let fs = max; el.style.fontSize = fs + "px"; let g = 0;
-  while (fs > min && el.scrollWidth > el.clientWidth + 1 && g++ < 60) { fs -= 2; el.style.fontSize = fs + "px"; }
+  while (fs > min && el.scrollWidth > el.clientWidth + 1 && g++ < 80) { fs -= 2; el.style.fontSize = fs + "px"; }
 }
 const sideLabel = (q, s) => (s === "a" ? q.a : q.b);
 function letter(q, s) { return q.kind === "ab" ? T(s === "a" ? "ab_a" : "ab_b") : s === "a" ? "✔" : "✖"; }
-function fitSigns() {
-  document.querySelectorAll(".sg-word").forEach((w) => {
-    const sp = w.firstElementChild, board = w.closest(".sg-board");
-    w.style.fontSize = "";
-    let fs = parseFloat(getComputedStyle(w).fontSize), g = 0;
-    const over = () => sp.offsetWidth > w.clientWidth + 1 || sp.scrollWidth > w.clientWidth + 1 || sp.offsetHeight > w.clientHeight + 1;
-    while (fs > 12 && over() && g++ < 60) { fs -= 2; w.style.fontSize = fs + "px"; }
-  });
-}
-function signHtml(side, q) {
-  return `<div class="sign ${side}${q.kind === "ab" ? " ab" : ""}" id="sg${side}"><div class="sg-board"><span class="sg-ico">${esc(letter(q, side))}</span><span class="sg-word"><span>${esc(sideLabel(q, side))}</span></span></div><div class="sg-post"></div><div class="sg-n" id="n${side}">0</div></div>`;
-}
 const progText = (r) => r.kind === "final" ? T("q_final") : r.kind === "extra" ? T("q_extra") : r.kind === "decider" ? T("q_decider") : tpl("q_of", { n: r.num, t: state.total });
 function pipsHtml(r) {
   if (r.kind !== "normal" && r.kind !== "final") return "";
   let s = "";
   for (let i = 1; i <= state.total; i++) s += `<i class="${i < r.num ? "d" : i === r.num ? "c" : ""}"></i>`;
-  return `<span class="pips" aria-hidden="true">${s}</span>`;
+  return s;
 }
 const roundId = () => state.game + ":" + (state.round ? state.round.q.id + state.round.kind : "");
+// «{x} из {n} готовы» → крупное число и подпись
+function bigCap(key, bigVar, vars) {
+  const parts = String(T(key)).replace(/\{(\w+)\}/g, (m, k) => (k === bigVar ? m : k in vars ? vars[k] : m)).split("{" + bigVar + "}");
+  const rest = ((parts[0] || "") + " " + (parts[1] || "")).replace(/\s+/g, " ").trim();
+  return `<b class="big">${esc(vars[bigVar])}</b><span class="cap">${esc(rest)}</span>`;
+}
+function setSbR(html) {
+  const e = $("sbR");
+  if (e.dataset.h === html) return;
+  e.dataset.h = html; e.innerHTML = html;
+  if (!RM) { e.classList.remove("pop"); void e.offsetWidth; e.classList.add("pop"); }
+}
+
+// ---------- вопрос на сцене ----------
+let questionKey = "";
+function ensureQuestion() {
+  const r = state.round, q = r.q;
+  const key = roundId() + wvLang() + L.sig;
+  if (key === questionKey) return;
+  questionKey = key;
+  $("prog").textContent = progText(r);
+  $("prog").classList.toggle("k", r.kind !== "normal");
+  $("pips").innerHTML = pipsHtml(r);
+  $("qtxt").textContent = q.q;
+  const portrait = M.portrait;
+  fitText($("qbox"), $("qtxt"), clamp(M.W * (portrait ? 0.06 : 0.043), 30, 84), 20);
+  for (const s of ["a", "b"]) {
+    const Sd = s.toUpperCase();
+    const lt = letter(q, s);
+    $("z" + Sd + "l").textContent = lt;
+    $("z" + Sd + "g").textContent = lt;
+    $("z" + Sd + "w").textContent = sideLabel(q, s);
+  }
+  for (const s of ["zA", "zB"]) { const z = $(s); z.classList.remove("win", "lose", "dead"); }
+  document.body.removeAttribute("data-win");
+  $("rail").classList.remove("win-a", "win-b", "shake");
+  ["zA", "zB"].forEach((id) => { const e = $(id).querySelector(".zhead"); e.style.height = L.zhd + "px"; });
+  fitZoneWords();
+}
+function fitZoneWords() {
+  const P = M.portrait;
+  const wv = P ? (L.f.w - L.zg) / 2 : (L.f.w - L.penW - 2 * L.pg) / 2;
+  const bz = parseFloat(getComputedStyle(field).getPropertyValue("--bz")) || 62;
+  const zh = L.f.h - L.railH - L.fgap - (P ? 0 : 0);
+  for (const s of ["A", "B"]) {
+    const z = $("z" + s), w = $("z" + s + "w");
+    // 1) компактная шапка (после раскрытия)
+    const wasPre = z.classList.contains("pre");
+    z.classList.remove("pre");
+    const avail = wv * 0.9 - 48 - bz - 18;
+    w.style.flex = "none"; w.style.width = Math.max(60, avail) + "px";
+    let fs = P ? 32 : 42, g = 0;
+    w.style.setProperty("--zf", fs + "px");
+    while (fs > 18 && (w.scrollHeight > L.zhd - 16 || w.scrollWidth > w.clientWidth + 1) && g++ < 40) { fs -= 2; w.style.setProperty("--zf", fs + "px"); }
+    w.style.flex = ""; w.style.width = "";
+    // 2) крупная шапка по центру (голосование)
+    z.classList.add("pre");
+    w.style.setProperty("--zfp", "10px");
+    let fp = P ? 46 : 64; g = 0;
+    const lim = (P ? L.zhv : zh) * (P ? 0.42 : 0.3);
+    w.style.width = Math.max(60, wv - 56) + "px"; w.style.flex = "none";
+    const test = () => { w.style.setProperty("--zfp", fp + "px"); return w.scrollHeight > lim || w.scrollWidth > w.clientWidth + 1; };
+    while (fp > 20 && test() && g++ < 40) fp -= 2;
+    w.style.setProperty("--zfp", fp + "px");
+    w.style.flex = ""; w.style.width = "";
+    if (!wasPre) z.classList.remove("pre");
+  }
+}
 
 // ---------- лобби ----------
 let qrFor = "";
+const lobbyEls = new Map();
 function drawLobby() {
   const ps = present();
-  const key = "lobby:" + wvLang() + isHost + M.W + M.H;
+  const key = "lobby:" + wvLang() + isHost + L.sig;
   const url = `${location.origin}/crowd.html?r=${CODE}`;
   if (viewKey !== key) {
-    viewKey = key; qrFor = "";
-    upper.innerHTML = `<div class="up lobby">
-      <div><div class="lb-pn"><span>${T("lobby_players")}</span> · <span id="pn"></span> <span class="free" id="free"></span></div>
-        <div class="opt"><div><b>${T("opt_short")}</b><span>${T("opt_short_d")}</span></div><button class="tog" id="tshort" type="button" aria-label="${esc(T("opt_short"))}"></button></div>
-        <div class="opt"><div><b>${T("opt_opinion")}</b><span id="opd"></span></div><button class="tog" id="top" type="button" aria-label="${esc(T("opt_opinion"))}"></button></div>
-        <div class="hint" id="starthint"></div><button class="start" id="startbtn" type="button">${T("btn_start")}</button></div>
-      <div><h1 class="lb-h" id="lbh"></h1><p class="lb-tag">${T("tagline")}</p><ol class="rules"><li>${T("r1")}</li><li>${T("r2")}</li><li>${T("r3")}</li></ol></div>
-      <div><div class="ticket"><div id="qr"></div><div class="bigcode" id="bigcode">${esc(CODE)}</div><div class="url">${esc(url.replace(/^https?:\/\//, ""))}</div></div><div class="hint">${T("lobby_scan")}</div></div></div>`;
+    viewKey = key; qrFor = ""; lobbyEls.clear();
+    upper.innerHTML = `<div class="scr lobby">
+      <div class="pnl lb-players"><div class="lb-pn"><span>${esc(T("lobby_players"))}</span><span class="cnt" id="pn"></span></div><div class="free" id="free"></div><div class="lps" id="lps"></div></div>
+      <div class="lb-mid"><div class="lb-top" id="lbtop"><h1 class="lb-h" id="lbh"></h1><p class="lb-tag">${T("tagline")}</p><ol class="rules"><li>${T("r1")}</li><li>${T("r2")}</li><li>${T("r3")}</li></ol></div>
+        <div class="lb-ctl"><div class="opts">
+          <div class="opt"><div><b>${T("opt_short")}</b><span>${T("opt_short_d")}</span></div><button class="tog" id="tshort" type="button" aria-label="${esc(T("opt_short"))}"></button></div>
+          <div class="opt"><div><b>${T("opt_opinion")}</b><span id="opd"></span></div><button class="tog" id="top" type="button" aria-label="${esc(T("opt_opinion"))}"></button></div></div>
+          <div class="hint" id="starthint"></div><button class="start" id="startbtn" type="button">${T("btn_start")}</button></div></div>
+      <div class="pnl ticket"><div class="tk-k">${esc(T("room_lbl"))}</div><div class="bigcode" id="bigcode">${esc(CODE)}</div><div id="qr"></div><div class="url">${esc(url.replace(/^https?:\/\//, ""))}</div><div class="tk-h">${esc(T("lobby_scan"))}</div></div></div>`;
     $("startbtn").onclick = () => conn.send({ type: "start" });
     $("tshort").onclick = () => { if (isHost) conn.send({ type: "settings", settings: { short: !state.settings.short } }); };
     $("top").onclick = () => { if (isHost) conn.send({ type: "settings", settings: { opinion: !state.settings.opinion } }); };
-    const lbh = $("lbh"); lbh.textContent = T("game_name");
-    { // заголовок: самый крупный кегль, при котором колонка не вылезает за свою высоту (в EN название в две строки)
-      const col = lbh.parentNode; let fs = Math.min(130, VH() * (M.portrait ? 0.075 : 0.11)), g = 0;
-      const over = () => { let h = 0; for (const k of col.children) h += k.offsetHeight; h += 14 * (col.children.length - 1); return h > col.clientHeight - 4 || lbh.scrollWidth > col.clientWidth + 1; };
+    $("lbh").textContent = T("game_name");
+    const tk = upper.querySelector(".ticket");
+    $("qr").style.setProperty("--qrs", clamp(Math.min(tk.clientWidth - 56, tk.clientHeight - (M.portrait ? 120 : 330)), 140, 330) + "px");
+    if (M.portrait) $("qr").style.setProperty("--qrs", "230px");
+    { // заголовок: самый крупный кегль, при котором колонка не вылезает за свою высоту
+      const lbh = $("lbh"), top = $("lbtop"), mid = top.parentNode;
+      let fs = M.portrait ? 84 : 124, g = 0;
+      const over = () => lbh.scrollWidth > lbh.clientWidth + 1 || top.scrollHeight > top.clientHeight + 1 || mid.scrollHeight > mid.clientHeight + 1;
       lbh.style.fontSize = fs + "px";
-      while (fs > 28 && over() && g++ < 80) { fs -= 4; lbh.style.fontSize = fs + "px"; }
+      while (fs > 28 && over() && g++ < 60) { fs -= 4; lbh.style.fontSize = fs + "px"; }
     }
-    fitOne($("bigcode"), 56, 22);
+    fitOne($("bigcode"), M.portrait ? 64 : 92, 22);
   }
   if (qrFor !== CODE && window.QRCode) {
     qrFor = CODE;
     $("qr").replaceChildren();
-    new QRCode($("qr"), { text: url, width: 240, height: 240, colorDark: "#0a0a0f", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+    new QRCode($("qr"), { text: url, width: 330, height: 330, colorDark: "#0a0a0f", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
   }
+  // игроки: слоты без прыжков, пустые — пунктиром
+  const lps = $("lps"), nodes = [];
+  const alive = new Set(ps.map((p) => p.id));
+  for (const [id, n] of lobbyEls) if (!alive.has(id)) lobbyEls.delete(id);
+  for (let i = 0; i < 12; i++) {
+    const p = ps[i];
+    if (!p) { const e = document.createElement("div"); e.className = "lp empty"; nodes.push(e); continue; }
+    let e = lobbyEls.get(p.id);
+    if (!e) {
+      e = document.createElement("div"); e.className = "lp";
+      e.innerHTML = `<i class="av"></i><b></b><button class="x" type="button">✕</button>`;
+      e.querySelector(".x").onclick = (ev) => { ev.stopPropagation(); if (isHost) conn.send({ type: "kick", playerId: p.id }); };
+      lobbyEls.set(p.id, e);
+    }
+    e.style.setProperty("--pc", p.color);
+    e.querySelector(".av").style.setProperty("--pc", p.color);
+    e.querySelector(".av").textContent = p.avatar;
+    e.querySelector("b").textContent = p.name;
+    e.title = p.name;
+    nodes.push(e);
+  }
+  lps.replaceChildren(...nodes);
   $("pn").textContent = ps.length + " / 12";
-  $("lcN").textContent = ps.length + " / 12"; $("lcT").textContent = T("lobby_players");
   const free = 12 - ps.length;
-  $("free").textContent = free <= 4 ? "· " + tpl("lobby_free", { n: free }) : "";
+  $("free").textContent = free <= 4 ? tpl("lobby_free", { n: free }) : "";
   $("tshort").setAttribute("aria-pressed", String(!!state.settings.short));
   $("tshort").disabled = !isHost;
   $("top").setAttribute("aria-pressed", String(!!state.settings.opinion));
@@ -833,7 +977,7 @@ function drawLobby() {
 
 // ---------- заставка (финал / допвопрос / решающий) и пауза ----------
 function drawIntro() {
-  const key = "intro:" + roundId() + wvLang();
+  const key = "intro:" + roundId() + wvLang() + L.sig;
   if (viewKey === key) return;
   viewKey = key;
   const r = state.round;
@@ -841,210 +985,183 @@ function drawIntro() {
   const title = T(r.kind === "final" ? "intro_final" : r.kind === "extra" ? "intro_extra" : "intro_decider");
   const desc = T(r.kind === "final" ? "intro_final_d" : r.kind === "extra" ? "intro_extra_d" : "intro_decider_d");
   const x2 = r.kind === "final" || r.kind === "extra";
-  upper.innerHTML = `<div class="up full"><div class="poster"><h1 id="ih">${esc(title)}${x2 ? `<span class="x2">×2</span>` : ""}</h1><p>${esc(desc)}</p></div>
+  upper.innerHTML = `<div class="scr full"><div class="poster pnl"><h1 id="ih"><span class="tw">${esc(title)}</span>${x2 ? `<span class="x2">×2</span>` : ""}</h1><p>${esc(desc)}</p></div>
     ${only.length ? `<div class="only">${only.map((p) => `<span>${avHtml(p)}<b>${esc(p.name)}</b></span>`).join("")}</div>` : ""}</div>`;
   fitIntro();
   if (!RM) later(150, () => (r.kind === "final" ? wvSfx.fanfare() : wvSfx.chord()));
 }
 function fitIntro() {
   const h = $("ih"), box = h.closest(".full"), poster = h.closest(".poster");
-  let fs = Math.min(190, VH() * 0.15), g = 0;
-  const over = () => { const kids = [...box.children]; const tot = kids.reduce((a, k) => a + k.offsetHeight, 0) + 16 * (kids.length - 1); return tot > box.clientHeight - 40 || h.offsetWidth > poster.clientWidth - 2 * parseFloat(getComputedStyle(poster).paddingLeft) + 1 || poster.offsetWidth > box.clientWidth; };
+  let fs = M.portrait ? 110 : Math.min(190, M.H * 0.2), g = 0;
+  const over = () => { const kids = [...box.children]; const tot = kids.reduce((a, k) => a + k.offsetHeight, 0) + 28 * (kids.length - 1); return tot > box.clientHeight - 60 || h.scrollWidth > h.clientWidth + 1 || poster.scrollWidth > box.clientWidth - 100; };
   h.style.fontSize = fs + "px";
   while (fs > 28 && over() && g++ < 80) { fs -= 4; h.style.fontSize = fs + "px"; }
 }
 function drawPause() {
-  const key = "pause:" + wvLang();
+  const key = "pause:" + wvLang() + L.sig;
   const online = present().filter((p) => p.online).length;
-  if (viewKey !== key) viewKey = key;
-  upper.innerHTML = `<div class="up full"><div class="poster"><h1 id="ih">${esc(T("pause_title"))}</h1><p>${esc(tpl("pause_d", { min: state.minPlayers, n: online }))}</p></div></div>`;
+  viewKey = key;
+  upper.innerHTML = `<div class="scr full"><div class="poster pnl"><h1 id="ih"><span class="tw">${esc(T("pause_title"))}</span></h1><p>${esc(tpl("pause_d", { min: state.minPlayers, n: online }))}</p></div></div>`;
   fitIntro();
 }
 
 // ---------- голосование и мнение ----------
 function drawVote() {
   const r = state.round, op = state.phase === "opinion";
-  const key = (op ? "opinion:" : "vote:") + roundId() + wvLang() + M.W + M.H;
+  ensureQuestion();
+  const key = "vote:" + roundId();
   if (viewKey !== key) {
     viewKey = key;
-    upper.innerHTML = `<div class="up">${signHtml("a", r.q)}<div class="mid">
-      <div class="ribbon${op ? " think" : ""}">${op ? esc(T("op_ribbon")) : T("tagline")}</div>
-      <div class="qbox" id="qbox"><h1 class="qtxt" id="qtxt">${esc(r.q.q)}</h1></div>
-      <div class="meta"><span class="prog">${esc(progText(r))}</span>${pipsHtml(r)}<span class="rdy${op ? " ask" : ""}" id="rdy"></span></div></div>${signHtml("b", r.q)}</div>`;
-    fitText($("qbox"), $("qtxt"), Math.min(92, VH() * (M.portrait ? 0.06 : 0.088)), 22);
-    fitSigns();
+    FS.mode = "pen"; FS.placed = new Set(); FS.sides = { a: [], b: [] }; FS.na = FS.nb = 0; FS.hasOp = false; FS.tie = false; FS.decided = false; FS.share = 0.5; FS.sig = "";
+    SP.t = 0.5; SP.idle = true;
+    ["zA", "zB"].forEach((id) => $(id).classList.remove("win", "lose", "dead"));
+    document.body.removeAttribute("data-win");
+    hideVd();
+    for (const pl of PL.values()) pl.el.classList.remove("hop", "wolf", "lost", "dim2");
   }
-  if (op) $("rdy").textContent = tpl("op_answered", { a: r.answered || 0, n: r.askN || 0 });
-  else $("rdy").textContent = tpl("ready_of", { r: (r.ready || []).length, n: (r.voters || []).length });
+  $("penT").innerHTML = op ? `<b>${esc(T("op_ribbon"))}</b>` : T("tagline");
+  $("penT").style.width = (M.portrait ? L.f.w : L.penW) + "px";
+  { const h = Math.max(52, Math.ceil($("penT").offsetHeight) + 8); if (h !== L.pent) { L.pent = h; FS.sig = ""; } }
+  setSbR(op ? bigCap("op_answered", "a", { a: r.answered || 0, n: r.askN || 0 }) : bigCap("ready_of", "r", { r: (r.ready || []).length, n: (r.voters || []).length }));
+  applyField();
 }
 
-// ---------- флажок-таймер ----------
+// ---------- таймер-кольцо ----------
 let lastTickSec = null;
+const RC = 389.6;
+function setRing(frac, text, hot) {
+  $("ringPg").style.strokeDashoffset = (RC * (1 - clamp(frac, 0, 1))).toFixed(1);
+  const rg = $("ring");
+  rg.classList.toggle("hot", !!hot);
+  if ($("ringNum").dataset.t !== text) { $("ringNum").dataset.t = text; $("ringNum").innerHTML = text; }
+}
 function timerFrame() {
-  const tf = $("tflag"), live = state && !dead && (state.phase === "vote" || state.phase === "opinion" || state.phase === "pause") && state.phaseEnd;
-  tf.classList.toggle("on", !!live);
-  if (!live) { $("tdone").style.transform = "scaleX(0)"; return; }
+  const ph = state.phase;
+  const live = !dead && (ph === "vote" || ph === "opinion" || ph === "pause") && state.phaseEnd;
+  if (!live) {
+    // прогресс партии вместо таймера
+    const r = state.round;
+    if (r && (ph === "reveal" || ph === "scores")) {
+      const norm = r.kind === "normal" || r.kind === "final";
+      if (norm) setRing(r.num / state.total, `${r.num}<small>/${state.total}</small>`, false);
+      else setRing(1, r.kind === "decider" ? "★" : "×2", false);
+    }
+    return;
+  }
   const left = phaseLeft();
-  // в голосовании первые 5 с — чтение вопроса: флажок едет по всему отрезку, но красный только в последние 5 с
   const total = Math.max(1, state.phaseEnd - state.phaseStart);
-  const f = clamp(1 - left / total, 0, 1);
-  const W = M.W, x = 18 + f * (W - 36);
-  const y = M.tys ? M.tys(x) : 14;
-  tf.style.transform = `translate(${x.toFixed(1)}px,${(y - 1).toFixed(1)}px)`;
-  const hot = left < 5000 && state.phase !== "pause";
-  tf.classList.toggle("hot", hot);
-  const dn = $("tdone");
-  dn.style.transform = `scaleX(${f.toFixed(4)})`;
+  const hot = left < 5000 && ph !== "pause";
   const sec = Math.max(0, Math.ceil(left / 1000));
+  setRing(left / total, String(sec), hot);
   if (hot && left > 0 && sec !== lastTickSec) { lastTickSec = sec; wvSfx.tick(sec <= 2); }
   if (!hot) lastTickSec = null;
-  if (tf.dataset.s !== String(sec)) { tf.dataset.s = sec; $("tnum").textContent = sec; $("stage").setAttribute("aria-label", tpl("tm_left", { n: sec })); }
+  const lbl = tpl("tm_left", { n: sec });
+  if (game.getAttribute("aria-label") !== lbl && sec % 1 === 0) game.setAttribute("aria-label", lbl);
 }
 
 // ---------- раскрытие ----------
-const RV = { id: "", plan: null, fired: new Set(), placed: new Set(), flagX: null, flagTo: 0, fallen: new Set(), lean: 0, op: null };
+const RV = { id: "", plan: null, fired: new Set(), instant: false, vdOn: false, sec: "" };
 
 function buildPlan() {
-  const r = state.round, res = r.result, q = r.q;
-  const order = res.order;
+  const r = state.round, res = r.result;
+  const order = (res.order || []).filter((id) => PL.has(id));
   const N = order.length;
   const sides = { a: [], b: [] };
-  for (const id of order) if (PL.has(id)) sides[res.votes[id]].push(id);
-  const plan = { N, sides, vt: (i) => 500 + 600 * i };
-  plan.tLast = N ? plan.vt(N - 1) : 500;
-  plan.tEnd = plan.tLast + 750;
+  for (const id of order) sides[res.votes[id]].push(id);
+  const plan = { N, order, sides, vt: (i) => 500 + 600 * i };
+  plan.tEnd = (N ? plan.vt(N - 1) : 500) + 750;
   plan.hasOp = !!res.opinions;
   plan.opAt = plan.tEnd + 1900;
   const oa = res.opinions ? res.opinions.a : 0, ob = res.opinions ? res.opinions.b : 0;
+  plan.oa = oa; plan.ob = ob;
   plan.opSeq = [];
   for (let i = 0, a = oa, b = ob, s = "a"; a + b > 0; i++) { if ((s === "a" && a > 0) || b === 0) { plan.opSeq.push("a"); a--; } else { plan.opSeq.push("b"); b--; } s = s === "a" ? "b" : "a"; }
   plan.opDone = plan.opAt + 220 * plan.opSeq.length + 400;
-  // раскладка по сторонам
-  const { W, px, rx } = M;
-  const near = W * (M.portrait ? 0.1 : 0.17);
-  plan.lay = {};
-  for (const s of ["a", "b"]) {
-    const nr = sides[s].length > 6 ? near * (M.portrait ? 0.7 : 0.6) : near;
-    const x0 = s === "a" ? px - nr : px + nr;
-    const x1 = s === "a" ? W * 0.045 : W * 0.955;
-    plan.lay[s] = layoutRow(sides[s].length || 1, x0, x1, M.sz * 1.7);
-  }
-  // меньшинство в луже
-  const minSide = res.side && !res.unanimous ? (res.side === "a" ? "b" : "a") : null;
-  plan.minSide = minSide;
-  plan.fall = {};
-  if (minSide) {
-    const ids = sides[minSide], m = ids.length, R = m > 4 ? 2 : 1, cols = Math.ceil(m / R);
-    const k = Math.min(0.9, (rx * 1.5) / (cols + 0.3) / M.sz);
-    ids.forEach((id, j) => {
-      const row = R === 2 ? j % 2 : 0, col = Math.floor(j / R);
-      const u = cols > 1 ? (col + (row ? 0.5 : 0)) / (cols - 0.5) - 0.5 : 0; // −0.5…0.5
-      const x = M.px + u * rx * 1.45;
-      const edge = M.ry * Math.sqrt(Math.max(0.15, 1 - Math.pow((x - M.px) / (rx * 1.02), 2)));
-      const y = M.py - edge - 0.06 * M.sz * k + row * M.ry * 0.9 + (row ? 6 : 0);
-      plan.fall[id] = { x, y, k, row, delay: j * 260 };
-    });
-  }
-  plan.minSide = minSide;
   return plan;
 }
-const dFor = (na, nb, cast) => (cast ? (na - nb) / cast : 0);
 
-function revealSetup() {
-  const r = state.round, res = r.result, q = r.q;
-  const hasOp = !!res.opinions;
-  upper.innerHTML = `<div class="up">${signHtml("a", q)}<div class="mid">
-    <div class="qline"><span class="qk">${esc(progText(r))}</span><h1 class="qtxt" id="qtxt">${esc(q.q)}</h1></div>
-    <div class="verdict" id="verdict">
-      <div class="vd-idle" id="vdIdle"><div class="ribbon">${T("tagline")}</div></div>
-      <div id="vdMaj"></div><div id="vdTie"></div><div id="vdOne"></div><div id="vdVoid"></div>
-      <div class="illusion" id="vdIll"></div></div>
-    ${hasOp ? `<div class="oprope" id="oprope"><div class="oh"><span id="opA"></span><span id="opT">${esc(T("op_title"))}</span><span id="opB"></span></div><div class="orope"></div><div class="oflag" id="oflag"><svg viewBox="0 0 80 100"><rect x="18" y="6" width="3" height="94" rx="1.5" fill="#f4f2ff"/><path d="M22 10 L70 28 L22 46 Z" fill="#f4f2ff"/></svg></div><div id="tks"></div></div>` : ""}
-  </div>${signHtml("b", q)}</div>`;
-  const qt = $("qtxt"), line = qt.parentNode;
-  qt.style.setProperty("--qfs", Math.min(40, VH() * 0.05) + "px");
-  // вопрос компактный: одна-две строки
-  { let fs = Math.min(40, VH() * 0.05), g = 0; while (fs > 16 && qt.offsetHeight > (fs * 1.06 * 2.2) && g++ < 40) { fs -= 2; qt.style.setProperty("--qfs", fs + "px"); } }
-  const sideName = (s) => sideLabel(q, s);
-  if (res.void) {
-    $("vdVoid").innerHTML = `<span class="stamp void">${esc(T("v_void"))}</span><span class="vd-sub">${esc(T("v_void_d"))}</span>`;
-  } else if (res.tie) {
-    $("vdTie").innerHTML = `<span class="stamp tie">${esc(T("v_tie"))}</span><span class="vd-sub">${esc(T("v_tie_d"))}</span>`;
-  } else if (res.unanimous) {
-    $("vdOne").innerHTML = `<span class="stamp one">${esc(T("v_one"))}</span><span class="vd-sub">${esc(T("v_one_d"))}</span>`;
-  } else {
-    $("vdMaj").innerHTML = `<span class="stamp ${res.side}">${esc(tpl("v_maj", { side: sideName(res.side) }))}</span><span class="vd-sub">${esc(tpl("v_maj_d", { k: Math.max(res.a, res.b), n: res.cast }))}</span><span class="wolfnote" id="wolfnote"></span>`;
-  }
-  if (res.wolf && !res.unanimous && !res.tie && !res.void) {
-    const w = player(res.wolf);
-    if (w) $("wolfnote").textContent = tpl("wolf_note", { name: w.name });
-  }
-  if (res.illusion) {
-    $("vdIll").innerHTML = `<div class="plate"><h2>${esc(T("ill_t"))}</h2><p>${esc(tpl("ill_d", { v: sideName(res.illusion.vote), o: sideName(res.illusion.opinion) }))}</p></div>`;
-  }
-  if (hasOp) { $("opA").textContent = ""; $("opB").textContent = ""; }
-  fitVerdict();
-  fitSigns();
+function hideVd() { RV.vdOn = false; $("vd").classList.remove("on"); $("dim").classList.remove("on"); }
+function showVd(o) {
+  const vd = $("vd"), F = L.f;
+  place($("dim"), { x: F.x, y: F.y, w: F.w, h: F.h });
+  place(vd, { x: F.x, y: F.y, w: F.w, h: F.h });
+  $("vdK").textContent = o.k || ""; $("vdK").style.display = o.k ? "" : "none";
+  const w = $("vdW");
+  w.textContent = o.w; w.className = "vd-w" + (o.cls ? " " + o.cls : "");
+  w.style.setProperty("--vt", o.vt || "#c7d4ff"); w.style.setProperty("--vg", o.vg || "rgba(130,160,255,.7)");
+  $("vdS").innerHTML = o.s || ""; $("vdS").style.display = o.s ? "" : "none";
+  // вписываем: 140–180px, но не больше, чем влезает в поле
+  const maxU = M.portrait ? 96 : clamp(F.h * 0.34, 90, 180);
+  $("vdK").style.setProperty("--ks", clamp(maxU * 0.26, 22, 44) + "px");
+  vd.style.setProperty("--ss", clamp(maxU * 0.22, 22, 38) + "px");
+  let u = maxU, g = 0;
+  const kk = $("vdK"), ss = $("vdS");
+  const over = () => (kk.offsetHeight + w.offsetHeight + ss.offsetHeight) > F.h - 60 || w.scrollWidth > w.clientWidth + 6 || w.offsetHeight > F.h * 0.58;
+  vd.style.setProperty("--u", u + "px");
+  while (u > 28 && over() && g++ < 60) { u -= 4; vd.style.setProperty("--u", u + "px"); }
+  RV.vdOn = true;
+  $("dim").classList.add("on");
+  vd.classList.add("on");
 }
-function fitVerdict() {
-  const v = $("verdict"), maxU = Math.min(96, VH() * 0.088);
-  for (const id of ["vdMaj", "vdTie", "vdOne", "vdVoid", "vdIll"]) {
-    const c = $(id);
-    if (!c || !c.firstElementChild) continue;
-    let u = id === "vdIll" ? maxU * 1.05 : maxU, g = 0;
-    c.style.setProperty("--u", u + "px");
-    const over = () => { let h = 0; for (const k of c.children) h += k.offsetHeight; h += 6 * (c.children.length - 1); return h > v.clientHeight - 8 || [...c.children].some((k) => k.scrollWidth > v.clientWidth + 1); };
-    while (u > 18 && over() && g++ < 70) { u -= 3; c.style.setProperty("--u", u + "px"); }
-  }
+function verdictOf(kind) {
+  const res = state.round.result, q = state.round.q;
+  if (kind === "void") return { w: T("v_void"), cls: "void", vt: "#9aa4bb", vg: "rgba(0,0,0,0)", s: esc(T("v_void_d")) };
+  if (kind === "tie") return { w: T("v_tie"), cls: "tie", s: esc(T("v_tie_d")) };
+  if (kind === "one") return { w: T("v_one"), vt: "#bff5e0", vg: "rgba(52, 211, 153, .65)", s: esc(T("v_one_d")) };
+  const str = tpl("v_maj", { side: "\u0001" });
+  const i = str.indexOf("\u0001");
+  let k = str.slice(0, i).replace(/[:：]\s*$/, "").trim();
+  const a = res.side === "a";
+  return { k, w: sideLabel(q, res.side), vt: a ? "#a9c6ff" : "#ffcaa6", vg: a ? "rgba(79,139,255,.8)" : "rgba(255,122,47,.8)", s: esc(tpl("v_maj_d", { k: Math.max(res.a, res.b), n: res.cast })) };
+}
+function detailHtml(kind) {
+  const res = state.round.result;
+  if (kind === "void") return `<span class="ico">❓</span><span class="cap">${esc(T("v_void_d"))}</span>`;
+  if (kind === "tie") return `<span class="ico">⚖️</span><span class="cap">${esc(T("v_tie_d"))}</span>`;
+  if (kind === "one") return `<span class="ico">🤝</span><span class="cap">${esc(T("v_one_d"))}</span>`;
+  let h = bigCap("v_maj_d", "k", { k: Math.max(res.a, res.b), n: res.cast });
+  if (res.wolf) { const w = player(res.wolf); if (w) h += `<span class="cap">${esc(tpl("wolf_note", { name: w.name }))}</span>`; }
+  return h;
 }
 
-// сброс визуального состояния игроков перед новым раскрытием
 function resetPlayersFlags() {
   for (const pl of PL.values()) {
-    pl.el.classList.remove("hop", "wolf", "mud", "fallen", "ready", "pulled", "dense");
-    delete pl.el.dataset.side;
+    pl.el.classList.remove("hop", "wolf", "lost", "ready", "pulled");
     const pts = pl.el.querySelector(".pts"); pts.classList.remove("on", "pos", "neg", "zero"); pts.textContent = "";
-    pl.el.style.transition = "";
   }
 }
 
-function showVerdict(id) {
-  for (const v of ["vdIdle", "vdMaj", "vdTie", "vdOne", "vdVoid", "vdIll"]) { const e = $(v); if (e) e.classList.toggle("on", v === id); }
-  const idle = $("vdIdle"); if (idle) { idle.classList.toggle("vd-idle", id === "vdIdle"); idle.style.opacity = id === "vdIdle" ? 1 : 0; }
-}
+function kindOf(res) { return res.void ? "void" : res.tie ? "tie" : res.unanimous ? "one" : "maj"; }
 
-function splash(x, y) {
-  if (RM) return;
-  const fx = $("fx");
-  const ring = document.createElement("div"); ring.className = "ring";
-  const w = M.rx * 0.9, h = M.ry * 0.8;
-  ring.style.cssText = `left:${x - w / 2}px;top:${y - h / 2}px;width:${w}px;height:${h}px`;
-  fx.append(ring); setTimeout(() => ring.remove(), 950);
-  for (let i = 0; i < 7; i++) {
-    const d = document.createElement("i"); d.className = "drop";
-    const a = Math.PI * (1.1 + 0.8 * Math.random()), v = 40 + Math.random() * 50;
-    d.style.cssText = `left:${x}px;top:${y}px;--dx:${Math.cos(a) * v}px;--dy:${Math.sin(a) * v + 30}px`;
-    fx.append(d); setTimeout(() => d.remove(), 800);
+// победители подпрыгивают, у них очки; зоны оседают/вспыхивают
+function revealPoints(instant) {
+  const plan = RV.plan, res = state.round.result, order = plan.order;
+  const winners = res.void ? [] : res.unanimous ? order : res.tie ? [] : plan.sides[res.side];
+  if (!instant) winners.forEach((id, i) => { const pl = PL.get(id); if (!pl) return; pl.el.style.setProperty("--hd", (i * 0.07) + "s"); pl.el.classList.add("hop"); });
+  if (!res.unanimous && !res.tie && !res.void && res.side) {
+    const loser = res.side === "a" ? "b" : "a";
+    plan.sides[loser].forEach((id) => { const pl = PL.get(id); if (pl) pl.el.classList.add("lost"); });
+  }
+  if (res.wolf) { const wp = PL.get(res.wolf); if (wp) wp.el.classList.add("wolf"); }
+  let n = 0;
+  for (const id of order) {
+    const pl = PL.get(id); if (!pl || !(id in res.pts)) continue;
+    const v = res.pts[id], b = pl.el.querySelector(".pts");
+    b.textContent = (v > 0 ? "+" + v : v < 0 ? "−" + Math.abs(v) : "0");
+    b.className = "pts " + (v > 0 ? "pos" : v < 0 ? "neg" : "zero") + (res.banked[id] ? " bk" : "");
+    if (instant) b.classList.add("on"); else later(120 + n++ * 70, () => b.classList.add("on"));
   }
 }
 
-function dropPlayer(id, instant) {
-  const pl = PL.get(id), f = RV.plan.fall[id];
-  if (!pl || !f || RV.fallen.has(id)) return;
-  RV.fallen.add(id);
-  const tw = Math.max(54, M.rx * 1.4 / 3);
-  const fin = { x: f.x, y: f.y, k: f.k, row: 0, lean: 0, tw, fallen: true };
-  if (instant) { pl.el.classList.add("inst"); setT(pl, fin); pl.el.classList.add("mud"); requestAnimationFrame(() => pl.el.classList.remove("inst")); $("veil").setAttribute("opacity", 1); return; }
-  const side = state.round.result.votes[id];
-  // 1) канат тащит к центру, 2) падение в лужу
-  const cur = pl.key.split(",");
-  setT(pl, { x: M.px + (side === "a" ? -1 : 1) * M.rx * 1.1, y: M.ropeY + 0.1 * M.sz, k: Math.min(1, +cur[2]), row: 0, lean: side === "a" ? 28 : -28, tw: 60 });
-  later(420, () => {
-    pl.el.style.transition = "transform .42s cubic-bezier(.5, 0, .9, .6)";
-    pl.el.classList.add("fallen");
-    setT(pl, fin);
-    later(400, () => { splash(f.x, f.y + M.sz * f.k * 0.35); wvSfx.splash(); pl.el.classList.add("mud"); pl.el.style.transition = ""; $("veil").setAttribute("opacity", 1); });
-  });
+function decideZones(res, instant) {
+  const zA = $("zA"), zB = $("zB");
+  if (res.tie) { document.body.dataset.win = "tie"; SP.t = 0.5; $("rail").classList.add("shake"); return; }
+  const w = res.side;
+  document.body.dataset.win = w;
+  const win = $(w === "a" ? "zA" : "zB"), lose = $(w === "a" ? "zB" : "zA");
+  if (res.unanimous) { lose.classList.add("dead"); win.classList.add("win"); }
+  else { win.classList.add("win"); lose.classList.add("lose"); }
+  $("rail").classList.add(w === "a" ? "win-a" : "win-b");
 }
 
 function updateReveal(t, instant) {
@@ -1052,186 +1169,139 @@ function updateReveal(t, instant) {
   const r = state.round, res = r.result;
   const first = (k) => { if (RV.fired.has(k)) return false; RV.fired.add(k); return true; };
   const live = (at) => !instant && t - at < 900;
-  // голоса по очереди
   let na = 0, nb = 0, shown = 0;
-  const order = res.order;
-  for (let i = 0; i < order.length; i++) {
+  const placed = new Set();
+  for (let i = 0; i < plan.order.length; i++) {
     if (t < plan.vt(i) && !instant) break;
-    const id = order[i], s = res.votes[id];
+    const id = plan.order[i], s = res.votes[id];
     if (s === "a") na++; else nb++;
     shown++;
-    if (first("v" + i)) {
-      const pl = PL.get(id);
-      if (pl) {
-        const j = plan.sides[s].indexOf(id);
-        RV.placed.add(id);
-        pl.el.dataset.side = s;
-        pl.el.classList.toggle("dense", plan.lay[s].slots.some((x) => x.row) || plan.lay[s].k < 0.85);
-        const lay = plan.lay[s];
-        const sl = lay.slots[j];
-        pl.el.classList.remove("ready");
-        if (instant) pl.el.classList.add("inst");
-        setT(pl, { x: sl.x, y: yFor(sl.row, lay.k), k: lay.k, row: sl.row, lean: s === "a" ? -8 : 8, tw: Math.max(54, lay.step * 0.98) });
-        if (instant) requestAnimationFrame(() => pl.el.classList.remove("inst"));
-      }
-      if (live(plan.vt(i))) {
-        const d = Math.abs(dFor(na, nb, res.cast));
-        if (i === order.length - 1 && res.side) { wvSfx.step(); wvSfx.thud(); }
-        else { wvSfx.step(); if (i % 2 === 0) wvSfx.creak(d); }
-      }
-      const el = $("n" + s); if (el) { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); }
+    placed.add(id);
+    if (first("v" + i) && live(plan.vt(i))) {
+      const d = Math.abs(res.cast ? (na - nb) / res.cast : 0);
+      if (i === plan.order.length - 1 && res.side) { wvSfx.step(); wvSfx.thud(); }
+      else { wvSfx.step(); if (i % 2 === 0) wvSfx.creak(d); }
     }
   }
-  for (const s of ["a", "b"]) { const e = $("n" + s); if (e) { const n = s === "a" ? na : nb; e.textContent = n; e.classList.toggle("on", shown > 0); } }
-  const d = dFor(na, nb, res.cast);
-  RV.flagTo = d;
-  // натяжение
-  const taut = shown > 0 && !res.void;
-  const rope = $("ropeG");
-  rope.classList.toggle("shake", taut && t < plan.tEnd + 300 && !instant);
-  RV.sag = taut ? 0 : 5;
-  // лидирующая сторона наклоняется сильнее
-  if (shown > 0) {
-    for (const s of ["a", "b"]) for (const id of plan.sides[s]) {
-      if (!RV.placed.has(id)) continue;
-      const pl = PL.get(id), ld = s === "a" ? Math.max(0, d) : Math.max(0, -d), cur = pl.key.split(",");
-      const lean = (s === "a" ? -1 : 1) * (7 + 12 * ld);
-      if (!RV.fallen.has(id) && +cur[4] !== Math.round(lean)) setT(pl, { x: +cur[0], y: +cur[1], k: +cur[2], row: +cur[3], lean, tw: +cur[5] });
-    }
-  }
+  FS.mode = "reveal"; FS.placed = placed; FS.sides = plan.sides; FS.na = na; FS.nb = nb;
+  FS.share = res.void ? 0.5 : clamp((na + 1) / (na + nb + 2), 0.3, 0.7);
+  FS.hasOp = plan.hasOp;
+  // маркер: к победителю на пружине, с натяжением по ходу
+  SP.idle = shown === 0;
+  const d = res.cast ? (na - nb) / res.cast : 0;
+  if (!res.void) SP.t = 0.5 - d * 0.44;
+  applyField();
+  // правый блок
+  if (!RV.decided) setSbR(res.void ? `<span class="ico">⏳</span>` : `<b class="big">${shown}<small>/${plan.N}</small></b><span class="cap">${esc(T("votes_lbl"))}</span>`);
+  const rail = $("rail");
+  const taut = shown > 0 && !res.void && t < plan.tEnd + 300 && !instant;
+  rail.classList.toggle("shake", taut && !res.tie);
   // итог
   const end = instant || t >= plan.tEnd;
   if (res.void) {
-    if (instant || t >= 300) { showVerdict("vdVoid"); if (first("void") && !instant) wvSfx.buzz(); }
+    if (instant || t >= 300) {
+      if (first("void")) {
+        RV.decided = true;
+        if (!instant) { wvSfx.buzz(); showVd(Object.assign(verdictOf("void"), {})); later(1700, hideVd); }
+        setSbR(detailHtml("void"));
+      }
+    }
     return;
   }
   if (end) {
     const ended = first("end");
-    if (res.tie) {
-      showVerdict("vdTie");
-      rope.classList.toggle("shake", !instant); rope.classList.add("shake2");
-      if (ended && !instant) wvSfx.strain();
-    } else if (res.unanimous) {
-      showVerdict("vdOne");
-      if (ended && !instant) wvSfx.chord();
-    } else {
-      showVerdict("vdMaj");
-    }
     if (ended) {
-      if (!res.tie) rope.classList.remove("shake", "shake2");
-      // победители подпрыгивают, у меньшинства — падение
-      const winners = res.unanimous ? plan.sides.a.concat(plan.sides.b) : res.tie ? [] : plan.sides[res.side];
-      winners.forEach((id, i) => { const pl = PL.get(id); if (!pl) return; pl.el.style.setProperty("--hd", (i * 0.07) + "s"); pl.el.classList.add("hop"); });
-      if (plan.minSide) plan.sides[plan.minSide].forEach((id) => { const f = plan.fall[id]; if (instant) dropPlayer(id, true); else later(f.delay + 150, () => dropPlayer(id, false)); });
-      if (res.wolf) { const wp = PL.get(res.wolf); if (wp) wp.el.classList.add("wolf"); }
-      // очки над аватарами
-      let n = 0;
-      for (const id of order) {
-        const pl = PL.get(id); if (!pl || !(id in res.pts)) continue;
-        const v = res.pts[id], b = pl.el.querySelector(".pts");
-        b.textContent = (v > 0 ? "+" + v : v < 0 ? "−" + Math.abs(v) : "0");
-        b.className = "pts " + (v > 0 ? "pos" : v < 0 ? "neg" : "zero") + (res.banked[id] ? " bk" : "");
-        if (instant) b.classList.add("on"); else later(350 + n++ * 70, () => b.classList.add("on"));
+      RV.decided = true;
+      FS.decided = true; FS.tie = !!res.tie; FS.sig = "";
+      const kind = kindOf(res);
+      decideZones(res, instant);
+      applyField();
+      if (!instant) {
+        if (res.tie) wvSfx.strain(); else if (res.unanimous) wvSfx.chord();
+        showVd(verdictOf(kind));
+        later(1500, () => { hideVd(); setSbR(detailHtml(kind)); revealPoints(false); });
+      } else {
+        setSbR(detailHtml(kind));
+        revealPoints(true);
       }
     }
   }
   // мнения
-  // шкала мнений могла уже уйти из DOM (экран сменился, а кадр ещё идёт) — тогда рисовать нечего
-  if (plan.hasOp && $("oprope")) {
-    const tks = $("tks");
+  if (plan.hasOp) {
     if (instant || t >= plan.opAt) {
       const seq = plan.opSeq;
       let oa = 0, ob = 0;
       for (let i = 0; i < seq.length; i++) {
         if (!instant && t < plan.opAt + 220 * i) break;
-        if (first("o" + i)) {
-          const el = document.createElement("div");
-          const s = seq[i];
-          const cnt = seq.slice(0, i).filter((x) => x === s).length;
-          const w = $("oprope").clientWidth, pitch = clamp(w * 0.5 / 13, 22, 44);
-          el.className = "tk " + s; el.textContent = "👤";
-          el.style.left = s === "a" ? cnt * pitch + "px" : "auto";
-          if (s === "b") el.style.right = cnt * pitch + "px";
-          tks.append(el);
-          requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("on")));
-          if (!instant) wvSfx.step();
-        }
+        if (first("o" + i) && !instant) wvSfx.step();
         if (seq[i] === "a") oa++; else ob++;
       }
-      $("opA").textContent = oa ? oa : ""; $("opB").textContent = ob ? ob : "";
-      RV.opTo = (oa + ob) ? (oa - ob) / (oa + ob) : 0;
+      const tot = Math.max(1, plan.oa + plan.ob);
+      $("opA").textContent = oa || ""; $("opB").textContent = ob || "";
+      $("opbA").style.width = (oa / tot * 100) + "%"; $("opbB").style.width = (ob / tot * 100) + "%";
       if (res.illusion && (instant || t >= plan.opDone)) {
-        showVerdict("vdIll");
-        if (first("ill") && !instant) wvSfx.pop();
+        if (first("ill")) {
+          if (!instant) {
+            wvSfx.pop();
+            const sd = (s) => sideLabel(r.q, s);
+            showVd({ w: T("ill_t"), vt: "#ffd3f0", vg: "rgba(236,72,153,.75)", s: esc(tpl("ill_d", { v: sd(res.illusion.vote), o: sd(res.illusion.opinion) })).replace(/(«[^»]*»|“[^”]*”)/g, "<b>$1</b>") });
+          }
+        }
       }
     }
   }
 }
 
-// флаг и канат — по кадрам
-function frameFlag(dt) {
-  const showFlag = state && !dead && state.phase !== "finished";
-  const f = $("flag");
-  if (!showFlag) return;
-  const inRev = state.phase === "reveal" || state.phase === "scores";
-  const to = inRev && RV.plan && state.round && state.round.result && !state.round.result.void ? RV.flagTo : 0;
-  const tx = M.px - to * 0.30 * M.W;
-  if (RV.flagX == null) RV.flagX = tx;
-  RV.flagX += (tx - RV.flagX) * Math.min(1, dt * 0.006);
-  const sag = inRev && RV.sag != null ? RV.sag : 5;
-  if (Math.abs(sag - sagNow) > 0.05) setRope(sagNow + (sag - sagNow) * Math.min(1, dt * 0.01));
-  const y = M.ropeY + sagAt(RV.flagX, sagNow) * 1.0;
-  f.style.transform = `translate(${RV.flagX.toFixed(1)}px,${y.toFixed(1)}px)`;
-  const fl = f.querySelector(".fl");
-  const dir = to > 0.01 ? -1 : 1;
-  fl.style.transform = dir < 0 ? "scaleX(-1) translateX(0)" : "none";
-  // мнения
-  const of = $("oflag"), orp = $("oprope");
-  if (of && orp && RV.opTo != null) {
-    const w = orp.clientWidth;
-    RV.opX = (RV.opX == null ? 0.5 : RV.opX) + ((0.5 - RV.opTo * 0.3) - (RV.opX == null ? 0.5 : RV.opX)) * Math.min(1, dt * 0.006);
-    of.style.transform = `translateX(${(RV.opX * w).toFixed(1)}px)`;
-  } else if (of && orp) { of.style.transform = `translateX(${(orp.clientWidth / 2).toFixed(1)}px)`; }
-}
-
 function drawReveal() {
-  const id = "rev:" + roundId() + wvLang() + M.W + M.H;
+  const id = "rev:" + roundId() + wvLang() + L.sig;
   if (viewKey === id) return;
   const sameRound = RV.id === roundId();
   viewKey = id;
   clearLater();
+  hideVd();
   const res = state.round.result;
-  if (!sameRound) {
-    RV.id = roundId(); RV.fired = new Set(); RV.placed = new Set(); RV.fallen = new Set(); RV.flagTo = 0; RV.opTo = null; RV.opX = null; RV.sag = 5;
-    resetPlayersFlags();
-    layoutHuddle();
-    $("veil").setAttribute("opacity", 0);
-    $("fx").replaceChildren();
-  } else { RV.fired = new Set(); RV.placed = new Set(); RV.fallen = new Set(); RV.opTo = null; RV.opX = null; resetPlayersFlags(); $("veil").setAttribute("opacity", 0); }
+  ensureQuestion();
+  if (!sameRound) { RV.id = roundId(); resetPlayersFlags(); }
+  else resetPlayersFlags();
+  RV.fired = new Set(); RV.decided = false;
+  ["zA", "zB"].forEach((i) => $(i).classList.remove("win", "lose", "dead"));
+  $("rail").classList.remove("win-a", "win-b", "shake");
+  $("opA").textContent = ""; $("opB").textContent = ""; $("opbA").style.width = "0"; $("opbB").style.width = "0";
+  $("opLab").textContent = T("op_title");
+  document.body.removeAttribute("data-win");
   RV.plan = buildPlan();
-  revealSetup();
-  showVerdict("vdIdle");
-  // «не голосовали» остаются в толпе слегка приглушёнными
+  FS.mode = "reveal"; FS.placed = new Set(); FS.sides = RV.plan.sides; FS.na = FS.nb = 0; FS.tie = false; FS.decided = false; FS.hasOp = RV.plan.hasOp; FS.sig = "";
+  SP.t = 0.5; SP.idle = true;
+  $("penT").innerHTML = "";
+  // «не голосовали» остаются в загоне слегка приглушёнными
   const inst = RM || state.phase === "scores" || (state.phase === "reveal" && phaseNow() > RV.plan.vt(0) + 600 * RV.plan.N + 5000);
   RV.instant = inst;
   if (inst) {
-    // страница открыта поздно: показываем итог без анимации
     updateReveal(Infinity, true);
   } else {
-    // пересборка в середине: проигрываем всё, что уже должно было случиться, без звуков
+    setSbR(`<b class="big">0<small>/${RV.plan.N}</small></b><span class="cap">${esc(T("votes_lbl"))}</span>`);
+    applyField(true);
     const t = phaseNow();
-    if (t > 900) { updateReveal(t, false); }
+    if (t > 900) updateReveal(t, false);
   }
 }
 
 // ---------- счёт ----------
 function drawScores() {
-  const key = "scores:" + roundId() + wvLang() + M.W + M.H;
+  const key = "scores:" + roundId() + wvLang() + L.sig;
   if (viewKey === key) return;
   viewKey = key;
   const r = state.round, res = r.result;
-  // сцена: итог раскрытия остаётся
-  if (RV.id !== roundId() || !RV.plan) { RV.id = roundId(); RV.fired = new Set(); RV.placed = new Set(); RV.fallen = new Set(); resetPlayersFlags(); RV.plan = buildPlan(); }
+  // сцена: итог раскрытия остаётся (фишки уходят в ленту «мимо большинства»)
+  if (RV.id !== roundId() || !RV.plan) {
+    showGame(); ensureQuestion();
+    RV.id = roundId(); RV.fired = new Set(); resetPlayersFlags(); RV.plan = buildPlan();
+  }
+  if (!RV.fired.has("end") || res.void) {
+    showGame(); ensureQuestion();
+    RV.instant = true; hideVd(); clearLater();
+    updateReveal(Infinity, true);
+  }
   const list = present().slice();
   const before = (p) => p.score - (res.void ? 0 : res.pts[p.id] || 0);
   list.sort((a, b) => b.score - a.score);
@@ -1240,30 +1310,40 @@ function drawScores() {
   const title = r.num && (r.kind === "normal" || r.kind === "final") ? tpl("scores_title", { n: r.num }) : T("scores_title_x");
   const note = res.void ? T("void_note") : r.only ? tpl("decider_note", { names: wvNames(r.only, player) }) : "";
   const fmtD = (v) => (v > 0 ? "+" + v : v < 0 ? "−" + Math.abs(v) : "0");
-  upper.innerHTML = `<div class="up sc"><div class="sc-head"><h2>${esc(title)}</h2>${note ? `<p>${esc(note)}</p>` : ""}</div>
-    <div class="sc-tab" style="--cols:${cols};--rows:${rows}">${list.map((p) => {
+  const outs = res.void ? [] : list.filter((p) => p.id in res.pts && res.pts[p.id] <= 0 && p.id in res.votes && !res.tie && !res.unanimous).map((p) => p.id);
+  upper.innerHTML = `<div class="scr sc"><div class="sc-head"><h2>${esc(title)}</h2>${note ? `<p>${esc(note)}</p>` : ""}</div>
+    <div class="sc-tab" id="sctab" style="--cols:${cols};--rows:${rows}">${list.map((p) => {
       const has = !res.void && p.id in res.pts, d = has ? res.pts[p.id] : 0, b0 = before(p);
       const bd = (has && res.banked[p.id] ? `<span class="tag2" title="${esc(T("bank_tip"))}">×2</span>` : "") + (res.wolf === p.id && !res.void ? `<span title="${esc(T("wolf_tip"))}">🐺</span>` : "");
       return `<div class="row${has || res.void || r.only ? "" : " out"}" style="--pc:${esc(p.color)};--w0:${Math.max(0, b0) / max}" data-w="${Math.max(0, p.score) / max}"><span class="rk">${wvRank(list, p)}</span>${avHtml(p)}<b class="nm">${esc(p.name)}</b><span class="bd">${bd}</span><div class="bar"><i></i></div><span class="tot${p.score < 0 ? " neg" : ""}" data-from="${b0}" data-to="${p.score}">${b0}</span><span class="dl ${d > 0 ? "pos" : d < 0 ? "neg" : "zero"}">${has ? fmtD(d) : ""}</span></div>`;
-    }).join("")}</div></div>`;
-  const tab = upper.querySelector(".sc-tab");
+    }).join("")}</div>
+    ${outs.length ? `<div class="sc-out" id="scout"><div class="ot">${esc(T("out_title"))}</div><div class="slots" id="scslots"></div></div>` : ""}</div>`;
+  showUpper(true);
+  const tab = $("sctab"), head = upper.querySelector(".sc-head"), out = $("scout");
+  if (out) out.style.height = Math.round(clamp(M.H * (M.portrait ? 0.15 : 0.215), 130, 190)) + "px";
   {
-    const head = upper.querySelector(".sc-head"), avail = upper.clientHeight - head.offsetHeight - 40;
-    const rh = Math.min(86, (avail - 6 * (rows - 1)) / rows), cw = (upper.clientWidth * 0.9) / cols;
-    tab.style.setProperty("--th", Math.round(rh * rows + 6 * (rows - 1)) + "px");
+    const avail = upper.clientHeight - head.offsetHeight - (out ? out.offsetHeight + 22 : 0) - 22 - 44;
+    const rh = Math.min(out ? 76 : 100, (avail - 12 * (rows - 1)) / rows), cw = (upper.clientWidth - 100) / cols;
+    tab.style.flex = "none"; tab.style.height = Math.round(rh * rows + 12 * (rows - 1)) + "px";
     const fs = clamp(Math.min(rh * 0.42, cw / 19), 13, 34);
     tab.style.setProperty("--fs", fs + "px");
-    tab.classList.toggle("nb", cw < fs * 26); // узкая колонка: шкалу прячем, имя важнее
+    tab.classList.toggle("nb", cw < fs * 26);
   }
   const rowsEl = upper.querySelectorAll(".row");
-  rowsEl.forEach((row) => { row.querySelector(".nm").style.minWidth = "0"; });
   requestAnimationFrame(() => requestAnimationFrame(() => {
     rowsEl.forEach((row) => { row.querySelector(".bar i").style.setProperty("--w0", row.dataset.w); row.querySelector(".bar i").style.transform = `scaleX(${row.dataset.w})`; row.querySelector(".dl").classList.add("on"); });
     countUp(upper.querySelectorAll(".tot"), 900, 350);
   }));
-  // сцена: показываем итог раскрытия без анимации, если он ещё не показан
-  if (!RV.fired.has("end") && !res.void) updateReveal(Infinity, true);
-  else if (res.void) updateReveal(Infinity, true);
+  // фишки: мимо большинства падают в ленту, остальные уходят (они уже есть в таблице)
+  const mainRect = main.getBoundingClientRect();
+  const outSet = new Set(outs);
+  if (out) {
+    const sr = $("scslots").getBoundingClientRect();
+    const R = { x: (sr.left - mainRect.left) / Z, y: (sr.top - mainRect.top) / Z, w: sr.width / Z, h: sr.height / Z };
+    const g = gridFit(outs.length, R.w - 20, R.h, 84);
+    outs.forEach((id, i) => { const p = gridSlot(g, i, R); setChip(id, { x: p.x, y: p.y, k: g.k, tw: g.pitchX - 6 }); const pl = PL.get(id); if (pl) pl.el.classList.add("lost"); });
+  }
+  for (const [id] of PL) if (!outSet.has(id)) { const pl = PL.get(id); pl.key = ""; pl.el.classList.add("gone"); }
 }
 function countUp(nodes, dur, delay) {
   const t0 = performance.now() + delay;
@@ -1277,29 +1357,43 @@ function countUp(nodes, dur, delay) {
 
 // ---------- итоги ----------
 function drawFinal() {
-  const key = "final:" + state.game + wvLang() + isHost + M.W + M.H;
+  const key = "final:" + state.game + wvLang() + isHost + L.sig;
   if (viewKey === key) return;
   viewKey = key;
   const list = present().slice().sort((a, b) => b.score - a.score);
   const top = [list[1], list[0], list[2]];
-  const hsOf = (rk) => (rk === 1 ? "76%" : rk === 2 ? "58%" : "44%"), ds = ["1.1s", "1.6s", "0.7s"];
+  const hsOf = (rk) => (rk === 1 ? 1 : rk === 2 ? 0.74 : 0.56), ds = ["1.1s", "1.6s", "0.7s"];
   const aw = state.awards || {};
   const names = (ids) => ids.map((id) => (player(id) || {}).name || "?").join(", ");
-  const rows = [];
-  const add = (a, ico, k) => { if (a && a.ids && a.ids.length) rows.push(`<div class="aw"><span class="rosette">${ico}</span><div style="min-width:0"><div class="ek">${esc(T("aw_" + k))}</div><b>${esc(names(a.ids))}</b><p>${esc(tpl("aw_" + k + "_d", { n: a.n }))}</p></div></div>`); };
+  const cards = [];
+  const add = (a, ico, k) => { if (a && a.ids && a.ids.length) cards.push(`<div class="aw"><span class="rosette">${ico}</span><div style="min-width:0"><div class="ek">${esc(T("aw_" + k))}</div><b>${esc(names(a.ids))}</b><p>${esc(tpl("aw_" + k + "_d", { n: a.n }))}</p></div></div>`); };
   add(aw.crowd, "👥", "crowd"); add(aw.crow, "🐑", "crow"); add(aw.risk, "🎲", "risk"); add(aw.wolf, "🐺", "wolf");
   const sub = state.finishedReason === "paused" ? T("final_paused") : state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : "";
   const head = state.finishedReason === "paused" ? T("final_paused") : T("final_title");
-  upper.innerHTML = `<div class="up fin-up"><div class="fin-l"><h1>${esc(head)}</h1>${sub && state.finishedReason !== "paused" ? `<p class="sub">${esc(sub)}</p>` : ""}
-    <div class="podium">${top.map((p, i) => p ? `<div class="step${wvRank(list, p) === 1 ? " first" : ""}"><div class="who" style="--d:${ds[i]}">${avHtml(p)}<span>${esc(p.name)}</span></div><div class="blk" style="--h:${hsOf(wvRank(list, p))};--d:${[0.4, 0.9, 0.1][i]}s">${wvRank(list, p)}<small>${p.score}</small></div></div>` : `<div class="step"></div>`).join("")}</div>
-    ${list.length > 3 ? `<div class="rest">${list.slice(3).map((p) => `<span>${avHtml(p)}<b>${wvRank(list, p)}. ${esc(p.name)}</b> ${p.score}</span>`).join("")}</div>` : ""}</div>
-    <div class="fin-r">${rows.join("")}<div class="hostbtns">${isHost ? `<button class="start" id="again" type="button">${esc(T("btn_again"))}</button><button class="ghostbtn" id="tolobby" type="button">${esc(T("btn_lobby"))}</button>` : ""}<a class="ghostbtn" href="index.html"${isHost ? "" : ' style="grid-column:1 / -1"'}>${esc(T("btn_home"))}</a></div></div></div>`;
+  const restL = list.slice(3);
+  const rhalf = Math.ceil(restL.length / 2);
+  const rowH = (p) => `<span><i class="rk">${wvRank(list, p)}</i>${avHtml(p)}<b>${esc(p.name)}</b><em>${p.score}</em></span>`;
+  upper.innerHTML = `<div class="scr fin" id="fin">
+    <h1>${esc(head)}${sub && state.finishedReason !== "paused" ? `<small>${esc(sub)}</small>` : ""}</h1>
+    <div class="rest l">${restL.slice(0, rhalf).map(rowH).join("")}</div>
+    <div class="podium" id="podium">${top.map((p, i) => p ? `<div class="step${wvRank(list, p) === 1 ? " first" : ""}"><div class="who" style="--d:${ds[i]}">${avHtml(p)}<span>${esc(p.name)}</span></div><div class="blk" style="--hf:${hsOf(wvRank(list, p))};--d:${[0.4, 0.9, 0.1][i]}s">${wvRank(list, p)}<small>${p.score}</small></div></div>` : `<div class="step"></div>`).join("")}</div>
+    <div class="rest r">${restL.slice(rhalf).map(rowH).join("")}</div>
+    <div class="awrow">${cards.join("")}</div>
+    <div class="fbtn">${isHost ? `<button class="start" id="again" type="button">${esc(T("btn_again"))}</button><button class="ghostbtn" id="tolobby" type="button">${esc(T("btn_lobby"))}</button>` : ""}<a class="ghostbtn" href="index.html">${esc(T("btn_home"))}</a></div></div>`;
+  showUpper(false);
   if (isHost) { $("again").onclick = () => conn.send({ type: "start" }); $("tolobby").onclick = () => conn.send({ type: "lobby" }); }
+  // аватары подиума крупнее: до 150px, пока влезают по высоте
+  const pod = $("podium");
+  const ava = clamp(Math.min(150, (pod.clientHeight - 30) * 0.4), 64, 150);
+  pod.style.setProperty("--ava", ava + "px");
+  pod.style.setProperty("--bh", clamp(pod.clientHeight - ava - 74, 50, M.portrait ? 520 : 330) + "px");
   if (state.finishedReason === "done" && !RM) later(900, () => wvSfx.fanfare());
 }
 
 // ---------- отрисовка ----------
 let lastPhase = null, prevReady = new Set(), prevRoundId = "";
+function showGame() { game.classList.remove("hidden"); upper.classList.add("hidden"); chipsEl.classList.remove("off"); }
+function showUpper(chips) { game.classList.add("hidden"); upper.classList.remove("hidden"); chipsEl.classList.toggle("off", !chips); }
 function render() {
   if (!state || dead) return;
   const ph = state.phase;
@@ -1312,17 +1406,12 @@ function render() {
   const dimOf = (p) => !p.online || (ph === "vote" && r && r.voters && !r.voters.includes(p.id)) || ((ph === "reveal" || ph === "scores") && r && r.result && !r.result.void && !(p.id in r.result.votes));
   for (const pl of PL.values()) pl.el.classList.toggle("dim", dimOf(pl.p));
   if (ph !== lastPhase) {
-    if (ph === "lobby" || ph === "vote" || ph === "intro") { clearLater(); $("veil").setAttribute("opacity", 0); }
-    if (ph === "vote") { RV.plan = null; RV.id = ""; RV.flagTo = 0; RV.sag = 5; $("ropeG").classList.remove("shake", "shake2"); $("fx").replaceChildren(); }
+    if (ph === "lobby" || ph === "vote" || ph === "intro") { clearLater(); hideVd(); }
+    if (ph === "vote") { RV.plan = null; RV.id = ""; RV.decided = false; SP.t = 0.5; $("rail").classList.remove("shake"); for (const pl of PL.values()) pl.key = ""; }
+    if (ph !== "reveal") hideVd();
     lastPhase = ph;
   }
-  // позиции в сцене
-  if (ph === "lobby" || ph === "finished") { for (const pl of PL.values()) pl.el.classList.remove("ready", "hop", "wolf", "mud"); layoutSpread(); }
-  else if (ph === "intro" || ph === "vote" || ph === "opinion" || ph === "pause") {
-    if (ph === "vote") for (const pl of PL.values()) { pl.el.classList.remove("hop", "wolf", "mud"); pl.el.querySelector(".pts").className = "pts"; }
-    layoutHuddle();
-  }
-  if (ph !== "reveal" && ph !== "scores") for (const pl of PL.values()) { pl.el.classList.remove("hop", "wolf", "mud", "dense"); delete pl.el.dataset.side; const pt = pl.el.querySelector(".pts"); if (pt.className !== "pts") pt.className = "pts"; }
+  if (ph !== "reveal" && ph !== "scores") for (const pl of PL.values()) { pl.el.classList.remove("hop", "wolf", "lost"); const pt = pl.el.querySelector(".pts"); if (pt.className !== "pts") pt.className = "pts"; }
   // «готов»
   if (ph === "vote" && r) {
     const rdy = new Set(r.ready || []);
@@ -1336,13 +1425,13 @@ function render() {
   } else { prevReady = new Set(); if (ph !== "vote") for (const pl of PL.values()) pl.el.classList.remove("ready"); }
   prevRoundId = r ? roundId() : "";
   switch (ph) {
-    case "lobby": return drawLobby();
-    case "intro": return drawIntro();
-    case "vote": case "opinion": return drawVote();
-    case "reveal": return drawReveal();
+    case "lobby": showUpper(false); return drawLobby();
+    case "intro": showUpper(false); return drawIntro();
+    case "vote": case "opinion": showGame(); return drawVote();
+    case "reveal": showGame(); return drawReveal();
     case "scores": return drawScores();
-    case "pause": return drawPause();
-    case "finished": return drawFinal();
+    case "pause": showUpper(false); return drawPause();
+    case "finished": showUpper(false); return drawFinal();
   }
 }
 $("endbtn").onclick = () => { if (confirm(T("btn_end") + "?")) conn.send({ type: "end" }); };
@@ -1353,14 +1442,14 @@ function frame(t) {
   const dt = Math.min(100, t - lastFrame); lastFrame = t;
   if (!state || dead) return;
   timerFrame();
-  frameFlag(dt);
+  springFrame(dt, t);
   if (state.phase === "reveal" && RV.plan && !RV.instant) updateReveal(phaseNow(), false);
 }
 
 let rsz = null;
-window.addEventListener("resize", () => { clearTimeout(rsz); rsz = setTimeout(() => { measure(); for (const pl of PL.values()) pl.key = ""; viewKey = ""; if (state) render(); }, 120); });
+window.addEventListener("resize", () => { clearTimeout(rsz); rsz = setTimeout(() => { measure(); for (const pl of PL.values()) pl.key = ""; viewKey = ""; questionKey = ""; FS.sig = ""; if (state) render(); }, 120); });
 window.addEventListener("langchange", () => {
-  viewKey = "";
+  viewKey = ""; questionKey = "";
   if (isHost && state && (state.phase === "lobby" || state.phase === "finished") && state.settings.lang !== wvLang()) conn.send({ type: "settings", settings: { lang: wvLang() } });
   render();
 });
@@ -1424,7 +1513,7 @@ async function boot() {
   requestAnimationFrame(frame);
   window.wvBoard = { send: (m) => conn.send(m), get state() { return state; }, get code() { return CODE; } };
 }
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (state && !dead) { for (const pl of PL.values()) pl.key = ""; viewKey = ""; render(); } });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { measure(); if (state && !dead) { for (const pl of PL.values()) pl.key = ""; viewKey = ""; questionKey = ""; FS.sig = ""; render(); } });
 boot();
 </script>
 </body>
