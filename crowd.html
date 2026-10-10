@@ -224,7 +224,7 @@ window.I18N_DICT = {
     _meta: `🪢 Мультиплеерная игра для компании: на общем экране вопрос, а ты отвечаешь не за себя, а за всех — что выберет большинство? Угадал — очки. Бесплатно, в браузере, с телефонов.`,
     nav_all_games: `← Все игры`,
     game_name: `Как все`,
-    enter_title: `Как тебя зовут?`, enter_ph: `Имя`, code_ph: `Код комнаты`, btn_join: `Войти`,
+    enter_title: `Как тебя зовут?`, enter_ph: `Имя`, code_ph: `Код комнаты`, btn_join: `Войти`, btn_create: `Создать комнату`, btn_creating: `Создаём…`, err_create: `Не получилось создать комнату. Попробуй ещё раз`,
     rule1: `На экране вопрос. Отвечай не за себя, а за всех: что выберет большинство?`,
     rule2: `Угадал большинство — +100. Нет — 0. Поровну — всем по +50.`,
     rule3: `×2: угадал +200, ошибся −200. Только два раза за игру.`,
@@ -275,7 +275,7 @@ window.I18N_DICT = {
     _meta: `🪢 A multiplayer party game: a question is on the shared screen and you answer not for yourself but for everyone — what will the majority pick? Guess right, score. Free, in the browser, from phones.`,
     nav_all_games: `← All games`,
     game_name: `Go With the Crowd`,
-    enter_title: `What's your name?`, enter_ph: `Name`, code_ph: `Room code`, btn_join: `Join`,
+    enter_title: `What's your name?`, enter_ph: `Name`, code_ph: `Room code`, btn_join: `Join`, btn_create: `Create a room`, btn_creating: `Creating…`, err_create: `Couldn't create the room. Try again`,
     rule1: `A question is on the screen. Answer for everyone, not yourself: what will the majority pick?`,
     rule2: `Match the majority: +100. Miss: 0. A tie: +50 for everyone.`,
     rule3: `×2: right +200, wrong −200. Only twice per game.`,
@@ -326,7 +326,7 @@ window.I18N_DICT = {
     _meta: `🪢 Πολυπαικτικό παιχνίδι για παρέες: στην κοινή οθόνη μια ερώτηση και εσύ απαντάς όχι για σένα αλλά για όλους — τι θα διαλέξει η πλειοψηφία; Το βρήκες, παίρνεις πόντους. Δωρεάν, στον browser, από κινητά.`,
     nav_all_games: `← Όλα τα παιχνίδια`,
     game_name: `Όπως όλοι`,
-    enter_title: `Πώς σε λένε;`, enter_ph: `Όνομα`, code_ph: `Κωδικός δωματίου`, btn_join: `Μπες`,
+    enter_title: `Πώς σε λένε;`, enter_ph: `Όνομα`, code_ph: `Κωδικός δωματίου`, btn_join: `Μπες`, btn_create: `Νέο δωμάτιο`, btn_creating: `Δημιουργία…`, err_create: `Δεν έφτιαξε το δωμάτιο. Δοκίμασε ξανά`,
     rule1: `Στην οθόνη βλέπεις μια ερώτηση. Απάντησε για όλους, όχι για σένα: τι θα διαλέξει η πλειοψηφία;`,
     rule2: `Πέτυχες την πλειοψηφία: +100. Άστοχο: 0. Ισοπαλία: +50 σε όλους.`,
     rule3: `×2: σωστά +200, λάθος −200. Μόνο δύο φορές ανά παιχνίδι.`,
@@ -472,11 +472,29 @@ function renderEnter() {
     <input class="field" id="name" maxlength="15" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}">
     <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
     <button class="btn" type="submit">${escapeHtml(T("btn_join"))}</button>
+    ${CODE ? "" : `<button class="btn ghost" id="create" type="button">${escapeHtml(T("btn_create"))}</button>`}
     <ol class="rules"><li>${escapeHtml(T("rule1"))}</li><li>${escapeHtml(T("rule2"))}</li><li>${escapeHtml(T("rule3"))}</li></ol>
   </form>`;
   screenKey = "";
   show(html, "enter", true);
   const input = document.getElementById("name");
+  const createBtn = document.getElementById("create");
+  if (createBtn) createBtn.onclick = async () => {
+    const err = document.getElementById("err");
+    createBtn.disabled = true;
+    createBtn.textContent = T("btn_creating");
+    try {
+      const res = await fetch("/crowd/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: wvLang() } }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error("create");
+      try { localStorage.setItem("crowd-host-" + data.code, data.hostToken); } catch (e2) {}
+      location.href = "crowd-board.html?r=" + encodeURIComponent(data.code);
+    } catch (e2) {
+      createBtn.disabled = false;
+      createBtn.textContent = T("btn_create");
+      err.textContent = T("err_create");
+    }
+  };
   document.getElementById("enterform").onsubmit = (e) => {
     e.preventDefault();
     const name = input.value.trim();
