@@ -58,6 +58,8 @@
   .chip { font: 800 18px/1 var(--mono); padding: 8px 12px; border: 2px solid var(--edge); background: var(--infield); white-space: nowrap; color: var(--chalk); }
   .chip b { color: var(--gold); letter-spacing: .08em; }
   .top .grow { flex: 1; }
+  /* «Акт 2 · Без страховки» на 1024 px выталкивал код комнаты и звук под переключатель языка — акт ужимается первым */
+  #actchip { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .sound-toggle-btn { flex: none; width: calc(var(--lsh, 44px) * 1.25); height: var(--lsh, 44px); border: 2px solid var(--edge); background: var(--infield); color: var(--chalk); font-size: 17px; display: grid; place-items: center; padding: 0; }
   .endbtn { flex: none; border: 2px dashed var(--chalk-2); background: transparent; padding: 8px 12px; font: 700 16px/1 var(--font); color: var(--chalk-2); }
   .banner { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 50; background: var(--bad); color: var(--night); padding: 8px 14px; font-weight: 800; }
@@ -245,6 +247,13 @@
     .step.p3 .col { animation-delay: .1s; } .step.p2 .col { animation-delay: .25s; } .step.p1 .col { animation-delay: .45s; }
   }
   @keyframes rise { from { transform: scaleY(0); } }
+  /* невысокие экраны (1280×720, 1366×768, 1024×768): иначе цифры места вылезали из столбиков на кнопки, а имена сжимались в ноль */
+  @media (min-width: 761px) and (max-height: 820px) {
+    .step .emo { font-size: clamp(30px, 6vh, 54px); }
+    .step b, .step .sc { flex: none; font-size: 20px; margin-top: 2px; }
+    .step .col { margin-top: 6px; padding-top: 6px; font-size: clamp(28px, 5vh, 44px); overflow: hidden; min-height: calc(1em + 10px); }
+    .step.p1 .col { height: 38%; } .step.p2 .col { height: 28%; } .step.p3 .col { height: 20%; }
+  }
   .awards { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
   .awcards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .award { padding: 12px 16px; min-width: 0; background: var(--infield); border-top: 4px solid var(--gold); }
@@ -318,7 +327,11 @@
   @media (max-width: 1000px) {
     body { overflow: auto; }
     main { min-height: calc(100vh - 70px); }
-    .lobby, .final, .verdict { grid-template-columns: 1fr; }
+    /* minmax(0, …): иначе код комнаты (nowrap, до подгонки кегля) раздвигал колонку — на 768 px доска шире экрана */
+    .lobby, .final, .verdict { grid-template-columns: minmax(0, 1fr); }
+    /* планшет стоя (768×1024): QR и «Старт» — сверху, иначе «Старт» уходил под низ экрана */
+    .lobby { flex: none; }
+    .lobby > .panel:last-child { order: -1; }
     .cellwrap { grid-template-columns: 1fr; }
     .side { width: auto; }
     .top h1 { display: none; }
@@ -347,6 +360,11 @@
   body.dense .bopts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   body.dense .bopt { min-height: 64px; gap: 10px; padding-left: 8px; }
   body.dense .bopt .lt { width: 44px; height: 44px; font-size: 28px; line-height: 44px; }
+  /* в ряд из четырёх аватарки сбоку сжимали текст варианта до слова в строке (1024–1366 px) — переносим их под текст */
+  body.dense .bopt { flex-wrap: wrap; row-gap: 4px; }
+  body.dense .bopt .who { flex: 1 1 100%; max-width: none; justify-content: flex-start; }
+  body.dense .bopt .who span { font-size: 16px; padding: 1px 6px 1px 3px; }
+  body.dense .bopt .who span i { font-size: 22px; }
   /* подписи очков на шкале — на тёмной плашке справа от жетона */
   .fly { background: var(--night); padding: 3px 8px; text-shadow: none; font-size: clamp(20px, calc(var(--tk, 40px) * .7), 36px); }
   /* узник на шкале — жетон за прутьями */
@@ -360,6 +378,11 @@
   .cellwrap.dense .side { width: min(400px, 27vw); }
   .cellwrap.dense .tile .nm { font-size: clamp(16px, 2.6vh, 28px); gap: 6px; }
   .cellwrap.dense .side:has(.headq:not(.hidden)) .warden { display: none; }
+  /* код «Передачки» на доске — главное в колонке: в тесной (7+ узников) он уезжал под шкалу (1024×768) */
+  .cellwrap.dense .side:has(#passes:not(:empty)) .warden { display: none; }
+  .cellwrap.dense .passcode { padding: 8px 12px; }
+  .cellwrap.dense .passcode .h { font-size: 18px; }
+  .cellwrap.dense .passcode .code { font-size: clamp(36px, 6vh, 64px); }
   .cellwrap.dense .side > * { grid-column: 1 / -1; }
   @media (max-height: 800px) { .strip { height: 46px; } }
   .cellwrap.dense .tile { padding: 8px 10px; gap: 6px; }
@@ -444,6 +467,15 @@
     .seat .x { visibility: visible; top: 0; right: 0; bottom: 0; width: 44px; padding: 0; font-size: 18px; }
   }
   /* узкий телефон: дорожки в один столбец, иначе имени рядом с эмодзи и «✕» не остаётся места */
+  /* планшет стоя (761–1000 px): раскрытие ставок вылезало вбок (колонки в em при кегле 36), пьедестал — на кнопки */
+  @media (min-width: 761px) and (max-width: 1000px) {
+    .frow, .frow.fhead { grid-template-columns: minmax(0, 1fr) 4.4em 3em 4.4em 4.6em; gap: 8px; padding: 0 10px; font-size: clamp(18px, calc(var(--rh, 64px) * .4), 26px); }
+  }
+  @media (min-width: 761px) and (max-width: 1000px) and (min-height: 821px) {
+    body[data-phase="finished"] #stage { flex: none; }
+    .final { flex: none; }
+    .podium { flex: none; height: 340px; }
+  }
   @media (max-width: 520px) { .seats { grid-template-columns: minmax(0, 1fr); } }
   @media (max-width: 360px) { #qr { width: 96px; height: 96px; } }
   /* ---------- телефон: партия на доске-телефоне — экран не делится по высоте, всё идёт столбцом с прокруткой ----------
@@ -805,7 +837,8 @@ function drawQuestion() {
   const open = state.phase === "answer" || state.phase === "fanswer";
   const rev = state.right != null;
   const key = "q:" + qid() + ":" + open + ":" + rev + ":" + lqLang() + ":" + innerWidth + "x" + innerHeight;
-  if (viewKey !== key) {
+  const fresh = viewKey !== key;
+  if (fresh) {
     viewKey = key;
     const opts = q.options.map((o, i) => `<div class="bopt${!open && !rev ? " closed" : ""}" id="bo${i}" style="--lc:var(--c${i})"><span class="lt">${LQ_LETTERS[i]}</span><span class="tx">${escapeHtml(o)}</span><div class="who"></div></div>`).join("");
     stage.innerHTML = `<div class="qbar"><div class="what">${whatHtml()}</div><div class="clock" id="clock"></div></div>
@@ -813,6 +846,11 @@ function drawQuestion() {
       <div class="qtext" id="qtext"><div class="t"><span class="tag">${escapeHtml(lqTopic(q.tag))}</span>${escapeHtml(q.text)}</div></div>
       <div class="bopts" id="bopts">${opts}</div>
       <div class="strip" id="strip"></div>`;
+  }
+  if (rev) drawRevealParts(); else drawAnswered();
+  // подгонка — после аватарок под вариантами: на раскрытии они делают варианты выше и съедали место вопроса
+  // (1280×720, семь игроков в ряд — от вопроса оставалась полоска с обрезанной темой)
+  if (fresh) {
     // варианты — одним кеглем: подгоняем по самому длинному; сначала они (их высота решает, сколько места вопросу)
     let ofs = Math.round(innerHeight / 24);
     const box = $("bopts");
@@ -821,7 +859,6 @@ function drawQuestion() {
     while (ofs > 20 && over()) { ofs -= 2; box.style.setProperty("--ofs", ofs + "px"); }
     fit($("qtext").firstChild, $("qtext"), "--qfs", Math.round(innerHeight / 12), 24);
   }
-  if (rev) drawRevealParts(); else drawAnswered();
 }
 function drawAnswered() {
   const strip = $("strip");

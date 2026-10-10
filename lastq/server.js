@@ -19,7 +19,7 @@ const zlib = require("zlib");
 const { WebSocketServer } = require("ws");
 const { roomCode } = require("../lib/codes");
 const { clientIp, createGuessLimiter, rateOk: netRateOk, send } = require("../lib/net");
-const { Game, clampSettings, cleanName } = require("./game");
+const { Game, clampSettings, cleanName, cleanText } = require("./game");
 const CONTENT = require("./content");
 
 const PORT = Number(process.env.PORT || 3800);
@@ -507,7 +507,7 @@ function handle(room, client, msg) {
         let name = cleanName(msg.name);
         if (!name) return reply({ type: "error", error: "bad_name" });
         const taken = new Set(g.s.players.filter((p) => !p.left).map((p) => p.name));
-        for (let i = 2; taken.has(name); i++) name = `${cleanName(msg.name).slice(0, 13)} ${i}`;
+        for (let i = 2; taken.has(name); i++) name = `${cleanText(cleanName(msg.name), 13)} ${i}`; // не .slice: резал эмодзи пополам («🦊🦊🦊🦊🦊🦊🦊� 2»)
         playerId = "u_" + crypto.randomBytes(5).toString("hex");
         const r = g.addPlayer({ id: playerId, name });
         if (!r.ok) return reply({ type: "error", error: r.reason });

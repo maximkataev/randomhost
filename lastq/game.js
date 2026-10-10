@@ -71,7 +71,8 @@ function clampSettings(input = {}) {
 
 const CTRL = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g;
 function cleanText(text, max) {
-  return String(text == null ? "" : text).replace(CTRL, "").replace(/\s+/g, " ").trim().slice(0, max);
+  // обрезка по UTF-16 могла разрезать эмодзи пополам — висящую половину суррогатной пары убираем
+  return String(text == null ? "" : text).replace(CTRL, "").replace(/\s+/g, " ").trim().slice(0, max).replace(/[\uD800-\uDBFF]$/, "").trim();
 }
 const cleanName = (name) => cleanText(name, 16);
 const round10 = (x) => Math.round(x / 10) * 10;
