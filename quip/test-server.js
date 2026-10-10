@@ -326,14 +326,15 @@ test("пересадка доски не обходит лимит аноним�
   const room = await createRoom({}, 1);
   const socks = [];
   let refused = 0;
-  for (let i = 0; i < 14; i++) {
+  // лимит анонимов с адреса — 20 (полная комната с одного Wi-Fi), бывшие доски считаются анонимами
+  for (let i = 0; i < 24; i++) {
     const c = client(room.code);
     try { await c.open; } catch { refused++; continue; }
     c.send({ type: "host", token: room.hostToken });
     await c.wait((m) => m.type === "host_ok");
     socks.push(c);
   }
-  assert.ok(refused > 0 && socks.length <= 11, `бывшие доски копятся: открыто ${socks.length}, отказов ${refused}`);
+  assert.ok(refused > 0 && socks.length <= 21, `бывшие доски копятся: открыто ${socks.length}, отказов ${refused}`);
   const host = socks[socks.length - 1];
   const watcher = socks[0];
   await sleep(200);

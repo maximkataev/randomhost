@@ -43,7 +43,9 @@ const PONG_MISSES = Number(process.env.PONG_MISSES || 3);
 const SEND_BUFFER_LIMIT = Number(process.env.SEND_BUFFER_LIMIT || 262144);
 const MSG_RATE = Number(process.env.MSG_RATE || 40);
 const MAX_ANON_PER_ROOM = Number(process.env.MAX_ANON_PER_ROOM || 30);
-const MAX_ANON_PER_IP = Number(process.env.MAX_ANON_PER_IP || 10);
+// С одного адреса — с запасом на полную комнату: 16 телефонов с одного Wi-Fi сидят на экране имени
+// анонимами одновременно, при 10 одиннадцатый получал 503 и висел на «Нет связи», пока кто-то не войдёт.
+const MAX_ANON_PER_IP = Number(process.env.MAX_ANON_PER_IP || 20);
 const ANON_TTL_MS = Number(process.env.ANON_TTL_MS || 30000);
 const POLL_GAP_MS = Number(process.env.POLL_GAP_MS || 12000);
 const MAX_MSG_BYTES = 8192;
