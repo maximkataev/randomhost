@@ -42,7 +42,8 @@
   button { cursor: pointer; }
   #arena { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   /* на широком экране арена справа от панели, а не под ней */
-  @media (min-width: 900px) { body.with-panel #arena { left: 340px; width: calc(100% - 340px); } body.with-panel .hud, body.with-panel .banner, body.with-panel .big { margin-left: 170px; } }
+  /* с 701px (планшет в портрете тоже) панель слева, а не листом снизу — арена справа от неё, иначе льдина и вердикт под панелью */
+  @media (min-width: 701px) { body.with-panel #arena { left: 340px; width: calc(100% - 340px); } body.with-panel .hud, body.with-panel .banner, body.with-panel .big { margin-left: 170px; } }
   @media (max-height: 500px) and (min-width: 600px) and (orientation: landscape) { body.with-panel #arena { left: 300px; width: calc(100% - 300px); } body.with-panel .verdict, body.with-panel .hud { margin-left: 150px; } }
 
   /* ----- Шапка ----- */
@@ -199,10 +200,15 @@
   .verdict { position: fixed; left: 50%; bottom: 7%; transform: translateX(-50%); z-index: 7; pointer-events: none; font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: min(44px, 4.2vw); color: #fff; text-align: center; text-shadow: 0 0 2px #06182c, 0 3px 0 #06182c, 0 6px 24px rgba(0,0,0,0.6); display: none; max-width: calc(100vw - 32px); line-height: 1.15; }
   .verdict.show { display: block; animation: verdictIn 0.5s cubic-bezier(.2,1.4,.4,1); }
   @keyframes verdictIn { from { opacity: 0; transform: translate(-50%, 20px) scale(0.9); } }
-  @media (min-width: 900px) { body.with-panel .verdict { margin-left: 170px; } }
+  @media (min-width: 701px) { body.with-panel .verdict { margin-left: 170px; max-width: calc(100vw - 372px); } }
+  @media (max-height: 500px) and (min-width: 600px) and (orientation: landscape) { body.with-panel .verdict { margin-left: 150px; max-width: calc(100vw - 332px); } }
+  /* планшет (и в портрете, и 1024 в ландшафте): над узкой ареной разминка-HUD наезжала на звук и языки — опускаем под них */
+  @media (min-width: 701px) and (max-width: 1180px) and (min-height: 501px) { body.inlobby .hud { top: calc(62px + env(safe-area-inset-top, 0px)); max-width: calc(100% - 364px); } }
   .skip { position: fixed; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 9; display: none; width: auto; }
   .skip.show { display: block; }
   body.is-touch.playing .feed { bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
+  /* выбыл — кнопок нет, лента опускается к плашке «вы в воде» и не закрывает льдину */
+  body.is-touch.playing.out .feed { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
   .rotate { position: fixed; inset: 0; z-index: 40; background: #051b31; display: none; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 18px; padding: 30px; line-height: 1.5; }
   /* выбывшему управлять нечем — смотрит и в портрете, без просьбы повернуть */
   @media (orientation: portrait) and (max-width: 700px) { body.is-touch.playing:not(.out) .rotate { display: flex; } }
@@ -227,6 +233,8 @@
     /* от left: 50% баннеру остаётся пол-экрана, и имя рвётся на три строки — ширина по тексту */
     .banner { width: max-content; }
     body.watching .feed { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+    /* пять строк ленты с длинными именами закрывали пол-льдины — в портрете три последних */
+    .feed div:nth-last-child(n+4) { display: none; }
     /* «Дейлик ведёте вы — смотрите, кто станет царём» у выбывшего в портрете шире экрана — переносим */
     .outpill { white-space: normal; width: max-content; max-width: calc(100% - 32px); text-align: center; border-radius: 16px; line-height: 1.3; }
     /* вердикт ушёл бы под панель — его и так повторяет карточка ведущего */
@@ -697,8 +705,12 @@ window.I18N_DICT = {
     showResults: false, replay: null, codeOpen: false, lastCount: 0, resultsAt: 0, over: null,
   };
 
-  function setPanel(body, foot) {
+  // kind — какой это экран: при смене экрана панель прокручивается в начало (иначе итог открывался
+  // прокрученным вниз, если в лобби листали к шапке, и карточки ведущего не было видно)
+  let panelKind = "";
+  function setPanel(body, foot, kind) {
     $("pbody").innerHTML = body;
+    if (kind !== panelKind) { panelKind = kind; $("pbody").scrollTop = 0; }
     $("pfoot").innerHTML = foot || "";
   }
   const brand = () => `<div class="brand"><span class="logo">🐧</span><h1>${esc(T("game"))}<small>${esc(T("sub"))}</small></h1></div>`;
@@ -726,7 +738,7 @@ window.I18N_DICT = {
         <div class="row2"><input class="field code" id="codeIn" maxlength="14" placeholder="${esc(T("code_ph"))}" autocomplete="off" autocapitalize="characters"><button class="btn ghost" id="codeGo" type="button" style="flex:0 0 auto;width:auto">${esc(T("go"))}</button></div>
       </div>
       <div class="err" id="err">${ui.joinErr ? esc(T(ui.joinErr)) : ""}</div>`,
-      `<button class="btn" id="create" type="button">${esc(T("create"))}</button>${ui.codeOpen ? "" : `<button class="link" id="haveCode" type="button">${esc(T("have_code"))}</button>`}`);
+      `<button class="btn" id="create" type="button">${esc(T("create"))}</button>${ui.codeOpen ? "" : `<button class="link" id="haveCode" type="button">${esc(T("have_code"))}</button>`}`, "home");
     $("create").onclick = createRoom;
     if ($("haveCode")) $("haveCode").onclick = () => { ui.codeOpen = true; drawHome(); $("codeIn").focus(); };
     if ($("codeGo")) {
@@ -760,7 +772,7 @@ window.I18N_DICT = {
       </div>
       <div class="sec">${rulesHtml(true)}</div>
       ${net.roster.length ? `<div class="sec"><h3>${esc(T("players"))} <span>${esc(tpl("of_max", { n: net.roster.length, m: 12 }))}</span></h3>${playerList(false)}</div>` : ""}`,
-      `<button class="btn" id="joinBtn" type="button">${esc(T("join"))}</button>`);
+      `<button class="btn" id="joinBtn" type="button">${esc(T("join"))}</button>`, "join");
     const go = () => {
       const n = $("nameIn").value.trim();
       if (!n) { ui.joinErr = "bad_name"; $("err").textContent = T("bad_name"); errInView(); return; }
@@ -815,7 +827,7 @@ window.I18N_DICT = {
         : `<div class="hat-now"><span class="hatb on" style="--c:${HAT[(meP ? meP.ci : 0) % HAT.length][0]}"></span><button class="link" id="hatOpen" type="button">${esc(T("change_hat"))}</button></div>`}</div>`,
       iAmHost
         ? `<button class="btn" id="startBtn" type="button" ${n < 2 ? "disabled" : ""}>${esc(n < 2 ? T("need_two") : T("start"))}</button>`
-        : `<div class="waitline">${esc(tpl("wait_host", { name: host ? host.name : "…" }))}</div>`);
+        : `<div class="waitline">${esc(tpl("wait_host", { name: host ? host.name : "…" }))}</div>`, "lobby");
     if ($("startBtn")) $("startBtn").onclick = () => { Sound.ensure(); send({ type: "start" }); };
     $("copy").onclick = () => copyLink(url);
     document.querySelectorAll("[data-kick]").forEach((b) => (b.onclick = () => send({ type: "kick", playerId: b.dataset.kick })));
@@ -851,7 +863,7 @@ window.I18N_DICT = {
       <div class="noms">${noms.join("")}</div>`,
       iAmHost
         ? `<button class="btn" id="again" type="button">${esc(T("again"))}</button><div class="row2"><button class="btn ghost" id="rep" type="button">${esc(T("show_replay"))}</button><button class="btn ghost" id="lob" type="button">${esc(T("to_lobby"))}</button></div>`
-        : `<div class="waitline">${esc(tpl("wait_again", { name: host ? host.name : "…" }))}</div>${net.replay ? `<button class="btn ghost" id="rep" type="button">${esc(T("show_replay"))}</button>` : ""}`);
+        : `<div class="waitline">${esc(tpl("wait_again", { name: host ? host.name : "…" }))}</div>${net.replay ? `<button class="btn ghost" id="rep" type="button">${esc(T("show_replay"))}</button>` : ""}`, "results");
     if ($("again")) $("again").onclick = () => { Sound.ensure(); send({ type: "start" }); };
     if ($("lob")) $("lob").onclick = () => send({ type: "lobby" });
     if ($("rep")) $("rep").onclick = startReplay;
@@ -874,7 +886,7 @@ window.I18N_DICT = {
     const map = { no_room: ["no_room", "no_room_text"], kicked: ["kicked", ""], replaced: ["replaced", ""] };
     const [title, text] = map[kind] || [kind, ""];
     setPanel(`<a class="back" href="index.html">${esc(T("back"))}</a>${brand()}<h2 style="font-size:20px">${esc(T(title))}</h2>${text ? `<p class="lede">${esc(T(text))}</p>` : ""}`,
-      kind === "replaced" ? `<button class="btn" id="here" type="button">${esc(T("play_here"))}</button>` : `<a class="btn" href="floe-battle.html">${esc(T("new_game"))}</a>`);
+      kind === "replaced" ? `<button class="btn" id="here" type="button">${esc(T("play_here"))}</button>` : `<a class="btn" href="floe-battle.html">${esc(T("new_game"))}</a>`, "dead");
     if ($("here")) $("here").onclick = () => { net.dead = false; net.retry = 0; net.everOpen = false; connect(); redraw(); };
   }
 
@@ -907,7 +919,7 @@ window.I18N_DICT = {
   // ----- фазы -----
   function onPhase(ph, prev, m) {
     ui.phase = ph;
-    if (ph === "countdown") { ui.showResults = false; stopReplay(); clearResultsScene(); $("feed").innerHTML = ""; document.body.classList.remove("out"); }
+    if (ph === "countdown") { ui.over = null; ui.showResults = false; stopReplay(); clearResultsScene(); $("feed").innerHTML = ""; document.body.classList.remove("out"); }
     if (ph === "lobby") { ui.showResults = false; stopReplay(); clearResultsScene(); document.body.classList.remove("out"); }
     applyMode();
     redraw();
@@ -946,7 +958,8 @@ window.I18N_DICT = {
       }
       if (e.type === "go") { big(T("go_word"), true); Sound.go(); }
       if (e.type === "phase" && e.phase === "overtime") big(T("overtime_word"), true);
-      if (e.type === "over") { ui.over = e; ui.resultsAt = performance.now() + 1400; document.body.classList.remove("out"); }
+      // итог досылается и при повторном входе после финала — если он уже есть, повтор не перезапускаем
+      if (e.type === "over" && !ui.over) { ui.over = e; ui.resultsAt = performance.now() + 1400; document.body.classList.remove("out"); }
     }
   }
   function tag(id) { return `<span class="dot" style="background:${HAT[ciOf(id) % HAT.length][0]}"></span>${esc(nameOf(id))}`; }

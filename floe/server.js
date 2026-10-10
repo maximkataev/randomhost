@@ -131,8 +131,10 @@ function destroyRoom(room) {
 
 // ---------- имена и шапки ----------
 
+// обрезка по длине без половинки эмодзи: «🐧»×8 — 16 единиц UTF-16, и slice(0, 15) оставлял «�» в конце
+const cut = (s, n) => s.slice(0, n).replace(/[\ud800-\udbff]$/, "");
 function cleanName(s) {
-  return String(s || "").replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, "").replace(/\s+/g, " ").trim().slice(0, 15);
+  return cut(String(s || "").replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, "").replace(/\s+/g, " ").trim(), 15).trim();
 }
 const nameKey = (s) => cleanName(s).toLowerCase().replace(/ё/g, "е");
 const HATS = 20;
@@ -230,7 +232,8 @@ function tickRoom(room, t) {
   flushRoster(room);
   if (events.length) broadcast(room, JSON.stringify({ type: "ev", list: events.map(slimEvent) }));
   broadcast(room, snapMsg(room, t));
-  if (events.some((e) => e.type === "over")) onOver(room);
+  const over = events.find((e) => e.type === "over");
+  if (over) { room.lastOver = slimEvent(over); onOver(room); }
 }
 
 function slimEvent(e) {
@@ -439,7 +442,7 @@ function handle(room, client, msg) {
         if (live.length >= MAX_PLAYERS) return reply({ type: "error", error: "room_full" });
         let nm = name;
         const taken = new Set(live.map((p) => nameKey(p.name)));
-        for (let i = 2; taken.has(nameKey(nm)); i++) nm = `${name.slice(0, 12)} ${i}`;
+        for (let i = 2; taken.has(nameKey(nm)); i++) nm = `${cut(name, 12)} ${i}`;
         id = "u_" + crypto.randomBytes(5).toString("hex");
         g.addPlayer(id, nm, freeHat(room, Number(msg.ci), id));
         room.meta.set(id, { joinedAt: now(), ping: 0, lastSeq: 0, offlineAt: 0, left: false });
@@ -460,6 +463,12 @@ function handle(room, client, msg) {
       g.setOnline(id, true);
       reply({ type: "joined", playerId: id, token: msg.token });
       sendRoster(room);
+      // вошёл (или перезагрузил страницу) уже после финала: событие «over» он пропустил и остался бы
+      // без итога и вердикта — досылаем итог и повтор (хаос-прогон 10.10, сид 1111)
+      if (g.phase === "over" && room.lastOver) {
+        if (g.replay) reply({ type: "replay", at: g.replay.at, host: g.replay.host, frames: g.replay.frames });
+        reply({ type: "ev", list: [room.lastOver] });
+      }
       return;
     }
     case "hat": {
