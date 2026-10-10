@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#cfe6ee">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1faa2.svg" type="image/svg+xml">
+<title>Как все — игра для компании: угадай, что скажет большинство</title>
+<meta name="robots" content="index,follow">
+<meta name="description" content="🪢 Мультиплеерная игра для компании: на общем экране вопрос, а ты отвечаешь не за себя, а за всех — что выберет большинство? Угадал — очки. Бесплатно, в браузере, с телефонов." data-i18n-meta="_meta">
+<!-- ссылки на комнаты (?r=КОД) — та же страница: в выдаче должна быть одна, без кода -->
+<link rel="canonical" href="https://randomhost.online/crowd.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Как все — игра для компании">
+<meta property="og:description" content="Вопрос на экране, а ты угадываешь, что ответит большинство. Бесплатно, в браузере, с телефонов.">
+<meta property="og:url" content="https://randomhost.online/crowd.html">
+<meta property="og:image" content="https://randomhost.online/og-image.png">
+<meta property="og:site_name" content="Рандомайзер Онлайн">
+<meta property="og:locale" content="ru_RU">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="crowd-theme.css">
+<style>
+  /* Пульт «Как все»: ярмарка и канат (docs/crowd-spec.md §9). Дневное небо, трава внизу, кнопки — деревянные таблички
+     на всю ширину. Никакого стекла и градиентов: плоская заливка, толстая коричневая обводка, жёсткая тень. */
+  :root {
+    --gold: #f2b01e;
+    --lang-switch-bg: var(--paper);
+    --lang-switch-border: var(--mud-d);
+    --lang-switch-fg: var(--ink);
+    --lang-switch-active-bg: var(--mud-d);
+    --lang-switch-active-fg: var(--paper);
+    --lang-switch-active-border: var(--mud-d);
+    --lang-switch-font: var(--f-body);
+    --press: cubic-bezier(.2, 1.6, .4, 1);
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; min-height: 100vh; min-height: 100dvh; background: var(--sky); color: var(--ink); font: 500 16px/1.3 var(--f-body); overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+  /* трава внизу: плоская полоса с кромкой */
+  body::before { content: ""; position: fixed; left: 0; right: 0; bottom: 0; height: max(14vh, 64px); background: var(--grass); border-top: 5px solid var(--grass-d); z-index: 0; }
+  /* «А сам-то ты?»: другая сцена — вечерний сарай, чтобы экран не спутать с голосованием */
+  body[data-scene="op"] { background: var(--mud); color: var(--paper); }
+  body[data-scene="op"]::before { background: var(--mud-d); border-top-color: #2d1e12; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; touch-action: manipulation; }
+  button:disabled { cursor: default; }
+
+  .util { display: flex; align-items: center; gap: 12px; height: calc(var(--lsc, 26px) + var(--lsh, 36px) / 2 + 2px); padding: 0 var(--lsw, 150px) 0 12px; position: relative; z-index: 3; }
+  .util a { color: inherit; text-decoration: none; font-weight: 800; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; min-height: 36px; min-width: 36px; display: inline-flex; align-items: center; }
+  @media (max-width: 380px) { .util a { font-size: 0; } .util a::before { content: "←"; font-size: 24px; } }
+  .sound-toggle-btn { flex: none; margin-left: auto; width: calc(var(--lsh, 36px) * 1.25); height: var(--lsh, 36px); border: 3px solid var(--mud-d); border-radius: 8px; background: var(--paper); color: var(--ink); font-size: 16px; display: grid; place-items: center; padding: 0; }
+  .conn { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 30; background: var(--mud-d); color: var(--paper); font-weight: 800; font-size: 14px; padding: 8px 12px; border-radius: 8px; visibility: hidden; white-space: nowrap; }
+  .conn.on { visibility: visible; }
+  .toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 30; background: var(--mud-d); color: var(--paper); font-weight: 800; font-size: 15px; padding: 10px 14px; border-radius: 8px; max-width: calc(100% - 32px); text-align: center; visibility: hidden; }
+  .toast.on { visibility: visible; }
+
+  /* цветная рамка вокруг экрана, пока включён ва-банк */
+  #frame { position: fixed; inset: 0; z-index: 20; pointer-events: none; border: 0 solid var(--gold); transition: border-width .12s; }
+  #frame.on { border-width: 9px; }
+
+  #app { position: relative; z-index: 2; max-width: 520px; margin: 0 auto; padding: 2px 14px calc(14px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; min-height: calc(100dvh - var(--lsc, 26px) - var(--lsh, 36px) / 2 - 2px); }
+  #app > * { min-width: 0; }
+  #app.mid { justify-content: center; }
+  #app.mid .note { flex: 0 0 auto; margin-bottom: 0; }
+  #app.mid .ticket { flex: 0 1 auto; padding: 22px 12px; }
+
+  h1, h2 { margin: 0; font-family: var(--f-head); font-weight: 900; line-height: 1.05; }
+  .lede { font-size: 17px; font-weight: 600; margin: 0; }
+  .fine { font-size: 14px; font-weight: 600; margin: 0; opacity: .85; }
+  .center { text-align: center; }
+
+  /* плашка «Угадай, что скажет БОЛЬШИНСТВО»: красный вымпел со срезанным краем */
+  .banner { flex: none; background: var(--flag); color: var(--paper); border: 3px solid var(--mud-d); border-right: 0; padding: 6px 22px 7px 12px; font: 700 14px/1.15 var(--f-head); clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 50%, 100% 100%, 0 100%); }
+  .banner b { font-weight: 900; font-size: 1.14em; letter-spacing: .02em; }
+  .meta { flex: none; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font: 800 13px/1 var(--f-body); text-transform: uppercase; letter-spacing: .05em; }
+  .meta b { font: 900 20px/1 var(--f-head); letter-spacing: 0; font-variant-numeric: tabular-nums; min-width: 3.4ch; text-align: right; display: inline-block; }
+  .meta i { font-style: normal; background: var(--gold); color: var(--ink); border-radius: 6px; padding: 2px 6px; margin-left: 6px; }
+  .timer { flex: none; height: 10px; background: rgba(42, 29, 18, .18); border-radius: 5px; position: relative; overflow: hidden; }
+  .timer i { position: absolute; inset: 0; background: var(--mud-d); transform-origin: left; border-radius: 5px; }
+  .timer.hot i { background: var(--bad); animation: blink .5s steps(2) infinite; }
+  body[data-scene="op"] .timer { background: rgba(255, 245, 220, .22); }
+  body[data-scene="op"] .timer i { background: var(--paper); }
+  @keyframes blink { 50% { opacity: .4; } }
+  .meta.hot b { color: var(--bad); }
+
+  /* вопрос на бумажной табличке */
+  .q { flex: none; background: var(--paper); color: var(--ink); border: 3px solid var(--mud-d); border-radius: 8px; padding: 8px 11px; font: 700 clamp(18px, 6vw, 25px)/1.12 var(--f-head); overflow-wrap: anywhere; text-wrap: balance; }
+  .q.sm { font-size: clamp(16px, 5vw, 20px); }
+
+  /* стороны: две деревянные таблички; a слева, b справа — места не меняются */
+  .sides { flex: 1 1 auto; min-height: 84px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding-bottom: 6px; }
+  .side { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 4px solid var(--mud-d); border-radius: 12px; box-shadow: 0 6px 0 var(--mud-d); color: #fff; padding: 14px 6px 8px; text-align: center; transition: transform .1s, box-shadow .1s, opacity .15s; min-width: 0; }
+  .side.a { background: var(--side-a); }
+  .side.b { background: var(--side-b); }
+  .side::before, .side::after { content: ""; position: absolute; top: 7px; width: 9px; height: 9px; border-radius: 50%; background: var(--paper-d); border: 2px solid var(--mud-d); }
+  .side::before { left: 8px; }
+  .side::after { right: 8px; }
+  .side .sm { font: 800 12px/1.1 var(--f-body); text-transform: uppercase; letter-spacing: .06em; opacity: .92; }
+  .side .big { font: 900 clamp(24px, 9vw, 40px)/1.05 var(--f-head); max-width: 100%; overflow-wrap: normal; word-break: normal; }
+  .side .big.up { text-transform: uppercase; }
+  .side .tick { position: absolute; right: -6px; bottom: -6px; width: 30px; height: 30px; border-radius: 50%; background: var(--paper); color: var(--ok); border: 3px solid var(--mud-d); font: 900 18px/24px var(--f-body); display: none; }
+  .side.sel { transform: translateY(4px); box-shadow: 0 2px 0 var(--mud-d); outline: 5px solid var(--paper); outline-offset: -11px; }
+  .side.sel .tick { display: block; }
+  .sides.picked .side:not(.sel) { opacity: .5; }
+  .side:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 var(--mud-d); }
+  .side:disabled { opacity: .55; }
+
+  /* ва-банк: отдельная строка над «Готово» */
+  .bankrow { flex: none; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 44px; border: 3px solid var(--mud-d); border-radius: 10px; background: var(--paper); font: 800 15px/1.1 var(--f-body); padding: 6px 12px; }
+  .bankrow .sw { flex: none; width: 38px; height: 22px; border-radius: 11px; background: var(--paper-d); border: 3px solid var(--mud-d); position: relative; }
+  .bankrow .sw::after { content: ""; position: absolute; top: 1px; left: 1px; width: 14px; height: 14px; border-radius: 50%; background: var(--mud-d); transition: transform .12s; }
+  .bankrow[aria-pressed="true"] { background: var(--gold); }
+  .bankrow[aria-pressed="true"] .sw { background: var(--paper); }
+  .bankrow[aria-pressed="true"] .sw::after { transform: translateX(16px); background: var(--flag); }
+  .bankslot { flex: none; display: none; min-height: 44px; }
+  @media (min-height: 640px) { .bankslot { display: block; } }
+
+  .done { flex: none; width: 100%; min-height: 60px; border: 4px solid var(--mud-d); border-radius: 12px; background: var(--ok); color: #fff; font: 900 24px/1 var(--f-head); box-shadow: 0 6px 0 var(--mud-d); transition: transform .08s, box-shadow .08s; }
+  .done:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 var(--mud-d); }
+  .done:disabled { background: var(--paper-d); color: var(--ink-soft); box-shadow: 0 6px 0 var(--mud-d); opacity: .75; }
+
+  /* ждём остальных */
+  .mine { flex: 1 1 auto; min-height: 90px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 4px solid var(--mud-d); border-radius: 12px; color: #fff; text-align: center; padding: 8px; box-shadow: 0 6px 0 var(--mud-d); margin-bottom: 6px; }
+  .mine.a { background: var(--side-a); } .mine.b { background: var(--side-b); }
+  .mine .sm { font: 800 13px/1 var(--f-body); text-transform: uppercase; letter-spacing: .06em; }
+  .mine .big { font: 900 clamp(28px, 10vw, 44px)/1.05 var(--f-head); max-width: 100%; }
+  .mine .big.up { text-transform: uppercase; }
+  .mine .x2 { background: var(--gold); color: var(--ink); border-radius: 8px; padding: 3px 10px; font: 900 16px/1.1 var(--f-head); }
+  .count { flex: none; text-align: center; font: 800 16px/1.2 var(--f-body); background: var(--paper); border: 3px solid var(--mud-d); border-radius: 10px; padding: 8px; color: var(--ink); margin-bottom: 4px; }
+  .count b { font: 900 20px/1 var(--f-head); }
+
+  /* плашка опоздавшего / ожидания */
+  .note { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; background: var(--paper); color: var(--ink); border: 3px solid var(--mud-d); border-radius: 12px; padding: 14px; margin-bottom: 6px; }
+  .note h2 { font-size: clamp(22px, 7vw, 30px); }
+
+  /* вход */
+  .signcode { align-self: center; text-align: center; background: var(--rope); color: var(--ink); border: 4px solid var(--mud-d); border-radius: 10px; font: 900 22px/1 var(--f-head); letter-spacing: .1em; padding: 8px 16px; box-shadow: 0 5px 0 var(--mud-d); }
+  input.field { width: 100%; border: 4px solid var(--mud-d); border-radius: 10px; background: var(--paper); color: var(--ink); font: 800 22px/1.1 var(--f-body); padding: 12px 12px; outline: none; }
+  input.field:focus { box-shadow: 0 0 0 4px var(--paper), 0 0 0 7px var(--mud-d); }
+  .err { min-height: 20px; font-weight: 800; font-size: 15px; color: var(--bad); background: none; }
+  .err:not(:empty) { background: var(--paper); border-radius: 8px; padding: 6px 10px; }
+  ol.rules { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; counter-reset: r; }
+  ol.rules li { counter-increment: r; position: relative; background: var(--paper); color: var(--ink); border: 3px solid var(--mud-d); border-radius: 10px; padding: 6px 10px 6px 40px; font: 600 14px/1.2 var(--f-body); }
+  ol.rules li::before { content: counter(r); position: absolute; left: 8px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; background: var(--flag); color: var(--paper); font: 900 14px/24px var(--f-head); text-align: center; }
+
+  .btn { display: block; width: 100%; min-height: 56px; border: 4px solid var(--mud-d); border-radius: 12px; background: var(--ok); color: #fff; font: 900 22px/1 var(--f-head); box-shadow: 0 6px 0 var(--mud-d); padding: 10px; text-align: center; text-decoration: none; transition: transform .08s, box-shadow .08s; }
+  .btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 var(--mud-d); }
+  .btn.ghost { background: var(--paper); color: var(--ink); }
+  .link { background: none; border: 0; min-height: 44px; padding: 8px 12px; font-weight: 800; text-decoration: underline; text-underline-offset: 4px; display: block; margin: 0 auto; }
+
+  /* лобби */
+  .me-badge { display: flex; align-items: center; gap: 12px; background: var(--paper); border: 3px solid var(--mud-d); border-radius: 12px; padding: 8px 12px; color: var(--ink); }
+  .av { width: 40px; height: 40px; flex: none; border-radius: 50%; background: var(--pc, var(--rope)); border: 3px solid var(--mud-d); display: grid; place-items: center; font-size: 22px; font-style: normal; line-height: 1; }
+  .me-badge b { font: 900 20px/1.1 var(--f-head); overflow-wrap: anywhere; min-width: 0; }
+  .plist { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; list-style: none; margin: 0; padding: 0; }
+  .plist li { display: flex; align-items: center; gap: 6px; background: var(--paper); color: var(--ink); border: 2px solid var(--mud-d); border-radius: 8px; padding: 3px 6px; font: 700 13px/1.1 var(--f-body); min-width: 0; }
+  .plist li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .plist .av { width: 24px; height: 24px; font-size: 14px; border-width: 2px; }
+  .plist li.me { background: var(--gold); }
+  .plist li.off { opacity: .55; }
+
+  /* интро */
+  .plank { align-self: stretch; background: var(--flag); color: var(--paper); border: 4px solid var(--mud-d); border-radius: 12px; box-shadow: 0 6px 0 var(--mud-d); text-align: center; padding: 14px 10px; font: 900 clamp(30px, 11vw, 48px)/1.05 var(--f-head); }
+
+  /* результат */
+  .ticket { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; background: var(--paper); color: var(--ink); border: 4px solid var(--mud-d); border-radius: 14px; box-shadow: 0 6px 0 var(--mud-d); padding: 12px 10px; margin-bottom: 6px; }
+  .ticket .eyebrow { font: 800 13px/1 var(--f-body); text-transform: uppercase; letter-spacing: .06em; opacity: .75; }
+  .ticket h2 { font-size: clamp(24px, 8vw, 34px); overflow-wrap: anywhere; }
+  .ticket .gain { font: 900 clamp(48px, 17vw, 72px)/1 var(--f-head); font-variant-numeric: tabular-nums; }
+  .ticket.ok .gain, .ticket.ok h2 { color: var(--ok); }
+  .ticket.bad .gain, .ticket.bad h2 { color: var(--bad); }
+  .ticket .line { font: 600 14px/1.2 var(--f-body); margin: 0; }
+  .ticket .tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+  .tag { background: var(--gold); color: var(--ink); border-radius: 8px; padding: 3px 9px; font: 900 14px/1.2 var(--f-head); }
+  .tag.ill { background: var(--flag); color: var(--paper); font-size: 16px; }
+  .scorebar { flex: none; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; background: var(--mud-d); color: var(--paper); border-radius: 10px; padding: 9px 14px; font: 800 15px/1.1 var(--f-body); margin-bottom: 4px; }
+  .scorebar b { font: 900 22px/1 var(--f-head); font-variant-numeric: tabular-nums; }
+
+  /* итоги */
+  .awards { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .awards .tag { font-size: 16px; padding: 6px 12px; }
+  .place { font: 900 clamp(46px, 17vw, 76px)/1 var(--f-head); }
+
+  /* опрос мнения: кнопка «Не скажу» не там, где была «Готово» */
+  .oplate { flex: none; background: var(--gold); color: var(--ink); border: 3px solid var(--paper); border-radius: 10px; text-align: center; padding: 8px; font: 900 clamp(22px, 8vw, 30px)/1.05 var(--f-head); }
+  body[data-scene="op"] .q { background: var(--paper-d); }
+  .skip { flex: none; width: 100%; min-height: 44px; background: none; border: 3px dashed var(--paper); border-radius: 10px; color: var(--paper); font: 800 16px/1.1 var(--f-body); }
+  .skip:disabled, .side:disabled { opacity: .5; }
+  .opnote { flex: none; min-height: 56px; display: flex; align-items: center; justify-content: center; text-align: center; font: 600 14px/1.25 var(--f-body); opacity: .9; padding-bottom: 6px; }
+  body[data-scene="op"] .side { border-color: var(--paper); box-shadow: 0 6px 0 #2d1e12; }
+  body[data-scene="op"] .note, body[data-scene="op"] .count { border-color: var(--paper); }
+
+  @media (max-height: 520px) {
+    #app { gap: 6px; }
+    .banner { font-size: 13px; padding: 4px 20px 5px 10px; }
+    .q { padding: 6px 9px; }
+    .side { padding-top: 12px; } .done { min-height: 56px; font-size: 22px; }
+    .plank { padding: 10px; } .ticket { gap: 3px; padding: 8px; } .ticket .gain { font-size: 48px; }
+    .oplate { padding: 5px; }
+    #enterform { gap: 6px !important; }
+    #enterform h1 { font-size: 22px !important; }
+    #enterform input.field { padding: 7px 10px; font-size: 20px; }
+    #enterform .btn { min-height: 48px; font-size: 20px; padding: 6px; }
+    .signcode { padding: 4px 14px; font-size: 18px; box-shadow: 0 3px 0 var(--mud-d); }
+    .err { min-height: 4px; }
+    ol.rules { gap: 4px; } ol.rules li { font-size: 12.5px; padding: 4px 8px 4px 34px; border-width: 2px; } ol.rules li::before { width: 20px; height: 20px; font-size: 12px; line-height: 20px; left: 7px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body data-scene="day">
+<div class="util"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
+<div class="conn" id="conn"></div>
+<div id="frame"></div>
+<div id="app"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Как все — игра для компании: угадай, что скажет большинство`,
+    _meta: `🪢 Мультиплеерная игра для компании: на общем экране вопрос, а ты отвечаешь не за себя, а за всех — что выберет большинство? Угадал — очки. Бесплатно, в браузере, с телефонов.`,
+    nav_all_games: `← Все игры`,
+    game_name: `Как все`,
+    enter_title: `Как тебя зовут?`, enter_ph: `Имя`, code_ph: `Код комнаты`, btn_join: `Войти`,
+    rule1: `На экране вопрос. Отвечай не за себя, а за всех: что выберет большинство?`,
+    rule2: `Угадал большинство — +100. Нет — 0. Поровну — всем по +50.`,
+    rule3: `×2: угадал +200, ошибся −200. Только два раза за игру.`,
+    err_name: `Напиши имя`, err_code: `Напиши код комнаты`,
+    err_name_taken: `Это имя уже в игре. Если это ты — вернись с того же телефона, или возьми другое имя`,
+    err_room_full: `В комнате уже 12 игроков`, err_token_gone: `Тебя нет в этой партии — войди заново`,
+    err_connect: `Нет связи, подключаемся…`,
+    wait_title: `Подключаемся…`,
+    watch_title: `Смотри на экран`, watch_sub: `Сейчас откроется, кто как проголосовал`,
+    lobby_in: `Ты в игре`, lobby_wait: `Ждём старта`, lobby_need: `Нужно ещё {n}: зови друзей`, lobby_look: `Вопросы будут на большом экране`, btn_leave: `Выйти`,
+    left_title: `Ты вышел из игры`, btn_home: `На главную`,
+    intro_final: `Финал ×2`, intro_extra: `Допвопрос ×2`, intro_decider: `Решающий вопрос`,
+    intro_final_sub: `Очки удваиваются, ва-банка нет`, intro_extra_sub: `Раскол в финале: ещё один вопрос, очки ×2`,
+    intro_decider_in: `Ничья на первом месте. Очки получаешь ты`, intro_decider_out: `Решают только: {names}. Голосуй, но очков не будет`,
+    banner: `Угадай, что скажет <b>БОЛЬШИНСТВО</b>`,
+    q_of: `Вопрос {n} из {m}`, q_extra: `Допвопрос`, q_decider: `Решающий`, x2: `×2`,
+    say_yn: `все скажут`, say_ab: `все выберут`,
+    bank_row: `×2 ва-банк (осталось {n})`,
+    btn_done: `Готово`,
+    picked: `Ты выбрал`, bank_chip: `×2 ва-банк`, ready: `Готовы {n} из {m}`,
+    late_title: `Ты играешь со следующего вопроса`, late_sub: `Смотри на экран и жди`,
+    sec: `{s} с`,
+    op_plate: `А САМ-ТО ТЫ?`, op_me: `Я: {side}`, op_skip: `Не скажу`,
+    op_note: `На очки не влияет. На экране будет только общая шкала`,
+    op_sent: `Ответ принят`, op_wait: `Ждём`, op_wait_sub: `Остальные отвечают, что думают сами`,
+    op_count: `Ответили {n} из {m}`,
+    res_major: `Ты в большинстве`, res_miss: `Мимо`, res_split: `Раскол`, res_one: `Как один!`,
+    res_void: `Мало голосов — вопрос заменят`, res_novote: `Ты не успел выбрать`,
+    res_obs: `Очки получают только: {names}`,
+    res_maj: `Большинство: {side} ({k} из {n})`, res_tie: `Поровну: {a} : {b}`, res_you: `Твой выбор: {side}`,
+    res_split_sub: `Голоса поровну: всем проголосовавшим +50`, res_one_sub: `Все выбрали одно — слишком просто`,
+    tag_bank: `×2 ва-банк`, tag_bank_back: `Ва-банк вернулся`, tag_mult: `Очки ×2`,
+    illusion: `Иллюзия!`, illusion_sub: `Все думали — большинство «{v}», а лично — «{o}»`,
+    op_agg: `Лично думают: {n} из {m} — {side}`, op_agg_tie: `Лично думают: поровну`,
+    score_label: `Твой счёт`, place: `{n}-е место`,
+    pause_title: `Ждём игроков`, pause_sub: `Нужно хотя бы {n} человека онлайн. Не уходи`,
+    final_title: `Итоги`, final_paused: `Партия прервана`, final_host: `Ведущий закончил партию`, final_sub: `Ведущий может начать ещё партию`,
+    aw_crowd: `Чует толпу`, aw_crow: `Белая ворона`, aw_risk: `Рискнул`, aw_wolf: `Одиночка`,
+    pts: `очков`,
+    rj_late: `Ты играешь со следующего вопроса`, rj_not_vote: `Голосование уже закрыто`, rj_confirmed: `Ты уже нажал «Готово»`,
+    rj_pick_first: `Сначала выбери сторону`, rj_no_banks: `Ва-банки кончились`, rj_no_bank_here: `Здесь ва-банка нет`,
+    kicked_title: `Ведущий убрал тебя из комнаты`,
+    replaced_title: `Ты зашёл с другой вкладки`, replaced_text: `Здесь игра на паузе`, btn_back_here: `Играть здесь`,
+    expired_title: `Комната закрылась`, expired_text: `Она живёт полчаса без игры. Открой новую`, expired_new: `На главную`,
+  },
+  en: {
+    _title: `Go With the Crowd — a party game: guess what the majority will say`,
+    _meta: `🪢 A multiplayer party game: a question is on the shared screen and you answer not for yourself but for everyone — what will the majority pick? Guess right, score. Free, in the browser, from phones.`,
+    nav_all_games: `← All games`,
+    game_name: `Go With the Crowd`,
+    enter_title: `What's your name?`, enter_ph: `Name`, code_ph: `Room code`, btn_join: `Join`,
+    rule1: `A question is on the screen. Answer for everyone, not yourself: what will the majority pick?`,
+    rule2: `Match the majority: +100. Miss: 0. A tie: +50 for everyone.`,
+    rule3: `×2: right +200, wrong −200. Only twice per game.`,
+    err_name: `Enter a name`, err_code: `Enter the room code`,
+    err_name_taken: `That name is already in the game. If it's you, come back from the same phone, or pick another name`,
+    err_room_full: `The room already has 12 players`, err_token_gone: `You're not in this game — join again`,
+    err_connect: `No connection, reconnecting…`,
+    wait_title: `Connecting…`,
+    watch_title: `Watch the screen`, watch_sub: `The votes are about to be revealed`,
+    lobby_in: `You're in`, lobby_wait: `Waiting for the start`, lobby_need: `{n} more needed: call your friends`, lobby_look: `Questions appear on the big screen`, btn_leave: `Leave`,
+    left_title: `You left the game`, btn_home: `Home`,
+    intro_final: `Final ×2`, intro_extra: `Extra question ×2`, intro_decider: `Tie-breaker`,
+    intro_final_sub: `Points are doubled, no all-in`, intro_extra_sub: `The final ended in a split: one more question, points ×2`,
+    intro_decider_in: `A tie for first place. The points are yours to win`, intro_decider_out: `Only {names} can score. Vote anyway, but no points for you`,
+    banner: `Guess what the <b>MAJORITY</b> will say`,
+    q_of: `Question {n} of {m}`, q_extra: `Extra question`, q_decider: `Tie-breaker`, x2: `×2`,
+    say_yn: `everyone will say`, say_ab: `everyone will pick`,
+    bank_row: `×2 all-in (left: {n})`,
+    btn_done: `Done`,
+    picked: `You picked`, bank_chip: `×2 all-in`, ready: `{n} of {m} ready`,
+    late_title: `You play from the next question`, late_sub: `Watch the screen and wait`,
+    sec: `{s} s`,
+    op_plate: `WHAT ABOUT YOU?`, op_me: `Me: {side}`, op_skip: `I won't say`,
+    op_note: `Doesn't affect points. The screen only shows the overall scale`,
+    op_sent: `Answer received`, op_wait: `Waiting`, op_wait_sub: `The others are saying what they think`,
+    op_count: `{n} of {m} answered`,
+    res_major: `You're in the majority`, res_miss: `Missed`, res_split: `Split`, res_one: `As one!`,
+    res_void: `Too few votes — the question will be replaced`, res_novote: `You didn't pick in time`,
+    res_obs: `Only {names} score`,
+    res_maj: `Majority: {side} ({k} of {n})`, res_tie: `Even: {a} : {b}`, res_you: `Your pick: {side}`,
+    res_split_sub: `Votes are even: +50 for everyone who voted`, res_one_sub: `Everyone picked the same — too easy`,
+    tag_bank: `×2 all-in`, tag_bank_back: `All-in returned`, tag_mult: `Points ×2`,
+    illusion: `Illusion!`, illusion_sub: `Everyone thought the majority says "{v}", but personally — "{o}"`,
+    op_agg: `Personally: {n} of {m} — {side}`, op_agg_tie: `Personally: an even split`,
+    score_label: `Your score`, place: `#{n}`,
+    pause_title: `Waiting for players`, pause_sub: `At least {n} people must be online. Stay here`,
+    final_title: `Results`, final_paused: `The game was interrupted`, final_host: `The host ended the game`, final_sub: `The host can start another game`,
+    aw_crowd: `Reads the crowd`, aw_crow: `Black sheep`, aw_risk: `Risk taker`, aw_wolf: `Lone wolf`,
+    pts: `pts`,
+    rj_late: `You play from the next question`, rj_not_vote: `Voting is already closed`, rj_confirmed: `You already pressed Done`,
+    rj_pick_first: `Pick a side first`, rj_no_banks: `No all-ins left`, rj_no_bank_here: `No all-in here`,
+    kicked_title: `The host removed you from the room`,
+    replaced_title: `You joined from another tab`, replaced_text: `The game is paused here`, btn_back_here: `Play here`,
+    expired_title: `The room has closed`, expired_text: `It lives for half an hour without a game. Open a new one`, expired_new: `Home`,
+  },
+  el: {
+    _title: `Όπως όλοι — παιχνίδι για παρέες: μάντεψε τι θα πει η πλειοψηφία`,
+    _meta: `🪢 Πολυπαικτικό παιχνίδι για παρέες: στην κοινή οθόνη μια ερώτηση και εσύ απαντάς όχι για σένα αλλά για όλους — τι θα διαλέξει η πλειοψηφία; Το βρήκες, παίρνεις πόντους. Δωρεάν, στον browser, από κινητά.`,
+    nav_all_games: `← Όλα τα παιχνίδια`,
+    game_name: `Όπως όλοι`,
+    enter_title: `Πώς σε λένε;`, enter_ph: `Όνομα`, code_ph: `Κωδικός δωματίου`, btn_join: `Μπες`,
+    rule1: `Στην οθόνη βλέπεις μια ερώτηση. Απάντησε για όλους, όχι για σένα: τι θα διαλέξει η πλειοψηφία;`,
+    rule2: `Πέτυχες την πλειοψηφία: +100. Άστοχο: 0. Ισοπαλία: +50 σε όλους.`,
+    rule3: `×2: σωστά +200, λάθος −200. Μόνο δύο φορές ανά παιχνίδι.`,
+    err_name: `Γράψε όνομα`, err_code: `Γράψε τον κωδικό δωματίου`,
+    err_name_taken: `Το όνομα υπάρχει ήδη στο παιχνίδι. Αν είσαι εσύ, γύρνα από το ίδιο κινητό ή διάλεξε άλλο όνομα`,
+    err_room_full: `Το δωμάτιο έχει ήδη 12 παίκτες`, err_token_gone: `Δεν είσαι σε αυτή την παρτίδα — μπες ξανά`,
+    err_connect: `Χωρίς σύνδεση, ξανασυνδεόμαστε…`,
+    wait_title: `Σύνδεση…`,
+    watch_title: `Κοίτα την οθόνη`, watch_sub: `Σε λίγο φαίνονται οι ψήφοι`,
+    lobby_in: `Είσαι μέσα`, lobby_wait: `Περιμένουμε την έναρξη`, lobby_need: `Χρειάζονται ακόμα {n}: φώναξε φίλους`, lobby_look: `Οι ερωτήσεις θα είναι στη μεγάλη οθόνη`, btn_leave: `Έξοδος`,
+    left_title: `Βγήκες από το παιχνίδι`, btn_home: `Αρχική`,
+    intro_final: `Τελικός ×2`, intro_extra: `Έξτρα ερώτηση ×2`, intro_decider: `Ερώτηση κρίσης`,
+    intro_final_sub: `Οι πόντοι διπλασιάζονται, χωρίς all-in`, intro_extra_sub: `Ισοπαλία στον τελικό: μία ακόμα ερώτηση, πόντοι ×2`,
+    intro_decider_in: `Ισοπαλία στην πρώτη θέση. Οι πόντοι είναι δικοί σου`, intro_decider_out: `Πόντους παίρνουν μόνο: {names}. Ψήφισε, αλλά χωρίς πόντους`,
+    banner: `Μάντεψε τι θα πει η <b>ΠΛΕΙΟΨΗΦΙΑ</b>`,
+    q_of: `Ερώτηση {n} από {m}`, q_extra: `Έξτρα ερώτηση`, q_decider: `Κρίσης`, x2: `×2`,
+    say_yn: `όλοι θα πουν`, say_ab: `όλοι θα διαλέξουν`,
+    bank_row: `×2 all-in (έμειναν {n})`,
+    btn_done: `Έτοιμο`,
+    picked: `Διάλεξες`, bank_chip: `×2 all-in`, ready: `Έτοιμοι {n} από {m}`,
+    late_title: `Παίζεις από την επόμενη ερώτηση`, late_sub: `Κοίτα την οθόνη και περίμενε`,
+    sec: `{s} δ`,
+    op_plate: `ΚΙ ΕΣΥ;`, op_me: `Εγώ: {side}`, op_skip: `Δεν λέω`,
+    op_note: `Δεν επηρεάζει τους πόντους. Στην οθόνη φαίνεται μόνο η συνολική κλίμακα`,
+    op_sent: `Η απάντηση καταχωρήθηκε`, op_wait: `Περιμένουμε`, op_wait_sub: `Οι άλλοι λένε τι πιστεύουν οι ίδιοι`,
+    op_count: `Απάντησαν {n} από {m}`,
+    res_major: `Είσαι στην πλειοψηφία`, res_miss: `Άστοχο`, res_split: `Ισοπαλία`, res_one: `Σαν ένας!`,
+    res_void: `Λίγες ψήφοι — η ερώτηση θα αντικατασταθεί`, res_novote: `Δεν πρόλαβες να διαλέξεις`,
+    res_obs: `Πόντους παίρνουν μόνο: {names}`,
+    res_maj: `Πλειοψηφία: {side} ({k} από {n})`, res_tie: `Ίσα: {a} : {b}`, res_you: `Η επιλογή σου: {side}`,
+    res_split_sub: `Ίσες ψήφοι: +50 σε όσους ψήφισαν`, res_one_sub: `Όλοι διάλεξαν το ίδιο — πολύ εύκολο`,
+    tag_bank: `×2 all-in`, tag_bank_back: `Το all-in γύρισε πίσω`, tag_mult: `Πόντοι ×2`,
+    illusion: `Ψευδαίσθηση!`, illusion_sub: `Όλοι νόμιζαν ότι η πλειοψηφία λέει «{v}», αλλά προσωπικά — «{o}»`,
+    op_agg: `Προσωπικά: {n} από {m} — {side}`, op_agg_tie: `Προσωπικά: ίσα μοιρασμένοι`,
+    score_label: `Το σκορ σου`, place: `{n}η θέση`,
+    pause_title: `Περιμένουμε παίκτες`, pause_sub: `Χρειάζονται τουλάχιστον {n} άτομα online. Μη φύγεις`,
+    final_title: `Αποτελέσματα`, final_paused: `Η παρτίδα διακόπηκε`, final_host: `Ο οικοδεσπότης τερμάτισε την παρτίδα`, final_sub: `Ο οικοδεσπότης μπορεί να ξεκινήσει νέα παρτίδα`,
+    aw_crowd: `Μυρίζεται το πλήθος`, aw_crow: `Το μαύρο πρόβατο`, aw_risk: `Ρίσκαρε`, aw_wolf: `Μοναχικός λύκος`,
+    pts: `πόντοι`,
+    rj_late: `Παίζεις από την επόμενη ερώτηση`, rj_not_vote: `Η ψηφοφορία έκλεισε`, rj_confirmed: `Πάτησες ήδη «Έτοιμο»`,
+    rj_pick_first: `Διάλεξε πρώτα πλευρά`, rj_no_banks: `Τέλειωσαν τα all-in`, rj_no_bank_here: `Εδώ δεν υπάρχει all-in`,
+    kicked_title: `Ο οικοδεσπότης σε έβγαλε από το δωμάτιο`,
+    replaced_title: `Μπήκες από άλλη καρτέλα`, replaced_text: `Εδώ το παιχνίδι είναι σε παύση`, btn_back_here: `Παίξε εδώ`,
+    expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Ζει μισή ώρα χωρίς παιχνίδι. Άνοιξε νέο`, expired_new: `Αρχική`,
+  },
+};
+</script>
+<script src="crowd-shared.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script>
+"use strict";
+const params = new URLSearchParams(location.search);
+// код идёт в разметку и в запросы — только алфавит кодов (слово + цифры 2–9)
+const cleanCode = (s) => String(s || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const CODE = cleanCode(params.get("r"));
+const app = document.getElementById("app");
+const T = (k) => wvT(k);
+const tpl = (k, v) => wvTpl(k, v);
+const tokenKey = () => "crowd_token_" + CODE;
+
+let conn = null, state = null, me = null, token = null, dead = false;
+let screen = null, screenKey = "";
+let joinErr = null;
+let blockUntil = 0; // кнопки «Мнения» молчат 400 мс после смены фазы
+let prevPhase = null;
+let ov = null; // то, что игрок только что нажал: показываем сразу, не дожидаясь снимка
+try { token = localStorage.getItem(tokenKey()); } catch (e) {}
+
+const player = (id) => state && state.players.find((p) => p.id === id);
+const mine = () => (state && me ? player(me) : null);
+const avHtml = (p) => `<i class="av" style="--pc:${p.color}">${escapeHtml(p.avatar)}</i>`;
+const roundKey = () => (state && state.round ? [state.game, state.n, state.round.kind, state.round.q.id].join(":") : "");
+const sideLabel = (q, s) => (s === "a" ? q.a : s === "b" ? q.b : "");
+
+function toast(text) {
+  const t = document.getElementById("toast");
+  t.textContent = text;
+  t.classList.add("on");
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove("on"), 2400);
+}
+function setScene(scene) {
+  document.body.dataset.scene = scene;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = scene === "op" ? "#6a4a2e" : "#cfe6ee";
+}
+// пересобираем экран только при смене ключа: иначе кнопка, которую нажимают, исчезает из-под пальца
+function show(html, key, mid) {
+  if (key === screenKey) return false;
+  screenKey = key;
+  app.classList.toggle("mid", !!mid);
+  app.innerHTML = html;
+  fit();
+  return true;
+}
+// вопрос и подписи сторон ужимаются, пока экран не влезет без прокрутки (320×460)
+function fit() {
+  app.querySelectorAll(".side .big, .mine .big").forEach((h) => {
+    h.style.fontSize = "";
+    let fs = parseFloat(getComputedStyle(h).fontSize), guard = 0;
+    while (h.scrollWidth > h.clientWidth + 1 && fs > 12 && guard++ < 40) { fs -= 1; h.style.fontSize = fs + "px"; }
+    if (h.scrollWidth > h.clientWidth + 1) h.style.overflowWrap = "anywhere";
+  });
+  const q = app.querySelector(".q");
+  if (q) {
+    q.style.fontSize = "";
+    let fs = parseFloat(getComputedStyle(q).fontSize), guard = 0;
+    while (document.documentElement.scrollHeight > innerHeight + 1 && fs > 13 && guard++ < 40) { fs -= 1; q.style.fontSize = fs + "px"; }
+  }
+}
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+window.addEventListener("resize", () => { if (document.activeElement && document.activeElement.tagName === "INPUT") return; fit(); });
+
+// экран не гаснет, пока идёт игра
+let wakeLock = null;
+async function keepAwake() {
+  try { if ("wakeLock" in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && me) keepAwake(); });
+
+// ---------- то, что игрок нажал, пока снимок в пути ----------
+function setOv(field, v) {
+  if (!ov || ov.key !== roundKey()) ov = { key: roundKey() };
+  ov[field] = { v, t: performance.now() };
+}
+function eff(field) {
+  const p = state && state.me;
+  if (ov && ov.key === roundKey() && ov[field] && performance.now() - ov[field].t < 1200) return ov[field].v;
+  return p ? p[field] : null;
+}
+
+// ---------- вход ----------
+function renderEnter() {
+  screen = "enter";
+  setScene("day");
+  setFrame(false);
+  let saved = "";
+  try { saved = localStorage.getItem("crowd-name") || ""; } catch (e) {}
+  const html = `<form id="enterform" autocomplete="off" style="display:grid;gap:10px">
+    ${CODE ? `<div class="signcode">${escapeHtml(CODE)}</div>` : `<input class="field" id="code" maxlength="12" autocapitalize="characters" placeholder="${escapeHtml(T("code_ph"))}" aria-label="${escapeHtml(T("code_ph"))}">`}
+    <h1 style="font-size:clamp(24px,8vw,32px);text-align:center">${escapeHtml(T("enter_title"))}</h1>
+    <input class="field" id="name" maxlength="15" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}">
+    <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
+    <button class="btn" type="submit">${escapeHtml(T("btn_join"))}</button>
+    <ol class="rules"><li>${escapeHtml(T("rule1"))}</li><li>${escapeHtml(T("rule2"))}</li><li>${escapeHtml(T("rule3"))}</li></ol>
+  </form>`;
+  screenKey = "";
+  show(html, "enter", true);
+  const input = document.getElementById("name");
+  document.getElementById("enterform").onsubmit = (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    const err = document.getElementById("err");
+    if (!CODE) {
+      const c = cleanCode(document.getElementById("code").value);
+      if (!c) { err.textContent = T("err_code"); return; }
+      if (name) { try { localStorage.setItem("crowd-name", name); } catch (e2) {} }
+      location.href = "crowd.html?r=" + encodeURIComponent(c);
+      return;
+    }
+    if (!name) { err.textContent = T("err_name"); return; }
+    try { localStorage.setItem("crowd-name", name); } catch (e2) {}
+    joinErr = null;
+    conn.send({ type: "join", name });
+    keepAwake();
+  };
+}
+
+function renderCenter(titleKey, textKey, extra, key) {
+  setScene("day");
+  setFrame(false);
+  show(`<div class="note"><h2>${escapeHtml(T(titleKey))}</h2>${textKey ? `<p class="lede">${escapeHtml(T(textKey))}</p>` : ""}${extra || ""}</div>`, key || "c:" + titleKey, true);
+}
+function renderExpired() {
+  dead = true;
+  screen = "expired";
+  try { localStorage.removeItem(tokenKey()); } catch (e) {}
+  renderCenter("expired_title", "expired_text", `<a class="btn" href="index.html">${escapeHtml(T("expired_new"))}</a>`);
+}
+
+function setFrame(on) { document.getElementById("frame").classList.toggle("on", !!on); }
+
+// ---------- общие куски ----------
+const bannerHtml = () => `<div class="banner">${T("banner")}</div>`;
+function metaHtml(r) {
+  let left;
+  if (r.kind === "extra") left = escapeHtml(T("q_extra"));
+  else if (r.kind === "decider") left = escapeHtml(T("q_decider"));
+  else left = escapeHtml(tpl("q_of", { n: r.num, m: state.total }));
+  const x2 = r.mult === 2 ? `<i>${escapeHtml(T("x2"))}</i>` : "";
+  return `<div class="meta" id="meta"><span>${left}${x2}</span><b id="tsec"></b></div><div class="timer" id="timer"><i></i></div>`;
+}
+const qHtml = (r, cls) => `<h2 class="q ${cls || ""}">${escapeHtml(r.q.q)}</h2>`;
+const isYn = (q) => q.kind !== "ab";
+
+// ---------- лобби ----------
+function renderLobby() {
+  setScene("day");
+  setFrame(false);
+  const p = mine();
+  const list = state.players.filter((x) => !x.left);
+  const need = Math.max(0, state.minPlayers - list.length);
+  const html = `<div class="me-badge">${avHtml(p)}<div style="min-width:0"><div class="fine">${escapeHtml(T("lobby_in"))}</div><b>${escapeHtml(p.name)}</b></div></div>
+    <div class="note" style="flex:0 0 auto"><h2>${escapeHtml(T("lobby_wait"))}</h2><p class="fine" id="lobnote"></p></div>
+    <ul class="plist" id="plist"></ul>
+    <div style="flex:1"></div>
+    <button class="link" id="leave" type="button">${escapeHtml(T("btn_leave"))}</button>`;
+  show(html, "lobby");
+  document.getElementById("lobnote").textContent = need ? tpl("lobby_need", { n: need }) : T("lobby_look");
+  const ul = document.getElementById("plist");
+  ul.innerHTML = list.map((x) => `<li class="${x.id === me ? "me" : ""} ${x.online ? "" : "off"}">${avHtml(x)}<span>${escapeHtml(x.name)}</span></li>`).join("");
+  document.getElementById("leave").onclick = leave;
+}
+function leave() {
+  conn.send({ type: "leave" });
+  try { localStorage.removeItem(tokenKey()); } catch (e) {}
+  token = null; me = null; screen = "left";
+  renderCenter("left_title", null, `<a class="btn" href="index.html">${escapeHtml(T("btn_home"))}</a><button class="link" onclick="location.reload()">${escapeHtml(T("btn_join"))}</button>`, "left");
+}
+
+// ---------- заставка финала ----------
+function renderIntro() {
+  setScene("day");
+  setFrame(false);
+  const r = state.round;
+  const key = "intro:" + roundKey();
+  const title = T(r.kind === "final" ? "intro_final" : r.kind === "extra" ? "intro_extra" : "intro_decider");
+  let sub;
+  if (r.kind === "final") sub = T("intro_final_sub");
+  else if (r.kind === "extra") sub = T("intro_extra_sub");
+  else {
+    const only = r.only || [];
+    sub = only.includes(me) ? T("intro_decider_in") : tpl("intro_decider_out", { names: wvNames(only, player) });
+  }
+  if (show(`<div class="plank">${escapeHtml(title)}</div><h2 class="q">${escapeHtml(r.q.q)}</h2><p class="lede center">${escapeHtml(sub)}</p>`, key, true)) wvSfx.fanfare();
+}
+
+// ---------- голосование ----------
+function renderVote() {
+  setScene("day");
+  const r = state.round, p = state.me, q = r.q;
+  const play = p.inRound;
+  const confirmed = play && eff("confirmed");
+  const showBank = play && r.bankAllowed && p.banks > 0;
+  const mode = !play ? "late" : confirmed ? "wait" : "play";
+  const key = `vote:${roundKey()}:${mode}:${showBank ? 1 : 0}`;
+  let html = bannerHtml() + metaHtml(r);
+  if (mode === "late") {
+    html += qHtml(r, "sm") + `<div class="note"><h2>${escapeHtml(T("late_title"))}</h2><p class="lede">${escapeHtml(T("late_sub"))}</p></div>`;
+  } else if (mode === "wait") {
+    html += qHtml(r, "sm") +
+      `<div class="mine" id="mine"><span class="sm">${escapeHtml(T("picked"))}</span><span class="big ${isYn(q) ? "up" : ""}" id="minelab"></span><span class="x2" id="minex2" hidden>${escapeHtml(T("bank_chip"))}</span></div>
+       <div class="count" id="count"></div>`;
+  } else {
+    html += qHtml(r) +
+      `<div class="sides" id="sides">` +
+      ["a", "b"].map((s) => `<button class="side ${s}" type="button" data-s="${s}"><span class="sm">${escapeHtml(T(isYn(q) ? "say_yn" : "say_ab"))}</span><span class="big ${isYn(q) ? "up" : ""}">${escapeHtml(sideLabel(q, s))}</span><span class="tick">✓</span></button>`).join("") +
+      `</div>` +
+      (showBank ? `<button class="bankrow" id="bank" type="button" aria-pressed="false"><span class="sw"></span><span>${escapeHtml(tpl("bank_row", { n: p.banks }))}</span></button>` : `<div class="bankslot"></div>`) +
+      `<button class="done" id="done" type="button" disabled>${escapeHtml(T("btn_done"))}</button>`;
+  }
+  const fresh = show(html, key);
+  if (fresh && mode === "play") bindVote();
+  patchVote(mode);
+  if (fresh) fit();
+}
+function bindVote() {
+  app.querySelectorAll(".side").forEach((b) => {
+    b.onclick = () => {
+      const s = b.dataset.s;
+      if (eff("vote") !== s) { setOv("vote", s); wvSfx.tap(); conn.send({ type: "vote", side: s }); }
+      patchVote("play");
+    };
+  });
+  const bank = document.getElementById("bank");
+  if (bank) bank.onclick = () => {
+    const on = !eff("bank");
+    setOv("bank", on);
+    (on ? wvSfx.bank : wvSfx.tap)();
+    conn.send({ type: "bank", on });
+    patchVote("play");
+  };
+  document.getElementById("done").onclick = () => {
+    if (!eff("vote") || eff("confirmed")) return;
+    setOv("confirmed", true);
+    wvSfx.lock();
+    wvVibrate(25);
+    conn.send({ type: "confirm" });
+    renderVote();
+  };
+}
+function patchVote(mode) {
+  const vote = eff("vote"), bank = !!eff("bank");
+  setFrame(mode !== "late" && bank);
+  if (mode === "play") {
+    const sides = document.getElementById("sides");
+    sides.classList.toggle("picked", !!vote);
+    sides.querySelectorAll(".side").forEach((b) => b.classList.toggle("sel", b.dataset.s === vote));
+    const bk = document.getElementById("bank");
+    if (bk) bk.setAttribute("aria-pressed", bank ? "true" : "false");
+    document.getElementById("done").disabled = !vote;
+  } else if (mode === "wait") {
+    const mineEl = document.getElementById("mine");
+    mineEl.className = "mine " + (vote || "a");
+    document.getElementById("minelab").textContent = sideLabel(state.round.q, vote);
+    document.getElementById("minex2").hidden = !bank;
+    const r = state.round;
+    document.getElementById("count").innerHTML = escapeHtml(tpl("ready", { n: "\u0001", m: (r.voters || []).length })).replace("\u0001", `<b>${(r.ready || []).length}</b>`);
+  }
+}
+
+// ---------- «А сам-то ты?» ----------
+function renderOpinion() {
+  setScene("op");
+  setFrame(false);
+  const r = state.round, p = state.me, q = r.q;
+  const asked = p.asked;
+  const answered = asked && p.opinion;
+  const key = `op:${roundKey()}:${asked ? (answered ? "sent" : "ask") : "wait"}`;
+  const noteTxt = escapeHtml(T("op_note"));
+  let html;
+  if (asked && !answered) {
+    html = `<div class="oplate">${escapeHtml(T("op_plate"))}</div>${metaHtml(r)}${qHtml(r, "sm")}
+      <button class="skip" id="skip" type="button" data-s="skip">${escapeHtml(T("op_skip"))}</button>
+      <div class="sides" id="sides">` +
+      ["a", "b"].map((s) => `<button class="side ${s}" type="button" data-s="${s}"><span class="big ${isYn(q) ? "up" : ""}">${escapeHtml(tpl("op_me", { side: sideLabel(q, s) }))}</span></button>`).join("") +
+      `</div><div class="opnote">${noteTxt}</div>`;
+  } else if (asked) {
+    html = `<div class="oplate">${escapeHtml(T("op_plate"))}</div>${metaHtml(r)}
+      <div class="note"><h2>${escapeHtml(T("op_sent"))}</h2><p class="lede" id="opw"></p></div>`;
+  } else {
+    html = `<div class="oplate">${escapeHtml(T("op_plate"))}</div>${metaHtml(r)}
+      <div class="note"><h2>${escapeHtml(T("op_wait"))}</h2><p class="lede">${escapeHtml(T("op_wait_sub"))}</p><p class="fine" id="opw"></p></div>`;
+  }
+  const fresh = show(html, key);
+  if (fresh && asked && !answered) {
+    // двойной тап по «Готово» не должен отправить мнение: 400 мс после смены фазы кнопки глухие
+    const btns = app.querySelectorAll(".side, .skip");
+    const wait = blockUntil - performance.now();
+    if (wait > 0) {
+      btns.forEach((b) => { b.disabled = true; });
+      setTimeout(() => btns.forEach((b) => { b.disabled = false; }), wait);
+    }
+    btns.forEach((b) => {
+      b.onclick = () => {
+        if (b.disabled || performance.now() < blockUntil) return;
+        btns.forEach((x) => { x.disabled = true; });
+        wvSfx.tap();
+        conn.send({ type: "opinion", side: b.dataset.s });
+      };
+    });
+  }
+  const opw = document.getElementById("opw");
+  if (opw) opw.textContent = tpl("op_count", { n: r.answered || 0, m: r.askN || 0 });
+}
+
+// ---------- раскрытие и счёт ----------
+const fmtGain = (g) => (g > 0 ? "+" + g : g < 0 ? "−" + -g : "0");
+function placeOf(p) {
+  const list = state.players.filter((x) => !x.left);
+  return wvRank(list, p);
+}
+function renderResult() {
+  setScene("day");
+  setFrame(false);
+  const r = state.round, res = r.result, p = state.me, q = r.q, self = mine();
+  const key = "res:" + roundKey();
+  const vote = p.vote;
+  let tone = "", title, gain = null, lines = [], tags = [], sound = null;
+  const only = r.only;
+  const obs = only && !only.includes(me);
+  if (!p.inRound) {
+    title = T("late_title");
+  } else if (res.void) {
+    title = T("res_void");
+    if (p.bankBack) tags.push(T("tag_bank_back"));
+  } else if (obs) {
+    title = tpl("res_obs", { names: wvNames(only, player) });
+  } else if (!vote) {
+    title = T("res_novote"); gain = p.gain != null ? p.gain : 0; tone = "";
+  } else if (res.tie) {
+    title = T("res_split"); gain = p.gain; tone = "ok"; sound = "strain"; lines.push(T("res_split_sub"));
+  } else if (res.unanimous) {
+    title = T("res_one"); gain = p.gain; tone = "ok"; sound = "chord"; lines.push(T("res_one_sub"));
+  } else if (vote === res.side) {
+    title = T("res_major"); gain = p.gain; tone = "ok"; sound = "win";
+  } else {
+    title = T("res_miss"); gain = p.gain; tone = gain < 0 ? "bad" : ""; sound = "womp";
+  }
+  if (res.void) lines.push("");
+  if (!res.void && p.inRound) {
+    if (!res.tie) lines.push(tpl("res_maj", { side: sideLabel(q, res.side), k: Math.max(res.a, res.b), n: res.cast }));
+    if (vote && !obs) lines.push(tpl("res_you", { side: sideLabel(q, vote) }));
+    if (res.banked && res.banked[me]) tags.push(T("tag_bank"));
+    if (p.bankBack) tags.push(T("tag_bank_back"));
+    if (r.mult === 2) tags.push(T("tag_mult"));
+    const o = res.opinions;
+    if (o && o.a + o.b > 0) lines.push(o.a === o.b ? T("op_agg_tie") : tpl("op_agg", { n: Math.max(o.a, o.b), m: o.a + o.b, side: sideLabel(q, o.a > o.b ? "a" : "b") }));
+  }
+  const ill = res.illusion
+    ? `<span class="tag ill">${escapeHtml(T("illusion"))}</span><p class="line">${escapeHtml(tpl("illusion_sub", { v: sideLabel(q, res.illusion.vote), o: sideLabel(q, res.illusion.opinion) }))}</p>` : "";
+  const html = `<div class="ticket ${tone}">
+      <h2>${escapeHtml(title)}</h2>
+      ${gain != null ? `<div class="gain">${escapeHtml(fmtGain(gain))}</div>` : ""}
+      ${tags.length ? `<div class="tags">${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>` : ""}
+      ${lines.filter(Boolean).map((l) => `<p class="line">${escapeHtml(l)}</p>`).join("")}
+      ${ill}
+    </div>
+    <div class="scorebar"><span>${escapeHtml(T("score_label"))}</span><span><b id="myscore"></b> · <span id="myplace"></span></span></div>`;
+  const fresh = show(html, key, true);
+  document.getElementById("myscore").textContent = self.score;
+  document.getElementById("myplace").textContent = tpl("place", { n: placeOf(self) });
+  if (fresh) {
+    if (sound && wvSfx[sound]) wvSfx[sound]();
+    if (res.illusion) setTimeout(() => wvSfx.pop(), 450);
+    if (gain) wvVibrate(gain > 0 ? 40 : [30, 40, 30]);
+  }
+}
+
+// ---------- пауза и итоги ----------
+function renderPause() {
+  setScene("day");
+  setFrame(false);
+  show(`<div class="note"><h2>${escapeHtml(T("pause_title"))}</h2><p class="lede">${escapeHtml(tpl("pause_sub", { n: state.minPlayers }))}</p><p class="fine" id="psec"></p></div>`, "pause", true);
+}
+function renderFinal() {
+  setScene("day");
+  setFrame(false);
+  const self = mine();
+  const place = placeOf(self);
+  const sub = state.finishedReason === "paused" ? T("final_paused") : state.finishedReason === "host" ? T("final_host") : T("final_sub");
+  const aw = state.awards || {};
+  const mineAw = ["crowd", "crow", "risk", "wolf"].filter((k) => aw[k] && aw[k].ids.includes(me));
+  const icons = { crowd: "🎯", crow: "🐦‍⬛", risk: "🎲", wolf: "🐺" };
+  const html = `<div class="ticket"><div class="eyebrow">${escapeHtml(T("final_title"))}</div>
+      <div class="place">${escapeHtml(tpl("place", { n: place }))}</div>
+      <p class="lede">${escapeHtml(self.avatar)} ${escapeHtml(self.name)} · <b>${self.score}</b> ${escapeHtml(T("pts"))}</p>
+      ${mineAw.length ? `<div class="awards">${mineAw.map((k) => `<span class="tag">${icons[k]} ${escapeHtml(T("aw_" + k))}</span>`).join("")}</div>` : ""}
+      <p class="fine">${escapeHtml(sub)}</p></div>
+    <button class="btn ghost" id="leave" type="button">${escapeHtml(T("btn_leave"))}</button>`;
+  if (show(html, "finished:" + state.game, true)) { if (place === 1 && state.finishedReason === "done") wvSfx.fanfare(); document.getElementById("leave").onclick = leave; }
+}
+
+// ---------- выбор экрана ----------
+function render() {
+  if (dead || !state) return;
+  if (!me) {
+    if (token) return; // входим по токену — не мигаем экраном входа
+    if (screen === "kicked" || screen === "replaced" || screen === "left") return;
+    if (screen === "enter") return;
+    return renderEnter();
+  }
+  const p = mine();
+  if (!p || p.left || !state.me) return; // снимок с нами ещё в пути, либо нас убрали (скажет kicked)
+  screen = "game";
+  switch (state.phase) {
+    case "lobby": return renderLobby();
+    case "intro": return renderIntro();
+    case "vote": return renderVote();
+    case "opinion": return renderOpinion();
+    case "reveal": case "scores": {
+      if (!(state.round && state.round.result)) return undefined;
+      // итог не раньше, чем доска закончит раскрытие: иначе телефон выдаёт то, что все смотрят на экране.
+      // Аннулированный раунд раскрывать нечего — показываем сразу.
+      if (state.phase === "reveal" && !state.round.result.void && wvNow() < state.phaseEnd - 300) {
+        return renderCenter("watch_title", "watch_sub", "", "watch");
+      }
+      return renderResult();
+    }
+    case "pause": return renderPause();
+    case "finished": return renderFinal();
+  }
+}
+
+// таймер фазы: полоска и секунды; последние 5 с краснеют и тикают
+let lastTickSec = null;
+function frame() {
+  requestAnimationFrame(frame);
+  if (!state || dead || !state.phaseEnd) return;
+  const left = state.phaseEnd - wvNow();
+  const total = Math.max(1, state.phaseEnd - state.phaseStart);
+  if (screenKey === "watch" && state.phase === "reveal" && left <= 300) render();
+  const bar = document.getElementById("timer");
+  if (bar) {
+    bar.firstChild.style.transform = `scaleX(${Math.max(0, Math.min(1, left / total))})`;
+    bar.classList.toggle("hot", left < 5000 && state.phase === "vote");
+  }
+  const ts = document.getElementById("tsec");
+  if (ts) {
+    ts.textContent = tpl("sec", { s: Math.max(0, Math.ceil(left / 1000)) });
+    document.getElementById("meta").classList.toggle("hot", left < 5000 && state.phase === "vote");
+  }
+  const ps = document.getElementById("psec");
+  if (ps) ps.textContent = tpl("sec", { s: Math.max(0, Math.ceil(left / 1000)) });
+  if (state.phase === "vote" && left < 5000 && left > 0) {
+    const sec = Math.ceil(left / 1000);
+    if (sec !== lastTickSec) { lastTickSec = sec; wvSfx.tick(true); }
+  }
+}
+
+window.addEventListener("langchange", () => {
+  if (screen === "enter") return renderEnter();
+  screenKey = "";
+  if (screen === "expired") return renderExpired();
+  if (screen === "kicked" || screen === "replaced" || screen === "left") return;
+  if (!state) return renderCenter("wait_title");
+  render();
+});
+
+// ---------- связь ----------
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+    case "state":
+      state = m.state;
+      if (m.type === "hello" && token && !me) conn.send({ type: "join", token });
+      if (state.phase !== prevPhase) {
+        prevPhase = state.phase;
+        blockUntil = performance.now() + 400;
+        if (state.phase === "vote") wvVibrate(30);
+        if (state.phase === "opinion" && state.me && state.me.asked) wvVibrate(40);
+      }
+      render();
+      break;
+    case "joined":
+      me = m.playerId;
+      token = m.token;
+      joinErr = null;
+      try { localStorage.setItem(tokenKey(), token); } catch (e) {}
+      keepAwake();
+      screen = null;
+      screenKey = "";
+      render();
+      break;
+    case "rejected":
+      ov = null;
+      if (T("rj_" + m.reason) !== "rj_" + m.reason) toast(T("rj_" + m.reason));
+      screenKey = "";
+      render();
+      break;
+    case "error":
+      if (m.error === "room_expired") return renderExpired();
+      if (["room_full", "token_gone", "bad_name", "name_taken"].includes(m.error)) {
+        if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
+        joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
+        me = null;
+        renderEnter();
+      }
+      break;
+    case "kicked":
+      me = null;
+      try { localStorage.removeItem(tokenKey()); } catch (e) {}
+      token = null;
+      screen = "kicked";
+      renderCenter("kicked_title");
+      break;
+    case "replaced":
+      me = null;
+      screen = "replaced";
+      renderCenter("replaced_title", "replaced_text", `<button class="btn" id="here" type="button">${escapeHtml(T("btn_back_here"))}</button>`);
+      document.getElementById("here").onclick = () => { conn.send({ type: "join", token }); };
+      break;
+  }
+}
+
+function start() {
+  if (!CODE) return renderEnter();
+  renderCenter("wait_title");
+  const banner = document.getElementById("conn");
+  conn = wvConnect({
+    code: CODE,
+    onMessage,
+    onGone: renderExpired,
+    // переподключились — снова входим своим токеном (hello придёт первым)
+    onOpen: () => { me = null; },
+    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+  });
+  requestAnimationFrame(frame);
+  // ручка для стенда: состояние и отправка
+  window.wvPhone = { send: (msg) => conn.send(msg), get state() { return state; }, get me() { return me; } };
+}
+start();
+</script>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+  ym(104849796, 'init', { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+</body>
+</html>

@@ -35,6 +35,7 @@ services:
       - lastq
       - quip
       - wave
+      - crowd
       - floe
       - rapids
       - storm
@@ -244,6 +245,30 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # сервер «Как все» (WebSocket + API); nginx проксирует в него /crowd/ws и /crowd/api/.
+  # Устроен как wave. В дампе — голоса, ва-банк и мнения до раскрытия: снимки их не отдают.
+  # Рядом лежит анонимная статистика вопросов (qstats.json) для калибровки колоды.
+  crowd:
+    build: ./crowd
+    image: randomhostcrowd:latest
+    container_name: randomhost-crowd
+    cpuset: "2-5"
+    restart: always
+    mem_limit: 128m
+    volumes:
+      - crowd-state:/app/state
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3900/crowd/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # сервер «Царя льдины» (WebSocket, 20 тиков в секунду); nginx проксирует в него /floe/ws и /floe/api/.
   # В дампе — только комнаты с людьми и токенами: идущая партия после рестарта отменяется.
   floe:
@@ -298,5 +323,6 @@ volumes:
   lastq-state:
   quip-state:
   wave-state:
+  crowd-state:
   floe-state:
   rapids-state:

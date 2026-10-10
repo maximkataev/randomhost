@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1faa2.svg" type="image/svg+xml">
+<title>Как все — общий экран</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="crowd-theme.css">
+<style>
+  /* Мир: «перетягивание каната на сельской ярмарке» (crowd-spec.md §9). Дневной свет, небо и трава, канат через весь экран,
+     красный лоскут над ямой с лужей, вывески-стрелки «ДА» / «НЕТ» на столбах. Общий экран смотрят с трёх метров.
+     Результат остаётся в сцене: лоскут у большинства, меньшинство сидит в луже, пока не начнётся следующий вопрос. */
+  :root {
+    --lang-switch-bg: var(--paper);
+    --lang-switch-border: var(--ink);
+    --lang-switch-fg: var(--ink);
+    --lang-switch-fg-hover: var(--ink);
+    --lang-switch-hover-bg: var(--paper-d);
+    --lang-switch-active-bg: var(--ink);
+    --lang-switch-active-fg: var(--paper);
+    --lang-switch-active-border: var(--ink);
+    --lang-switch-font: var(--f-body);
+    --sgw: clamp(120px, 15vw, 300px);
+    --sh: 440px;      /* высота сцены (JS) */
+    --gy: 220px;      /* линия травы в сцене (JS) */
+    --sz: 80px;       /* максимальный размер аватара (JS) */
+    --bar-h: 64px;
+    --pop: cubic-bezier(.2, 1.5, .4, 1);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--sky); color: var(--ink); font: 500 18px/1.3 var(--f-body); overflow: hidden; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  :focus-visible { outline: 4px solid var(--ink); outline-offset: 3px; }
+  .hidden { display: none !important; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  b, strong { font-weight: 900; }
+
+  /* ---------- небо и трава ---------- */
+  #sky { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: linear-gradient(#8fc3d6 0%, var(--sky) 38%, #e6f1ea 78%); }
+  #sky svg { position: absolute; left: 0; bottom: 0; width: 100%; height: 100%; }
+  #sky .cloud { animation: drift linear infinite; }
+  @keyframes drift { from { transform: translateX(-30vw); } to { transform: translateX(130vw); } }
+  #ground { position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--sh) - var(--gy)); z-index: 1; background: var(--grass); pointer-events: none;
+    background-image: repeating-linear-gradient(90deg, rgba(255, 255, 255, .0) 0 7vw, rgba(70, 120, 30, .13) 7vw 14vw); }
+  #ground::before { content: ""; position: absolute; left: 0; right: 0; top: -14px; height: 16px;
+    background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='36' height='16' viewBox='0 0 36 16'><path d='M0 16 L4 4 L8 16 L13 2 L18 16 L23 5 L28 16 L32 3 L36 16Z' fill='%238cbb52'/></svg>") repeat-x bottom / 36px 16px; }
+  #ground::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 28%; background: var(--grass-d); opacity: .22; }
+
+  /* ---------- шапка ---------- */
+  .top { position: fixed; left: 0; right: 0; top: 0; z-index: 30; display: flex; align-items: center; gap: 14px; height: calc(var(--lsc, 32px) * 2); padding: 0 var(--lsw, 160px) 0 26px; pointer-events: none; }
+  .top > * { pointer-events: auto; }
+  .brand { font: 900 24px/1 var(--f-head); text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; display: flex; align-items: center; gap: 10px; }
+  .brand i { width: 38px; height: 14px; border-radius: 8px; background: var(--rope); border-bottom: 4px solid var(--rope-d); position: relative; flex: none; }
+  .brand i::after { content: ""; position: absolute; left: 16px; top: -10px; width: 9px; height: 17px; background: var(--flag); border-radius: 1px 5px 1px 5px; }
+  .chip { font: 900 18px/1 var(--f-head); padding: 7px 12px; background: var(--paper); border: 3px solid var(--ink); border-radius: 4px; letter-spacing: .08em; white-space: nowrap; }
+  .grow { flex: 1; }
+  .sound-toggle-btn, .endbtn { flex: none; height: var(--lsh, 44px); width: var(--lsh, 44px); border: 3px solid var(--ink); border-radius: 50%; background: var(--paper); color: var(--ink); padding: 0; display: grid; place-items: center; font-size: 16px; }
+  .sound-toggle-btn svg { width: 20px; height: 20px; }
+  .endbtn:hover, .sound-toggle-btn:hover { background: var(--paper-d); }
+  .banner { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 50; background: var(--ink); color: var(--paper); padding: 8px 14px; font-weight: 800; border-radius: 4px; }
+  .conn { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 50; background: var(--ink); color: var(--paper); padding: 6px 12px; font-weight: 800; border-radius: 4px; visibility: hidden; }
+  .conn.on { visibility: visible; }
+
+  main { position: fixed; left: 0; right: 0; top: calc(var(--lsc, 32px) * 2); bottom: 0; z-index: 2; }
+  #upper { position: absolute; left: 0; right: 0; top: 0; bottom: var(--sh); z-index: 3; }
+  body.fin #upper { bottom: 0; }
+  .up { position: absolute; inset: 0; display: grid; grid-template-columns: var(--sgw) minmax(0, 1fr) var(--sgw); gap: 2vw; padding: 0 2vw 0; min-height: 0; }
+
+  /* ---------- вывески на столбах: стрелки ДА ← → НЕТ ---------- */
+  .sign { position: relative; align-self: end; height: min(100%, 24vh); min-height: 96px; display: flex; flex-direction: column; justify-content: flex-start; }
+  .sign.a { grid-column: 1; grid-row: 1; }
+  .sign.b { grid-column: 3; grid-row: 1; }
+  .sg-board { position: relative; flex: 1; min-height: 0; color: #fff; display: flex; align-items: center; gap: .35em; padding: 0 .5em 0 .7em; font-family: var(--f-head); font-weight: 900; text-transform: uppercase; line-height: 1;
+    background-color: var(--c); background-image: repeating-linear-gradient(180deg, transparent 0 30px, rgba(0, 0, 0, .13) 30px 32px); box-shadow: inset 0 -8px 0 rgba(0, 0, 0, .2); text-shadow: 0 2px 0 rgba(0, 0, 0, .25); }
+  .sign.a { --c: var(--side-a); }
+  .sign.b { --c: var(--side-b); }
+  .sign.a .sg-board { clip-path: polygon(0 50%, 16% 0, 100% 0, 100% 100%, 16% 100%); padding-left: 18%; }
+  .sign.b .sg-board { clip-path: polygon(0 0, 84% 0, 100% 50%, 84% 100%, 0 100%); padding-right: 18%; flex-direction: row-reverse; }
+  .sg-ico { flex: none; display: grid; place-items: center; width: 1.1em; height: 1.1em; border-radius: 50%; background: #fff; color: var(--c); font-size: clamp(22px, 4.6vh, 56px); text-shadow: none; font-family: var(--f-body); font-weight: 900; }
+  .sg-word { min-width: 0; flex: 1; font-size: clamp(26px, 6vh, 74px); display: flex; align-items: center; justify-content: center; text-align: center; }
+  .sg-word > span { min-width: 0; overflow-wrap: normal; word-break: normal; hyphens: manual; }
+  .sign.ab .sg-word { font-size: clamp(18px, 3.4vh, 40px); line-height: 1.05; }
+  .sg-post { height: 14px; flex: none; width: 18px; margin: 0 auto; background: linear-gradient(90deg, #a87a3d, #8c5a22 60%, #6e4617); }
+  .sg-n { position: absolute; top: -.35em; z-index: 2; min-width: 1.5em; height: 1.5em; padding: 0 .3em; border-radius: 999px; background: var(--paper); color: var(--ink); border: 4px solid var(--c); font: 900 clamp(28px, 6vh, 64px)/1.3 var(--f-head); text-align: center; font-variant-numeric: tabular-nums; opacity: 0; transform: scale(.4); transition: opacity .25s, transform .35s var(--pop); }
+  .sign.a .sg-n { right: -.2em; }
+  .sign.b .sg-n { left: -.2em; }
+  .sg-n.on { opacity: 1; transform: none; }
+  .sg-n.bump { animation: bump .3s var(--pop); }
+  @keyframes bump { from { transform: scale(1.35); } }
+
+  /* ---------- центральная колонка ---------- */
+  .mid { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 1.2vh; padding-top: 1.2vh; }
+  .ribbon { position: relative; flex: none; background: var(--flag); color: var(--paper); font: 800 clamp(16px, 2.9vh, 34px)/1 var(--f-head); padding: .55em 1.8em; clip-path: polygon(0 0, 100% 0, calc(100% - 20px) 50%, 100% 100%, 0 100%, 20px 50%); box-shadow: inset 0 -5px 0 rgba(0, 0, 0, .18); text-align: center; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .ribbon b { text-transform: uppercase; letter-spacing: .03em; border-bottom: 3px solid rgba(255, 245, 220, .6); }
+  .ribbon.think { background: var(--ink-soft); }
+  .qbox { flex: 1; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+  .qtxt { margin: 0; width: 100%; text-align: center; font: 900 var(--qfs, 64px)/1.06 var(--f-head); text-wrap: balance; overflow-wrap: anywhere; hyphens: auto; }
+  .meta { flex: none; width: 100%; display: flex; align-items: center; justify-content: center; gap: 2.2vw; font: 800 clamp(15px, 2.4vh, 28px)/1 var(--f-head); padding-bottom: 1.2vh; }
+  .meta .prog { white-space: nowrap; text-transform: uppercase; letter-spacing: .06em; }
+  .pips { display: flex; gap: 5px; }
+  .pips i { width: 11px; height: 11px; border-radius: 50%; background: rgba(42, 29, 18, .22); }
+  .pips i.d { background: var(--ink); }
+  .pips i.c { background: var(--flag); transform: scale(1.35); }
+  .rdy { min-width: 9.5em; text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .rdy::before { content: "✓"; display: inline-grid; place-items: center; width: 1.3em; height: 1.3em; margin-right: .45em; border-radius: 50%; background: var(--ok); color: #fff; font-size: .9em; }
+  .rdy.ask::before { content: "💭"; background: none; }
+
+  /* ---------- раскрытие ---------- */
+  .qline { flex: none; width: 100%; display: flex; align-items: baseline; justify-content: center; gap: 1.2vw; }
+  .qline .qk { flex: none; font: 800 clamp(13px, 2vh, 22px)/1 var(--f-head); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; opacity: .75; }
+  .qline .qtxt { width: auto; flex: 0 1 auto; max-height: 2.2em; overflow: hidden; }
+  .verdict { position: relative; flex: 1; min-height: 0; width: 100%; }
+  .verdict > * { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: .3em; opacity: 0; transform: scale(.7) rotate(-3deg); transition: opacity .25s, transform .4s var(--pop); pointer-events: none; }
+  .verdict > .on { opacity: 1; transform: none; }
+  .vd-idle { opacity: 1 !important; transform: none !important; }
+  .stamp { display: inline-block; font: 900 var(--u, 60px)/1.05 var(--f-head); text-transform: uppercase; padding: .12em .5em; border: .09em solid currentColor; border-radius: .12em; background: rgba(255, 245, 220, .7); transform: rotate(-2deg); text-wrap: balance; max-width: 100%; }
+  .vd-sub { font: 800 max(calc(var(--u, 60px) * .38), 15px)/1.1 var(--f-head); }
+  .stamp.a { color: var(--side-a); } .stamp.b { color: var(--side-b); }
+  .stamp.tie { color: var(--ink); } .stamp.one { color: var(--ok); } .stamp.void { color: var(--ink-soft); font-size: calc(var(--u, 60px) * .62); }
+  .wolfnote { font: 800 max(calc(var(--u, 60px) * .3), 15px)/1.1 var(--f-head); }
+  .illusion { z-index: 2; }
+  .illusion .plate { background: var(--flag); color: var(--paper); padding: .5vh 2vw 1vh; border: 5px solid var(--ink); border-radius: 6px; box-shadow: 0 8px 0 rgba(42, 29, 18, .3); transform: rotate(-2deg); max-width: 100%; }
+  .illusion .plate h2 { margin: 0; font: 900 var(--u, 60px)/1.05 var(--f-head); letter-spacing: .03em; }
+  .illusion .plate p { margin: .1em 0 0; font: 700 max(calc(var(--u, 60px) * .4), 15px)/1.15 var(--f-head); text-wrap: balance; }
+  .illusion .plate p b { background: var(--paper); color: var(--ink); padding: 0 .35em; border-radius: 3px; white-space: nowrap; }
+  .oprope { flex: none; width: 100%; height: clamp(86px, 15vh, 170px); position: relative; }
+  .oprope .oh { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: baseline; font: 900 clamp(14px, 2.3vh, 26px)/1 var(--f-head); text-transform: uppercase; letter-spacing: .05em; }
+  .oprope .oh span { font-variant-numeric: tabular-nums; }
+  .oprope .oc { position: absolute; left: 0; right: 0; top: 0; text-align: center; }
+  .oprope .orope { position: absolute; left: 0; right: 0; top: 58%; height: .6em; border-radius: 6px; background: var(--rope); border-bottom: 4px solid var(--rope-d); font-size: clamp(12px, 2vh, 22px); }
+  .oprope .tk { position: absolute; top: 58%; width: 1.9em; height: 1.9em; margin-top: -2.05em; border-radius: 50%; background: var(--paper); border: 3px solid var(--c); display: grid; place-items: center; font-size: clamp(12px, 2vh, 22px); opacity: 0; transform: translateY(-.8em) scale(.5); transition: opacity .2s, transform .35s var(--pop); }
+  .oprope .tk.on { opacity: 1; transform: none; }
+  .oprope .tk.a { --c: var(--side-a); } .oprope .tk.b { --c: var(--side-b); }
+  .oprope .oflag { position: absolute; top: 58%; left: 0; width: 0; height: 0; z-index: 2; }
+  .oprope .oflag svg { position: absolute; left: -.7em; bottom: .15em; width: clamp(24px, 4.4vh, 48px); height: auto; overflow: visible; }
+
+  /* ---------- счёт ---------- */
+  .sc { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 1.2vh; grid-template-columns: none; padding: 1vh 5vw 1.4vh; }
+  .sc-head { flex: none; display: flex; align-items: baseline; justify-content: center; gap: 1.6vw; flex-wrap: wrap; text-align: center; }
+  .sc-head h2 { margin: 0; font: 900 clamp(24px, 4.6vh, 54px)/1.1 var(--f-head); }
+  .sc-head p { margin: 0; font: 700 clamp(14px, 2.4vh, 26px)/1.1 var(--f-head); }
+  .sc-tab { font-size: var(--fs, 24px); flex: 0 0 auto; height: var(--th, 300px); min-height: 0; display: grid; grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); grid-template-rows: repeat(var(--rows, 6), minmax(0, 1fr)); grid-auto-flow: column; gap: .6vh 3vw; align-content: stretch; width: 100%; max-width: 1500px; margin: 0 auto; }
+  .row { display: grid; grid-template-columns: 1.4em 1.9em minmax(0, 7.5em) auto minmax(40px, 1fr) 3em 3.4em; align-items: center; gap: .5em; min-height: 0; font: 800 1em/1 var(--f-head); background: rgba(255, 245, 220, .72); border-radius: 6px; padding: 0 .5em; border-left: .3em solid var(--pc); }
+  .row .rk { text-align: center; font-variant-numeric: tabular-nums; }
+  .row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .av { display: grid; place-items: center; width: 1.8em; height: 1.8em; font-size: .62em; border-radius: 50%; background: var(--paper); border: .16em solid var(--pc); font-style: normal; line-height: 1; flex: none; }
+  .row .av { font-size: .7em; }
+  .row .bd { display: flex; gap: .3em; white-space: nowrap; font-size: .7em; }
+  .row .bd:empty { visibility: hidden; }
+  .tag2 { background: var(--flag); color: #fff; border-radius: 4px; padding: .1em .35em; font-weight: 900; }
+  .bar { height: .6em; border-radius: 4px; background: rgba(42, 29, 18, .13); overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--pc); transform-origin: left; transform: scaleX(var(--w0, 0)); transition: transform 1s cubic-bezier(.3, 1, .4, 1) .3s; }
+  .row .tot { text-align: right; font-variant-numeric: tabular-nums; }
+  .row .tot.neg { color: var(--bad); }
+  .row .dl { text-align: right; font-variant-numeric: tabular-nums; font-size: .85em; opacity: 0; transform: translateY(.4em); transition: opacity .3s .5s, transform .4s var(--pop) .5s; }
+  .row .dl.on { opacity: 1; transform: none; }
+  .row .dl.pos { color: var(--ok); } .row .dl.neg { color: var(--bad); } .row .dl.zero { opacity: .55; }
+  .row.out { opacity: .55; }
+
+  /* ---------- заставки, пауза ---------- */
+  .full { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; grid-template-columns: none; padding: 0 8vw; }
+  .poster { position: relative; background: var(--paper); border: 6px solid var(--ink); border-radius: 8px; padding: 2.4vh 4vw 2.8vh; box-shadow: 0 10px 0 rgba(42, 29, 18, .28); transform: rotate(-1.2deg); animation: slam .55s var(--pop) both; max-width: 100%; }
+  .poster h1 { margin: 0; font: 900 clamp(46px, 15vh, 190px)/1.05 var(--f-head); text-transform: uppercase; letter-spacing: .02em; }
+  .poster .x2 { display: inline-block; margin-left: .15em; color: var(--flag); }
+  .poster p { margin: 1vh 0 0; font: 700 clamp(18px, 3.2vh, 40px)/1.2 var(--f-head); max-width: 24em; text-wrap: balance; }
+  .poster::before, .poster::after { content: ""; position: absolute; top: -18px; width: 14px; height: 36px; background: var(--rope-d); border-radius: 3px; }
+  .poster::before { left: 12%; } .poster::after { right: 12%; }
+  @keyframes slam { from { transform: scale(1.5) rotate(4deg); opacity: 0; } }
+  .only { display: flex; flex-wrap: wrap; justify-content: center; gap: 1vh 1.2vw; }
+  .only span { display: inline-flex; align-items: center; gap: .5em; font: 800 clamp(16px, 3vh, 34px)/1 var(--f-head); background: var(--paper); border-radius: 999px; padding: .2em .8em .2em .2em; border: 3px solid var(--ink); }
+  .only .av { font-size: .8em; }
+  .wait { font: 900 clamp(26px, 5vh, 60px)/1 var(--f-head); }
+
+  /* ---------- лобби ---------- */
+  .lobby { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); gap: 2.6vw; padding: 1.5vh 3vw 2.4vh; align-items: stretch; }
+  .lobby > div { min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 1.4vh; }
+  .ticket { position: relative; background: var(--paper); border: 4px solid var(--ink); border-radius: 8px; padding: 1.6vh 1.2vw; display: flex; flex-direction: column; align-items: center; gap: 1vh; text-align: center; transform: rotate(-1deg); box-shadow: 0 8px 0 rgba(42, 29, 18, .22); }
+  .ticket::before, .ticket::after { content: ""; position: absolute; top: 50%; width: 26px; height: 26px; margin-top: -13px; border-radius: 50%; background: var(--sky-d); border: 4px solid var(--ink); }
+  .ticket::before { left: -17px; } .ticket::after { right: -17px; }
+  #qr { width: clamp(120px, 24vh, 250px); height: clamp(120px, 24vh, 250px); background: #fff; padding: 6px; border: 3px solid var(--ink); }
+  #qr img, #qr canvas { width: 100% !important; height: 100% !important; display: block; image-rendering: pixelated; }
+  .bigcode { font: 900 var(--code-fs, 56px)/1 var(--f-head); letter-spacing: .04em; white-space: nowrap; max-width: 100%; overflow: hidden; }
+  .url { font: 600 clamp(12px, 1.8vh, 18px)/1.2 var(--f-body); opacity: .75; overflow-wrap: anywhere; }
+  .lb-h { margin: 0; font: 900 clamp(40px, 11vh, 130px)/1 var(--f-head); text-transform: uppercase; letter-spacing: .02em; text-wrap: balance; overflow-wrap: anywhere; }
+  .lb-tag { margin: 0; font: 700 clamp(18px, 3.2vh, 38px)/1.15 var(--f-head); }
+  .lb-tag b { color: var(--flag); text-transform: uppercase; }
+  .rules { margin: 0; padding: 0; list-style: none; counter-reset: r; display: flex; flex-direction: column; gap: .9vh; }
+  .rules li { counter-increment: r; display: grid; grid-template-columns: 2em 1fr; align-items: center; gap: .6em; font: 600 clamp(14px, 2.2vh, 24px)/1.2 var(--f-body); }
+  .rules li::before { content: counter(r); display: grid; place-items: center; width: 1.7em; height: 1.7em; border-radius: 50%; background: var(--ink); color: var(--paper); font: 900 1em var(--f-head); }
+  .lb-pn { font: 800 clamp(15px, 2.4vh, 26px)/1 var(--f-head); text-transform: uppercase; letter-spacing: .06em; }
+  .opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: rgba(255, 245, 220, .8); border: 3px solid var(--ink); border-radius: 6px; padding: 1vh 14px; }
+  .opt b { display: block; font: 900 clamp(16px, 2.6vh, 28px)/1.1 var(--f-head); }
+  .opt span { font-size: clamp(12px, 1.8vh, 18px); opacity: .8; display: block; line-height: 1.2; }
+  .opt span.warn { color: var(--bad); opacity: 1; font-weight: 700; }
+  .tog { flex: none; width: 76px; height: 38px; border: 3px solid var(--ink); border-radius: 20px; background: var(--paper-d); position: relative; padding: 0; }
+  .tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: var(--ink); transition: transform .2s var(--pop); }
+  .tog[aria-pressed="true"] { background: var(--ok); }
+  .tog[aria-pressed="true"]::after { transform: translateX(38px); background: var(--paper); }
+  .start, .ghostbtn { border: 4px solid var(--ink); border-radius: 8px; font: 900 clamp(22px, 3.8vh, 40px)/1 var(--f-head); text-transform: uppercase; letter-spacing: .04em; padding: 1.6vh 20px; text-align: center; text-decoration: none; color: var(--ink); }
+  .start { width: 100%; background: var(--flag); color: var(--paper); box-shadow: 0 7px 0 rgba(42, 29, 18, .35); transition: transform .1s, box-shadow .1s; }
+  .start:not(:disabled):active { transform: translateY(5px); box-shadow: 0 2px 0 rgba(42, 29, 18, .35); }
+  .ghostbtn { background: var(--paper); font-size: clamp(16px, 2.6vh, 26px); display: grid; place-items: center; }
+  .hint { min-height: 1.3em; font: 700 clamp(14px, 2.2vh, 24px)/1.3 var(--f-body); text-align: center; }
+  .free { font: 700 clamp(13px, 1.9vh, 20px)/1 var(--f-body); opacity: .8; }
+
+  /* ---------- итоги ---------- */
+  .fin-up { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 3vw; padding: 1vh 4vw 3vh; }
+  .fin-l { display: flex; flex-direction: column; min-height: 0; gap: 1vh; }
+  .fin-l h1 { margin: 0; font: 900 clamp(36px, 8vh, 100px)/1 var(--f-head); text-transform: uppercase; }
+  .fin-l .sub { margin: 0; font: 700 clamp(15px, 2.6vh, 28px)/1.2 var(--f-head); color: var(--bad); }
+  .podium { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 1.2vw; }
+  .step { display: flex; flex-direction: column; align-items: center; gap: .8vh; min-width: 0; height: 100%; justify-content: flex-end; }
+  .step .who { text-align: center; font: 900 clamp(15px, 2.8vh, 32px)/1.1 var(--f-head); width: 100%; animation: rise .6s var(--pop) both; animation-delay: var(--d, 0s); }
+  .step .who span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .step .who .av { font-size: clamp(30px, 6vh, 70px); margin: 0 auto .3vh; }
+  .step .blk { width: 100%; height: var(--h); background-color: var(--rope); background-image: repeating-linear-gradient(180deg, transparent 0 38px, rgba(0, 0, 0, .13) 38px 40px); border: 4px solid var(--rope-d); border-bottom: 0; border-radius: 6px 6px 0 0; display: flex; flex-direction: column; align-items: center; padding-top: 1vh; font: 900 clamp(34px, 7vh, 84px)/1 var(--f-head); color: var(--paper); text-shadow: 0 3px 0 var(--rope-d); transform-origin: bottom; animation: up .8s var(--pop) both; animation-delay: var(--d, 0s); }
+  .step .blk small { font: 800 .38em/1 var(--f-head); color: var(--ink); text-shadow: none; margin-top: .4em; font-variant-numeric: tabular-nums; }
+  .step.first .blk { background-color: #e0a52a; border-color: #9b6d0f; text-shadow: 0 3px 0 #9b6d0f; }
+  @keyframes up { from { transform: scaleY(0); } }
+  @keyframes rise { from { transform: translateY(-40px); opacity: 0; } }
+  .rest { flex: none; display: flex; flex-wrap: wrap; gap: .6vh .8vw; font: 700 clamp(13px, 2.1vh, 22px)/1 var(--f-head); max-height: 6.5vh; overflow: hidden; }
+  .rest span { display: inline-flex; align-items: center; gap: .4em; background: rgba(255, 245, 220, .8); border-radius: 999px; padding: .15em .7em .15em .2em; max-width: 14em; }
+  .rest .av { font-size: .62em; } .rest span b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fin-r { display: flex; flex-direction: column; min-height: 0; gap: 1.6vh; justify-content: center; }
+  .aw { display: grid; grid-template-columns: auto 1fr; gap: 1vw; align-items: center; background: var(--paper); border: 3px solid var(--ink); border-radius: 8px; padding: 1vh 1vw; position: relative; }
+  .aw .rosette { width: clamp(40px, 7vh, 76px); height: clamp(40px, 7vh, 76px); border-radius: 50%; background: var(--flag); border: 4px solid var(--ink); display: grid; place-items: center; font-size: clamp(20px, 3.6vh, 40px); }
+  .aw .ek { font: 800 clamp(12px, 1.9vh, 20px)/1 var(--f-head); text-transform: uppercase; letter-spacing: .08em; opacity: .75; }
+  .aw b { display: block; font: 900 clamp(18px, 3.2vh, 38px)/1.1 var(--f-head); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .aw p { margin: 0; font: 600 clamp(13px, 2.1vh, 22px)/1.2 var(--f-body); }
+  .hostbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 1vw; }
+  .hostbtns .start { grid-column: 1 / -1; }
+
+  /* ---------- сцена ---------- */
+  #stage { position: absolute; left: 0; right: 0; bottom: 0; height: var(--sh); z-index: 4; isolation: isolate; overflow: hidden; transition: opacity .5s, transform .6s; }
+  body.fin #stage { opacity: 0; transform: translateY(14%); pointer-events: none; }
+  #stage > svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  #sgBack { z-index: 1; } #sgRope { z-index: 3; } #sgFront { z-index: 7; }
+  #sgRope .strand { fill: none; stroke-linecap: round; }
+  #ropeG.shake { animation: shake .09s linear infinite alternate; }
+  @keyframes shake { from { transform: translateY(-2px); } to { transform: translateY(2px); } }
+  #ropeG.shake2 { animation-duration: .06s; }
+
+  /* бечёвка с флажками: таймер */
+  #tstring { position: absolute; left: 0; right: 0; top: 0; height: 44px; z-index: 1; pointer-events: none; }
+  #tstring svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
+  #tdone { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform-origin: 0 0; transform: scaleX(0); }
+  #tflag { position: absolute; left: 0; top: 0; width: 0; height: 0; opacity: 0; transition: opacity .3s; }
+  #tflag.on { opacity: 1; }
+  #tflag svg { position: absolute; left: -13px; top: 0; width: 76px; height: 76px; overflow: visible; }
+  #tflag .pen { fill: #ffd34d; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; transition: fill .2s; }
+  #tflag.hot .pen { fill: var(--bad); }
+  #tflag.hot svg { animation: tshake .18s linear infinite alternate; transform-origin: 13px 0; }
+  @keyframes tshake { from { transform: rotate(-10deg); } to { transform: rotate(10deg); } }
+
+  /* игроки на канате */
+  .pl { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 4; transition: transform .6s cubic-bezier(.3, .8, .3, 1), opacity .4s; will-change: transform; }
+  .pl.b { z-index: 2; }
+  .pl.fallen { z-index: 5; }
+  .pl.inst, .pl.inst * { transition: none !important; }
+  .pl.dim { opacity: .5; }
+  .pl.gone { opacity: 0; }
+  .pl-s { position: absolute; left: 0; top: 0; width: 0; height: 0; transform: scale(var(--k, 1)); }
+  .pl-w { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+  .pl-in { position: absolute; left: calc(var(--sz) / -2); top: calc(var(--sz) / -2); width: var(--sz); height: var(--sz); transform-origin: 50% 100%; transform: rotate(var(--lean, 0deg)); transition: transform .5s cubic-bezier(.3, 1.4, .5, 1); }
+  .bub { width: 100%; height: 100%; border-radius: 50%; background: var(--paper); border: calc(var(--sz) * .06) solid var(--pc); display: grid; place-items: center; font-size: calc(var(--sz) * .56); line-height: 1; box-shadow: 0 calc(var(--sz) * .06) 0 rgba(42, 29, 18, .28); animation: sway 3.4s ease-in-out infinite; animation-delay: var(--dl, 0s); font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+  @keyframes sway { 0%, 100% { transform: translateY(0) rotate(-1.5deg); } 50% { transform: translateY(calc(var(--sz) * .03)) rotate(1.5deg); } }
+  .hand { position: absolute; width: calc(var(--sz) * .21); height: calc(var(--sz) * .21); border-radius: 50%; background: #f2c58b; border: 2px solid rgba(42, 29, 18, .45); top: calc(50% - var(--sz) * .38 - var(--sz) * .105); }
+  .hand.l { left: calc(var(--sz) * -.04); } .hand.r { right: calc(var(--sz) * -.04); }
+  .pl.b .hand { top: calc(50% + var(--sz) * .28 - var(--sz) * .105); }
+  .chk { position: absolute; left: calc(var(--sz) * .16); top: calc(var(--sz) * -.6); width: calc(var(--sz) * .38); height: calc(var(--sz) * .38); border-radius: 50%; background: var(--ok); border: 3px solid var(--paper); color: #fff; font: 900 calc(var(--sz) * .22)/1 var(--f-body); display: grid; place-items: center; opacity: 0; transform: scale(.3); transition: opacity .2s, transform .35s var(--pop); }
+  .pl.ready .chk { opacity: 1; transform: none; }
+  .wmark { position: absolute; left: calc(var(--sz) * -.66); top: calc(var(--sz) * -.62); font-size: calc(var(--sz) * .46); line-height: 1; opacity: 0; transform: scale(.3); transition: opacity .3s, transform .4s var(--pop); }
+  .pl.wolf .wmark { opacity: 1; transform: none; }
+  .nm2 { position: absolute; left: 0; top: calc(var(--sz) * var(--k, 1) * .5 + 5px); transform: translateX(-50%); max-width: var(--tw, 120px); padding: 1px 7px 2px; background: var(--paper); border-bottom: 4px solid var(--pc); border-radius: 4px 4px 2px 2px; font: 800 var(--nfs, 16px)/1.15 var(--f-head); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 2px 0 rgba(42, 29, 18, .2); display: flex; align-items: center; gap: 4px; }
+  .nm2 > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .pl.b .nm2, .pl.fallen .nm2 { top: auto; bottom: calc(var(--sz) * var(--k, 1) * .5 + 5px); }
+  .nm2 .x { flex: none; display: none; border: 0; background: var(--bad); color: #fff; font: 900 12px/1 var(--f-body); width: 18px; height: 18px; border-radius: 50%; padding: 0; }
+  body.host.lobbyp .pl:hover .nm2 { max-width: none; }
+  body.host.lobbyp .pl:hover .nm2 .x, body.host.lobbyp .pl:focus-within .nm2 .x { display: block; }
+  .pts { position: absolute; left: 0; top: calc(var(--sz) * var(--k, 1) * -.5 - 36px); margin-left: 0; translate: -50% 0; padding: 1px 8px 2px; border-radius: 999px; border: 3px solid var(--ink); background: var(--paper); font: 900 max(calc(var(--sz) * var(--k, 1) * .3), 13px)/1.15 var(--f-head); white-space: nowrap; opacity: 0; transform: scale(.3); transition: opacity .2s, transform .4s var(--pop); z-index: 3; font-variant-numeric: tabular-nums; }
+  .pts.on { opacity: 1; transform: none; }
+  .pts.bk::before { content: "×2"; position: absolute; left: -10px; top: -15px; padding: 0 5px; font-size: .62em; line-height: 1.5; background: var(--flag); color: #fff; border: 2px solid var(--ink); border-radius: 8px; }
+  .pl.b .pts { top: calc(var(--sz) * var(--k, 1) * -.1); translate: calc(var(--sz) * var(--k, 1) * .5 + 50%) 0; }
+  .pl.fallen .pts { top: calc(var(--sz) * var(--k, 1) * -.5 - 60px); }
+  .pts.pos { background: #d7f1c4; color: #1d6a3a; } .pts.neg { background: #f8cfc8; color: var(--bad); } .pts.zero { background: #e6dcc3; color: var(--ink-soft); }
+  .pl.ready .pop, .pl.shiver .pl-w { animation: shiver .45s linear; }
+  @keyframes shiver { 0%, 100% { transform: translateX(0); } 15% { transform: translateX(-4px) rotate(-3deg); } 35% { transform: translateX(4px) rotate(3deg); } 55% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+  .pl.hop .pl-w { animation: hop .7s var(--pop) 2; animation-delay: var(--hd, 0s); }
+  @keyframes hop { 40% { transform: translateY(calc(var(--sz) * -.22)); } 70% { transform: translateY(0) scaleY(.92); } }
+  .pl.enter .pl-w { animation: enter .6s var(--pop) both; }
+  @keyframes enter { from { transform: scale(.2) translateY(-40px); opacity: 0; } }
+  .pl.pulled .pl-in { transition: transform .4s; }
+  .pl.mud .bub { background: #d9c7a3; }
+
+  #flag { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 3; will-change: transform; }
+  #flag .fl { position: absolute; left: calc(var(--sz) * -.2); bottom: -6px; width: calc(var(--sz) * 1.05); height: calc(var(--sz) * 1.3); overflow: visible; transform-origin: calc(var(--sz) * .2) 100%; transition: transform .45s var(--pop); }
+  #flag .rag { transform-origin: 20% 6%; animation: flap .9s ease-in-out infinite alternate; }
+  @keyframes flap { from { transform: skewY(-5deg) scaleX(1); } to { transform: skewY(6deg) scaleX(.93); } }
+  #fx { position: absolute; inset: 0; z-index: 9; pointer-events: none; }
+  .drop { position: absolute; width: 10px; height: 10px; margin: -5px; border-radius: 50%; background: #8fb3c2; animation: splashd .7s cubic-bezier(.2, .7, .4, 1) forwards; }
+  @keyframes splashd { to { transform: translate(var(--dx), var(--dy)); opacity: 0; } }
+  .ring { position: absolute; margin: 0; border: 4px solid rgba(255, 255, 255, .8); border-radius: 50%; animation: ring .9s ease-out forwards; }
+  @keyframes ring { from { transform: scale(.25); opacity: .9; } to { transform: scale(1.5); opacity: 0; } }
+
+  @media (max-aspect-ratio: 5/4) {
+    .up { grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr) auto; gap: 0 3vw; }
+    .mid { grid-column: 1 / -1; grid-row: 1; }
+    .sign { grid-row: 2 !important; height: 15vh; min-height: 72px; }
+    .sign.a { grid-column: 1; } .sign.b { grid-column: 2; }
+    .sg-word { font-size: clamp(20px, 4.4vh, 50px); }
+    .sign.a .sg-n { right: auto; left: -.1em; } .sign.b .sg-n { left: auto; right: -.1em; }
+    .lobby { grid-template-columns: 1fr 1fr; grid-template-rows: auto minmax(0, 1fr); gap: 1.5vh 3vw; overflow: hidden; padding-top: 0; }
+    .lobby > div:nth-child(1) { grid-column: 1; grid-row: 2; }
+    .lobby > div:nth-child(2) { grid-column: 1 / -1; grid-row: 1; }
+    .lobby > div:nth-child(3) { grid-column: 2; grid-row: 2; }
+    .rules { display: none; }
+    .lb-h { font-size: clamp(36px, 8vh, 100px); }
+    .fin-up { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1vh; }
+    .sc { padding: 1vh 3vw; }
+    .fin-r { gap: 1vh; justify-content: flex-start; overflow: hidden; }
+    .aw { padding: .6vh 2vw; }
+    .aw .rosette { width: clamp(32px, 4.6vh, 52px); height: clamp(32px, 4.6vh, 52px); font-size: clamp(16px, 2.4vh, 28px); }
+    .aw b { font-size: clamp(16px, 2.4vh, 28px); } .aw p { font-size: clamp(12px, 1.7vh, 18px); } .aw .ek { font-size: clamp(11px, 1.5vh, 16px); }
+    .fin-r .start { font-size: clamp(18px, 2.6vh, 30px); padding: 1.2vh 12px; } .fin-r .ghostbtn { font-size: clamp(14px, 2vh, 22px); padding: 1vh 12px; }
+    .fin-l h1 { font-size: clamp(32px, 6vh, 70px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="sky" aria-hidden="true"></div>
+<div id="ground" aria-hidden="true"></div>
+<div class="top">
+  <div class="brand"><i aria-hidden="true"></i><span id="brand" data-i18n="game_name">Как все</span></div>
+  <span class="chip hidden" id="codechip"></span>
+  <span class="grow"></span>
+  <button class="endbtn hidden" id="endbtn" type="button">■</button>
+  <button class="sound-toggle-btn" type="button"></button>
+</div>
+<div class="banner hidden" id="banner"></div>
+<div class="conn" id="conn"></div>
+<main id="main">
+  <section id="upper"></section>
+  <section id="stage" aria-label="">
+    <svg id="sgBack" aria-hidden="true"></svg>
+    <div id="tstring" aria-hidden="true"><svg id="tsvg"></svg><div id="tflag"><svg viewBox="0 0 56 56"><path d="M10 2 V50" stroke="#2a1d12" stroke-width="4" stroke-linecap="round"/><path class="pen" d="M12 5 L52 15 L12 33 Z"/><path d="M12 14 L36 17" stroke="#c63a2f" stroke-width="4" stroke-linecap="round" opacity=".7"/></svg></div></div>
+    <svg id="sgRope" aria-hidden="true"><g id="ropeG"><path id="ropeSh" class="strand" stroke="rgba(42,29,18,.25)"/><path id="ropeP" class="strand" stroke="#c9913f"/><path id="ropeT" class="strand" stroke="#8c5a22"/></g></svg>
+    <div id="flag" aria-hidden="true"><svg class="fl" viewBox="0 0 80 100"><rect x="17" y="6" width="5" height="94" rx="2" fill="#6e4617"/><circle cx="19.5" cy="6" r="4.5" fill="#e0a52a" stroke="#2a1d12" stroke-width="2"/><g class="rag"><path d="M22 10 C 40 4, 52 18, 76 10 C 68 24, 70 34, 76 46 C 54 40, 40 54, 22 48 Z" fill="#e0352b" stroke="#2a1d12" stroke-width="3" stroke-linejoin="round"/><path d="M26 22 C 42 18, 52 28, 68 22" fill="none" stroke="#fff5dc" stroke-width="3" stroke-linecap="round" opacity=".55"/></g></svg></div>
+    <svg id="sgFront" aria-hidden="true"></svg>
+    <div id="fx"></div>
+  </section>
+</main>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Как все — общий экран`, game_name: `Как все`,
+    creating: `Открываем комнату…`, expired: `Комната закрылась — открой новую`, err_connect: `Связь потеряна — переподключаемся…`,
+    tagline: `Угадай, что скажет <b>большинство</b>`,
+    q_of: `Вопрос {n} из {t}`, q_final: `Финал ×2`, q_extra: `Допвопрос ×2`, q_decider: `Решающий вопрос`,
+    ready_of: `{r} из {n} готовы`, ab_a: `А`, ab_b: `Б`,
+    op_ribbon: `Спрашиваем, кто что думает лично`, op_answered: `{a} из {n} ответили`, op_hint: `Только общей шкалой, без имён`,
+    v_maj: `Большинство: {side}`, v_maj_d: `{k} из {n} голосов`,
+    v_tie: `Раскол!`, v_tie_d: `Поровну — всем по +50`,
+    v_one: `Как один!`, v_one_d: `Слишком просто — всем по +50`,
+    v_void: `Мало голосов — вопрос заменят`, v_void_d: `Нужно хотя бы 3 голоса`,
+    ill_t: `ИЛЛЮЗИЯ!`, ill_d: `Все думали — большинство «{v}», а лично — «{o}»`,
+    wolf_note: `🐺 Одиночка: {name}`, op_title: `Лично думают`,
+    scores_title: `Счёт после вопроса {n}`, scores_title_x: `Счёт`, decider_note: `Очки получают только: {names}`, bank_tip: `ва-банк ×2`, wolf_tip: `Одиночка`, void_note: `Вопрос заменят`,
+    intro_final: `Финал`, intro_final_d: `Очки за этот вопрос удваиваются. Ва-банка нет.`,
+    intro_extra: `Допвопрос`, intro_extra_d: `Финал закончился расколом. Очки снова ×2.`,
+    intro_decider: `Решающий вопрос`, intro_decider_d: `Первое место делят. Голосуют все, очки получают только они:`,
+    pause_title: `Ждём игроков`, pause_d: `Нужно хотя бы {min} на связи, сейчас — {n}. Не вернутся — партия прервётся.`,
+    lobby_free: `свободно мест: {n}`, lobby_scan: `Наведи камеру телефона на QR или открой ссылку и введи имя.`, lobby_players: `Игроки`,
+    r1: `На экране вопрос. Отвечай не за себя, а за всех: что выберет большинство?`,
+    r2: `Угадал большинство — +100. Нет — 0. Поровну — всем по +50.`,
+    r3: `×2: угадал +200, ошибся −200. Только два раза за игру.`,
+    opt_short: `Короткая партия (6)`, opt_short_d: `6 вопросов вместо 10`,
+    opt_opinion: `Мнение`, opt_opinion_d: `После голосов спросим, кто что думает лично`, opt_opinion_min: `включится от {n} игроков`,
+    btn_start: `Старт`, need_more: `Нужно ещё {n}`, viewer: `Начать может только ведущий — тот, кто открыл этот экран`, kick: `Убрать`,
+    final_title: `Итоги`, final_paused: `Партия прервана`, final_few: `Осталось меньше трёх игроков`, final_host: `Ведущий закончил партию`,
+    aw_crowd: `Чует толпу`, aw_crowd_d: `{n} раз в большинстве`, aw_crow: `Белая ворона`, aw_crow_d: `{n} раз в меньшинстве`,
+    aw_risk: `Рискнул`, aw_risk_d: `+{n} на ва-банках`, aw_wolf: `Одиночка`, aw_wolf_d: `{n} раз один против всех`,
+    btn_again: `Ещё партия`, btn_lobby: `В лобби`, btn_home: `Главная`, btn_end: `Закончить партию`,
+    tm_left: `Осталось секунд: {n}`,
+  },
+  en: {
+    _title: `Go With the Crowd — shared screen`, game_name: `Go With the Crowd`,
+    creating: `Opening a room…`, expired: `The room has closed — open a new one`, err_connect: `Connection lost — reconnecting…`,
+    tagline: `Guess what the <b>majority</b> will say`,
+    q_of: `Question {n} of {t}`, q_final: `Final ×2`, q_extra: `Bonus question ×2`, q_decider: `Deciding question`,
+    ready_of: `{r} of {n} ready`, ab_a: `A`, ab_b: `B`,
+    op_ribbon: `Now we ask what you personally think`, op_answered: `{a} of {n} answered`, op_hint: `One shared scale, no names`,
+    v_maj: `Majority: {side}`, v_maj_d: `{k} of {n} votes`,
+    v_tie: `Split!`, v_tie_d: `Dead even — +50 for everyone`,
+    v_one: `As one!`, v_one_d: `Too easy — +50 for everyone`,
+    v_void: `Too few votes — the question will be replaced`, v_void_d: `At least 3 votes needed`,
+    ill_t: `ILLUSION!`, ill_d: `Everyone thought the majority says “{v}” — but personally it’s “{o}”`,
+    wolf_note: `🐺 Lone wolf: {name}`, op_title: `Personally think`,
+    scores_title: `Scores after question {n}`, scores_title_x: `Scores`, decider_note: `Only these players score: {names}`, bank_tip: `all-in ×2`, wolf_tip: `Lone wolf`, void_note: `Question will be replaced`,
+    intro_final: `Final`, intro_final_d: `Points for this question are doubled. No all-in.`,
+    intro_extra: `Bonus question`, intro_extra_d: `The final ended in a split. Points are ×2 again.`,
+    intro_decider: `Deciding question`, intro_decider_d: `Tied for first. Everyone votes, only these players score:`,
+    pause_title: `Waiting for players`, pause_d: `At least {min} must be online, now {n}. If they don’t return, the game stops.`,
+    lobby_free: `{n} seats left`, lobby_scan: `Point your phone camera at the QR or open the link and type your name.`, lobby_players: `Players`,
+    r1: `A question appears. Answer not for yourself but for everyone: what will the majority pick?`,
+    r2: `Guessed the majority — +100. Missed — 0. A tie — +50 for all.`,
+    r3: `×2: right +200, wrong −200. Only twice per game.`,
+    opt_short: `Short game (6)`, opt_short_d: `6 questions instead of 10`,
+    opt_opinion: `Opinion`, opt_opinion_d: `After the votes we ask what you personally think`, opt_opinion_min: `turns on from {n} players`,
+    btn_start: `Start`, need_more: `{n} more needed`, viewer: `Only the host — whoever opened this screen — can start`, kick: `Remove`,
+    final_title: `Results`, final_paused: `Game interrupted`, final_few: `Fewer than three players left`, final_host: `The host ended the game`,
+    aw_crowd: `Reads the crowd`, aw_crowd_d: `{n} times in the majority`, aw_crow: `Black sheep`, aw_crow_d: `{n} times in the minority`,
+    aw_risk: `Risk taker`, aw_risk_d: `+{n} from all-ins`, aw_wolf: `Lone wolf`, aw_wolf_d: `{n} times alone against all`,
+    btn_again: `Play again`, btn_lobby: `To lobby`, btn_home: `Home`, btn_end: `End the game`,
+    tm_left: `Seconds left: {n}`,
+  },
+  el: {
+    _title: `Όπως όλοι — κοινή οθόνη`, game_name: `Όπως όλοι`,
+    creating: `Άνοιγμα δωματίου…`, expired: `Το δωμάτιο έκλεισε — άνοιξε νέο`, err_connect: `Χάθηκε η σύνδεση — επανασύνδεση…`,
+    tagline: `Μάντεψε τι θα πει η <b>πλειοψηφία</b>`,
+    q_of: `Ερώτηση {n} από {t}`, q_final: `Τελικός ×2`, q_extra: `Έξτρα ερώτηση ×2`, q_decider: `Αποφασιστική ερώτηση`,
+    ready_of: `{r} από {n} έτοιμοι`, ab_a: `Α`, ab_b: `Β`,
+    op_ribbon: `Τώρα ρωτάμε τι πιστεύει ο καθένας προσωπικά`, op_answered: `{a} από {n} απάντησαν`, op_hint: `Μία κοινή κλίμακα, χωρίς ονόματα`,
+    v_maj: `Πλειοψηφία: {side}`, v_maj_d: `{k} από {n} ψήφους`,
+    v_tie: `Χωρίστηκαν!`, v_tie_d: `Ισοπαλία — +50 σε όλους`,
+    v_one: `Ως ένας!`, v_one_d: `Πολύ εύκολο — +50 σε όλους`,
+    v_void: `Λίγες ψήφοι — η ερώτηση αντικαθίσταται`, v_void_d: `Χρειάζονται τουλάχιστον 3 ψήφοι`,
+    ill_t: `ΠΑΡΑΙΣΘΗΣΗ!`, ill_d: `Όλοι νόμιζαν ότι η πλειοψηφία λέει «{v}» — αλλά προσωπικά είναι «{o}»`,
+    wolf_note: `🐺 Μοναχικός λύκος: {name}`, op_title: `Προσωπικά πιστεύουν`,
+    scores_title: `Βαθμολογία μετά την ερώτηση {n}`, scores_title_x: `Βαθμολογία`, decider_note: `Βαθμούς παίρνουν μόνο: {names}`, bank_tip: `ρίσκο ×2`, wolf_tip: `Μοναχικός λύκος`, void_note: `Η ερώτηση αντικαθίσταται`,
+    intro_final: `Τελικός`, intro_final_d: `Οι βαθμοί της ερώτησης διπλασιάζονται. Χωρίς ρίσκο.`,
+    intro_extra: `Έξτρα ερώτηση`, intro_extra_d: `Ο τελικός έληξε με χωρισμό. Οι βαθμοί ξανά ×2.`,
+    intro_decider: `Αποφασιστική ερώτηση`, intro_decider_d: `Ισοπαλία στην κορυφή. Ψηφίζουν όλοι, βαθμούς παίρνουν μόνο:`,
+    pause_title: `Περιμένουμε παίκτες`, pause_d: `Χρειάζονται τουλάχιστον {min} συνδεδεμένοι, τώρα {n}. Αν δεν γυρίσουν, η παρτίδα διακόπτεται.`,
+    lobby_free: `ακόμα {n} θέσεις`, lobby_scan: `Στρέψε την κάμερα του κινητού στο QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.`, lobby_players: `Παίκτες`,
+    r1: `Εμφανίζεται μια ερώτηση. Απάντησε όχι για σένα αλλά για όλους: τι θα διαλέξει η πλειοψηφία;`,
+    r2: `Βρήκες την πλειοψηφία — +100. Όχι — 0. Ισοπαλία — +50 σε όλους.`,
+    r3: `×2: σωστά +200, λάθος −200. Μόνο δύο φορές ανά παιχνίδι.`,
+    opt_short: `Σύντομη παρτίδα (6)`, opt_short_d: `6 ερωτήσεις αντί για 10`,
+    opt_opinion: `Γνώμη`, opt_opinion_d: `Μετά τις ψήφους ρωτάμε τι πιστεύει ο καθένας`, opt_opinion_min: `ενεργοποιείται από {n} παίκτες`,
+    btn_start: `Έναρξη`, need_more: `Χρειάζονται ακόμα {n}`, viewer: `Ξεκινά μόνο ο οικοδεσπότης — όποιος άνοιξε αυτή την οθόνη`, kick: `Αφαίρεση`,
+    final_title: `Αποτελέσματα`, final_paused: `Η παρτίδα διακόπηκε`, final_few: `Έμειναν λιγότεροι από τρεις παίκτες`, final_host: `Ο οικοδεσπότης τερμάτισε την παρτίδα`,
+    aw_crowd: `Διαβάζει το πλήθος`, aw_crowd_d: `{n} φορές στην πλειοψηφία`, aw_crow: `Μαύρο πρόβατο`, aw_crow_d: `{n} φορές στη μειοψηφία`,
+    aw_risk: `Ρισκαδόρος`, aw_risk_d: `+{n} από ρίσκο`, aw_wolf: `Μοναχικός λύκος`, aw_wolf_d: `{n} φορές μόνος εναντίον όλων`,
+    btn_again: `Νέα παρτίδα`, btn_lobby: `Στο λόμπι`, btn_home: `Αρχική`, btn_end: `Τέλος παρτίδας`,
+    tm_left: `Δευτερόλεπτα: {n}`,
+  },
+};
+</script>
+<script src="crowd-shared.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+"use strict";
+const T = (k) => wvT(k);
+const tpl = (k, v) => wvTpl(k, v);
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const hostKey = () => "crowd-host-" + CODE;
+const RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const NS = "http://www.w3.org/2000/svg";
+const upper = $("upper"), stage = $("stage");
+
+let conn = null, state = null, isHost = false, dead = false;
+let viewKey = "";
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const esc = escapeHtml;
+const player = (id) => state && state.players.find((p) => p.id === id);
+const present = () => state.players.filter((p) => !p.left);
+const avHtml = (p) => `<i class="av" style="--pc:${esc(p.color)}">${esc(p.avatar)}</i>`;
+const phaseNow = () => state.serverNow - state.phaseStart + (performance.now() - state.__at); // мс от начала фазы
+const phaseLeft = () => state.phaseEnd - state.serverNow - (performance.now() - state.__at);
+const timers = [];
+const later = (ms, fn) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
+const clearLater = () => { while (timers.length) clearTimeout(timers.pop()); };
+
+// ---------- небо ----------
+(function buildSky() {
+  const cloud = (x, y, s, dur, delay) => `<g class="cloud" style="animation-duration:${dur}s;animation-delay:${delay}s"><g transform="translate(${x} ${y}) scale(${s})"><path d="M0 40 q0-22 24-22 q8-20 34-14 q20-14 40 2 q26-2 28 22 q22 2 18 22 H8 q-14-2-8-10Z" fill="#fff" opacity=".85"/></g></g>`;
+  $("sky").innerHTML = `<svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
+    <circle cx="1330" cy="150" r="190" fill="#fff6c9" opacity=".35"/><circle cx="1330" cy="150" r="90" fill="#ffe27a"/>
+    ${cloud(0, 90, 1.5, 150, -40)}${cloud(0, 250, 1.0, 190, -130)}${cloud(0, 40, 0.8, 230, -60)}
+    <path d="M0 640 Q 220 520 440 600 T 860 590 T 1280 580 T 1600 610 V900 H0Z" fill="#b8d9a4" opacity=".75"/>
+    <path d="M0 700 Q 300 610 600 680 T 1200 670 T 1600 700 V900 H0Z" fill="#a5cf8c"/>
+    <g transform="translate(1180 560)"><path d="M0 70 L70 0 L140 70Z" fill="#e0352b" opacity=".85"/><path d="M0 70 L70 0 L140 70" fill="none" stroke="#fff5dc" stroke-width="6" stroke-dasharray="24 24"/><rect x="14" y="70" width="112" height="46" fill="#fff5dc" opacity=".9"/><path d="M70 0 V-26" stroke="#6e4617" stroke-width="4"/><path d="M70 -26 l22 7 l-22 7Z" fill="#e0352b"/></g>
+    <g transform="translate(300 600)"><rect x="-4" y="30" width="8" height="48" fill="#8c5a22"/><circle cx="0" cy="18" r="34" fill="#6fa047"/><circle cx="-24" cy="36" r="22" fill="#79ad50"/></g>
+    <g transform="translate(470 620)"><rect x="-3" y="22" width="6" height="36" fill="#8c5a22"/><circle cx="0" cy="12" r="24" fill="#6fa047"/></g>
+  </svg>`;
+})();
+
+// ---------- создание комнаты, если доску открыли без кода ----------
+async function ensureRoom() {
+  if (CODE) return true;
+  showBanner(T("creating"));
+  try {
+    const body = { settings: { lang: wvLang() } };
+    if (params.get("speed")) body.speed = Number(params.get("speed"));
+    const res = await fetch("/crowd/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "error");
+    CODE = data.code;
+    try { localStorage.setItem(hostKey(), data.hostToken); } catch (e) {}
+    history.replaceState(null, "", `?r=${CODE}`);
+    showBanner(null);
+    return true;
+  } catch (err) {
+    showBanner(String(err.message || err));
+    return false;
+  }
+}
+function showBanner(text) {
+  const b = $("banner");
+  b.classList.toggle("hidden", !text);
+  b.textContent = text || "";
+}
+
+// ---------- геометрия сцены ----------
+const M = { W: 1600, H: 440, sz: 80, ropeY: 160, gy: 220, postL: 120, postR: 1480, px: 800, py: 340, rx: 140, ry: 40, nfs: 16 };
+function measure() {
+  const vw = innerWidth, vh = innerHeight;
+  const portrait = vw / vh < 1.25;
+  const sh = Math.round(clamp(vh * (portrait ? 0.38 : 0.44), 300, 560));
+  const gy = Math.round(sh * 0.5);
+  const sz = Math.round(clamp((gy - 40) / 2.35, 40, 88));
+  const ropeY = Math.round(40 + 1.5 * sz);
+  document.documentElement.style.setProperty("--sh", sh + "px");
+  document.documentElement.style.setProperty("--gy", gy + "px");
+  document.documentElement.style.setProperty("--sz", sz + "px");
+  const sgw = clamp(vw * 0.15, 120, 300);
+  M.W = vw; M.H = sh; M.sz = sz; M.ropeY = ropeY; M.gy = gy;
+  M.postL = portrait ? vw * 0.05 : vw * 0.02 + sgw / 2;
+  M.postR = vw - M.postL;
+  M.px = vw / 2;
+  M.py = gy + (sh - gy) * 0.5;
+  M.rx = clamp(vw * 0.085, 80, 220);
+  M.ry = clamp((sh - gy) * 0.3, 30, 90);
+  M.nfs = Math.round(clamp(sz * 0.2, 12, 19));
+  M.portrait = portrait;
+  buildStageSvg();
+}
+const sagAt = (x, sag) => { const u = (x - M.W / 2) / (M.W / 2); return sag * (1 - u * u); };
+let sagNow = 5;
+function ropePath(sag) {
+  const y = M.ropeY, W = M.W;
+  return `M -30 ${y} Q ${W / 2} ${y + sag * 2} ${W + 30} ${y}`;
+}
+function setRope(sag) {
+  sagNow = sag;
+  const d = ropePath(sag);
+  const sw = Math.max(12, M.sz * 0.19);
+  const sh = $("ropeSh"), p = $("ropeP"), t = $("ropeT");
+  sh.setAttribute("d", ropePath(sag + 0)); sh.setAttribute("transform", `translate(0 ${sw * 0.7})`); sh.setAttribute("stroke-width", sw);
+  p.setAttribute("d", d); p.setAttribute("stroke-width", sw);
+  t.setAttribute("d", d); t.setAttribute("stroke-width", sw * 0.8); t.setAttribute("stroke-dasharray", `${sw * 0.35} ${sw * 1.05}`);
+}
+function buildStageSvg() {
+  const { W, H, gy, ropeY, postL, postR, px, py, rx, ry } = M;
+  for (const id of ["sgBack", "sgRope", "sgFront"]) $(id).setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const post = (x) => `<g><rect x="${x - 10}" y="-4" width="20" height="${gy + 34}" rx="3" fill="#a87a3d"/><rect x="${x + 2}" y="-4" width="8" height="${gy + 34}" rx="3" fill="#6e4617" opacity=".55"/><ellipse cx="${x}" cy="${gy + 32}" rx="26" ry="8" fill="#4a3220" opacity=".35"/></g>`;
+  const bale = (x, y, s) => `<g transform="translate(${x} ${y}) scale(${s})"><rect x="-34" y="-26" width="68" height="40" rx="6" fill="#e3c26a" stroke="#9b7a22" stroke-width="3"/><path d="M-34 -12 H34 M-34 2 H34 M-16 -26 V14 M16 -26 V14" stroke="#9b7a22" stroke-width="2.5" opacity=".7"/></g>`;
+  const tuft = (x, y) => `<path d="M${x} ${y} l-5 -14 l7 9 l2 -16 l4 15 l7 -10 l-4 16Z" fill="#5b8a34"/>`;
+  let tufts = "";
+  for (let i = 0; i < 14; i++) tufts += tuft(((i * 137.5) % 100) / 100 * W, gy + 14 + ((i * 53) % 100) / 100 * (H - gy - 20));
+  const pitCy = py;
+  $("sgBack").innerHTML =
+    post(postL) + post(postR) + tufts +
+    // яма: тёмный край и глинистая вода
+    `<ellipse cx="${px}" cy="${pitCy + 6}" rx="${rx * 1.24}" ry="${ry * 1.25}" fill="#3a2716"/>
+     <ellipse cx="${px}" cy="${pitCy}" rx="${rx * 1.16}" ry="${ry * 1.15}" fill="#6a4a2e"/>
+     <ellipse cx="${px}" cy="${pitCy + 2}" rx="${rx}" ry="${ry}" fill="#7b9aa0"/>
+     <ellipse cx="${px - rx * 0.25}" cy="${pitCy - ry * 0.25}" rx="${rx * 0.35}" ry="${ry * 0.12}" fill="#fff" opacity=".28"/>` +
+    bale(M.W * 0.045, H - 18, 0.9) + bale(M.W * 0.955, H - 14, 0.8) +
+    // меловая метка центра под канатом
+    `<path d="M${px} ${ropeY + 14} V${pitCy - ry * 1.2}" stroke="#fff5dc" stroke-width="3" stroke-dasharray="7 8" opacity=".55"/>`;
+  // «вода поверх»: упавшие игроки сидят в луже до пояса
+  $("sgFront").innerHTML =
+    `<g id="veil" opacity="0" style="transition:opacity .4s"><ellipse cx="${px}" cy="${pitCy + 3}" rx="${rx * 1.02}" ry="${ry * 1.02}" fill="#6f939c" opacity=".6"/>
+     <path d="M${px - rx * 0.8} ${pitCy + ry * 0.3} q ${rx * 0.2} -8 ${rx * 0.4} 0 t ${rx * 0.4} 0 t ${rx * 0.4} 0 t ${rx * 0.4} 0" fill="none" stroke="#fff" stroke-width="3" opacity=".4" stroke-linecap="round"/></g>`;
+  // бечёвка таймера с флажками
+  const n = Math.ceil(W / 46), ys = (x) => 12 + 10 * (1 - Math.pow((x - W / 2) / (W / 2), 2));
+  let flags = "";
+  const cols = ["#e0352b", "#2e6fd9", "#ffd34d", "#fff5dc"];
+  for (let i = 1; i < n; i++) { const x = (i / n) * W, y = ys(x); flags += `<path d="M${x - 9} ${y} h18 l-9 18Z" fill="${cols[i % 4]}" stroke="rgba(42,29,18,.5)" stroke-width="1.5" stroke-linejoin="round"/>`; }
+  const tpath = `M -10 ${ys(0) - 1} Q ${W / 2} ${ys(W / 2) + 10} ${W + 10} ${ys(W) - 1}`;
+  $("tsvg").setAttribute("viewBox", `0 0 ${W} 44`);
+  $("tsvg").innerHTML = `<path d="${tpath}" fill="none" stroke="#6e4617" stroke-width="3"/>${flags}<g id="tdone"><path d="${tpath}" fill="none" stroke="#2a1d12" stroke-width="5" stroke-linecap="round"/></g>`;
+  $("tstring").dataset.ys = "";
+  M.tys = ys;
+  setRope(sagNow);
+}
+
+// ---------- игроки на канате ----------
+const PL = new Map(); // id → {el, key, ...}
+let mode = ""; // "spread" | "huddle" | "reveal"
+function ensurePlayers() {
+  const ps = present();
+  const ids = new Set(ps.map((p) => p.id));
+  for (const [id, pl] of PL) if (!ids.has(id)) { pl.el.remove(); PL.delete(id); }
+  ps.forEach((p, i) => {
+    let pl = PL.get(p.id);
+    if (!pl) {
+      const el = document.createElement("div");
+      el.className = "pl f enter inst";
+      el.id = "pl-" + p.id;
+      el.innerHTML = `<div class="pl-s"><div class="pl-w"><div class="pl-in"><i class="hand l"></i><i class="hand r"></i><div class="bub"></div></div></div><span class="chk">✓</span><span class="wmark">🐺</span></div><div class="nm2"><span></span><button class="x" type="button">✕</button></div><span class="pts"></span>`;
+      el.style.setProperty("--dl", ((i * 0.37) % 3).toFixed(2) + "s");
+      stage.append(el);
+      pl = { el, id: p.id, key: "", placed: false };
+      PL.set(p.id, pl);
+      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove("inst")));
+      setTimeout(() => el.classList.remove("enter"), 700);
+      el.querySelector(".x").onclick = (e) => { e.stopPropagation(); if (isHost) conn.send({ type: "kick", playerId: p.id }); };
+    }
+    pl.el.style.setProperty("--pc", p.color);
+    const bub = pl.el.querySelector(".bub");
+    if (bub.textContent !== p.avatar) bub.textContent = p.avatar;
+    pl.el.querySelector(".nm2 span").textContent = p.name;
+    pl.p = p;
+  });
+}
+// размеры и позиции
+function rowsFor(n) { return n > (M.portrait ? 3 : 6) ? 2 : 1; }
+// слоты в полосе [x0, x1] (x0 — ближний к центру край, x1 — дальний), порядок от x0 к x1
+function layoutRow(n, x0, x1, maxStep) {
+  const R = rowsFor(n), cols = Math.ceil(n / R);
+  const span = Math.abs(x1 - x0), dir = x1 >= x0 ? 1 : -1;
+  const step = Math.min(span / (cols + (R === 2 ? 0.5 : 0)), maxStep);
+  const out = [];
+  for (let j = 0; j < n; j++) {
+    const row = R === 2 ? j % 2 : 0, col = Math.floor(j / R);
+    out.push({ x: x0 + dir * (col + 0.5 + (row ? 0.5 : 0)) * step, row });
+  }
+  return { slots: out, step, k: Math.min(1, (step * 0.94) / M.sz) };
+}
+function centered(n, half, maxStep) {
+  // толпа по обе стороны от центра: посередине оставлен просвет под лоскут и меловую метку
+  const R = rowsFor(n), nl = Math.ceil(n / 2), nr = n - nl, gap = M.sz * 0.62;
+  const cols = Math.ceil(nl / R);
+  const step = Math.min((half - gap) / (cols + (R === 2 ? 0.5 : 0)), maxStep);
+  const out = [];
+  for (let j = 0; j < nl; j++) { const row = R === 2 ? j % 2 : 0, col = Math.floor(j / R); out.push({ x: M.px - gap - (col + 0.5 + (row ? 0.5 : 0)) * step, row }); }
+  for (let j = 0; j < nr; j++) { const row = R === 2 ? j % 2 : 0, col = Math.floor(j / R); out.push({ x: M.px + gap + (col + 0.5 + (row ? 0.5 : 0)) * step, row }); }
+  return { slots: out, step, k: Math.min(1, (step * 0.94) / M.sz) };
+}
+const yFor = (row, k) => M.ropeY + (row ? -0.28 : 0.38) * M.sz * k;
+function setT(pl, t) {
+  const key = [Math.round(t.x), Math.round(t.y), t.k.toFixed(2), t.row, Math.round(t.lean || 0), Math.round(t.tw), t.fallen ? 1 : 0].join();
+  if (pl.key === key) return;
+  pl.key = key;
+  const e = pl.el;
+  e.style.transform = `translate(${t.x.toFixed(1)}px,${t.y.toFixed(1)}px)`;
+  e.style.setProperty("--k", t.k.toFixed(3));
+  e.style.setProperty("--tw", Math.round(t.tw) + "px");
+  e.style.setProperty("--nfs", M.nfs + "px");
+  e.querySelector(".pl-in").style.setProperty("--lean", (t.lean || 0) + "deg");
+  e.classList.toggle("b", t.row === 1);
+  e.classList.toggle("fallen", !!t.fallen);
+}
+function groupTargets(ids, lay, lean) {
+  ids.forEach((id, j) => {
+    const pl = PL.get(id); if (!pl) return;
+    const s = lay.slots[j];
+    setT(pl, { x: s.x, y: yFor(s.row, lay.k), k: lay.k, row: s.row, lean: lean || 0, tw: Math.max(54, lay.step * 0.98) });
+  });
+}
+function layoutSpread() {
+  const ids = [...PL.keys()];
+  const lay = centered(ids.length, M.W * 0.43, M.sz * 2.3);
+  groupTargets(ids, lay, 0);
+}
+function layoutHuddle() {
+  const ids = [...PL.keys()];
+  const lay = centered(ids.length, M.W * (M.portrait ? 0.22 : 0.16), M.sz * 1.7);
+  groupTargets(ids, lay, 0);
+  return lay;
+}
+
+// ---------- шапка ----------
+function topBar() {
+  $("brand").textContent = T("game_name");
+  $("codechip").textContent = CODE;
+  $("codechip").classList.toggle("hidden", state.phase === "lobby");
+  const inGame = !["lobby", "finished"].includes(state.phase);
+  $("endbtn").classList.toggle("hidden", !(isHost && inGame));
+  $("endbtn").title = T("btn_end");
+  $("endbtn").setAttribute("aria-label", T("btn_end"));
+}
+
+// ---------- вспомогательное ----------
+function fitText(box, txt, max, min) {
+  let fs = max;
+  txt.style.setProperty("--qfs", fs + "px");
+  let g = 0;
+  while (fs > min && (txt.offsetHeight > box.clientHeight + 1 || txt.scrollWidth > box.clientWidth + 1) && g++ < 90) { fs -= 2; txt.style.setProperty("--qfs", fs + "px"); }
+}
+function fitOne(el, max, min) {
+  let fs = max; el.style.fontSize = fs + "px"; let g = 0;
+  while (fs > min && el.scrollWidth > el.clientWidth + 1 && g++ < 60) { fs -= 2; el.style.fontSize = fs + "px"; }
+}
+const sideLabel = (q, s) => (s === "a" ? q.a : q.b);
+function letter(q, s) { return q.kind === "ab" ? T(s === "a" ? "ab_a" : "ab_b") : s === "a" ? "✔" : "✖"; }
+function fitSigns() {
+  document.querySelectorAll(".sg-word").forEach((w) => {
+    const sp = w.firstElementChild, board = w.closest(".sg-board");
+    w.style.fontSize = "";
+    let fs = parseFloat(getComputedStyle(w).fontSize), g = 0;
+    const over = () => sp.offsetWidth > w.clientWidth + 1 || sp.scrollWidth > w.clientWidth + 1 || sp.offsetHeight > board.clientHeight - 14;
+    while (fs > 12 && over() && g++ < 60) { fs -= 2; w.style.fontSize = fs + "px"; }
+  });
+}
+function signHtml(side, q) {
+  return `<div class="sign ${side}${q.kind === "ab" ? " ab" : ""}" id="sg${side}"><div class="sg-board"><span class="sg-ico">${esc(letter(q, side))}</span><span class="sg-word"><span>${esc(sideLabel(q, side))}</span></span></div><div class="sg-post"></div><div class="sg-n" id="n${side}">0</div></div>`;
+}
+const progText = (r) => r.kind === "final" ? T("q_final") : r.kind === "extra" ? T("q_extra") : r.kind === "decider" ? T("q_decider") : tpl("q_of", { n: r.num, t: state.total });
+function pipsHtml(r) {
+  if (r.kind !== "normal" && r.kind !== "final") return "";
+  let s = "";
+  for (let i = 1; i <= state.total; i++) s += `<i class="${i < r.num ? "d" : i === r.num ? "c" : ""}"></i>`;
+  return `<span class="pips" aria-hidden="true">${s}</span>`;
+}
+const roundId = () => state.game + ":" + (state.round ? state.round.q.id + state.round.kind : "");
+
+// ---------- лобби ----------
+let qrFor = "";
+function drawLobby() {
+  const ps = present();
+  const key = "lobby:" + wvLang() + isHost + M.W + M.H;
+  const url = `${location.origin}/crowd.html?r=${CODE}`;
+  if (viewKey !== key) {
+    viewKey = key; qrFor = "";
+    upper.innerHTML = `<div class="up lobby">
+      <div><div class="ticket"><div id="qr"></div><div class="bigcode" id="bigcode">${esc(CODE)}</div><div class="url">${esc(url.replace(/^https?:\/\//, ""))}</div></div><div class="hint">${T("lobby_scan")}</div></div>
+      <div><h1 class="lb-h" id="lbh"></h1><p class="lb-tag">${T("tagline")}</p><ol class="rules"><li>${T("r1")}</li><li>${T("r2")}</li><li>${T("r3")}</li></ol></div>
+      <div><div class="lb-pn"><span>${T("lobby_players")}</span> · <span id="pn"></span> <span class="free" id="free"></span></div>
+        <div class="opt"><div><b>${T("opt_short")}</b><span>${T("opt_short_d")}</span></div><button class="tog" id="tshort" type="button" aria-label="${esc(T("opt_short"))}"></button></div>
+        <div class="opt"><div><b>${T("opt_opinion")}</b><span id="opd"></span></div><button class="tog" id="top" type="button" aria-label="${esc(T("opt_opinion"))}"></button></div>
+        <div class="hint" id="starthint"></div><button class="start" id="startbtn" type="button">${T("btn_start")}</button></div></div>`;
+    $("startbtn").onclick = () => conn.send({ type: "start" });
+    $("tshort").onclick = () => { if (isHost) conn.send({ type: "settings", settings: { short: !state.settings.short } }); };
+    $("top").onclick = () => { if (isHost) conn.send({ type: "settings", settings: { opinion: !state.settings.opinion } }); };
+    const lbh = $("lbh"); lbh.textContent = T("game_name");
+    { // заголовок: самый крупный кегль, при котором колонка не вылезает за свою высоту (в EN название в две строки)
+      const col = lbh.parentNode; let fs = Math.min(130, innerHeight * (M.portrait ? 0.075 : 0.11)), g = 0;
+      const over = () => { let h = 0; for (const k of col.children) h += k.offsetHeight; h += 14 * (col.children.length - 1); return h > col.clientHeight - 4 || lbh.scrollWidth > col.clientWidth + 1; };
+      lbh.style.fontSize = fs + "px";
+      while (fs > 28 && over() && g++ < 80) { fs -= 4; lbh.style.fontSize = fs + "px"; }
+    }
+    fitOne($("bigcode"), 56, 22);
+  }
+  if (qrFor !== CODE && window.QRCode) {
+    qrFor = CODE;
+    $("qr").replaceChildren();
+    new QRCode($("qr"), { text: url, width: 240, height: 240, colorDark: "#2a1d12", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+  }
+  $("pn").textContent = ps.length + " / 12";
+  const free = 12 - ps.length;
+  $("free").textContent = free <= 4 ? "· " + tpl("lobby_free", { n: free }) : "";
+  $("tshort").setAttribute("aria-pressed", String(!!state.settings.short));
+  $("tshort").disabled = !isHost;
+  $("top").setAttribute("aria-pressed", String(!!state.settings.opinion));
+  $("top").disabled = !isHost;
+  const lowOp = ps.length < state.opinionMin;
+  $("opd").textContent = lowOp ? tpl("opt_opinion_min", { n: state.opinionMin }) : T("opt_opinion_d");
+  $("opd").classList.toggle("warn", lowOp);
+  const need = Math.max(0, state.minPlayers - ps.length);
+  $("startbtn").disabled = !isHost || need > 0;
+  $("starthint").textContent = !isHost ? T("viewer") : need > 0 ? tpl("need_more", { n: need }) : "";
+}
+
+// ---------- заставка (финал / допвопрос / решающий) и пауза ----------
+function drawIntro() {
+  const key = "intro:" + roundId() + wvLang();
+  if (viewKey === key) return;
+  viewKey = key;
+  const r = state.round;
+  const only = (r.only || []).map(player).filter(Boolean);
+  const title = T(r.kind === "final" ? "intro_final" : r.kind === "extra" ? "intro_extra" : "intro_decider");
+  const desc = T(r.kind === "final" ? "intro_final_d" : r.kind === "extra" ? "intro_extra_d" : "intro_decider_d");
+  const x2 = r.kind === "final" || r.kind === "extra";
+  upper.innerHTML = `<div class="up full"><div class="poster"><h1 id="ih">${esc(title)}${x2 ? `<span class="x2">×2</span>` : ""}</h1><p>${esc(desc)}</p></div>
+    ${only.length ? `<div class="only">${only.map((p) => `<span>${avHtml(p)}<b>${esc(p.name)}</b></span>`).join("")}</div>` : ""}</div>`;
+  fitIntro();
+  if (!RM) later(150, () => (r.kind === "final" ? wvSfx.fanfare() : wvSfx.chord()));
+}
+function fitIntro() {
+  const h = $("ih"), box = h.closest(".full"), poster = h.closest(".poster");
+  let fs = Math.min(190, innerHeight * 0.15), g = 0;
+  const over = () => { const kids = [...box.children]; const tot = kids.reduce((a, k) => a + k.offsetHeight, 0) + 16 * (kids.length - 1); return tot > box.clientHeight - 40 || h.scrollWidth > poster.clientWidth - 20 || poster.offsetWidth > box.clientWidth; };
+  h.style.fontSize = fs + "px";
+  while (fs > 28 && over() && g++ < 80) { fs -= 4; h.style.fontSize = fs + "px"; }
+}
+function drawPause() {
+  const key = "pause:" + wvLang();
+  const online = present().filter((p) => p.online).length;
+  if (viewKey !== key) viewKey = key;
+  upper.innerHTML = `<div class="up full"><div class="poster"><h1 id="ih">${esc(T("pause_title"))}</h1><p>${esc(tpl("pause_d", { min: state.minPlayers, n: online }))}</p></div></div>`;
+  fitIntro();
+}
+
+// ---------- голосование и мнение ----------
+function drawVote() {
+  const r = state.round, op = state.phase === "opinion";
+  const key = (op ? "opinion:" : "vote:") + roundId() + wvLang() + M.W + M.H;
+  if (viewKey !== key) {
+    viewKey = key;
+    upper.innerHTML = `<div class="up">${signHtml("a", r.q)}<div class="mid">
+      <div class="ribbon${op ? " think" : ""}">${op ? esc(T("op_ribbon")) : T("tagline")}</div>
+      <div class="qbox" id="qbox"><h1 class="qtxt" id="qtxt">${esc(r.q.q)}</h1></div>
+      <div class="meta"><span class="prog">${esc(progText(r))}</span>${pipsHtml(r)}<span class="rdy${op ? " ask" : ""}" id="rdy"></span></div></div>${signHtml("b", r.q)}</div>`;
+    fitText($("qbox"), $("qtxt"), Math.min(92, innerHeight * (M.portrait ? 0.06 : 0.088)), 22);
+    fitSigns();
+  }
+  if (op) $("rdy").textContent = tpl("op_answered", { a: r.answered || 0, n: r.askN || 0 });
+  else $("rdy").textContent = tpl("ready_of", { r: (r.ready || []).length, n: (r.voters || []).length });
+}
+
+// ---------- флажок-таймер ----------
+let lastTickSec = null;
+function timerFrame() {
+  const tf = $("tflag"), live = state && !dead && (state.phase === "vote" || state.phase === "opinion" || state.phase === "pause") && state.phaseEnd;
+  tf.classList.toggle("on", !!live);
+  if (!live) { $("tdone").style.transform = "scaleX(0)"; return; }
+  const left = phaseLeft();
+  // в голосовании первые 5 с — чтение вопроса: флажок едет по всему отрезку, но красный только в последние 5 с
+  const total = Math.max(1, state.phaseEnd - state.phaseStart);
+  const f = clamp(1 - left / total, 0, 1);
+  const W = M.W, x = 18 + f * (W - 36);
+  const y = M.tys ? M.tys(x) : 14;
+  tf.style.transform = `translate(${x.toFixed(1)}px,${(y - 1).toFixed(1)}px)`;
+  const hot = left < 5000 && state.phase !== "pause";
+  tf.classList.toggle("hot", hot);
+  const dn = $("tdone");
+  dn.style.transform = `scaleX(${f.toFixed(4)})`;
+  const sec = Math.max(0, Math.ceil(left / 1000));
+  if (hot && left > 0 && sec !== lastTickSec) { lastTickSec = sec; wvSfx.tick(sec <= 2); }
+  if (!hot) lastTickSec = null;
+  if (tf.dataset.s !== String(sec)) { tf.dataset.s = sec; $("stage").setAttribute("aria-label", tpl("tm_left", { n: sec })); }
+}
+
+// ---------- раскрытие ----------
+const RV = { id: "", plan: null, fired: new Set(), placed: new Set(), flagX: null, flagTo: 0, fallen: new Set(), lean: 0, op: null };
+
+function buildPlan() {
+  const r = state.round, res = r.result, q = r.q;
+  const order = res.order;
+  const N = order.length;
+  const sides = { a: [], b: [] };
+  for (const id of order) if (PL.has(id)) sides[res.votes[id]].push(id);
+  const plan = { N, sides, vt: (i) => 500 + 600 * i };
+  plan.tLast = N ? plan.vt(N - 1) : 500;
+  plan.tEnd = plan.tLast + 750;
+  plan.hasOp = !!res.opinions;
+  plan.opAt = plan.tEnd + 1900;
+  const oa = res.opinions ? res.opinions.a : 0, ob = res.opinions ? res.opinions.b : 0;
+  plan.opSeq = [];
+  for (let i = 0, a = oa, b = ob, s = "a"; a + b > 0; i++) { if ((s === "a" && a > 0) || b === 0) { plan.opSeq.push("a"); a--; } else { plan.opSeq.push("b"); b--; } s = s === "a" ? "b" : "a"; }
+  plan.opDone = plan.opAt + 220 * plan.opSeq.length + 400;
+  // раскладка по сторонам
+  const { W, px, rx } = M;
+  const near = W * (M.portrait ? 0.22 : 0.17);
+  plan.lay = {};
+  for (const s of ["a", "b"]) {
+    const x0 = s === "a" ? px - near : px + near;
+    const x1 = s === "a" ? W * 0.045 : W * 0.955;
+    plan.lay[s] = layoutRow(sides[s].length || 1, x0, x1, M.sz * 1.7);
+  }
+  // меньшинство в луже
+  const minSide = res.side && !res.unanimous ? (res.side === "a" ? "b" : "a") : null;
+  plan.minSide = minSide;
+  plan.fall = {};
+  if (minSide) {
+    const ids = sides[minSide], m = ids.length, R = m > 4 ? 2 : 1, cols = Math.ceil(m / R);
+    const k = Math.min(0.9, (rx * 1.5) / (cols + 0.3) / M.sz);
+    ids.forEach((id, j) => {
+      const row = R === 2 ? j % 2 : 0, col = Math.floor(j / R);
+      const u = cols > 1 ? (col + (row ? 0.5 : 0)) / (cols - 0.5) - 0.5 : 0; // −0.5…0.5
+      const x = M.px + u * rx * 1.45;
+      const edge = M.ry * Math.sqrt(Math.max(0.15, 1 - Math.pow((x - M.px) / (rx * 1.02), 2)));
+      const y = M.py - edge - 0.06 * M.sz * k + row * M.ry * 0.9 + (row ? 6 : 0);
+      plan.fall[id] = { x, y, k, row, delay: j * 260 };
+    });
+  }
+  plan.minSide = minSide;
+  return plan;
+}
+const dFor = (na, nb, cast) => (cast ? (na - nb) / cast : 0);
+
+function revealSetup() {
+  const r = state.round, res = r.result, q = r.q;
+  const hasOp = !!res.opinions;
+  upper.innerHTML = `<div class="up">${signHtml("a", q)}<div class="mid">
+    <div class="qline"><span class="qk">${esc(progText(r))}</span><h1 class="qtxt" id="qtxt">${esc(q.q)}</h1></div>
+    <div class="verdict" id="verdict">
+      <div class="vd-idle" id="vdIdle"><div class="ribbon">${T("tagline")}</div></div>
+      <div id="vdMaj"></div><div id="vdTie"></div><div id="vdOne"></div><div id="vdVoid"></div>
+      <div class="illusion" id="vdIll"></div></div>
+    ${hasOp ? `<div class="oprope" id="oprope"><div class="oh"><span id="opA"></span><span id="opT">${esc(T("op_title"))}</span><span id="opB"></span></div><div class="orope"></div><div class="oflag" id="oflag"><svg viewBox="0 0 80 100"><rect x="17" y="6" width="5" height="94" rx="2" fill="#6e4617"/><path d="M22 10 C 40 4, 52 18, 76 10 C 68 24, 70 34, 76 46 C 54 40, 40 54, 22 48 Z" fill="#e0352b" stroke="#2a1d12" stroke-width="3" stroke-linejoin="round"/></svg></div><div id="tks"></div></div>` : ""}
+  </div>${signHtml("b", q)}</div>`;
+  const qt = $("qtxt"), line = qt.parentNode;
+  qt.style.setProperty("--qfs", Math.min(40, innerHeight * 0.05) + "px");
+  // вопрос компактный: одна-две строки
+  { let fs = Math.min(40, innerHeight * 0.05), g = 0; while (fs > 16 && qt.offsetHeight > (fs * 1.06 * 2.2) && g++ < 40) { fs -= 2; qt.style.setProperty("--qfs", fs + "px"); } }
+  const sideName = (s) => sideLabel(q, s);
+  if (res.void) {
+    $("vdVoid").innerHTML = `<span class="stamp void">${esc(T("v_void"))}</span><span class="vd-sub">${esc(T("v_void_d"))}</span>`;
+  } else if (res.tie) {
+    $("vdTie").innerHTML = `<span class="stamp tie">${esc(T("v_tie"))}</span><span class="vd-sub">${esc(T("v_tie_d"))}</span>`;
+  } else if (res.unanimous) {
+    $("vdOne").innerHTML = `<span class="stamp one">${esc(T("v_one"))}</span><span class="vd-sub">${esc(T("v_one_d"))}</span>`;
+  } else {
+    $("vdMaj").innerHTML = `<span class="stamp ${res.side}">${esc(tpl("v_maj", { side: sideName(res.side) }))}</span><span class="vd-sub">${esc(tpl("v_maj_d", { k: Math.max(res.a, res.b), n: res.cast }))}</span><span class="wolfnote" id="wolfnote"></span>`;
+  }
+  if (res.wolf && !res.unanimous && !res.tie && !res.void) {
+    const w = player(res.wolf);
+    if (w) $("wolfnote").textContent = tpl("wolf_note", { name: w.name });
+  }
+  if (res.illusion) {
+    $("vdIll").innerHTML = `<div class="plate"><h2>${esc(T("ill_t"))}</h2><p>${esc(tpl("ill_d", { v: sideName(res.illusion.vote), o: sideName(res.illusion.opinion) }))}</p></div>`;
+  }
+  if (hasOp) { $("opA").textContent = ""; $("opB").textContent = ""; }
+  fitVerdict();
+  fitSigns();
+}
+function fitVerdict() {
+  const v = $("verdict"), maxU = Math.min(96, innerHeight * 0.088);
+  for (const id of ["vdMaj", "vdTie", "vdOne", "vdVoid", "vdIll"]) {
+    const c = $(id);
+    if (!c || !c.firstElementChild) continue;
+    let u = id === "vdIll" ? maxU * 1.05 : maxU, g = 0;
+    c.style.setProperty("--u", u + "px");
+    const over = () => { let h = 0; for (const k of c.children) h += k.offsetHeight; h += 6 * (c.children.length - 1); return h > v.clientHeight - 8 || [...c.children].some((k) => k.scrollWidth > v.clientWidth + 1); };
+    while (u > 18 && over() && g++ < 70) { u -= 3; c.style.setProperty("--u", u + "px"); }
+  }
+}
+
+// сброс визуального состояния игроков перед новым раскрытием
+function resetPlayersFlags() {
+  for (const pl of PL.values()) {
+    pl.el.classList.remove("hop", "wolf", "mud", "fallen", "ready", "pulled");
+    const pts = pl.el.querySelector(".pts"); pts.classList.remove("on", "pos", "neg", "zero"); pts.textContent = "";
+    pl.el.style.transition = "";
+  }
+}
+
+function showVerdict(id) {
+  for (const v of ["vdIdle", "vdMaj", "vdTie", "vdOne", "vdVoid", "vdIll"]) { const e = $(v); if (e) e.classList.toggle("on", v === id); }
+  const idle = $("vdIdle"); if (idle) { idle.classList.toggle("vd-idle", id === "vdIdle"); idle.style.opacity = id === "vdIdle" ? 1 : 0; }
+}
+
+function splash(x, y) {
+  if (RM) return;
+  const fx = $("fx");
+  const ring = document.createElement("div"); ring.className = "ring";
+  const w = M.rx * 0.9, h = M.ry * 0.8;
+  ring.style.cssText = `left:${x - w / 2}px;top:${y - h / 2}px;width:${w}px;height:${h}px`;
+  fx.append(ring); setTimeout(() => ring.remove(), 950);
+  for (let i = 0; i < 7; i++) {
+    const d = document.createElement("i"); d.className = "drop";
+    const a = Math.PI * (1.1 + 0.8 * Math.random()), v = 40 + Math.random() * 50;
+    d.style.cssText = `left:${x}px;top:${y}px;--dx:${Math.cos(a) * v}px;--dy:${Math.sin(a) * v + 30}px`;
+    fx.append(d); setTimeout(() => d.remove(), 800);
+  }
+}
+
+function dropPlayer(id, instant) {
+  const pl = PL.get(id), f = RV.plan.fall[id];
+  if (!pl || !f || RV.fallen.has(id)) return;
+  RV.fallen.add(id);
+  const tw = Math.max(54, M.rx * 1.4 / 3);
+  const fin = { x: f.x, y: f.y, k: f.k, row: 0, lean: 0, tw, fallen: true };
+  if (instant) { pl.el.classList.add("inst"); setT(pl, fin); pl.el.classList.add("mud"); requestAnimationFrame(() => pl.el.classList.remove("inst")); $("veil").setAttribute("opacity", 1); return; }
+  const side = state.round.result.votes[id];
+  // 1) канат тащит к центру, 2) падение в лужу
+  const cur = pl.key.split(",");
+  setT(pl, { x: M.px + (side === "a" ? -1 : 1) * M.rx * 1.1, y: M.ropeY + 0.1 * M.sz, k: Math.min(1, +cur[2]), row: 0, lean: side === "a" ? 28 : -28, tw: 60 });
+  later(420, () => {
+    pl.el.style.transition = "transform .42s cubic-bezier(.5, 0, .9, .6)";
+    pl.el.classList.add("fallen");
+    setT(pl, fin);
+    later(400, () => { splash(f.x, f.y + M.sz * f.k * 0.35); wvSfx.splash(); pl.el.classList.add("mud"); pl.el.style.transition = ""; $("veil").setAttribute("opacity", 1); });
+  });
+}
+
+function updateReveal(t, instant) {
+  const plan = RV.plan; if (!plan) return;
+  const r = state.round, res = r.result;
+  const first = (k) => { if (RV.fired.has(k)) return false; RV.fired.add(k); return true; };
+  const live = (at) => !instant && t - at < 900;
+  // голоса по очереди
+  let na = 0, nb = 0, shown = 0;
+  const order = res.order;
+  for (let i = 0; i < order.length; i++) {
+    if (t < plan.vt(i) && !instant) break;
+    const id = order[i], s = res.votes[id];
+    if (s === "a") na++; else nb++;
+    shown++;
+    if (first("v" + i)) {
+      const pl = PL.get(id);
+      if (pl) {
+        const j = plan.sides[s].indexOf(id);
+        RV.placed.add(id);
+        const lay = plan.lay[s];
+        const sl = lay.slots[j];
+        pl.el.classList.remove("ready");
+        if (instant) pl.el.classList.add("inst");
+        setT(pl, { x: sl.x, y: yFor(sl.row, lay.k), k: lay.k, row: sl.row, lean: s === "a" ? -8 : 8, tw: Math.max(54, lay.step * 0.98) });
+        if (instant) requestAnimationFrame(() => pl.el.classList.remove("inst"));
+      }
+      if (live(plan.vt(i))) {
+        const d = Math.abs(dFor(na, nb, res.cast));
+        if (i === order.length - 1 && res.side) { wvSfx.step(); wvSfx.thud(); }
+        else { wvSfx.step(); if (i % 2 === 0) wvSfx.creak(d); }
+      }
+      const el = $("n" + s); if (el) { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); }
+    }
+  }
+  for (const s of ["a", "b"]) { const e = $("n" + s); if (e) { const n = s === "a" ? na : nb; e.textContent = n; e.classList.toggle("on", shown > 0); } }
+  const d = dFor(na, nb, res.cast);
+  RV.flagTo = d;
+  // натяжение
+  const taut = shown > 0 && !res.void;
+  const rope = $("ropeG");
+  rope.classList.toggle("shake", taut && t < plan.tEnd + 300 && !instant);
+  RV.sag = taut ? 0 : 5;
+  // лидирующая сторона наклоняется сильнее
+  if (shown > 0) {
+    for (const s of ["a", "b"]) for (const id of plan.sides[s]) {
+      if (!RV.placed.has(id)) continue;
+      const pl = PL.get(id), ld = s === "a" ? Math.max(0, d) : Math.max(0, -d), cur = pl.key.split(",");
+      const lean = (s === "a" ? -1 : 1) * (7 + 12 * ld);
+      if (!RV.fallen.has(id) && +cur[4] !== Math.round(lean)) setT(pl, { x: +cur[0], y: +cur[1], k: +cur[2], row: +cur[3], lean, tw: +cur[5] });
+    }
+  }
+  // итог
+  const end = instant || t >= plan.tEnd;
+  if (res.void) {
+    if (instant || t >= 300) { showVerdict("vdVoid"); if (first("void") && !instant) wvSfx.buzz(); }
+    return;
+  }
+  if (end) {
+    const ended = first("end");
+    if (res.tie) {
+      showVerdict("vdTie");
+      rope.classList.toggle("shake", !instant); rope.classList.add("shake2");
+      if (ended && !instant) wvSfx.strain();
+    } else if (res.unanimous) {
+      showVerdict("vdOne");
+      if (ended && !instant) wvSfx.chord();
+    } else {
+      showVerdict("vdMaj");
+    }
+    if (ended) {
+      if (!res.tie) rope.classList.remove("shake", "shake2");
+      // победители подпрыгивают, у меньшинства — падение
+      const winners = res.unanimous ? plan.sides.a.concat(plan.sides.b) : res.tie ? [] : plan.sides[res.side];
+      winners.forEach((id, i) => { const pl = PL.get(id); if (!pl) return; pl.el.style.setProperty("--hd", (i * 0.07) + "s"); pl.el.classList.add("hop"); });
+      if (plan.minSide) plan.sides[plan.minSide].forEach((id) => { const f = plan.fall[id]; if (instant) dropPlayer(id, true); else later(f.delay + 150, () => dropPlayer(id, false)); });
+      if (res.wolf) { const wp = PL.get(res.wolf); if (wp) wp.el.classList.add("wolf"); }
+      // очки над аватарами
+      let n = 0;
+      for (const id of order) {
+        const pl = PL.get(id); if (!pl || !(id in res.pts)) continue;
+        const v = res.pts[id], b = pl.el.querySelector(".pts");
+        b.textContent = (v > 0 ? "+" + v : v < 0 ? "−" + Math.abs(v) : "0");
+        b.className = "pts " + (v > 0 ? "pos" : v < 0 ? "neg" : "zero") + (res.banked[id] ? " bk" : "");
+        if (instant) b.classList.add("on"); else later(350 + n++ * 70, () => b.classList.add("on"));
+      }
+    }
+  }
+  // мнения
+  // шкала мнений могла уже уйти из DOM (экран сменился, а кадр ещё идёт) — тогда рисовать нечего
+  if (plan.hasOp && $("oprope")) {
+    const tks = $("tks");
+    if (instant || t >= plan.opAt) {
+      const seq = plan.opSeq;
+      let oa = 0, ob = 0;
+      for (let i = 0; i < seq.length; i++) {
+        if (!instant && t < plan.opAt + 220 * i) break;
+        if (first("o" + i)) {
+          const el = document.createElement("div");
+          const s = seq[i];
+          const cnt = seq.slice(0, i).filter((x) => x === s).length;
+          const w = $("oprope").clientWidth, pitch = clamp(w * 0.5 / 13, 22, 44);
+          el.className = "tk " + s; el.textContent = "👤";
+          el.style.left = s === "a" ? cnt * pitch + "px" : "auto";
+          if (s === "b") el.style.right = cnt * pitch + "px";
+          tks.append(el);
+          requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("on")));
+          if (!instant) wvSfx.step();
+        }
+        if (seq[i] === "a") oa++; else ob++;
+      }
+      $("opA").textContent = oa ? oa : ""; $("opB").textContent = ob ? ob : "";
+      RV.opTo = (oa + ob) ? (oa - ob) / (oa + ob) : 0;
+      if (res.illusion && (instant || t >= plan.opDone)) {
+        showVerdict("vdIll");
+        if (first("ill") && !instant) wvSfx.pop();
+      }
+    }
+  }
+}
+
+// флаг и канат — по кадрам
+function frameFlag(dt) {
+  const showFlag = state && !dead && state.phase !== "finished";
+  const f = $("flag");
+  if (!showFlag) return;
+  const inRev = state.phase === "reveal" || state.phase === "scores";
+  const to = inRev && RV.plan && state.round && state.round.result && !state.round.result.void ? RV.flagTo : 0;
+  const tx = M.px - to * 0.30 * M.W;
+  if (RV.flagX == null) RV.flagX = tx;
+  RV.flagX += (tx - RV.flagX) * Math.min(1, dt * 0.006);
+  const sag = inRev && RV.sag != null ? RV.sag : 5;
+  if (Math.abs(sag - sagNow) > 0.05) setRope(sagNow + (sag - sagNow) * Math.min(1, dt * 0.01));
+  const y = M.ropeY + sagAt(RV.flagX, sagNow) * 1.0;
+  f.style.transform = `translate(${RV.flagX.toFixed(1)}px,${y.toFixed(1)}px)`;
+  const fl = f.querySelector(".fl");
+  const dir = to > 0.01 ? -1 : 1;
+  fl.style.transform = dir < 0 ? "scaleX(-1) translateX(0)" : "none";
+  // мнения
+  const of = $("oflag"), orp = $("oprope");
+  if (of && orp && RV.opTo != null) {
+    const w = orp.clientWidth;
+    RV.opX = (RV.opX == null ? 0.5 : RV.opX) + ((0.5 - RV.opTo * 0.3) - (RV.opX == null ? 0.5 : RV.opX)) * Math.min(1, dt * 0.006);
+    of.style.transform = `translateX(${(RV.opX * w).toFixed(1)}px)`;
+  } else if (of && orp) { of.style.transform = `translateX(${(orp.clientWidth / 2).toFixed(1)}px)`; }
+}
+
+function drawReveal() {
+  const id = "rev:" + roundId() + wvLang() + M.W + M.H;
+  if (viewKey === id) return;
+  const sameRound = RV.id === roundId();
+  viewKey = id;
+  clearLater();
+  const res = state.round.result;
+  if (!sameRound) {
+    RV.id = roundId(); RV.fired = new Set(); RV.placed = new Set(); RV.fallen = new Set(); RV.flagTo = 0; RV.opTo = null; RV.opX = null; RV.sag = 5;
+    resetPlayersFlags();
+    layoutHuddle();
+    $("veil").setAttribute("opacity", 0);
+    $("fx").replaceChildren();
+  } else { RV.fired = new Set(); RV.placed = new Set(); RV.fallen = new Set(); RV.opTo = null; RV.opX = null; resetPlayersFlags(); $("veil").setAttribute("opacity", 0); }
+  RV.plan = buildPlan();
+  revealSetup();
+  showVerdict("vdIdle");
+  // «не голосовали» остаются в толпе слегка приглушёнными
+  const inst = RM || state.phase === "scores" || (state.phase === "reveal" && phaseNow() > RV.plan.vt(0) + 600 * RV.plan.N + 5000);
+  RV.instant = inst;
+  if (inst) {
+    // страница открыта поздно: показываем итог без анимации
+    updateReveal(Infinity, true);
+  } else {
+    // пересборка в середине: проигрываем всё, что уже должно было случиться, без звуков
+    const t = phaseNow();
+    if (t > 900) { updateReveal(t, false); }
+  }
+}
+
+// ---------- счёт ----------
+function drawScores() {
+  const key = "scores:" + roundId() + wvLang() + M.W + M.H;
+  if (viewKey === key) return;
+  viewKey = key;
+  const r = state.round, res = r.result;
+  // сцена: итог раскрытия остаётся
+  if (RV.id !== roundId() || !RV.plan) { RV.id = roundId(); RV.fired = new Set(); RV.placed = new Set(); RV.fallen = new Set(); resetPlayersFlags(); RV.plan = buildPlan(); }
+  const list = present().slice();
+  const before = (p) => p.score - (res.void ? 0 : res.pts[p.id] || 0);
+  list.sort((a, b) => b.score - a.score);
+  const max = Math.max(1, ...list.map((p) => p.score));
+  const cols = list.length > 6 ? 2 : 1, rows = Math.ceil(list.length / cols);
+  const title = r.num && (r.kind === "normal" || r.kind === "final") ? tpl("scores_title", { n: r.num }) : T("scores_title_x");
+  const note = res.void ? T("void_note") : r.only ? tpl("decider_note", { names: wvNames(r.only, player) }) : "";
+  const fmtD = (v) => (v > 0 ? "+" + v : v < 0 ? "−" + Math.abs(v) : "0");
+  upper.innerHTML = `<div class="up sc"><div class="sc-head"><h2>${esc(title)}</h2>${note ? `<p>${esc(note)}</p>` : ""}</div>
+    <div class="sc-tab" style="--cols:${cols};--rows:${rows}">${list.map((p) => {
+      const has = !res.void && p.id in res.pts, d = has ? res.pts[p.id] : 0, b0 = before(p);
+      const bd = (has && res.banked[p.id] ? `<span class="tag2" title="${esc(T("bank_tip"))}">×2</span>` : "") + (res.wolf === p.id && !res.void ? `<span title="${esc(T("wolf_tip"))}">🐺</span>` : "");
+      return `<div class="row${has || res.void || r.only ? "" : " out"}" style="--pc:${esc(p.color)};--w0:${Math.max(0, b0) / max}" data-w="${Math.max(0, p.score) / max}"><span class="rk">${wvRank(list, p)}</span>${avHtml(p)}<b class="nm">${esc(p.name)}</b><span class="bd">${bd}</span><div class="bar"><i></i></div><span class="tot${p.score < 0 ? " neg" : ""}" data-from="${b0}" data-to="${p.score}">${b0}</span><span class="dl ${d > 0 ? "pos" : d < 0 ? "neg" : "zero"}">${has ? fmtD(d) : ""}</span></div>`;
+    }).join("")}</div></div>`;
+  const tab = upper.querySelector(".sc-tab");
+  {
+    const head = upper.querySelector(".sc-head"), avail = upper.clientHeight - head.offsetHeight - 40;
+    const rh = Math.min(86, (avail - 6 * (rows - 1)) / rows), cw = (upper.clientWidth * 0.9) / cols;
+    tab.style.setProperty("--th", Math.round(rh * rows + 6 * (rows - 1)) + "px");
+    tab.style.setProperty("--fs", clamp(Math.min(rh * 0.42, cw / 19), 13, 34) + "px");
+  }
+  const rowsEl = upper.querySelectorAll(".row");
+  rowsEl.forEach((row) => { row.querySelector(".nm").style.minWidth = "0"; });
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    rowsEl.forEach((row) => { row.querySelector(".bar i").style.setProperty("--w0", row.dataset.w); row.querySelector(".bar i").style.transform = `scaleX(${row.dataset.w})`; row.querySelector(".dl").classList.add("on"); });
+    countUp(upper.querySelectorAll(".tot"), 900, 350);
+  }));
+  // сцена: показываем итог раскрытия без анимации, если он ещё не показан
+  if (!RV.fired.has("end") && !res.void) updateReveal(Infinity, true);
+  else if (res.void) updateReveal(Infinity, true);
+}
+function countUp(nodes, dur, delay) {
+  const t0 = performance.now() + delay;
+  const step = (t) => {
+    const k = clamp((t - t0) / dur, 0, 1), e = 1 - Math.pow(1 - k, 3);
+    nodes.forEach((n) => { const f = +n.dataset.from, to = +n.dataset.to; n.textContent = Math.round(f + (to - f) * e); });
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// ---------- итоги ----------
+function drawFinal() {
+  const key = "final:" + state.game + wvLang() + isHost + M.W + M.H;
+  if (viewKey === key) return;
+  viewKey = key;
+  const list = present().slice().sort((a, b) => b.score - a.score);
+  const top = [list[1], list[0], list[2]];
+  const hsOf = (rk) => (rk === 1 ? "76%" : rk === 2 ? "58%" : "44%"), ds = ["1.1s", "1.6s", "0.7s"];
+  const aw = state.awards || {};
+  const names = (ids) => ids.map((id) => (player(id) || {}).name || "?").join(", ");
+  const rows = [];
+  const add = (a, ico, k) => { if (a && a.ids && a.ids.length) rows.push(`<div class="aw"><span class="rosette">${ico}</span><div style="min-width:0"><div class="ek">${esc(T("aw_" + k))}</div><b>${esc(names(a.ids))}</b><p>${esc(tpl("aw_" + k + "_d", { n: a.n }))}</p></div></div>`); };
+  add(aw.crowd, "👥", "crowd"); add(aw.crow, "🐑", "crow"); add(aw.risk, "🎲", "risk"); add(aw.wolf, "🐺", "wolf");
+  const sub = state.finishedReason === "paused" ? T("final_paused") : state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : "";
+  const head = state.finishedReason === "paused" ? T("final_paused") : T("final_title");
+  upper.innerHTML = `<div class="up fin-up"><div class="fin-l"><h1>${esc(head)}</h1>${sub && state.finishedReason !== "paused" ? `<p class="sub">${esc(sub)}</p>` : ""}
+    <div class="podium">${top.map((p, i) => p ? `<div class="step${wvRank(list, p) === 1 ? " first" : ""}"><div class="who" style="--d:${ds[i]}">${avHtml(p)}<span>${esc(p.name)}</span></div><div class="blk" style="--h:${hsOf(wvRank(list, p))};--d:${[0.4, 0.9, 0.1][i]}s">${wvRank(list, p)}<small>${p.score}</small></div></div>` : `<div class="step"></div>`).join("")}</div>
+    ${list.length > 3 ? `<div class="rest">${list.slice(3).map((p) => `<span>${avHtml(p)}<b>${wvRank(list, p)}. ${esc(p.name)}</b> ${p.score}</span>`).join("")}</div>` : ""}</div>
+    <div class="fin-r">${rows.join("")}<div class="hostbtns">${isHost ? `<button class="start" id="again" type="button">${esc(T("btn_again"))}</button><button class="ghostbtn" id="tolobby" type="button">${esc(T("btn_lobby"))}</button>` : ""}<a class="ghostbtn" href="index.html"${isHost ? "" : ' style="grid-column:1 / -1"'}>${esc(T("btn_home"))}</a></div></div></div>`;
+  if (isHost) { $("again").onclick = () => conn.send({ type: "start" }); $("tolobby").onclick = () => conn.send({ type: "lobby" }); }
+  if (state.finishedReason === "done" && !RM) later(900, () => wvSfx.fanfare());
+}
+
+// ---------- отрисовка ----------
+let lastPhase = null, prevReady = new Set(), prevRoundId = "";
+function render() {
+  if (!state || dead) return;
+  const ph = state.phase;
+  document.body.dataset.phase = ph;
+  document.body.classList.toggle("fin", ph === "finished");
+  document.body.classList.toggle("lobbyp", ph === "lobby");
+  topBar();
+  ensurePlayers();
+  const r = state.round;
+  const dimOf = (p) => !p.online || (ph === "vote" && r && r.voters && !r.voters.includes(p.id)) || ((ph === "reveal" || ph === "scores") && r && r.result && !r.result.void && !(p.id in r.result.votes));
+  for (const pl of PL.values()) pl.el.classList.toggle("dim", dimOf(pl.p));
+  if (ph !== lastPhase) {
+    if (ph === "lobby" || ph === "vote" || ph === "intro") { clearLater(); $("veil").setAttribute("opacity", 0); }
+    if (ph === "vote") { RV.plan = null; RV.id = ""; RV.flagTo = 0; RV.sag = 5; $("ropeG").classList.remove("shake", "shake2"); $("fx").replaceChildren(); }
+    lastPhase = ph;
+  }
+  // позиции в сцене
+  if (ph === "lobby" || ph === "finished") { for (const pl of PL.values()) pl.el.classList.remove("ready", "hop", "wolf", "mud"); layoutSpread(); }
+  else if (ph === "intro" || ph === "vote" || ph === "opinion" || ph === "pause") {
+    if (ph === "vote") for (const pl of PL.values()) { pl.el.classList.remove("hop", "wolf", "mud"); pl.el.querySelector(".pts").className = "pts"; }
+    layoutHuddle();
+  }
+  if (ph !== "reveal" && ph !== "scores") for (const pl of PL.values()) { pl.el.classList.remove("hop", "wolf", "mud"); const pt = pl.el.querySelector(".pts"); if (pt.className !== "pts") pt.className = "pts"; }
+  // «готов»
+  if (ph === "vote" && r) {
+    const rdy = new Set(r.ready || []);
+    const same = prevRoundId === roundId();
+    for (const [id, pl] of PL) {
+      const on = rdy.has(id);
+      pl.el.classList.toggle("ready", on);
+      if (on && same && !prevReady.has(id)) { pl.el.classList.remove("shiver"); void pl.el.offsetWidth; pl.el.classList.add("shiver"); wvSfx.lock(); }
+    }
+    prevReady = rdy;
+  } else { prevReady = new Set(); if (ph !== "vote") for (const pl of PL.values()) pl.el.classList.remove("ready"); }
+  prevRoundId = r ? roundId() : "";
+  switch (ph) {
+    case "lobby": return drawLobby();
+    case "intro": return drawIntro();
+    case "vote": case "opinion": return drawVote();
+    case "reveal": return drawReveal();
+    case "scores": return drawScores();
+    case "pause": return drawPause();
+    case "finished": return drawFinal();
+  }
+}
+$("endbtn").onclick = () => { if (confirm(T("btn_end") + "?")) conn.send({ type: "end" }); };
+
+let lastFrame = performance.now();
+function frame(t) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(100, t - lastFrame); lastFrame = t;
+  if (!state || dead) return;
+  timerFrame();
+  frameFlag(dt);
+  if (state.phase === "reveal" && RV.plan && !RV.instant) updateReveal(phaseNow(), false);
+}
+
+let rsz = null;
+window.addEventListener("resize", () => { clearTimeout(rsz); rsz = setTimeout(() => { measure(); for (const pl of PL.values()) pl.key = ""; viewKey = ""; if (state) render(); }, 120); });
+window.addEventListener("langchange", () => {
+  viewKey = "";
+  if (isHost && state && (state.phase === "lobby" || state.phase === "finished") && state.settings.lang !== wvLang()) conn.send({ type: "settings", settings: { lang: wvLang() } });
+  render();
+});
+
+// ---------- связь ----------
+function setState(s) { s.__at = performance.now(); state = s; }
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+      setState(m.state);
+      if (!isHost) {
+        let token = null;
+        try { token = localStorage.getItem(hostKey()); } catch (e) {}
+        if (token) conn.send({ type: "host", token });
+      }
+      render();
+      break;
+    case "state":
+      setState(m.state);
+      render();
+      break;
+    case "host_ok":
+      isHost = true;
+      document.body.classList.add("host");
+      viewKey = "";
+      if (state && state.phase === "lobby" && state.settings.lang !== wvLang()) conn.send({ type: "settings", settings: { lang: wvLang() } });
+      render();
+      break;
+    case "host_lost":
+      isHost = false;
+      document.body.classList.remove("host");
+      viewKey = "";
+      render();
+      break;
+    case "error":
+      if (m.error === "room_expired") gone();
+      break;
+  }
+}
+function gone() {
+  dead = true;
+  upper.innerHTML = "";
+  showBanner(T("expired"));
+}
+async function boot() {
+  const h = params.get("h");
+  if (h && CODE) {
+    try { localStorage.setItem(hostKey(), h); } catch (e) {}
+    history.replaceState(null, "", `?r=${CODE}`);
+  }
+  measure();
+  if (!(await ensureRoom())) return;
+  const banner = $("conn");
+  conn = wvConnect({
+    code: CODE,
+    onMessage,
+    onGone: gone,
+    onOpen: () => { isHost = false; },
+    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+  });
+  requestAnimationFrame(frame);
+  window.wvBoard = { send: (m) => conn.send(m), get state() { return state; }, get code() { return CODE; } };
+}
+boot();
+</script>
+</body>
+</html>
