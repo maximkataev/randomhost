@@ -130,7 +130,7 @@
 
   .center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(56%, 760px); display: grid; justify-items: center; text-align: center; gap: 10px; z-index: 3; }
   .center .lbl { font: 900 18px/1 var(--font); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2); height: 18px; }
-  .holder { font: italic 900 var(--hfs, 84px)/1 var(--font); text-transform: uppercase; height: 88px; display: flex; align-items: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-text-stroke: 2px var(--ink); color: var(--hc, var(--red)); text-shadow: 4px 4px 0 var(--ink); padding: 0 6px; }
+  .holder { font: italic 900 var(--hfs, 84px)/var(--hh, 88px) var(--font); text-transform: uppercase; height: var(--hh, 88px); display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-text-stroke: 2px var(--ink); color: var(--hc, var(--red)); text-shadow: 4px 4px 0 var(--ink); padding: 0 6px; }
   .doing { font-size: 24px; font-weight: 700; height: 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   /* вопрос держателя крупно — чтобы зал подсказывал (§5.3); место под него зарезервировано всегда */
   .bubble { position: relative; width: 100%; height: 132px; background: #fff; border: var(--line); box-shadow: var(--shift); border-radius: 18px; display: grid; place-items: center; padding: 10px 18px; overflow: hidden; }
@@ -200,6 +200,22 @@
   @keyframes floatdown { from { transform: translate(-50%, 0) scale(.6); opacity: 0; } 15% { opacity: 1; transform: translate(-50%, 10px) scale(1.15); } to { transform: translate(-50%, 90px) scale(1); opacity: 0; } }
   @keyframes floatup { from { transform: translate(-50%, 0) scale(.6); opacity: 0; } 15% { opacity: 1; transform: translate(-50%, -10px) scale(1.15); } to { transform: translate(-50%, -90px) scale(1); opacity: 0; } }
 
+  /* планшет и маленький ноутбук: правая колонка уже, места в лобби — сколько влезет по ширине,
+     иначе четыре колонки по ~100 px оставляли от имени одну букву, а ✕ кика накрывали соседние места */
+  @media (min-width: 761px) and (max-width: 1180px) {
+    .seats { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+    .howto { min-height: 120px; }
+    .howto div { font-size: 16px; gap: 6px; padding: 8px; }
+    .howto i { font-size: 34px; }
+  }
+  /* портретный планшет: памятка в столбик — в три узкие колонки текст не влезал */
+  @media (min-width: 761px) and (max-width: 1180px) and (max-aspect-ratio: 1/1) {
+    .lobby { grid-template-columns: minmax(0, 1fr) minmax(320px, 360px); }
+    .howto { grid-template-columns: 1fr; }
+    .howto div { grid-auto-flow: column; justify-content: start; text-align: left; }
+    .howto i { font-size: 40px; }
+  }
+
   /* узкий экран: игроки сеткой сверху, центр — снизу; бомба садится на карточку держателя */
   @media (max-width: 760px) {
     .top { grid-template-columns: auto auto; height: max(56px, calc(var(--lsc, 28px) * 2)); padding: 0 var(--lsw, 140px) 0 12px; }
@@ -213,7 +229,7 @@
     .join { grid-template-columns: 110px minmax(0, 1fr); }
     #qr { width: 110px; height: 110px; }
     .center { width: calc(100% - 16px); top: auto; bottom: 0; transform: translateX(-50%); }
-    .holder { height: 56px; }
+    .holder { --hh: 56px; }
     .bubble { height: 116px; }
     .bubble .q { font-size: 22px; }
     .count { font-size: 100px; height: 100px; }
@@ -264,7 +280,7 @@
   @media (max-width: 760px) and (max-height: 620px) {
     .center { gap: 4px; }
     .center .lbl { font-size: 14px; height: 14px; }
-    .holder { height: 44px; }
+    .holder { --hh: 44px; }
     .doing { font-size: 18px; height: 24px; }
     .bubble { height: 84px; padding: 6px 12px; }
     .bubble .q { font-size: 18px; }
@@ -276,6 +292,13 @@
     .sealcard .s { display: none; }
     .verdict .n { font-size: 38px; }
   }
+  /* широкий, но тесный для эллипса экран (планшет, полная комната): центр — снизу, под сеткой карточек */
+  .arena.grid .center { width: calc(100% - 16px); top: auto; bottom: 0; transform: translateX(-50%); }
+  body.host .arena.grid .center { bottom: 46px; }
+  .arena.grid.compact .pc { height: 38px; }
+  .arena.grid.compact .pc b { font-size: 17px; }
+  .arena.grid.compact .pc .av { width: 26px; height: 26px; font-size: 12px; }
+  .arena.grid.compact .pc .st { font-size: 13px; }
   /* телефон боком: игроки — в левой половине, центр — справа */
   .arena.side .center { left: auto; right: 0; top: 50%; bottom: auto; width: calc(50% - 8px); transform: translateY(-50%); }
   body.host .arena.side .center { top: calc(50% - 23px); }
@@ -445,7 +468,8 @@ let conn = null, state = null, isHost = false, dead = false, prev = null;
 
 const player = (id) => state && state.players.find((p) => p.id === id);
 const nameOf = (id) => (player(id) || {}).name || "?";
-const initials = (name) => String(name || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+// по символам, а не по UTF-16: у эмодзи w[0] — половинка суррогатной пары, в кружке рисовался «�»
+const initials = (name) => Array.from(String(name || "?").split(/\s+/).map((w) => Array.from(w)[0] || "").join("")).slice(0, 2).join("").toUpperCase();
 const live = () => state && state.phase === "live";
 
 // ---------- создание комнаты, если доску открыли без кода ----------
@@ -589,13 +613,24 @@ function arenaPlayers() {
   return state.players.filter((p) => !p.left);
 }
 
+// «узкий» — по ширине окна, как @media (max-width: 760px) в стилях: арена на 32 px уже окна, и при окне
+// 761–791 px карточки ложились сеткой сверху, а центр стоял посередине (широкий CSS) — прямо поверх сетки
+const isNarrow = () => matchMedia("(max-width: 760px)").matches;
+let gridMode = false; // карточки сеткой сверху (узкий экран или тесный эллипс) — решает layout()
+
 // раскладка: широкий экран — эллипс вокруг центра, узкий — сетка сверху
 function layout() {
   const arena = $("arena");
   const W = arena.clientWidth, H = arena.clientHeight;
   const list = arenaPlayers();
   const n = list.length;
-  const narrow = W < 760;
+  // Эллипс тесный (планшет, полная комната): шаг соседей у верхнего края rx·sin(2π/n) меньше карточки —
+  // они наезжали друг на друга. Тогда — сетка сверху и центр снизу, как на телефоне (класс grid).
+  const s2 = Math.sin((2 * Math.PI) / Math.max(n, 5));
+  const crowded = n > 4 && ((W / 2 - 8) * s2 - 8) / (1 + s2 / 2) < 140;
+  const narrow = isNarrow() || crowded;
+  gridMode = narrow;
+  arena.classList.toggle("grid", crowded && !isNarrow());
   // узкий экран: карточки сеткой сверху, центр прижат книзу. Телефон боком — карточки слева, центр справа.
   // Колонок и высоту ряда подбираем так, чтобы сетка не залезала под центр
   const side = narrow && W > H * 1.5;
@@ -614,6 +649,7 @@ function layout() {
   arena.classList.toggle("compact", narrow && pitch === 46);
   const ch = narrow ? pitch - 8 : 58;
   const cw = narrow ? Math.floor((GW - 8) / cols) - 8 : Math.max(150, Math.min(220, Math.floor(W / 7)));
+
   arena.style.setProperty("--cw", cw + "px");
   // совсем узкая карточка — без кружка-аватара, чтобы имя читалось
   arena.classList.toggle("tiny", narrow && cw < 110);
@@ -679,7 +715,8 @@ function bombSpot(holder) {
   const arena = $("arena");
   const W = arena.clientWidth, H = arena.clientHeight;
   // узкий экран: на правом краю карточки, но не за краем арены (там её обрезает)
-  if (W < 760) return { x: Math.min(p.x + (parseFloat(getComputedStyle(arena).getPropertyValue("--cw")) || 150) / 2 - 20, W - 50), y: p.y - 18 };
+  // и не выше верха арены: у верхнего ряда бомбу срезало краем
+  if (gridMode) return { x: Math.min(p.x + (parseFloat(getComputedStyle(arena).getPropertyValue("--cw")) || 150) / 2 - 20, W - 50), y: Math.max(p.y - 18, 46) };
   const dx = W / 2 - p.x, dy = H / 2 - p.y, d = Math.hypot(dx, dy) || 1;
   return { x: p.x + (dx / d) * 92, y: p.y + (dy / d) * 70 };
 }
@@ -778,6 +815,7 @@ function drawBubble(holders) {
     bubbleKey = key;
     const txt = c.view.where === "tv" ? tpl("crowd_tv", { name: nameOf(holder), code: c.code || "?" }) : tpl("crowd_phone", { name: nameOf(holder), helper: nameOf(c.view.helper) });
     box.innerHTML = `<div class="q${c.view.where === "tv" ? " crowdcode" : ""}">${escapeHtml(txt)}</div>`;
+    fitBubble(box);
     return;
   }
   const ch = (chs.find(([, c]) => c.group === "head") || [])[1];
@@ -799,6 +837,7 @@ function drawBubble(holders) {
     else if (ch.type === "oddmeaning") { q = v.items.join("  "); }
     else if (ch.type === "dice") { q = v.dice.map((d) => "⚀⚁⚂⚃⚄⚅"[d - 1]).join(" ") + " = ?"; }
     box.innerHTML = `<div><div class="q">${escapeHtml(q)}</div>${opts.length ? `<div class="opts">${opts.map((o) => `<span>${escapeHtml(o)}</span>`).join("")}</div>` : ""}</div>`;
+    fitBubble(box);
     return;
   }
   // после взрыва: сколько горел раунд и какой был фитиль — печать уже вскрыта
@@ -819,6 +858,18 @@ function drawBubble(holders) {
     box.innerHTML = `<div class="meta"><div>${T("burning")}<b id="m-el">0:00</b></div><div>${T("passes")}<b id="m-pa">0</b></div><div>${T("in_hands")}<b id="m-ih">0,0</b></div></div>`;
   }
   $("m-pa").textContent = String(state.passes || 0);
+}
+// Высота пузыря фиксирована (центр не прыгает), поэтому длинный вопрос с вариантами не влезал и обрезался
+// сверху и снизу. Уменьшаем кегль, пока содержимое не поместится.
+function fitBubble(box) {
+  const inner = box.firstElementChild, q = box.querySelector(".q"), o = box.querySelector(".opts");
+  if (!inner || !q) return;
+  const room = () => box.clientHeight - parseFloat(getComputedStyle(box).paddingTop) - parseFloat(getComputedStyle(box).paddingBottom) + 1;
+  let fs = parseFloat(getComputedStyle(q).fontSize), ofs = o ? parseFloat(getComputedStyle(o).fontSize) : 0;
+  while (inner.offsetHeight > room() && fs > 12) {
+    fs -= 2; q.style.fontSize = fs + "px";
+    if (o && ofs > 11) { ofs -= 1; o.style.fontSize = ofs + "px"; }
+  }
 }
 function seqText(v) {
   if (v.kind === "days") { const d = String(T("days")).split("|"); return v.items.map((i) => d[i]).join(", "); }
@@ -910,7 +961,7 @@ function boomFx(victim) {
   const arena = $("arena");
   arena.append(k);
   // у края экрана звезда не должна уходить за арену (на телефоне её там обрезает)
-  const hw = k.offsetWidth / 2, W = arena.clientWidth, narrow = W < 760;
+  const hw = k.offsetWidth / 2, W = arena.clientWidth, narrow = gridMode;
   k.style.left = (narrow ? Math.min(Math.max(pos.x, hw), W - hw) : pos.x) + "px";
   k.style.top = (narrow ? Math.max(pos.y, k.offsetHeight / 2) : pos.y) + "px";
   setTimeout(() => k.remove(), 4200);
@@ -993,7 +1044,7 @@ function render() {
   prev = state;
 }
 
-window.addEventListener("resize", () => { arenaSize = ""; if (state) drawArena(); });
+window.addEventListener("resize", () => { arenaSize = ""; bubbleKey = ""; if (state) drawArena(); });
 window.addEventListener("langchange", () => { $("lobby").dataset.lang = ""; $("center").dataset.mode = ""; bubbleKey = ""; resultKey = ""; render(); });
 
 // ---------- связь ----------

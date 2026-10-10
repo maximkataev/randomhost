@@ -195,6 +195,11 @@
   .target small { display: block; font-size: 13px; font-weight: 700; color: var(--ink-2); }
   .target:not(:disabled):active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--ink); background: var(--yellow); }
   .throwing .target { pointer-events: none; }
+  /* 9+ целей (полная комната): ряды ниже, чтобы все игроки влезали без прокрутки на обычном телефоне */
+  @media (orientation: portrait), (min-height: 501px) {
+    .targets:has(> .target:nth-child(9)) { grid-auto-rows: minmax(46px, 1fr); gap: 7px; }
+    .targets:has(> .target:nth-child(9)) .target { min-height: 46px; height: auto; font-size: 18px; box-shadow: 3px 3px 0 var(--ink); }
+  }
 
   /* ---------- новые задания (27.09) ---------- */
   .sparkfield { background: #fff; border: 2.5px solid var(--ink); }
@@ -397,8 +402,12 @@
     .rule { font-size: 14px; padding: 5px 8px; }
     /* «Найди отличие»: образец и поле рядом, а не друг под другом */
     .pad:has(> .grid.ref) { grid-template-columns: auto auto auto; justify-content: center; align-items: center; }
-    /* спокойные экраны: список игроков — в три колонки, чтобы реакции оставались на экране */
-    .plist { grid-template-columns: repeat(3, 1fr); }
+    /* спокойные экраны: список игроков — в четыре колонки, чтобы реакции оставались на экране */
+    .plist { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    /* таймер с мини-бомбой — в одну строку: при 7+ игроках реакции иначе уходили за нижний край */
+    .calm { gap: 6px; }
+    .mini { grid-template-columns: 40px 1fr; padding: 2px 10px; }
+    .mini .bombbox { width: 36px; height: 36px; }
   }
   @media (prefers-reduced-motion: reduce) {
     .bombbox .shake, .bomb .spark, .pad.shake, .pad.solved::after, .boomscr .kapow, .nowbtn.on, .toast.on { animation: none !important; }
@@ -618,7 +627,8 @@ try { token = localStorage.getItem(tokenKey()); } catch (e) {}
 
 const player = (id) => state && state.players.find((p) => p.id === id);
 const mine = () => (state && me ? player(me) : null);
-const initials = (name) => String(name || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+// по символам, а не по UTF-16: у эмодзи w[0] — половинка суррогатной пары, в кружке рисовался «�»
+const initials = (name) => Array.from(String(name || "?").split(/\s+/).map((w) => Array.from(w)[0] || "").join("")).slice(0, 2).join("").toUpperCase();
 const avHtml = (p) => `<i class="av" style="--pc:${p.color}">${escapeHtml(initials(p.name))}</i>`;
 const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -889,7 +899,7 @@ const RENDER = {
     let sx = null, sy = null;
     zone.addEventListener("pointerdown", (e) => { sx = e.clientX; sy = e.clientY; });
     zone.addEventListener("pointerup", (e) => {
-      if (sx == null) return;
+      if (sx == null || got.length >= dirs.length) return;
       const dx = e.clientX - sx, dy = e.clientY - sy;
       sx = null;
       if (Math.max(Math.abs(dx), Math.abs(dy)) < 30) return;

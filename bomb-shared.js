@@ -340,7 +340,8 @@ const bmSfx = (function () {
 })();
 
 // ---------- вибрация: не везде есть, а где есть — может бросить исключение ----------
-function bmVibrate(p) { if (navigator.vibrate) try { navigator.vibrate(p); } catch (e) {} }
+// до первого касания страницы Chrome вибрацию не пускает и пишет об этом ошибку в консоль (вкладку открыли заново посреди раунда)
+function bmVibrate(p) { if (!navigator.vibrate || (navigator.userActivation && !navigator.userActivation.hasBeenActive)) return; try { navigator.vibrate(p); } catch (e) {} }
 
 // ---------- часы сервера ----------
 // Смещение «сервер − устройство» по самому быстрому ping/pong (RTT/2); пока замера нет —
