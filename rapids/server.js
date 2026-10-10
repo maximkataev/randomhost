@@ -458,6 +458,9 @@ function handle(room, client, msg) {
       if (m) { m.offlineAt = 0; m.lastSeq = 0; }
       g.setOnline(id, true);
       reply({ type: "joined", playerId: id, token: msg.token });
+      // вошёл (или перезагрузил вкладку) на итоге: событие «over» он пропустил, а без него экран висел на «Итог через
+      // секунду…», и у ведущего комнаты не было кнопки нового заплыва (хаос-прогон 10.10)
+      if (g.phase === "over" && g.stats && g.host) reply({ type: "ev", list: [{ type: "over", host: g.host, champion: g.champion, stats: g.stats, late: 1 }] });
       sendRoster(room);
       return;
     }

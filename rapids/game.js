@@ -588,6 +588,14 @@
         d.inPool = false;
         for (const p of c.pools) swirl(d, p, dt);
         if (d.cap) continue;
+        // итог: недоплывшие тормозят там, где их застал конец заплыва, а не уплывают за финиш к самому краю мира —
+        // камера итога смотрит на ведущего дейлика, и у края его закрывал вердикт (хаос-прогон 10.10)
+        if (g.phase === 'over') {
+          const k = Math.exp(-dt * 2.5);
+          d.vx *= k; d.vy *= k;
+          d.x += d.vx * dt; d.y = Math.min(d.y + d.vy * dt, c.FINISH_Y - cfg.DR * 2);
+          continue;
+        }
         const controlled = (g.phase === 'lobby' || g.phase === 'race') && d.online;
         const hit = moveDuck(d, c, cfg, dt, d.steer, controlled, gateOpen);
         if (hit && g.phase === 'race' && g.time - d.lastHit > 0.8) {
