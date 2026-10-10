@@ -1674,6 +1674,7 @@ function create3D(container, opts) {
    */
   // по умолчанию — под доску: табло сверху (~12%), чат справа внизу (~18%), рельс игроков снизу (~15%)
   const safe = Object.assign({ top: 0.12, right: 0.18, bottom: 0.15, left: 0.02 }, opts.safeArea || {});
+  const safeRight = safe.right;
   const fitK = () => Math.max(1 / Math.max(0.4, 1 - safe.left - safe.right), (1 / Math.max(0.4, 1 - safe.top - safe.bottom)) * 0.92);
 
   // одна тёплая лампа над столом + её же «второй плафон» над колесом, без теней
@@ -2339,7 +2340,7 @@ function create3D(container, opts) {
     };
     let d = 2;
     for (let it = 0; it < 4; it++) {
-      let lo = 0.5, hi = 8;
+      let lo = 0.5, hi = 14; // узкий телефон стоя (375×740) упирался в 8 м — колесо обрезалось слева
       for (let k = 0; k < 28; k++) {
         const m = (lo + hi) / 2;
         const [x0, x1, y0, y1] = box(m);
@@ -2734,6 +2735,8 @@ function create3D(container, opts) {
     if (key === sizeKey) return;
     sizeKey = key;
     renderer.setSize(w, h, false);
+    // экран до 900px (телефон): чата справа на доске нет (см. CSS доски) — поле справа не держим, стол во всю ширину
+    if (!opts.safeArea) safe.right = w <= 900 ? safe.left : safeRight;
     camera.aspect = w / h;
     camera.setViewOffset(w, h, ((safe.right - safe.left) / 2) * w, ((safe.bottom - safe.top) / 2) * h, w, h);
     camera.updateProjectionMatrix();
