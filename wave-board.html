@@ -897,7 +897,17 @@ function frame(t) {
   }
 }
 
-window.addEventListener("resize", () => { viewKey = ""; if (state) render(); });
+// лобби, счёт и итоги на телефоне прокручиваются: при прокрутке браузер прячет/показывает адресную строку,
+// и меняется только высота. Перерисовка тогда сбрасывала прокрутку, заново растила пьедестал и повторяла фанфары —
+// в этих фазах от высоты зависит только CSS, поэтому перерисовываем лишь при смене ширины
+let lastW = window.innerWidth;
+window.addEventListener("resize", () => {
+  const sameW = window.innerWidth === lastW;
+  lastW = window.innerWidth;
+  if (sameW && state && ["lobby", "scores", "finished"].includes(state.phase)) return;
+  viewKey = "";
+  if (state) render();
+});
 window.addEventListener("langchange", () => {
   viewKey = "";
   // язык доски — язык банка шкал комнаты: в лобби ведущий переключает и шкалы
