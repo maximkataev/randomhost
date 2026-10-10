@@ -123,7 +123,9 @@
   .bidbar .lead { min-width: 0; font: 900 clamp(22px, 2vw, 30px)/1.1 var(--display); letter-spacing: -.035em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
   .bidbar .lead b { color: var(--c1); }
   /* лента предыдущих ставок: одна строка, лишнее просто уезжает под маску — полоса не растёт */
-  .bidbar .tape { flex: 1 1 auto; min-width: 0; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: nowrap; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%); mask-image: linear-gradient(90deg, transparent, #000 12%); }
+  /* основа ленты — 0, а не её ширина: иначе пять прошлых ставок отнимали место у лидера, и на 1366×768
+     «🤖 aggressive $18» сжималось до «aggressiv…» без суммы. Лидер берёт сколько нужно, лента — остаток */
+  .bidbar .tape { flex: 1 1 0; min-width: 0; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: nowrap; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%); mask-image: linear-gradient(90deg, transparent, #000 12%); }
   .bidbar .tape span { flex: none; max-width: 30ch; font-size: 13.5px; color: var(--muted); background: rgba(255, 255, 255, .05); border: 1px solid var(--glass-line); border-radius: 999px; padding: 5px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* «разбор» (в полосе только .lead и список имён) — не больше двух строк */
   .bidbar > .lead:first-child + .tape { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 15px; line-height: 1.35; color: var(--muted); text-align: right; mask-image: none; -webkit-mask-image: none; }
@@ -200,7 +202,8 @@
   .hostbar { position: relative; z-index: 60; flex: none; display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
   .hostbar .code { flex: 1 0 100%; font: 700 12px/1 var(--display); letter-spacing: .14em; color: var(--muted); }
   /* кнопки не сжимаются в «ПРОПУСТИТЬПАУЗА» на узком экране: не влезают в ряд — переносятся */
-  .hostbar .btn { flex: 1 1 90px; min-width: 0; padding: 12px 10px; overflow-wrap: anywhere; }
+  /* слово в кнопке не рвём («ПРОПУСТ-ИТЬ» на 1024×768): не влезли три в ряд — кнопка целиком уходит на следующую строку */
+  .hostbar .btn { flex: 1 1 auto; padding: 12px 10px; white-space: nowrap; }
   .btn { min-height: 44px; font: 700 11.5px/1.25 var(--display); letter-spacing: .06em; text-transform: uppercase; color: #0a0a0f; background: linear-gradient(120deg, var(--c1), var(--c2)); border: 0; border-radius: 999px; padding: 13px 20px; cursor: pointer; box-shadow: 0 14px 34px -18px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .4); transition: transform .2s cubic-bezier(.3, 1.6, .5, 1), border-color .2s, background .2s, box-shadow .3s; }
   .btn.ghost { background: none; color: var(--text); border: 1px solid var(--glass-line); box-shadow: none; }
   .btn.ghost:disabled { opacity: .35; cursor: default; }
@@ -524,6 +527,10 @@
   .fbody .place.num { font: 900 .95em/1 var(--display); width: 2.2em; height: 2.2em; border-radius: 50%; border: 1.5px solid var(--glass-line); color: var(--muted); }
   .fbody .who { min-width: 0; margin: 0; font: 900 1.3em/1.08 var(--display); letter-spacing: -.03em; overflow-wrap: break-word; }
   .fbody .score { font: 900 1.9em/1 var(--display); letter-spacing: -.04em; color: var(--c1); }
+  /* счёт голосования — «0 голосов», а не число: в строке с именем он съедал её и ложился поверх имени
+     (доска 768–1024px), а на плакате рвался на две огромные строки. Всегда отдельной строкой и без переноса —
+     fitFinal проверяет и его ширину. */
+  .fbody .score.votes { grid-column: 1 / -1; min-width: 0; white-space: nowrap; overflow: hidden; }
   .fbody .verdict { display: block; -webkit-line-clamp: unset; overflow: visible; margin: .6em 0 .75em; font-size: 1em; line-height: 1.45; }
   .fbody .lots { display: flex; flex-wrap: wrap; gap: .4em; }
   .fbody .pl .chip { font-size: .85em; padding: .35em .85em; }
@@ -2147,7 +2154,7 @@ function fitFinal() {
   const body = box.querySelector(".fbody");
   const duo = body.classList.contains("duo");
   const rest = cards.filter((c) => !c.classList.contains("first"));
-  const ok = () => body.scrollHeight <= body.clientHeight + 1 && cards.every((c) => c.scrollHeight <= c.clientHeight + 1);
+  const ok = () => body.scrollHeight <= body.clientHeight + 1 && cards.every((c) => c.scrollHeight <= c.clientHeight + 1 && [...c.querySelectorAll(".score.votes")].every((v) => v.scrollWidth <= v.clientWidth + 1));
   // двоичный поиск самого крупного кегля группы в [min, max], при котором всё влезает; 0 — не влезло и на min
   const grow = (g, max, min) => {
     const fits = (fs) => { g.forEach((c) => { c.style.fontSize = fs + "px"; }); return ok(); };
@@ -2219,8 +2226,12 @@ function fitNames(cards) {
     const w = c.querySelector(".who");
     if (!w) return;
     w.style.fontSize = "";
+    w.style.overflowWrap = "";
     const base = parseFloat(getComputedStyle(w).fontSize);
     for (let k = .95; w.scrollWidth > w.clientWidth + 1 && k >= .55; k -= .05) w.style.fontSize = (base * k) + "px";
+    // и на 55% не влезло (одно слово в 24 буквы, «Анна-Мария Константинопольская» с неразрывным пробелом) —
+    // переносим внутри слова: обрезанное краем карточки имя хуже переноса
+    if (w.scrollWidth > w.clientWidth + 1) w.style.overflowWrap = "anywhere";
   });
 }
 // фирменный шрифт доезжает после первой отрисовки и меняет ширину строк — перемеряем
@@ -2234,7 +2245,7 @@ addEventListener("resize", () => { if (state && state.phase === "finished") fitF
 function lineupCard(p, res) {
   if (!p) return "";
   const lots = (p.lots.map((l) => `<span class="chip"><span class="cn">${l.emoji} ${escapeHtml(l.name)}</span></span>`).join("") + (p.lots.length > 2 ? `<span class="chip more">+${p.lots.length - 2}</span>` : "")) || `<span style="color:var(--muted)">${T("empty")}</span>`;
-  const score = res && res.score != null ? `<div class="score">${res.mode === "vote" ? escapeHtml(tf("votes_score", { n: res.score, w: pluralWord(Number(res.score), "plural_vote") })) : escapeHtml(res.score)}</div>` : "";
+  const score = res && res.score != null ? `<div class="score${res.mode === "vote" ? " votes" : ""}">${res.mode === "vote" ? escapeHtml(tf("votes_score", { n: res.score, w: pluralWord(Number(res.score), "plural_vote") })) : escapeHtml(res.score)}</div>` : "";
   // .plhead — место, имя и очки одним блоком: в полосах и плитках итогов они встают в строку/колонку
   // эмодзи в начале имени («🤖 aggressive») держим неразрывно с самим именем: иначе он висел отдельной строкой
   // и короткий хвост («aggressive 2», «Team A») тоже неразрывно — одна цифра не висит на второй строке

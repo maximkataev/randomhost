@@ -162,7 +162,10 @@
      Кнопки ужимаем по бокам и по кеглю, полю — меньше внутренних отступов (шрифт поля не меньше 16px) */
   @media (max-width: 380px) {
     .ownbid .mid { padding: 14px 11px; font-size: 13px; letter-spacing: .02em; }
-    .ownbid input { padding: 14px 6px; }
+    .ownbid input { padding: 14px 4px; text-overflow: ellipsis; }
+    /* подсказка «Своя сумма» в 15px обрезалась на 320px посреди буквы («Своя сум») — подсказку мельче
+       (сам ввод остаётся 18px), а если «+$5 → $156» отнял ещё места — многоточие, а не срез */
+    .ownbid input::placeholder { font-size: 11.5px; }
   }
   .linkbtn { background: none; border: 0; color: var(--c1); font: 600 13px var(--body); padding: 8px; min-height: 44px; text-decoration: underline; }
   .roomname { text-align: center; font: 700 17px/1.25 var(--body); color: var(--c1); margin: -4px 0 2px; overflow-wrap: anywhere; }
@@ -1494,6 +1497,10 @@ function flashButton(text) { const b = document.getElementById("bid"); if (b) { 
 // ---------- рендер ----------
 function render() {
   if (!state) return;
+  // Шторка «подробнее» относится к одному лоту: на следующем лоте она показывала бы описание
+  // прошлого, а на голосовании закрывала бы список лайнапов. Шторку ведущего не трогаем.
+  const lotSheet = document.getElementById("sheet");
+  if (lotSheet && !hostSheetOpen && lotSheet.classList.contains("on") && (state.round !== sheetRound || state.phase === "lobby" || state.phase === "finished")) lotSheet.classList.remove("on");
   if (state.phase === "lobby") return renderLobby();
   if (state.phase === "intro") return renderIntro();
   if (state.phase === "finished") return renderFinal();
@@ -1719,13 +1726,21 @@ function renderLot(lot, kind) {
 
 function renderActions(p) {
   const s = state, box = document.getElementById("bidmain");
-  box.replaceChildren();
+  // Главная кнопка ставки переживает state, если остаётся на месте: торги — это ставка за ставкой,
+  // и каждая рассылка state пересоздавала кнопку. Палец, опущенный на старую кнопку и поднятый уже
+  // над новой, не давал click — ставку «съедало» ровно в самой горячей фазе.
+  const old = document.getElementById("bid");
+  const keep = old && old.parentNode === box && box.childElementCount === 1;
+  if (!keep) box.replaceChildren();
   const plate = (cls, title, text) => { const d = el("div", "plate " + cls); if (title) d.append(el("b", null, title)); d.append(document.createTextNode(text || "")); return d; };
   const next = s.price + 1;
   // «Своя сумма» живёт в своём контейнере и не пересоздаётся на каждом state: раньше чужая ставка
   // закрывала поле вместе с набранной суммой и клавиатурой
   const ownOk = !p.full && (s.phase === "lot" || s.phase === "bidding") && p.money > 0 && s.leaderId !== me && next < p.money;
   syncOwnBid(ownOk ? p : null);
+  // дальше кнопку ставки рисуем не всегда — тогда прежнюю убираем, как раньше
+  const bidNow = !p.full && (s.phase === "lot" || s.phase === "bidding") && p.money > 0 && s.leaderId !== me && next <= p.money;
+  if (keep && !bidNow) box.replaceChildren();
   if (p.full) return box.append(plate("", I18N.t("done_title"), I18N.t("done_text")));
   // round в каждом действии: на медленной сети «Скип» или «Забрать» иначе доезжали до следующего,
   // ещё не показанного лота — сервер отвечает closed, если лот уже другой
@@ -1756,9 +1771,13 @@ function renderActions(p) {
   if (next > p.money) return box.append(plate("err", I18N.t("not_enough_title"), tpl("not_enough_text", { have: money(p.money), need: money(next) })));
   // «Перебить» уместно только когда есть кого перебивать: на первой ставке лота лидера нет,
   // и кнопка «Перебить $1» врала бы игроку про то, что происходит.
-  const big = el("button", "big", tpl(s.leaderId ? "bid_btn" : "bid_first_btn", { money: money(next) })); big.id = "bid";
+  const label = tpl(s.leaderId ? "bid_btn" : "bid_first_btn", { money: money(next) });
+  // та же кнопка: новая подпись, новый обработчик и снятое «жду ответа» — как у свежей
+  const big = keep ? old : el("button", "big", label);
+  if (keep) { if (big.textContent !== label) big.textContent = label; big.classList.remove("busy"); big.disabled = false; }
+  big.id = "bid";
   big.onclick = () => { unlockAudio(); act({ type: "bid", amount: next, expectedPrice: s.price, round: s.round }, big); };
-  box.append(big);
+  if (!keep) box.append(big);
   // «+$5» и своя сумма — в одном ряду под главной кнопкой (syncOwnBid): поле всегда на экране
 }
 
@@ -1839,8 +1858,10 @@ function tickTimer() {
   sync();
 })();
 
+let sheetRound = null;
 function openSheet(lot) {
   const sh = document.getElementById("sheet");
+  sheetRound = state ? state.round : null;
   hostSheetOpen = false;
   sh.classList.remove("host");
   sh.innerHTML = `<div style="font:900 22px var(--display);margin-bottom:8px">${escapeHtml(lot.name)}</div><p>${escapeHtml(lot.description)}</p><p class="fact"><b>${I18N.t("sheet_fact")}</b>${escapeHtml(lot.fact)}</p><button class="mid" id="close">${I18N.t("sheet_close")}</button>`;
@@ -1849,7 +1870,7 @@ function openSheet(lot) {
 }
 
 // за кого я голосовал — сервер этого не рассказывает (счёт открывается после закрытия, §9)
-let myVote = null;
+let myVote = null, voteKey = "";
 function renderFinal() {
   screenMode("final");
   const s = state, p = mine();
@@ -1864,9 +1885,18 @@ function renderFinal() {
       // раньше ✓ пропадал на первом же чужом голосе, и кнопки снова становились активными.
       const voted = (s.voted || []).indexOf(me) !== -1 || !!myVote;
       const canVote = !!(p && p.lots.length);
-      app.innerHTML = `<div class="final"><h1>${I18N.t("vote_h1_a")}<em>${I18N.t("vote_h1_b")}</em></h1>${vtask ? `<div class="taskbar on" style="justify-content:center"><b>${escapeHtml(vtask.icon + " " + vtask.title)}</b><span style="flex:none">${escapeHtml(vtask.short || "")}</span></div>` : ""}<p class="sub">${tpl("vote_sub", { n: s.votes, total: players.filter((x) => x.lots.length).length })}</p>${!canVote ? `<div class="plate">${escapeHtml(I18N.t("vote_no_lots"))}</div>` : voted ? `<div class="plate lead-me">${escapeHtml(I18N.t("vote_done"))}</div>` : ""}<div class="vote" id="vote"></div><div class="note" id="note"></div></div>`;
+      // Экран голосования не пересобираем на каждый state: чужой голос (или чей-то вход) менял
+      // только счётчик, а кнопки «Голосую» пересоздавались — тап, пришедшийся на рассылку, терялся.
+      // Изменилось что-то кроме счётчика (кандидаты, мой голос, язык) — пересобираем, как раньше.
+      const cands = players.filter((x) => x.id !== me && x.lots.length);
+      const key = JSON.stringify([I18N.lang, voted, canVote, myVote, vtask && vtask.title, cands.map((x) => [x.id, x.name, x.lots.length])]);
+      const sub = tpl("vote_sub", { n: s.votes, total: players.filter((x) => x.lots.length).length });
+      const subEl = app.querySelector(".final > p.sub");
+      if (key === voteKey && subEl && document.getElementById("vote")) { if (subEl.innerHTML !== sub) subEl.innerHTML = sub; return; }
+      voteKey = key;
+      app.innerHTML = `<div class="final"><h1>${I18N.t("vote_h1_a")}<em>${I18N.t("vote_h1_b")}</em></h1>${vtask ? `<div class="taskbar on" style="justify-content:center"><b>${escapeHtml(vtask.icon + " " + vtask.title)}</b><span style="flex:none">${escapeHtml(vtask.short || "")}</span></div>` : ""}<p class="sub">${sub}</p>${!canVote ? `<div class="plate">${escapeHtml(I18N.t("vote_no_lots"))}</div>` : voted ? `<div class="plate lead-me">${escapeHtml(I18N.t("vote_done"))}</div>` : ""}<div class="vote" id="vote"></div><div class="note" id="note"></div></div>`;
       const box = document.getElementById("vote");
-      players.filter((x) => x.id !== me && x.lots.length).forEach((x) => {
+      cands.forEach((x) => {
         const row = el("div", "row"); const n = el("div", "n", x.name); n.append(el("small", null, x.lots.map((l) => l.emoji + " " + l.name).join(" · ")));
         row.append(n);
         // без лотов голосовать нельзя (§9) — кнопок не рисуем, а не ждём молчаливого отказа сервера
