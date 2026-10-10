@@ -4309,33 +4309,63 @@
   }
 
   // Доска с волнами-кочками: быстрый шарик подпрыгивает на гребне и может перелететь соседа
-  function waveBoard(x0, y0, x1, t) {
+  function waveBoard(x0, y0, x1, t, gap = null) {
     const b = { x0, y0, x1, t, y1: y0 + Math.abs(x1 - x0) * t, dir: Math.sign(x1 - x0) };
     b.yAt = (x) => b.y0 + Math.abs(x - b.x0) * t;
     const L = Math.abs(x1 - x0);
-    const pts = [];
+    let pts = [];
     const period = 58, amp = 6.5;
-    for (let d = 0; d <= L; d += 7) {
+    const at = (d) => {
       const x = x0 + b.dir * d;
       // первая и последняя четверть — ровные (разгон и шпилька)
       const k = smooth01(0.15 * L, 0.25 * L, d) * (1 - smooth01(0.8 * L, 0.9 * L, d));
       const bump = Math.pow(Math.max(0, Math.sin(d / period * Math.PI)), 3) * amp * k;
-      pts.push([x, b.yAt(x) - bump]);
+      return [x, b.yAt(x) - bump];
+    };
+    // gap = [d0, d1] — разрыв под люк, расстояния от начала доски
+    let cut = !gap;
+    for (let d = 0; d <= L; d += 7) {
+      if (!cut && d > gap[0]) {
+        pts.push(at(gap[0]));
+        addPolyline(pts, 4, 'wood', { look: 'lane' });
+        pts = [at(gap[1])];
+        cut = true;
+      }
+      if (gap && d > gap[0] && d <= gap[1]) continue;
+      pts.push(at(d));
     }
     pts.push([x1, b.y1]);
     addPolyline(pts, 4, 'wood', { look: 'lane' });
+    if (gap) b.gapPts = [at(gap[0]), at(gap[1])];
     return b;
   }
 
-  function buildZig(y0, inSide, n) {
+  // Серпантин. С hatch в конце каждой пологой доски — люк-срезка: открывается под тем, кто отстаёт
+  // по сюжету, и роняет его на доску ниже, мимо шпильки (обгон «по короткому пути»).
+  function buildZig(y0, inSide, n, hatch = false) {
     const m = baseModule('zig', y0, inSide);
     let side = inSide, y = y0;
     const pts = [];
     let b = null;
+    m.hatches = [];
     for (let k = 0; k < n; k++) {
       const t = rr(0.17, 0.22);
-      if (k % 2 === 0) b = waveBoard(exitX(side) + side * 2, y + TURN_G, exitX(-side), t);
-      else { b = entryBoard(y, side, t); addKicker(b, rr(0.5, 0.7)); }
+      if (k % 2 === 0) {
+        const x0 = exitX(side) + side * 2, x1 = exitX(-side);
+        const L = Math.abs(x1 - x0);
+        b = waveBoard(x0, y + TURN_G, x1, t, hatch ? [L - 70, L - 36] : null);
+        if (hatch) {
+          const [ga, gb] = b.gapPts;
+          const ang = Math.atan2(gb[1] - ga[1], gb[0] - ga[0]);
+          const len = Math.hypot(gb[0] - ga[0], gb[1] - ga[1]);
+          const door = makeBody('door', ga[0], ga[1], [{ ax: 0, ay: 0, bx: len, by: 0, r: 4, matName: 'wood', look: 'door' }], { a: ang });
+          door.base = ang;
+          door.open = 0;
+          door.want = 0;
+          m.bodies.push(door);
+          m.hatches.push({ door, board: b, dir: b.dir, hx: (ga[0] + gb[0]) / 2, hy: (ga[1] + gb[1]) / 2, used: false, openT: -1 });
+        }
+      } else { b = entryBoard(y, side, t); addKicker(b, rr(0.5, 0.7)); }
       pts.push(...boardRoute(b));
       if (k < n - 1) {
         const turn = addTurn(b.x1, b.y1, -side);
@@ -4348,6 +4378,15 @@
     finishModule(m, b, side, pts);
     m.tRef = TREF.zig * n;
     m.branches.push(makeBranch(pts, 0, m.tRef));
+    if (m.hatches.length) {
+      m.update = (h) => {
+        for (const hh of m.hatches) {
+          const d = hh.door;
+          d.open = clamp(d.open + (d.want ? h * 9 : -h * 7), 0, 1);
+          driveBody(d, d.base + hh.dir * 1.3 * smooth01(0, 1, d.open), h);
+        }
+      };
+    }
     return m;
   }
 
@@ -4710,6 +4749,7 @@
     addSeg(px, py - 30, px + 26, py - 8, 4, 'iron', { look: 'plank' });
     m.px = px; m.py = py;
     const cols = {};
+    m.gates = [];
     let lastY = 0;
     for (const S of [-1, 1]) {
       const pts = [[px + S * 20, py + 16]];
@@ -4723,6 +4763,18 @@
         pts.push(...boardRoute(bd, xa + S * (out ? 14 : -14)));
         // падение в щель
         const xg = out ? wallX(S) - S * DUEL_GAP / 2 : px + S * DUEL_GAP / 2;
+        // шлагбаум на третьей доске: перекрывает колонку, пока режиссёр не даст проезд
+        if (k === 2) {
+          const gx = lerp(xa, xb, 0.6);
+          const level = bd.yAt(gx) - 4;
+          const gy = level - 4 - 30;
+          const gate = makeBody('gate', gx, gy, [{ ax: 0, ay: 0, bx: 0, by: 30, r: 5, matName: 'iron', look: 'gate' }], { a: 0 });
+          gate.y0 = gy;
+          gate.open = 0;
+          gate.want = 0;
+          m.bodies.push(gate);
+          m.gates.push({ S, gate, x: gx, level, held0: -1, done: false });
+        }
         y = bd.y1 + DUEL_DROP;
         pts.push([xg, y - R - 8]);
       }
@@ -4755,6 +4807,13 @@
     m.passed = new Set();
     m.steered = new Set();
     m.update = (h) => {
+      for (const g of m.gates) {
+        g.gate.open = clamp(g.gate.open + (g.gate.want ? h * 5 : -h * 5), 0, 1);
+        const ny = g.gate.y0 - 30 * smooth01(0, 1, g.gate.open);
+        g.gate.vy = h > 0 ? (ny - g.gate.y) / h : 0;
+        g.gate.y = ny;
+        placeBody(g.gate);
+      }
       for (const mb of marbles) {
         if (mb.finished || mb.mod !== m.index) continue;
         const dx = mb.x - px;
@@ -4820,7 +4879,7 @@
     let y = pen.y1, side = pen.outSide;
     const add = (m) => { m.index = modules.length; modules.push(m); y = m.y1; side = m.outSide; };
     for (const [kind, arg] of seq) {
-      if (kind === 'zig') add(buildZig(y, side, arg || 2));
+      if (kind === 'zig') add(buildZig(y, side, arg || 2, true));
       else if (kind === 'chicane') { const md = buildPegs(y, side, 6); md.kind = 'chicane'; add(md); }
       else if (kind === 'sprint') { const md = buildZig(y, side, arg || 2); md.kind = 'sprint'; md.tRef = TREF.zig * (arg || 2); add(md); }
       else if (kind === 'pegs') add(buildPegs(y, side));
@@ -5058,6 +5117,7 @@
       if (mb.finished || mb.held) { mb.stuckT = 0; mb.lastProg = mb.prog; continue; }
       const mod = modules[mb.mod];
       if (mod && (mod.kind === 'pen' || (mod.kind === 'hopper' && !mod.gate.want))) { mb.stuckT = 0; mb.lastProg = mb.prog; continue; }
+      if (mod && mod.gates && mod.gates.some(g => !g.done && Math.abs(mb.x - g.x) < 150 && mb.y > g.level - 130 && mb.y < g.level + 10)) { mb.stuckT = 0; continue; }
       if (Math.abs(mb.prog - mb.lastProg) > 0.04) { mb.lastProg = mb.prog; mb.stuckT = 0; continue; }
       mb.stuckT += dt;
       if (mb.stuckT > 1.2) {
@@ -5145,7 +5205,9 @@
     Object.assign(dir, {
       story: pickStory(sec, n), drama: null, lastDramaEnd: -9, dramas: 0, winnerDramas: 0,
       ranks: [], wr: 1, target: 1, err: 0, p: 0, leadProg: 0, lastLead: null, lastLeadT: 0,
-      hopperDone: new Set(), sec
+      hopperDone: new Set(), sec, hatchGrace: 0,
+      // финиш-дуэль: победитель подходит к ней не первым и выходит вперёд на шлагбауме
+      duelFlip: rnd() < 0.7
     });
   }
 
@@ -5228,7 +5290,12 @@
     dir.wr = w.rank;
     // в коротком заезде сюжет сжат: развязка к середине трассы, финиш — дуэль на скорость
     dir.target = storyRank(dir.sec <= 5 ? Math.min(1, dir.p * 1.6) : dir.p, n);
+    const fin0 = modules[modules.length - 1];
+    const flipPending = dir.duelFlip && dir.p > 0.5 && !fin0.flipDone && dir.wr <= Math.min(3, n);
+    if (flipPending) dir.target = Math.max(dir.target, Math.min(2, n));
     dir.err = dir.wr - dir.target;
+    // после люка-срезки победитель какое-то время не придерживается сюжета «сзади»
+    if (simTime < dir.hatchGrace && dir.err < 0) dir.err = 0;
     // мягкие рычаги: шарики катятся чуть лучше или хуже (разброс как у настоящих шариков)
     const err = dir.err;
     const ending = modules[modules.length - 2];
@@ -5240,6 +5307,8 @@
       if (m === w) {
         m.drag = err > 0 ? -0.1 * K * Math.min(err, 3) : err < 0 ? 0.05 * Math.min(-err, 2) : 0;
         m.gMul = err > 0 ? 1 + 0.08 * K * Math.min(err, 3) : err < 0 ? 1 - 0.03 * Math.min(-err, 2) : 1;
+        // перед дуэлью победитель не должен быть первым: чуть придерживаем его, чтобы его подтянули
+        if (flipPending && err < 0) { m.drag = 0.12; m.gMul = 0.94; }
         continue;
       }
       const gap = m.prog - w.prog;
@@ -5247,7 +5316,7 @@
       if (err > 0 && gap > -0.1 && gap < 3) { m.drag = 0.08 * K * Math.min(err, 3); m.gMul = 1 - 0.05 * K * Math.min(err, 3); }
       else if (err < 0 && gap < 0 && gap > -1.2) { m.drag = -0.05; m.gMul = 1.05; }
       // у последнего препятствия соперники впереди победителя катятся заметно хуже
-      if (late && gap > -0.1) { m.drag = Math.max(m.drag, sprint ? 0.3 : 0.15); m.gMul = Math.min(m.gMul, sprint ? 0.8 : 0.9); }
+      if (late && gap > -0.1 && !flipPending) { m.drag = Math.max(m.drag, sprint ? 0.3 : 0.15); m.gMul = Math.min(m.gMul, sprint ? 0.8 : 0.9); }
     }
     // страховка по времени: победитель проходит сквозь шарики и механизмы
     if (race.t > raceSeconds * 2 + 4 && !race.overtime) { race.overtime = true; race.stats.overtime = 1; }
@@ -5257,14 +5326,14 @@
     const head = list.find(m => !m.finished) || w;
     const gapLead = head === w ? 0 : head.prog - w.prog;
     const rem = TOTAL_REF - w.prog;
-    const allow = dir.target > 1 ? Math.min(0.35, 0.15 * (dir.target - 1)) : 0;
-    const margin = rem < fin.tRef + 1.2 ? 0.25 : 0;
+    const allow = flipPending ? 0.45 : dir.target > 1 ? Math.min(0.35, 0.15 * (dir.target - 1)) : 0;
+    const margin = rem < fin.tRef + 1.2 && !flipPending ? 0.25 : 0;
     // сколько надо отыграть за оставшуюся трассу — чем ближе финиш, тем сильнее
     const need = Math.max(0, gapLead - allow) + (head === w ? Math.max(0, margin - (w.prog - (list.find(m => m !== w && !m.finished) || w).prog)) : margin);
     const push = clamp(need / Math.max(0.6, rem) * 3, 0, 0.3);
     for (const m of marbles) {
       const gap = m.prog - w.prog;
-      if (m === w) m.tMul = Math.max(err > 0 ? 1 + 0.07 * K * Math.min(err, 3) : err < 0 ? 0.97 : 1, 1 + push);
+      if (m === w) m.tMul = Math.max(err > 0 ? 1 + 0.07 * K * Math.min(err, 3) : err < 0 ? (flipPending ? 0.93 : 0.97) : 1, 1 + push);
       else {
         m.tMul = err > 0 && gap > -0.1 && gap < 3 ? 1 - 0.05 * K * Math.min(err, 3) : 1;
         // соперники впереди победителя на поводке — чуть медленнее
@@ -5294,7 +5363,8 @@
   function neutralMechanisms() {
 
     for (const m of modules) {
-      if (m.kind === 'finish') m.decide = null;
+      if (m.kind === 'finish') { m.decide = null; for (const g of m.gates) { g.done = true; g.gate.want = 1; } }
+      if (m.hatches) for (const h of m.hatches) h.door.want = 0;
       if (m.kind === 'hopper') hopperNeutral(m);
       if (m.kind === 'trap') for (const d of m.doors) if (d.hold >= 0) { d.hold -= dir.sdt; if (d.hold < 0) releasePocket(m, d); }
       if (m.kind === 'fork') {
@@ -5358,6 +5428,7 @@
       else if (m.kind === 'trap') runTrap(m, w);
       else if (m.kind === 'hammer') runHammer(m, w);
       else if (m.kind === 'finish' && m.passed) runDuel(m, w);
+      else if (m.hatches && m.hatches.length) runHatch(m, w);
     }
     // дно карманов закрывается через полсекунды
     for (const m of modules) if (m.kind === 'trap') for (const d of m.doors) if (d.tip.want && simTime - d.tipT > 0.5) d.tip.want = 0;
@@ -5380,6 +5451,24 @@
   // соперники, которые впереди него, уходят в одну колонку, а победитель — в другую:
   // в своей колонке ему никто не мешает, лидера соседней он обходит на скорости.
   function runDuel(m, w) {
+    // шлагбаумы: колонка соперников стоит, пока победитель не поравняется со шлагбаумом
+    // (или не истечёт время ожидания); колонка победителя открыта сразу
+    for (const g of m.gates) {
+      const wPast = w.finished || (w.mod === m.index && w.y > g.level + 40);
+      if (wPast) m.flipDone = true;
+      if (g.done) continue;
+      // победителя шлагбаум не держит никогда: ни его колонку, ни случайный отскок на чужую сторону
+      let open = wPast || w.duelSide === g.S || (w.mod === m.index && Math.abs(w.x - g.x) < 90 && w.y > g.level - 60 && w.y < g.level + 8);
+      if (!open) {
+        if (g.held0 < 0) {
+          for (const mb of marbles) {
+            if (mb.finished || mb.mod !== m.index || mb === w) continue;
+            if (Math.abs(mb.x - g.x) < 80 && mb.y > g.level - 40 && mb.y < g.level + 8) { g.held0 = simTime; break; }
+          }
+        } else if (simTime - g.held0 > 1.5) open = true;
+      }
+      if (open) { g.done = true; g.gate.want = 1; sfx('gate'); }
+    }
     m.decide = (inc) => {
       if (dir.neutral || race.winnerDone || m.passed.has(w)) return 0;
       if (!m.rivalSide) {
@@ -5393,6 +5482,33 @@
       if (inc.prog > w.prog - 0.2) return m.rivalSide;
       return 0;
     };
+  }
+
+  // Люк-срезка на серпантине: отстающий по сюжету победитель проваливается на доску ниже
+  function runHatch(m, w) {
+    for (const h of m.hatches) {
+      const d = h.door;
+      if (d.want) {
+        const past = (w.x - h.hx) * h.dir > 18 || w.y > h.hy + 20 || w.finished || w.mod !== m.index;
+        if (past || simTime - h.openT > 1.1) d.want = 0;
+        continue;
+      }
+      if (h.used || w.finished || w.mod !== m.index || dir.p > 0.6) continue;
+      const up = (h.hx - w.x) * h.dir;
+      if (up < 0 || up > 95) continue;
+      if (Math.abs(w.y - (h.board.yAt(w.x) - w.r - 4)) > 1.6 * R) continue;
+      const head = dir.ranks.find(mb => !mb.finished);
+      if (!head || head === w || head.prog - w.prog < 0.3) continue;
+      // отстающий по сюжету — всегда; просто не лидер — с шансом (обгон «по короткому пути»)
+      if (h.roll === undefined) h.roll = dir.err > 0 || rnd() < 0.65;
+      if (!h.roll) continue;
+      d.want = 1;
+      h.used = true;
+      h.openT = simTime;
+      dir.hatchGrace = simTime + 3;
+      race.stats.hatch = (race.stats.hatch || 0) + 1;
+      sfx('door');
+    }
   }
 
   // Победитель катится по доске прямо на люк
