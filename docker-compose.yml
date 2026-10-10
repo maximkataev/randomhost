@@ -35,13 +35,16 @@ services:
       - lastq
       - quip
       - wave
+      - crowd
       - floe
       - rapids
       - storm
 
   # сервер онлайн-аукциона (WebSocket + API); nginx проксирует в него /auction/ws и /auction/api/
   auction:
-    build: ./auction
+    build:
+      context: .
+      dockerfile: auction/Dockerfile
     image: randomhostauction:latest
     container_name: randomhost-auction
     cpuset: "2-5"
@@ -76,7 +79,9 @@ services:
   # сервер рулетки (WebSocket + API); nginx проксирует в него /roulette/ws и /roulette/api/.
   # Устроен как auction: состояние комнат в памяти, дамп в том раз в 5 с — деплой не рвёт партию.
   roulette:
-    build: ./roulette
+    build:
+      context: .
+      dockerfile: roulette/Dockerfile
     image: randomhostroulette:latest
     container_name: randomhost-roulette
     cpuset: "2-5"
@@ -99,7 +104,9 @@ services:
   # сервер «Бомбы» (WebSocket + API); nginx проксирует в него /bomb/ws и /bomb/api/.
   # Устроен как roulette. В дампе — запечатанная длина фитиля: без неё после рестарта нечего взрывать.
   bomb:
-    build: ./bomb
+    build:
+      context: .
+      dockerfile: bomb/Dockerfile
     image: randomhostbomb:latest
     container_name: randomhost-bomb
     cpuset: "2-5"
@@ -122,7 +129,9 @@ services:
   # сервер «Вопроса ребром» (WebSocket + API); nginx проксирует в него /quip/ws и /quip/api/.
   # Устроен как bomb. В дампе — авторы ответов и пулы подсказок: без них после рестарта не раскрыть схватку.
   quip:
-    build: ./quip
+    build:
+      context: .
+      dockerfile: quip/Dockerfile
     image: randomhostquip:latest
     container_name: randomhost-quip
     cpuset: "2-5"
@@ -171,7 +180,9 @@ services:
   # сервер «Не верю!» (WebSocket + API); nginx проксирует в него /fibs/ws и /fibs/api/.
   # Устроен как bomb/quip. В дампе — правда до раскрытия и пул заготовленной лжи: снимки их не отдают.
   fibs:
-    build: ./fibs
+    build:
+      context: .
+      dockerfile: fibs/Dockerfile
     image: randomhostfibs:latest
     container_name: randomhost-fibs
     cpuset: "2-5"
@@ -198,7 +209,9 @@ services:
   # Устроен как fibs. В дампе — верный ответ до раскрытия и ответы испытаний Камеры: снимки их не отдают.
   # mem_limit 160m: на нагрузочном прогоне (200 комнат) RSS доходил до ~123 МБ — снять docker stats после выкатки.
   lastq:
-    build: ./lastq
+    build:
+      context: .
+      dockerfile: lastq/Dockerfile
     image: randomhostlastq:latest
     container_name: randomhost-lastq
     cpuset: "2-5"
@@ -221,7 +234,9 @@ services:
   # сервер «На одной волне» (WebSocket + API); nginx проксирует в него /wave/ws и /wave/api/.
   # Устроен как fibs. В дампе — центры секторов и стрелки до раскрытия: снимки их не отдают.
   wave:
-    build: ./wave
+    build:
+      context: .
+      dockerfile: wave/Dockerfile
     image: randomhostwave:latest
     container_name: randomhost-wave
     cpuset: "2-5"
@@ -244,10 +259,38 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # сервер «Как все» (WebSocket + API); nginx проксирует в него /crowd/ws и /crowd/api/.
+  # Устроен как wave. В дампе — голоса, ва-банк и мнения до раскрытия: снимки их не отдают.
+  # Рядом лежит анонимная статистика вопросов (qstats.json) для калибровки колоды.
+  crowd:
+    build:
+      context: .
+      dockerfile: crowd/Dockerfile
+    image: randomhostcrowd:latest
+    container_name: randomhost-crowd
+    cpuset: "2-5"
+    restart: always
+    mem_limit: 128m
+    volumes:
+      - crowd-state:/app/state
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3900/crowd/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # сервер «Царя льдины» (WebSocket, 20 тиков в секунду); nginx проксирует в него /floe/ws и /floe/api/.
   # В дампе — только комнаты с людьми и токенами: идущая партия после рестарта отменяется.
   floe:
-    build: ./floe
+    build:
+      context: .
+      dockerfile: floe/Dockerfile
     image: randomhostfloe:latest
     container_name: randomhost-floe
     cpuset: "2-5"
@@ -270,7 +313,9 @@ services:
   # сервер «Утиного сплава» (WebSocket, 20 тиков в секунду); nginx проксирует в него /rapids/ws и /rapids/api/.
   # Устроен как floe: в дампе только комнаты с людьми и токенами, идущий заплыв после рестарта отменяется.
   rapids:
-    build: ./rapids
+    build:
+      context: .
+      dockerfile: rapids/Dockerfile
     image: randomhostrapids:latest
     container_name: randomhost-rapids
     cpuset: "2-5"
@@ -298,5 +343,6 @@ volumes:
   lastq-state:
   quip-state:
   wave-state:
+  crowd-state:
   floe-state:
   rapids-state:

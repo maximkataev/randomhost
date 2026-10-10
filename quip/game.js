@@ -14,21 +14,24 @@
 
 const { normalize, normalizeList } = require("./normalize");
 
-const DECKS = ["duel", "emoji", "final"];
+const DECKS = ["duel", "emoji", "rev", "final"];
 
 // Добавка ко времени на ответ (просьба владельца 04.10: «дольше на 10–20 с»). Настраивается
 // переменной окружения ROUND_EXTRA_SEC (0…60), по умолчанию +15 с; голосования и раскрытия не трогает.
 const EXTRA_MS = Math.round(Math.max(0, Math.min(60, Number(process.env.ROUND_EXTRA_SEC ?? 15) || 0)) * 1000);
 
-// Раунды партии (§2). Полная: дуэли → сцена → дуэли ×2 → финал (8–12 минут; с одним кругом дуэлей
+// Раунды партии (§2). Полная: дуэли → сцена → «Наоборот» ×2 → финал (8–12 минут; с одним кругом дуэлей
 // плейтест выходил в 3 минуты — «только разогрелись, а уже пьедестал»). Короткая: дуэли и финал.
+// «Наоборот» (владелец, 09.10): дан ответ («99,1%»), придумать к нему вопрос. Идёт вторым кругом дуэлей
+// на месте прежнего duel2 — тот же круг, соперник через одного. duel2 остаётся для дампов старых комнат.
 const ROUNDS = {
   duel: { deck: "duel", mult: 1, votes: 1, answerMs: 30000 + EXTRA_MS, shift: 1 },
   emoji: { deck: "emoji", mult: 2, votes: 2, answerMs: 30000 + EXTRA_MS },
   duel2: { deck: "duel", mult: 2, votes: 1, answerMs: 30000 + EXTRA_MS, shift: 2 },
+  rev: { deck: "rev", mult: 2, votes: 1, answerMs: 30000 + EXTRA_MS, shift: 2 },
   final: { deck: "final", mult: 3, votes: 3, answerMs: 60000 + EXTRA_MS },
 };
-const PLAN_FULL = ["duel", "emoji", "duel2", "final"];
+const PLAN_FULL = ["duel", "emoji", "rev", "final"];
 const PLAN_SHORT = ["duel", "final"];
 
 const T = {
@@ -246,11 +249,13 @@ class Game {
     const s = this.s;
     const key = s.plan[s.ri];
     const R = ROUNDS[key];
+    // колоды «Наоборот» на языке комнаты нет — играем этот раунд обычными вопросами, а не пустыми карточками
+    const dk = this.deck(R.deck).length ? R.deck : "duel";
     const ps = this.present();
     // порядок круга перемешан, чтобы соседи в лобби не играли всегда друг против друга
     let ring = ps.slice();
     for (let i = ring.length - 1; i > 0; i--) { const j = this.rnd(i + 1); [ring[i], ring[j]] = [ring[j], ring[i]]; }
-    // второй круг дуэлей идёт по тому же кругу, что первый (со сдвигом через одного) — иначе пары повторялись бы;
+    // второй круг дуэлей («Наоборот») идёт по тому же кругу, что первый (со сдвигом через одного) — иначе пары повторялись бы;
     // новенькие встают в конец круга
     if (R.shift === 2 && Array.isArray(s.duelRing)) {
       const kept = s.duelRing.map((id) => ps.find((p) => p.id === id)).filter(Boolean);
@@ -262,8 +267,8 @@ class Game {
     const mk = (card, authors, kind, votes) => ({
       id: ++s.seq,
       kind, // duel | grid
-      deck: R.deck,
-      prompt: R.deck === "emoji" ? { e: card.e } : { q: card.q },
+      deck: dk,
+      prompt: dk === "emoji" ? { e: card.e } : dk === "rev" ? { a: card.a } : { q: card.q },
       pool: (card.h || []).slice(), // подсказки — только на сервере
       poolUsed: [],
       authors,
@@ -278,14 +283,14 @@ class Game {
     // голосов у зрителя — не больше половины чужих ответов: при трёх игроках «2 голоса из 2 чужих»
     // значило голосовать за всех сразу, и выбор ничего не решал
     const gridVotes = Math.min(R.votes, Math.max(1, Math.floor((ring.length - 1) / 2)));
-    if (R.deck === "duel" && ring.length > SMALL) {
-      const cards = this.draw("duel", ring.length);
+    if (R.shift && ring.length > SMALL) {
+      const cards = this.draw(dk, ring.length);
       // во втором круге соперник — через одного: пары первого круга не повторяются (при 5+ игроках)
       const k = R.shift || 1;
       ms = ring.map((p, i) => mk(cards[i % cards.length], [p.id, ring[(i + k) % ring.length].id], "duel", 1));
-    } else if (R.deck === "duel") {
+    } else if (R.shift) {
       // мало игроков: два вопроса, отвечают все, голосуют за лучший
-      ms = this.draw("duel", 2).map((c) => mk(c, s.roster.slice(), "grid", 1));
+      ms = this.draw(dk, 2).map((c) => mk(c, s.roster.slice(), "grid", 1));
     } else {
       ms = this.draw(R.deck, 1).map((c) => mk(c, s.roster.slice(), "grid", gridVotes));
     }
@@ -302,7 +307,7 @@ class Game {
     return this.s.matchups.filter((m) => m.authors.includes(id));
   }
 
-  // ответ руками: текст (дуэль, сцена) или три пункта (финал)
+  // ответ руками: текст (дуэль, сцена, вопрос к ответу) или три пункта (финал)
   answer(id, mid, ans, now) {
     const s = this.s;
     if (s.phase !== "answer") return { ok: false, reason: "not_answer" };

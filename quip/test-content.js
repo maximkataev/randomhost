@@ -8,7 +8,7 @@ const { load, LANGS } = require("./content");
 const { normalize, normalizeList } = require("./normalize");
 
 const C = load(path.join(__dirname, "content"));
-const MIN = { duel: 400, emoji: 150, final: 120 };
+const MIN = { duel: 400, emoji: 150, rev: 150, final: 120 };
 
 for (const lang of LANGS) {
   test(`${lang}: объёмы колод не меньше спеки`, () => {
@@ -26,6 +26,12 @@ for (const lang of LANGS) {
       assert.strictEqual(c.h.length, 6, "подписей не 6: " + c.e);
       for (const h of c.h) assert.ok(typeof h === "string" && h.trim() && h.length <= 60, `подпись «${h}» к ${c.e}`);
     }
+    // «Наоборот»: дан ответ, подсказки — вопросы к нему (длиннее ответа: до 80, как ответ игрока)
+    for (const c of C[lang].rev) {
+      assert.ok(c.a && c.a.length <= 40, "длинный ответ: " + c.a);
+      assert.strictEqual(c.h.length, 6, "вопросов не 6: " + c.a);
+      for (const h of c.h) assert.ok(typeof h === "string" && h.trim() && h.length <= 80 && /[?;]$/.test(h.trim()), `вопрос «${h}» к «${c.a}»`);
+    }
     for (const c of C[lang].final) {
       assert.ok(c.q && c.q.length <= 90, "длинный вопрос: " + c.q);
       assert.strictEqual(c.h.length, 5, "наборов не 5: " + c.q);
@@ -37,12 +43,12 @@ for (const lang of LANGS) {
   });
 
   test(`${lang}: нет дублей вопросов, у вопроса подсказки не совпадают между собой (иначе джинкс сам с собой)`, () => {
-    for (const deck of ["duel", "emoji", "final"]) {
-      const keys = C[lang][deck].map((c) => (c.q || c.e).trim().toLowerCase());
+    for (const deck of ["duel", "emoji", "rev", "final"]) {
+      const keys = C[lang][deck].map((c) => (c.q || c.e || c.a).trim().toLowerCase());
       assert.strictEqual(new Set(keys).size, keys.length, `${lang}/${deck}: есть дубли`);
       for (const c of C[lang][deck]) {
         const hk = c.h.map((h) => (Array.isArray(h) ? normalizeList(h) : normalize(h)));
-        assert.strictEqual(new Set(hk).size, hk.length, `подсказки совпадают после нормализации: ${c.q || c.e}`);
+        assert.strictEqual(new Set(hk).size, hk.length, `подсказки совпадают после нормализации: ${c.q || c.e || c.a}`);
       }
     }
   });
