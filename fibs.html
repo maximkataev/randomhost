@@ -135,6 +135,12 @@
   .me-badge { display: flex; align-items: center; gap: 12px; }
   .me-badge .av { font-size: 44px; }
   .me-badge b { font: 900 28px/1.1 var(--head); display: block; overflow-wrap: anywhere; }
+  .avbtn { border: 0; background: none; padding: 0; cursor: pointer; border-radius: 50%; font: inherit; color: inherit; line-height: 0; flex: none; }
+  .avpick { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+  .avpick button { aspect-ratio: 1; border: 0; border-radius: 50%; background: var(--sheet); font-size: 22px; line-height: 1; padding: 0; cursor: pointer; }
+  .avpick button.on { background: var(--red); box-shadow: 0 0 0 3px var(--ink); }
+  .avpick button:disabled { opacity: .3; cursor: default; }
+  @media (max-width: 360px) { .avpick { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 
   /* «ΑΛΕΞΑΝΔΡΟΥΠΟΛΗ выбирает тему»: длинное имя одним словом вылезало за карточку на 320 px */
   .status h2 { margin: 0 0 4px; font: 900 28px/1.1 var(--head); overflow-wrap: anywhere; }
@@ -283,7 +289,7 @@ window.I18N_DICT = {
     err_name: `Напиши имя`, err_room_full: `В комнате уже 16 игроков`, err_token_gone: `Тебя нет в этой партии — войди заново`,
     wait_title: `Подключаемся…`,
     btn_home: `Главная`,
-    lobby_in: `Ты в игре`, lobby_wait: `Ждём, пока ведущий начнёт. Нужно хотя бы трое`,
+    lobby_in: `Ты в игре`, av_pick: `Нажми на аватарку, чтобы сменить`, rj_avatar_taken: `Эту аватарку уже взяли`, rj_game_started: `Сменить можно до начала игры`, lobby_wait: `Ждём, пока ведущий начнёт. Нужно хотя бы трое`,
     intro_k: `Раунд {n} из {m}`,
     topic_you: `Выбирай тему`, topic_wait: `Тему выбирает {name}`,
     fact_of: `Факт {i} из {n}`,
@@ -327,7 +333,7 @@ window.I18N_DICT = {
     err_name: `Type a name`, err_room_full: `The room already has 16 players`, err_token_gone: `You're not in this game — join again`,
     wait_title: `Connecting…`,
     btn_home: `Home`,
-    lobby_in: `You're in`, lobby_wait: `Waiting for the host to start. At least three players needed`,
+    lobby_in: `You're in`, av_pick: `Tap your avatar to change it`, rj_avatar_taken: `That avatar is taken`, rj_game_started: `You can change it before the game starts`, lobby_wait: `Waiting for the host to start. At least three players needed`,
     intro_k: `Round {n} of {m}`,
     topic_you: `Pick a topic`, topic_wait: `{name} is picking the topic`,
     fact_of: `Fact {i} of {n}`,
@@ -371,7 +377,7 @@ window.I18N_DICT = {
     err_name: `Γράψε όνομα`, err_room_full: `Το δωμάτιο έχει ήδη 16 παίκτες`, err_token_gone: `Δεν είσαι σε αυτή την παρτίδα — μπες ξανά`,
     wait_title: `Σύνδεση…`,
     btn_home: `Αρχική`,
-    lobby_in: `Είσαι μέσα`, lobby_wait: `Περιμένουμε τον οικοδεσπότη. Χρειάζονται τουλάχιστον τρεις`,
+    lobby_in: `Είσαι μέσα`, av_pick: `Πάτα την εικόνα σου για να την αλλάξεις`, rj_avatar_taken: `Αυτή η εικόνα είναι πιασμένη`, rj_game_started: `Αλλάζει μόνο πριν ξεκινήσει το παιχνίδι`, lobby_wait: `Περιμένουμε τον οικοδεσπότη. Χρειάζονται τουλάχιστον τρεις`,
     intro_k: `Γύρος {n} από {m}`,
     topic_you: `Διάλεξε θέμα`, topic_wait: `Θέμα διαλέγει: {name}`,
     fact_of: `Γεγονός {i} από {n}`,
@@ -554,9 +560,27 @@ function bindReacts() {
     b.onclick = () => { conn.send({ type: "react", emoji: b.dataset.e }); qpVibrate(8); b.disabled = true; setTimeout(() => (b.disabled = false), 2000); };
   });
 }
+let avOpen = false; // открыт ли выбор аватарки
+// выбор аватарки: свободные и своя; занятые другими — серые
+function avPickHtml() {
+  if (!avOpen || !state.avatarChoices) return `<p class="fine" style="margin:0">${escapeHtml(T("av_pick"))}</p>`;
+  const taken = new Set(state.players.filter((x) => !x.left && x.id !== me).map((x) => x.avatar));
+  const cur = mine().avatar;
+  return `<div class="avpick" role="group" aria-label="${escapeHtml(T("av_pick"))}">${state.avatarChoices.map((a) => `<button type="button" data-a="${escapeHtml(a)}" class="${a === cur ? "on" : ""}"${taken.has(a) ? " disabled" : ""}>${escapeHtml(a)}</button>`).join("")}</div>`;
+}
+const avBtnHtml = (inner) => `<button class="avbtn" id="avbtn" type="button" aria-label="${escapeHtml(T("av_pick"))}" aria-expanded="${avOpen}">${inner}</button>`;
+// ключ экрана лобби: меняется, когда у кого-то сменилась аватарка (пока выбор открыт) или он открылся/закрылся
+const avKey = () => (avOpen ? "1" + state.players.map((p) => p.avatar).join("") : "0" + (mine() ? mine().avatar : ""));
+function bindAvatars() {
+  const b = document.getElementById("avbtn");
+  if (b) b.onclick = () => { avOpen = !avOpen; screenKey = ""; render(); };
+  app.querySelectorAll(".avpick button:not(:disabled)").forEach((x) => {
+    x.onclick = () => { conn.send({ type: "avatar", avatar: x.dataset.a }); qpVibrate(10); avOpen = false; screenKey = ""; render(); };
+  });
+}
 function meBadge() {
   const p = mine();
-  return `<div class="me-badge">${avHtml(p)}<div><span class="eyebrow">${T("lobby_in")}</span><b>${escapeHtml(p.name)}</b></div></div>`;
+  return `<div class="me-badge">${avBtnHtml(avHtml(p))}<div><span class="eyebrow">${T("lobby_in")}</span><b>${escapeHtml(p.name)}</b></div></div>`;
 }
 const timerHtml = () => `<div class="timer" id="timer"><i></i></div>`;
 const factHead = () => `<div class="ahead"><span>${escapeHtml(tpl("fact_of", { i: state.fi + 1, n: state.factsInRound }))} · <b>${escapeHtml(qpRoundName(state.roundKey))}</b></span><span id="tleft"></span></div>`;
@@ -564,11 +588,12 @@ const factCard = (ans) => `<div class="card"><div class="k">${escapeHtml(state.f
 
 // ---------- экраны по фазам ----------
 function renderLobby() {
-  const key = "lobby:" + state.players.map((p) => p.id + p.online).join(",") + qpLang();
+  const key = "lobby:" + state.players.map((p) => p.id + p.online).join(",") + avKey() + qpLang();
   if (screenKey === key) return;
-  show(`${meBadge()}<div class="status"><p>${T("lobby_wait")}</p></div>${playersHtml()}${reactsHtml()}
+  show(`${meBadge()}${avPickHtml()}<div class="status"><p>${T("lobby_wait")}</p></div>${playersHtml()}${reactsHtml()}
     <div class="card howcard"><div class="k">${T("how_k")}</div><ul><li>${T("how_lie")}</li><li>${T("rule2")}</li><li>${T("rule3")}</li></ul></div>`, key, true);
   bindReacts();
+  bindAvatars();
 }
 
 function renderIntro() {
@@ -589,7 +614,10 @@ function renderTopic() {
     show(`${timerHtml()}<h2 class="headline">${T("topic_you")}</h2>
       <div class="topics">${state.topics.map((t) => `<button type="button" data-t="${escapeHtml(t)}">${escapeHtml(qpTopic(t))}</button>`).join("")}</div>`, key);
     app.querySelectorAll(".topics button").forEach((b) => {
-      b.onclick = () => { conn.send({ type: "topic", topic: b.dataset.t }); qpSfx.tap(); qpVibrate(15); app.querySelectorAll(".topics button").forEach((x) => (x.disabled = true)); };
+      b.onclick = () => { conn.send({ type: "topic", topic: b.dataset.t }); qpSfx.tap(); qpVibrate(15); app.querySelectorAll(".topics button").forEach((x) => (x.disabled = true));
+        const f = factId();
+        watchAction(() => state.phase === "topic" && factId() === f && state.me && state.me.chooser, () => {});
+      };
     });
     qpVibrate([30, 40, 30]);
     return;
@@ -646,6 +674,8 @@ function renderLie() {
     qpVibrate(15);
     document.getElementById("sendbtn").disabled = true;
     hintArmed = false;
+    const f = factId();
+    watchAction(() => state.phase === "lie" && factId() === f && state.me && !state.me.lie, () => {});
   };
   document.getElementById("hintbtn").onclick = () => {
     if (!hintArmed) { hintArmed = true; screenKey = ""; return render(); }
@@ -653,6 +683,8 @@ function renderLie() {
     justHinted = true;
     conn.send({ type: "hint" });
     qpVibrate([10, 30, 10]);
+    const f = factId();
+    watchAction(() => state.phase === "lie" && factId() === f && state.me && !state.me.lie, () => { justHinted = false; });
   };
 }
 
@@ -674,7 +706,10 @@ function renderChoose() {
         return `<button type="button" class="opt${o.mine ? " own" : ""}${mineIdx.includes(i) ? " sel" : ""}" data-i="${i}" data-own="${escapeHtml(T("own"))}"${o.mine || liked || left <= 0 ? " disabled" : ""}><span class="l">${letter(i)}</span><span class="t">${escapeHtml(o.text)}</span><span class="lk${liked ? " on" : ""}">👍</span></button>`;
       }).join("")}</div>${reactsHtml()}`, key, true);
     app.querySelectorAll(".opt:not(:disabled)").forEach((b) => {
-      b.onclick = () => { conn.send({ type: "like", opt: Number(b.dataset.i) }); qpSfx.pop(); qpVibrate(10); b.disabled = true; };
+      b.onclick = () => { conn.send({ type: "like", opt: Number(b.dataset.i) }); qpSfx.pop(); qpVibrate(10); b.disabled = true;
+        const f = factId(), opt = Number(b.dataset.i);
+        watchAction(() => state.phase === "choose" && factId() === f && state.me && !state.me.likes.includes(opt), () => {});
+      };
     });
     return bindReacts();
   }
@@ -704,6 +739,8 @@ function sendPick() {
   qpVibrate(15);
   qpSfx.send();
   render();
+  const f = factId();
+  watchAction(() => state.phase === "choose" && factId() === f && !(state.me && state.me.picks), () => { sentPick = false; });
 }
 
 function renderReveal() {
@@ -769,6 +806,7 @@ function renderFinal() {
 // ---------- выбор экрана ----------
 function render() {
   if (dead || !state) return;
+  if (me && conn && conn.gated && !state.me) return; // идёт повторный вход по токену — не мигаем экраном «опоздал»
   if (!me) {
     if (screen === "kicked" || screen === "replaced" || screen === "enter") return;
     return renderEnter();
@@ -816,30 +854,69 @@ window.addEventListener("langchange", () => {
 });
 
 // ---------- связь ----------
-let prevPhase = null;
+let prevPhase = null, needJoin = true, pendingFlush = false;
+// действие улетело, а подтверждения нет (связь пропала, пока тап летел) — не оставляем кнопки мёртвыми:
+// через 2.5 с, если мы всё ещё на том же вопросе и связь жива, снимаем замок. Пока связь в обрыве — ждём очередь (до 6 с).
+function watchAction(stuck, release, tries) {
+  setTimeout(() => {
+    if (dead || !state || !stuck()) return;
+    const a = conn && conn.api;
+    const offline = !a || conn.gated || pendingFlush || a.mode === "none" || a.mode === "connecting";
+    if (offline && (tries || 0) < 2) return watchAction(stuck, release, (tries || 0) + 1);
+    release();
+    screenKey = "";
+    render();
+  }, 2500);
+}
+// что нажато во время обрыва — отправляем, если ещё актуально (иначе сервер ответил бы «отказ» на давнее действие)
+function flushQueued() {
+  conn.flush((q) => {
+    const mc = state && state.me;
+    if (!mc) return false;
+    switch (q.type) {
+      case "lie": return state.phase === "lie" && !mc.lie;
+      case "hint": return state.phase === "lie" && !mc.lie && mc.hintsLeft > 0;
+      case "choose": return state.phase === "choose" && !mc.picks;
+      case "like": return state.phase === "choose" && !!mc.picks && !mc.likes.includes(q.opt) && mc.likes.length < 2;
+      case "topic": return state.phase === "topic" && !!mc.chooser;
+      default: return true;
+    }
+  }, (q) => {
+    if (q.type === "choose") sentPick = false;
+    if (q.type === "hint") justHinted = false;
+    screenKey = "";
+    render();
+  });
+}
 function onMessage(m) {
   switch (m.type) {
     case "hello":
     case "state":
       state = m.state;
-      if (m.type === "hello" && token && !me) conn.send({ type: "join", token });
+      if (m.type === "hello" && token && needJoin) { needJoin = false; conn.send({ type: "join", token }); }
       if (state.phase !== prevPhase) {
         if (state.phase === "choose") { hedge = false; picks = []; sentPick = false; }
         if (state.phase === "lie" || state.phase === "choose") qpVibrate(30);
         prevPhase = state.phase;
       }
-      render();
+      // hello на новом сокете без игрока приходит «чужим» состоянием — при возврате по токену экран не трогаем до joined
+      if (!(m.type === "hello" && me && token)) render();
+      // вернулись по токену: действия, нажатые в обрыв, отправляем, когда сервер снова признал нас
+      if (pendingFlush && state.me) { pendingFlush = false; flushQueued(); }
       break;
-    case "joined":
+    case "joined": {
+      const was = me;
       me = m.playerId;
       token = m.token;
       joinErr = null;
       try { localStorage.setItem(tokenKey(), token); } catch (e) {}
       keepAwake();
-      screen = null;
-      screenKey = "";
+      if (was !== me) { screen = null; screenKey = ""; } // повторный вход после обрыва экран не пересобирает
       render();
+      pendingFlush = true;
+      setTimeout(() => { if (pendingFlush) { pendingFlush = false; flushQueued(); } }, 2000);
       break;
+    }
     case "rejected":
       if (m.action === "hint") { justHinted = false; screenKey = ""; }
       if (m.action === "choose") { sentPick = false; screenKey = ""; }
@@ -851,6 +928,7 @@ function onMessage(m) {
       render();
       break;
     case "error":
+      conn.flush(() => false);
       if (m.error === "room_expired") return renderExpired();
       if (["room_full", "token_gone", "bad_name"].includes(m.error)) {
         if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
@@ -860,6 +938,7 @@ function onMessage(m) {
       }
       break;
     case "kicked":
+      conn.flush(() => false);
       me = null;
       try { localStorage.removeItem(tokenKey()); } catch (e) {}
       token = null;
@@ -884,7 +963,7 @@ function start() {
     onMessage,
     onGone: renderExpired,
     // переподключились — снова входим своим токеном (hello придёт первым)
-    onOpen: () => { me = null; },
+    onOpen: () => { needJoin = true; if (token) conn.gated = true; },
     onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
   });
   requestAnimationFrame(frame);

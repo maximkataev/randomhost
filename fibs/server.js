@@ -562,6 +562,7 @@ function handle(room, client, msg) {
       return afterChange(room, events);
     }
     // ---- игрок ----
+    case "avatar": return me ? act("avatar", g.setAvatar(me, String(msg.avatar || ""))) : undefined;
     case "topic": return me ? act("topic", g.pickTopic(me, String(msg.topic || ""), t)) : undefined;
     case "lie": return me ? act("lie", g.lie(me, msg.text, t)) : undefined;
     case "hint": return me ? act("hint", g.hint(me, t)) : undefined;

@@ -60,6 +60,8 @@ const REACTIONS = ["😂", "😱", "🤥", "👏", "🤯"];
 // 16 цветов под газетную полосу: чернила и штемпели
 const COLORS = ["#d62828", "#1d4ed8", "#b45309", "#047857", "#7c3aed", "#c2410c", "#0e7490", "#be185d", "#4d7c0f", "#92400e", "#3730a3", "#9f1239", "#0f766e", "#a21caf", "#a16207", "#475569"];
 const AVATARS = ["🕵️", "🦊", "🐸", "🦉", "🐙", "🦄", "🐧", "🦁", "🐼", "🐵", "🦖", "🐝", "🐳", "🦩", "🐢", "🦔"];
+// из чего игрок выбирает сам (первые — те, что раздаются по умолчанию)
+const AVATAR_CHOICES = [...new Set(AVATARS.concat(["🐱", "🐶", "🐰", "🐻", "🐨", "🐯", "🐷", "🐮", "🦝", "🦥", "🦦", "🐲", "👽", "🤖", "👻", "🤡", "🥑", "🍕", "🌮", "🍩", "🧀", "🌵", "🍄", "🪩"]))];
 
 function clampSettings(input = {}) {
   const s = { ...DEFAULTS };
@@ -674,6 +676,18 @@ class Game {
    * view: "board" — доска, иначе id игрока. Никому не уходят: пул лжи, alts, ключи сравнения.
    * До раскрытия — ни правды (она среди вариантов без пометки), ни авторов, ни ловушек, ни чужого выбора.
    */
+  // Свой аватар: в лобби и между партиями, из списка, не занятый другим игроком
+  setAvatar(id, avatar) {
+    const s = this.s;
+    const p = this.player(id);
+    if (!p || p.left) return { ok: false, reason: "not_player" };
+    if (s.phase !== "lobby" && s.phase !== "finished") return { ok: false, reason: "game_started" };
+    if (!AVATAR_CHOICES.includes(avatar)) return { ok: false, reason: "bad_avatar" };
+    if (this.present().some((x) => x !== p && x.avatar === avatar)) return { ok: false, reason: "avatar_taken" };
+    p.avatar = avatar;
+    return { ok: true, events: [{ type: "avatar", playerId: id }] };
+  }
+
   snapshot(now, view) {
     const s = this.s;
     const board = view === "board";
@@ -740,6 +754,7 @@ class Game {
       awards: s.phase === "finished" ? s.awards || null : null,
       finishedReason: s.phase === "finished" ? s.finishedReason : null,
       minPlayers: MIN_PLAYERS,
+      avatarChoices: s.phase === "lobby" || s.phase === "finished" ? AVATAR_CHOICES : null,
       liesMax: LIE_MAX,
       me: mePart,
       players: s.players.map((p) => ({
@@ -758,4 +773,4 @@ class Game {
   }
 }
 
-module.exports = { Game, EXTRA_MS, ROUNDS, PLAN, T, DEFAULTS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, MIN_OPTIONS, TOPICS_OFFERED, LIE_MAX, LIKE_GRACE, LIKES_PER_FACT, LIKE_POINTS, REACTIONS, COLORS, AVATARS, clampSettings, cleanName, cleanText, displayText, isTruth, levenshtein };
+module.exports = { Game, EXTRA_MS, ROUNDS, PLAN, T, DEFAULTS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, MIN_OPTIONS, TOPICS_OFFERED, LIE_MAX, LIKE_GRACE, LIKES_PER_FACT, LIKE_POINTS, REACTIONS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText, displayText, isTruth, levenshtein };

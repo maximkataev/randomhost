@@ -199,7 +199,9 @@ const qpSfx = (function () {
     const r = sw.getBoundingClientRect();
     if (r.width) {
       const root = document.documentElement.style;
-      root.setProperty("--lsw", Math.ceil(window.innerWidth - r.left + 10) + "px");
+      // на ТВ доска увеличена через zoom (applyScale в fibs-board.html): rect в «увеличенных» px, а innerWidth — в экранных
+      const z = parseFloat(root.zoom || document.documentElement.style.zoom) || 1;
+      root.setProperty("--lsw", Math.ceil(window.innerWidth / z - r.left + 10) + "px");
       // центр и высота переключателя: кнопка звука встаёт с ним на одну линию и той же высоты
       root.setProperty("--lsc", Math.round(r.top + r.height / 2) + "px");
       root.setProperty("--lsh", Math.round(r.height) + "px");
@@ -207,6 +209,7 @@ const qpSfx = (function () {
     if (sw !== seen && window.ResizeObserver) { seen = sw; new ResizeObserver(measure).observe(sw); }
     return true;
   };
+  window.qpMeasureLangSwitch = measure;
   const poll = (n) => { if (!measure() && n < 200) requestAnimationFrame(() => poll(n + 1)); };
   poll(0);
   window.addEventListener("resize", measure);
@@ -369,7 +372,32 @@ function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
 function qpConnect({ code, onMessage, onOpen, onGone, onState }) {
   let t = null, delay = 500, stopped = false;
-  const holder = { api: null, send: (m) => holder.api && holder.api.send(m), stop() { stopped = true; clearTimeout(t); if (holder.api) holder.api.close(); } };
+  // Действие, нажатое между обрывом и возвращением связи, раньше терялось молча (а кнопка уже горела «ушло»).
+  // Теперь оно ждёт в очереди и уходит после входа по токену: сокет без игрока действие бы отбросил.
+  const queue = [];
+  const holder = {
+    api: null,
+    gated: false, // страница держит действия до входа по токену и сама снимает флаг через flush
+    send(m) {
+      const a = holder.api;
+      if (m && m.type !== "ping" && m.type !== "join" && m.type !== "host" && (holder.gated || !a || a.mode === "none" || a.mode === "connecting")) {
+        queue.push({ m, at: Date.now() });
+        if (queue.length > 8) queue.shift();
+        return;
+      }
+      if (a) a.send(m);
+    },
+    // keep(m) — нужно ли это действие ещё; просроченные и ненужные отбрасываются через onDrop
+    flush(keep, onDrop) {
+      holder.gated = false;
+      const items = queue.splice(0);
+      for (const it of items) {
+        if (Date.now() - it.at > 6000 || (keep && !keep(it.m))) { if (onDrop) onDrop(it.m); continue; }
+        if (holder.api) holder.api.send(it.m);
+      }
+    },
+    stop() { stopped = true; clearTimeout(t); queue.length = 0; if (holder.api) holder.api.close(); },
+  };
   const open = () => {
     if (stopped) return;
     if (onState) onState("connecting");
