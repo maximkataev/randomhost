@@ -56,6 +56,9 @@
   .p-body { flex: 1; overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; scrollbar-color: rgba(160,215,245,0.25) transparent; }
   .p-foot { padding: 12px 14px; border-top: 1px solid var(--line); background: rgba(4, 16, 30, 0.5); display: grid; gap: 8px; }
   .p-foot:empty { display: none; }
+  /* лист обрезан, а под ним ещё строки (номинации на итогах): низ тает — видно, что можно долистать.
+     Без этого «Любимец водоворотов» резался пополам под кнопками и выглядел как ошибка вёрстки */
+  .p-body.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent); }
   .brand { display: flex; align-items: center; gap: 10px; }
   .brand .logo { font-size: 30px; line-height: 1; }
   .brand h1 { font-family: 'Comfortaa', sans-serif; font-size: 21px; line-height: 1.1; }
@@ -203,7 +206,16 @@
   .skip { position: fixed; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 9; display: none; width: auto; }
   .skip.show { display: block; }
   body.is-touch.playing .feed { bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
-  .rotate { position: fixed; inset: 0; z-index: 40; background: #051b31; display: none; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 18px; padding: 30px; line-height: 1.5; }
+  /* просьба повернуть: льдина и партия видны сквозь вуаль (игра уже идёт — это не ошибка и не загрузка),
+     телефон-иконка сам показывает поворот; подсказка про блокировку ориентации — частая причина «не поворачивается» */
+  .rotate { position: fixed; inset: 0; z-index: 40; background: rgba(5, 27, 49, 0.82); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 30px; line-height: 1.4; }
+  .rotate .rot-ph { width: 46px; height: 76px; border: 4px solid #fff; border-radius: 11px; position: relative; margin-bottom: 14px; animation: rotPhone 2.4s ease-in-out infinite; }
+  .rotate .rot-ph::after { content: ''; position: absolute; left: 50%; bottom: 5px; width: 10px; height: 3px; margin-left: -5px; border-radius: 2px; background: #fff; }
+  @keyframes rotPhone { 0%, 25% { transform: rotate(0deg); } 50%, 85% { transform: rotate(-90deg); } 100% { transform: rotate(0deg); } }
+  .rotate b { font-family: 'Comfortaa', sans-serif; font-size: 22px; font-weight: 700; max-width: 300px; }
+  .rotate span { font-size: 15px; font-weight: 600; color: rgba(255, 255, 255, 0.78); max-width: 300px; }
+  .rotate small { font-size: 13px; color: rgba(255, 255, 255, 0.55); max-width: 280px; }
+  @media (prefers-reduced-motion: reduce) { .rotate .rot-ph { animation: none; transform: rotate(-90deg); } }
   /* выбывшему управлять нечем — смотрит и в портрете, без просьбы повернуть */
   @media (orientation: portrait) and (max-width: 700px) { body.is-touch.playing:not(.out) .rotate { display: flex; } }
 
@@ -324,7 +336,7 @@ window.I18N_DICT = {
     nom_push: `Больше всех столкнул: {who} — {n}`, nom_self: `Сам себе враг: {who}`,
     again: `Реванш`, to_lobby: `В лобби`, show_replay: `Повтор`, wait_again: `Ждём, пока {name} начнёт реванш`,
     watching: `Партия уже идёт — вы смотрите. Следующая — с вами`,
-    rotate: `Поверните телефон горизонтально 🔄`,
+    rotate: `Поверните телефон горизонтально`, rotate_why: `Партия уже идёт: джойстик и рывок помещаются только в горизонтальном экране`, rotate_lock: `Не поворачивается — выключите блокировку ориентации`,
     conn_lost: `Связь пропала — переподключаемся…`, conn_blocked: `Нет связи с игрой. Проверьте интернет или зайдите через мобильную сеть`,
     no_room: `Комнаты нет`, no_room_text: `Код неверный или комната закрылась: она живёт полчаса без игры.`, new_game: `Новая комната`,
     kicked: `Ведущий убрал вас из комнаты`, replaced: `Вы вошли с другой вкладки`, play_here: `Играть здесь`,
@@ -363,7 +375,7 @@ window.I18N_DICT = {
     nom_push: `Most knockouts: {who} — {n}`, nom_self: `Own worst enemy: {who}`,
     again: `Rematch`, to_lobby: `To lobby`, show_replay: `Replay`, wait_again: `Waiting for {name} to start a rematch`,
     watching: `A round is on — you're watching. You'll play the next one`,
-    rotate: `Turn your phone sideways 🔄`,
+    rotate: `Turn your phone sideways`, rotate_why: `The round is on: the joystick and dash only fit in landscape`, rotate_lock: `Won’t rotate? Turn off the orientation lock`,
     conn_lost: `Connection lost — reconnecting…`, conn_blocked: `Can't reach the game. Check your internet or try mobile data`,
     no_room: `No such room`, no_room_text: `Wrong code, or the room closed: it lives half an hour without a game.`, new_game: `New room`,
     kicked: `The host removed you from the room`, replaced: `You joined from another tab`, play_here: `Play here`,
@@ -402,7 +414,7 @@ window.I18N_DICT = {
     nom_push: `Τους περισσότερους έριξε: {who} — {n}`, nom_self: `Εχθρός του εαυτού του: {who}`,
     again: `Ρεβάνς`, to_lobby: `Στο λόμπι`, show_replay: `Επανάληψη`, wait_again: `Περιμένουμε τον/την {name} για ρεβάνς`,
     watching: `Ο γύρος τρέχει — παρακολουθείς. Στον επόμενο παίζεις`,
-    rotate: `Γύρισε το κινητό οριζόντια 🔄`,
+    rotate: `Γύρισε το κινητό οριζόντια`, rotate_why: `Η παρτίδα ξεκίνησε: το joystick και η ώθηση χωράνε μόνο σε οριζόντια οθόνη`, rotate_lock: `Δεν γυρίζει; Απενεργοποίησε το κλείδωμα προσανατολισμού`,
     conn_lost: `Χάθηκε η σύνδεση — επανασύνδεση…`, conn_blocked: `Δεν υπάρχει σύνδεση με το παιχνίδι. Έλεγξε το ίντερνετ ή δοκίμασε δεδομένα κινητού`,
     no_room: `Δεν υπάρχει τέτοιο δωμάτιο`, no_room_text: `Λάθος κωδικός ή το δωμάτιο έκλεισε: ζει μισή ώρα χωρίς παιχνίδι.`, new_game: `Νέο δωμάτιο`,
     kicked: `Ο οικοδεσπότης σε έβγαλε`, replaced: `Μπήκες από άλλη καρτέλα`, play_here: `Παίξε εδώ`,
@@ -700,7 +712,12 @@ window.I18N_DICT = {
   function setPanel(body, foot) {
     $("pbody").innerHTML = body;
     $("pfoot").innerHTML = foot || "";
+    requestAnimationFrame(markMore);
   }
+  // .more — на листе есть что листать ниже
+  function markMore() { const b = $("pbody"); b.classList.toggle("more", b.scrollTop + b.clientHeight < b.scrollHeight - 4); }
+  $("pbody").addEventListener("scroll", markMore, { passive: true });
+  window.addEventListener("resize", () => requestAnimationFrame(markMore));
   const brand = () => `<div class="brand"><span class="logo">🐧</span><h1>${esc(T("game"))}<small>${esc(T("sub"))}</small></h1></div>`;
   const rulesHtml = (hostFirst) => `<ol class="rules">${(hostFirst ? ["rule3", "rule1", "rule2"] : ["rule1", "rule2", "rule3"]).map((k) => `<li><span>${k === "rule3" ? T(k) : esc(T(k))}</span></li>`).join("")}</ol>`;
   const controlsHtml = () => `<div class="keys">${isTouch
@@ -1132,7 +1149,7 @@ window.I18N_DICT = {
   function applyStatic() {
     $("dashBtn").textContent = T("dash");
     $("stickHintT").textContent = T("stick_hint");
-    $("rotate").textContent = T("rotate");
+    $("rotate").innerHTML = `<i class="rot-ph" aria-hidden="true"></i><b>${esc(T("rotate"))}</b><span>${esc(T("rotate_why"))}</span><small>${esc(T("rotate_lock"))}</small>`;
     $("outpill").textContent = T("out_pill");
     $("skip").textContent = T("skip") + " ›";
     render.setWords(WORDS());

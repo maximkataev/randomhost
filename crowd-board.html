@@ -34,7 +34,7 @@
   b, strong { font-weight: 800; }
 
   #root { position: fixed; left: 0; top: 0; width: calc(100vw / var(--z)); height: calc(100vh / var(--z)); transform: scale(var(--z)); transform-origin: 0 0; overflow: hidden; }
-  .lang-switch { transform: scale(var(--z)); transform-origin: top right; }
+  .lang-switch { transform: scale(var(--zs, var(--z))); transform-origin: top right; } /* --zs = max(1, --z): на телефоне доска сжата, а переключатель — нет, иначе пальцем не попасть */
 
   /* ---------- шапка: якорь-рулетка и код комнаты ---------- */
   .top { position: fixed; left: 0; right: 0; top: 0; z-index: 30; display: flex; align-items: center; gap: 18px; height: calc(var(--lsc, 32px) * 2 / var(--z)); padding: 0 calc(var(--lsw, 160px) / var(--z)) 0 50px; pointer-events: none; }
@@ -76,12 +76,12 @@
   /* боковые блоки: таймер или прогресс слева, готовность или итог справа */
   .sb { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; padding: 12px; min-width: 0; overflow: hidden; }
   .ring { position: relative; flex: none; width: var(--rs, 150px); height: var(--rs, 150px); }
-  .ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
+  .ring svg { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
   .ring circle { fill: none; stroke-width: 14; stroke-linecap: butt; }
   .ring .tr { stroke: rgba(244, 241, 232, .14); }
   .ring .pg { stroke: var(--paper); transition: stroke-dashoffset .25s linear; }
   .ring.hot .pg { stroke: var(--hot); }
-  .ring .num { position: absolute; inset: 0; display: flex; align-items: baseline; justify-content: center; padding-top: calc(var(--rs, 150px) * .3); font: 900 calc(var(--rs, 150px) * .36)/1 var(--display); font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+  .ring .num { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: baseline; justify-content: center; padding-top: calc(var(--rs, 150px) * .3); font: 900 calc(var(--rs, 150px) * .36)/1 var(--display); font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
   .ring .num small { font-size: .45em; opacity: .65; font-weight: 700; }
   .ring.hot .num { color: var(--hot); animation: tpulse .5s ease-in-out infinite alternate; }
   @keyframes tpulse { to { transform: scale(1.1); } }
@@ -129,7 +129,7 @@
   .zone.b { --zc: var(--b); --zt: var(--b-ink); }
   .zone.dead { opacity: .5; }
   .zone.win { box-shadow: 0 0 0 8px var(--bg), 0 0 0 14px var(--paper); }
-  .zone.win::after { content: ""; position: absolute; inset: 0; background: #fff; pointer-events: none; animation: zflash .6s ease-out forwards; }
+  .zone.win::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: #fff; pointer-events: none; animation: zflash .6s ease-out forwards; }
   @keyframes zflash { 0% { opacity: 0; } 40% { opacity: .4; } 100% { opacity: 0; } }
   .zone.lose { filter: saturate(.3) brightness(.6); transform: scale(.94); transform-origin: 50% 100%; }
   .zone.pre .zhead { flex-direction: column; justify-content: center; align-items: flex-start; top: 0; bottom: 0; height: auto !important; gap: 18px; text-align: left; padding: 0 30px 6%; }
@@ -333,11 +333,24 @@
   .rest .rk { color: var(--muted); font-family: var(--display); font-size: .8em; font-style: normal; width: 1.8em; text-align: center; }
 
   /* ---------- портрет ---------- */
-  .ptr .lobby { grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 22px; padding: 4px 36px 30px; }
+  .ptr .lobby { grid-template-columns: 1fr; grid-template-rows: auto auto minmax(110px, 1fr) auto; gap: 22px; padding: 4px 36px 30px; }
+  /* без overflow пустые места игроков при нехватке высоты рисовались поверх опций и кнопки «Старт» */
+  .ptr .lb-players { overflow: hidden; }
+  /* в лобби название и так набрано крупно — в шапке портрета его не дублируем */
+  body.ptr.lobbyp .brand { visibility: hidden; }
+  /* телефон (доска сжата, см. measure()): лобби по высоте содержимого и листается — места игроков
+     не обрезаются, пустые места не показываем (они только удлиняют лист) */
+  body.phone #upper { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  body.phone .scr.lobby { position: relative; min-height: 100%; grid-template-rows: auto auto auto auto; }
+  body.phone .lps { grid-template-rows: none; grid-auto-rows: 52px; }
+  body.phone .lp.empty { display: none; }
   .ptr .lb-mid { display: contents; }
-  .ptr .lb-top { grid-row: 1; } .ptr .ticket { grid-row: 2; flex-direction: row; flex-wrap: wrap; padding: 18px 26px; }
+  .ptr .lb-top { grid-row: 1; }
+  /* билет в портрете: QR слева, код, ссылка и подсказка справа — вдвое ниже столбика, на телефоне всё влезает без наездов */
+  .ptr .ticket { grid-row: 2; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "k k" "qr code" "qr url" "qr h"; grid-template-rows: auto auto auto 1fr; gap: 10px 24px; align-items: start; padding: 18px 26px 22px; }
+  .ptr .tk-k { grid-area: k; } .ptr #qr { grid-area: qr; align-self: start; } .ptr .bigcode { grid-area: code; } .ptr .url { grid-area: url; } .ptr .tk-h { grid-area: h; }
   .ptr .lb-players { grid-row: 3; } .ptr .lb-ctl { grid-row: 4; }
-  .ptr .lps { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); }
+  .ptr .lps { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(48px, 1fr)); } /* не ниже 48: сплющенные пустые места превращались в штриховку */
   .ptr .lp b { font-size: 21px; } .ptr .rules { display: none; }
   .ptr .fin { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto auto; grid-template-areas: "t t" "pod pod" "aw aw" "bt bt" "rl rr"; padding: 0 36px 30px; gap: 16px 20px; }
   .ptr .fbtn .start { min-width: 0; flex: 1 1 100%; } .ptr .fbtn .ghostbtn { flex: 1 1 40%; min-width: 0; }
@@ -355,6 +368,7 @@
     *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition: none !important; }
   }
 </style>
+<script src="legacy-compat.js"></script>
 </head>
 <body>
 <div id="root">
@@ -559,7 +573,12 @@ function measure() {
   const zz = Math.min(innerWidth / (rawPortrait ? 800 : 1600), innerHeight / (rawPortrait ? 1280 : 900));
   // ≥1.15 — ТВ (растягиваем); низкий экран (<700px высоты, например ТВ с браузерным зумом 200%) — сжимаем виртуальный экран
   Z = zz >= 1.15 || (innerHeight < 700 && !rawPortrait) ? Math.round(zz * 100) / 100 : 1;
+  // телефон (доску открыли с телефона или транслируют его экран на ТВ): кегли и QR доски в пикселях не влезали
+  // в 390px — код комнаты, QR и опции наезжали друг на друга. Сжимаем виртуальный экран до ширины 620
+  if (innerWidth < 620) Z = Math.round(innerWidth / 620 * 100) / 100;
+  document.body.classList.toggle("phone", innerWidth < 620);
   document.documentElement.style.setProperty("--z", Z);
+  document.documentElement.style.setProperty("--zs", Math.max(1, Z));
   const W = main.clientWidth, H = main.clientHeight;
   const portrait = W / H < 1.25;
   M.W = W; M.H = H; M.portrait = portrait;
@@ -913,7 +932,7 @@ function drawLobby() {
     $("lbh").textContent = T("game_name");
     const tk = upper.querySelector(".ticket");
     $("qr").style.setProperty("--qrs", clamp(Math.min(tk.clientWidth - 56, tk.clientHeight - (M.portrait ? 120 : 330)), 140, 330) + "px");
-    if (M.portrait) $("qr").style.setProperty("--qrs", "230px");
+    if (M.portrait) $("qr").style.setProperty("--qrs", (M.H < 1300 ? 200 : 230) + "px"); // телефон: виртуальный экран ниже — QR меньше, иначе «Старт» уходит за край
     { // заголовок: самый крупный кегль, при котором колонка не вылезает за свою высоту
       const lbh = $("lbh"), top = $("lbtop"), mid = top.parentNode;
       let fs = M.portrait ? 96 : 150, g = 0; if (T('game_name').length > 10) { lbh.style.whiteSpace = 'normal'; lbh.style.textWrap = 'balance'; }
