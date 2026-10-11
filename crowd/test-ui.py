@@ -4,7 +4,7 @@
 Сам поднимает dev-сервер со статикой сайта (порт случайный), комнату создаёт с ускорением ×3.
 Проверяет на каждом шаге: нет JS-ошибок, телефоны и доска не прокручиваются вбок, партия доходит до итогов,
 очки на доске и на телефонах совпадают, в фазе голосования доска не получает чужих голосов."""
-import json, os, random, subprocess, sys, time, urllib.request
+import json, os, random, subprocess, sys, time, unicodedata, urllib.request
 
 sys.path.insert(0, os.path.expanduser("~/.pyenv/versions/3.11.9/lib/python3.11/site-packages"))
 from playwright.sync_api import sync_playwright
@@ -13,11 +13,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 N = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get("PHONES", 4))
 LANG = os.environ.get("LANG_UI", "ru")
 BW, BH = [int(x) for x in os.environ.get("BOARD", "1600x900").split("x")]
-PORT = 5400 + random.randint(0, 400)
+PORT = int(os.environ.get("UI_PORT", 5400 + random.randint(0, 400)))
 BASE = f"http://127.0.0.1:{PORT}"
 UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
 WIDTHS = [390, 360, 320, 390, 360, 390, 320, 390]
 failures = 0
+
+
+def norm(t):
+    """Сравнение текста без регистра, ударений и финальной сигмы (CSS text-transform: uppercase их стирает)."""
+    t = "".join(c for c in unicodedata.normalize("NFD", t) if not unicodedata.combining(c))
+    return t.lower().replace("ς", "σ")
 
 
 def check(ok, name):
@@ -154,8 +160,52 @@ def run(pw, code, token):
     check(ok, "очки на телефонах совпадают с доской")
     ph = [p.evaluate("wvPhone.state.phase") for p in phones]
     check(all(x == "finished" for x in ph), "все телефоны показывают итоги")
+    # «Ещё партия» при < 3 присутствующих: кнопка неактивна, на доске сказано, сколько не хватает
+    ids = board.evaluate("wvBoard.state.players.map(p=>p.id)")
+    for pid in ids[: max(0, len(ids) - 2)]:
+        board.evaluate("(id)=>wvBoard.send({type:'kick',playerId:id})", pid)
+    board.wait_for_function("wvBoard.state.players.length === 2", timeout=5000)
+    board.wait_for_selector("#againhint", timeout=5000)
+    check(board.evaluate("document.getElementById('again').disabled"), "«Ещё партия» неактивна при < 3 игроков")
+    check(bool(board.evaluate("document.getElementById('againhint').textContent.trim()")), "под кнопкой написано, сколько игроков не хватает")
+    if os.environ.get("PAUSE_STAGE", "1") != "0":
+        pause_stage(browser, lang_script, errs)
     check(not errs, "нет JS-ошибок на страницах" + (": " + "; ".join(errs[:3]) if errs else ""))
     browser.close()
+
+
+def pause_stage(browser, lang_script, errs):
+    """Три телефона не голосуют: два аннулированных раунда → короткая «пассивная» пауза с причиной (не «ждём игроков»)."""
+    room = json.loads(urllib.request.urlopen(urllib.request.Request(f"{BASE}/crowd/api/rooms", data=json.dumps({"settings": {"lang": LANG, "short": True, "opinion": False}}).encode(), method="POST")).read())
+    code, token = room["code"], room["hostToken"]
+    bctx, board = mk_page(browser, BW, BH, False, lang_script + f"try{{localStorage.setItem('crowd-host-{code}','{token}')}}catch(e){{}}", errs, "board2")
+    board.goto(f"{BASE}/crowd-board.html?r={code}")
+    board.wait_for_function("window.wvBoard && wvBoard.state")
+    phones = []
+    for i in range(3):
+        ctx, p = mk_page(browser, 390, 780, True, lang_script, errs, f"p2-{i}")
+        p.goto(f"{BASE}/crowd.html?r={code}")
+        p.wait_for_selector("#name")
+        p.fill("#name", f"Молчун{i + 1}")
+        p.evaluate("document.getElementById('enterform').requestSubmit()")
+        p.wait_for_function("window.wvPhone && wvPhone.me", timeout=10000)
+        phones.append(p)
+    board.wait_for_function("wvBoard.state.players.length === 3")
+    board.evaluate("wvBoard.send({type:'start'})")
+    print("  … ждём два аннулированных раунда (≈ 70 с)")
+    board.wait_for_function("wvBoard.state.phase === 'pause'", timeout=120000, polling=100)
+    reason = board.evaluate("wvBoard.state.pauseReason")
+    check(reason == "passive", "причина паузы — пассивные игроки (pauseReason=passive)")
+    txt = board.evaluate("document.getElementById('upper').innerText")
+    off = board.evaluate("T('pause_title')")
+    pas = board.evaluate("T('pause_pt')")
+    check(norm(pas) in norm(txt) and norm(off) not in norm(txt), "на доске нет «ждём игроков», написано про голоса")
+    ptxt = phones[0].evaluate("document.getElementById('app').innerText")
+    check(norm(phones[0].evaluate("T('pause_pt')")) in norm(ptxt), "на телефоне тот же смысл: мало голосов")
+    check(board.evaluate("document.querySelectorAll('#upper [data-k]').length") == 3, "ведущему предложено убрать молчунов")
+    board.wait_for_function("wvBoard.state.phase === 'vote'", timeout=15000)
+    check(True, "после короткой паузы игра идёт дальше (не 60 с)")
+    bctx.close()
 
 
 main()

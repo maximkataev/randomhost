@@ -11,12 +11,13 @@ const fs = require("fs");
 const path = require("path");
 
 const FILE = process.env.STATS_FILE || path.join(__dirname, "state", "qstats.json");
-const ROOM_CAP = 3;
+const ROOM_CAP = 3; // раундов одного вопроса от одной комнаты…
+const ROOM_WINDOW_MS = 24 * 60 * 60 * 1000; // …за 24 ч (§6)
 const MAX_IDS = 20000; // потолок записей: чужой id из подделанного события не раздувает файл
 
 let data = {}; // id → {n, a, b, oa, ob}
 let dirty = false;
-const perRoom = new Map(); // "код|id" → сколько раз учтено
+const perRoom = new Map(); // "код|id" → {n: сколько раз учтено, since: когда началось окно}
 
 function load() {
   try {
@@ -30,11 +31,17 @@ function load() {
 function record(room, e) {
   if (!e || typeof e.id !== "string" || e.id.length > 40) return;
   const key = room + "|" + e.id;
-  const have = perRoom.get(key) || 0;
-  if (have >= ROOM_CAP) return;
+  const t = Date.now();
+  let have = perRoom.get(key);
+  if (!have || t - have.since > ROOM_WINDOW_MS) have = { n: 0, since: t };
+  if (have.n >= ROOM_CAP) return;
   if (!data[e.id] && Object.keys(data).length >= MAX_IDS) return;
-  if (perRoom.size > 50000) perRoom.clear();
-  perRoom.set(key, have + 1);
+  if (perRoom.size > 50000) {
+    for (const [k, v] of perRoom) if (t - v.since > ROOM_WINDOW_MS) perRoom.delete(k);
+    if (perRoom.size > 50000) perRoom.clear();
+  }
+  have.n++;
+  perRoom.set(key, have);
   const d = data[e.id] || (data[e.id] = { n: 0, a: 0, b: 0, oa: 0, ob: 0 });
   d.n++; d.a += e.a | 0; d.b += e.b | 0; d.oa += e.oa | 0; d.ob += e.ob | 0;
   dirty = true;
@@ -52,4 +59,4 @@ function flush() {
   }
 }
 
-module.exports = { load, record, flush, get: () => data };
+module.exports = { load, record, flush, get: () => data, _resetRoomWindow: () => perRoom.clear(), _perRoom: perRoom };

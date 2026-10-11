@@ -347,6 +347,10 @@
   .fbtn { grid-area: bt; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
   .fbtn .start { width: auto; min-width: 420px; padding: 20px 40px; font-size: 28px; }
   .fbtn .ghostbtn { min-width: 220px; padding: 20px 30px; }
+  .fbtn .fhint { flex: 1 1 100%; text-align: center; font: 700 22px/1.25 var(--body); color: var(--text); opacity: .8; order: 2; }
+  .fbtn .start:disabled { opacity: .45; filter: saturate(.4); }
+  .pidle { font-size: .8em; opacity: .9; margin-top: 18px; }
+  .pkick { margin-top: 12px; }
   .rest { display: flex; flex-direction: column; justify-content: flex-start; align-self: start; gap: 8px; font: 600 22px/1 var(--body); min-height: 0; }
   .rest.l { grid-area: rl; } .rest.r { grid-area: rr; }
   .rest span { display: flex; align-items: center; gap: 12px; background: linear-gradient(160deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .05)); border: 1px solid var(--hair); border-radius: 16px; padding: 6px 18px 6px 8px; min-width: 0; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
@@ -436,6 +440,7 @@ window.I18N_DICT = {
     intro_extra: `Допвопрос`, intro_extra_d: `Финал закончился расколом. Очки снова ×2.`,
     intro_decider: `Решающий вопрос`, intro_decider_d: `Первое место делят. Голосуют все, очки получают только они:`,
     pause_title: `Ждём игроков`, pause_d: `Нужно хотя бы {min} на связи, сейчас — {n}. Не вернутся — партия прервётся.`,
+    pause_pt: `Мало голосов`, pause_pd: `Два вопроса подряд набрали меньше {min} голосов, хотя все на связи. Играем дальше — но если так будет и дальше, партия остановится.`, pause_idle: `Не голосовали: {names}`, pause_kick: `Ведущий может убрать игрока:`, final_idle: `Партия остановлена: голосов не хватало`, again_need: `Для новой партии нужно ещё {n}`,
     lobby_free: `свободно мест: {n}`, lobby_scan: `Наведи камеру телефона на QR или открой ссылку и введи имя.`, lobby_players: `Игроки`,
     r1: `На экране вопрос. Отвечай не за себя, а за всех: что выберет большинство?`,
     r2: `Угадал большинство — +100. Нет — 0. Поровну — всем по +50.`,
@@ -468,6 +473,7 @@ window.I18N_DICT = {
     intro_extra: `Bonus question`, intro_extra_d: `The final ended in a split. Points are ×2 again.`,
     intro_decider: `Deciding question`, intro_decider_d: `Tied for first. Everyone votes, only these players score:`,
     pause_title: `Waiting for players`, pause_d: `At least {min} must be online, now {n}. If they don’t return, the game stops.`,
+    pause_pt: `Not enough votes`, pause_pd: `Two questions in a row got fewer than {min} votes, although everyone is online. We play on, but if it keeps happening the game stops.`, pause_idle: `Didn’t vote: {names}`, pause_kick: `The host can remove a player:`, final_idle: `Game stopped: not enough votes`, again_need: `{n} more needed for a new game`,
     lobby_free: `{n} seats left`, lobby_scan: `Point your phone camera at the QR or open the link and type your name.`, lobby_players: `Players`,
     r1: `A question appears. Answer not for yourself but for everyone: what will the majority pick?`,
     r2: `Guessed the majority — +100. Missed — 0. A tie — +50 for all.`,
@@ -500,6 +506,7 @@ window.I18N_DICT = {
     intro_extra: `Έξτρα ερώτηση`, intro_extra_d: `Ο τελικός έληξε με χωρισμό. Οι βαθμοί ξανά ×2.`,
     intro_decider: `Αποφασιστική ερώτηση`, intro_decider_d: `Ισοπαλία στην κορυφή. Ψηφίζουν όλοι, βαθμούς παίρνουν μόνο:`,
     pause_title: `Περιμένουμε παίκτες`, pause_d: `Χρειάζονται τουλάχιστον {min} συνδεδεμένοι, τώρα {n}. Αν δεν γυρίσουν, η παρτίδα διακόπτεται.`,
+    pause_pt: `Λίγες ψήφοι`, pause_pd: `Δύο ερωτήσεις στη σειρά πήραν λιγότερες από {min} ψήφους, αν και όλοι είναι συνδεδεμένοι. Συνεχίζουμε, αλλά αν επαναληφθεί η παρτίδα σταματά.`, pause_idle: `Δεν ψήφισαν: {names}`, pause_kick: `Ο οικοδεσπότης μπορεί να αφαιρέσει παίκτη:`, final_idle: `Η παρτίδα σταμάτησε: λίγες ψήφοι`, again_need: `Χρειάζονται ακόμα {n} για νέα παρτίδα`,
     lobby_free: `ακόμα {n} θέσεις`, lobby_scan: `Στρέψε την κάμερα του κινητού στο QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.`, lobby_players: `Παίκτες`,
     r1: `Εμφανίζεται μια ερώτηση. Απάντησε όχι για σένα αλλά για όλους: τι θα διαλέξει η πλειοψηφία;`,
     r2: `Βρήκες την πλειοψηφία — +100. Όχι — 0. Ισοπαλία — +50 σε όλους.`,
@@ -1013,7 +1020,18 @@ function drawPause() {
   const key = "pause:" + wvLang() + L.sig;
   const online = present().filter((p) => p.online).length;
   viewKey = key;
-  upper.innerHTML = `<div class="scr full"><div class="poster pnl"><h1 id="ih"><span class="tw">${esc(T("pause_title"))}</span></h1><p>${esc(tpl("pause_d", { min: state.minPlayers, n: online }))}</p></div></div>`;
+  if (state.pauseReason === "passive") {
+    // все на связи, но два вопроса подряд не набрали голосов: причина — не «ждём игроков», а пассивные игроки
+    const idle = (state.pauseIdle || []).map(player).filter(Boolean);
+    const extra = idle.length
+      ? `<p class="pidle">${esc(tpl("pause_idle", { names: idle.map((p) => p.name).join(", ") }))}</p>
+         <div class="fbtn pkick"><span class="fhint">${esc(T("pause_kick"))}</span>${isHost ? idle.map((p) => `<button class="ghostbtn" type="button" data-k="${esc(p.id)}">${esc(T("kick"))}: ${esc(p.name)}</button>`).join("") : ""}</div>`
+      : "";
+    upper.innerHTML = `<div class="scr full"><div class="poster pnl"><h1 id="ih"><span class="tw">${esc(T("pause_pt"))}</span></h1><p>${esc(tpl("pause_pd", { min: state.minPlayers }))}</p>${extra}</div></div>`;
+    for (const b of upper.querySelectorAll("[data-k]")) b.onclick = () => conn.send({ type: "kick", playerId: b.dataset.k });
+  } else {
+    upper.innerHTML = `<div class="scr full"><div class="poster pnl"><h1 id="ih"><span class="tw">${esc(T("pause_title"))}</span></h1><p>${esc(tpl("pause_d", { min: state.minPlayers, n: online }))}</p></div></div>`;
+  }
   fitIntro();
 }
 
@@ -1370,7 +1388,7 @@ function countUp(nodes, dur, delay) {
 
 // ---------- итоги ----------
 function drawFinal() {
-  const key = "final:" + state.game + wvLang() + isHost + L.sig;
+  const key = "final:" + state.game + wvLang() + isHost + L.sig + ":" + Math.max(0, state.minPlayers - present().length);
   if (viewKey === key) return;
   viewKey = key;
   const list = present().slice().sort((a, b) => b.score - a.score);
@@ -1381,8 +1399,9 @@ function drawFinal() {
   const cards = [];
   const add = (a, ico, k) => { if (a && a.ids && a.ids.length) cards.push(`<div class="aw"><span class="rosette">${ico}</span><div style="min-width:0"><div class="ek">${esc(T("aw_" + k))}</div><b>${esc(names(a.ids))}</b><p>${esc(tpl("aw_" + k + "_d", { n: a.n }))}</p></div></div>`); };
   add(aw.crowd, "👥", "crowd"); add(aw.crow, "🐑", "crow"); add(aw.risk, "🎲", "risk"); add(aw.wolf, "🐺", "wolf");
-  const sub = state.finishedReason === "paused" ? T("final_paused") : state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : "";
+  const sub = state.finishedReason === "paused" ? T("final_paused") : state.finishedReason === "few" ? T("final_few") : state.finishedReason === "idle" ? T("final_idle") : state.finishedReason === "host" ? T("final_host") : "";
   const head = state.finishedReason === "paused" ? T("final_paused") : T("final_title");
+  const againNeed = Math.max(0, state.minPlayers - present().length);
   const restL = list.slice(3);
   const rhalf = Math.ceil(restL.length / 2);
   const rowH = (p) => `<span><i class="rk">${wvRank(list, p)}</i>${avHtml(p)}<b>${esc(p.name)}</b><em>${p.score}</em></span>`;
@@ -1392,7 +1411,7 @@ function drawFinal() {
     <div class="podium" id="podium">${top.map((p, i) => p ? `<div class="step${wvRank(list, p) === 1 ? " first" : ""}"><div class="who" style="--d:${ds[i]}">${avHtml(p)}<span>${esc(p.name)}</span></div><div class="blk" style="--hf:${hsOf(p)};--d:${[0.4, 0.9, 0.1][i]}s">${wvRank(list, p)}<small>${p.score}</small></div></div>` : `<div class="step"></div>`).join("")}</div>
     <div class="rest r">${restL.slice(rhalf).map(rowH).join("")}</div>
     <div class="awrow">${cards.join("")}</div>
-    <div class="fbtn">${isHost ? `<button class="start" id="again" type="button">${esc(T("btn_again"))}</button><button class="ghostbtn" id="tolobby" type="button">${esc(T("btn_lobby"))}</button>` : ""}<a class="ghostbtn" href="index.html">${esc(T("btn_home"))}</a></div></div>`;
+    <div class="fbtn">${isHost ? `<button class="start" id="again" type="button"${againNeed > 0 ? " disabled" : ""}>${esc(T("btn_again"))}</button>${againNeed > 0 ? `<span class="fhint" id="againhint">${esc(tpl("again_need", { n: againNeed }))}</span>` : ""}<button class="ghostbtn" id="tolobby" type="button">${esc(T("btn_lobby"))}</button>` : ""}<a class="ghostbtn" href="index.html">${esc(T("btn_home"))}</a></div></div>`;
   showUpper(false);
   if (isHost) { $("again").onclick = () => conn.send({ type: "start" }); $("tolobby").onclick = () => conn.send({ type: "lobby" }); }
   // аватары подиума крупнее: до 150px, пока влезают по высоте
@@ -1419,7 +1438,7 @@ function render() {
   const dimOf = (p) => !p.online || (ph === "vote" && r && r.voters && !r.voters.includes(p.id)) || ((ph === "reveal" || ph === "scores") && r && r.result && !r.result.void && !(p.id in r.result.votes));
   for (const pl of PL.values()) pl.el.classList.toggle("dim", dimOf(pl.p));
   if (ph !== lastPhase) {
-    if (ph === "lobby" || ph === "vote" || ph === "intro") { clearLater(); hideVd(); }
+    if (ph === "lobby" || ph === "vote" || ph === "intro" || ph === "pause" || ph === "finished") { clearLater(); hideVd(); }
     if (ph === "vote") { RV.plan = null; RV.id = ""; RV.decided = false; SP.t = 0.5; $("rail").classList.remove("shake"); for (const pl of PL.values()) pl.key = ""; }
     if (ph !== "reveal") hideVd();
     lastPhase = ph;

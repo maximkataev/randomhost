@@ -18,8 +18,8 @@ const crypto = require("crypto");
 const zlib = require("zlib");
 const { WebSocketServer } = require("ws");
 const { roomCode } = require("../lib/codes");
-const { clientIp, createGuessLimiter, rateOk: netRateOk, send } = require("../lib/net");
-const { Game, clampSettings, cleanName, nameKey } = require("./game");
+const { clientIp, rateOk: netRateOk, send } = require("../lib/net");
+const { Game, clampSettings, cleanName, nameKey, NAME_MAX } = require("./game");
 const CONTENT = require("./content");
 const stats = require("./stats");
 
@@ -62,14 +62,36 @@ const rooms = new Map(); // code → room
 
 const newCode = () => roomCode((c) => rooms.has(c));
 
-// Перебор кодов: адрес, промахнувшийся GUESS_LIMIT раз за окно, до конца окна не получает ни одной комнаты
-const { blocked: guessBlocked, missed: guessMissed } = createGuessLimiter(Number(process.env.GUESS_LIMIT || 60));
+/*
+ * Перебор кодов. Считаем РАЗНЫЕ неверные коды с адреса: один и тот же устаревший код (закрытая вкладка, переподключение
+ * по протухшей ссылке) счётчик не раздувает, а за «все запросы подряд» никого не блокируем. Адрес, перебравший
+ * GUESS_LIMIT разных кодов за окно, до конца окна не получает комнаты, кроме тех, где его адрес уже был участником
+ * (общий NAT: до блокировки в комнату вошёл кто-то с этого адреса — остальным телефонам она открыта).
+ * Свой лимитёр, а не lib/net.js: общий считает любые промахи, без различения кодов.
+ */
+const GUESS_LIMIT = Number(process.env.GUESS_LIMIT || 60);
+const GUESS_WINDOW = 10 * 60 * 1000;
+const guesses = new Map(); // ip → {since, codes:Set}
+function guessBlocked(ip) {
+  const g = guesses.get(ip);
+  if (!g) return false;
+  if (Date.now() - g.since > GUESS_WINDOW) { guesses.delete(ip); return false; }
+  return g.codes.size >= GUESS_LIMIT;
+}
+function guessMissed(ip, code) {
+  let g = guesses.get(ip);
+  if (!g || Date.now() - g.since > GUESS_WINDOW) { g = { since: Date.now(), codes: new Set() }; guesses.set(ip, g); }
+  if (g.codes.size < GUESS_LIMIT + 5) g.codes.add(String(code).slice(0, 24));
+  if (guesses.size > 10000) for (const [k, v] of guesses) if (Date.now() - v.since > GUESS_WINDOW) guesses.delete(k);
+  if (guesses.size > 50000) for (const k of guesses.keys()) { guesses.delete(k); if (guesses.size <= 40000) break; }
+}
 function roomFor(req, url) {
   const ip = clientIp(req);
-  if (guessBlocked(ip)) return null;
-  const room = rooms.get((url.searchParams.get("r") || "").toUpperCase());
-  if (!room) guessMissed(ip);
-  return room || null;
+  const code = (url.searchParams.get("r") || "").toUpperCase();
+  const room = rooms.get(code);
+  if (room) return !guessBlocked(ip) || room.knownIps.has(ip) ? room : null;
+  if (!guessBlocked(ip)) guessMissed(ip, code);
+  return null;
 }
 
 function socketsFrom(ip) {
@@ -125,9 +147,12 @@ function pruneTokens(room) {
   for (const id of room.dropCounts.keys()) if (!ids.has(id)) room.dropCounts.delete(id);
 }
 
-function newRoom({ code, ip = "", hostToken, game, tokens = {}, touched = Date.now(), speed = 1 }) {
+function newRoom({ code, ip = "", hostToken, game, tokens = {}, touched = Date.now(), speed = 1, bans = null }) {
   return {
     code, ip, hostToken, game, tokens,
+    // выкинутые ведущим: по ключу имени и токену — до конца жизни комнаты (иначе «кик» не стоил бы ничего)
+    bans: { keys: (bans && bans.keys) || [], tokens: (bans && bans.tokens) || [] },
+    knownIps: new Set(ip ? [ip] : []),
     sockets: new Set(), // {ws, playerId?, host?}
     offlineTimers: new Map(),
     dropCounts: new Map(),
@@ -159,6 +184,14 @@ function createRoom({ settings = {}, speed = 1, ip = "" } = {}) {
   });
   rooms.set(room.code, room);
   return room;
+}
+
+// отказ по частоте — не молчком: клиент снимает «ожидание» и показывает прежнее состояние. Не чаще раза в 700 мс на клиента
+function notifyRate(client, action) {
+  const t = now();
+  if (client.rn && t - client.rn < 700) return;
+  client.rn = t;
+  send(client.ws, { type: "rejected", action, reason: "rate" });
 }
 
 function cmdOk(client) {
@@ -275,7 +308,8 @@ function sendHello(room, c) {
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".woff2": "font/woff2" };
 
 function serveStatic(req, res) {
-  const urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
+  let urlPath;
+  try { urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname); } catch { res.writeHead(400); return res.end(); }
   const file = path.join(STATIC, urlPath === "/" ? "index.html" : urlPath);
   // с разделителем: иначе «/../randomhost-old/x» проходил проверку префикса как соседний каталог
   if (!file.startsWith(STATIC + path.sep) || path.basename(file).startsWith(".")) { res.writeHead(404); return res.end(); }
@@ -348,11 +382,32 @@ function anonCount(room, ip) {
   for (const c of room.sockets) if (isAnon(c) && (ip === undefined || c.ip === ip)) n++;
   return n;
 }
-function roomHasSpace(room, ip) {
+// Место анониму освобождаем, вытесняя самого давнего анонимного сокета: 30 «пустых» соединений с одного адреса
+// не запирают комнату от доски и вернувшихся игроков (они проходят первыми), а общее число анонимов по-прежнему ограничено.
+function evictAnon(room, ip) {
+  let victim = null;
+  for (const c of room.sockets) if (isAnon(c) && (ip === undefined || c.ip === ip) && (!victim || (c.opened || 0) < (victim.opened || 0))) victim = c;
+  if (!victim) return false;
+  room.sockets.delete(victim);
+  if (victim.poll) closePoll(victim.sid);
+  else { try { victim.ws.terminate(); } catch {} }
+  return true;
+}
+// токен хозяина (h) или игрока (t) в адресе: такое соединение не анонимно и лимит анонимов его не касается
+function authedQuery(room, url) {
+  const h = url.searchParams.get("h"), t = url.searchParams.get("t");
+  return !!((h && h === room.hostToken) || (t && room.tokens[t]));
+}
+function roomHasSpace(room, ip, authed = false) {
   if (room.sockets.size >= MAX_SOCKETS_PER_ROOM || totalSockets() >= MAX_TOTAL_SOCKETS) return false;
   if (ip && socketsFrom(ip) >= MAX_SOCKETS_PER_IP) return false;
-  if (anonCount(room) >= MAX_ANON_PER_ROOM) return false;
-  return !ip || anonCount(room, ip) < MAX_ANON_PER_IP;
+  if (authed) return true;
+  if (anonCount(room) >= MAX_ANON_PER_ROOM && !(ip && evictAnon(room, ip)) && !evictAnon(room)) return false;
+  if (ip && anonCount(room, ip) >= MAX_ANON_PER_IP && !evictAnon(room, ip)) return false;
+  return true;
+}
+function noteKnown(room, ip) {
+  if (ip && room.knownIps.size < 64) room.knownIps.add(ip);
 }
 
 async function route(req, res) {
@@ -362,7 +417,8 @@ async function route(req, res) {
     const room = roomFor(req, url);
     if (!room) return json(404, { error: "no such room" });
     const ip = clientIp(req);
-    if (!roomHasSpace(room, ip)) return json(503, { error: "busy" });
+    if (!roomHasSpace(room, ip, authedQuery(room, url))) return json(503, { error: "busy" });
+    noteKnown(room, ip);
     const client = openPoll(room, { ip });
     const first = client.ws.queue.splice(0);
     return json(200, { sid: client.sid, messages: first.map((d) => JSON.parse(d)) });
@@ -403,7 +459,10 @@ async function route(req, res) {
       const room = createRoom({ settings: body.settings, speed: body.speed, ip: clientIp(req) });
       return json(200, { code: room.code, hostToken: room.hostToken });
     } catch (err) {
-      return json(400, { error: err.message });
+      // внутренние тексты ошибок клиенту не отдаём: только известные причины отказа
+      if (/^too many rooms/.test(err.message)) return json(400, { error: err.message });
+      console.error(`${LOG} создание комнаты не удалось:`, err);
+      return json(400, { error: "bad request" });
     }
   }
   if (STATIC && req.method === "GET") return serveStatic(req, res);
@@ -434,10 +493,11 @@ server.on("upgrade", (req, socket, head) => {
   const room = roomFor(req, url);
   if (!room) { socket.write("HTTP/1.1 404 Not Found\r\n\r\n"); return socket.destroy(); }
   const ip = clientIp(req);
-  if (!roomHasSpace(room, ip)) {
+  if (!roomHasSpace(room, ip, authedQuery(room, url))) {
     socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
     return socket.destroy();
   }
+  noteKnown(room, ip);
   wss.handleUpgrade(req, socket, head, (ws) => onConnection(room, ws, { ip }));
 });
 
@@ -447,7 +507,7 @@ function onConnection(room, ws, opts = {}) {
   ws.on("pong", () => (client.misses = 0));
   sendHello(room, client);
   ws.on("message", (raw) => {
-    if (!rateOk(client)) return;
+    if (!rateOk(client)) return notifyRate(client, "flood");
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     try { handle(room, client, msg); } catch (err) { send(ws, { type: "error", error: err.message }); }
@@ -496,6 +556,10 @@ function handle(room, client, msg) {
     }
     case "join": {
       if (me && g.player(me) && !g.player(me).left) return reply({ type: "joined", playerId: me, token: client.token });
+      // выкинутый ведущим не возвращается ни по токену, ни под тем же именем
+      if ((msg.token && room.bans.tokens.includes(msg.token)) || (msg.name != null && room.bans.keys.includes(nameKey(cleanName(msg.name))))) {
+        return reply({ type: "kicked" });
+      }
       let playerId = msg.token && room.tokens[msg.token];
       if (playerId && !g.player(playerId)) {
         delete room.tokens[msg.token];
@@ -523,17 +587,25 @@ function handle(room, client, msg) {
         }
       }
       if (!playerId) {
-        // новый игрок с одного сокета — не чаще раза в 3 с; отказ (идёт раунд) попытку не тратит
-        if (client.newPlayerAt && now() - client.newPlayerAt < 3000) return;
-        // имена уникальны: тёзке дописываем номер, иначе подхват по имени перепутал бы игроков
-        let name = cleanName(msg.name);
-        if (!name) return reply({ type: "error", error: "bad_name" });
+        // имена уникальны: тёзке дописываем номер (по кодпоинтам, в пределах NAME_MAX), иначе подхват по имени перепутал бы игроков
+        const base = Array.from(cleanName(msg.name));
+        if (!base.length) return reply({ type: "error", error: "bad_name" });
+        let name = base.join("");
         const taken = new Set(g.s.players.filter((p) => !p.left).map((p) => nameKey(p.name)));
-        for (let i = 2; taken.has(nameKey(name)); i++) name = `${cleanName(msg.name).slice(0, 13)} ${i}`;
-        playerId = "u_" + crypto.randomBytes(5).toString("hex");
-        const r = g.addPlayer({ id: playerId, name, now: t });
+        for (let i = 2; taken.has(nameKey(name)); i++) {
+          const suffix = ` ${i}`;
+          name = base.slice(0, NAME_MAX - suffix.length).join("").trimEnd() + suffix;
+        }
+        if (room.bans.keys.includes(nameKey(name))) return reply({ type: "kicked" });
+        // вернувшийся ушедший (то же имя посреди партии) получает свою запись, а не новую: записей не прибавляется, лимит не нужен
+        const returning = g.s.phase !== "lobby" && g.s.phase !== "finished" && g.findLeft(name);
+        // новый игрок с одного сокета — не чаще раза в 3 с; отказ (идёт раунд) попытку не тратит
+        if (!returning && client.newPlayerAt && now() - client.newPlayerAt < 3000) return reply({ type: "rejected", action: "join", reason: "rate" });
+        const r = g.addPlayer({ id: "u_" + crypto.randomBytes(5).toString("hex"), name, now: t });
         if (!r.ok) return reply({ type: "error", error: r.reason });
-        client.newPlayerAt = now();
+        playerId = r.player.id;
+        if (!r.restored) client.newPlayerAt = now();
+        revokeOtherTokens(room, playerId, null);
         const token = crypto.randomBytes(12).toString("base64url");
         room.tokens[token] = playerId;
         client.token = token;
@@ -557,10 +629,19 @@ function handle(room, client, msg) {
       return afterChange(room, events);
     }
     // ---- игрок ----
-    case "vote": return me && cmdOk(client) ? act("vote", g.vote(me, msg.side, t)) : undefined;
-    case "bank": return me && cmdOk(client) ? act("bank", g.bankToggle(me, msg.on, t)) : undefined;
-    case "confirm": return me && cmdOk(client) ? act("confirm", g.confirm(me, t)) : undefined;
-    case "opinion": return me && cmdOk(client) ? act("opinion", g.opinion(me, msg.side, t)) : undefined;
+    case "vote":
+    case "bank":
+    case "opinion": {
+      if (!me) return reply({ type: "rejected", action: msg.type, reason: "not_player" });
+      if (!cmdOk(client)) return notifyRate(client, msg.type);
+      if (msg.type === "vote") return act("vote", g.vote(me, msg.side, t));
+      if (msg.type === "bank") return act("bank", g.bankToggle(me, msg.on, t));
+      return act("opinion", g.opinion(me, msg.side, t));
+    }
+    // «Готово» идемпотентна (повтор — noop без рассылки) и не режется лимитом команд: после флуда голосами она обязана дойти
+    case "confirm":
+      if (!me) return reply({ type: "rejected", action: "confirm", reason: "not_player" });
+      return act("confirm", g.confirm(me, t));
     // ---- ведущий (только доска) ----
     case "settings": {
       if (!client.host) return;
@@ -576,7 +657,15 @@ function handle(room, client, msg) {
     }
     case "kick": {
       if (!client.host) return;
-      const events = g.removePlayer(String(msg.playerId || ""), t);
+      const kid = String(msg.playerId || "");
+      const victim = g.player(kid);
+      if (victim) {
+        const b = room.bans;
+        const key = nameKey(victim.name);
+        if (key && !b.keys.includes(key) && b.keys.length < 200) b.keys.push(key);
+        for (const [tk, id] of Object.entries(room.tokens)) if (id === kid && !b.tokens.includes(tk) && b.tokens.length < 400) b.tokens.push(tk);
+      }
+      const events = g.removePlayer(kid, t);
       pruneTokens(room);
       for (const c of room.sockets) if (c.playerId === msg.playerId) { c.playerId = null; send(c.ws, { type: "kicked" }); }
       return afterChange(room, events);
@@ -633,7 +722,7 @@ let dumpWasEmpty = false;
 function dump() {
   try {
     // голоса, ва-банк и мнения пишем: без них после рестарта не закрыть голосование. Файл — только на сервере (режим 0600).
-    const data = [...rooms.values()].map((r) => ({ dumpedAt: now(), code: r.code, ip: r.ip, hostToken: r.hostToken, tokens: r.tokens, touched: r.touched, state: r.game.s }));
+    const data = [...rooms.values()].map((r) => ({ dumpedAt: now(), code: r.code, ip: r.ip, hostToken: r.hostToken, tokens: r.tokens, bans: r.bans, touched: r.touched, state: r.game.s }));
     if (!data.length && dumpWasEmpty) return;
     dumpWasEmpty = !data.length;
     fs.mkdirSync(path.dirname(DUMP), { recursive: true });
@@ -653,7 +742,7 @@ function restore() {
     if (!fs.existsSync(DUMP)) return;
     for (const r of JSON.parse(fs.readFileSync(DUMP, "utf8"))) {
       if (now() - r.touched > ROOM_TTL) continue;
-      const room = newRoom({ code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: Game.from(r.state, rnd, CONTENT), tokens: r.tokens || {}, touched: r.touched });
+      const room = newRoom({ code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: Game.from(r.state, rnd, CONTENT), tokens: r.tokens || {}, touched: r.touched, bans: r.bans });
       // простой сервера не съедает время фазы: сроки сдвигаем, а на голос, мнение и паузу оставляем хотя бы 20 с
       const s = room.game.s;
       if (s.phaseEnd != null && r.dumpedAt) {

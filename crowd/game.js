@@ -17,7 +17,8 @@ const T = {
   opinion: 6000,
   reveal: 4000, // + REVEAL_STEP на каждый голос (+ REVEAL_OPINION, если было «Мнение»)
   scores: 4000,
-  pause: 60000,
+  pause: 60000, // «Ждём игроков»: меньше 3 на связи
+  passive: 5000, // «Мало голосов»: все на связи, но два раунда подряд не набрали 3 голосов
 };
 const REVEAL_STEP = 600;
 const REVEAL_OPINION = 3500;
@@ -36,19 +37,25 @@ const OPINION_MIN_PLAYERS = 4;
 const TOTAL = { full: 10, short: 6 };
 const BANKS = { full: 2, short: 1 };
 const MAX_VOIDS = 2; // замен аннулированных вопросов за партию
+const MAX_VOID_RUN = 4; // аннулированных раундов подряд (с одной «пассивной» паузой между парами) — и партия останавливается
+const NAME_MAX = 15;
+const SD_MIN = { full: 3, short: 1 }; // вопросов spicy/dark за партию (острая основа колоды)
+const CAP_TAG = 2; // pick / edge — не больше двух за партию
+const AB_SHARE = [0.3, 0.7]; // доля «А или Б» в партии
 const POINTS = { win: 100, flat: 50, bankWin: 200, bankLoss: -200 };
 const UNANIMOUS_MIN = 4;
 const WOLF_MIN = 4;
 const ILLUSION_MIN = 4;
 const ILLUSION_SHARE = 0.6;
-const LEAN_B_MIN = 0.4; // доля вопросов партии с ожидаемым большинством «НЕТ»/«Б» (§5)
+const LEAN_B_MIN = 0.4; // доля вопросов партии с ожидаемым большинством «НЕТ»/«Б» (§5); в целых — вниз: из 6 допустимо 2–3
 const LEAN_B_MAX = 0.5;
 
 // цвета и аватары — как в соседних играх (имя заметно на любой заливке)
 const COLORS = ["#e0115f", "#1438e0", "#0a8a4a", "#e25a00", "#7b1fd6", "#008b9a", "#b8006e", "#6b4a00", "#2c2cad", "#b31010", "#3d6b00", "#c77700"];
 const AVATARS = ["🐙", "🦊", "🐸", "🦉", "🦄", "🐧", "🦁", "🐼", "🐵", "🦖", "🐳", "🦩"];
 
-function clampSettings(input = {}) {
+function clampSettings(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) input = {};
   const s = { ...DEFAULTS };
   if (typeof input.short === "boolean") s.short = input.short;
   if (typeof input.opinion === "boolean") s.opinion = input.opinion;
@@ -64,12 +71,14 @@ function cleanText(text, max) {
   const t = String(text == null ? "" : text).replace(CTRL, "").replace(ZWJ_OK, "$1\u0001").replace(INVIS, "").replace(/\u0001/g, "‍");
   return Array.from(t.replace(/\s+/g, " ").trim()).slice(0, max).join("").trim();
 }
-// латиница/кириллица/греческий-двойники не отличают «Саша» от «Сaшa»
+// латиница/кириллица/греческий-двойники не отличают «Саша» от «Сaшa»; диакритика снимается (NFKD), i/l/1 и o/0 сведены в одно
 const SKEL = { а: "a", в: "b", е: "e", к: "k", м: "m", н: "h", о: "o", р: "p", с: "c", т: "t", у: "y", х: "x", ё: "e",
-  α: "a", β: "b", ε: "e", η: "h", ι: "i", κ: "k", μ: "m", ν: "v", ο: "o", ρ: "p", τ: "t", υ: "y", χ: "x", ς: "c" };
-const skeleton = (w) => w.replace(/[авекмнорстухёαβεηικμνορτυχς]/g, (ch) => SKEL[ch]);
-const nameKey = (n) => skeleton(String(n || "").normalize("NFKC").toLowerCase()).replace(/[\s‍]+/g, "");
-const cleanName = (name) => cleanText(name, 16);
+  і: "i", ї: "i", ј: "j", ѕ: "s", ԁ: "d", ԛ: "q", ԝ: "w", һ: "h", ӏ: "l", ѵ: "v", ѡ: "w",
+  α: "a", β: "b", ε: "e", η: "h", ι: "i", κ: "k", μ: "m", ν: "v", ο: "o", ρ: "p", τ: "t", υ: "y", χ: "x", ς: "c", ω: "w", γ: "y", ϲ: "c" };
+const SKEL_RE = new RegExp("[" + Object.keys(SKEL).join("") + "]", "g");
+const nameKey = (n) => String(n || "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase()
+  .replace(SKEL_RE, (ch) => SKEL[ch]).replace(/[il1|]/g, "l").replace(/0/g, "o").replace(/[\s‍]+/g, "");
+const cleanName = (name) => cleanText(name, NAME_MAX);
 
 // детерминированный ГСЧ для порядка показа голосов (от seed раунда)
 function mulberry32(a) {
@@ -136,6 +145,13 @@ class Game {
       sensUsed: 0,
       leanB: 0,
       drawn: 0,
+      sdUsed: 0, // острых (spicy/dark) основных вопросов партии
+      abUsed: 0, // «А или Б» среди основных
+      tagUsed: {}, // pick / edge: потолок на партию
+      partyIds: [], // id вопросов этой партии: не повторяются, даже когда банк «забывается»
+      voidRun: 0, // аннулированных раундов подряд (сбрасывается раундом с итогом)
+      pauseReason: null, // offline | passive
+      pauseIdle: [],
       phaseStart: null,
       phaseEnd: null,
       round: null, // текущий раунд (см. startRound)
@@ -176,6 +192,28 @@ class Game {
     return { hits: 0, misses: 0, wolf: 0, bankNet: 0, banksUsed: 0 };
   }
 
+  // ушедший посреди партии (left) — тот же человек, если вернулся с тем же именем: кошелёк у него один
+  findLeft(name) {
+    const key = nameKey(cleanName(name));
+    if (!key) return null;
+    return this.s.players.find((p) => p.left && nameKey(p.name) === key) || null;
+  }
+
+  // записи ушедших без очков, статистики и голоса в текущем раунде не нужны никому: чистим, чтобы они не копились
+  compactPlayers() {
+    const s = this.s;
+    const r = s.round;
+    const keep = (p) => !p.left || p.score !== 0 || p.stats.hits + p.stats.misses + p.stats.wolf + p.stats.banksUsed > 0
+      || !!(r && (r.votes[p.id] || r.confirmed[p.id] || r.opinions[p.id] || (r.only && r.only.includes(p.id))));
+    s.players = s.players.filter(keep);
+    // потолок записей: самых давних ушедших вытесняем, но присутствующих (≤ 12) это не касается
+    while (s.players.length >= MAX_PLAYERS * 3) {
+      const i = s.players.findIndex((p) => p.left);
+      if (i < 0) break;
+      s.players.splice(i, 1);
+    }
+  }
+
   addPlayer({ id, name, now = null }) {
     const s = this.s;
     const have = this.player(id);
@@ -183,11 +221,17 @@ class Game {
     if (this.present().length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
     name = cleanName(name);
     if (!name) return { ok: false, reason: "bad_name" };
-    // ушедшие посреди партии копятся в списке (их очки нужны итогам), но не бесконечно
-    if (s.players.length >= MAX_PLAYERS * 3) return { ok: false, reason: "room_full" };
-    const used = new Set(this.present().map((p) => p.color));
-    const usedAv = new Set(this.present().map((p) => p.avatar));
     const inGame = s.phase !== "lobby" && s.phase !== "finished";
+    const used = new Set(this.present().map((p) => p.color));
+    const back = inGame ? this.findLeft(name) : null;
+    if (back) {
+      back.left = false;
+      back.online = true;
+      if (used.has(back.color)) back.color = COLORS.find((c) => !used.has(c)) || back.color;
+      return { ok: true, player: back, restored: true };
+    }
+    this.compactPlayers();
+    const usedAv = new Set(this.present().map((p) => p.avatar));
     const left = Math.max(0, this.total() - s.n);
     const p = {
       id,
@@ -235,37 +279,74 @@ class Game {
   }
 
   /*
-   * Вопрос без повторов в комнате (банк пройден — забываем сыгранное).
-   * Баланс партии (§5): не меньше 40 % вопросов с ожидаемым большинством «НЕТ»/«Б» и не больше 50 %;
-   * «чувствительный» вопрос — не чаще одного за партию.
+   * Вопрос без повторов в комнате (банк пройден — забываем сыгранное, но не вопросы этой партии).
+   * Баланс партии (§5): 40–50 % вопросов с ожидаемым большинством «НЕТ»/«Б» (в целых вниз: из 6 — 2…3, из 10 — 4…5);
+   * острая основа: не меньше SD_MIN вопросов spicy/dark; pick и edge — не больше CAP_TAG каждого; «А или Б» — 30–70 %;
+   * «чувствительный» вопрос — не больше одного и не в первых двух.
+   * Банк забываем не «когда свободных меньше 8», а когда в свободных не хватает вопросов нужного вида на оставшиеся слоты.
    */
   takeQuestion(kind) {
     const s = this.s;
     const lang = s.settings.lang;
     const all = this.bank();
-    let used = new Set(s.used[lang] || []);
-    let free = all.filter((x) => !used.has(x.id));
-    if (free.length < 8) { s.used[lang] = []; used = new Set(); free = all.slice(); }
-    let pool = free.filter((x) => !(x.sensitive && s.sensUsed >= 1));
-    if (!pool.length) pool = free;
     const main = kind === "normal" || kind === "final";
-    if (main) {
-      const total = this.total();
-      const needB = Math.ceil(LEAN_B_MIN * total) - s.leanB;
-      const slots = total - s.drawn;
-      const maxB = Math.floor(LEAN_B_MAX * total);
-      let want = null;
-      if (needB >= slots) want = "b";
-      else if (s.leanB >= maxB) want = "a";
-      if (want) {
-        const sub = pool.filter((x) => (x.lean === "b" ? "b" : "a") === want);
-        if (sub.length) pool = sub;
+    const total = this.total();
+    const slots = main ? Math.max(0, total - (s.drawn || 0)) : 0; // основных вопросов осталось, считая этот
+    const party = new Set(s.partyIds || []);
+    const isB = (x) => x.lean === "b";
+    const isSD = (x) => x.tag === "spicy" || x.tag === "dark";
+    const minB = Math.floor(LEAN_B_MIN * total), maxB = Math.floor(LEAN_B_MAX * total);
+    const rest = all.filter((x) => !party.has(x.id));
+    const cnt = (list, f) => list.reduce((n, x) => n + (f(x) ? 1 : 0), 0);
+    const sdMin = s.settings.short ? SD_MIN.short : SD_MIN.full;
+    // сколько каждого вида ещё нужно партии, но не больше, чем вообще есть в банке
+    const needB = Math.min(Math.max(0, minB - (s.leanB || 0)), cnt(rest, isB));
+    const needA = Math.min(Math.max(0, slots - (maxB - (s.leanB || 0))), cnt(rest, (x) => !isB(x)));
+    const needSD = Math.min(Math.max(0, sdMin - (s.sdUsed || 0)), cnt(rest, isSD));
+    let used = new Set(s.used[lang] || []);
+    let free = all.filter((x) => !used.has(x.id) && !party.has(x.id));
+    const enough = (l) => l.length >= Math.max(slots, 1) + 1 && cnt(l, isB) >= needB && cnt(l, (x) => !isB(x)) >= needA && cnt(l, isSD) >= needSD;
+    let reset = false;
+    const forget = () => { reset = true; s.used[lang] = [...party]; return rest.length ? rest : all.slice(); };
+    if (!enough(free)) free = forget();
+    const select = (list) => {
+      let pool = list, miss = false;
+      // forced: условие обязательное — если в свободных нет подходящего, это «промах» (тогда банк забываем и пробуем снова)
+      const take = (f, forced) => { const sub = pool.filter(f); if (sub.length) pool = sub; else if (forced) miss = true; };
+      const sensBlocked = (s.sensUsed || 0) >= 1 || (main && (s.drawn || 0) < 2);
+      if (sensBlocked) take((x) => !x.sensitive);
+      const tu = s.tagUsed || {};
+      take((x) => !((x.tag === "pick" || x.tag === "edge") && (tu[x.tag] || 0) >= CAP_TAG));
+      if (main) {
+        // приоритет по убыванию: баланс «ДА/НЕТ» → острый минимум → доля «А или Б»; мягкое пожелание (острый по жребию) — последним
+        if (needB >= slots && needB > 0) take(isB, true);
+        else if ((s.leanB || 0) >= maxB) take((x) => !isB(x), true);
+        if (needSD >= slots && needSD > 0) take(isSD, true);
+        const abMin = Math.ceil(AB_SHARE[0] * total), abMax = Math.floor(AB_SHARE[1] * total);
+        const abUsed = s.abUsed || 0, ynUsed = (s.drawn || 0) - abUsed;
+        const isAb = (x) => x.kind === "ab";
+        if (abUsed >= abMax) take((x) => !isAb(x), true);
+        else if (ynUsed >= total - abMin) take(isAb, true);
+        else if (abMin - abUsed >= slots) take(isAb, true);
+        else if (total - abMax - ynUsed >= slots) take((x) => !isAb(x), true);
+        if (needSD > 0 && needSD < slots && this.rnd(slots) < needSD) take(isSD);
       }
-    }
+      return { pool, miss };
+    };
+    let sel = select(free);
+    if (sel.miss && !reset && rest.length) sel = select(forget());
+    const pool = sel.pool;
     const q = pool[this.rnd(pool.length)] || all[this.rnd(Math.max(1, all.length))];
     (s.used[lang] = s.used[lang] || []).push(q.id);
-    if (q.sensitive) s.sensUsed++;
-    if (main) { s.drawn++; if (q.lean === "b") s.leanB++; }
+    (s.partyIds = s.partyIds || []).push(q.id);
+    if (q.sensitive) s.sensUsed = (s.sensUsed || 0) + 1;
+    if (main) {
+      s.drawn = (s.drawn || 0) + 1;
+      if (q.lean === "b") s.leanB = (s.leanB || 0) + 1;
+      if (q.kind === "ab") s.abUsed = (s.abUsed || 0) + 1;
+      if (isSD(q)) s.sdUsed = (s.sdUsed || 0) + 1;
+      if (q.tag === "pick" || q.tag === "edge") { s.tagUsed = s.tagUsed || {}; s.tagUsed[q.tag] = (s.tagUsed[q.tag] || 0) + 1; }
+    }
     return { id: q.id, q: q.q, a: q.a, b: q.b, kind: q.kind === "ab" ? "ab" : "yn", tag: q.tag || "" };
   }
 
@@ -286,6 +367,13 @@ class Game {
     s.sensUsed = 0;
     s.leanB = 0;
     s.drawn = 0;
+    s.sdUsed = 0;
+    s.abUsed = 0;
+    s.tagUsed = {};
+    s.partyIds = [];
+    s.voidRun = 0;
+    s.pauseReason = null;
+    s.pauseIdle = [];
     s.round = null;
     s.next = null;
     s.awards = null;
@@ -368,7 +456,8 @@ class Game {
     if (!this.bankAllowed()) return { ok: false, reason: "no_bank_here" };
     if (p.joinedAt != null && p.joinedAt > r.start) return { ok: false, reason: "late" };
     if (r.confirmed[id]) return { ok: false, reason: "confirmed" };
-    const want = !!on;
+    if (typeof on !== "boolean") return { ok: false, reason: "bad_value" };
+    const want = on;
     if (want && p.banks < 1) return { ok: false, reason: "no_banks" };
     if (!!r.bank[id] === want) return { ok: true, events: [], noop: true };
     if (want) r.bank[id] = true; else delete r.bank[id];
@@ -412,7 +501,14 @@ class Game {
 
   maybeAdvance(now) {
     const s = this.s;
-    if (s.phase === "pause") return this.onlineCount() >= MIN_PLAYERS ? this.resume(now) : [];
+    if (s.phase === "pause") {
+      const online = this.onlineCount() >= MIN_PLAYERS;
+      if (s.pauseReason === "passive") {
+        // на связи все, ждём только короткую паузу; а если связь пропала — это уже «ждём игроков»
+        return online ? [] : this.pause(s.next, now, "offline");
+      }
+      return online ? this.resume(now) : [];
+    }
     if ((s.phase === "vote" || s.phase === "opinion") && this.readyToClose()) {
       return s.phase === "vote" ? this.closeVote(now) : this.startReveal(now);
     }
@@ -542,14 +638,25 @@ class Game {
     let next;
     if (res.void) {
       s.voidStreak++;
+      s.voidRun = (s.voidRun || 0) + 1;
       if (main && s.voidsUsed < MAX_VOIDS) { s.voidsUsed++; next = { to: "round" }; }
       else { if (main) s.n++; next = this.planAfter(r.kind, res); }
     } else {
       s.voidStreak = 0;
+      s.voidRun = 0;
       if (main) s.n++;
       next = this.planAfter(r.kind, res);
     }
-    if (next.to !== "finish" && (s.voidStreak >= 2 || this.onlineCount() < MIN_PLAYERS)) return this.pause(next, now);
+    if (next.to !== "finish") {
+      if (this.onlineCount() < MIN_PLAYERS) return this.pause(next, now, "offline");
+      if (s.voidStreak >= 2) {
+        // все на связи, но голосов не набирается: короткая пауза с объяснением; и не бесконечно —
+        // ещё два аннулированных раунда после неё, и партия останавливается (очки сохранены)
+        if (s.voidRun >= MAX_VOID_RUN) return this.finish("idle", now);
+        const voted = new Set(Object.keys(res.votes || {}));
+        return this.pause(next, now, "passive", this.voters().filter((p) => !voted.has(p.id)).map((p) => p.id));
+      }
+    }
     return this.run(next, now);
   }
 
@@ -576,12 +683,14 @@ class Game {
     return this.finish("done", now);
   }
 
-  pause(plan, now) {
+  pause(plan, now, reason = "offline", idle = []) {
     const s = this.s;
     s.next = plan;
     s.phase = "pause";
+    s.pauseReason = reason;
+    s.pauseIdle = reason === "passive" ? idle : [];
     s.phaseStart = now;
-    s.phaseEnd = now + T.pause;
+    s.phaseEnd = now + (reason === "passive" ? T.passive : T.pause);
     return [{ type: "pause" }];
   }
 
@@ -590,6 +699,8 @@ class Game {
     const plan = s.next || { to: "round" };
     s.next = null;
     s.voidStreak = 0;
+    s.pauseReason = null;
+    s.pauseIdle = [];
     return this.run(plan, now);
   }
 
@@ -612,7 +723,10 @@ class Game {
         return [{ type: "scores" }];
       }
       case "scores": return this.afterRound(now);
-      case "pause": return this.onlineCount() >= MIN_PLAYERS ? this.resume(now) : this.finish("paused", now);
+      case "pause":
+        if (this.onlineCount() >= MIN_PLAYERS) return this.resume(now);
+        // короткая «пассивная» пауза кончилась, а связь пропала: даём полную минуту дождаться игроков
+        return s.pauseReason === "passive" ? this.pause(s.next, now, "offline") : this.finish("paused", now);
       default: return [];
     }
   }
@@ -640,6 +754,8 @@ class Game {
     s.phaseStart = now;
     s.phaseEnd = null;
     s.finishedReason = reason;
+    s.pauseReason = null;
+    s.pauseIdle = [];
     s.awards = this.computeAwards();
     return [{ type: "final", reason }];
   }
@@ -725,6 +841,8 @@ class Game {
       round,
       awards: s.phase === "finished" ? s.awards || null : null,
       finishedReason: s.phase === "finished" ? s.finishedReason : null,
+      pauseReason: s.phase === "pause" ? s.pauseReason || "offline" : null,
+      pauseIdle: s.phase === "pause" && s.pauseReason === "passive" ? (s.pauseIdle || []).filter((id) => { const p = this.player(id); return p && !p.left; }) : [],
       minPlayers: MIN_PLAYERS,
       opinionMin: OPINION_MIN_PLAYERS,
       me: mePart,
@@ -746,5 +864,5 @@ class Game {
 
 module.exports = {
   Game, T, REVEAL_STEP, REVEAL_OPINION, REVEAL_VOID, DEFAULTS, MAX_PLAYERS, MIN_PLAYERS, MIN_CAST, TOTAL, BANKS, MAX_VOIDS,
-  POINTS, COLORS, AVATARS, clampSettings, cleanName, cleanText, nameKey, revealOrder,
+  POINTS, COLORS, AVATARS, NAME_MAX, MAX_VOID_RUN, clampSettings, cleanName, cleanText, nameKey, revealOrder,
 };

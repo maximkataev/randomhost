@@ -3,7 +3,7 @@
 // Тесты движка «Как все»: node --test test-game.js
 const test = require("node:test");
 const assert = require("node:assert");
-const { Game, T, revealOrder, POINTS } = require("./game");
+const { Game, T, revealOrder, POINTS, MAX_PLAYERS, NAME_MAX, MAX_VOID_RUN, clampSettings, cleanName, nameKey } = require("./game");
 
 // синтетический банк: 60 вопросов, часть lean b, один sensitive на каждые 15
 function bank(n = 60) {
@@ -432,4 +432,211 @@ test("серверное состояние переживает JSON-дамп",
   copy.tick(copy.s.phaseEnd);
   assert.strictEqual(copy.s.phase, "opinion");
   assert.ok(POINTS.win === 100);
+});
+
+// ---------- регрессии аудита (10.10) ----------
+
+test("вернулся с тем же именем посреди партии — та же запись: очки, ва-банки и голос на месте", () => {
+  const ctx = mk(5); ctx.g.start(0);
+  const { g } = ctx;
+  round(ctx, ["a", "a", "a", "b", "b"], { bank: ["p0"] });
+  const p0 = g.player("p0");
+  assert.strictEqual(p0.score, 200);
+  assert.strictEqual(p0.banks, 1);
+  g.vote("p0", "a", ctx.t);
+  g.vote("p1", "b", ctx.t);
+  g.bankToggle("p0", true, ctx.t);
+  g.confirm("p0", ctx.t);
+  g.removePlayer("p0", ctx.t);
+  g.removePlayer("p1", ctx.t);
+  const n = g.s.players.length;
+  const r = g.addPlayer({ id: "новый", name: "  игрок0 ", now: ctx.t + 1 });
+  assert.ok(r.ok && r.restored);
+  assert.strictEqual(r.player.id, "p0", "тот же человек — та же запись");
+  assert.strictEqual(r.player.score, 200);
+  assert.strictEqual(r.player.banks, 1, "ва-банк не возвращается");
+  assert.strictEqual(g.s.players.length, n, "записей не прибавилось");
+  assert.strictEqual(g.s.round.votes.p0, "a");
+  assert.ok(g.s.round.confirmed.p0 && g.s.round.bank.p0, "голос текущего раунда сохранён, не пересчитывается");
+  g.addPlayer({ id: "x", name: "игрок1", now: ctx.t + 1 });
+  assert.strictEqual(g.s.round.votes.p1, "b");
+});
+
+test("перезаходы не копят «призраков»: «Комната заполнена» только при 12 присутствующих", () => {
+  const ctx = mk(4); ctx.g.start(0);
+  const { g } = ctx;
+  for (let i = 0; i < 80; i++) {
+    const r = g.addPlayer({ id: "g" + i, name: "Гость" + i, now: 1 });
+    assert.ok(r.ok, "цикл " + i + ": " + r.reason);
+    g.removePlayer("g" + i, 1);
+  }
+  assert.ok(g.s.players.length <= MAX_PLAYERS * 3, "записей " + g.s.players.length);
+  assert.ok(g.present().length === 4);
+  // даже с очками: давних ушедших вытесняем, а не отказываем живым
+  for (let i = 0; i < 60; i++) {
+    g.addPlayer({ id: "s" + i, name: "Счёт" + i, now: 1 });
+    g.player("s" + i).score = 50;
+    g.removePlayer("s" + i, 1);
+    assert.ok(g.s.players.length <= MAX_PLAYERS * 3);
+  }
+  for (let i = 4; i < 12; i++) assert.ok(g.addPlayer({ id: "f" + i, name: "Полный" + i, now: 1 }).ok);
+  assert.strictEqual(g.present().length, 12);
+  assert.strictEqual(g.addPlayer({ id: "лишний", name: "Лишний", now: 1 }).reason, "room_full");
+});
+
+test("пауза «пассивная»: все на связи, но голосов нет — короткая, с причиной; потом партия останавливается", () => {
+  const ctx = mk(4); ctx.g.start(0);
+  const { g } = ctx;
+  round(ctx, ["a", null, null, null]);
+  round(ctx, ["a", null, null, null]);
+  assert.strictEqual(g.s.phase, "pause");
+  assert.strictEqual(g.s.pauseReason, "passive");
+  assert.strictEqual(g.s.phaseEnd - g.s.phaseStart, T.passive, "не полные 60 с");
+  const snap = g.snapshot(ctx.t, "board");
+  assert.strictEqual(snap.pauseReason, "passive");
+  assert.deepStrictEqual(snap.pauseIdle.sort(), ["p1", "p2", "p3"]);
+  ctx.t = g.s.phaseEnd; g.tick(ctx.t);
+  assert.strictEqual(g.s.phase, "vote");
+  assert.strictEqual(g.snapshot(ctx.t, "board").pauseReason, null);
+  round(ctx, ["a", null, null, null]);
+  round(ctx, ["a", null, null, null]);
+  assert.strictEqual(g.s.phase, "finished", "цикл «2 войда → пауза → 2 войда» не бесконечный");
+  assert.strictEqual(g.s.finishedReason, "idle");
+  assert.ok(MAX_VOID_RUN >= 4);
+});
+
+test("пауза: передумали — связь пропала во время короткой паузы → «ждём игроков» на полную минуту", () => {
+  const ctx = mk(3); ctx.g.start(0);
+  const { g } = ctx;
+  round(ctx, ["a", null, null]);
+  round(ctx, ["a", null, null]);
+  assert.strictEqual(g.s.pauseReason, "passive");
+  g.setOnline("p0", false, ctx.t);
+  assert.strictEqual(g.s.phase, "pause");
+  assert.strictEqual(g.s.pauseReason, "offline");
+  assert.strictEqual(g.s.phaseEnd - ctx.t, T.pause);
+  g.setOnline("p0", true, ctx.t + 5);
+  assert.strictEqual(g.s.phase, "vote", "вернулись — продолжаем сразу");
+  // меньше трёх на связи к концу раунда — сразу offline
+  const c2 = mk(4); c2.g.start(0);
+  c2.g.setOnline("p2", false, 0); c2.g.setOnline("p3", false, 0);
+  round(c2, ["a", "a", null, null]);
+  assert.strictEqual(c2.g.s.pauseReason, "offline");
+});
+
+test("ва-банк: только настоящий boolean", () => {
+  const ctx = mk(3); ctx.g.start(0);
+  for (const bad of ["false", "true", 1, 0, null, undefined, {}]) {
+    assert.strictEqual(ctx.g.bankToggle("p0", bad, 0).ok, false, JSON.stringify(bad));
+  }
+  assert.ok(ctx.g.bankToggle("p0", true, 0).ok);
+  assert.ok(ctx.g.bankToggle("p0", false, 0).ok);
+});
+
+test("имена: 15 кодпоинтов без разрыва суррогатных пар; двойники і/ї/ј, диакритика, 0/o, I/l", () => {
+  assert.strictEqual(NAME_MAX, 15);
+  assert.strictEqual(Array.from(cleanName("ы".repeat(40))).length, 15);
+  const e = cleanName("😀".repeat(30));
+  assert.strictEqual(Array.from(e).length, 15);
+  assert.ok(!/[\ud800-\udbff](?![\udc00-\udfff])/.test(e));
+  assert.strictEqual(nameKey("Іvan"), nameKey("Ivan"));
+  assert.strictEqual(nameKey("Ïvan"), nameKey("Ivan"));
+  assert.strictEqual(nameKey("Саша"), nameKey("Сaшa"));
+  assert.strictEqual(nameKey("Ilya"), nameKey("llya"));
+  assert.strictEqual(nameKey("Rob0t"), nameKey("Robot"));
+  assert.strictEqual(nameKey("Άννα"), nameKey("Αννα"));
+  assert.notStrictEqual(nameKey("Анна"), nameKey("Антон"));
+});
+
+test("настройки: null, массив, строка — без исключения, значения по умолчанию", () => {
+  for (const bad of [null, [], "x", 5, true]) assert.deepStrictEqual(clampSettings(bad), clampSettings({}));
+  assert.deepStrictEqual(Game.create({ settings: null, rnd: rndFrom(), content: {} }).s.settings, clampSettings({}));
+});
+
+// синтетический банк с тегами: острые колоды должны выходить в каждой партии, а лимиты — соблюдаться
+function taggedBank(n = 200) {
+  const tags = ["spicy", "dark", "pick", "edge", "taste", "absurd", "habits", "social", "work", "money", "tech"];
+  return Array.from({ length: n }, (_, i) => ({
+    id: "k-" + i, q: "Вопрос " + i + "?", a: "Да", b: "Нет", kind: (i * 7) % 3 === 0 ? "ab" : "yn", tag: tags[(i * 5) % tags.length],
+    lean: (i * 11) % 5 < 2 ? "b" : "a", sensitive: i % 25 === 0,
+  }));
+}
+
+test("выбор вопросов: острый минимум, потолки pick/edge, «А/Б» 30–70 %, sensitive ≤ 1 и не первым, lean 40–50 %", () => {
+  const content = taggedBank();
+  const by = new Map(content.map((x) => [x.id, x]));
+  for (const short of [false, true]) {
+    const total = short ? 6 : 10;
+    for (let room = 0; room < 40; room++) {
+      let seed = room + 1;
+      const g = Game.create({ settings: { short, opinion: false }, code: "T", rnd: rndFrom(seed * 97), content: { ru: content } });
+      for (let i = 0; i < 3; i++) g.addPlayer({ id: "p" + i, name: "И" + i, now: 0 });
+      for (let party = 0; party < 12; party++) {
+        g.s.phase = "lobby"; g.start(0);
+        const qs = [g.s.round.q];
+        for (let i = 1; i < total; i++) qs.push(g.takeQuestion(i === total - 1 ? "final" : "normal"));
+        const m = qs.map((q) => by.get(q.id));
+        const ctxt = `short=${short} room=${room} party=${party}`;
+        assert.strictEqual(new Set(qs.map((q) => q.id)).size, total, "повтор в партии " + ctxt);
+        assert.ok(m.filter((x) => x.tag === "spicy" || x.tag === "dark").length >= (short ? 1 : 3), "острых мало " + ctxt);
+        assert.ok(m.filter((x) => x.tag === "pick").length <= 2 && m.filter((x) => x.tag === "edge").length <= 2, "pick/edge " + ctxt);
+        const ab = m.filter((x) => x.kind === "ab").length;
+        assert.ok(ab >= Math.ceil(0.3 * total) && ab <= Math.floor(0.7 * total), `ab=${ab} ` + ctxt);
+        assert.ok(m.filter((x) => x.sensitive).length <= 1, "sensitive " + ctxt);
+        assert.ok(!m.slice(0, 2).some((x) => x.sensitive), "sensitive в первых двух " + ctxt);
+        const lb = m.filter((x) => x.lean === "b").length;
+        assert.ok(lb >= Math.floor(0.4 * total) && lb <= Math.floor(0.5 * total), `lean b=${lb} ` + ctxt);
+      }
+    }
+  }
+});
+
+test("выбор вопросов на настоящих колодах: 3000 партий на язык, доли в пределах, повторов нет", () => {
+  const CONTENT = require("./content");
+  for (const lang of ["ru", "en", "el"]) {
+    const bankL = CONTENT[lang];
+    if (!bankL || bankL.length < 60) continue;
+    const by = new Map(bankL.map((x) => [x.id, x]));
+    let parties = 0;
+    for (const short of [false, true]) {
+      const total = short ? 6 : 10;
+      for (let room = 0; room < 15; room++) {
+        const g = Game.create({ settings: { short, lang, opinion: false }, code: "T", rnd: rndFrom(room * 31 + 5), content: CONTENT });
+        for (let i = 0; i < 3; i++) g.addPlayer({ id: "p" + i, name: "И" + i, now: 0 });
+        for (let party = 0; party < 100; party++) {
+          g.s.phase = "lobby"; g.start(0);
+          const qs = [g.s.round.q];
+          for (let i = 1; i < total; i++) qs.push(g.takeQuestion(i === total - 1 ? "final" : "normal"));
+          const m = qs.map((q) => by.get(q.id));
+          parties++;
+          const ctxt = `${lang} short=${short} room=${room} party=${party}`;
+          assert.strictEqual(new Set(qs.map((q) => q.id)).size, total, "повтор " + ctxt);
+          assert.ok(m.filter((x) => x.tag === "spicy" || x.tag === "dark").length >= (short ? 1 : 3), "острых мало " + ctxt);
+          assert.ok(m.filter((x) => x.tag === "pick").length <= 2 && m.filter((x) => x.tag === "edge").length <= 2, "pick/edge " + ctxt);
+          const ab = m.filter((x) => x.kind === "ab").length;
+          assert.ok(ab >= Math.ceil(0.3 * total) && ab <= Math.floor(0.7 * total), `ab=${ab} ` + ctxt);
+          assert.ok(m.filter((x) => x.sensitive).length <= 1 && !m.slice(0, 2).some((x) => x.sensitive), "sensitive " + ctxt);
+          const lb = m.filter((x) => x.lean === "b").length;
+          assert.ok(lb >= Math.floor(0.4 * total) && lb <= Math.floor(0.5 * total), `lean b=${lb} ` + ctxt);
+        }
+      }
+    }
+    assert.strictEqual(parties, 3000);
+  }
+});
+
+test("банк «забывается» только когда не хватает нужного: хвост банка не ломает баланс", () => {
+  // 30 вопросов: после трёх партий свободных мало, баланс всё равно держится, повторов в партии нет
+  const content = taggedBank(30);
+  const g = Game.create({ settings: { short: false, opinion: false }, code: "T", rnd: rndFrom(3), content: { ru: content } });
+  for (let i = 0; i < 3; i++) g.addPlayer({ id: "p" + i, name: "И" + i, now: 0 });
+  const by = new Map(content.map((x) => [x.id, x]));
+  for (let party = 0; party < 15; party++) {
+    g.s.phase = "lobby"; g.start(0);
+    const qs = [g.s.round.q];
+    for (let i = 1; i < 10; i++) qs.push(g.takeQuestion(i === 9 ? "final" : "normal"));
+    assert.strictEqual(new Set(qs.map((q) => q.id)).size, 10, "повтор в партии " + party);
+    const lb = qs.filter((q) => by.get(q.id).lean === "b").length;
+    assert.ok(lb >= 4 && lb <= 5, `партия ${party}: lean b=${lb}`);
+  }
 });

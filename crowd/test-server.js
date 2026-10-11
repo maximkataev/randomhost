@@ -12,8 +12,15 @@ const WebSocket = require("ws");
 const DUMP = path.join(os.tmpdir(), `crowd-test-${process.pid}.json`);
 const STATS = path.join(os.tmpdir(), `crowd-test-stats-${process.pid}.json`);
 const CDIR = fs.mkdtempSync(path.join(os.tmpdir(), "crowd-content-"));
-const port = 6600 + (process.pid % 500);
+let port = 0; // свободный порт ищем при старте: параллельные запуски не сталкиваются
 let proc = null;
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const srv = require("node:net").createServer();
+    srv.once("error", reject);
+    srv.listen(0, "127.0.0.1", () => { const p = srv.address().port; srv.close(() => resolve(p)); });
+  });
+}
 
 // синтетический банк: серверу нужно ≥ 8 вопросов
 for (const lang of ["ru", "en", "el"]) {
@@ -21,7 +28,8 @@ for (const lang of ["ru", "en", "el"]) {
   fs.writeFileSync(path.join(CDIR, lang + ".json"), JSON.stringify({ questions }));
 }
 
-function startServer() {
+async function startServer() {
+  if (!port) port = await freePort();
   proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
     env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, STATS_FILE: STATS, CONTENT_DIR: CDIR, OFFLINE_GRACE_MS: "300", ANON_TTL_MS: "1500", ...(startServer.env || {}) },
     stdio: ["ignore", "pipe", "pipe"],
@@ -49,8 +57,8 @@ async function createRoom(settings = {}, speed = 1) {
   return r.json();
 }
 
-function client(code) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/crowd/ws?r=${code}`);
+function client(code, headers = {}, query = "") {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/crowd/ws?r=${code}${query}`, { headers });
   const c = { ws, msgs: [], raw: [], state: null, events: [] };
   const waiters = [];
   ws.on("message", (raw) => {
@@ -234,5 +242,192 @@ test("сервер", async (t) => {
     await sleep(200);
     assert.equal((await (await fetch(`http://127.0.0.1:${port}/crowd/api/health`)).json()).ok, true);
     c.close();
+  });
+
+  // ---------- регрессии аудита (10.10) ----------
+
+  await t.test("вышел и вернулся с тем же именем посреди партии: та же запись, голос на месте, без «призраков»", async () => {
+    const room = await createRoom({ lang: "ru", opinion: false });
+    const b = await board(room.code, room.hostToken);
+    const ps = [];
+    for (const n of ["Оля", "Петя", "Вася", "Гоша"]) ps.push(await player(room.code, n));
+    b.send({ type: "start" });
+    await b.wait(statePred((s) => s.phase === "vote"));
+    ps[0].send({ type: "vote", side: "a" });
+    await ps[0].wait(statePred((s) => s.me && s.me.vote === "a"));
+    for (let i = 0; i < 3; i++) {
+      ps[0].send({ type: "leave" });
+      await b.wait(statePred((s) => s.players.find((p) => p.id === ps[0].id)?.left));
+      const n = ps[0].msgs.length;
+      ps[0].send({ type: "join", name: "Оля" });
+      const j = await ps[0].wait((m) => m.type === "joined" && ps[0].msgs.indexOf(m) >= n);
+      assert.strictEqual(j.playerId, ps[0].id, "та же запись");
+      await b.wait(statePred((s) => s.players.length === 4 && !s.players.find((p) => p.id === ps[0].id).left));
+    }
+    await ps[0].wait(statePred((s) => s.me && s.me.vote === "a"));
+    b.close(); ps.forEach((p) => p.close());
+  });
+
+  await t.test("кик: выкинутый не возвращается ни под тем же именем, ни со старым токеном", async () => {
+    const room = await createRoom({ lang: "ru" });
+    const b = await board(room.code, room.hostToken);
+    const ps = [await player(room.code, "Тролль"), await player(room.code, "Мила"), await player(room.code, "Нина")];
+    b.send({ type: "kick", playerId: ps[0].id });
+    await ps[0].wait((m) => m.type === "kicked");
+    const again = client(room.code);
+    await again.open;
+    again.send({ type: "join", name: "тролль" });
+    await again.wait((m) => m.type === "kicked");
+    again.send({ type: "join", name: "Другое имя", token: ps[0].token });
+    await sleep(100);
+    assert.ok(!again.msgs.some((m) => m.type === "joined"), "со старым токеном не пускает");
+    const other = await player(room.code, "Новичок");
+    assert.ok(other.id);
+    again.close(); other.close(); b.close(); ps.forEach((p) => p.close());
+  });
+
+  await t.test("тихих отказов нет: частый join и флуд командами получают rejected/rate, «Готово» доходит", async () => {
+    const room = await createRoom({ lang: "ru", opinion: false });
+    const b = await board(room.code, room.hostToken);
+    const ps = [await player(room.code, "Р1"), await player(room.code, "Р2"), await player(room.code, "Р3")];
+    // в лобби: leave + join другого имени с того же сокета быстрее 3 с
+    const c = client(room.code);
+    await c.open;
+    c.send({ type: "join", name: "Быстрый" });
+    await c.wait((m) => m.type === "joined");
+    c.send({ type: "leave" });
+    await sleep(60);
+    c.send({ type: "join", name: "Быстрый2" });
+    const rj = await c.wait((m) => m.type === "rejected" && m.action === "join");
+    assert.strictEqual(rj.reason, "rate");
+    c.close();
+    await sleep(100);
+    b.send({ type: "start" });
+    await b.wait(statePred((s) => s.phase === "vote"));
+    for (let i = 0; i < 40; i++) ps[0].send({ type: "vote", side: i % 2 ? "a" : "b" });
+    const flood = await ps[0].wait((m) => m.type === "rejected" && m.reason === "rate");
+    assert.ok(flood);
+    // «Готово» не режется лимитом команд
+    ps[0].send({ type: "vote", side: "a" });
+    ps[0].send({ type: "confirm" });
+    await sleep(1100);
+    ps[0].send({ type: "vote", side: "a" });
+    await ps[0].wait(statePred((s) => s.me && s.me.vote === "a"));
+    ps[0].send({ type: "confirm" });
+    await ps[0].wait(statePred((s) => s.me && s.me.confirmed));
+    b.close(); ps.forEach((p) => p.close());
+  });
+
+  await t.test("ва-банк: строка \"false\" не включает его, игрок получает отказ", async () => {
+    const room = await createRoom({ lang: "ru", opinion: false });
+    const b = await board(room.code, room.hostToken);
+    const ps = [await player(room.code, "Б1"), await player(room.code, "Б2"), await player(room.code, "Б3")];
+    b.send({ type: "start" });
+    await b.wait(statePred((s) => s.phase === "vote"));
+    ps[0].send({ type: "bank", on: "false" });
+    const rj = await ps[0].wait((m) => m.type === "rejected" && m.action === "bank");
+    assert.strictEqual(rj.reason, "bad_value");
+    assert.strictEqual(ps[0].state.me.bank, false);
+    b.close(); ps.forEach((p) => p.close());
+  });
+
+  await t.test("30 анонимных сокетов с одного адреса не запирают комнату от доски и игроков", async () => {
+    const room = await createRoom({ lang: "ru" });
+    const hdr = { "x-real-ip": "10.7.7.7" };
+    const anons = [];
+    for (let i = 0; i < 30; i++) { const a = client(room.code, hdr); await a.open; anons.push(a); }
+    const hb = client(room.code, hdr);
+    await hb.open;
+    hb.send({ type: "host", token: room.hostToken });
+    await hb.wait((m) => m.type === "host_ok");
+    const pl = client(room.code, hdr);
+    await pl.open;
+    pl.send({ type: "join", name: "Свой" });
+    await pl.wait((m) => m.type === "joined");
+    // и по токену в адресе соединение проходит, даже когда лимит исчерпан для анонимов
+    const viaToken = client(room.code, hdr, `&h=${room.hostToken}`);
+    await viaToken.open;
+    // защита от флуда цела: анонимов с адреса по-прежнему не больше лимита
+    await sleep(100);
+    const alive = anons.filter((a) => a.ws.readyState === 1).length;
+    assert.ok(alive <= 30, "анонимов " + alive);
+    anons.forEach((a) => a.close()); hb.close(); pl.close(); viaToken.close();
+  });
+
+  await t.test("блокировка перебора: считаются разные неверные коды; свой адрес в своей комнате не получает 404", async () => {
+    const base = `http://127.0.0.1:${port}/crowd`;
+    const room = await createRoom({ lang: "ru" });
+    const get = (r, ip) => fetch(`${base}/api/session?r=${r}`, { headers: { "x-real-ip": ip } });
+    // устаревшая вкладка сто раз стучится в один и тот же мёртвый код — это не перебор
+    for (let i = 0; i < 100; i++) await get("DEAD22", "10.5.5.1");
+    assert.equal((await get(room.code, "10.5.5.1")).status, 200);
+    // «свой» адрес: уже был в комнате; потом перебрал 60 разных кодов
+    for (let i = 0; i < 60; i++) await get("NOPE" + i, "10.5.5.1");
+    assert.equal((await get(room.code, "10.5.5.1")).status, 200, "участник с того же NAT не получает 404");
+    // чужой адрес после такого же перебора — отказ
+    for (let i = 0; i < 60; i++) await get("NOPE" + i, "10.5.5.2");
+    assert.equal((await get(room.code, "10.5.5.2")).status, 404);
+  });
+
+  await t.test("создание комнаты: settings:null — не ошибка и без внутренних текстов; битый процент-код — 400", async () => {
+    const r = await fetch(`http://127.0.0.1:${port}/crowd/api/rooms`, { method: "POST", body: '{"settings":null}' });
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.ok(j.code && j.hostToken);
+    const r2 = await fetch(`http://127.0.0.1:${port}/crowd/api/rooms`, { method: "POST", body: '{"settings":"str","speed":{}}' });
+    assert.equal(r2.status, 200);
+    // статика: отдельный экземпляр с STATIC
+    const sp = await freePort();
+    const st = spawn(process.execPath, [path.join(__dirname, "server.js")], { env: { ...process.env, PORT: String(sp), NODE_ENV: "development", STATIC: path.join(__dirname, ".."), DUMP_FILE: DUMP + ".st", STATS_FILE: STATS + ".st", CONTENT_DIR: CDIR }, stdio: "ignore" });
+    try {
+      for (let i = 0; i < 50; i++) { try { await fetch(`http://127.0.0.1:${sp}/crowd/api/health`); break; } catch { await sleep(100); } }
+      const net = require("node:net");
+      const status = await new Promise((resolve) => {
+        const sock = net.connect(sp, "127.0.0.1", () => sock.write("GET /%E0%A4%A HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"));
+        let buf = "";
+        sock.on("data", (d) => (buf += d));
+        sock.on("close", () => resolve(Number((buf.match(/^HTTP\/1\.1 (\d+)/) || [])[1])));
+        sock.on("error", () => resolve(0));
+      });
+      assert.equal(status, 400);
+    } finally {
+      st.kill();
+      for (const f of [DUMP + ".st", STATS + ".st"]) { try { fs.unlinkSync(f); } catch {} }
+    }
+  });
+
+  await t.test("имя-двойник в лобби обрезается по кодпоинтам, не длиннее 15", async () => {
+    const room = await createRoom({ lang: "ru" });
+    const long = "😀".repeat(15);
+    const a = await player(room.code, long);
+    const b2 = client(room.code);
+    await b2.open;
+    b2.send({ type: "join", name: long });
+    await b2.wait((m) => m.type === "joined");
+    const names = b2.state.players.map((p) => p.name);
+    await b2.wait(statePred((s) => s.players.length === 2));
+    for (const n of b2.state.players.map((p) => p.name)) {
+      assert.ok(Array.from(n).length <= 15, n);
+      assert.ok(!/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(n), "оборванная пара");
+    }
+    assert.ok(names.length >= 1);
+    a.close(); b2.close();
+  });
+
+  await t.test("статистика вопросов: потолок «3 раунда одного вопроса на комнату» — за 24 ч", () => {
+    const stats = require("./stats");
+    stats._resetRoomWindow();
+    const real = Date.now;
+    let t0 = 1_800_000_000_000;
+    Date.now = () => t0;
+    try {
+      const e = { id: "cap-q", a: 3, b: 1, oa: 0, ob: 0 };
+      const before = (stats.get()["cap-q"] || { n: 0 }).n;
+      for (let i = 0; i < 6; i++) stats.record("ROOMX", e);
+      assert.equal(stats.get()["cap-q"].n - before, 3);
+      t0 += 25 * 3600 * 1000;
+      for (let i = 0; i < 6; i++) stats.record("ROOMX", e);
+      assert.equal(stats.get()["cap-q"].n - before, 6, "через сутки окно новое");
+    } finally { Date.now = real; stats._resetRoomWindow(); }
   });
 });
