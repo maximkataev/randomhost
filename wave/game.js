@@ -52,6 +52,8 @@ const REACTIONS = ["😂", "😱", "🤯", "👏", "🙈"];
 // цвета игроков — заметны на любой заливке фона и на белой шкале; чёрного нет: он сливается с центром сектора и стрелкой
 const COLORS = ["#e0115f", "#1438e0", "#0a8a4a", "#e25a00", "#7b1fd6", "#008b9a", "#b8006e", "#6b4a00", "#2c2cad", "#b31010", "#3d6b00", "#c77700"];
 const AVATARS = ["🐙", "🦊", "🐸", "🦉", "🦄", "🐧", "🦁", "🐼", "🐵", "🦖", "🐳", "🦩"];
+// из чего игрок выбирает сам (первые — те, что раздаются по умолчанию)
+const AVATAR_CHOICES = [...new Set(AVATARS.concat(["🐱", "🐶", "🐰", "🐻", "🐨", "🐯", "🐷", "🐮", "🦝", "🦥", "🦦", "🐲", "👽", "🤖", "👻", "🤡", "🥑", "🍕", "🌮", "🍩", "🧀", "🌵", "🍄", "🪩"]))];
 
 function clampSettings(input = {}) {
   const s = { ...DEFAULTS };
@@ -555,6 +557,18 @@ class Game {
    * view: "board" — доска, иначе id игрока.
    * До раскрытия никому не уходят: центр сектора (кроме автора), чужие стрелки, чужие шкалы на выбор.
    */
+  // Свой аватар: в лобби и между партиями, из списка, не занятый другим игроком
+  setAvatar(id, avatar) {
+    const s = this.s;
+    const p = this.player(id);
+    if (!p || p.left) return { ok: false, reason: "not_player" };
+    if (s.phase !== "lobby" && s.phase !== "finished") return { ok: false, reason: "game_started" };
+    if (!AVATAR_CHOICES.includes(avatar)) return { ok: false, reason: "bad_avatar" };
+    if (this.present().some((x) => x !== p && x.avatar === avatar)) return { ok: false, reason: "avatar_taken" };
+    p.avatar = avatar;
+    return { ok: true, events: [{ type: "avatar", playerId: id }] };
+  }
+
   snapshot(now, view) {
     const s = this.s;
     const board = view === "board";
@@ -609,6 +623,7 @@ class Game {
       awards: s.phase === "finished" ? s.awards || null : null,
       finishedReason: s.phase === "finished" ? s.finishedReason : null,
       minPlayers: MIN_PLAYERS,
+      avatarChoices: s.phase === "lobby" || s.phase === "finished" ? AVATAR_CHOICES : null,
       clueMax: CLUE_MAX,
       bands: BANDS,
       me: mePart,
@@ -625,4 +640,4 @@ class Game {
   }
 }
 
-module.exports = { Game, EXTRA_MS, ROUNDS, T, REVEAL_STEP, DEFAULTS, OPTIONS, REROLLS, MAX_PLAYERS, MIN_PLAYERS, CLUE_MAX, BANDS, WAVE_BONUS, REACTIONS, COLORS, AVATARS, clampSettings, cleanName, cleanText, checkClue, points, nameKey };
+module.exports = { Game, EXTRA_MS, ROUNDS, T, REVEAL_STEP, DEFAULTS, OPTIONS, REROLLS, MAX_PLAYERS, MIN_PLAYERS, CLUE_MAX, BANDS, WAVE_BONUS, REACTIONS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText, checkClue, points, nameKey };

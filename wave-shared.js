@@ -356,7 +356,32 @@ function wvOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
 function wvConnect({ code, onMessage, onOpen, onGone, onState }) {
   let t = null, delay = 500, stopped = false;
-  const holder = { api: null, send: (m) => holder.api && holder.api.send(m), stop() { stopped = true; clearTimeout(t); if (holder.api) holder.api.close(); } };
+  // Действие, нажатое между обрывом и возвращением связи, раньше терялось молча (а кнопка уже горела «ушло»).
+  // Теперь оно ждёт в очереди и уходит после входа по токену: сокет без игрока действие бы отбросил.
+  const queue = [];
+  const holder = {
+    api: null,
+    gated: false, // страница держит действия до входа по токену и сама снимает флаг через flush
+    send(m) {
+      const a = holder.api;
+      if (m && m.type !== "ping" && m.type !== "join" && m.type !== "host" && (holder.gated || !a || a.mode === "none" || a.mode === "connecting")) {
+        queue.push({ m, at: Date.now() });
+        if (queue.length > 8) queue.shift();
+        return;
+      }
+      if (a) a.send(m);
+    },
+    // keep(m) — нужно ли это действие ещё; просроченные и ненужные отбрасываются через onDrop
+    flush(keep, onDrop) {
+      holder.gated = false;
+      const items = queue.splice(0);
+      for (const it of items) {
+        if (Date.now() - it.at > 6000 || (keep && !keep(it.m))) { if (onDrop) onDrop(it.m); continue; }
+        if (holder.api) holder.api.send(it.m);
+      }
+    },
+    stop() { stopped = true; clearTimeout(t); queue.length = 0; if (holder.api) holder.api.close(); },
+  };
   const open = () => {
     if (stopped) return;
     if (onState) onState("connecting");

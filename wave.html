@@ -122,6 +122,10 @@
   .poles span:last-child { text-align: right; }
   .poles span:last-child::after { content: "\a0→"; } /* неразрывный пробел: стрелка не уезжает одна на вторую строку */
   .dial.grab { touch-action: none; cursor: grab; }
+  /* стартовый экран: пример шкалы и правила показываются, только если помещаются в окно (fitLanding) */
+  #demo .dialbox { width: var(--dw, 100%); }
+  #app.nodemo #demo, #app.norules .rules { display: none; }
+  #app.tight .rules { gap: 5px; } #app.tight .rules li { grid-template-columns: 24px 1fr; gap: 8px; font-size: 14px; line-height: 1.2; } #app.tight .rules li::before { height: 24px; font-size: 14px; }
 
   /* подсказка на экране угадывания */
   .clue { background: var(--ink); color: var(--paper); padding: 14px 16px 16px; }
@@ -213,6 +217,15 @@
   .pl.off { opacity: .45; }
   .pl.done::after { content: "✓"; font-weight: 1000; }
   .av { font-style: normal; width: 30px; height: 30px; display: grid; place-items: center; background: var(--pc, #111); border-radius: 50%; font-size: 17px; flex: none; }
+  .avbtn { border: 0; background: none; padding: 0; cursor: pointer; border-radius: 50%; font: inherit; color: inherit; line-height: 0; flex: none; }
+  /* аватарка 30 px — мала для пальца: невидимая зона нажатия до 46 px */
+  .avbtn { position: relative; }
+  .avbtn::after { content: ""; position: absolute; inset: -8px; }
+  .avpick { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+  .avpick button { aspect-ratio: 1; border: 0; border-radius: 50%; background: var(--paper); font-size: 22px; line-height: 1; padding: 0; cursor: pointer; }
+  .avpick button.on { box-shadow: 0 0 0 3px var(--ink); }
+  .avpick button:disabled { opacity: .3; cursor: default; }
+  @media (max-width: 360px) { .avpick { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 
   .table { display: grid; gap: 6px; }
   .row { display: grid; grid-template-columns: 30px 34px 1fr auto; align-items: center; gap: 8px; background: var(--paper); border: 3px solid var(--ink); padding: 6px 10px 6px 8px; font-weight: 800; }
@@ -260,7 +273,7 @@ window.I18N_DICT = {
     err_name: `Напиши имя`, err_name_taken: `Это имя уже в игре. Если это ты — вернись с того же телефона, или возьми другое имя`, err_room_full: `В комнате уже 12 игроков`, err_token_gone: `Тебя нет в этой партии — войди заново`,
     wait_title: `Подключаемся…`,
     btn_home: `Главная`,
-    lobby_in: `Ты в игре`, lobby_wait: `Все в сборе — ждём, пока ведущий начнёт`, lobby_need: `Нужно ещё {n}: зови друзей`, lobby_look: `Главное — на большом экране. Телефон — твой пульт`,
+    lobby_in: `Ты в игре`, av_pick: `Нажми на аватарку, чтобы сменить`, rj_avatar_taken: `Эту аватарку уже взяли`, rj_game_started: `Сменить можно до начала игры`, lobby_wait: `Все в сборе — ждём, пока ведущий начнёт`, lobby_need: `Нужно ещё {n}: зови друзей`, lobby_look: `Главное — на большом экране. Телефон — твой пульт`,
     intro_mult: `Очки ×{n}`,
     pick_title: `Выбери шкалу`, pick_sub: `Сектор на ней увидишь только ты`, btn_reroll: `Другие шкалы (ещё {n})`, btn_reroll_none: `Больше перетасовок нет`,
     clue_title: `Подскажи, где сектор`, clue_ph: `Одна фраза, без цифр`, btn_send: `Отправить`,
@@ -297,7 +310,7 @@ window.I18N_DICT = {
     err_name: `Type your name`, err_name_taken: `That name is already in the game. If it's you, come back on the same phone, or pick another name`, err_room_full: `The room already has 12 players`, err_token_gone: `You're not in this game — join again`,
     wait_title: `Connecting…`,
     btn_home: `Home`,
-    lobby_in: `You're in`, lobby_wait: `Everyone's here — waiting for the host to start`, lobby_need: `{n} more needed — invite friends`, lobby_look: `The action is on the big screen. Your phone is the remote`,
+    lobby_in: `You're in`, av_pick: `Tap your avatar to change it`, rj_avatar_taken: `That avatar is taken`, rj_game_started: `You can change it before the game starts`, lobby_wait: `Everyone's here — waiting for the host to start`, lobby_need: `{n} more needed — invite friends`, lobby_look: `The action is on the big screen. Your phone is the remote`,
     intro_mult: `Points ×{n}`,
     pick_title: `Pick a scale`, pick_sub: `Only you will see the target on it`, btn_reroll: `Other scales ({n} left)`, btn_reroll_none: `No more shuffles`,
     clue_title: `Hint where the target is`, clue_ph: `One phrase, no numbers`, btn_send: `Send`,
@@ -334,7 +347,7 @@ window.I18N_DICT = {
     err_name: `Γράψε όνομα`, err_name_taken: `Αυτό το όνομα παίζει ήδη. Αν είσαι εσύ, γύρνα από το ίδιο κινητό ή διάλεξε άλλο όνομα`, err_room_full: `Το δωμάτιο έχει ήδη 12 παίκτες`, err_token_gone: `Δεν είσαι σε αυτή την παρτίδα — μπες ξανά`,
     wait_title: `Σύνδεση…`,
     btn_home: `Αρχική`,
-    lobby_in: `Είσαι μέσα`, lobby_wait: `Όλοι εδώ — περιμένουμε τον οικοδεσπότη`, lobby_need: `Χρειάζονται ακόμα {n} — φώναξε φίλους`, lobby_look: `Η δράση είναι στη μεγάλη οθόνη. Το κινητό είναι το τηλεχειριστήριο`,
+    lobby_in: `Είσαι μέσα`, av_pick: `Πάτα την εικόνα σου για να την αλλάξεις`, rj_avatar_taken: `Αυτή η εικόνα είναι πιασμένη`, rj_game_started: `Αλλάζει μόνο πριν ξεκινήσει το παιχνίδι`, lobby_wait: `Όλοι εδώ — περιμένουμε τον οικοδεσπότη`, lobby_need: `Χρειάζονται ακόμα {n} — φώναξε φίλους`, lobby_look: `Η δράση είναι στη μεγάλη οθόνη. Το κινητό είναι το τηλεχειριστήριο`,
     intro_mult: `Πόντοι ×{n}`,
     pick_title: `Διάλεξε κλίμακα`, pick_sub: `Τον στόχο θα τον δεις μόνο εσύ`, btn_reroll: `Άλλες κλίμακες (ακόμα {n})`, btn_reroll_none: `Τέλος οι αλλαγές`,
     clue_title: `Δείξε πού είναι ο στόχος`, clue_ph: `Μία φράση, χωρίς αριθμούς`, btn_send: `Αποστολή`,
@@ -381,6 +394,14 @@ let sentLock = false;
 let onKeys = null; // клавиатура на экране угадывания
 document.addEventListener("keydown", (e) => { if (onKeys && screenKey.startsWith("guess:")) onKeys(e); });
 const tokenKey = () => "wave-token-" + CODE;
+// отправка действия с привязкой к раунду/карточке: после обрыва связи старое действие в очереди не отправляем
+const sendCtx = new WeakMap();
+function csend(m) { sendCtx.set(m, { r: roundKey(), c: cardKey() }); conn.send(m); }
+// кнопка заблокирована после отправки, а подтверждения (нового состояния или отказа) нет — через 3 с отпускаем её
+function unlockLater(fn) {
+  const k = screenKey;
+  setTimeout(() => { if (screenKey === k && !dead) fn(); }, 3000);
+}
 try { token = localStorage.getItem(tokenKey()); } catch (e) {}
 
 const player = (id) => state && state.players.find((p) => p.id === id);
@@ -479,6 +500,28 @@ function dialHtml(o, l, r) {
 
 // ---------- стартовый экран ----------
 let demoTimer = null;
+// всё должно влезать в высоту окна без прокрутки: сначала ужимаем шкалу примера, потом прячем правила, потом пример
+function fitLanding() {
+  const a = document.getElementById("app"), demo = document.getElementById("demo");
+  if (screen !== "landing" || !demo) return;
+  const over = () => document.documentElement.scrollHeight > innerHeight + 1;
+  const set = (nodemo, norules, tight) => { a.classList.toggle("nodemo", nodemo); a.classList.toggle("norules", norules); a.classList.toggle("tight", !!tight); };
+  demo.style.removeProperty("--dw"); set(false, false);
+  if (!over()) return;
+  set(false, true); // без правил: сколько остаётся под пример — столько шкала и получает
+  const box = demo.querySelector(".dialbox");
+  const free = innerHeight - demo.getBoundingClientRect().top - (demo.scrollHeight - box.offsetHeight) - 28;
+  const w = free * (box.offsetWidth / box.offsetHeight);
+  if (w >= 140) { demo.style.setProperty("--dw", Math.min(box.offsetWidth, w) + "px"); if (!over()) return; }
+  demo.style.removeProperty("--dw");
+  set(true, false); // без примера, но с правилами
+  if (!over()) return;
+  set(true, false, true); // правила помельче
+  if (!over()) return;
+  set(true, true);
+}
+addEventListener("resize", () => fitLanding());
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitLanding());
 function renderLanding() {
   screen = "landing";
   paint(WV_HOME);
@@ -506,6 +549,7 @@ function renderLanding() {
     const nd = document.querySelector("#demo .needle");
     if (nd) nd.style.setProperty("--a", a.toFixed(1));
   }, 90);
+  fitLanding();
   document.getElementById("create").onclick = async () => {
     const btn = document.getElementById("create");
     btn.disabled = true;
@@ -573,7 +617,7 @@ function reactsHtml() {
 }
 function bindReacts() {
   app.querySelectorAll(".reacts button").forEach((b) => {
-    b.onclick = () => { conn.send({ type: "react", emoji: b.dataset.e }); wvVibrate(8); b.disabled = true; setTimeout(() => (b.disabled = false), 2000); };
+    b.onclick = () => { csend({ type: "react", emoji: b.dataset.e }); wvVibrate(8); b.disabled = true; setTimeout(() => (b.disabled = false), 2000); };
   });
 }
 const timerHtml = () => `<div class="timer" id="timer"><i></i></div>`;
@@ -587,14 +631,33 @@ function clueBox(card) {
 }
 
 // ---------- экраны по фазам ----------
+let avOpen = false; // открыт ли выбор аватарки
+// выбор аватарки: свободные и своя; занятые другими — серые
+function avPickHtml() {
+  if (!avOpen || !state.avatarChoices) return `<p class="fine" style="margin:0">${escapeHtml(T("av_pick"))}</p>`;
+  const taken = new Set(state.players.filter((x) => !x.left && x.id !== me).map((x) => x.avatar));
+  const cur = mine().avatar;
+  return `<div class="avpick" role="group" aria-label="${escapeHtml(T("av_pick"))}">${state.avatarChoices.map((a) => `<button type="button" data-a="${escapeHtml(a)}" class="${a === cur ? "on" : ""}"${taken.has(a) ? " disabled" : ""}>${escapeHtml(a)}</button>`).join("")}</div>`;
+}
+const avBtnHtml = (inner) => `<button class="avbtn" id="avbtn" type="button" aria-label="${escapeHtml(T("av_pick"))}" aria-expanded="${avOpen}">${inner}</button>`;
+// ключ экрана лобби: меняется, когда у кого-то сменилась аватарка (пока выбор открыт) или он открылся/закрылся
+const avKey = () => (avOpen ? "1" + state.players.map((p) => p.avatar).join("") : "0" + (mine() ? mine().avatar : ""));
+function bindAvatars() {
+  const b = document.getElementById("avbtn");
+  if (b) b.onclick = () => { avOpen = !avOpen; screenKey = ""; render(); };
+  app.querySelectorAll(".avpick button:not(:disabled)").forEach((x) => {
+    x.onclick = () => { csend({ type: "avatar", avatar: x.dataset.a }); wvVibrate(10); avOpen = false; screenKey = ""; render(); };
+  });
+}
 function renderLobby() {
-  const key = "lobby:" + state.players.map((p) => p.id + p.online).join(",") + wvLang();
+  const key = "lobby:" + state.players.map((p) => p.id + p.online).join(",") + avKey() + wvLang();
   if (screenKey === key) return;
   const p = mine();
   const need = Math.max(0, state.minPlayers - state.players.filter((x) => !x.left).length);
-  show(`<div><div class="eyebrow">${T("lobby_in")}</div><h2 class="shout" style="margin-top:6px">${avHtml(p)} ${escapeHtml(p.name)}</h2></div>
+  show(`<div><div class="eyebrow">${T("lobby_in")}</div><h2 class="shout" style="margin-top:6px">${avBtnHtml(avHtml(p))} ${escapeHtml(p.name)}</h2></div>${avPickHtml()}
     <p class="lede">${escapeHtml(need > 0 ? tpl("lobby_need", { n: need }) : T("lobby_wait"))}</p>${playersHtml()}<p class="fine">${T("lobby_look")}</p>${reactsHtml()}`, key);
   bindReacts();
+  bindAvatars();
 }
 
 function renderIntro() {
@@ -622,10 +685,10 @@ function renderClue() {
       <div class="pick">${c.options.map((o, i) => `<button type="button" data-i="${i}" lang="${wvLang()}"><span>${wvPole(o.l)}</span><i>↔</i><span>${wvPole(o.r)}</span></button>`).join("")}</div>
       <button class="btn ghost" type="button" id="reroll"${c.rerollsLeft > 0 ? "" : " disabled"}>🔄 ${escapeHtml(c.rerollsLeft > 0 ? tpl("btn_reroll", { n: c.rerollsLeft }) : T("btn_reroll_none"))}</button>`, key);
     app.querySelectorAll(".pick button").forEach((b) => {
-      b.onclick = () => { wvSfx.tap(); wvVibrate(10); app.querySelectorAll(".pick button, #reroll").forEach((x) => (x.disabled = true)); conn.send({ type: "pick", i: Number(b.dataset.i) }); };
+      b.onclick = () => { wvSfx.tap(); wvVibrate(10); app.querySelectorAll(".pick button, #reroll").forEach((x) => (x.disabled = true)); csend({ type: "pick", i: Number(b.dataset.i) }); unlockLater(() => { screenKey = ""; render(); }); };
     });
     const rr = document.getElementById("reroll");
-    rr.onclick = () => { if (rr.disabled) return; wvSfx.whoosh(); wvVibrate(8); rr.disabled = true; conn.send({ type: "reroll" }); };
+    rr.onclick = () => { if (rr.disabled) return; wvSfx.whoosh(); wvVibrate(8); rr.disabled = true; csend({ type: "reroll" }); unlockLater(() => { screenKey = ""; render(); }); };
     return;
   }
   if (c.clue) {
@@ -657,7 +720,8 @@ function renderClue() {
     if (/\p{Nd}/u.test(text)) { clueErr = "digits"; document.getElementById("err").textContent = T("rj_digits"); wvSfx.buzz(); wvVibrate([60, 40, 60]); return; }
     document.getElementById("sendbtn").disabled = true;
     wvSfx.send();
-    conn.send({ type: "clue", text });
+    csend({ type: "clue", text });
+    unlockLater(() => { const b = document.getElementById("sendbtn"); if (b) b.disabled = false; });
   };
 }
 
@@ -733,7 +797,8 @@ function renderGuess() {
     document.getElementById("lock").disabled = true;
     wvSfx.lock();
     wvVibrate(35);
-    conn.send({ type: "lock", angle: needle });
+    csend({ type: "lock", angle: needle });
+    unlockLater(() => { sentLock = false; const b = document.getElementById("lock"); if (b) b.disabled = false; });
   };
 }
 
@@ -842,29 +907,50 @@ window.addEventListener("langchange", () => {
 });
 
 // ---------- связь ----------
-let prevPhase = null;
+let prevPhase = null, needJoin = true, pendingFlush = false;
+// что нажато во время обрыва — отправляем, если ещё актуально (иначе сервер ответил бы «отказ» на давнее действие)
+function flushQueued() {
+  conn.flush((q) => {
+    const mc = state && state.me;
+    if (!mc) return false;
+    const cx = sendCtx.get(q) || {};
+    const c = mc.card;
+    switch (q.type) {
+      case "pick": case "reroll": return state.phase === "clue" && cx.r === roundKey() && !!c && c.pick == null;
+      case "clue": return state.phase === "clue" && cx.r === roundKey() && !!c && c.pick != null && !c.clue;
+      case "lock": return state.phase === "guess" && cx.c === cardKey() && mc.guess == null && !mc.myCard;
+      default: return true;
+    }
+  });
+}
 function onMessage(m) {
   switch (m.type) {
     case "hello":
     case "state":
       state = m.state;
-      if (m.type === "hello" && token && !me) conn.send({ type: "join", token });
+      if (m.type === "hello" && token && needJoin) { needJoin = false; conn.send({ type: "join", token }); }
       if (state.phase !== prevPhase) {
         if (state.phase === "clue" || state.phase === "guess") wvVibrate(30);
         prevPhase = state.phase;
       }
       render();
+      // вернулись по токену: действия, нажатые в обрыв, отправляем, когда сервер снова признал нас
+      if (pendingFlush && state.me) { pendingFlush = false; flushQueued(); }
       break;
-    case "joined":
+    case "joined": {
+      const was = me;
       me = m.playerId;
       token = m.token;
       joinErr = null;
       try { localStorage.setItem(tokenKey(), token); } catch (e) {}
       keepAwake();
-      screen = null;
-      screenKey = "";
+      // повторный вход после обрыва экран не пересобирает — иначе кнопки пропадают из-под пальца
+      if (was !== me) { screen = null; screenKey = ""; }
       render();
+      pendingFlush = true;
+      setTimeout(() => { if (pendingFlush) { pendingFlush = false; flushQueued(); } }, 2000);
       break;
+    }
     case "rejected":
       if (m.action === "clue") {
         clueErr = m.reason;
@@ -882,6 +968,7 @@ function onMessage(m) {
       render();
       break;
     case "error":
+      conn.flush(() => false);
       if (m.error === "room_expired") return renderExpired();
       if (["room_full", "token_gone", "bad_name", "name_taken"].includes(m.error)) {
         if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
@@ -891,6 +978,7 @@ function onMessage(m) {
       }
       break;
     case "kicked":
+      conn.flush(() => false);
       me = null;
       try { localStorage.removeItem(tokenKey()); } catch (e) {}
       token = null;
@@ -915,12 +1003,19 @@ function start() {
     onMessage,
     onGone: renderExpired,
     // переподключились — снова входим своим токеном (hello придёт первым)
-    onOpen: () => { me = null; },
+    onOpen: () => {
+      needJoin = true;
+      if (token) {
+        conn.gated = true;
+        // страховка: вход по токену не подтвердился — гейт не держим вечно
+        setTimeout(() => { if (conn.gated) flushQueued(); }, 4000);
+      }
+    },
     onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
   });
   requestAnimationFrame(frame);
   // ручка для стенда: состояние и отправка
-  window.wvPhone = { send: (msg) => conn.send(msg), get state() { return state; }, get me() { return me; }, get needle() { return needle; } };
+  window.wvPhone = { send: (msg) => csend(msg), get state() { return state; }, get me() { return me; }, get needle() { return needle; } };
 }
 start();
 </script>
