@@ -60,6 +60,8 @@ const REACTIONS = ["😂", "😱", "😈", "👏", "🙏"];
 
 const COLORS = ["#d62828", "#1d4ed8", "#b45309", "#047857", "#7c3aed", "#c2410c", "#0e7490", "#be185d", "#4d7c0f", "#475569"];
 const AVATARS = ["🦊", "🐸", "🦉", "🐙", "🦄", "🐧", "🦁", "🐼", "🐵", "🦖", "🐝", "🐳", "🦩", "🐢", "🦔", "🐻"];
+// из чего игрок выбирает сам (первые — те, что раздаются по умолчанию)
+const AVATAR_CHOICES = [...new Set(AVATARS.concat(["🐱", "🐶", "🐰", "🐻", "🐨", "🐯", "🐷", "🐮", "🦝", "🦥", "🦦", "🐲", "👽", "🤖", "👻", "🤡", "🥑", "🍕", "🌮", "🍩", "🧀", "🌵", "🍄", "🪩"]))];
 
 function clampSettings(input = {}) {
   const out = { ...DEFAULTS };
@@ -815,6 +817,18 @@ class Game {
    * До раскрытия никому: верный ответ, чужие ответы, палач и узники (выдают, кто ошибся), дельты очков.
    * Ставки — только их авторам до приговора. Ответы испытаний — никому.
    */
+  // Свой аватар: в лобби и между партиями, из списка, не занятый другим игроком
+  setAvatar(id, avatar) {
+    const s = this.s;
+    const p = this.player(id);
+    if (!p || p.left) return { ok: false, reason: "not_player" };
+    if (s.phase !== "lobby" && s.phase !== "finished") return { ok: false, reason: "game_started" };
+    if (!AVATAR_CHOICES.includes(avatar)) return { ok: false, reason: "bad_avatar" };
+    if (this.present().some((x) => x !== p && x.avatar === avatar)) return { ok: false, reason: "avatar_taken" };
+    p.avatar = avatar;
+    return { ok: true, events: [{ type: "avatar", playerId: id }] };
+  }
+
   snapshot(now, view) {
     const s = this.s;
     const board = view === "board";
@@ -912,6 +926,7 @@ class Game {
       ranking: ph === "finished" ? s.ranking || null : null,
       finishedReason: ph === "finished" ? s.finishedReason : null,
       minPlayers: MIN_PLAYERS,
+      avatarChoices: s.phase === "lobby" || s.phase === "finished" ? AVATAR_CHOICES : null,
       maxPlayers: MAX_PLAYERS,
       me: mePart,
       players: s.players.map((p) => ({
@@ -928,4 +943,4 @@ class Game {
   }
 }
 
-module.exports = { Game, ACTS, QUESTIONS, ACT_LVL, ACT_LVL_W, T, PASS_SILENCE, BET_POINTS, BET_WINDOW, STAKE_FLOOR, GROUPS_OFFERED, DEFAULTS, MAX_PLAYERS, MIN_PLAYERS, REACTIONS, COLORS, AVATARS, clampSettings, cleanName, cleanText };
+module.exports = { Game, ACTS, QUESTIONS, ACT_LVL, ACT_LVL_W, T, PASS_SILENCE, BET_POINTS, BET_WINDOW, STAKE_FLOOR, GROUPS_OFFERED, DEFAULTS, MAX_PLAYERS, MIN_PLAYERS, REACTIONS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText };

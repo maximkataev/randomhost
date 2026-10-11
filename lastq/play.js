@@ -132,6 +132,15 @@ function chInfo(ch, P) {
     case "rhythm": return [T("t_rhythm2"), `промежутки между ударами: ${v.gaps.join(", ")} мс`, auto];
     case "lockpick": return [T("t_lockpick"), `штифтов: ${v.pins.length}`, auto];
     case "searchlight": return [T("t_searchlight"), `перебежек: ${v.n}`, auto];
+    case "tunnel": return [T("t_tunnel"), "провести палец по трубе, не задевая стен", auto];
+    case "shake": return [T("t_shake"), `тряхнуть/тапнуть раз: ${v.need}`, auto];
+    case "sneak": return [T("t_sneak"), `держать кнопку, пока охранник спит, суммарно ${v.need} мс; он смотрит в окна (мс от выдачи): ${v.looks.map((l) => l.join("–")).join(", ")}`, auto];
+    case "signals": return [T(v.seq.some((x) => x.inv) ? "t_signals2" : "t_signals1"), `лампы по порядку: ${v.seq.map((x) => (x.s ? "правая" : "левая") + (x.inv ? " синяя" : "")).join(", ")} (через ${v.gap} мс)`, auto];
+    case "rustkeys": return [T("t_rustkeys"), `ключи по порядку падения: ${v.keys.map((k, i) => `${i}:${k.gold ? "золотой" : "ржавый"}`).join(", ")}`, auto];
+    case "torch": return [T("t_torch"), `предметы (индекс:знак): ${v.items.map((e, i) => `${i}:${e}`).join("  ")}; ищи ${v.target}`, IDX];
+    case "decode": return [T("t_decode"), `таблица: ${v.table.map(([s, d]) => `${s}=${d}`).join(" ")}; номер: ${v.word.join(" ")}; варианты ${opts(v.options)}`, IDX];
+    case "cells": return [T("t_cells_" + v.kind), `номера: ${v.nums.join(", ")}; варианты ${opts(v.options)}`, IDX];
+    case "shift": return [T("t_shift"), `охранников ${v.n} (0…${v.n - 1}); подсказки: ${v.clues.map((c) => ({ before: `${c.a} раньше ${c.b}`, notfirst: `${c.a} не первый`, notlast: `${c.a} не последний`, adj: `${c.b} сразу после ${c.a}` }[c.k])).join("; ")}`, `cell '{"v":[порядок смен — номера охранников]}'`];
     case "rollcall": return [T("t_rollcall"), `твой номер ${v.mine}; бегут: ${v.list.join(", ")} (по ${v.step} мс)`, auto];
     case "color": return [T("t_color"), `слово «${colorName(v.word)}», написано цветом ${colorName(v.ink)}; варианты: ${opts(v.options.map(colorName))}`, IDX];
     case "odd": case "letter": case "sad": return [T("t_" + t), `клетки:\n      ${grid(v.items, v.items.length > 9 ? 4 : 3)}`, IDX + " — номер клетки"];
@@ -191,6 +200,23 @@ const AUTO = {
   saw: (v) => v.bars * v.strokes,
   swipe: (v) => v.dirs.slice(),
   order: (v) => Array.from({ length: v.n }, (_, i) => i + 1),
+  tunnel: () => 1, shake: (v) => v.need,
+  signals: (v) => v.seq.map((c) => (c.inv ? 1 - c.s : c.s)),
+  rustkeys: (v) => v.keys.map((k, i) => (k.gold ? i : -1)).filter((i) => i >= 0),
+  sneak: (v) => {
+    // окна сна между взглядами; жмём с запасом 60 мс, пока не наберётся need
+    const out = [];
+    let t = 0, have = 0;
+    const wins = [];
+    v.looks.forEach(([f, e]) => { wins.push([t, f]); t = e; });
+    wins.push([t, t + 5000]);
+    for (const [a, b] of wins) {
+      const from = a + 60, take = Math.min(b - 60 - from, v.need - have);
+      if (take > 0) { out.push([from, from + take]); have += take; }
+      if (have >= v.need) break;
+    }
+    return out;
+  },
 };
 
 const FSTEP_MS = 3000;
@@ -421,6 +447,13 @@ function describe(s, me) {
       if (rest[0] === "auto") {
         if (!AUTO[ch.type]) { LANG = state.settings.lang; console.log(`cell auto не умеет ${ch.type} — реши сам: ${chInfo(ch, (id) => id)[2]}`); process.exit(1); }
         ans = { v: AUTO[ch.type](ch.view) };
+        if (ch.type === "tunnel") {
+          const ar = 1.3, P = ch.view.pts.map(([x, y]) => [x * ar, y]), pp = [];
+          for (let i = 1; i < P.length; i++) for (let k = 0; k < 8; k++) pp.push([P[i - 1][0] + ((P[i][0] - P[i - 1][0]) * k) / 8, P[i - 1][1] + ((P[i][1] - P[i - 1][1]) * k) / 8]);
+          pp.push(P[P.length - 1]);
+          ans.p = pp; ans.ar = ar;
+        }
+        if (ch.type === "signals") ans.t = ch.view.seq.map((_, i) => ch.view.lead + i * ch.view.gap + 400);
       } else {
         try { ans = JSON.parse(rest.join(" ")); } catch { ans = { v: isNaN(Number(rest[0])) ? rest[0] : Number(rest[0]) }; }
       }

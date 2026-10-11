@@ -19,17 +19,18 @@
 })(typeof self !== "undefined" ? self : this, function () {
 
 const GROUPS = {
-  hands: ["wires", "swipe", "hold", "order", "nopress", "catch", "spark", "rhythm", "coward", "dig", "saw", "lockpick", "searchlight"],
-  eyes: ["color", "odd", "code", "count", "letter", "sad", "shells", "simon", "blink", "flashes", "diff", "lineup", "rollcall", "keys", "cipher", "pass"],
-  head: ["quiz", "sudoku", "seq", "math", "tf", "heavy", "chrono", "manual", "rebus", "oddmeaning", "dice", "codelock", "scales", "clock", "guard"],
+  hands: ["wires", "swipe", "hold", "order", "nopress", "catch", "spark", "rhythm", "coward", "dig", "saw", "lockpick", "searchlight", "tunnel", "sneak", "shake"],
+  eyes: ["color", "odd", "code", "count", "letter", "sad", "shells", "simon", "blink", "flashes", "diff", "lineup", "rollcall", "keys", "cipher", "pass", "torch", "rustkeys", "signals"],
+  head: ["quiz", "sudoku", "seq", "math", "tf", "heavy", "chrono", "manual", "rebus", "oddmeaning", "dice", "codelock", "scales", "clock", "guard", "decode", "cells", "shift"],
 };
 const TYPE_GROUP = {};
 for (const [g, types] of Object.entries(GROUPS)) for (const t of types) TYPE_GROUP[t] = g;
 // свои испытания: в Камере выпадают вдвое чаще бомбовых (§4.1)
-const OWN = new Set(["dig", "saw", "lockpick", "searchlight", "lineup", "rollcall", "keys", "cipher", "codelock", "scales", "clock", "guard", "pass"]);
+const OWN = new Set(["dig", "saw", "lockpick", "searchlight", "lineup", "rollcall", "keys", "cipher", "codelock", "scales", "clock", "guard", "pass",
+  "tunnel", "sneak", "shake", "torch", "rustkeys", "signals", "decode", "cells", "shift"]);
 const OWN_WEIGHT = 2;
 // долгие (5–8 с): три таких не влезают в Камеру Актов 1–2 (11–12 с) — даём только в финальной (§4.1)
-const SLOW = new Set(["chrono", "manual", "rebus"]);
+const SLOW = new Set(["chrono", "manual", "rebus", "shift"]);
 // на запоминание: доска их не рисует, иначе они тривиальны (§4.1). Код «Передачки» доска показывает отдельно, после тишины (§4.2)
 const MEMORY_TYPES = ["code", "lineup", "guard", "simon", "shells", "blink", "flashes"];
 const QUIZ_TYPES = ["quiz", "tf", "heavy", "chrono", "rebus"];
@@ -46,8 +47,8 @@ const WRONG_LOCK_MS = 1500;
 const LEVELS = { hands: [2, 2, 3], eyes: [1, 2, 3], head: [1, 1, 2] };
 // Камера по ступеням: сколько испытаний пройти и за сколько мс — время своё у каждого набора (плавная ручка баланса, §4.3)
 const CELL = [
-  { need: 3, ms: { hands: 12000, eyes: 12000, head: 12500 } }, // стенд 05.10: 74 / 77 / 73 %
-  { need: 3, ms: { hands: 10500, eyes: 14000, head: 11500 } }, //            58 / 66 / 63 %
+  { need: 3, ms: { hands: 15000, eyes: 15000, head: 15000 } }, // 11.10: владелец — «15 секунд в комнате» (стенд 05.10 при 12 с: 74 / 77 / 73 %)
+  { need: 3, ms: { hands: 15000, eyes: 15000, head: 15000 } }, //            (при 10,5–14 с: 58 / 66 / 63 %)
   { need: 5, ms: { hands: 22000, eyes: 27000, head: 27000 } }, //            44 / 52 / 56 %
 ];
 // перед первым испытанием — секунда «Приготовься» вне бюджета: в этот момент узник смотрит на доску (§4.1)
@@ -696,6 +697,170 @@ const GEN = {
     return { view: { start, dirs, stepMs, lead }, answer: r * 3 + c, minMs: lead + n * stepMs };
   },
 
+  // ---- ловкость: новые (11.10) ----
+  tunnel(lvl, rnd) {
+    // труба слева направо в единичном квадрате: опорные точки через одну вверх/вниз; стены — на r от оси
+    const k = by(lvl, 3, 4, 5), r = by(lvl, 0.15, 0.12, 0.095);
+    const pts = [[0.1, 0.5]];
+    let up = rnd(2) === 0;
+    for (let i = 1; i <= k; i++) {
+      const x = 0.1 + (0.8 * i) / (k + 1);
+      const y = up ? 0.2 + rnd(21) / 100 : 0.6 + rnd(21) / 100;
+      pts.push([+x.toFixed(3), +y.toFixed(3)]);
+      up = !up;
+    }
+    pts.push([0.9, 0.5]);
+    let len = 0;
+    for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    return { view: { pts, r }, answer: 1, minMs: Math.round(MIN_FAST + len * 450) };
+  },
+  sneak(lvl, rnd) {
+    // охранник то спит, то смотрит; держи кнопку, пока спит, суммарно need мс. Окна взгляда — [от, до] мс от старта
+    const need = by(lvl, 1400, 1700, 2000), backMin = by(lvl, 900, 800, 700), backMax = by(lvl, 1500, 1300, 1100), lookMin = 500, lookMax = by(lvl, 600, 650, 700);
+    const looks = [], press = [];
+    let t = 0, have = 0;
+    for (;;) {
+      // первое окно короче need — хотя бы один взгляд обязательно будет
+      const b = backMin + rnd((have === 0 ? Math.min(backMax, need - 300) : backMax) - backMin + 1);
+      // эталон: с запасом 30 мс на входе и до 80 мс в начало взгляда (проверка прощает 100 мс на отпускание)
+      const from = t + 30, to = t + b + 80, take = Math.min(to - from, need - have);
+      if (take > 0) { press.push([from, from + take]); have += take; }
+      t += b;
+      if (have >= need) break;
+      const l = lookMin + rnd(lookMax - lookMin + 1);
+      looks.push([t, t + l]);
+      t += l;
+    }
+    return { view: { looks, need }, answer: press, minMs: press[press.length - 1][1] };
+  },
+  shake(lvl) {
+    const need = by(lvl, 10, 14, 18);
+    return { view: { need }, answer: need, minMs: MIN_FAST + need * 70 };
+  },
+
+  // ---- внимание: новые (11.10) ----
+  torch(lvl, rnd) {
+    // тёмная камера: в круге света видно предметы; ищем один — остальные похожие
+    const n = by(lvl, 4, 6, 8), light = by(lvl, 0.26, 0.21, 0.17);
+    const target = "🔑";
+    const decoys = by(lvl, ["🧦", "🥫", "📎", "🪣", "🧽", "🔦", "🍞"], ["🔒", "🪙", "🔧", "🔔", "📎", "🪛"], ["🗝️", "🔒", "🪙", "🔧", "🔪", "🪛", "🔔"]);
+    const items = [target].concat(shuffle(decoys, rnd).slice(0, n - 1));
+    const pos = [];
+    for (let i = 0; i < n; i++) {
+      for (let tries = 0; tries < 200; tries++) {
+        const p = [0.1 + rnd(81) / 100, 0.12 + rnd(77) / 100];
+        if (pos.every((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) > 0.2) || tries === 199) { pos.push(p); break; }
+      }
+    }
+    // перемешиваем порядок, чтобы цель не всегда была первой
+    const order = shuffle(range(0, n - 1), rnd);
+    const outItems = order.map((i) => items[i]);
+    return { view: { items: outItems, pos, light, target }, answer: outItems.indexOf(target), minMs: MIN_HEAD };
+  },
+  rustkeys(lvl, rnd) {
+    // падают ключи: золотые ловим, ржавые пропускаем
+    const n = by(lvl, 5, 6, 8), gap = by(lvl, 700, 600, 520), fall = by(lvl, 1500, 1300, 1100);
+    const golds = Math.max(2, Math.ceil(n / 2) - rnd(2));
+    const kinds = shuffle(range(0, n - 1).map((i) => i < golds), rnd);
+    const keys = [];
+    let lane = rnd(3);
+    for (let i = 0; i < n; i++) {
+      lane = (lane + 1 + rnd(2)) % 3;
+      keys.push({ x: [0.2, 0.5, 0.8][lane], t: 400 + i * gap, gold: kinds[i] });
+    }
+    return { view: { keys, fall }, answer: keys.map((k, i) => (k.gold ? i : -1)).filter((i) => i >= 0), minMs: Math.max(...keys.map((k) => (k.gold ? k.t : 0))) + 300 };
+  },
+  signals(lvl, rnd) {
+    // лампа слева/справа; на синей лампе жми с противоположной стороны (с ур. 2)
+    const n = by(lvl, 4, 4, 5), gap = by(lvl, 1100, 950, 800), lead = 700;
+    const inv = by(lvl, 0, 0.35, 0.5);
+    const seq = [];
+    for (let i = 0; i < n; i++) seq.push({ s: rnd(2), inv: inv > 0 && rnd(100) < inv * 100 });
+    if (inv > 0 && !seq.some((c) => c.inv)) seq[rnd(n)].inv = true;
+    return { view: { seq, gap, lead }, answer: seq.map((c) => (c.inv ? 1 - c.s : c.s)), minMs: lead + (n - 1) * gap + 150 };
+  },
+
+  // ---- голова: новые (11.10) ----
+  decode(lvl, rnd) {
+    // по таблице знак → цифра прочесть номер камеры
+    const SYM = ["🍎", "🔔", "⭐", "🌙", "🐟", "🎈", "🔑", "🍋", "🦆", "🧲"];
+    const size = by(lvl, 4, 5, 6);
+    const syms = shuffle(SYM, rnd).slice(0, size);
+    const digs = shuffle(range(1, 9), rnd).slice(0, size);
+    const table = syms.map((s, i) => [s, digs[i]]);
+    const len = by(lvl, 3, 3, 4);
+    const word = [];
+    for (let i = 0; i < len; i++) word.push(pick(lvl === 1 ? syms.filter((s) => !word.includes(s)) : syms, rnd));
+    const code = word.map((s) => table.find((t) => t[0] === s)[1]).join("");
+    const set = new Set([code]);
+    for (let g = 0; set.size < 4 && g < 200; g++) {
+      const d = code.split("");
+      const i = rnd(len), j = rnd(len);
+      if (g % 2 === 0 && d[i] !== d[j]) [d[i], d[j]] = [d[j], d[i]];
+      else d[i] = String(digs[rnd(size)]);
+      set.add(d.join(""));
+    }
+    for (let x = 100; set.size < 4; x++) set.add(String(x));
+    const options = shuffle([...set], rnd);
+    return { view: { table, word, options }, answer: options.indexOf(code), minMs: MIN_HEAD };
+  },
+  cells(lvl, rnd) {
+    // номера камер на табличках; вопрос про чётные / сумму / разность крайних
+    const n = by(lvl, 4, 5, 6);
+    const nums = shuffle(range(11, 98), rnd).slice(0, n);
+    const kind = pick(by(lvl, ["even", "sum"], ["even", "sum", "diff"], ["even", "sum", "diff"]), rnd);
+    const mx = Math.max(...nums), mn = Math.min(...nums);
+    let right;
+    if (kind === "even") right = nums.filter((x) => x % 2 === 0).length;
+    else if (kind === "sum") right = mx + mn;
+    else right = mx - mn;
+    let options, answer;
+    if (kind === "even") {
+      options = shuffle(shuffle(range(0, n).filter((x) => x !== right), rnd).slice(0, 3).concat([right]), rnd);
+      answer = options.indexOf(right);
+    } else ({ options, answer } = numberOptions(right, rnd));
+    return { view: { nums, kind, options }, answer, minMs: MIN_HEAD };
+  },
+  shift(lvl, rnd) {
+    // расписание смен: порядок охранников по подсказкам; решение единственное (перебор)
+    const k = by(lvl, 3, 3, 4), want = by(lvl, 2, 3, 4);
+    const perms = [];
+    const rec = (cur, left) => { if (!left.length) perms.push(cur); else left.forEach((x, i) => rec(cur.concat(x), left.filter((_, j) => j !== i))); };
+    rec([], range(0, k - 1));
+    const secret = pick(perms, rnd);
+    const pos = (g) => secret.indexOf(g);
+    const ok = (c, p) => {
+      const at = (g) => p.indexOf(g);
+      switch (c.k) {
+        case "before": return at(c.a) < at(c.b);
+        case "notfirst": return at(c.a) !== 0;
+        case "notlast": return at(c.a) !== k - 1;
+        case "adj": return at(c.b) === at(c.a) + 1;
+        default: return true;
+      }
+    };
+    const facts = [];
+    for (const a of range(0, k - 1)) {
+      if (pos(a) !== 0) facts.push({ k: "notfirst", a });
+      if (pos(a) !== k - 1) facts.push({ k: "notlast", a });
+      for (const b of range(0, k - 1)) if (a !== b) {
+        if (pos(a) < pos(b)) facts.push({ k: "before", a, b });
+        if (pos(b) === pos(a) + 1) facts.push({ k: "adj", a, b });
+      }
+    }
+    let clues = [];
+    for (let tries = 0; tries < 400; tries++) {
+      clues = shuffle(facts, rnd).slice(0, want);
+      if (perms.filter((p) => clues.every((c) => ok(c, p))).length === 1) break;
+      if (tries === 399) {
+        // не нашли за want подсказок — добавляем, пока решение не станет единственным
+        clues = [];
+        for (const f of shuffle(facts, rnd)) { clues.push(f); if (perms.filter((p) => clues.every((c) => ok(c, p))).length === 1) break; }
+      }
+    }
+    return { view: { n: k, clues }, answer: secret, minMs: MIN_HEAD + 600 };
+  },
+
   // ---- передачка: переделка бомбового «Зала» ----
   pass(lvl, rnd) {
     // у кого код (телефон свободного игрока или доска после 4 с тишины) — решает движок, он знает игроков
@@ -791,12 +956,57 @@ const nums = (v, n) => Array.isArray(v) && v.length === n && v.every((x) => type
 function check(ch, ans, elapsed) {
   if (!ch) return "wrong";
   if (ch.type === "nopress" && ans && ans.early === true) return "wrong";
-  if (elapsed < ch.minMs) return ch.type === "nopress" ? "wrong" : "early";
+  if (elapsed < ch.minMs) {
+    // поймали взглядом / тапнули ржавый: провал виден сразу, ждать minMs незачем
+    if ((ch.type === "sneak" || ch.type === "rustkeys") && ans && ans.fail === true && verdict(ch, ans, ch.minMs) === "wrong") return "wrong";
+    return ch.type === "nopress" ? "wrong" : "early";
+  }
+  return verdict(ch, ans, elapsed);
+}
+function verdict(ch, ans, elapsed) {
   const a = ch.answer;
   const v = ans && typeof ans === "object" ? ans.v : undefined;
   switch (ch.type) {
     case "wires": case "catch": case "coward": case "dig": case "saw": return v === a ? "ok" : "wrong";
-    case "swipe": case "order": case "chrono": case "simon": case "cipher": return sameArr(v, a) ? "ok" : "wrong";
+    case "swipe": case "order": case "chrono": case "simon": case "cipher": case "shift": case "rustkeys": return sameArr(v, a) ? "ok" : "wrong";
+    case "tunnel": {
+      // трасса пальца в долях меньшей стороны поля: все точки в трубе, старт и финиш на месте, путь не короче трубы
+      const w = ch.view, p = ans && ans.p, ar = ans && ans.ar;
+      if (v !== 1 || !Array.isArray(p) || p.length < 6 || p.length > 400 || !(ar >= 0.4 && ar <= 4)) return "wrong";
+      const P = w.pts.map(([x, y]) => (ar >= 1 ? [x * ar, y] : [x, y / ar]));
+      const segD = (q, A, B) => { const dx = B[0] - A[0], dy = B[1] - A[1], l2 = dx * dx + dy * dy; const t = l2 ? Math.max(0, Math.min(1, ((q[0] - A[0]) * dx + (q[1] - A[1]) * dy) / l2)) : 0; return Math.hypot(q[0] - A[0] - t * dx, q[1] - A[1] - t * dy); };
+      let len = 0, run = 0;
+      for (let i = 1; i < P.length; i++) len += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]);
+      for (let i = 0; i < p.length; i++) {
+        const q = p[i];
+        if (!Array.isArray(q) || q.length !== 2 || !Number.isFinite(q[0]) || !Number.isFinite(q[1])) return "wrong";
+        let m = Infinity;
+        for (let k = 1; k < P.length; k++) m = Math.min(m, segD(q, P[k - 1], P[k]));
+        if (m > w.r * 1.12 + 0.01) return "wrong";
+        if (i) run += Math.hypot(q[0] - p[i - 1][0], q[1] - p[i - 1][1]);
+      }
+      const near = (q, A, r) => Math.hypot(q[0] - A[0], q[1] - A[1]) <= r;
+      if (!near(p[0], P[0], w.r * 1.7 + 0.03) || !near(p[p.length - 1], P[P.length - 1], w.r * 1.2 + 0.03)) return "wrong";
+      return run >= len * 0.7 ? "ok" : "wrong";
+    }
+    case "sneak": {
+      // пары [нажал, отпустил] от старта; ни одно нажатие не заходит во взгляд охранника (+100 мс на реакцию), суммарно ≥ need
+      const w = ch.view;
+      if (!Array.isArray(v) || !v.length || v.length > 60) return "wrong";
+      let total = 0, prev = -1;
+      for (const q of v) {
+        if (!Array.isArray(q) || q.length !== 2 || !Number.isFinite(q[0]) || !Number.isFinite(q[1]) || q[1] <= q[0] || q[0] < prev || q[1] > elapsed + 400) return "wrong";
+        prev = q[1]; total += q[1] - q[0];
+        for (const [f, t] of w.looks) if (q[0] < t && q[1] > f + 100) return "wrong";
+      }
+      return total >= w.need - 60 ? "ok" : "wrong";
+    }
+    case "signals": {
+      // стороны по порядку и момент каждого тапа: после своей лампы и до следующей (+250 мс)
+      const w = ch.view, t = ans && ans.t;
+      if (!sameArr(v, a) || !nums(t, w.seq.length)) return "wrong";
+      return t.every((x, i) => x >= w.lead + i * w.gap + 100 && x <= w.lead + (i + 1) * w.gap + 250) ? "ok" : "wrong";
+    }
     case "hold": return typeof v === "number" && v >= a[0] && v <= a[1] ? "ok" : "wrong";
     case "nopress": return "ok";
     case "code": case "pass": return String(v) === a ? "ok" : "wrong";

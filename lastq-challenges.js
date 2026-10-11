@@ -88,8 +88,14 @@ function faceSvg(f) {
     `<path d="M34 72 Q42 62 50 68 Q58 62 66 72 Q58 70 50 72 Q42 70 34 72 Z" fill="#4a2c12" ${S}/>`,
   ][f.m];
   return `<svg viewBox="0 0 100 100" aria-hidden="true">
+    <path d="M10 100 Q12 80 36 78 L64 78 Q88 80 90 100 Z" fill="#e8892b" ${S}/>
+    <path d="M30 84 V100 M42 80 V100 M58 80 V100 M70 84 V100" stroke="#16120c" stroke-width="2.4" opacity=".55"/>
+    <rect x="43" y="70" width="14" height="12" fill="#e2b585" ${S}/>
+    <ellipse cx="23" cy="58" rx="4.5" ry="7" fill="#f2c89b" ${S}/><ellipse cx="77" cy="58" rx="4.5" ry="7" fill="#f2c89b" ${S}/>
     <ellipse cx="50" cy="58" rx="27" ry="31" fill="#f2c89b" ${S}/>
+    <path d="M32 45 Q39 41 46 45 M54 45 Q61 41 68 45" fill="none" ${S} stroke-width="2.4"/>
     <circle cx="39" cy="54" r="3" fill="#16120c"/><circle cx="61" cy="54" r="3" fill="#16120c"/>
+    <path d="M50 56 L47 66 H53" fill="none" stroke="#16120c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".6"/>
     <path d="M42 80 Q50 85 58 80" fill="none" ${S}/>
     ${stache}${glasses}${hat}
   </svg>`;
@@ -166,6 +172,18 @@ function gridOf(items, cols, onPick, txt) {
   return g;
 }
 const rndInt = (n) => Math.floor(Math.random() * n);
+// «поймай»-испытания: ряд кружков-поимок и всплывашка «+1» / «✕» на поле
+function pipsRow(n) {
+  const pips = el("div", "catchpips");
+  for (let i = 0; i < n; i++) pips.append(el("i"));
+  return pips;
+}
+function puffAt(field, x, y, text, cls) {
+  const f = el("span", "puff " + cls, text);
+  f.style.left = x + "px"; f.style.top = y + "px";
+  field.append(f);
+  setTimeout(() => f.remove(), 600);
+}
 function shuffled(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rndInt(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
 const WIRE_COLORS = ["#e8322b", "#1e6fd9", "#ffc21a", "#16924a", "#a259ff", "#ff7a1a", "#16120c"];
@@ -175,15 +193,21 @@ const RENDER = {
   wires(c, pad, task) {
     const n = c.view.n;
     task.textContent = tpl(n >= 5 ? "t_wires5" : "t_wires", { n });
-    const field = el("div", "field");
+    // щиток: провода между клеммами; разрезанный распадается на две половинки, «искра» и кружок-счётчик загорается
+    const pips = pipsRow(n);
+    const field = el("div", "field wirebox");
     let left = n;
     const wires = [];
     for (let i = 0; i < n; i++) {
       const w = el("button", "wire");
       w.type = "button";
       w.style.setProperty("--wc", WIRE_COLORS[i % WIRE_COLORS.length]);
+      w.append(el("i", "wl"), el("i", "wr"));
       w.onclick = () => {
+        if (w.classList.contains("cut")) return;
         w.classList.add("cut"); sfx.tap(); vibrate(15);
+        puffAt(field, field.clientWidth / 2, w.offsetTop - 6, "⚡", "zap");
+        pips.children[n - left].classList.add("on");
         if (--left === 0) return submit({ v: n });
         place();
       };
@@ -195,9 +219,9 @@ const RENDER = {
       const live = wires.filter((w) => !w.classList.contains("cut"));
       const slots = shuffled(live.map((_, i) => i));
       const gap = (field.clientHeight || 300) / live.length;
-      live.forEach((w, i) => { w.style.top = `${slots[i] * gap + (gap - 36) / 2}px`; });
+      live.forEach((w, i) => { w.style.top = `${slots[i] * gap + (gap - 30) / 2}px`; });
     }
-    pad.append(field);
+    pad.append(pips, field);
     place();
   },
   swipe(c, pad, task) {
@@ -206,6 +230,7 @@ const RENDER = {
     const ARROW = { u: "↑", d: "↓", l: "←", r: "→" };
     const row = el("div", "arrows");
     dirs.forEach((d) => row.append(el("span", null, ARROW[d])));
+    row.children[0].classList.add("cur");
     const zone = el("div", "swipezone", T("swipe_here"));
     pad.append(row, zone);
     const got = [];
@@ -218,7 +243,9 @@ const RENDER = {
       if (Math.max(Math.abs(dx), Math.abs(dy)) < 30) return;
       const d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "r" : "l") : dy > 0 ? "d" : "u";
       got.push(d);
+      row.children[got.length - 1].classList.remove("cur");
       row.children[got.length - 1].classList.add("done");
+      if (row.children[got.length]) row.children[got.length].classList.add("cur");
       sfx.tap();
       if (got.length === dirs.length) submit({ v: got });
     });
@@ -239,7 +266,7 @@ const RENDER = {
     const tick = () => {
       if (t0 == null) return;
       const ms = performance.now() - t0;
-      fill.style.width = Math.min(100, (ms / v.full) * 100) + "%";
+      fill.style.transform = `scaleX(${Math.min(1, ms / v.full)})`;
       if (ms >= v.full) return release();
       raf = requestAnimationFrame(tick);
     };
@@ -300,19 +327,37 @@ const RENDER = {
   catch(c, pad, task) {
     const v = c.view;
     task.textContent = tplN("t_catch", v.hits);
-    const field = el("div", "field");
-    const tgt = el("button", "tgt", "🔑");
+    // счётчик: по кружку на каждую поимку — видно, сколько уже поймано и сколько осталось
+    const pips = pipsRow(v.hits);
+    const field = el("div", "field catchfield");
+    const tgt = el("button", "tgt");
     tgt.type = "button";
+    tgt.innerHTML = keySvg([2, 3, 1, 3], false);
     field.append(tgt);
-    pad.append(field);
-    let hits = 0;
-    const jump = () => { tgt.style.left = 12 + rndInt(76) + "%"; tgt.style.top = 40 + rndInt(Math.max(60, (field.clientHeight || 300) - 80)) + "px"; };
+    pad.append(pips, field);
+    let hits = 0, hold = false;
+    const jump = () => { tgt.style.left = 14 + rndInt(72) + "%"; tgt.style.top = 44 + rndInt(Math.max(60, (field.clientHeight || 300) - 90)) + "px"; };
     jump();
-    const iv = setInterval(() => { if (!tgt.isConnected) return clearInterval(iv); jump(); }, Math.round(900 / v.speed));
+    // поймал: ключ на мгновение замирает в зелёном кольце, «+1» улетает вверх, потом прыгает дальше
+    const puff = (x, y, text, cls) => puffAt(field, x, y, text, cls);
+    const iv = setInterval(() => { if (!tgt.isConnected) return clearInterval(iv); if (!hold) jump(); }, Math.round(900 / v.speed));
     tgt.addEventListener("pointerdown", (e) => {
       e.preventDefault();
-      hits++; sfx.tap(); vibrate(12); jump();
-      if (hits >= v.hits) { clearInterval(iv); submit({ v: hits }); }
+      e.stopPropagation();
+      if (hold) return;
+      hits++; sfx.tap(); vibrate(12);
+      pips.children[hits - 1].classList.add("on");
+      puff(tgt.offsetLeft, tgt.offsetTop - 30, "+1", "hit");
+      if (hits >= v.hits) { clearInterval(iv); tgt.classList.add("caught"); return submit({ v: hits }); }
+      hold = true;
+      tgt.classList.add("caught");
+      setTimeout(() => { hold = false; tgt.classList.remove("caught"); jump(); }, 160);
+    });
+    // мимо: красный крестик там, куда ткнул (штрафа нет — только понятно, что не поймал)
+    field.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".tgt")) return;
+      const r = field.getBoundingClientRect();
+      puff(e.clientX - r.left, e.clientY - r.top, "✕", "miss");
     });
   },
 
@@ -323,7 +368,7 @@ const RENDER = {
     const w = el("div", "word", T("color_" + v.word));
     w.style.color = INK[v.ink];
     w.style.setProperty("--len", Math.max(4, T("color_" + v.word).length));
-    pad.append(w, optButtons(v.options.map((k) => T("color_" + k)), (i) => submit({ v: i })));
+    pad.append(w, optButtons(v.options.map((k) => T("color_" + k)), (i) => submit({ v: i }), "tight"));
   },
   odd(c, pad, task) {
     task.textContent = T("t_odd");
@@ -389,7 +434,7 @@ const RENDER = {
   },
   heavy(c, pad, task) {
     task.textContent = T("t_heavy");
-    pad.append(el("div", "qtext", "⚖️"), optButtons(c.view.options.map(tx), (i) => submit({ v: i }), "one"));
+    pad.append(el("div", "bigicon", "⚖️"), optButtons(c.view.options.map(tx), (i) => submit({ v: i }), "one"));
   },
   chrono(c, pad, task) {
     task.textContent = T("t_chrono");
@@ -450,12 +495,13 @@ const RENDER = {
     pad.append(field);
     let hits = 0, done = false;
     const t0 = performance.now();
+    let fw = 0, fh = 0;
     (function move(now) {
       if (done || !sp.isConnected) return;
+      if (!fw) { fw = field.clientWidth; fh = field.clientHeight; }
       const k = Math.min(1, (now - t0) / v.travel);
-      // искра ползёт по проводу змейкой к сигнализации справа
-      sp.style.left = 6 + k * 70 + "%";
-      sp.style.top = 50 + Math.sin(k * Math.PI * 3) * 28 + "%";
+      // искра ползёт по проводу змейкой к сигнализации справа (transform: без раскладки на каждый кадр)
+      sp.style.transform = `translate(${((6 + k * 70) / 100) * fw}px, ${((50 + Math.sin(k * Math.PI * 3) * 28) / 100) * fh}px)`;
       if (k >= 1) { done = true; submit({ v: hits, late: true }); return; }
       requestAnimationFrame(move);
     })(t0);
@@ -501,20 +547,30 @@ const RENDER = {
   coward(c, pad, task) {
     const v = c.view;
     task.textContent = tplN("t_coward", v.hits);
-    const field = el("div", "field");
+    const pips = pipsRow(v.hits);
+    const field = el("div", "field catchfield");
     const btn = el("button", "cowardbtn", T("coward_btn"));
     btn.type = "button";
     field.append(btn);
-    pad.append(field);
+    pad.append(pips, field);
     let hits = 0;
     // телепортируется, а не едет: в «Поймай» мишень летает плавно
-    const jump = () => { btn.style.left = 18 + rndInt(64) + "%"; btn.style.top = 20 + rndInt(Math.max(40, field.clientHeight - 60)) + "px"; };
+    const jump = () => { btn.style.left = 20 + rndInt(60) + "%"; btn.style.top = 20 + rndInt(Math.max(40, field.clientHeight - 70)) + "px"; };
     jump();
     const iv = setInterval(() => { if (!btn.isConnected) return clearInterval(iv); jump(); }, v.jump);
     btn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
-      hits++; sfx.tap(); vibrate(12); jump();
-      if (hits >= v.hits) { clearInterval(iv); submit({ v: hits }); }
+      e.stopPropagation();
+      hits++; sfx.tap(); vibrate(12);
+      pips.children[hits - 1].classList.add("on");
+      puffAt(field, btn.offsetLeft, btn.offsetTop - 10, "+1", "hit");
+      if (hits >= v.hits) { clearInterval(iv); return submit({ v: hits }); }
+      jump();
+    });
+    field.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".cowardbtn")) return;
+      const r = field.getBoundingClientRect();
+      puffAt(field, e.clientX - r.left, e.clientY - r.top, "✕", "miss");
     });
   },
 
@@ -629,7 +685,9 @@ const RENDER = {
   },
   oddmeaning(c, pad, task) {
     task.textContent = T("t_oddmeaning");
-    pad.append(gridOf(c.view.items, c.view.items.length, (i) => submit({ v: i })));
+    const g = gridOf(c.view.items, 2, (i) => submit({ v: i }));
+    g.classList.add("bigcells");
+    pad.append(g);
   },
   dice(c, pad, task) {
     task.textContent = T("t_dice");
@@ -725,11 +783,13 @@ const RENDER = {
     const taps = [];
     let done = false;
     // положение штифта — та же формула, что проверяет сервер: tri(t / period + phase)
+    let ph = 0;
     (function move(now) {
       if (!lock.isConnected) return;
+      if (!ph) ph = pins[0].col.clientHeight;
       pins.forEach((x, i) => {
         const t = x.at != null ? x.at : now - t0;
-        x.head.style.bottom = `calc(${tri(t / x.p.period + x.p.phase) * 100}% - 9px)`;
+        x.head.style.transform = `translateY(${9 - tri(t / x.p.period + x.p.phase) * ph}px)`;
         x.col.classList.toggle("on", i === taps.length && !done);
       });
       if (!done) requestAnimationFrame(move);
@@ -765,7 +825,7 @@ const RENDER = {
     let done = false;
     (function sweep(now) {
       if (!yard.isConnected || done) return;
-      beam.style.left = (tri((now - t0) / v.period + v.phase) - v.half) * 100 + "%";
+      beam.style.transform = `translateX(${((tri((now - t0) / v.period + v.phase) - v.half) / (2 * v.half)) * 100}%)`;
       requestAnimationFrame(sweep);
     })(t0);
     btn.addEventListener("pointerdown", (e) => {
@@ -787,12 +847,18 @@ const RENDER = {
   lineup(c, pad, task) {
     const v = c.view;
     task.textContent = T("t_lineup1");
+    // фоторобот на фоне ростомера, полоса времени сгорает — видно, сколько ещё смотреть
     const big = el("div", "facebig");
     big.innerHTML = faceSvg(v.target);
-    pad.append(big);
+    big.append(el("em", "facetag", T("lineup_tag")));
+    const bar = el("div", "showbar");
+    const fill = el("i");
+    fill.style.animationDuration = v.show + "ms";
+    bar.append(fill);
+    pad.append(big, bar);
     setTimeout(() => {
       if (!big.isConnected) return;
-      big.remove();
+      big.remove(); bar.remove();
       task.textContent = T("t_lineup2");
       const g = el("div", "suspects");
       v.suspects.forEach((f, i) => {
@@ -963,6 +1029,357 @@ const RENDER = {
     });
     pad.append(kp);
   },
+  // ---- новые испытания (11.10) ----
+  tunnel(c, pad, task) {
+    const v = c.view;
+    task.textContent = T("t_tunnel");
+    const field = el("div", "field tunnelbox");
+    pad.append(field);
+    const W = field.clientWidth || 300, H = field.clientHeight || 280, S = Math.min(W, H);
+    const P = v.pts.map(([x, y]) => [x * W, y * H]);
+    const R = v.r * S;
+    const d = P.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+    field.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true">
+      <path d="${d}" fill="none" stroke="#15191c" stroke-width="${2 * R + 8}" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="${d}" fill="none" stroke="#e9e5da" stroke-width="${2 * R}" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${P[0][0]}" cy="${P[0][1]}" r="${Math.max(16, R * 0.9)}" fill="#17864a" stroke="#15191c" stroke-width="3"/>
+      <polyline class="trail" points="" fill="none" stroke="#17864a" stroke-width="${Math.max(6, R * 0.6)}" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/>
+    </svg>`;
+    const trail = field.querySelector(".trail");
+    const door = el("span", "tdoor", "🚪");
+    door.style.left = P[P.length - 1][0] + "px"; door.style.top = P[P.length - 1][1] + "px";
+    const start = el("span", "tstart", "▶");
+    start.style.left = P[0][0] + "px"; start.style.top = P[0][1] + "px";
+    field.append(door, start);
+    const segDist = (px, py, a, b) => {
+      const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
+      const t = l2 ? Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / l2)) : 0;
+      return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy);
+    };
+    const dist = (x, y) => { let m = Infinity; for (let i = 1; i < P.length; i++) m = Math.min(m, segDist(x, y, P[i - 1], P[i])); return m; };
+    let active = false, last = null, done = false, pts = [];
+    const fail = () => {
+      active = false; last = null; pts = []; rec = []; lastRec = null; trail.setAttribute("points", "");
+      sfx.buzz(); vibrate(40);
+      field.classList.remove("hit"); void field.offsetWidth; field.classList.add("hit");
+    };
+    const at = (e) => { const r = field.getBoundingClientRect(); return [e.clientX - r.left - field.clientLeft, e.clientY - r.top - field.clientTop]; };
+    // трасса для сервера: точки в долях меньшей стороны поля (шире — ar = W / H), не чаще чем через 7 px
+    let rec = [], lastRec = null;
+    const recPush = (x, y) => {
+      if (lastRec && Math.hypot(x - lastRec[0], y - lastRec[1]) < 7) return;
+      lastRec = [x, y];
+      if (rec.length < 380) rec.push([+(x / S).toFixed(4), +(y / S).toFixed(4)]);
+    };
+    field.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      if (done) return;
+      const [x, y] = at(e);
+      if (Math.hypot(x - P[0][0], y - P[0][1]) > Math.max(30, R * 1.4)) return;
+      rec = []; lastRec = null; recPush(x, y);
+      try { field.setPointerCapture(e.pointerId); } catch (er) {}
+      active = true; last = [x, y]; pts = [[x, y]];
+      start.style.opacity = 0;
+    });
+    field.addEventListener("pointermove", (e) => {
+      if (!active || done) return;
+      const [x, y] = at(e);
+      // между двумя замерами проверяем промежуточные точки: быстрый мазок не срежет угол
+      const n = Math.max(1, Math.ceil(Math.hypot(x - last[0], y - last[1]) / 6));
+      for (let k = 1; k <= n; k++) {
+        const px = last[0] + ((x - last[0]) * k) / n, py = last[1] + ((y - last[1]) * k) / n;
+        if (dist(px, py) > R) return fail();
+      }
+      last = [x, y];
+      pts.push([x, y]);
+      recPush(x, y);
+      trail.setAttribute("points", pts.map((p) => p[0].toFixed(0) + "," + p[1].toFixed(0)).join(" "));
+      const E = P[P.length - 1];
+      if (Math.hypot(x - E[0], y - E[1]) < Math.max(22, R * 0.9)) { done = true; active = false; sfx.pop(); submit({ v: 1, p: rec, ar: +(W / H).toFixed(3) }); }
+    });
+    const up = () => { if (active && !done) { active = false; trail.setAttribute("points", ""); pts = []; rec = []; lastRec = null; start.style.opacity = 1; } };
+    field.addEventListener("pointerup", up);
+    field.addEventListener("pointercancel", up);
+  },
+  sneak(c, pad, task) {
+    const v = c.view;
+    task.textContent = T("t_sneak");
+    const guard = el("div", "sneakguard", "😴");
+    const note = el("small", "sneaknote", T("sneak_sleep"));
+    const track = el("div", "sneaktrack");
+    const fill = el("i");
+    const man = el("b", null, "🏃");
+    track.append(fill, man, el("span", "exit", "🚪"));
+    const btn = el("button", "sneakbtn", T("sneak_btn"));
+    btn.type = "button";
+    pad.append(guard, note, track, btn);
+    const t0 = performance.now();
+    const presses = [];
+    let down = null, total = 0, done = false;
+    const looking = (t) => v.looks.some(([f, e]) => t > f + 100 && t < e);
+    const warn = (t) => v.looks.some(([f]) => t >= f - 450 && t < f + 100);
+    const finish = (fail) => {
+      if (done) return;
+      done = true;
+      if (down != null) { presses.push([down, Math.round(performance.now() - t0)]); down = null; }
+      cancelAnimationFrame(raf);
+      submit(fail ? { v: presses, fail: true } : { v: presses });
+    };
+    let raf = 0;
+    const loop = () => {
+      if (done || !guard.isConnected) return;
+      const t = performance.now() - t0;
+      const lk = v.looks.some(([f, e]) => t >= f && t < e);
+      guard.textContent = lk ? "😡" : warn(t) ? "😒" : "😴";
+      guard.className = "sneakguard " + (lk ? "look" : warn(t) ? "warn" : "sleep");
+      note.textContent = T(lk ? "sneak_look" : warn(t) ? "sneak_warn" : "sneak_sleep");
+      const cur = total + (down != null ? t - down : 0);
+      fill.style.width = Math.min(100, (cur / v.need) * 100) + "%";
+      man.style.left = `calc(${Math.min(100, (cur / v.need) * 100)}% - ${Math.min(1, cur / v.need) * 34}px)`;
+      if (down != null) {
+        if (looking(t)) { man.classList.add("caught"); sfx.buzz(); vibrate(60); return finish(true); }
+        if (cur >= v.need) { man.classList.add("safe"); return finish(); }
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    const press = (e) => {
+      e.preventDefault();
+      if (done || down != null) return;
+      down = Math.round(performance.now() - t0);
+      btn.classList.add("on"); vibrate(8);
+    };
+    const release = () => {
+      if (done || down == null) return;
+      const u = Math.round(performance.now() - t0);
+      presses.push([down, u]); total += u - down; down = null;
+      btn.classList.remove("on");
+      if (total >= v.need) finish();
+    };
+    btn.addEventListener("pointerdown", press);
+    btn.addEventListener("pointerup", release);
+    btn.addEventListener("pointercancel", release);
+    btn.addEventListener("pointerleave", release);
+  },
+  shake(c, pad, task) {
+    const v = c.view;
+    task.textContent = T("t_shake");
+    const icon = el("div", "shakeicon", "📳");
+    const bar = el("div", "shakebar");
+    const fill = el("i");
+    bar.append(fill);
+    const btn = el("button", "shakebtn", T("shake_btn"));
+    btn.type = "button";
+    pad.append(icon, bar, btn);
+    let n = 0, done = false, lastShake = 0, prev = null, asked = false;
+    const add = () => {
+      if (done) return;
+      n++; sfx.tap(); vibrate(10);
+      fill.style.width = Math.min(100, (n / v.need) * 100) + "%";
+      icon.classList.remove("wob"); void icon.offsetWidth; icon.classList.add("wob");
+      if (n >= v.need) { done = true; window.removeEventListener("devicemotion", onMotion); submit({ v: v.need }); }
+    };
+    // тряска телефона: резкое изменение ускорения; без датчика (или без разрешения) работают тапы
+    function onMotion(ev) {
+      const a = ev.accelerationIncludingGravity;
+      if (!a || a.x == null) return;
+      const m = Math.hypot(a.x, a.y, a.z || 0), now = performance.now();
+      if (prev != null && Math.abs(m - prev) > 9 && now - lastShake > 110) { lastShake = now; add(); }
+      prev = m;
+    }
+    const ask = () => {
+      if (asked) return;
+      asked = true;
+      try {
+        const D = window.DeviceMotionEvent;
+        if (D && typeof D.requestPermission === "function") D.requestPermission().then((r) => { if (r === "granted") window.addEventListener("devicemotion", onMotion); else asked = false; }).catch(() => { asked = false; });
+        else window.addEventListener("devicemotion", onMotion);
+      } catch (er) {}
+    };
+    // iOS даёт разрешение только из click/touchend; отказ — спрашиваем при следующем касании
+    pad.addEventListener("touchend", ask);
+    pad.addEventListener("click", ask);
+    btn.addEventListener("pointerdown", (e) => { e.preventDefault(); add(); });
+    // датчик без касаний (Android): включаем сразу
+    if (!(window.DeviceMotionEvent && typeof window.DeviceMotionEvent.requestPermission === "function")) ask();
+  },
+  torch(c, pad, task) {
+    const v = c.view;
+    task.textContent = T("t_torch");
+    const field = el("div", "field torchbox");
+    pad.append(field);
+    const W = field.clientWidth || 300, H = field.clientHeight || 280, R = v.light * Math.min(W, H) * 1.35;
+    const light = el("div", "torchlight");
+    light.style.width = light.style.height = R * 2 + "px";
+    field.append(light);
+    const items = v.items.map((e, i) => {
+      const s = el("button", "torchitem", e);
+      s.type = "button";
+      s.style.left = v.pos[i][0] * W + "px"; s.style.top = v.pos[i][1] * H + "px";
+      field.append(s);
+      return s;
+    });
+    let cx = W / 2, cy = H / 2;
+    const paint = () => {
+      light.style.transform = `translate(${cx - R}px, ${cy - R}px)`;
+      items.forEach((s, i) => {
+        const d = Math.hypot(v.pos[i][0] * W - cx, v.pos[i][1] * H - cy);
+        s.style.opacity = d >= R ? 0 : d < R * 0.7 ? 1 : (R - d) / (R * 0.3);
+      });
+    };
+    paint();
+    const at = (e) => { const r = field.getBoundingClientRect(); return [e.clientX - r.left - field.clientLeft, e.clientY - r.top - field.clientTop]; };
+    let sx = 0, sy = 0, moved = false, down = false, done = false;
+    field.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      if (done) return;
+      [sx, sy] = at(e); moved = false; down = true;
+      try { field.setPointerCapture(e.pointerId); } catch (er) {}
+    });
+    field.addEventListener("pointermove", (e) => {
+      if (!down || done) return;
+      const [x, y] = at(e);
+      if (Math.hypot(x - sx, y - sy) > 10) moved = true;
+      if (moved) { cx = x; cy = y; paint(); }
+    });
+    field.addEventListener("pointerup", (e) => {
+      if (!down || done) return;
+      down = false;
+      if (moved) return;
+      // тап: если у освещённого предмета — выбор; иначе просто светим туда
+      const [x, y] = at(e);
+      let best = -1, bd = 1e9;
+      items.forEach((s, i) => { const d = Math.hypot(v.pos[i][0] * W - x, v.pos[i][1] * H - y), vis = Math.hypot(v.pos[i][0] * W - cx, v.pos[i][1] * H - cy) < R * 0.9; if (vis && d < bd) { bd = d; best = i; } });
+      if (best >= 0 && bd < 36) { done = true; sfx.tap(); items[best].classList.add("picked"); return submit({ v: best }); }
+      cx = x; cy = y; paint();
+    });
+  },
+  rustkeys(c, pad, task) {
+    const v = c.view;
+    task.textContent = T("t_rustkeys");
+    const field = el("div", "field keyrain");
+    pad.append(field);
+    const H = field.clientHeight || 280;
+    const taps = [];
+    let done = false;
+    const golds = v.keys.filter((k) => k.gold).length;
+    let caught = 0;
+    const finish = (fail) => { if (done) return; done = true; const r = { v: taps.slice().sort((a, b) => a - b) }; if (fail) r.fail = true; submit(r); };
+    v.keys.forEach((k, i) => {
+      const b = el("button", "rkey " + (k.gold ? "gold" : "rust"));
+      b.type = "button";
+      b.innerHTML = keySvg([2, 3, 1, 3], false);
+      b.style.left = k.x * 100 + "%";
+      b.style.animationDuration = v.fall + "ms";
+      b.style.animationDelay = k.t + "ms";
+      b.style.setProperty("--fall", H + 60 + "px");
+      b.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        if (done || b.classList.contains("got")) return;
+        b.classList.add("got");
+        if (!k.gold) { b.classList.add("bad"); sfx.buzz(); vibrate(40); taps.push(i); return finish(true); }
+        sfx.tap(); vibrate(10);
+        taps.push(i);
+        if (++caught >= golds) finish();
+      });
+      field.append(b);
+    });
+    const end = v.keys[v.keys.length - 1].t + v.fall + 150;
+    setTimeout(() => { if (field.isConnected) finish(); }, end);
+  },
+  signals(c, pad, task) {
+    const v = c.view;
+    const hasInv = v.seq.some((x) => x.inv);
+    task.textContent = T(hasInv ? "t_signals2" : "t_signals1");
+    const lamps = el("div", "lamps");
+    const lamp = [el("div", "slamp"), el("div", "slamp")];
+    lamps.append(lamp[0], lamp[1]);
+    const btns = el("div", "sbtns");
+    const b = [el("button", "sbtn", "◀"), el("button", "sbtn", "▶")];
+    b.forEach((x) => (x.type = "button"));
+    btns.append(b[0], b[1]);
+    pad.append(lamps, btns);
+    if (hasInv) pad.append(el("div", "sigrule", T("signals_rule")));
+    const t0 = performance.now();
+    const sides = [], times = [];
+    let done = false;
+    const finish = () => { if (done) return; done = true; submit({ v: sides, t: times }); };
+    v.seq.forEach((cue, i) => setTimeout(() => {
+      if (!pad.isConnected || done) return;
+      const l = lamp[cue.s];
+      l.classList.remove("on", "inv"); void l.offsetWidth;
+      l.classList.add("on"); if (cue.inv) l.classList.add("inv");
+      sfx.tick(false);
+      setTimeout(() => l.classList.remove("on", "inv"), v.gap * 0.7);
+    }, v.lead + i * v.gap));
+    b.forEach((x, s) => x.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      if (done || sides.length >= v.seq.length) return;
+      sides.push(s); times.push(Math.round(performance.now() - t0));
+      x.classList.remove("beat"); void x.offsetWidth; x.classList.add("beat");
+      sfx.tap(); vibrate(8);
+      if (sides.length === v.seq.length) finish();
+    }));
+    setTimeout(() => { if (pad.isConnected) finish(); }, v.lead + v.seq.length * v.gap + 350);
+  },
+  decode(c, pad, task) {
+    const v = c.view;
+    task.textContent = T("t_decode");
+    const tab = el("div", "dectable");
+    v.table.forEach(([s, d]) => { const x = el("span", "decpair"); x.innerHTML = `<b>${escapeHtml(s)}</b><i>${escapeHtml(d)}</i>`; tab.append(x); });
+    const word = el("div", "decword");
+    v.word.forEach((s) => word.append(el("span", null, s)));
+    pad.append(tab, word, optButtons(v.options, (i) => submit({ v: i })));
+  },
+  cells(c, pad, task) {
+    const v = c.view;
+    task.textContent = T("t_cells_" + v.kind);
+    const row = el("div", "cellplates");
+    v.nums.forEach((n) => row.append(el("span", "plate", String(n))));
+    pad.append(row, optButtons(v.options.map(String), (i) => submit({ v: i })));
+  },
+  shift(c, pad, task) {
+    const v = c.view;
+    task.textContent = T("t_shift");
+    const FACE = ["💂", "🕵️", "🤠", "👷"];
+    const f = (i) => `<b class="g">${FACE[i]}</b>`;
+    const rules = el("div", "shiftrules");
+    v.clues.forEach((cl) => {
+      const r = el("div", "shiftrule");
+      r.innerHTML = tpl("shift_" + cl.k, { a: f(cl.a), b: f(cl.b) });
+      rules.append(r);
+    });
+    const slots = el("div", "shiftslots");
+    const filled = [];
+    const slotEls = [];
+    for (let i = 0; i < v.n; i++) {
+      const s = el("button", "shiftslot");
+      s.type = "button";
+      s.innerHTML = `<small>${i + 1}</small>`;
+      slotEls.push(s);
+      slots.append(s);
+    }
+    const pool = el("div", "shiftpool");
+    const guards = [];
+    for (let i = 0; i < v.n; i++) {
+      const g = el("button", "shiftguard", FACE[i]);
+      g.type = "button";
+      g.onclick = () => {
+        if (g.disabled || filled.length >= v.n) return;
+        sfx.tap();
+        g.disabled = true; filled.push(i);
+        paint();
+        if (filled.length === v.n) submit({ v: filled.slice() });
+      };
+      guards.push(g); pool.append(g);
+    }
+    slotEls.forEach((s, k) => { s.onclick = () => { if (k < filled.length && filled.length < v.n) { filled.splice(k); paint(); } }; });
+    function paint() {
+      slotEls.forEach((s, k) => { s.innerHTML = `<small>${k + 1}</small>` + (k < filled.length ? `<span>${FACE[filled[k]]}</span>` : ""); s.classList.toggle("full", k < filled.length); });
+      guards.forEach((g, i) => { g.disabled = filled.includes(i); });
+    }
+    pad.append(rules, slots, pool);
+  },
   fallback(c, pad) {
     pad.append(el("div", "qtext", "…"));
   },
@@ -1004,8 +1421,8 @@ const STR = {
   "t_spark1": "Искра бежит к сигнализации: тапни по ней {n} раз!",
   "t_spark": "Искра бежит к сигнализации: тапни по ней {n} раза!",
   "t_spark5": "Искра бежит к сигнализации: тапни по ней {n} раз!",
-  "t_rhythm1": "Сосед стучит в стену — слушай…",
-  "t_rhythm2": "Теперь простучи так же!",
+  "t_rhythm1": "Слушай стук в стену и запоминай ритм…",
+  "t_rhythm2": "Теперь повтори: жми кнопку в том же ритме!",
   "rhythm_btn": "ТУК",
   "t_coward1": "Поймай кнопку-труса {n} раз",
   "t_coward": "Поймай кнопку-труса {n} раза",
@@ -1084,6 +1501,38 @@ const STR = {
   "t_searchlight": "Беги, когда прожектор далеко!",
   "run_btn": "БЕГИ",
   "t_lineup1": "Запомни лицо",
+  "lineup_tag": "ФОТОРОБОТ",
+  "t_tunnel": "Проведи палец по трубе, не задевая стен",
+  "t_sneak": "Крадись к двери, пока охранник спит",
+  "sneak_btn": "ИДТИ",
+  "sneak_sleep": "спит — иди!",
+  "sneak_warn": "ворочается — стой!",
+  "sneak_look": "смотрит!",
+  "t_shake": "Тряси телефон! Или тапай по кнопке",
+  "shake_btn": "ТРЯСИ / ТАПАЙ",
+  "t_torch": "Найди 🔑 в темноте: води пальцем, тапни по ключу",
+  "t_rustkeys": "Лови только золотые ключи, ржавые не трогай",
+  "t_signals1": "Лампа слева — жми левую, справа — правую",
+  "t_signals2": "Жёлтая лампа — та же сторона, синяя — наоборот",
+  "signals_rule": "🟡 та же сторона · 🔵 противоположная",
+  "t_decode": "Расшифруй номер камеры по таблице",
+  "t_cells_even": "Сколько номеров чётных?",
+  "t_cells_sum": "Сумма самого большого и самого маленького номера?",
+  "t_cells_diff": "На сколько самый большой номер больше самого маленького?",
+  "t_shift": "Расставь охранников по сменам по подсказкам",
+  "shift_before": "{a} раньше {b}",
+  "shift_notfirst": "{a} не первый",
+  "shift_notlast": "{a} не последний",
+  "shift_adj": "{b} сразу после {a}",
+  "ch_tunnel": "ползёт по трубе",
+  "ch_sneak": "крадётся мимо охранника",
+  "ch_shake": "трясёт решётку",
+  "ch_torch": "ищет в темноте",
+  "ch_rustkeys": "ловит ключи",
+  "ch_signals": "жмёт по сигналам",
+  "ch_decode": "расшифровывает номер",
+  "ch_cells": "считает камеры",
+  "ch_shift": "расставляет смены",
   "t_lineup2": "Кто это был?",
   "t_rollcall": "Перекличка! Жми, когда пробежит твой номер",
   "rollcall_mine": "Твой номер",
@@ -1163,8 +1612,8 @@ const STR = {
   "t_spark1": "A spark is racing to the alarm: tap it once!",
   "t_spark": "A spark is racing to the alarm: tap it {n} times!",
   "t_spark5": "A spark is racing to the alarm: tap it {n} times!",
-  "t_rhythm1": "Your cellmate knocks on the wall — listen…",
-  "t_rhythm2": "Now tap it back!",
+  "t_rhythm1": "Listen to the knocks and memorize the rhythm…",
+  "t_rhythm2": "Now repeat it: tap the button in the same rhythm!",
   "rhythm_btn": "TAP",
   "t_coward1": "Catch the coward button once",
   "t_coward": "Catch the coward button {n} times",
@@ -1243,6 +1692,38 @@ const STR = {
   "t_searchlight": "Run when the searchlight is far away!",
   "run_btn": "RUN",
   "t_lineup1": "Remember the face",
+  "lineup_tag": "IDENTIKIT",
+  "t_tunnel": "Drag your finger through the pipe without touching the walls",
+  "t_sneak": "Sneak to the door while the guard sleeps",
+  "sneak_btn": "GO",
+  "sneak_sleep": "asleep — go!",
+  "sneak_warn": "stirring — stop!",
+  "sneak_look": "watching!",
+  "t_shake": "Shake your phone! Or tap the button",
+  "shake_btn": "SHAKE / TAP",
+  "t_torch": "Find the 🔑 in the dark: drag to look, tap the key",
+  "t_rustkeys": "Catch only the gold keys, leave the rusty ones",
+  "t_signals1": "Lamp on the left — press left, right — press right",
+  "t_signals2": "Yellow lamp — same side, blue — the opposite",
+  "signals_rule": "🟡 same side · 🔵 opposite side",
+  "t_decode": "Decode the cell number with the table",
+  "t_cells_even": "How many numbers are even?",
+  "t_cells_sum": "Sum of the biggest and the smallest number?",
+  "t_cells_diff": "By how much is the biggest number bigger than the smallest?",
+  "t_shift": "Put the guards in shift order using the clues",
+  "shift_before": "{a} before {b}",
+  "shift_notfirst": "{a} is not first",
+  "shift_notlast": "{a} is not last",
+  "shift_adj": "{b} right after {a}",
+  "ch_tunnel": "crawls through the pipe",
+  "ch_sneak": "is sneaking past the guard",
+  "ch_shake": "is shaking the bars",
+  "ch_torch": "is searching in the dark",
+  "ch_rustkeys": "is catching keys",
+  "ch_signals": "is hitting the signals",
+  "ch_decode": "is decoding a number",
+  "ch_cells": "is counting cells",
+  "ch_shift": "is arranging shifts",
   "t_lineup2": "Who was it?",
   "t_rollcall": "Roll call! Tap when your number goes by",
   "rollcall_mine": "Your number",
@@ -1322,8 +1803,8 @@ const STR = {
   "t_spark1": "Η σπίθα τρέχει στον συναγερμό: πάτα την μία φορά!",
   "t_spark": "Η σπίθα τρέχει στον συναγερμό: πάτα την {n} φορές!",
   "t_spark5": "Η σπίθα τρέχει στον συναγερμό: πάτα την {n} φορές!",
-  "t_rhythm1": "Ο διπλανός χτυπά τον τοίχο — άκου…",
-  "t_rhythm2": "Τώρα χτύπα τον ίδιο!",
+  "t_rhythm1": "Άκου τα χτυπήματα και θυμήσου τον ρυθμό…",
+  "t_rhythm2": "Τώρα επανάλαβε: πάτα το κουμπί με τον ίδιο ρυθμό!",
   "rhythm_btn": "ΤΟΚ",
   "t_coward1": "Πιάσε το δειλό κουμπί μία φορά",
   "t_coward": "Πιάσε το δειλό κουμπί {n} φορές",
@@ -1402,6 +1883,38 @@ const STR = {
   "t_searchlight": "Τρέξε όταν ο προβολέας είναι μακριά!",
   "run_btn": "ΤΡΕΞΕ",
   "t_lineup1": "Θυμήσου το πρόσωπο",
+  "lineup_tag": "ΡΟΜΠΟΤ-ΠΟΡΤΡΑΙΤΟ",
+  "t_tunnel": "Πέρασε το δάχτυλο μέσα από τον σωλήνα χωρίς να ακουμπήσεις τα τοιχώματα",
+  "t_sneak": "Πλησίασε την πόρτα όσο κοιμάται ο φύλακας",
+  "sneak_btn": "ΠΗΓΑΙΝΕ",
+  "sneak_sleep": "κοιμάται — πήγαινε!",
+  "sneak_warn": "ξυπνάει — στάσου!",
+  "sneak_look": "κοιτάζει!",
+  "t_shake": "Κούνα το κινητό! Ή πάτα το κουμπί",
+  "shake_btn": "ΚΟΥΝΑ / ΠΑΤΑ",
+  "t_torch": "Βρες το 🔑 στο σκοτάδι: σύρε και πάτα το κλειδί",
+  "t_rustkeys": "Πιάσε μόνο τα χρυσά κλειδιά, άφησε τα σκουριασμένα",
+  "t_signals1": "Λάμπα αριστερά — πάτα αριστερά, δεξιά — πάτα δεξιά",
+  "t_signals2": "Κίτρινη λάμπα — ίδια πλευρά, μπλε — η αντίθετη",
+  "signals_rule": "🟡 ίδια πλευρά · 🔵 αντίθετη",
+  "t_decode": "Αποκρυπτογράφησε τον αριθμό κελιού με τον πίνακα",
+  "t_cells_even": "Πόσοι αριθμοί είναι ζυγοί;",
+  "t_cells_sum": "Άθροισμα του μεγαλύτερου και του μικρότερου αριθμού;",
+  "t_cells_diff": "Κατά πόσο ο μεγαλύτερος αριθμός είναι μεγαλύτερος από τον μικρότερο;",
+  "t_shift": "Βάλε τους φύλακες σε σειρά βάρδιας με τις ενδείξεις",
+  "shift_before": "{a} πριν από {b}",
+  "shift_notfirst": "ο {a} δεν είναι πρώτος",
+  "shift_notlast": "ο {a} δεν είναι τελευταίος",
+  "shift_adj": "ο {b} αμέσως μετά τον {a}",
+  "ch_tunnel": "περνά τον σωλήνα",
+  "ch_sneak": "γλιστρά δίπλα στον φύλακα",
+  "ch_shake": "κουνά τα κάγκελα",
+  "ch_torch": "ψάχνει στο σκοτάδι",
+  "ch_rustkeys": "πιάνει κλειδιά",
+  "ch_signals": "πατά τα σήματα",
+  "ch_decode": "αποκρυπτογραφεί αριθμό",
+  "ch_cells": "μετρά κελιά",
+  "ch_shift": "τακτοποιεί βάρδιες",
   "t_lineup2": "Ποιος ήταν;",
   "t_rollcall": "Προσκλητήριο! Πάτα όταν περάσει ο αριθμός σου",
   "rollcall_mine": "Ο αριθμός σου",
