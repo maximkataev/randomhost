@@ -40,9 +40,13 @@
     --lang-switch-active-fg: var(--paper);
     --lang-switch-active-border: var(--ink);
     --lang-switch-font: var(--font);
+    --vh: 1vh; --vw: 1vw; /* под zoom единицы окна не делятся на масштаб сами — делим вручную */
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; }
+  /* ТВ и проектор от Full HD: доска свёрстана под ~1500×850 CSS-пикселей, на 4K и в Full HD текст был мелким для дивана.
+     Масштаб выставляет fitScreen() через --z, высота делится на тот же множитель, чтобы доска влезала в экран (как у аукциона) */
+  body.scaled { --vh: calc(1vh / var(--z)); --vw: calc(1vw / var(--z)); zoom: var(--z); height: calc(100vh / var(--z)); height: calc(100dvh / var(--z)); }
   body {
     background: radial-gradient(rgba(22, 18, 12, .09) 1.1px, transparent 1.7px) 0 0 / 11px 11px, var(--paper);
     color: var(--ink);
@@ -74,37 +78,37 @@
   .conn.on { visibility: visible; }
 
   /* лобби: участники слева (правило владельца), вход и настройки справа */
-  .lobby { position: absolute; inset: 12px 20px 20px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 460px); gap: 24px; }
+  .lobby { position: absolute; inset: 12px 20px 20px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, clamp(460px, calc(27 * var(--vw)), 600px)); gap: 24px; }
   .panel { background: var(--paper); border: var(--line); box-shadow: 6px 6px 0 var(--ink); min-height: 0; }
   .who { display: flex; flex-direction: column; padding: 18px 20px; overflow: hidden; }
   .who h2 { margin: 0 0 12px; font: 900 30px/1 var(--font); text-transform: uppercase; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
   .who h2 span { font-size: 20px; color: var(--ink-2); }
   .seats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; align-content: start; flex: none; }
-  .howto { flex: 1; min-height: 150px; margin-top: 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .howto div { border: var(--line); background: #fff; display: grid; place-content: center; justify-items: center; gap: 10px; text-align: center; padding: 12px; font-size: 21px; font-weight: 700; line-height: 1.15; }
+  .howto { flex: none; height: clamp(150px, calc(22 * var(--vh)), 260px); margin-top: 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .howto div { border: var(--line); background: #fff; display: grid; place-content: center; justify-items: center; gap: 10px; text-align: center; padding: 8px 12px; font-size: clamp(17px, calc(2.4 * var(--vh)), 32px); font-weight: 700; line-height: 1.15; }
   .howto div:nth-child(2) { background: var(--yellow); }
   .howto div:nth-child(3) { background: var(--red); color: #fff; text-shadow: 1px 1px 0 var(--ink); }
-  .howto i { font-style: normal; font-size: clamp(40px, 6vh, 72px); line-height: 1; }
-  .seat { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 10px; border: var(--line); background: #fff; position: relative; }
+  .howto i { font-style: normal; font-size: clamp(32px, calc(5 * var(--vh)), 72px); line-height: 1; }
+  .seat { display: flex; align-items: center; gap: 10px; height: clamp(52px, calc(6.2 * var(--vh)), 78px); padding: 0 10px; border: var(--line); background: #fff; position: relative; }
   .seat.new { animation: drop .45s var(--spring); }
   .seat.empty { border-style: dashed; background: transparent; color: var(--muted); border-color: rgba(22, 18, 12, .35); }
   .seat .x { margin-left: auto; border: 0; background: none; font-size: 18px; color: var(--muted); padding: 4px; }
   .av { flex: none; width: 32px; height: 32px; border: 2.5px solid var(--ink); border-radius: 50%; background: var(--pc, #ccc); display: grid; place-items: center; font: 900 14px/1 var(--font); color: #fff; text-shadow: 1px 1px 0 var(--ink); }
-  .seat b { font-weight: 700; font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .seat b { font-weight: 700; font-size: clamp(20px, calc(2.3 * var(--vh)), 30px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .seat .off { font-size: 14px; color: var(--muted); white-space: nowrap; }
   .side { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px 0; overflow: auto; }
   .join { display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 14px; align-items: center; }
   #qr { width: 136px; height: 136px; background: #fff; border: var(--line); padding: 6px; }
   #qr img, #qr canvas { width: 100% !important; height: 100% !important; display: block; }
   .bigcode { font: 900 var(--code-fs, 64px)/1 var(--font); letter-spacing: .04em; white-space: nowrap; overflow: hidden; }
-  .url { font: 600 15px/1.2 var(--mono); color: var(--ink-2); word-break: break-all; }
-  .scan { font-size: 16px; color: var(--ink-2); margin-top: 6px; }
+  .url { font: 600 15px/1.2 var(--mono); color: var(--ink-2); overflow-wrap: anywhere; }
+  .scan { font-size: clamp(16px, calc(1.7 * var(--vh)), 22px); color: var(--ink-2); margin-top: 6px; }
   .opt { display: grid; gap: 6px; }
   .opt .k { font-weight: 900; text-transform: uppercase; font-size: 14px; letter-spacing: .04em; color: var(--ink-2); }
   .seg { display: flex; flex-wrap: wrap; gap: 6px; }
-  .seg button { border: 2.5px solid var(--ink); background: #fff; padding: 6px 10px; font-weight: 700; font-size: 17px; line-height: 1.1; }
+  .seg button { border: 2.5px solid var(--ink); background: #fff; padding: 6px 10px; font-weight: 700; font-size: clamp(17px, calc(1.9 * var(--vh)), 24px); line-height: 1.1; }
   .seg button.on { background: var(--ink); color: var(--paper); }
-  .opt .d { font-size: 15px; color: var(--ink-2); min-height: 1.2em; }
+  .opt .d { font-size: clamp(15px, calc(1.6 * var(--vh)), 21px); color: var(--ink-2); min-height: 1.2em; }
   .startbox { position: sticky; bottom: 0; margin-top: auto; background: var(--paper); padding: 8px 0 16px; display: grid; gap: 6px; }
   .start { border: var(--line); background: var(--red); color: #fff; font: italic 900 30px/1 var(--font); text-transform: uppercase; padding: 14px 18px; box-shadow: 6px 6px 0 var(--ink); letter-spacing: .02em; text-shadow: 2px 2px 0 var(--ink); }
   .start:not(:disabled):active { transform: translate(3px, 3px); box-shadow: 3px 3px 0 var(--ink); }
@@ -115,6 +119,10 @@
   .pc { position: absolute; left: 0; top: 0; width: var(--cw, 190px); height: 58px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: var(--line); background: #fff; box-shadow: var(--shift); transition: transform .5s var(--spring), background .2s, opacity .3s; will-change: transform; }
   .pc b { font-weight: 700; font-size: 21px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
   .pc .st { font-size: 15px; font-weight: 700; white-space: nowrap; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  /* узкие карточки: аватарка (инициал дублирует имя) уступает место имени */
+  .arena.tight .pc .av { display: none; }
+  .arena.tight .pc { padding: 0 8px; }
+  .arena.tight .pc b { font-size: 19px; }
   .pc.hold { background: var(--yellow); }
   .pc.hot { background: var(--red); color: #fff; }
   .pc.hot .st { color: #fff; }
@@ -128,7 +136,7 @@
   .bomb .spark { animation: spark .18s steps(2) infinite; transform-box: fill-box; }
   .bombwrap.gone { visibility: hidden; }
 
-  .center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(56%, 760px); display: grid; justify-items: center; text-align: center; gap: 10px; z-index: 3; }
+  .center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: var(--cenw, min(56%, 760px)); display: grid; justify-items: center; text-align: center; gap: 10px; z-index: 3; }
   .center .lbl { font: 900 18px/1 var(--font); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2); height: 18px; }
   .holder { font: italic 900 var(--hfs, 84px)/1 var(--font); text-transform: uppercase; height: 88px; display: flex; align-items: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-text-stroke: 2px var(--ink); color: var(--hc, var(--red)); text-shadow: 4px 4px 0 var(--ink); padding: 0 6px; }
   .doing { font-size: 24px; font-weight: 700; height: 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
@@ -143,8 +151,9 @@
   .danger { font: italic 900 26px/1 var(--font); text-transform: uppercase; color: var(--red); height: 30px; visibility: hidden; letter-spacing: .02em; }
   body.hot .danger { visibility: visible; animation: blink .7s steps(2) infinite; }
   body.hot main::before { content: ""; position: absolute; inset: 0; background: rgba(232, 50, 43, .09); animation: pulse 1.1s ease-in-out infinite; pointer-events: none; }
-  .hostbar { position: absolute; right: 0; bottom: 0; display: flex; gap: 8px; z-index: 6; }
-  .hostbar button { border: var(--line); background: var(--paper); font-weight: 700; padding: 6px 12px; box-shadow: var(--shift); font-size: 16px; }
+  /* «Остановить раунд» живёт в шапке рядом с кодом: внизу арены она закрывала карточку игрока в углу */
+  .hostbar { display: flex; gap: 8px; }
+  .hostbar button { border: var(--line); background: var(--paper); font-weight: 700; padding: 6px 12px; box-shadow: var(--shift); font-size: 16px; white-space: nowrap; }
 
   /* отсчёт: печать на весь центр */
   .sealcard { background: #fff; border: var(--line); box-shadow: 6px 6px 0 var(--ink); padding: 16px 22px; display: grid; gap: 6px; justify-items: center; width: 100%; }
@@ -167,22 +176,26 @@
   /* итоги поверх арены */
   body[data-phase="finished"] .center, body[data-phase="finished"] .bombwrap { visibility: hidden; }
   .result { position: absolute; inset: 0; display: grid; place-items: center; z-index: 10; background: rgba(251, 241, 217, .72); }
-  .rcard { width: min(880px, calc(100% - 32px)); max-height: calc(100% - 24px); overflow: auto; background: var(--paper); border: var(--line); box-shadow: 8px 8px 0 var(--ink); padding: 22px 26px; display: grid; gap: 14px; animation: drop .5s var(--spring); }
+  /* карточка не прокручивается целиком: листаются только печати (при длинной партии их десятки), вердикт и кнопки всегда на виду */
+  .rcard { width: min(880px, calc(100% - 32px)); max-height: calc(100% - 24px); overflow: hidden; background: var(--paper); border: var(--line); box-shadow: 8px 8px 0 var(--ink); padding: 22px 26px; display: flex; flex-direction: column; gap: 14px; text-align: center; animation: drop .5s var(--spring); }
+  .rcard > * { flex: none; }
+  .rcard > .seals { flex: 1 1 auto; min-height: 96px; overflow: auto; align-content: start; }
   .verdict { display: grid; gap: 4px; }
   .verdict .k { font: 900 20px/1 var(--font); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2); }
-  .verdict .n { font: italic 900 72px/1 var(--font); text-transform: uppercase; color: var(--vc, var(--red)); -webkit-text-stroke: 2px var(--ink); text-shadow: 4px 4px 0 var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px; }
+  .verdict .n { font: italic 900 clamp(48px, calc(8 * var(--vh)), 96px)/1 var(--font); text-transform: uppercase; color: var(--vc, var(--red)); -webkit-text-stroke: 2px var(--ink); text-shadow: 4px 4px 0 var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 10px 8px 6px; }
   .verdict .sub { font-size: 20px; font-weight: 700; }
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
-  .stat { border: 2.5px solid var(--ink); background: #fff; padding: 8px 10px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  @media (max-width: 700px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } } /* 3+1 с сиротой внизу выглядело кривовато */
+  .stat { border: 2.5px solid var(--ink); background: #fff; padding: 8px 10px; text-align: center; }
   .stat .k { font-size: 14px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: .03em; }
   .stat .v { font-size: 22px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .seals { display: grid; gap: 8px; }
-  .sealrow { border: 2.5px solid var(--ink); background: #fff; padding: 8px 12px; display: grid; gap: 4px; }
+  .sealrow { border: 2.5px solid var(--ink); background: #fff; padding: 8px 12px; display: grid; gap: 4px; text-align: left; }
   .sealrow .top2 { display: flex; justify-content: space-between; gap: 12px; font-weight: 700; }
   .sealrow .ok { color: var(--green); font-weight: 900; }
   .sealrow .bad { color: var(--red); font-weight: 900; }
   .sealrow code { font: 13px/1.3 var(--mono); word-break: break-all; color: var(--ink-2); user-select: all; }
-  .rbtns { display: flex; gap: 12px; flex-wrap: wrap; }
+  .rbtns { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
   .rbtns button { border: var(--line); background: var(--paper); font: 900 22px/1 var(--font); text-transform: uppercase; padding: 12px 18px; box-shadow: var(--shift); }
   .rbtns button.main { background: var(--red); color: #fff; text-shadow: 2px 2px 0 var(--ink); }
   .banner { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); font-size: 26px; font-weight: 700; text-align: center; background: var(--paper); border: var(--line); box-shadow: var(--shift); padding: 16px 22px; max-width: calc(100% - 32px); }
@@ -201,18 +214,40 @@
   @keyframes floatup { from { transform: translate(-50%, 0) scale(.6); opacity: 0; } 15% { opacity: 1; transform: translate(-50%, -10px) scale(1.15); } to { transform: translate(-50%, -90px) scale(1); opacity: 0; } }
 
   /* узкий экран: игроки сеткой сверху, центр — снизу; бомба садится на карточку держателя */
-  @media (max-width: 760px) {
+  /* четыре колонки по 100–190px съедали имена до одной буквы: четыре — только от 1500px (с учётом zoom доски это 1500 CSS-пикселей),
+     ниже — две колонки по восемь рядов, а подсказки «как играть» прячутся, когда не хватает высоты */
+  @media (min-width: 1500px) { .seats { flex: 1; min-height: 0; grid-template-rows: repeat(4, minmax(0, 1fr)); } .seats .seat { height: auto; } }
+  @media (max-width: 1499px) and (min-width: 761px) {
+    .seats { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(8, minmax(0, 1fr)); flex: 1; min-height: 0; gap: 8px; }
+    .seats .seat { height: auto; min-height: 34px; }
+  }
+  @media (max-width: 1499px) and (min-width: 761px) and (max-height: 779px) { .howto { display: none; } .scan { display: none; } .side { padding-top: 10px; gap: 8px; } }
+  @media (max-width: 1180px) and (min-width: 761px) {
+    .howto { display: none; }
+    /* проектор 800×600: правая колонка не должна быть шире, чем остаётся от имён */
+    .lobby { grid-template-columns: minmax(0, 1fr) minmax(300px, 38%); gap: 16px; }
+    .side { padding: 12px 14px 0; gap: 8px; }
+    .join { grid-template-columns: 110px minmax(0, 1fr); gap: 10px; }
+    #qr { width: 110px; height: 110px; }
+  }
+  @media (max-width: 1180px) and (min-width: 761px) and (max-height: 800px) { .who { padding: 10px 14px; } .who h2 { font-size: 24px; margin-bottom: 8px; } .scan, .opt .d, .fine:empty { display: none; } .opt { gap: 3px; } .seg { gap: 4px; } .startbox { padding: 4px 0 8px; } .url { font-size: 12px; } #qr { width: 96px; height: 96px; } .join { grid-template-columns: 96px minmax(0, 1fr); } .seg button { padding: 4px 8px; font-size: 16px; } .side { gap: 6px; } #opts { gap: 8px !important; } .seat { padding: 0 8px; gap: 8px; } .seat .x { padding: 2px; } .start { font-size: 24px; padding: 10px 14px; } }
+  /* узкий и портретный экран (телефон, планшет стоя): лобби — одна колонка, панели по высоте содержимого, листается */
+  @media (max-width: 760px), (max-width: 900px) and (orientation: portrait) {
     .top { grid-template-columns: auto auto; height: max(56px, calc(var(--lsc, 28px) * 2)); padding: 0 var(--lsw, 140px) 0 12px; }
     .top .seal { display: none; }
     .logo { font-size: 30px; }
     main { inset: max(56px, calc(var(--lsc, 28px) * 2)) 0 0 0; }
-    .lobby { grid-template-columns: 1fr; overflow: auto; inset: 8px 12px 12px; }
-    .who { max-height: none; }
-    .seats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .howto { grid-template-columns: 1fr; }
+    .lobby { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content max-content; align-content: start; overflow: auto; inset: 8px 12px 12px; gap: 16px; }
+    .who { max-height: none; overflow: visible; }
+    .side { overflow: visible; padding-bottom: 0; }
+    .seats { flex: none; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; gap: 8px; }
+    .seats .seat { height: 46px; min-height: 0; }
+    .seats .seat.empty { display: none; } /* пустые места в одну колонку только удлиняют прокрутку */
+    .howto { display: grid; grid-template-columns: 1fr; height: auto; }
+    .howto div { grid-auto-flow: column; justify-content: start; justify-items: start; text-align: left; font-size: 18px; padding: 8px 12px; }
+    .howto i { font-size: 30px; }
     .join { grid-template-columns: 110px minmax(0, 1fr); }
     #qr { width: 110px; height: 110px; }
-    .center { width: calc(100% - 16px); top: auto; bottom: 0; transform: translateX(-50%); }
     .holder { height: 56px; }
     .bubble { height: 116px; }
     .bubble .q { font-size: 22px; }
@@ -279,6 +314,15 @@
   /* телефон боком: игроки — в левой половине, центр — справа */
   .arena.side .center { left: auto; right: 0; top: 50%; bottom: auto; width: calc(50% - 8px); transform: translateY(-50%); }
   body.host .arena.side .center { top: calc(50% - 23px); }
+  /* проектор 800×600 и планшет стоя: в шапке не хватает места на печать — она остаётся на экране отсчёта и в итогах */
+  @media (max-width: 900px) {
+    .top .seal { display: none; }
+    .top { gap: 10px; }
+    .hostbar button { font-size: 14px; padding: 4px 8px; }
+    .code-chip { font-size: 18px; padding: 5px 8px; }
+  }
+  /* тесная рамка: бомба поменьше, чтобы не накрывать соседние карточки */
+  .arena.tight .bombwrap { width: 84px; height: 84px; margin: -42px 0 0 -42px; }
   @media (prefers-reduced-motion: reduce) {
     .bombwrap .shake, .bomb .spark, body.hot .danger, body.hot main::before, .count.pop, .kapow.on, body.shaking main, .seat.new, .rcard { animation: none !important; }
     .pc { transition: none; }
@@ -289,14 +333,13 @@
 <header class="top">
   <div class="brand"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><span class="logo" data-i18n="logo">Бомба</span><button class="sound-toggle-btn" type="button"></button></div>
   <div class="seal" id="seal"><span class="k" data-i18n="seal_title">Печать раунда</span><button id="sealhash" type="button"></button></div>
-  <div class="tools"><span class="code-chip hidden" id="codechip"></span></div>
+  <div class="tools"><div class="hostbar" id="hostbar"></div><span class="code-chip hidden" id="codechip"></span></div>
 </header>
 <div class="conn" id="conn"></div>
 <main id="main">
   <section class="lobby hidden" id="lobby"></section>
   <section class="arena hidden" id="arena">
     <div class="center" id="center"></div>
-    <div class="hostbar" id="hostbar"></div>
   </section>
   <div class="result hidden" id="result"></div>
   <div class="banner hidden" id="banner"></div>
@@ -448,6 +491,15 @@ const nameOf = (id) => (player(id) || {}).name || "?";
 const initials = (name) => String(name || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 const live = () => state && state.phase === "live";
 
+// Масштаб под большой экран: от 1800px шириной доску увеличиваем целиком (zoom), но не выше, чем позволяет высота
+function fitScreen() {
+  const w = window.innerWidth || 0, h = window.innerHeight || 0;
+  const z = w >= 1800 ? Math.max(1, Math.min(2.5, Math.round(Math.min(w / 1500, h / 760) * 100) / 100)) : 1;
+  document.body.style.setProperty("--z", String(z));
+  document.body.classList.toggle("scaled", z > 1);
+}
+fitScreen();
+
 // ---------- создание комнаты, если доску открыли без кода ----------
 async function ensureRoom() {
   if (CODE) return true;
@@ -488,6 +540,14 @@ $("sealhash").onclick = () => { sealFull = !sealFull; drawSeal(); };
 
 // ---------- лобби ----------
 let qrDrawn = false;
+// код комнаты: самый крупный кегль, при котором слово влезает в свою колонку (меняется с шириной экрана — зовём и при resize)
+function fitCode() {
+  const code = $("bigcode");
+  if (!code) return;
+  let fs = 64;
+  code.style.setProperty("--code-fs", fs + "px");
+  while (fs > 26 && code.scrollWidth > code.clientWidth + 1) { fs -= 4; code.style.setProperty("--code-fs", fs + "px"); }
+}
 const lobbySeen = new Set();
 function drawLobby() {
   const box = $("lobby");
@@ -501,15 +561,12 @@ function drawLobby() {
     box.innerHTML = `<div class="panel who"><h2>${T("lobby_who")}<span id="seatn"></span></h2><div class="seats" id="seats"></div>
         <div class="howto"><div><i>📱</i>${T("rule0")}</div><div><i>💣</i>${T("rule1")}. ${T("rule2")}</div><div><i>💥</i>${T("rule3")}</div></div></div>
       <div class="panel side">
-        <div class="join"><div id="qr"></div><div><div class="bigcode" id="bigcode">${escapeHtml(CODE)}</div><div class="url">${escapeHtml(url.replace(/^https?:\/\//, ""))}</div><div class="scan">${T("lobby_scan")}</div></div></div>
+        <div class="join"><div id="qr"></div><div><div class="bigcode" id="bigcode">${escapeHtml(CODE)}</div><div class="url">${escapeHtml(url.replace(/^https?:\/\//, "")).replace("?r=", "<wbr>?r=")}</div><div class="scan">${T("lobby_scan")}</div></div></div>
         <div id="opts" style="display:grid;gap:12px"></div>
         <div class="startbox"><div class="fine" id="starthint"></div><button class="start" id="startbtn" type="button">${T("btn_start")}</button></div>
       </div>`;
     $("startbtn").onclick = () => conn.send({ type: "start" });
-    const code = $("bigcode");
-    let fs = 64;
-    code.style.setProperty("--code-fs", fs + "px");
-    while (fs > 30 && code.scrollWidth > code.clientWidth + 1) { fs -= 4; code.style.setProperty("--code-fs", fs + "px"); }
+    fitCode();
   }
   if (!qrDrawn && window.QRCode) {
     qrDrawn = true;
@@ -589,44 +646,90 @@ function arenaPlayers() {
   return state.players.filter((p) => !p.left);
 }
 
-// раскладка: широкий экран — эллипс вокруг центра, узкий — сетка сверху
+// раскладка: широкий экран — эллипс вокруг центра, узкий — сетка сверху.
+// Эллипс красив при 4–10 игроках, но при 16 или на низком экране карточки наезжают друг на друга и на центр —
+// тогда игроки встают рамкой по краю арены: ряд сверху, ряд снизу и по колонке слева и справа.
+const CARD_H = 58, CENTER_H = 350, NARROW_W = 760; // NARROW_W — ширина арены телефона и узкого планшета: там игроки сеткой
+function ellipseSpots(n, W, H, cw) {
+  const rx = W / 2 - cw / 2 - 8, ry = H / 2 - CARD_H / 2 - 8;
+  return Array.from({ length: n }, (_, i) => {
+    const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
+    return { x: W / 2 + rx * Math.cos(a), y: H / 2 + ry * Math.sin(a) };
+  });
+}
+function frameSpots(n, W, H, cw) {
+  // сколько карточек в боковых колонках: пропорционально высоте, остальное — поровну сверху и снизу
+  const side = Math.max(0, Math.min(Math.floor((H - 2 * CARD_H - 24) / (CARD_H + 10)), Math.round((n * H) / (2 * (W + H)))));
+  const rest = n - 2 * side, top = Math.ceil(rest / 2), bottom = rest - top;
+  const out = [];
+  for (let i = 0; i < top; i++) out.push({ x: ((i + 0.5) * W) / top, y: CARD_H / 2 + 4 });
+  for (let j = 0; j < side; j++) out.push({ x: W - cw / 2 - 4, y: CARD_H + 8 + ((j + 0.5) * (H - 2 * CARD_H - 16)) / side });
+  for (let i = bottom - 1; i >= 0; i--) out.push({ x: ((i + 0.5) * W) / Math.max(1, bottom), y: H - CARD_H / 2 - 4 });
+  for (let j = side - 1; j >= 0; j--) out.push({ x: cw / 2 + 4, y: CARD_H + 8 + ((j + 0.5) * (H - 2 * CARD_H - 16)) / side });
+  return out;
+}
+function spotsOverlap(spots, W, H, cw) {
+  const hw = Math.min(W * 0.56, 760) / 2, hh = CENTER_H / 2;
+  const hit = (a, b, dw, dh) => Math.abs(a.x - b.x) < dw + 10 && Math.abs(a.y - b.y) < dh + 10; // карточки не ближе 10px друг к другу
+  for (let i = 0; i < spots.length; i++) {
+    const p = spots[i];
+    if (Math.abs(p.x - W / 2) < hw + cw / 2 + 4 && Math.abs(p.y - H / 2) < hh + CARD_H / 2 + 4) return true;
+    for (let j = i + 1; j < spots.length; j++) if (hit(p, spots[j], cw, CARD_H)) return true;
+  }
+  return false;
+}
 function layout() {
   const arena = $("arena");
   const W = arena.clientWidth, H = arena.clientHeight;
   const list = arenaPlayers();
   const n = list.length;
-  const narrow = W < 760;
-  // узкий экран: карточки сеткой сверху, центр прижат книзу. Телефон боком — карточки слева, центр справа.
-  // Колонок и высоту ряда подбираем так, чтобы сетка не залезала под центр
-  const side = narrow && W > H * 1.5;
-  arena.classList.toggle("side", side);
-  const GW = side ? Math.floor(W / 2) : W;
-  const center = $("center");
-  const free = side ? H : H - (center.offsetHeight + (parseFloat(getComputedStyle(center).bottom) || 0)) - 8;
-  let cols = Math.max(1, Math.min(3, Math.floor(GW / 150))), pitch = 66;
+  const narrow = W < NARROW_W;
+  let cw, ch, cols = 1, pitch = 66, spots = null;
   if (narrow) {
+    // узкий экран: карточки сеткой сверху, центр прижат книзу. Телефон боком — карточки слева, центр справа.
+    // Колонок и высоту ряда подбираем так, чтобы сетка не залезала под центр
+    const side = W > H * 1.5;
+    arena.classList.toggle("side", side);
+    const GW = side ? Math.floor(W / 2) : W;
+    const center = $("center");
+    const free = side ? H : H - (center.offsetHeight + (parseFloat(getComputedStyle(center).bottom) || 0)) - 8;
+    cols = Math.max(1, Math.min(3, Math.floor(GW / 150)));
     const fits = (c, h) => Math.ceil(n / c) * h - 8 <= free;
     if (!fits(cols, 66)) {
       if (fits(cols, 46)) pitch = 46;
       else { cols = Math.max(cols, Math.min(4, Math.floor(GW / 90))); pitch = 46; }
     }
+    arena.classList.toggle("compact", pitch === 46);
+    ch = pitch - 8;
+    cw = Math.floor((GW - 8) / cols) - 8;
+    // совсем узкая карточка — без кружка-аватара, чтобы имя читалось
+    arena.classList.toggle("tiny", cw < 110);
+    arena.classList.remove("tight");
+    arena.style.setProperty("--cenw", "");
+  } else {
+    arena.classList.remove("side", "compact", "tiny");
+    ch = CARD_H;
+    cw = Math.max(150, Math.min(230, Math.floor(Math.max(W / 6.2, Math.min(W, H) / 3.6))));
+    spots = ellipseSpots(n, W, H, cw);
+    if (n > 3 && spotsOverlap(spots, W, H, cw)) {
+      // рамка: ширина карточки — по числу в верхнем ряду, но не меньше 120
+      const top = Math.ceil((n - 2 * Math.max(0, Math.round((n * H) / (2 * (W + H))))) / 2);
+      cw = Math.max(120, Math.min(cw, Math.floor(W / Math.max(1, top)) - 10));
+      spots = frameSpots(n, W, H, cw);
+    }
+    arena.classList.toggle("tight", cw < 190);
+    // между боковыми карточками рамки центр не должен быть шире, чем остаётся
+    const sideRoom = n > 3 ? W - 2 * (cw + 24) : 0;
+    arena.style.setProperty("--cenw", sideRoom > 0 && sideRoom < Math.min(W * 0.56, 760) ? Math.max(300, sideRoom) + "px" : "");
   }
-  arena.classList.toggle("compact", narrow && pitch === 46);
-  const ch = narrow ? pitch - 8 : 58;
-  const cw = narrow ? Math.floor((GW - 8) / cols) - 8 : Math.max(150, Math.min(220, Math.floor(W / 7)));
   arena.style.setProperty("--cw", cw + "px");
-  // совсем узкая карточка — без кружка-аватара, чтобы имя читалось
-  arena.classList.toggle("tiny", narrow && cw < 110);
   list.forEach((p, i) => {
     let x, y;
     if (narrow) {
       x = (i % cols) * (cw + 8) + cw / 2;
       y = Math.floor(i / cols) * pitch + ch / 2;
     } else {
-      const rx = W / 2 - cw / 2 - 8, ry = H / 2 - 29 - 8;
-      const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
-      x = W / 2 + rx * Math.cos(a);
-      y = H / 2 + ry * Math.sin(a);
+      x = spots[i].x; y = spots[i].y;
     }
     cardPos.set(p.id, { x, y });
     const c = cards.get(p.id);
@@ -679,9 +782,12 @@ function bombSpot(holder) {
   const arena = $("arena");
   const W = arena.clientWidth, H = arena.clientHeight;
   // узкий экран: на правом краю карточки, но не за краем арены (там её обрезает)
-  if (W < 760) return { x: Math.min(p.x + (parseFloat(getComputedStyle(arena).getPropertyValue("--cw")) || 150) / 2 - 20, W - 50), y: p.y - 18 };
-  const dx = W / 2 - p.x, dy = H / 2 - p.y, d = Math.hypot(dx, dy) || 1;
-  return { x: p.x + (dx / d) * 92, y: p.y + (dy / d) * 70 };
+  if (W < NARROW_W) return { x: Math.min(p.x + (parseFloat(getComputedStyle(arena).getPropertyValue("--cw")) || 150) / 2 - 20, W - 50), y: p.y - 18 };
+  // бомба садится на границе карточки со стороны центра — имя держателя она не закрывает
+  const cw = parseFloat(getComputedStyle(arena).getPropertyValue("--cw")) || 150;
+  const dx = W / 2 - p.x, dy = H / 2 - p.y, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
+  const t = Math.min(cw / 2 / Math.max(Math.abs(ux), 0.001), 29 / Math.max(Math.abs(uy), 0.001)) + (cw < 190 ? 34 : 46);
+  return { x: p.x + ux * t, y: p.y + uy * t };
 }
 
 function drawBombs() {
@@ -760,7 +866,12 @@ function drawCenter() {
   } else if (ph === "boom" || ph === "finished") {
     doing = victim ? T(state.settings.mode === "elim" ? "out_line" : "boom_line") : "";
   }
-  $("doing").textContent = doing;
+  const dn = $("doing");
+  dn.textContent = doing;
+  // длинная подпись («… вспоминает историю…») в узком центре рамки не должна обрезаться многоточием — ужимаем кегль
+  let df = 24;
+  dn.style.fontSize = df + "px";
+  while (df > 15 && dn.scrollWidth > dn.clientWidth + 1) { df -= 1; dn.style.fontSize = df + "px"; }
   drawBubble(holders);
 }
 
@@ -909,10 +1020,10 @@ function boomFx(victim) {
   k.innerHTML = `<svg viewBox="0 0 380 300"><path d="M190 8 L222 92 L300 40 L276 124 L372 132 L292 176 L352 262 L252 226 L230 296 L186 234 L126 292 L122 214 L20 244 L84 170 L8 118 L104 110 L70 26 L150 84Z" fill="#e8322b" stroke="#16120c" stroke-width="8" stroke-linejoin="round"/></svg><span>${escapeHtml(T("boom"))}</span>`;
   const arena = $("arena");
   arena.append(k);
-  // у края экрана звезда не должна уходить за арену (на телефоне её там обрезает)
-  const hw = k.offsetWidth / 2, W = arena.clientWidth, narrow = W < 760;
-  k.style.left = (narrow ? Math.min(Math.max(pos.x, hw), W - hw) : pos.x) + "px";
-  k.style.top = (narrow ? Math.max(pos.y, k.offsetHeight / 2) : pos.y) + "px";
+  // у края арены «БУМ!» обрезался (arena — overflow: clip): держим звезду целиком в её границах
+  const hw = k.offsetWidth / 2, hh = k.offsetHeight / 2, W = arena.clientWidth, H = arena.clientHeight;
+  k.style.left = Math.min(Math.max(pos.x, hw), Math.max(hw, W - hw)) + "px";
+  k.style.top = Math.min(Math.max(pos.y, hh), Math.max(hh, H - hh)) + "px";
   setTimeout(() => k.remove(), 4200);
 }
 
@@ -993,7 +1104,7 @@ function render() {
   prev = state;
 }
 
-window.addEventListener("resize", () => { arenaSize = ""; if (state) drawArena(); });
+window.addEventListener("resize", () => { fitScreen(); arenaSize = ""; if (state) { drawArena(); fitCode(); } });
 window.addEventListener("langchange", () => { $("lobby").dataset.lang = ""; $("center").dataset.mode = ""; bubbleKey = ""; resultKey = ""; render(); });
 
 // ---------- связь ----------
