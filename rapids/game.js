@@ -47,6 +47,10 @@
     START_GUARD: 1.2,    // первые секунды после старта утки не толкаются (все стоят плотно у шлюза)
     OFFLINE_T: 0,        // офлайн не снимает с заплыва: утку несёт течение
     LEN: 4300,           // от шлюза до финиша
+    TURBO_T: 0.9,        // рывок по кнопке/пробелу: сколько секунд длится
+    TURBO_K: 1.8,        // во столько раз быстрее течения на рывке (руль работает как обычно)
+    TURBO_RELAX: 4.5,    // на рывке утка подхватывает скорость быстрее (иначе за 0.9 с не разгонится)
+    TURBO_CD: 4,         // копится столько секунд после рывка, потом можно снова
   };
 
   const SUB = 1 / 60;
@@ -248,15 +252,18 @@
   function moveDuck(d, c, cfg, dt, steer, controlled, gateOpen) {
     const [wx, wy] = c.water(d.x, d.y);
     const calm = !gateOpen && d.y < GATE_Y + 20;
-    const fx = calm ? wx * 0.12 : wx, fy = calm ? wy * 0.12 : wy;
+    const tb = controlled && d.turbo > 0;
+    const tk = tb ? cfg.TURBO_K : 1, relax = tb ? cfg.TURBO_RELAX : cfg.RELAX;
+    const fx = (calm ? wx * 0.12 : wx) * tk, fy = (calm ? wy * 0.12 : wy) * tk;
     const [tx, ty] = c.riverDir(d.y);
     let s = controlled ? clamp(steer, -1, 1) : 0;
     if (d.inPool) s *= cfg.POOL_STEER;
     // руль — поперёк течения: вправо по ходу реки (течение вниз, «право» на экране — +x)
     const nx = ty, ny = -tx;
     const ax = nx * s * cfg.STEER, ay = ny * s * cfg.STEER;
-    d.vx += ((fx - d.vx) * cfg.RELAX + ax) * dt;
-    d.vy += ((fy - d.vy) * cfg.RELAX + ay) * dt;
+    d.vx += ((fx - d.vx) * relax + ax) * dt;
+    d.vy += ((fy - d.vy) * relax + ay) * dt;
+    if (d.turbo > 0) d.turbo = Math.max(0, d.turbo - dt);
     d.x += d.vx * dt;
     d.y += d.vy * dt;
     // нос по ходу
@@ -374,6 +381,7 @@
       return {
         id, name, ci, online: true, inGame: false, offlineSince: 0,
         x: 0, y: 0, vx: 0, vy: 0, ang: Math.PI / 2, spin: 0, steer: 0,
+        turbo: 0, turboCd: 0, turbos: 0,
         st: 'w', cap: null, inPool: false, poolCd: new Map(),
         place: 0, finT: 0, dnf: false,
         bumps: 0, bumped: 0, rocks: 0, whirls: 0, lastHit: -9, lastBump: -9,
@@ -421,6 +429,19 @@
       if (!d || !Number.isFinite(s)) return;
       d.steer = clamp(Math.round(s * 20) / 20, -1, 1);
     }
+    // Рывок: перерыв отсчитывается с начала рывка (TURBO_T + TURBO_CD) — столько же видит клиент.
+    // Допуск 0.15 с: нажатие могло выйти чуть раньше, чем до клиента дошёл снимок с готовой кнопкой.
+    function useTurbo(id) {
+      const d = g.byId.get(id);
+      if (!d || !d.online || d.st !== 'w' || d.cap) return false;
+      if (g.phase !== 'lobby' && g.phase !== 'race') return false;
+      if (d.turbo > 0 || d.turboCd > 0.15) return false;
+      d.turbo = cfg.TURBO_T;
+      d.turboCd = cfg.TURBO_T + cfg.TURBO_CD;
+      d.turbos++;
+      emit('turbo', { id, x: d.x, y: d.y });
+      return true;
+    }
     const inPlay = () => g.players.filter(p => p.inGame);
 
     function setPhase(ph) {
@@ -449,6 +470,7 @@
         Object.assign(p, {
           inGame: true, x, y, vx: 0, vy: 0, ang: Math.PI / 2, spin: 0, st: 'w', cap: null, inPool: false,
           poolCd: new Map(), place: 0, finT: 0, dnf: false, left: false,
+          turbo: 0, turboCd: 0, turbos: 0,
           bumps: 0, bumped: 0, rocks: 0, whirls: 0, lastHit: -9, lastBump: -9,
         });
       });
@@ -462,7 +484,7 @@
     function toLobby() {
       g.players = g.players.filter(p => !p.left);
       g.byId = new Map(g.players.map(p => [p.id, p]));
-      for (const p of g.players) { p.inGame = false; p.st = 'w'; p.cap = null; p.place = 0; spotInPool(p); }
+      for (const p of g.players) { p.inGame = false; p.st = 'w'; p.cap = null; p.place = 0; p.turbo = 0; p.turboCd = 0; spotInPool(p); }
       newCourse();
       g.finishCount = 0; g.champion = null; g.host = null; g.clock = 0;
       setPhase('lobby');
@@ -583,8 +605,9 @@
       const gateOpen = g.phase === 'race' || g.phase === 'over';
       for (const d of g.players) {
         if (g.phase !== 'lobby' && !d.inGame) continue;
-        if (d.st === 'f') { stepFinished(d, dt); continue; }
-        if (d.cap) { stepCaptured(d, dt); continue; }
+        if (d.turboCd > 0) d.turboCd = Math.max(0, d.turboCd - dt);
+        if (d.st === 'f') { d.turbo = 0; stepFinished(d, dt); continue; }
+        if (d.cap) { d.turbo = 0; stepCaptured(d, dt); continue; }
         d.inPool = false;
         for (const p of c.pools) swirl(d, p, dt);
         if (d.cap) continue;
@@ -658,7 +681,7 @@
     function statsOf(order) {
       const players = order.map(d => ({
         id: d.id, name: d.name, place: d.place, time: d.st === 'f' && !d.dnf && d.finT ? +d.finT.toFixed(2) : null,
-        dnf: !!d.dnf, bumps: d.bumps, whirls: d.whirls, rocks: d.rocks,
+        dnf: !!d.dnf, bumps: d.bumps, whirls: d.whirls, rocks: d.rocks, turbos: d.turbos,
         progress: +clamp((d.y - GATE_Y) / (g.course.FINISH_Y - GATE_Y), 0, 1).toFixed(3),
       }));
       const maxOf = (k) => Math.max(0, ...players.map(p => p[k]));
@@ -676,13 +699,14 @@
         host: g.host,
         players: g.players.map(p => ({
           id: p.id, name: p.name, ci: p.ci, inGame: p.inGame, online: p.online,
+          tcd: +p.turboCd.toFixed(2),
           x: +p.x.toFixed(1), y: +p.y.toFixed(1), vx: +p.vx.toFixed(1), vy: +p.vy.toFixed(1), ang: +p.ang.toFixed(2),
           st: p.st, place: p.place, dnf: p.dnf, steer: p.steer,
         })),
       };
     }
 
-    Object.assign(g, { addPlayer, removePlayer, setOnline, setInput, start, toLobby, step, snapshot, drainEvents, inPlay, rng });
+    Object.assign(g, { addPlayer, removePlayer, setOnline, setInput, useTurbo, start, toLobby, step, snapshot, drainEvents, inPlay, rng });
     return g;
   }
 

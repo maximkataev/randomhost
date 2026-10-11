@@ -97,6 +97,7 @@ function rawWs(code) {
       assert.strictEqual(evHost.length, 1);
       const over = bots[0].events.find((e) => e.type === "over");
       assert(over && over.stats && over.stats.players.length === 6);
+      assert(bots[0].events.some((e) => e.type === "turbo"), "боты жали рывок — событие дошло");
       // снимок держится в разумном размере
       const perSnap = bots[0].bytes / bots[0].recv;
       assert(perSnap < 1200, `средний размер сообщения ${perSnap.toFixed(0)} Б`);
@@ -164,6 +165,25 @@ function rawWs(code) {
       const h = await (await fetch(BASE + "/rapids/api/health")).json();
       assert.strictEqual(h.ok, true);
       ws.close();
+    });
+
+    await test("рывок: флуд «t» даёт один рывок, в снимке виден заряд, перерыв отсчитывается", async () => {
+      const r = await NetBot.createRoom(BASE);
+      const a = await NetBot.connect({ base: BASE, code: r.code, name: "Рывок", hostToken: r.hostToken, think: false });
+      const o = await NetBot.connect({ base: BASE, code: r.code, name: "Второй", think: false });
+      await a.until((b) => b.roster && b.roster.length === 2, 3000);
+      a.send({ type: "start" });
+      await a.until((b) => b.phase === "race", 6000);
+      for (let i = 0; i < 40; i++) a.send({ type: "t" });
+      await wait(400);
+      const mine = a.events.filter((e) => e.type === "turbo" && e.id === a.id);
+      assert.strictEqual(mine.length, 1, "рывков " + mine.length);
+      const row = a.snap.p.find((p) => p[0] === a.id);
+      assert(row[10] > 3.5 && row[10] <= 4.9, "заряд в снимке " + row[10]);
+      a.send({ type: "t" });
+      await wait(200);
+      assert.strictEqual(a.events.filter((e) => e.type === "turbo" && e.id === a.id).length, 1, "пока копится — второго нет");
+      a.send({ type: "leave" }); o.send({ type: "leave" });
     });
 
     await test("в комнате не больше 12 игроков", async () => {

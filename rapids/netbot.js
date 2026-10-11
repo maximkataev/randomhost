@@ -50,7 +50,7 @@ function connect({ base, code, name, style = "casual", hostToken, token, ci, thi
         if (m.sd !== seed) { seed = m.sd; mirror.course = makeCourse(m.sd, mirror.cfg); }
         mirror.phase = m.ph;
         mirror.time = m.t / 1000;
-        mirror.players = m.p.map(([id, x, y, vx, vy, ang, st]) => ({ id, x, y, vx, vy, ang, st, inGame: true }));
+        mirror.players = m.p.map(([id, x, y, vx, vy, ang, st, , , , tcd]) => ({ id, x, y, vx, vy, ang, st, inGame: true, turboCd: tcd || 0, turbo: Math.max(0, (tcd || 0) - (mirror.cfg.TURBO_CD || 0)) }));
         mirror.byId = new Map(mirror.players.map((p) => [p.id, p]));
       }
     }));
@@ -62,6 +62,7 @@ function connect({ base, code, name, style = "casual", hostToken, token, ci, thi
       const st = Bots.think(mirror, me, bot, 0.05);
       b.steer = +st.toFixed(2);
       b.send({ type: "i", st: b.steer, s: ++b.seq });
+      if (b.turbo !== false && Bots.wantTurbo(mirror, me, bot, 0.05)) { b.send({ type: "t" }); me.turboCd = 99; }
     }, 50);
   });
 }

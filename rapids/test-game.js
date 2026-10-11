@@ -140,6 +140,80 @@ test('офлайн утка не рулит, но течение несёт её
   assert.strictEqual(a.steer, 0);
 });
 
+console.log('Рывок');
+test('рывок ускоряет утку, длится TURBO_T, потом копится TURBO_CD и жмётся снова', () => {
+  const g = race(2, 61);
+  g.course.pools = [];   // водоворот на пути ловил утку посреди проверки
+  const a = P(g, 0), b = P(g, 1);
+  const cx = g.course.riverCx(1000);
+  place(a, cx - 30, 1000); place(b, cx + 30, 1000);
+  parkFinished(g, [a]);
+  const y0 = a.y;
+  assert(g.useTurbo('p0'));
+  assert(!g.useTurbo('p0'), 'пока идёт рывок, второй не засчитывается');
+  assert(g.drainEvents().some(e => e.type === 'turbo' && e.id === 'p0'));
+  run(g, 0.5);
+  const fast = a.y - y0;
+  assert(a.turbo > 0 && a.turboCd > DEFAULTS.TURBO_CD);
+  run(g, DEFAULTS.TURBO_T);
+  assert.strictEqual(a.turbo, 0);
+  // за те же 0.5 с без рывка проплыли бы заметно меньше
+  const ref = race(2, 61);
+  ref.course.pools = [];
+  const r = P(ref, 0); place(r, cx - 30, 1000); parkFinished(ref, [r]); run(ref, 0.5);
+  assert(fast > (r.y - 1000) * 1.25, `рывок ${fast.toFixed(0)} против ${(r.y - 1000).toFixed(0)}`);
+  assert(!g.useTurbo('p0'), 'после рывка кнопка копится');
+  // с нажатия прошло 0.5 + TURBO_T; до готовности ещё TURBO_CD - 0.5
+  run(g, DEFAULTS.TURBO_CD - 0.5 - 0.3);
+  assert(!g.useTurbo('p0'));
+  run(g, 0.5);
+  assert(g.useTurbo('p0'), 'через TURBO_CD после рывка — снова');
+});
+test('рывок: не в отсчёте, не в водовороте, не у офлайн-утки, не у доплывшей; в снимке есть остаток', () => {
+  const g = createGame({ seed: 62 });
+  g.addPlayer('p0', 'P0', 0); g.addPlayer('p1', 'P1', 1);
+  assert(g.useTurbo('p0'), 'в лобби можно — побаловаться');
+  g.start();
+  assert.strictEqual(g.phase, 'countdown');
+  assert(!g.useTurbo('p0'), 'в отсчёте нельзя');
+  run(g, DEFAULTS.COUNTDOWN + 0.05);
+  assert.strictEqual(P(g, 0).turboCd, 0, 'в заплыв все выходят с готовым рывком');
+  const a = P(g, 0), b = P(g, 1);
+  g.setOnline('p1', false);
+  assert(!g.useTurbo('p1'), 'офлайн не жмёт');
+  a.st = 'c'; a.cap = { p: { x: 0, y: 0, r: 1, dir: 1 }, a: 0, r: 0, t: -1e9 };
+  assert(!g.useTurbo('p0'), 'в водовороте нельзя');
+  a.st = 'w'; a.cap = null;
+  assert(g.useTurbo('p0'));
+  const snap = g.snapshot().players.find(p => p.id === 'p0');
+  assert(Math.abs(snap.tcd - (DEFAULTS.TURBO_T + DEFAULTS.TURBO_CD)) < 0.1);
+  a.st = 'f';
+  assert(!g.useTurbo('p0'), 'доплывшая не жмёт');
+  assert.strictEqual(g.useTurbo('нет такого'), false);
+});
+test('рывок на финише: нажал за секунду до линии — первым за линией и чемпион', () => {
+  const g = race(2, 63);
+  const a = P(g, 0);
+  const fy = g.course.FINISH_Y - 150;
+  place(a, g.course.riverCx(fy), fy);
+  parkFinished(g, [a, P(g, 1)]);
+  place(P(g, 1), g.course.riverCx(fy), fy + 5);
+  P(g, 1).x += 40;
+  g.useTurbo('p0');
+  run(g, 4);
+  assert.strictEqual(g.champion, 'p0');
+});
+test('рывок в лобби и после «ещё заплыв» не переносится: перерыв сброшен', () => {
+  const g = race(2, 64);
+  g.useTurbo('p0');
+  place(P(g, 0), g.course.riverCx(g.course.FINISH_Y - 10), g.course.FINISH_Y - 10);
+  run(g, 3);
+  assert.strictEqual(g.phase, 'over');
+  g.toLobby();
+  assert.strictEqual(P(g, 0).turboCd, 0);
+  assert.strictEqual(P(g, 0).turbo, 0);
+});
+
 console.log('Препятствия');
 test('бревно: утка у берега без руля выплывает к свободному концу', () => {
   for (let s = 1; s <= 40; s++) {

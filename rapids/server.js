@@ -189,13 +189,13 @@ function snapMsg(room, t) {
     type: "s", t, ph: s.phase, pt: s.phaseT, cl: s.clock, sd: s.seed, ch: s.champion, host: s.host,
     // в лобби плавают все, в заплыве — только участники
     p: s.players.filter((p) => s.phase === "lobby" || p.inGame).filter((p) => !room.meta.get(p.id)?.left || p.inGame).map((p) => [
-      p.id, p.x, p.y, p.vx, p.vy, p.ang, p.st, p.place, p.online ? 1 : 0, room.meta.get(p.id)?.lastSeq || 0,
+      p.id, p.x, p.y, p.vx, p.vy, p.ang, p.st, p.place, p.online ? 1 : 0, room.meta.get(p.id)?.lastSeq || 0, p.tcd,
     ]),
   };
   return JSON.stringify(msg);
 }
 
-const EVENT_TYPES = new Set(["go", "phase", "course", "bump", "rock", "log", "whirl", "whirlOut", "finish", "champion", "host", "over", "removed", "offline", "online"]);
+const EVENT_TYPES = new Set(["go", "phase", "course", "bump", "rock", "log", "whirl", "whirlOut", "turbo", "finish", "champion", "host", "over", "removed", "offline", "online"]);
 
 // ---------- игровой цикл ----------
 
@@ -361,7 +361,7 @@ function upgrade(req, socket, head) {
 }
 
 // что клиенту нужно, чтобы построить ту же реку и предсказывать свою утку той же физикой, что у сервера
-const PREDICT_CFG = ["DR", "FLOW", "BANK_K", "STREAM_K", "LILY_K", "RELAX", "STEER", "POOL_STEER", "LOG_SLIDE", "COUNTDOWN", "RACE_T", "LEN"];
+const PREDICT_CFG = ["DR", "FLOW", "BANK_K", "STREAM_K", "LILY_K", "RELAX", "STEER", "POOL_STEER", "LOG_SLIDE", "COUNTDOWN", "RACE_T", "LEN", "TURBO_T", "TURBO_K", "TURBO_RELAX", "TURBO_CD"];
 const cfgFor = (g) => Object.fromEntries(PREDICT_CFG.map((k) => [k, g.cfg[k]]));
 
 function onConnection(room, ws, ip) {
@@ -416,6 +416,11 @@ function handle(room, client, msg) {
       const m = room.meta.get(me);
       if (m) m.inputAt = now();
       if (m && Number.isInteger(msg.s) && msg.s > m.lastSeq && msg.s < 2 ** 31) m.lastSeq = msg.s;
+      return;
+    }
+    case "t": {
+      // рывок: готовность и допуски проверяет движок
+      if (me) g.useTurbo(me);
       return;
     }
     case "ping": {

@@ -169,6 +169,23 @@
   .tb.l { left: calc(20px + env(safe-area-inset-left, 0px)); }
   .tb.r { right: calc(20px + env(safe-area-inset-right, 0px)); }
   .tb.on { background: rgba(255, 210, 63, 0.6); border-color: #ffe27a; transform: scale(0.94); }
+  /* рывок: кнопка по центру внизу, кольцо — заряд. Пробел делает то же самое */
+  .turbo { display: none; position: fixed; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 5; width: 84px; height: 84px; border-radius: 50%; padding: 5px; border: 0; cursor: pointer; touch-action: none; -webkit-tap-highlight-color: transparent; background: conic-gradient(#ffd23f var(--p, 0deg), rgba(255,255,255,0.22) 0); color: #fff; font: inherit; }
+  .turbo i { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; background: rgba(8, 40, 46, 0.78); font-style: normal; font-size: 34px; line-height: 1; transition: transform 0.08s, background 0.15s; position: relative; }
+  .turbo i small { position: absolute; bottom: 9px; left: 0; right: 0; text-align: center; font: 800 9px Montserrat, sans-serif; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(255,255,255,0.7); }
+  .turbo i b { filter: grayscale(1) brightness(0.8); opacity: 0.6; transition: filter 0.15s, opacity 0.15s; }
+  .turbo.ready i b { filter: none; opacity: 1; }
+  .turbo.ready { background: conic-gradient(#ffd23f 360deg, #ffd23f 0); animation: turboReady 1.1s ease-in-out infinite; }
+  .turbo.ready i { background: rgba(255, 170, 30, 0.9); }
+  .turbo.burst { background: conic-gradient(#ff7a1a 360deg, #ff7a1a 0); }
+  .turbo.burst i { background: rgba(255, 90, 20, 0.95); transform: scale(0.92); }
+  .turbo.burst i b { filter: none; opacity: 1; }
+  .turbo.off { opacity: 0.45; }
+  .turbo:active i { transform: scale(0.92); }
+  @keyframes turboReady { 50% { box-shadow: 0 0 0 7px rgba(255, 210, 63, 0.28); } }
+  body.playing:not(.out) .turbo { display: block; }
+  body.is-touch .turbo i small, body.playing .turbo.burst i small { display: none; }
+  body.playing .toast { bottom: calc(124px + env(safe-area-inset-bottom, 0px)); }
   /* доплыл — смотрит, без кнопок */
   .outpill { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 6; display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 9px 16px; font-weight: 700; font-size: 14px; text-align: center; width: max-content; max-width: calc(100vw - 24px); }
   body.out .outpill { display: block; }
@@ -216,6 +233,10 @@
     .banner { top: auto; bottom: 14px; font-size: 14px; padding: 7px 14px; border-radius: 12px; max-width: 42vw; }
     .banner small { font-size: 11px; }
     .tb { width: 72px; height: 72px; font-size: 30px; bottom: 14px; }
+    .turbo { width: 68px; height: 68px; bottom: 14px; }
+    .turbo i { font-size: 28px; }
+    body.playing .banner { bottom: 94px; }
+    body.playing .toast { bottom: 94px; }
   }
   @media (max-width: 380px) { .host-card .nm { font-size: 26px; } }
   @media (prefers-reduced-motion: reduce) { .big.show { animation-duration: 0.01s; } }
@@ -232,6 +253,7 @@
 <div class="tag" id="tag"></div>
 <div class="feed" id="feed"></div>
 <div class="touch"><span class="tb l" id="tbL">‹</span><span class="tb r" id="tbR">›</span></div>
+<button class="turbo off" id="turbo" type="button" aria-label="Рывок"><i><b>⚡</b><small id="turboLbl"></small></i></button>
 <div class="outpill" id="outpill"></div>
 <div class="verdict" id="verdict"></div>
 <div class="conn" id="conn"></div>
@@ -244,7 +266,8 @@ window.I18N_DICT = {
     _meta: `🦆 Утиный сплав: мультиплеерная гонка уток по горной речке. Каждый рулит своей уткой с телефона или компьютера, заплыв — полминуты. Кто приплыл последним — ведёт дейлик.`,
     game: `Утиный сплав`, sub: `гонка уток · кто ведёт дейлик`, back: `← Все игры`,
     lede: `Все заходят по ссылке, каждый рулит своей уткой — с телефона или компьютера. Заплыв — полминуты.`,
-    rule1: `Течение несёт само — вы только рулите: в быструю струю, мимо камней, брёвен и водоворотов.`,
+    rule1: `Течение несёт само — вы рулите: в быструю струю, мимо камней, брёвен и водоворотов.`,
+    rule_t: `Пробел или кнопка ⚡ — рывок. Копится пару секунд, потом можно снова: жмите на чистой воде, не в камень.`,
     rule2: `Соседей можно подтолкнуть — прямо на камень.`,
     rule3: `<b>Кто приплыл последним — ведёт дейлик.</b> Первый — чемпион заплыва.`,
     create: `Создать комнату`, have_code: `У меня есть код`, code_ph: `Код комнаты`, go: `Войти`,
@@ -254,6 +277,7 @@ window.I18N_DICT = {
     wait_host: `Ждём, пока {name} откроет шлюз`, practice: `Пока ждём — порулите в заводи у шлюза.`,
     controls: `Управление`, k_keys: `<b>руль</b> влево-вправо`, k_touch: `<b>руль</b> — держите палец слева или справа`,
     hint_steer: `Держите палец слева или справа — утка рулит туда`,
+    k_turbo: `<b>рывок</b> — пробел или кнопка ⚡`, k_turbo_t: `<b>рывок</b> — кнопка ⚡ внизу`, hint_turbo: `Пробел — рывок`, hint_turbo_t: `Кнопка ⚡ — рывок`, turbo_btn: `Рывок`,
     pos: `<b>{n}</b> из {m}`, lobby_hud: `Разминка в заводи`, end: `финиш`,
     go_word: `Плывём!`,
     champ_banner: `🏆 Первое место: {name}`, you_champ_banner: `🏆 Первое место — ваше!`,
@@ -283,7 +307,8 @@ window.I18N_DICT = {
     _meta: `🦆 Duck Rapids: a multiplayer duck race down a mountain creek. Everyone steers their own duck from a phone or computer, a race takes half a minute. Last one in runs the daily.`,
     game: `Duck Rapids`, sub: `duck race · who runs the daily`, back: `← All games`,
     lede: `Everyone joins by link and steers their own duck — from a phone or a computer. A race takes half a minute.`,
-    rule1: `The current carries you — you only steer: into fast streams, around rocks, logs and whirlpools.`,
+    rule1: `The current carries you — you steer: into fast streams, around rocks, logs and whirlpools.`,
+    rule_t: `Space or the ⚡ button — a burst of speed. It recharges in a few seconds; use it on clear water, not into a rock.`,
     rule2: `You can nudge your neighbours — right into a rock.`,
     rule3: `<b>Last one in runs the daily.</b> The first is the race champion.`,
     create: `Create a room`, have_code: `I have a code`, code_ph: `Room code`, go: `Join`,
@@ -293,6 +318,7 @@ window.I18N_DICT = {
     wait_host: `Waiting for {name} to open the gate`, practice: `While you wait — paddle around the pond by the gate.`,
     controls: `Controls`, k_keys: `<b>steer</b> left and right`, k_touch: `<b>steer</b> — hold your finger on the left or right`,
     hint_steer: `Hold your finger left or right — the duck steers there`,
+    k_turbo: `<b>burst</b> — Space or the ⚡ button`, k_turbo_t: `<b>burst</b> — the ⚡ button below`, hint_turbo: `Space — burst of speed`, hint_turbo_t: `⚡ button — burst of speed`, turbo_btn: `Burst`,
     pos: `<b>{n}</b> of {m}`, lobby_hud: `Warm-up in the pond`, end: `finish`,
     go_word: `Go!`,
     champ_banner: `🏆 {name} is first!`, you_champ_banner: `🏆 You're first!`,
@@ -322,7 +348,8 @@ window.I18N_DICT = {
     _meta: `🦆 Πάπιες στα ορμητικά: αγώνας με πάπιες σε ορμητικό ρυάκι για πολλούς παίκτες. Ο καθένας οδηγεί τη δική του πάπια από κινητό ή υπολογιστή, ο αγώνας κρατά μισό λεπτό. Όποιος φτάσει τελευταίος κάνει το daily.`,
     game: `Πάπιες στα ορμητικά`, sub: `αγώνας με πάπιες · ποιος κάνει το daily`, back: `← Όλα τα παιχνίδια`,
     lede: `Όλοι μπαίνουν με σύνδεσμο και οδηγούν τη δική τους πάπια — από κινητό ή υπολογιστή. Ο αγώνας κρατά μισό λεπτό.`,
-    rule1: `Το ρεύμα σε πάει μόνο του — εσύ απλώς στρίβεις: στα γρήγορα νερά, γύρω από πέτρες, κορμούς και δίνες.`,
+    rule1: `Το ρεύμα σε πάει μόνο του — εσύ στρίβεις: στα γρήγορα νερά, γύρω από πέτρες, κορμούς και δίνες.`,
+    rule_t: `Space ή το κουμπί ⚡ — ξαφνική επιτάχυνση. Φορτίζει σε λίγα δευτερόλεπτα· χρησιμοποίησέ τη σε καθαρό νερό, όχι πάνω σε πέτρα.`,
     rule2: `Μπορείς να σπρώξεις τους διπλανούς — κατευθείαν σε πέτρα.`,
     rule3: `<b>Όποιος φτάσει τελευταίος κάνει το daily.</b> Η πρώτη θέση παίρνει το στέμμα.`,
     create: `Νέο δωμάτιο`, have_code: `Έχω κωδικό`, code_ph: `Κωδικός δωματίου`, go: `Είσοδος`,
@@ -332,6 +359,7 @@ window.I18N_DICT = {
     wait_host: `Περιμένουμε τον/την {name} να ανοίξει το φράγμα`, practice: `Μέχρι τότε — κάνε βόλτες στη λιμνούλα.`,
     controls: `Χειρισμός`, k_keys: `<b>τιμόνι</b> αριστερά-δεξιά`, k_touch: `<b>τιμόνι</b> — κράτα το δάχτυλο αριστερά ή δεξιά`,
     hint_steer: `Κράτα το δάχτυλο αριστερά ή δεξιά — η πάπια στρίβει εκεί`,
+    k_turbo: `<b>επιτάχυνση</b> — Space ή το κουμπί ⚡`, k_turbo_t: `<b>επιτάχυνση</b> — το κουμπί ⚡ από κάτω`, hint_turbo: `Space — επιτάχυνση`, hint_turbo_t: `Κουμπί ⚡ — επιτάχυνση`, turbo_btn: `Τούρμπο`,
     pos: `<b>{n}</b> από {m}`, lobby_hud: `Προθέρμανση στη λιμνούλα`, end: `τερματισμός`,
     go_word: `Πάμε!`,
     champ_banner: `🏆 Πρώτη θέση: {name}`, you_champ_banner: `🏆 Η πρώτη θέση είναι δική σου!`,
@@ -417,6 +445,7 @@ window.I18N_DICT = {
         let b = demo.bots.get(p.id);
         if (!b) { b = RapidsBots.createBot(RapidsBots.STYLE_KEYS[demo.bots.size % 4]); demo.bots.set(p.id, b); }
         g.setInput(p.id, RapidsBots.think(g, p, b, dt));
+        if (RapidsBots.wantTurbo(g, p, b, dt)) g.useTurbo(p.id);
       }
     }
     g.step(dt);
@@ -560,7 +589,7 @@ window.I18N_DICT = {
       return {
         id: pb[0], name: nameOf(pb[0]), ci: ciOf(pb[0]),
         x: pa[1] + (pb[1] - pa[1]) * t, y: pa[2] + (pb[2] - pa[2]) * t,
-        vx: pb[3], vy: pb[4], ang: lerpAng(pa[5], pb[5], t), st: pb[6], place: pb[7], online: !!pb[8],
+        vx: pb[3], vy: pb[4], ang: lerpAng(pa[5], pb[5], t), st: pb[6], place: pb[7], online: !!pb[8], tcd: pb[10] || 0,
         inGame: b.ph === "lobby" || inGame.has(pb[0]),
       };
     });
@@ -570,16 +599,23 @@ window.I18N_DICT = {
   // ----- своя утка: предсказание -----
   // Своя утка рулит сразу по нажатию той же физикой, что на сервере (moveDuck), а каждый снимок мягко подтягивает её
   // к серверному положению, вынесенному вперёд на полпути пинга. Соседей, водовороты и финиш решает только сервер.
-  const pred = { on: false, x: 0, y: 0, vx: 0, vy: 0, ang: 0, spin: 0, seed: 0 };
+  const pred = { on: false, x: 0, y: 0, vx: 0, vy: 0, ang: 0, spin: 0, seed: 0, turbo: 0, turboCd: 0 };
+  let turboPressAt = -1e9;
   function reconcile(p, m) {
     const st = p[6];
     const controlled = m.ph === "lobby" || m.ph === "race";
     if (st !== "w" || !controlled) { pred.on = false; return; }
     const lead = Math.min(0.25, (net.rtt / 2 + 25) / 1000);
     const tx = p[1] + p[3] * lead, ty = p[2] + p[4] * lead;
+    // заряд рывка: сервер — главный, но сразу после нажатия его снимок ещё без рывка — тогда ему не верим
+    const tcd = Math.max(0, (p[10] || 0) - lead);
     if (!pred.on || pred.seed !== m.sd) {
-      Object.assign(pred, { on: true, x: tx, y: ty, vx: p[3], vy: p[4], ang: p[5], spin: 0, seed: m.sd });
+      Object.assign(pred, { on: true, x: tx, y: ty, vx: p[3], vy: p[4], ang: p[5], spin: 0, seed: m.sd,
+        turboCd: tcd, turbo: Math.max(0, tcd - net.cfg.TURBO_CD) });
       return;
+    }
+    if (performance.now() - turboPressAt > Math.max(350, net.rtt + 200) && Math.abs(pred.turboCd - tcd) > 0.2) {
+      pred.turboCd = tcd; pred.turbo = Math.max(0, tcd - net.cfg.TURBO_CD);
     }
     const ex = tx - pred.x, ey = ty - pred.y;
     if (Math.hypot(ex, ey) > 90) { pred.x = tx; pred.y = ty; pred.vx = p[3]; pred.vy = p[4]; }
@@ -590,17 +626,39 @@ window.I18N_DICT = {
   // Ввод: один руль, -1…1
   // ===================================================================
   const input = { st: 0, seq: 0, sent: 9, sentAt: 0 };
+  // Рывок: пробел или кнопка. Свою утку разгоняем сразу (та же moveDuck), серверу уходит {type:"t"}; готовность проверяет он же
+  function pressTurbo() {
+    if (!net.me || !pred.on) return;
+    const snap = net.snaps[net.snaps.length - 1];
+    if (!snap || snap.ph !== "race") return;
+    if (pred.turbo > 0 || pred.turboCd > 0.05) return;
+    pred.turbo = net.cfg.TURBO_T;
+    pred.turboCd = net.cfg.TURBO_T + net.cfg.TURBO_CD;
+    turboPressAt = performance.now();
+    send({ type: "t" });
+    Sound.ensure();
+  }
+  const turboBtn = $("turbo");
+  turboBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); pressTurbo(); });
+  turboBtn.addEventListener("contextmenu", (e) => e.preventDefault());
   const down = new Set();
   const KEYS = ["KeyA", "KeyD", "ArrowLeft", "ArrowRight"];
   addEventListener("keydown", (e) => {
     if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+    if (e.code === "Space") {
+      // пробел — только в заплыве; в лобби он нужен кнопкам панели
+      if (!document.body.classList.contains("playing")) return;
+      e.preventDefault();
+      if (!e.repeat) pressTurbo();
+      return;
+    }
     if (!KEYS.includes(e.code)) return;
     if (!document.body.classList.contains("playing") && ui.phase !== "lobby") return;
     e.preventDefault();
     Sound.ensure();
     down.add(e.code);
   });
-  addEventListener("keyup", (e) => down.delete(e.code));
+  addEventListener("keyup", (e) => { down.delete(e.code); if (e.code === "Space" && document.body.classList.contains("playing")) e.preventDefault(); });
   addEventListener("blur", () => { down.clear(); touches.clear(); });
   // Палец слева — влево, справа — вправо, оба — прямо. Руль пропорциональный: у краёв (и на кнопках) — полный,
   // ближе к середине — мягче, чтобы можно было подправить курс, а не только болтаться «до упора» (плейтест 04.10).
@@ -657,6 +715,7 @@ window.I18N_DICT = {
     const snap = net.snaps[net.snaps.length - 1];
     if (pred.on && snap) {
       const controlled = snap.ph === "lobby" || snap.ph === "race";
+      if (pred.turboCd > 0) pred.turboCd = Math.max(0, pred.turboCd - dt);
       moveDuck(pred, courseFor(snap.sd), net.cfg, dt, input.st, controlled, snap.ph === "race" || snap.ph === "over");
     }
   }
@@ -679,10 +738,10 @@ window.I18N_DICT = {
     placeGaps();
   }
   const brand = () => `<div class="brand"><span class="logo">🦆</span><h1>${esc(T("game"))}<small>${esc(T("sub"))}</small></h1></div>`;
-  const rulesHtml = (hostFirst) => `<ol class="rules">${(hostFirst ? ["rule3", "rule1", "rule2"] : ["rule1", "rule2", "rule3"]).map((k) => `<li><span>${k === "rule3" ? T(k) : esc(T(k))}</span></li>`).join("")}</ol>`;
+  const rulesHtml = (hostFirst) => `<ol class="rules">${(hostFirst ? ["rule3", "rule1", "rule_t", "rule2"] : ["rule1", "rule_t", "rule2", "rule3"]).map((k) => `<li><span>${k === "rule3" ? T(k) : esc(T(k))}</span></li>`).join("")}</ol>`;
   const controlsHtml = () => `<div class="keys">${isTouch
-    ? `<span>👆</span><span>${T("k_touch")}</span>`
-    : `<span class="kk"><kbd>A</kbd><kbd>D</kbd><kbd>←</kbd><kbd>→</kbd></span><span>${T("k_keys")}</span>`}</div>`;
+    ? `<span>👆</span><span>${T("k_touch")}</span><span>⚡</span><span>${T("k_turbo_t")}</span>`
+    : `<span class="kk"><kbd>A</kbd><kbd>D</kbd><kbd>←</kbd><kbd>→</kbd></span><span>${T("k_keys")}</span><span class="kk"><kbd>Space</kbd></span><span>${T("k_turbo")}</span>`}</div>`;
   const colorGrid = (sel, taken) => `<div class="colors">${COLORS.map((c, i) => `<button type="button" class="cb${i === sel ? " on" : ""}" data-ci="${i}" style="--c:${c[0]}" ${taken.has(i) && i !== sel ? "disabled" : ""} aria-label="${esc(T("color"))} ${i + 1}"></button>`).join("")}</div>`;
 
   function redraw() {
@@ -875,7 +934,7 @@ window.I18N_DICT = {
       $("feed").innerHTML = "";
       document.body.classList.remove("out");
     }
-    if (ph === "countdown" && isTouch) toast(T("hint_steer"));
+    if (ph === "countdown") toast(isTouch ? T("hint_steer") + " · " + T("hint_turbo_t") : T("hint_turbo"));
     applyMode();
     redraw();
   }
@@ -1006,6 +1065,19 @@ window.I18N_DICT = {
   // Цикл
   // ===================================================================
   const meDisp = { on: false, x: 0, y: 0, seed: 0 };
+  // кнопка рывка: кольцо — заряд, золото — готова, оранжевая — идёт рывок
+  let turboWasReady = false;
+  function turboHud(phase, cd) {
+    const C = net.cfg, race = phase === "race";
+    const burst = race && cd > C.TURBO_CD, ready = race && cd <= 0.05;
+    const frac = burst ? 1 : race ? 1 - Math.min(1, cd / C.TURBO_CD) : 0;
+    turboBtn.style.setProperty("--p", Math.round(frac * 360) + "deg");
+    turboBtn.classList.toggle("ready", ready);
+    turboBtn.classList.toggle("burst", burst);
+    turboBtn.classList.toggle("off", !race);
+    if (ready && !turboWasReady && Sound.turboReady) Sound.turboReady();
+    turboWasReady = ready;
+  }
   let last = performance.now(), pingAt = 0;
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
@@ -1024,7 +1096,8 @@ window.I18N_DICT = {
         if (snap) {
           const me = net.me && snap.players.find((p) => p.id === net.me);
           if (me) {
-            if (pred.on && me.st === "w") Object.assign(me, { x: pred.x, y: pred.y, vx: pred.vx, vy: pred.vy, ang: pred.ang });
+            if (pred.on && me.st === "w") Object.assign(me, { x: pred.x, y: pred.y, vx: pred.vx, vy: pred.vy, ang: pred.ang, tcd: pred.turboCd });
+            turboHud(snap.phase, pred.on && me.st === "w" ? pred.turboCd : me.tcd);
             // показанная позиция своей утки догоняет нужную за ~0.1 с: подтяжка предсказания и переход
             // к снимку (финиш, водоворот) не дают рывков; далеко (новая трасса) — сразу
             const d = meDisp;
@@ -1049,6 +1122,7 @@ window.I18N_DICT = {
   addEventListener("popstate", () => location.reload());
   addEventListener("langchange", () => { render.setMe(net.me); applyStatic(); redraw(); });
   function applyStatic() {
+    $("turboLbl").textContent = T("turbo_btn"); $("turbo").setAttribute("aria-label", T("turbo_btn"));
     render.setWords(WORDS());
     render.setSuffix(T("you"));
     $("quit").setAttribute("aria-label", T("quit_aria"));

@@ -181,6 +181,8 @@
       },
       crowd() { if (!gate('crowd', 600)) return; noise(1.6, 600, 1500, 0.07, 'bandpass', 0, 1.1); },
       finish() { if (!gate('finish', 120)) return; noise(0.3, 2600, 380, 0.12); tone(1046, 0.18, 'triangle', 0.08, 0.05); },
+      turbo() { if (!gate('turbo', 150)) return; noise(0.5, 500, 3200, 0.16, 'bandpass', 0, 0.9); tone(300, 0.28, 'sawtooth', 0.05, 0, 760); },
+      turboReady() { if (!gate('turboReady', 300)) return; tone(1175, 0.07, 'triangle', 0.06); tone(1568, 0.1, 'triangle', 0.06, 0.06); },
       host() { tone(392, 0.22, 'triangle', 0.18); tone(311, 0.22, 'triangle', 0.18, 0.18); tone(233, 0.5, 'triangle', 0.18, 0.36); },
       win() { [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, 0.3, 'triangle', 0.2, i * 0.11)); quack(1.2, 0.5); },
     };
@@ -1021,6 +1023,22 @@
         const v = vis.get(p.id);
         if (!v) continue;
         const sp = Math.hypot(p.vx || 0, p.vy || 0);
+        // рывок: у всех по состоянию в снимке (своя — по предсказанию). Всплеск и звук — на включении, брызги — пока идёт
+        const tb = turboOn(p);
+        if (tb && !v.tb && inView(p.y, 60)) {
+          splash(p.x - Math.cos(p.ang) * 10, p.y - Math.sin(p.ang) * 10, 10, 1.1);
+          if (p.id === me) { Sound.turbo(); shake(2); } else if (near(p.y)) Sound.turbo();
+        }
+        v.tb = tb;
+        if (tb && inView(p.y, 60)) {
+          v.tbT = (v.tbT || 0) - dt;
+          if (v.tbT <= 0) {
+            v.tbT = 0.035;
+            const bx = -Math.cos(p.ang), by = -Math.sin(p.ang);
+            if (drops.length > 260) drops.shift();
+            drops.push({ x: p.x + bx * 12 + rr(-5, 5), y: p.y + by * 12 + rr(-5, 5), z: 2, vx: bx * rr(30, 90) + rr(-30, 30), vy: by * rr(30, 90) + rr(-30, 30), vz: rr(50, 130), s: rr(1.2, 2.6) });
+          }
+        }
         v.ripT -= dt;
         if (v.ripT <= 0 && inView(p.y, 60)) {
           v.ripT = sp > 30 ? 0.24 : 0.7;
@@ -1541,6 +1559,10 @@
     }
 
     // ----- Утки -----
+    function turboOn(p) {
+      return p.st === 'w' && (p.tcd || 0) > (cfg.TURBO_CD != null ? cfg.TURBO_CD : 4) && p.online !== false;
+    }
+
     function drawDucks(t) {
       if (!snap) return;
       const list = [];
@@ -1584,6 +1606,41 @@
         ctx.arc(fp.x, fp.y, 27 * k + Math.sin(t * 4) * 1.5, 0, TAU);
         ctx.stroke();
         ctx.setLineDash([]);
+      }
+
+      // рывок: огненно-пенный шлейф сзади, пока идёт ускорение
+      for (const o of list) {
+        const p = o.p;
+        if (!turboOn(p) || o.dim < 0.4) continue;
+        const a = p.ang || 0, bx = -Math.cos(a), by = -Math.sin(a), px = -by, py = bx;
+        const fl = 0.85 + 0.15 * Math.sin(t * 40 + (p.ci || 0));
+        const Ln = 84 * k * fl;
+        const gr = ctx.createLinearGradient(o.x, o.y, o.x + bx * Ln, o.y + by * Ln);
+        gr.addColorStop(0, 'rgba(255,244,170,0.95)');
+        gr.addColorStop(0.4, 'rgba(255,160,40,0.75)');
+        gr.addColorStop(1, 'rgba(255,90,20,0)');
+        ctx.fillStyle = gr;
+        ctx.beginPath();
+        ctx.moveTo(o.x + px * 14 * k, o.y + py * 14 * k);
+        ctx.lineTo(o.x + bx * Ln, o.y + by * Ln);
+        ctx.lineTo(o.x - px * 14 * k, o.y - py * 14 * k);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = `rgba(255,150,30,${0.6 + 0.3 * Math.sin(t * 30)})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(o.x, o.y, 20 * k, 0, TAU);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+        ctx.lineWidth = 1.8;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        for (const s of [-1, 0, 1]) {
+          const off = s * 17 * k;
+          ctx.moveTo(o.x + bx * 16 * k + px * off, o.y + by * 16 * k + py * off);
+          ctx.lineTo(o.x + bx * (50 + 18 * fl) * k + px * off * 1.2, o.y + by * (50 + 18 * fl) * k + py * off * 1.2);
+        }
+        ctx.stroke();
       }
 
       ctx.fillStyle = 'rgba(4,34,40,0.22)';

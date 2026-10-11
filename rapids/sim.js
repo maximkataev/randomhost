@@ -1,7 +1,8 @@
 // Стенд: заплывы ботами без сети. node sim.js [заплывов] [уток]
 // Другие настройки движка: SIM_CFG='{"FLOW":180}' node sim.js
 const { createGame } = require('./game');
-const { createBot, think, STYLE_KEYS } = require('./bots');
+const { createBot, think, wantTurbo, STYLE_KEYS } = require('./bots');
+const NOTURBO = process.env.NOTURBO;   // NOTURBO=1 — заплывы без рывка, для сравнения
 
 const RUNS = Number(process.argv[2] || 200);
 const N = Number(process.argv[3] || 6);
@@ -9,7 +10,7 @@ const CFG = process.env.SIM_CFG ? JSON.parse(process.env.SIM_CFG) : {};
 const DT = 1 / 20;
 
 const champT = [], lastT = [], spread = [];
-let timeUps = 0, stuck = 0, bumps = 0, whirls = 0, rocks = 0;
+let timeUps = 0, stuck = 0, bumps = 0, whirls = 0, rocks = 0, turbos = 0;
 const lastByStyle = {}, winByStyle = {};
 for (let r = 0; r < RUNS; r++) {
   const g = createGame({ seed: 1000 + r, cfg: CFG });
@@ -22,13 +23,17 @@ for (let r = 0; r < RUNS; r++) {
   g.start();
   let over = null, guard = 0;
   while (!over && guard++ < 20 * 120) {
-    for (const p of g.players) g.setInput(p.id, think(g, p, bots.get(p.id), DT));
+    for (const p of g.players) {
+      g.setInput(p.id, think(g, p, bots.get(p.id), DT));
+      if (NOTURBO !== '1' && wantTurbo(g, p, bots.get(p.id), DT)) g.useTurbo(p.id);
+    }
     g.step(DT);
     for (const e of g.drainEvents()) {
       if (e.type === 'over') over = e;
       if (e.type === 'bump') bumps++;
       if (e.type === 'whirl') whirls++;
       if (e.type === 'rock') rocks++;
+      if (e.type === 'turbo') turbos++;
     }
   }
   if (!over) { stuck++; continue; }
@@ -50,5 +55,5 @@ console.log(`чемпион, с:        ${f(champT)}`);
 console.log(`конец заплыва, с:  ${f(lastT)}`);
 console.log(`разрыв 1-го и предпоследнего, с: ${f(spread)}`);
 console.log(`по пределу времени: ${timeUps}, зависли: ${stuck}`);
-console.log(`на заплыв: толчков ${(bumps / RUNS).toFixed(1)}, водоворотов ${(whirls / RUNS).toFixed(1)}, камней ${(rocks / RUNS).toFixed(1)}`);
+console.log(`на заплыв: толчков ${(bumps / RUNS).toFixed(1)}, водоворотов ${(whirls / RUNS).toFixed(1)}, камней ${(rocks / RUNS).toFixed(1)}, рывков ${(turbos / RUNS).toFixed(1)}`);
 console.log('побеждает:', winByStyle, ' ведёт дейлик:', lastByStyle);

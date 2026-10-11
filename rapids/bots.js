@@ -11,10 +11,11 @@
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
   const STYLES = {
-    pro:    { look: [70, 140, 220], react: 0.08, noise: 0.05, gain: 1.0 },
-    casual: { look: [60, 120],      react: 0.25, noise: 0.15, gain: 0.8 },
-    novice: { look: [50, 90],       react: 0.45, noise: 0.35, gain: 0.6 },
-    bully:  { look: [60, 130],      react: 0.15, noise: 0.1,  gain: 0.9, bully: true },
+    // tb: [через сколько секунд после готовности жмёт, шанс нажать в безопасный момент, дальность проверки пути]
+    pro:    { look: [70, 140, 220], react: 0.08, noise: 0.05, gain: 1.0, tb: [0.15, 1.0, 230] },
+    casual: { look: [60, 120],      react: 0.25, noise: 0.15, gain: 0.8, tb: [0.7, 0.8, 180] },
+    novice: { look: [50, 90],       react: 0.45, noise: 0.35, gain: 0.6, tb: [1.6, 0.5, 120] },
+    bully:  { look: [60, 130],      react: 0.15, noise: 0.1,  gain: 0.9, bully: true, tb: [0.3, 0.9, 150] },
   };
   const STYLE_KEYS = Object.keys(STYLES);
 
@@ -106,5 +107,27 @@
     return bot.steer;
   }
 
-  return { createBot, think, STYLES, STYLE_KEYS };
+  // Жать ли рывок сейчас: кнопка готова, а путь вперёд по текущему курсу чистый — иначе рывок в камень
+  // или в водоворот только вредит. Боты разные: профи жмёт сразу, новичок — не всегда и с запозданием.
+  function wantTurbo(g, d, bot, dt) {
+    if (g.phase !== 'race' || d.st !== 'w' || d.turboCd > 0 || (d.turbo || 0) > 0) { bot.tbWait = null; return false; }
+    const [wait, chance, far] = bot.s.tb;
+    if (bot.tbWait == null) bot.tbWait = wait * (0.6 + bot.rnd() * 0.8);
+    bot.tbWait -= dt;
+    if (bot.tbWait > 0) return false;
+    const c = g.course, cfg = g.cfg;
+    // куда уйдёт утка: вперёд по реке, с поправкой на то, куда рулит
+    const tx = bot.tx == null ? d.x : bot.tx;
+    for (let L = 30; L <= far; L += 30) {
+      const y = d.y + L;
+      const k = Math.min(1, L / 140);
+      const x = d.x + (tx - d.x) * k;
+      if (danger(c, cfg, x, y) > 0 || c.overLily(x, y)) { bot.tbWait = 0.15; return false; }
+    }
+    if (bot.rnd() > chance) { bot.tbWait = 0.5; return false; }
+    bot.tbWait = null;
+    return true;
+  }
+
+  return { createBot, think, wantTurbo, STYLES, STYLE_KEYS };
 });
