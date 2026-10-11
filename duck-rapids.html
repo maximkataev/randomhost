@@ -57,6 +57,9 @@
   .p-body { flex: 1; overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; scrollbar-color: rgba(170,235,205,0.25) transparent; }
   .p-foot { padding: 12px 14px; border-top: 1px solid var(--line); background: rgba(4, 22, 17, 0.5); display: grid; gap: 8px; }
   .p-foot:empty { display: none; }
+  /* лист обрезан, а под ним ещё строки (номинации на итогах): низ тает — видно, что можно долистать.
+     Без этого «Любимец водоворотов» резался пополам под кнопками и выглядел как ошибка вёрстки */
+  .p-body.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent); }
   .brand { display: flex; align-items: center; gap: 10px; }
   .brand .logo { font-size: 30px; line-height: 1; }
   .brand h1 { font-family: 'Comfortaa', sans-serif; font-size: 21px; line-height: 1.1; }
@@ -736,7 +739,12 @@ window.I18N_DICT = {
     $("pbody").innerHTML = body;
     $("pfoot").innerHTML = foot || "";
     placeGaps();
+    requestAnimationFrame(markMore);
   }
+  // .more — на листе есть что листать ниже
+  function markMore() { const b = $("pbody"); b.classList.toggle("more", b.scrollTop + b.clientHeight < b.scrollHeight - 4); }
+  $("pbody").addEventListener("scroll", markMore, { passive: true });
+  window.addEventListener("resize", () => requestAnimationFrame(markMore));
   const brand = () => `<div class="brand"><span class="logo">🦆</span><h1>${esc(T("game"))}<small>${esc(T("sub"))}</small></h1></div>`;
   const rulesHtml = (hostFirst) => `<ol class="rules">${(hostFirst ? ["rule3", "rule1", "rule_t", "rule2"] : ["rule1", "rule_t", "rule2", "rule3"]).map((k) => `<li><span>${k === "rule3" ? T(k) : esc(T(k))}</span></li>`).join("")}</ol>`;
   const controlsHtml = () => `<div class="keys">${isTouch
