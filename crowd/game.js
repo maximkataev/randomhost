@@ -53,6 +53,8 @@ const LEAN_B_MAX = 0.5;
 // цвета и аватары — как в соседних играх (имя заметно на любой заливке)
 const COLORS = ["#e0115f", "#1438e0", "#0a8a4a", "#e25a00", "#7b1fd6", "#008b9a", "#b8006e", "#6b4a00", "#2c2cad", "#b31010", "#3d6b00", "#c77700"];
 const AVATARS = ["🐙", "🦊", "🐸", "🦉", "🦄", "🐧", "🦁", "🐼", "🐵", "🦖", "🐳", "🦩"];
+// из чего игрок выбирает сам (первые — те, что раздаются по умолчанию)
+const AVATAR_CHOICES = [...new Set(AVATARS.concat(["🐱", "🐶", "🐰", "🐻", "🐨", "🐯", "🐷", "🐮", "🦝", "🦥", "🦦", "🐲", "👽", "🤖", "👻", "🤡", "🥑", "🍕", "🌮", "🍩", "🧀", "🌵", "🍄", "🪩"]))];
 
 function clampSettings(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) input = {};
@@ -785,6 +787,18 @@ class Game {
    * До раскрытия никому не уходят: чужие голоса и мнения, ва-банк других, порядок показа, seed, разбивка по сторонам.
    * Доске во время голосования — только «готов / не готов» и счётчик; во время мнения — только счётчик.
    */
+  // Свой аватар: в лобби и между партиями, из списка, не занятый другим игроком
+  setAvatar(id, avatar) {
+    const s = this.s;
+    const p = this.player(id);
+    if (!p || p.left) return { ok: false, reason: "not_player" };
+    if (s.phase !== "lobby" && s.phase !== "finished") return { ok: false, reason: "game_started" };
+    if (!AVATAR_CHOICES.includes(avatar)) return { ok: false, reason: "bad_avatar" };
+    if (this.present().some((x) => x !== p && x.avatar === avatar)) return { ok: false, reason: "avatar_taken" };
+    p.avatar = avatar;
+    return { ok: true, events: [{ type: "avatar", playerId: id }] };
+  }
+
   snapshot(now, view) {
     const s = this.s;
     const board = view === "board";
@@ -844,6 +858,7 @@ class Game {
       pauseReason: s.phase === "pause" ? s.pauseReason || "offline" : null,
       pauseIdle: s.phase === "pause" && s.pauseReason === "passive" ? (s.pauseIdle || []).filter((id) => { const p = this.player(id); return p && !p.left; }) : [],
       minPlayers: MIN_PLAYERS,
+      avatarChoices: s.phase === "lobby" || s.phase === "finished" ? AVATAR_CHOICES : null,
       opinionMin: OPINION_MIN_PLAYERS,
       me: mePart,
       players: s.players.map((p) => ({
@@ -864,5 +879,5 @@ class Game {
 
 module.exports = {
   Game, T, REVEAL_STEP, REVEAL_OPINION, REVEAL_VOID, DEFAULTS, MAX_PLAYERS, MIN_PLAYERS, MIN_CAST, TOTAL, BANKS, MAX_VOIDS,
-  POINTS, COLORS, AVATARS, NAME_MAX, MAX_VOID_RUN, clampSettings, cleanName, cleanText, nameKey, revealOrder,
+  POINTS, COLORS, AVATARS, AVATAR_CHOICES, NAME_MAX, MAX_VOID_RUN, clampSettings, cleanName, cleanText, nameKey, revealOrder,
 };

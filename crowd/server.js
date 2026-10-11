@@ -629,6 +629,7 @@ function handle(room, client, msg) {
       return afterChange(room, events);
     }
     // ---- игрок ----
+    case "avatar": return me ? act("avatar", g.setAvatar(me, String(msg.avatar || ""))) : undefined;
     case "vote":
     case "bank":
     case "opinion": {

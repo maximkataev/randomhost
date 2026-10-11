@@ -640,3 +640,17 @@ test("банк «забывается» только когда не хвата�
     assert.ok(lb >= 4 && lb <= 5, `партия ${party}: lean b=${lb}`);
   }
 });
+
+test("аватар: меняется в лобби, чужой занять нельзя, во время игры нельзя", () => {
+  const g = Game.create({ settings: {}, code: "TEST22", rnd: Math.random.bind(Math), content: { ru: {} } });
+  g.addPlayer({ id: "a", name: "Аня", now: 0 });
+  g.addPlayer({ id: "b", name: "Боб", now: 0 });
+  assert.ok(Array.isArray(g.snapshot(0, {}).avatarChoices));
+  assert.strictEqual(g.setAvatar("a", "🍕").ok, true);
+  assert.strictEqual(g.player("a").avatar, "🍕");
+  assert.strictEqual(g.setAvatar("b", "🍕").reason, "avatar_taken");
+  assert.strictEqual(g.setAvatar("b", "не-эмодзи").reason, "bad_avatar");
+  g.s.phase = "answer";
+  assert.strictEqual(g.setAvatar("b", "🌮").reason, "game_started");
+  assert.strictEqual(g.snapshot(0, {}).avatarChoices, null);
+});
