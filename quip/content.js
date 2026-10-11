@@ -21,12 +21,12 @@ function unwrap(x) {
   return m && m[2].trim() ? m[2].trim() : x;
 }
 const hints = (h) => (h || []).map((x) => (Array.isArray(x) ? x.map(unwrap) : unwrap(x)));
-const DECKS = ["duel", "emoji", "rev", "final"];
+const DECKS = ["duel", "emoji", "rev", "fact", "final"];
 
 function load(dir = path.join(__dirname, "content")) {
   const out = {};
   for (const lang of LANGS) {
-    out[lang] = { duel: [], emoji: [], rev: [], final: [] };
+    out[lang] = { duel: [], emoji: [], rev: [], fact: [], final: [] };
     const file = path.join(dir, lang + ".json");
     if (!fs.existsSync(file)) continue;
     const data = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -34,7 +34,7 @@ function load(dir = path.join(__dirname, "content")) {
       out[lang][deck] = (data[deck] || []).map((c) => ({
         ...c,
         h: hints(c.h),
-        id: crypto.createHash("sha1").update(deck + "|" + (c.q || c.e || c.a)).digest("hex").slice(0, 10),
+        id: crypto.createHash("sha1").update(deck + "|" + (c.q || c.e || c.a || c.f)).digest("hex").slice(0, 10),
       }));
     }
   }

@@ -21,6 +21,7 @@ function fixture() {
     duel: Array.from({ length: 30 }, (_, i) => ({ id: "d" + i, q: "Вопрос " + i, h: Array.from({ length: 6 }, (_, j) => `подсказка ${i}.${j}`) })),
     emoji: Array.from({ length: 30 }, (_, i) => ({ id: "e" + i, e: "🐧🏦" + i, h: Array.from({ length: 6 }, (_, j) => `подпись ${i}.${j}`) })),
     rev: Array.from({ length: 30 }, (_, i) => ({ id: "r" + i, a: i + ",1%", h: Array.from({ length: 6 }, (_, j) => `вопрос ${i}.${j}?`) })),
+    fact: Array.from({ length: 30 }, (_, i) => ({ id: "k" + i, f: `Факт ${i}: ___ и всё тут`, h: Array.from({ length: 6 }, (_, j) => `пропуск ${i}.${j}`) })),
     final: Array.from({ length: 30 }, (_, i) => ({ id: "f" + i, q: "Три вещи " + i, h: Array.from({ length: 5 }, (_, j) => [`раз ${i}.${j}`, `два ${i}.${j}`, `три ${i}.${j}`]) })),
   };
   return { ru: lang, en: lang, el: lang };
@@ -318,8 +319,11 @@ test("полная партия: интро → ответы → голоса �
   }
   assert.strictEqual(g.s.phase, "finished");
   assert.strictEqual(g.s.finishedReason, "done");
-  assert.deepStrictEqual(g.s.plan, ["duel", "emoji", "rev", "final"]);
-  assert.ok(seen.includes("answer:1") && seen.includes("answer:2") && seen.includes("answer:3"));
+  // раундов не больше трёх: дуэли, один средний, финал
+  assert.strictEqual(g.s.plan.length, 3);
+  assert.deepStrictEqual([g.s.plan[0], g.s.plan[2]], ["duel", "final"]);
+  assert.ok(["emoji", "rev", "fact"].includes(g.s.plan[1]));
+  assert.ok(seen.includes("answer:0") && seen.includes("answer:1") && seen.includes("answer:2"));
   const snap = g.snapshot(1e9, "board");
   assert.ok(snap.best && snap.best.votes > 0);
   assert.ok(g.s.players.some((p) => p.score > 0));
@@ -433,6 +437,7 @@ test("посреди партии снимок не выдаёт, кто бра�
 
 test("«Наоборот» — второй круг дуэлей: пары не повторяют первый круг (5+ игроков), множитель ×2", () => {
   const g = game(6);
+  g.s.plan[1] = "rev";
   const pairs = (gg) => new Set(gg.s.matchups.map((m) => m.authors.slice().sort().join("-")));
   const first = pairs(g);
   answerAll(g);
@@ -461,6 +466,7 @@ test("«Наоборот» — второй круг дуэлей: пары не
 
 test("«Наоборот» при 3–4 игроках — два ответа на всех; без колоды на языке — обычные вопросы", () => {
   const g = game(3);
+  g.s.plan[1] = "rev";
   answerAll(g);
   while (!(g.s.phase === "answer" && g.s.plan[g.s.ri] === "rev")) {
     if (g.s.phase === "answer") answerAll(g, g.s.phaseStart + 100);
@@ -475,11 +481,60 @@ test("«Наоборот» при 3–4 игроках — два ответа �
   const h = Game.create({ code: "T", rnd: rig(), content: c });
   names(5).forEach((id) => h.addPlayer({ id, name: id }));
   h.start(0);
+  h.s.plan[1] = "rev";
   while (!(h.s.phase === "answer" && h.s.plan[h.s.ri] === "rev")) {
     if (h.s.phase === "answer") answerAll(h, h.s.phaseStart + 100);
     else h.tick(h.s.phaseEnd);
   }
   assert.ok(h.s.matchups.length === 5 && h.s.matchups.every((m) => m.deck === "duel" && m.prompt.q));
+});
+
+test("«Известный факт» — второй круг дуэлей с пропуском; подсказка — вариант пропуска из пула", () => {
+  const g = game(6);
+  g.s.plan[1] = "fact";
+  answerAll(g);
+  while (!(g.s.phase === "answer" && g.s.plan[g.s.ri] === "fact")) {
+    if (g.s.phase === "answer") answerAll(g, g.s.phaseStart + 100);
+    else g.tick(g.s.phaseEnd);
+  }
+  assert.strictEqual(g.round().mult, 2);
+  assert.strictEqual(g.s.matchups.length, 6);
+  for (const m of g.s.matchups) {
+    assert.strictEqual(m.deck, "fact");
+    assert.strictEqual(m.kind, "duel");
+    assert.ok(m.prompt.f.includes("___") && m.prompt.q === undefined);
+  }
+  const m = g.mine("P1")[0];
+  assert.ok(g.hint("P1", m.id, g.s.phaseStart + 10).ok);
+  assert.ok(m.pool.includes(m.answers.P1.text));
+  // телефон видит факт, пул подсказок наружу не уходит
+  const me = g.snapshot(1, "P2").me;
+  assert.ok(me.prompts.every((p) => p.prompt.f));
+  assert.ok(!JSON.stringify(g.snapshot(1, "board")).includes("пропуск "));
+  // три игрока — два факта на всех
+  const t = game(3);
+  t.s.plan[1] = "fact";
+  answerAll(t);
+  while (!(t.s.phase === "answer" && t.s.plan[t.s.ri] === "fact")) {
+    if (t.s.phase === "answer") answerAll(t, t.s.phaseStart + 100);
+    else t.tick(t.s.phaseEnd);
+  }
+  assert.ok(t.s.matchups.length === 2 && t.s.matchups.every((x) => x.kind === "grid" && x.prompt.f));
+});
+
+test("средний раунд: факт — через партию, остальное чередуется сцена/«Наоборот»; нет колоды факта — без него", () => {
+  const g = Game.create({ rnd: rig(7), content: fixture() });
+  names(3).forEach((id) => g.addPlayer({ id, name: id }));
+  const mids = [];
+  for (let i = 0; i < 8; i++) { g.s.phase = "lobby"; g.start(0); mids.push(g.s.plan[1]); }
+  mids.forEach((k, i) => i && assert.ok((k === "fact") !== (mids[i - 1] === "fact"), "факт не через партию: " + mids));
+  const plain = mids.filter((k) => k !== "fact");
+  plain.forEach((k, i) => i && assert.notStrictEqual(k, plain[i - 1], "сцена/«Наоборот» не чередуются: " + mids));
+  const c = fixture();
+  c.ru = { ...c.ru, fact: [] };
+  const h = Game.create({ rnd: rig(3), content: c });
+  names(3).forEach((id) => h.addPlayer({ id, name: id }));
+  for (let i = 0; i < 6; i++) { h.s.phase = "lobby"; h.start(0); assert.notStrictEqual(h.s.plan[1], "fact"); }
 });
 
 test("мало игроков: в сетке голосов не больше половины чужих ответов", () => {

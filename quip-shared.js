@@ -37,6 +37,9 @@ const QP_SHARED_I18N = {
     r_rev_d: "Ответ уже есть — придумай к нему вопрос. Новые соперники, очки ×2",
     r_rev_small_d: "Два ответа на всех — придумай к ним вопросы. Очки ×2",
     given_k: "Ответ:",
+    r_fact: "Известный факт", r_fact_small: "Известный факт: на всех",
+    r_fact_d: "Известный факт с пропуском — допиши так, чтобы стало смешно. Новые соперники, очки ×2",
+    r_fact_small_d: "Два известных факта на всех — допиши пропуски смешно. Очки ×2",
     q_n: "Вопрос {i} из {n}",
     no_votes: "Никто не проголосовал",
     r_duel_d: "Каждому два вопроса, на каждый отвечает ещё кто-то один. Зал выбирает смешнее",
@@ -66,6 +69,9 @@ const QP_SHARED_I18N = {
     r_rev_d: "Here's the answer — write the question. New rivals, points ×2",
     r_rev_small_d: "Two answers for everyone — write the questions. Points ×2",
     given_k: "Answer:",
+    r_fact: "Famous Fact", r_fact_small: "Famous Fact: for all",
+    r_fact_d: "A well-known fact with a gap — finish it so it's funny. New rivals, points ×2",
+    r_fact_small_d: "Two well-known facts for everyone — fill the gaps funny. Points ×2",
     q_n: "Prompt {i} of {n}",
     no_votes: "Nobody voted",
     r_duel_d: "Two prompts each, one rival per prompt. The room picks the funnier one",
@@ -95,6 +101,9 @@ const QP_SHARED_I18N = {
     r_rev_d: "Η απάντηση υπάρχει — βρες την ερώτηση. Νέοι αντίπαλοι, πόντοι ×2",
     r_rev_small_d: "Δύο απαντήσεις για όλους — βρες τις ερωτήσεις. Πόντοι ×2",
     given_k: "Απάντηση:",
+    r_fact: "Γνωστό γεγονός", r_fact_small: "Γνωστό γεγονός: για όλους",
+    r_fact_d: "Ένα γνωστό γεγονός με κενό — συμπλήρωσέ το αστεία. Νέοι αντίπαλοι, πόντοι ×2",
+    r_fact_small_d: "Δύο γνωστά γεγονότα για όλους — συμπλήρωσε τα κενά αστεία. Πόντοι ×2",
     q_n: "Ερώτηση {i} από {n}",
     no_votes: "Κανείς δεν ψήφισε",
     r_duel_d: "Δύο ερωτήσεις ο καθένας, σε κάθε μία απαντά κι ένας αντίπαλος. Η αίθουσα διαλέγει το πιο αστείο",
@@ -140,11 +149,13 @@ function qpAnswerHtml(a) {
 function qpPromptHtml(p) {
   if (!p) return "";
   if (p.a != null) return `<span class="given"><span class="given-k">${escapeHtml(qpT("given_k"))}</span> ${escapeHtml(p.a)}</span>`;
+  // известный факт: пропуск «___» рисуется чертой, ответы игроков вписываются «мысленно»
+  if (p.f != null) return escapeHtml(p.f).replace(/_{2,}/g, '<span class="blank"></span>');
   return p.e ? `<span class="scene">${escapeHtml(p.e)}</span>` : escapeHtml(p.q);
 }
 // название раунда и описание (дуэли при 3–4 игроках — «на всех»)
 // раунды дуэлей при 3–4 игроках идут «на всех» — и называются так же
-const qpDuelKey = (key) => key === "duel" || key === "duel2" || key === "rev";
+const qpDuelKey = (key) => key === "duel" || key === "duel2" || key === "rev" || key === "fact";
 function qpRoundName(key, small) { return qpT("r_" + key + (small && qpDuelKey(key) ? "_small" : "")); }
 function qpRoundDesc(key, small) { return qpT("r_" + key + (small && qpDuelKey(key) ? "_small" : "") + "_d"); }
 
@@ -548,7 +559,32 @@ function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
 function qpConnect({ code, onMessage, onOpen, onGone, onState }) {
   let t = null, delay = 500, stopped = false;
-  const holder = { api: null, send: (m) => holder.api && holder.api.send(m), stop() { stopped = true; clearTimeout(t); if (holder.api) holder.api.close(); } };
+  // Действие, нажатое между обрывом и возвращением связи, раньше терялось молча (а кнопка уже горела «ушло»).
+  // Теперь оно ждёт в очереди и уходит после входа по токену: сокет без игрока действие бы отбросил.
+  const queue = [];
+  const holder = {
+    api: null,
+    gated: false, // страница держит действия до входа по токену и сама снимает флаг через flush
+    send(m) {
+      const a = holder.api;
+      if (m && m.type !== "ping" && m.type !== "join" && m.type !== "host" && (holder.gated || !a || a.mode === "none" || a.mode === "connecting")) {
+        queue.push({ m, at: Date.now() });
+        if (queue.length > 8) queue.shift();
+        return;
+      }
+      if (a) a.send(m);
+    },
+    // keep(m) — нужно ли это действие ещё; просроченные и ненужные отбрасываются через onDrop
+    flush(keep, onDrop) {
+      holder.gated = false;
+      const items = queue.splice(0);
+      for (const it of items) {
+        if (Date.now() - it.at > 6000 || (keep && !keep(it.m))) { if (onDrop) onDrop(it.m); continue; }
+        if (holder.api) holder.api.send(it.m);
+      }
+    },
+    stop() { stopped = true; clearTimeout(t); queue.length = 0; if (holder.api) holder.api.close(); },
+  };
   const open = () => {
     if (stopped) return;
     if (onState) onState("connecting");

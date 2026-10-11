@@ -14,14 +14,15 @@
 
 const { normalize, normalizeList } = require("./normalize");
 
-const DECKS = ["duel", "emoji", "rev", "final"];
+const DECKS = ["duel", "emoji", "rev", "fact", "final"];
 
 // Добавка ко времени на ответ (просьба владельца 04.10: «дольше на 10–20 с»). Настраивается
 // переменной окружения ROUND_EXTRA_SEC (0…60), по умолчанию +15 с; голосования и раскрытия не трогает.
 const EXTRA_MS = Math.round(Math.max(0, Math.min(60, Number(process.env.ROUND_EXTRA_SEC ?? 15) || 0)) * 1000);
 
-// Раунды партии (§2). Полная: дуэли → сцена → «Наоборот» ×2 → финал (8–12 минут; с одним кругом дуэлей
-// плейтест выходил в 3 минуты — «только разогрелись, а уже пьедестал»). Короткая: дуэли и финал.
+// Раунды партии (§2). Полная: дуэли → один из «средних» раундов → финал. Средний раунд (владелец, 11.10:
+// «раундов не больше трёх, но в каждой игре разные») — сцена, «Наоборот» или «Известный факт»; факт выпадает
+// через партию, между «сцена» и «Наоборот» в остальные партии чередование. Короткая: дуэли и финал.
 // «Наоборот» (владелец, 09.10): дан ответ («99,1%»), придумать к нему вопрос. Идёт вторым кругом дуэлей
 // на месте прежнего duel2 — тот же круг, соперник через одного. duel2 остаётся для дампов старых комнат.
 const ROUNDS = {
@@ -29,9 +30,11 @@ const ROUNDS = {
   emoji: { deck: "emoji", mult: 2, votes: 2, answerMs: 30000 + EXTRA_MS },
   duel2: { deck: "duel", mult: 2, votes: 1, answerMs: 30000 + EXTRA_MS, shift: 2 },
   rev: { deck: "rev", mult: 2, votes: 1, answerMs: 30000 + EXTRA_MS, shift: 2 },
+  // «Известный факт» (владелец, 11.10): известный факт с пропуском, дописать смешнее. Тоже второй круг дуэлей
+  fact: { deck: "fact", mult: 2, votes: 1, answerMs: 30000 + EXTRA_MS, shift: 2 },
   final: { deck: "final", mult: 3, votes: 3, answerMs: 60000 + EXTRA_MS },
 };
-const PLAN_FULL = ["duel", "emoji", "rev", "final"];
+const PLAIN_MIDDLE = ["emoji", "rev"];
 const PLAN_SHORT = ["duel", "final"];
 
 const T = {
@@ -215,7 +218,7 @@ class Game {
     const ps = this.present();
     if (ps.length < MIN_PLAYERS) return { ok: false, reason: "few_players" };
     s.game++;
-    s.plan = (s.settings.short ? PLAN_SHORT : PLAN_FULL).slice();
+    s.plan = s.settings.short ? PLAN_SHORT.slice() : ["duel", this.pickMiddle(), "final"];
     s.ri = -1;
     s.best = null;
     s.hintStar = null;
@@ -224,6 +227,25 @@ class Game {
     s.players = ps;
     for (const p of ps) { p.score = 0; p.hintsUsed = 0; p.answerMs = 0; p.answered = 0; }
     return { ok: true, events: [{ type: "started", game: s.game }, ...this.nextRound(now)] };
+  }
+
+  // Средний раунд партии: «факт» через партию (первая партия комнаты — по жребию), в остальные — сцена
+  // и «Наоборот» по очереди. Нет колоды факта на языке комнаты — обычный средний раунд.
+  pickMiddle() {
+    const s = this.s;
+    const m = (s.mid = s.mid || { last: null, plain: null });
+    const hasFact = this.deck("fact").length > 0;
+    const plain = () => {
+      const free = PLAIN_MIDDLE.filter((k) => k !== m.plain && this.deck(k).length);
+      const pool = free.length ? free : PLAIN_MIDDLE.filter((k) => this.deck(k).length);
+      return pool.length ? pool[this.rnd(pool.length)] : PLAIN_MIDDLE[0];
+    };
+    let key;
+    if (hasFact && (m.last === null ? this.rnd(2) === 0 : m.last !== "fact")) key = "fact";
+    else key = plain();
+    m.last = key;
+    if (key !== "fact") m.plain = key;
+    return key;
   }
 
   round() {
@@ -268,7 +290,7 @@ class Game {
       id: ++s.seq,
       kind, // duel | grid
       deck: dk,
-      prompt: dk === "emoji" ? { e: card.e } : dk === "rev" ? { a: card.a } : { q: card.q },
+      prompt: dk === "emoji" ? { e: card.e } : dk === "rev" ? { a: card.a } : dk === "fact" ? { f: card.f } : { q: card.q },
       pool: (card.h || []).slice(), // подсказки — только на сервере
       poolUsed: [],
       authors,
@@ -684,4 +706,4 @@ class Game {
   }
 }
 
-module.exports = { Game, EXTRA_MS, ROUNDS, PLAN_FULL, PLAN_SHORT, LATE_SHARE, T, DEFAULTS, DECKS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, SMALL, ANSWER_MAX, ITEM_MAX, REACTIONS, POINTS, WIN_BONUS, SWEEP_BONUS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText };
+module.exports = { Game, EXTRA_MS, ROUNDS, PLAIN_MIDDLE, PLAN_SHORT, LATE_SHARE, T, DEFAULTS, DECKS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, SMALL, ANSWER_MAX, ITEM_MAX, REACTIONS, POINTS, WIN_BONUS, SWEEP_BONUS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText };
