@@ -93,6 +93,8 @@
   .seat.empty.next::before { color: var(--chalk-2); }
   .emo { font-style: normal; line-height: 1; }
   .join { display: flex; gap: 22px; align-items: center; }
+  /* узкое окно: QR над кодом — код комнаты в узкой колонке рядом с QR обрезался */
+  @media (max-width: 1199px) { .join { flex-direction: column; align-items: flex-start; gap: 12px; } .join > div:last-child { width: 100%; } #qr { width: clamp(120px, calc(20 * var(--vh)), 180px); height: clamp(120px, calc(20 * var(--vh)), 180px); } }
   /* QR крупный и на белом: его сканируют с дивана, метров с трёх */
   #qr { flex: none; width: clamp(150px, calc(27 * var(--vh)), 250px); height: clamp(150px, calc(27 * var(--vh)), 250px); background: #fff; padding: 10px; }
   #qr img, #qr canvas { width: 100% !important; height: 100% !important; display: block; image-rendering: pixelated; }
@@ -157,7 +159,9 @@
   .bopt.closed .lt { opacity: .6; }
   .bopt.right { background: var(--ok); color: var(--night); }
   .bopt.right .lt { background: var(--night); color: var(--ok); }
-  .bopt.right .tx::after { content: " ✓"; }
+  /* галочка занимает место всегда (невидимая), иначе на раскрытии текст правильного варианта перестраивается и растит ряд */
+  .bopt .tx::after { content: " ✓"; visibility: hidden; }
+  .bopt.right .tx::after { visibility: visible; }
   .bopt.dim { background: var(--infield); color: var(--chalk-2); opacity: .6; }
   .bopt .who { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 45%; }
   .bopt .who:empty { display: none; }
@@ -368,7 +372,7 @@
   @media (min-width: 1200px) {
     body.dense .bopts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     /* четыре узких колонки: плашки «кто выбрал» — второй строкой под текстом, а не рядом (рядом текст рвался по буквам) */
-    body.dense .bopt { flex-wrap: wrap; align-content: center; row-gap: 4px; min-height: 92px; }
+    body.dense .bopt { flex-wrap: wrap; align-content: center; row-gap: 4px; min-height: clamp(76px, calc(9 * var(--vh)), 92px); }
     body.dense .bopt .tx { flex: 1 1 calc(100% - 70px); }
     body.dense .bopt .who { flex: 1 0 100%; max-width: none; justify-content: flex-start; }
   }
@@ -782,7 +786,7 @@ function drawLobby() {
     const code = $("bigcode");
     let fs = 96;
     code.style.setProperty("--code-fs", fs + "px");
-    while (fs > 30 && code.scrollWidth > code.clientWidth + 1) { fs -= 4; code.style.setProperty("--code-fs", fs + "px"); }
+    while (fs > 22 && code.scrollWidth > code.clientWidth + 1) { fs -= 4; code.style.setProperty("--code-fs", fs + "px"); }
   }
   if (!qrDrawn && window.QRCode) {
     qrDrawn = true;
@@ -847,7 +851,9 @@ function drawQuestion() {
     let ofs = Math.round(LH() / 24);
     const box = $("bopts");
     box.style.setProperty("--ofs", ofs + "px");
-    const over = () => [...box.querySelectorAll(".bopt")].some((b) => b.scrollHeight > Math.max(92, LH() / 9) + 2);
+    // 10 игроков на узком окне: два ряда вариантов по две клавиши — каждому ряду меньше места, иначе вопросу не остаётся высоты
+    const cap = document.body.classList.contains("dense") && innerWidth < 1200 ? 72 : Math.max(92, LH() / 9);
+    const over = () => [...box.querySelectorAll(".bopt")].some((b) => b.scrollHeight > cap + 2);
     while (ofs > 20 && over()) { ofs -= 2; box.style.setProperty("--ofs", ofs + "px"); }
     fit($("qtext").firstChild, $("qtext"), "--qfs", Math.round(LH() / 12), 24);
   }
@@ -890,6 +896,9 @@ function drawRevealParts() {
     let w = 20;
     ob.style.setProperty("--wfs", w + "px");
     while (w > 11 && ob.offsetHeight > boxH + 1) { w -= 1; ob.style.setProperty("--wfs", w + "px"); }
+    // плашки на минимуме, а ряд всё ещё выше — ужимаем и текст вариантов
+    let o = parseFloat(ob.style.getPropertyValue("--ofs")) || 30;
+    while (o > 16 && ob.offsetHeight > boxH + 1) { o -= 2; ob.style.setProperty("--ofs", o + "px"); }
   }
   const elig = state.eligible.filter((id) => { const p = player(id); return p && !p.left; });
   const wrong = state.prisoners || elig.filter((id) => !picks[r].includes(id));
@@ -1118,7 +1127,7 @@ function buildTrack(ids) {
   // мало игроков — шкала ниже, вопросу больше места; больше шести — до 44 % высоты, чтобы имена читались из угла
   // (варианты тогда встают в один ряд — body.dense)
   const vh = LH();
-  const h = n > 6 ? Math.round(Math.min(vh * (vh < 800 ? 0.4 : 0.44), n * 58 + 40)) : Math.round(Math.min(vh * (vh < 800 ? 0.27 : 0.3), Math.max(170, n * 66 + 40)));
+  const h = n > 6 ? Math.round(Math.min(vh * (vh < 800 ? (innerWidth < 1200 ? 0.34 : 0.4) : 0.44), n * 58 + 40)) : Math.round(Math.min(vh * (vh < 800 ? 0.27 : 0.3), Math.max(170, n * 66 + 40)));
   track.style.setProperty("--trh", h + "px");
   document.body.classList.toggle("dense", n > 6);
   const laneH = (h - 32) / Math.max(1, n);
