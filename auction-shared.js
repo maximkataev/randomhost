@@ -137,7 +137,7 @@ async function wikiFile(file, pick, size) {
   const ii = page && page.imageinfo && page.imageinfo[0];
   if (!ii) return null;
   const link = "https://en.wikipedia.org/wiki/" + encodeURIComponent(String(pick.wiki_en || "").replace(/ /g, "_"));
-  return { src: ii.thumburl || ii.url, link, portrait: ii.height > ii.width * 1.15, logo: /\.svg|logo/i.test(file) };
+  return { src: ii.thumburl || ii.url, link, portrait: ii.height > ii.width * 1.15, logo: /\.svg|logo|логотип/i.test(file) };
 }
 
 async function findImage(pick, kind, size) {
@@ -292,10 +292,12 @@ async function findPreview(artist, song, country) {
   // сначала ищем конкретный хит и берём только совпадение по названию…
   if (s) {
     const hits = (await itunesSearch(`${artist} ${song}`, country)).filter(byArtist);
-    const exact =
-      hits.find((r) => norm(r.trackName) === s) ||
-      hits.find((r) => norm(r.trackName).startsWith(s) && !JUNK.test(r.trackName)) ||
-      hits.find((r) => norm(r.trackName).includes(s) && !JUNK.test(r.trackName));
+    // «Слава» входит в «Слава Медяник»: сначала ищем только среди тех, чьё имя совпало целиком
+    const pick = (list) =>
+      list.find((r) => norm(r.trackName) === s) ||
+      list.find((r) => norm(r.trackName).startsWith(s) && !JUNK.test(r.trackName)) ||
+      list.find((r) => norm(r.trackName).includes(s) && !JUNK.test(r.trackName));
+    const exact = pick(hits.filter((r) => norm(r.artistName) === a)) || pick(hits);
     if (exact) return exact;
   }
   // …а если в каталоге iTunes его нет — самое релевантное у этого исполнителя
