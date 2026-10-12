@@ -219,9 +219,11 @@ const RENDER = {
       const live = wires.filter((w) => !w.classList.contains("cut"));
       const slots = shuffled(live.map((_, i) => i));
       const gap = (field.clientHeight || 300) / live.length;
-      live.forEach((w, i) => { w.style.top = `${slots[i] * gap + (gap - 30) / 2}px`; });
+      live.forEach((w, i) => { w.style.top = `${slots[i] * gap + (gap - 44) / 2}px`; });
     }
     pad.append(pips, field);
+    // зона тапа провода ≥ 44 px: щиток растёт по числу проводов (lastq-040), а не провода — меньше
+    field.style.height = Math.max(field.clientHeight || 0, n * 46 + 8) + "px";
     place();
   },
   swipe(c, pad, task) {
@@ -289,13 +291,19 @@ const RENDER = {
     // раскладка без наложений: ячейки сетки 4×4, числа в случайных ячейках
     pad.append(field);
     const rowH = (field.clientHeight || 300) / 4;
+    const colW = (field.clientWidth || 280) / 4;
+    // кружок вписан в ячейку сетки с запасом: соседние не налезают (lastq-041); не меньше 44 px
+    const size = Math.max(44, Math.min(60, Math.floor(Math.min(colW, rowH) - 6)));
+    const jx = Math.max(0, Math.floor((colW - size) / 2) - 1), jy = Math.max(0, Math.floor((rowH - size) / 2) - 1);
     const cells = shuffled([...Array(16).keys()]).slice(0, n);
     let next = 1;
     cells.forEach((cell, i) => {
       const b = el("button", "num", String(i + 1));
       b.type = "button";
-      b.style.left = ((cell % 4) * 25 + 12.5 + (rndInt(9) - 4)) + "%";
-      b.style.top = (Math.floor(cell / 4) * rowH + rowH / 2 + (rndInt(11) - 5)) + "px";
+      b.style.width = b.style.height = size + "px";
+      b.style.margin = `${-size / 2}px 0 0 ${-size / 2}px`;
+      b.style.left = ((cell % 4) * colW + colW / 2 + (jx ? rndInt(2 * jx + 1) - jx : 0)) + "px";
+      b.style.top = (Math.floor(cell / 4) * rowH + rowH / 2 + (jy ? rndInt(2 * jy + 1) - jy : 0)) + "px";
       b.onclick = () => {
         if (Number(b.textContent) !== next) { flashWrong(); return; }
         b.classList.add("done"); sfx.tap(); next++;
@@ -1250,7 +1258,7 @@ const RENDER = {
       const [x, y] = at(e);
       let best = -1, bd = 1e9;
       items.forEach((s, i) => { const d = Math.hypot(v.pos[i][0] * W - x, v.pos[i][1] * H - y), vis = Math.hypot(v.pos[i][0] * W - cx, v.pos[i][1] * H - cy) < R * 0.9; if (vis && d < bd) { bd = d; best = i; } });
-      if (best >= 0 && bd < 36) { done = true; sfx.tap(); items[best].classList.add("picked"); return submit({ v: best }); }
+      if (best >= 0 && bd < 40) { done = true; sfx.tap(); items[best].classList.add("picked"); return submit({ v: best }); }
       cx = x; cy = y; paint();
     });
   },
@@ -1293,13 +1301,15 @@ const RENDER = {
     task.textContent = T(hasInv ? "t_signals2" : "t_signals1");
     const lamps = el("div", "lamps");
     const lamp = [el("div", "slamp"), el("div", "slamp")];
+    if (hasInv) lamps.classList.add("hasinv");
     lamps.append(lamp[0], lamp[1]);
     const btns = el("div", "sbtns");
     const b = [el("button", "sbtn", "◀"), el("button", "sbtn", "▶")];
     b.forEach((x) => (x.type = "button"));
     btns.append(b[0], b[1]);
-    pad.append(lamps, btns);
+    // легенда — над лампами, не ниже кнопок: её видно, пока смотришь на лампу (lastq-044)
     if (hasInv) pad.append(el("div", "sigrule", T("signals_rule")));
+    pad.append(lamps, btns);
     const t0 = performance.now();
     const sides = [], times = [];
     let done = false;
@@ -1514,7 +1524,7 @@ const STR = {
   "t_rustkeys": "Лови только золотые ключи, ржавые не трогай",
   "t_signals1": "Лампа слева — жми левую, справа — правую",
   "t_signals2": "Жёлтая лампа — та же сторона, синяя — наоборот",
-  "signals_rule": "🟡 та же сторона · 🔵 противоположная",
+  "signals_rule": "🟡 = та же сторона · 🔵 ⇄ противоположная",
   "t_decode": "Расшифруй номер камеры по таблице",
   "t_cells_even": "Сколько номеров чётных?",
   "t_cells_sum": "Сумма самого большого и самого маленького номера?",
@@ -1705,7 +1715,7 @@ const STR = {
   "t_rustkeys": "Catch only the gold keys, leave the rusty ones",
   "t_signals1": "Lamp on the left — press left, right — press right",
   "t_signals2": "Yellow lamp — same side, blue — the opposite",
-  "signals_rule": "🟡 same side · 🔵 opposite side",
+  "signals_rule": "🟡 = same side · 🔵 ⇄ opposite side",
   "t_decode": "Decode the cell number with the table",
   "t_cells_even": "How many numbers are even?",
   "t_cells_sum": "Sum of the biggest and the smallest number?",
@@ -1896,7 +1906,7 @@ const STR = {
   "t_rustkeys": "Πιάσε μόνο τα χρυσά κλειδιά, άφησε τα σκουριασμένα",
   "t_signals1": "Λάμπα αριστερά — πάτα αριστερά, δεξιά — πάτα δεξιά",
   "t_signals2": "Κίτρινη λάμπα — ίδια πλευρά, μπλε — η αντίθετη",
-  "signals_rule": "🟡 ίδια πλευρά · 🔵 αντίθετη",
+  "signals_rule": "🟡 = ίδια πλευρά · 🔵 ⇄ αντίθετη", //EL:unverified
   "t_decode": "Αποκρυπτογράφησε τον αριθμό κελιού με τον πίνακα",
   "t_cells_even": "Πόσοι αριθμοί είναι ζυγοί;",
   "t_cells_sum": "Άθροισμα του μεγαλύτερου και του μικρότερου αριθμού;",

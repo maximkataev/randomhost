@@ -742,7 +742,7 @@ const GEN = {
   // ---- внимание: новые (11.10) ----
   torch(lvl, rnd) {
     // тёмная камера: в круге света видно предметы; ищем один — остальные похожие
-    const n = by(lvl, 4, 6, 8), light = by(lvl, 0.26, 0.21, 0.17);
+    const n = by(lvl, 4, 6, 8), light = by(lvl, 0.2, 0.21, 0.17); // ур. 1: 0,26 → 0,20 (lastq-042)
     const target = "🔑";
     const decoys = by(lvl, ["🧦", "🥫", "📎", "🪣", "🧽", "🔦", "🍞"], ["🔒", "🪙", "🔧", "🔔", "📎", "🪛"], ["🗝️", "🔒", "🪙", "🔧", "🔪", "🪛", "🔔"]);
     const items = [target].concat(shuffle(decoys, rnd).slice(0, n - 1));
@@ -756,7 +756,17 @@ const GEN = {
     // перемешиваем порядок, чтобы цель не всегда была первой
     const order = shuffle(range(0, n - 1), rnd);
     const outItems = order.map((i) => items[i]);
-    return { view: { items: outItems, pos, light, target }, answer: outItems.indexOf(target), minMs: MIN_HEAD };
+    // 🔑 не в стартовом пятне света (круг из центра поля радиусом light·1,35 стороны) — иначе он виден до первого движения
+    // (lastq-042). Меняем местами позиции целевого предмета и самого дальнего от центра; состав позиций тот же, rnd не тратим.
+    const ti = outItems.indexOf(target);
+    const far = (q) => Math.hypot(q[0] - 0.5, q[1] - 0.5);
+    const lit = light * 1.35 + 0.04;
+    if (far(pos[ti]) <= lit) {
+      let bj = ti;
+      pos.forEach((q, j) => { if (far(q) > far(pos[bj])) bj = j; });
+      if (bj !== ti) { const tmp = pos[ti]; pos[ti] = pos[bj]; pos[bj] = tmp; }
+    }
+    return { view: { items: outItems, pos, light, target }, answer: ti, minMs: MIN_HEAD };
   },
   rustkeys(lvl, rnd) {
     // падают ключи: золотые ловим, ржавые пропускаем
