@@ -116,6 +116,10 @@ const hasFrag = (text, frag) => norm(text).includes(norm(frag));
       const tapped = await p.tap("#name");
       check(tapped, "по полю имени можно тапнуть");
       check(await p.ev("document.activeElement && document.activeElement.id === 'name'"), "тап ставит фокус в поле");
+      // T-W3-10 (E-07): пустое имя — подсказка под полем и подсветка, а не молчание; страница не выше экрана (E-24)
+      await p.tap("#go");
+      check(!!(await p.ev("(document.getElementById('err') || {}).textContent")) && await p.ev("document.getElementById('name').classList.contains('bad')"), "пустое имя: видно сообщение и подсветка поля");
+      check(await p.ev("document.documentElement.scrollHeight <= innerHeight + 1 || document.body.classList.contains('kbd')"), "экран входа не выше экрана без клавиатуры (E-24)");
       await typeText(p, "Аня");
       check((await p.ev("document.getElementById('name').value")) === "Аня", "имя вводится");
       // страница должна скроллиться, иначе клавиатура закроет поле
@@ -150,6 +154,16 @@ const hasFrag = (text, frag) => norm(text).includes(norm(frag));
         check(await p.ev(`(() => { const i = document.getElementById("ownbid"); const r = i.getBoundingClientRect();
           return r.right <= innerWidth + 1 && r.height >= 40; })()`), "своя сумма: поле не уезжает за край и не мельче пальца");
       } else check(false, "своя сумма: поля нет на экране");
+      // T-W3-10 (E-12): плашки меты лота целиком — ни одна видимая не пересекает границу контейнера по высоте
+      check(await p.ev(`(() => { const m = document.querySelector("#lot .meta"); if (!m) return true; const mb = m.getBoundingClientRect();
+        return [...m.children].filter((s) => !s.hidden).every((s) => { const r = s.getBoundingClientRect(); return r.bottom <= mb.bottom + 1 && r.top >= mb.top - 1; }); })()`), "мета лота: плашки не срезаны по высоте");
+      // E-23: страховка позднего тапа — ставка в первые 350 мс нового лота с кнопок не уходит
+      check(await p.ev(`(() => { const old = window.sendMsg; let n = 0; window.sendMsg = (m) => { if (m && m.type === "bid") n++; };
+        const was = lotShownAt; lotShownAt = Date.now(); act({ type: "bid", amount: 99, expectedPrice: 0, round: state.round }); const guarded = n; lotShownAt = was; window.sendMsg = old; return guarded === 0; })()`), "поздний тап: ставка в первые 350 мс лота не уходит");
+      // «Своя сумма»: подпись помещается в поле (на 320px — короткая «Сумма»)
+      check(await p.ev(`(() => { const i = document.getElementById("ownbid"); if (!i) return true; const c = document.createElement("canvas").getContext("2d"), st = getComputedStyle(i);
+        const ph = getComputedStyle(i, "::placeholder"); c.font = ph.fontWeight + " " + ph.fontSize + " " + st.fontFamily;
+        return c.measureText(i.placeholder).width <= i.clientWidth - parseFloat(st.paddingLeft) - parseFloat(st.paddingRight); })()`), "своя сумма: подпись поля не обрезана");
       // боты перебивают каждые ~0.7 с, поэтому проверяем не лидерство, а что НАША ставка дошла до сервера
       let mineBid = false, tries = 0;
       while (!mineBid && tries++ < 10) {
