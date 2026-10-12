@@ -629,3 +629,66 @@ test("played: дамп прошлой версии без поля — прис�
   assert.ok(a.liar && a.liar.ids.includes("P1"), "награда «Главный врун» есть");
   assert.ok(g2.snapshot(0, "board").players.every((p) => typeof p.played === "number"));
 });
+
+// ---------- T-W0-29: очередь неотправленных действий на телефоне (fibs-shared.js) ----------
+
+// Берём из fibs-shared.js транспорт и qpConnect и гоняем их с поддельными сокетом/таймерами браузера.
+function loadConnect(opts = {}) {
+  const fs = require("fs");
+  const vm = require("vm");
+  const src = fs.readFileSync(require("path").join(__dirname, "..", "fibs-shared.js"), "utf8");
+  let code = src.slice(src.indexOf("const qpClock = {"));
+  if (opts.queueMs) code = code.replace("const QP_QUEUE_MS = 30000;", `const QP_QUEUE_MS = ${opts.queueMs};`);
+  const sockets = [];
+  class FakeWS {
+    constructor() { this.readyState = 0; this.sent = []; sockets.push(this); }
+    send(x) { this.sent.push(JSON.parse(x)); }
+    close() { this.readyState = 3; }
+    open() { this.readyState = 1; this.onopen(); }
+    drop() { this.readyState = 3; this.onclose({}); }
+  }
+  const ctx = {
+    location: { protocol: "http:", host: "x" }, WebSocket: FakeWS, console, setTimeout, clearTimeout, setInterval, clearInterval, Date, JSON, Math,
+    document: { addEventListener() {}, hidden: false }, window: { addEventListener() {} }, fetch: () => Promise.reject(new Error("offline")), AbortController: undefined,
+  };
+  vm.createContext(ctx);
+  vm.runInContext(code + "\n;this.qpConnect = qpConnect;", ctx);
+  return { qpConnect: ctx.qpConnect, sockets };
+}
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+test("телефон: тап в обрыве ждёт в очереди и уходит после возврата связи; чужому факту не уходит", async () => {
+  const { qpConnect, sockets } = loadConnect();
+  let fact = "f1";
+  const dropped = [];
+  const conn = qpConnect({ code: "X", onMessage() {}, onDrop: (m) => dropped.push(m.type), tag: () => fact });
+  sockets[0].open();
+  conn.send({ type: "lie", text: "раз" });
+  assert.deepStrictEqual(sockets[0].sent.filter((m) => m.type === "lie").length, 1, "при живой связи уходит сразу");
+  sockets[0].drop();
+  conn.send({ type: "lie", text: "в обрыв" });
+  conn.send({ type: "choose", picks: [1] });
+  fact = "f2"; // за время обрыва факт сменился
+  conn.send({ type: "like", opt: 0 });
+  await sleepMs(700); // реконнект 500 мс
+  assert.ok(sockets.length >= 2, "сокет переоткрыт");
+  sockets[1].open();
+  conn.flush((m, tg) => tg === fact);
+  const sent = sockets[1].sent.filter((m) => m.type !== "ping").map((m) => m.type);
+  assert.deepStrictEqual(sent, ["like"], "действия прошлого факта не уходят");
+  assert.deepStrictEqual(dropped.sort(), ["choose", "lie"], "а страница узнаёт, что они не дошли");
+  conn.stop();
+});
+
+test("телефон: обрыв дольше срока очереди — onDrop («Не дошло»), очередь ограничена 8", async () => {
+  const { qpConnect, sockets } = loadConnect({ queueMs: 400 });
+  const dropped = [];
+  const conn = qpConnect({ code: "X", onMessage() {}, onDrop: (m) => dropped.push(m.n), tag: () => "f" });
+  sockets[0].open();
+  sockets[0].drop();
+  for (let n = 1; n <= 10; n++) conn.send({ type: "like", opt: 0, n });
+  assert.deepStrictEqual(dropped, [1, 2], "переполнение выталкивает самые старые");
+  await sleepMs(900);
+  assert.deepStrictEqual(dropped.slice(2).sort((a, b) => a - b), [3, 4, 5, 6, 7, 8, 9, 10], "просроченные — через onDrop");
+  conn.stop();
+});
