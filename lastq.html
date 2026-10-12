@@ -109,6 +109,11 @@
   .enter input:focus { outline: none; border-bottom-color: var(--gold); }
   /* счётчик имени «12/16» (MP.nameCounter): в поле, когда осталось ≤ 4 знаков; место под него занято всегда — поле не прыгает */
   .claimbtns { display: grid; gap: 10px; margin-top: 14px; }
+  /* подсказка «Язык комнаты: EN. Переключить?»: внизу, только в лобби/на входе/на итогах, кнопки ≥ 44 px */
+  .langhint { position: fixed; left: 8px; right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); z-index: 40; max-width: 504px; margin: 0 auto; background: var(--chalk); color: var(--night); padding: 10px 12px; display: none; gap: 8px; align-items: center; grid-template-columns: minmax(0, 1fr) auto auto; font-weight: 700; font-size: 16px; }
+  .langhint.on { display: grid; }
+  .langhint button { min-height: 44px; min-width: 44px; border: 2px solid var(--night); background: var(--night); color: var(--chalk); font: 800 15px/1 var(--font); padding: 6px 12px; }
+  .langhint button.no { background: transparent; color: var(--night); }
   .codeform { display: grid; gap: 10px; margin-top: 14px; }
   .codeform input { width: 100%; border: 0; border-bottom: 3px solid var(--chalk); background: transparent; color: var(--chalk); font: 700 26px/1.2 var(--font); padding: 4px 0; border-radius: 0; text-transform: uppercase; }
   .codeform input:focus { outline: none; border-bottom-color: var(--gold); }
@@ -365,6 +370,7 @@
 <div class="conn" id="pausebar"></div>
 <div id="app"></div>
 <div class="toast" id="toast" role="status"></div>
+<div class="langhint" id="langhint" role="group"></div>
 <div class="sr-only" id="live" aria-live="polite"></div>
 
 <script>
@@ -422,6 +428,7 @@ window.I18N_DICT = {
     expired_title: `Комната закрыта`, expired_text: `Она пустовала полчаса или ведущий её закрыл.`, expired_new: `Создать новую`,
     paused: `Все отключились — ждём`,
     rj_not_now: `Уже поздно`, rj_closed: `Ставки уже закрыты`, rj_already: `Уже выбрано`, rj_not_in_question: `Ты со следующего вопроса`,
+    lang_hint: `Язык комнаты: {lang}. Переключить?`, lang_switch: `Переключить`, lang_keep: `Не надо`,
     noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код — в нём слово и две цифры`, btn_go: `Перейти`,
     stake_skip: `Не нажмёшь «Ставлю» — ставка 0`, stake_none_0: `Ты не поставил — ставка 0`, fr_stake0: `Без ставки`,
     claim_title: `Это ты?`, claim_text: `Игрок «{name}» без связи. Очки: {n}`, claim_text0: `Игрок «{name}» без связи`, btn_claim_yes: `Это я`, btn_claim_no: `Нет, я другой`,
@@ -483,6 +490,7 @@ window.I18N_DICT = {
     expired_title: `Room closed`, expired_text: `It sat empty for half an hour or the host closed it.`, expired_new: `Create a new one`,
     paused: `Everyone dropped — waiting`,
     rj_not_now: `Too late`, rj_closed: `Betting is closed`, rj_already: `Already picked`, rj_not_in_question: `You're in from the next question`,
+    lang_hint: `Room language: {lang}. Switch?`, lang_switch: `Switch`, lang_keep: `No`,
     noroom_title: `There is no such room`, noroom_text: `Check the code: a word and two digits`, btn_go: `Go`,
     stake_skip: `If you don't tap “Bet”, your bet is 0`, stake_none_0: `You didn't bet — your bet is 0`, fr_stake0: `No bet`,
     claim_title: `Is this you?`, claim_text: `Player “{name}” is offline. Score: {n}`, claim_text0: `Player “{name}” is offline`, btn_claim_yes: `That's me`, btn_claim_no: `No, someone else`,
@@ -544,6 +552,7 @@ window.I18N_DICT = {
     expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης.`, expired_new: `Φτιάξε καινούργιο`,
     paused: `Όλοι αποσυνδέθηκαν — περιμένουμε`,
     rj_not_now: `Πολύ αργά`, rj_closed: `Τα στοιχήματα έκλεισαν`, rj_already: `Έχει ήδη επιλεγεί`, rj_not_in_question: `Παίζεις από την επόμενη ερώτηση`,
+    lang_hint: `Γλώσσα δωματίου: {lang}. Αλλαγή;`, lang_switch: `Αλλαγή`, lang_keep: `Όχι`, //EL:unverified
     noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό: μια λέξη και δύο ψηφία`, btn_go: `Πήγαινε`, //EL:unverified
     stake_skip: `Αν δεν πατήσεις «Ποντάρω», το ποντάρισμα είναι 0`, stake_none_0: `Δεν πόνταρες — ποντάρισμα 0`, fr_stake0: `Χωρίς ποντάρισμα`, //EL:unverified
     claim_title: `Είσαι εσύ;`, claim_text: `Ο παίκτης «{name}» είναι εκτός σύνδεσης. Πόντοι: {n}`, claim_text0: `Ο παίκτης «{name}» είναι εκτός σύνδεσης`, btn_claim_yes: `Εγώ είμαι`, btn_claim_no: `Όχι, είμαι άλλος`, //EL:unverified
@@ -738,6 +747,42 @@ function bindCodeForm() {
 }
 // Неверный код: hello не приходил ни разу — комнаты с таким кодом нет (или её давно убрали), а не «закрылась».
 // Серверного различителя нет (К-11): 404 и «закрыта по TTL» до hello неразличимы.
+// ---------- язык комнаты (T-W2-05, U-17) ----------
+// Телефон показывает язык комнаты, пока игрок не переключил сам: по умолчанию — подсказка «Язык комнаты: EN. Переключить?»
+// (только на безопасных экранах: вход, лобби, итоги — не под пальцем в ответе); с RULE_U17_LANG_FOLLOW на сервере — сам.
+let followLang = null, sentLang = null;
+function ensureFollow(rules) {
+  if (followLang || !mpOn() || !MP.followRoomLang) return;
+  followLang = MP.followRoomLang({
+    enabled: true,
+    auto: !!(rules && rules.RULE_U17_LANG_FOLLOW),
+    getRoomLang: () => (state && state.settings ? state.settings.lang : null),
+    onSuggest: showLangHint,
+  });
+}
+function showLangHint(s) {
+  const box = document.getElementById("langhint");
+  const paint = () => {
+    box.innerHTML = `<span>${escapeHtml(tpl("lang_hint", { lang: String(s.lang).toUpperCase() }))}</span>
+      <button type="button" id="lh-yes">${escapeHtml(T("lang_switch"))}</button><button type="button" class="no" id="lh-no">${escapeHtml(T("lang_keep"))}</button>`;
+    document.getElementById("lh-yes").onclick = () => { box.classList.remove("on"); s.accept(); };
+    document.getElementById("lh-no").onclick = () => { box.classList.remove("on"); s.decline(); };
+  };
+  paint();
+  box.classList.add("on");
+}
+// язык телефона — серверу (для question.tr); без изменений не шлём
+function syncLang() {
+  if (!conn || sentLang === lqLang()) return;
+  sentLang = lqLang();
+  conn.send({ type: "lang", lang: sentLang });
+}
+function checkFollow() {
+  if (!followLang || !state) return;
+  const safe = !me || state.phase === "lobby" || state.phase === "finished";
+  if (!safe) return;
+  followLang.check();
+}
 function renderNoRoom() {
   dead = true;
   screen = "noroom";
@@ -817,8 +862,12 @@ function myNoHtml() {
 const headHtml = () => `<div class="qhead">${myNoHtml()}<span class="where">${whereHtml()}</span><span class="tl" id="tleft"></span></div>${timerHtml()}`;
 const qCardHtml = () => {
   const q = state.question;
-  return `<div class="card qcard"><div class="k">${escapeHtml(lqTopic(q.tag))}</div><div class="qt${q.text.length > 80 ? " long" : ""}">${escapeHtml(q.text)}</div></div>`;
+  const qt = q.tr && q.tr.text ? q.tr.text : q.text; // перевод на язык игрока (RULE_U17_LANG_FOLLOW), если сервер прислал
+  return `<div class="card qcard"><div class="k">${escapeHtml(lqTopic(q.tag))}</div><div class="qt${qt.length > 80 ? " long" : ""}">${escapeHtml(qt)}</div></div>`;
 };
+// вопрос на языке игрока: сервер присылает question.tr, когда включён RULE_U17_LANG_FOLLOW и в банке есть перевод
+const qOptions = () => { const q = state.question; return q.tr && q.tr.options ? q.tr.options : q.options; };
+const trKey = () => (state && state.question && state.question.tr ? ":" + state.question.tr.lang : "");
 const letterCss = (i) => `--lc:var(--c${i})`;
 
 // ---------- экраны по фазам ----------
@@ -856,9 +905,9 @@ function renderQuestion() {
   const mineA = s.answer;
   // финал: ставку не нажал — на экране вопроса одна строка «Ты не поставил — ставка 0» (lastq-019)
   const noStake = isFinal() && s.inQuestion && s.stake == null;
-  const key = "q:" + qid() + ":" + open + ":" + mineA + ":" + late + ":" + noStake + lqLang();
+  const key = "q:" + qid() + ":" + open + ":" + mineA + ":" + late + ":" + noStake + lqLang() + trKey();
   if (screenKey === key) return;
-  const btns = q.options.map((o, i) => {
+  const btns = qOptions().map((o, i) => {
     const cls = !open ? " closed" : mineA != null ? (mineA === i ? " sel" : " dim") : late ? " dim" : "";
     return `<button type="button" class="ans${cls}" data-i="${i}" style="${letterCss(i)}"${!open || mineA != null || late ? " disabled" : ""}><span class="lt">${LQ_LETTERS[i]}</span><span class="tx">${escapeHtml(o)}</span></button>`;
   }).join("");
@@ -889,7 +938,7 @@ function groupCards(disabled) {
 function renderReveal() {
   const s = state.me;
   if (!s || !state.question) return;
-  const key = "rev:" + qid() + ":" + s.palach + ":" + state.group + ":" + state.palach + lqLang();
+  const key = "rev:" + qid() + ":" + s.palach + ":" + state.group + ":" + state.palach + lqLang() + trKey();
   if (screenKey === key) return;
   const r = state.right;
   const iWasRight = s.inQuestion && s.answer === r;
@@ -899,7 +948,7 @@ function renderReveal() {
   if (!s.inQuestion) head = `<div class="status center"><h2>${T("watch_t")}</h2></div>`;
   else if (iWasRight) head = `<div class="center"><div class="big ok">${T("right_t")}</div><div class="sub" style="margin-top:6px">${escapeHtml(tpl("pts", { n: s.gain || 0 }))}</div></div>`;
   else head = `<div class="center"><div class="big bad">${s.answer == null ? T("none_t") : T("wrong_t")}</div><div class="sub" style="margin-top:6px">${T("to_cell")}</div></div>`;
-  const ans = `<div class="card"><div class="k">${T("right_was")}</div><div class="rightans" style="${letterCss(r)}"><span class="lt">${LQ_LETTERS[r]}</span><span>${escapeHtml(state.question.options[r])}</span></div></div>`;
+  const ans = `<div class="card"><div class="k">${T("right_was")}</div><div class="rightans" style="${letterCss(r)}"><span class="lt">${LQ_LETTERS[r]}</span><span>${escapeHtml(qOptions()[r])}</span></div></div>`;
   let tail = "";
   if (clean) tail = `<div class="status center"><p style="font-weight:700">${T("clean")}</p></div>`;
   else if (s.palach) tail = `<div class="center"><div class="big palach">${T("palach_t")}</div><p class="fine" style="margin:6px 0 0;font-weight:700">${T("palach_sub")}</p></div>${groupCards(false)}`;
@@ -924,11 +973,11 @@ function renderReveal() {
 function renderFshow() {
   const s = state.me;
   if (!s || !state.question || state.right == null) return;
-  const key = "fshow:" + qid() + lqLang();
+  const key = "fshow:" + qid() + lqLang() + trKey();
   if (screenKey === key) return;
   const r = state.right;
   const right = s.inQuestion && s.answer === r;
-  const ans = `<div class="card"><div class="k">${T("right_was")}</div><div class="rightans" style="${letterCss(r)}"><span class="lt">${LQ_LETTERS[r]}</span><span>${escapeHtml(state.question.options[r])}</span></div></div>`;
+  const ans = `<div class="card"><div class="k">${T("right_was")}</div><div class="rightans" style="${letterCss(r)}"><span class="lt">${LQ_LETTERS[r]}</span><span>${escapeHtml(qOptions()[r])}</span></div></div>`;
   let head;
   if (!s.inQuestion) head = `<div class="status center"><h2>${T("watch_t")}</h2></div>`;
   else if (right) head = `<div class="center"><div class="big ok">${T("right_t")}</div><div class="sub" style="margin-top:6px">${escapeHtml(tpl("f_right_sub", { n: s.stake || 0 }))}</div></div>`;
@@ -1428,6 +1477,8 @@ function onMessage(m) {
     case "state":
       state = m.state;
       if (m.type === "hello" && goneFlow) goneFlow.hello();
+      if (m.type === "hello") { ensureFollow(m.rules); sentLang = null; syncLang(); }
+      checkFollow();
       if (m.type === "hello" && token && !replacedHere && screen !== "kicked") { rejoining = !!me; conn.send({ type: "join", token }); }
       if (state.phase !== prevPhase) {
         if (state.phase === "stake") { stakeDraft = null; stakeEdit = false; }
@@ -1577,7 +1628,7 @@ if (window.MP) {
   });
 }
 // сменили язык на экране «Это ты?» — перерисовать
-window.addEventListener("langchange", () => { if (screen === "claim") renderClaim(); });
+window.addEventListener("langchange", () => { if (screen === "claim") renderClaim(); syncLang(); const lh = document.getElementById("langhint"); if (lh) lh.classList.remove("on"); });
 function start() {
   if (!CODE) return renderLanding();
   renderCenter("wait_title");

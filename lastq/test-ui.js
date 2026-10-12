@@ -554,6 +554,14 @@ async function run() {
       await mustTap(N, "#claimyes", 0, "«Это я»");
       check(!!(await waitFor(N, `window.lqPhone.me === ${JSON.stringify(lateId)}`, 6000)), "«Это я»: та же запись, а не «Поздний (2)»");
 
+      // ---------- T-W2-05 (lastq-035): телефон на другом языке — подсказка «Язык комнаты: …», не меняя язык под пальцем ----------
+      const other = LANG === "en" ? "ru" : "en";
+      await N.evaluate(`window.I18N && I18N.setLang(${JSON.stringify(other)}, { persist: false })`);
+      check(!!(await waitFor(N, "document.getElementById('langhint').classList.contains('on')", 6000)), "телефон на другом языке: подсказка «Язык комнаты»");
+      check((await N.evaluate("(() => { const b = document.getElementById('lh-yes'); const r = b.getBoundingClientRect(); return r.height >= 44 && r.width >= 44; })()")) === true, "подсказка языка: кнопка ≥ 44×44");
+      await mustTap(N, "#lh-yes", 0, "«Переключить» язык");
+      check(!!(await waitFor(N, `window.I18N.lang === ${JSON.stringify(LANG)} && !document.getElementById('langhint').classList.contains('on')`, 4000)), "«Переключить»: язык комнаты");
+
       // ---------- T-W2-33 (lastq-011): вторая вкладка того же браузера вытесняет первую; закрыли вторую — первая возвращается сама ----------
       const N2 = await cdp(`${BASE}/lastq.html?r=${CODE}`, [390, 844], "Поздний-2 (вкладка 2)", N.ctxId);
       pages.push(N2);

@@ -825,3 +825,43 @@ test("rejoinLeft: ушедший возвращается со своим счё
   assert.equal(g2.player("p2").score, low, "счёт сохранён");
   assert.equal(g2.s.players.length, 3, "записей не прибавилось");
 });
+
+// ---------- T-W2-05: язык комнаты, перевод вопроса на телефоне (RULE_U17_LANG_FOLLOW) ----------
+test("question.tr: за флагом, по тому же id и порядку вариантов; доске и без флага — нет; верный индекс совпадает", () => {
+  const ru = [], en = [];
+  for (let i = 0; i < 30; i++) {
+    ru.push({ id: "q" + i, tag: "animals", lvl: 1 + (i % 3), final: false, q: "Вопрос " + i, a: ["верно" + i, "мимо1", "мимо2", "мимо3"], fun: 3 });
+    en.push({ id: "q" + i, tag: "animals", lvl: 1 + (i % 3), final: false, q: "Question " + i, a: ["right" + i, "wrong1", "wrong2", "wrong3"], fun: 3 });
+  }
+  ru.push({ id: "f0", tag: "geo", lvl: 3, final: true, q: "Финал", a: ["верно", "м1", "м2", "м3"], fun: 2 });
+  en.push({ id: "f0", tag: "geo", lvl: 3, final: true, q: "Final", a: ["right", "w1", "w2", "w3"], fun: 2 });
+  const mk = () => {
+    const g = Game.create({ settings: { lang: "ru" }, code: "T", rnd: mulberry(5), content: { ru, en, el: [] } });
+    for (let i = 0; i < 3; i++) g.addPlayer({ id: "p" + i, name: "И" + i });
+    g.start(0);
+    until(g, "answer", 0);
+    return g;
+  };
+  withEnv("RULE_U17_LANG_FOLLOW", "1", () => {
+    const g = mk();
+    const own = g.snapshot(g.s.phaseStart + 10, "p0", { lang: "ru" });
+    assert.equal(own.question.tr, null, "язык комнаты — перевода нет");
+    const snap = g.snapshot(g.s.phaseStart + 10, "p0", { lang: "en" });
+    const tr = snap.question.tr;
+    assert.ok(tr && tr.lang === "en");
+    assert.match(tr.text, /^Question \d+$/);
+    // тот же порядок: на месте «верно<N>» стоит «right<N>», и индекс верного не пришлось раскрывать
+    snap.question.options.forEach((o, i) => {
+      const idx = ["верно", "мимо1", "мимо2", "мимо3"].findIndex((x) => o.startsWith(x));
+      assert.equal(tr.options[i], ["right", "wrong1", "wrong2", "wrong3"][idx] + (idx === 0 ? o.replace("верно", "") : ""));
+    });
+    assert.equal(g.snapshot(g.s.phaseStart + 10, "board").question.tr, null, "доске перевод не нужен");
+    assert.equal(g.snapshot(g.s.phaseStart + 10, "p0", { lang: "el" }).question.tr, null, "нет банка языка — нет перевода");
+    assert.ok(!JSON.stringify(snap).includes('"order"'), "порядок вариантов в снимок не уходит");
+    assert.equal(snap.right, null, "верный индекс до раскрытия не уходит");
+  });
+  withEnv("RULE_U17_LANG_FOLLOW", null, () => {
+    const g = mk();
+    assert.equal(g.snapshot(g.s.phaseStart + 10, "p0", { lang: "en" }).question.tr, null, "флаг выкл — перевода нет");
+  });
+});

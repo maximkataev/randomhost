@@ -241,8 +241,9 @@ function afterChange(room, events = []) {
 function stateFor(room, c, cache) {
   const t = clock(room);
   if (c.host || c.wasHost) return cache.board || (cache.board = JSON.stringify({ type: "state", state: room.game.snapshot(t, "board") }));
-  const key = c.playerId || "";
-  if (!cache[key]) cache[key] = JSON.stringify({ type: "state", state: room.game.snapshot(t, c.playerId || null) });
+  // язык телефона (сообщение lang) влияет только на question.tr и только при RULE_U17_LANG_FOLLOW=1
+  const key = (c.playerId || "") + "|" + (c.lang || "");
+  if (!cache[key]) cache[key] = JSON.stringify({ type: "state", state: room.game.snapshot(t, c.playerId || null, { lang: c.lang }) });
   return cache[key];
 }
 
@@ -273,7 +274,9 @@ function broadcastEvent(room, e) {
 
 function sendHello(room, c) {
   // limits.name — лимит имени для MP.nameCounter на телефоне (T-W2-28)
-  const hello = { type: "hello", code: room.code, state: room.game.snapshot(clock(room), c.host ? "board" : c.playerId || null), limits: { name: NAME_MAX } };
+  const hello = { type: "hello", code: room.code, state: room.game.snapshot(clock(room), c.host ? "board" : c.playerId || null, { lang: c.lang }), limits: { name: NAME_MAX } };
+  // правила клиента, включаемые на сервере (класс B): телефон сам переключается на язык комнаты (U-17)
+  hello.rules = { RULE_U17_LANG_FOLLOW: process.env.RULE_U17_LANG_FOLLOW === "1" };
   if (process.env.MP_OFF === "1") hello.mp = false;
   send(c.ws, hello);
 }
@@ -641,6 +644,14 @@ function handle(room, client, msg) {
       return afterChange(room, events);
     }
     // ---- игрок ----
+    // язык телефона для перевода вопроса (ru|en|el); ничего секретного, можно и до входа
+    case "lang": {
+      const l = String(msg.lang || "").toLowerCase().slice(0, 2);
+      if (!["ru", "en", "el"].includes(l) || client.lang === l) return;
+      client.lang = l;
+      if (!client.host && !client.wasHost) send(client.ws, { type: "state", state: g.snapshot(t, client.playerId || null, { lang: l }) });
+      return;
+    }
     case "avatar": return me ? act("avatar", g.setAvatar(me, String(msg.avatar || ""))) : undefined;
     case "answer": return me ? act("answer", g.answer(me, msg.i, t)) : undefined;
     case "group": return me ? act("group", g.pickGroup(me, String(msg.group || ""), t)) : undefined;

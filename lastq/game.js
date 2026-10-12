@@ -64,6 +64,9 @@ const ghostOut = () => process.env.RULE_U08_GHOST_OUT === "1";
 // счёта всех (включая ушедших) — min(0, …). По умолчанию выкл: спека §226 «играет со следующего вопроса с 0 очков».
 // (Вернувшийся под тем же именем с того же IP получает свою запись назад независимо от флага — rejoinLeft.)
 // RULE_U43_LATE_SCORE — синоним имени из задания.
+// RULE_U17_LANG_FOLLOW (класс B, T-W2-05, U-17): телефон видит вопрос на СВОЁМ языке, если в банке есть параллельный
+// перевод (тот же id). По умолчанию выкл: все видят язык комнаты. Читается при каждом вызове.
+const langFollow = () => process.env.RULE_U17_LANG_FOLLOW === "1";
 const lateMin = () => process.env.RULE_U43_LATE_MIN === "1" || process.env.RULE_U43_LATE_SCORE === "1";
 
 const MAX_PLAYERS = 10;
@@ -351,6 +354,7 @@ class Game {
       text: raw.q,
       options: order.map((k) => raw.a[k]),
       right: order.indexOf(0), // только на сервере до раскрытия
+      order, // порядок вариантов относительно банка: по нему строится перевод (в снимки не уходит)
     };
   }
 
@@ -911,7 +915,19 @@ class Game {
     return { ok: true, events: [{ type: "avatar", playerId: id }] };
   }
 
-  snapshot(now, view) {
+  // перевод текущего вопроса на язык игрока (RULE_U17_LANG_FOLLOW): тот же id в банке нужного языка, тот же порядок
+  // вариантов. Нет перевода (или дамп без order) — null: телефон показывает язык комнаты.
+  translateQuestion(lang, hideText) {
+    const q = this.s.q;
+    if (!q || !langFollow() || !Array.isArray(q.order) || !["ru", "en", "el"].includes(lang) || lang === this.s.settings.lang) return null;
+    this._byId = this._byId || {};
+    if (!this._byId[lang]) this._byId[lang] = new Map((this.content[lang] || []).map((x) => [x.id, x]));
+    const raw = this._byId[lang].get(q.id);
+    if (!raw || !Array.isArray(raw.a) || raw.a.length !== 4 || typeof raw.q !== "string") return null;
+    return { lang, text: hideText ? null : raw.q, options: hideText ? null : q.order.map((k) => String(raw.a[k])) };
+  }
+
+  snapshot(now, view, opts) {
     const s = this.s;
     const board = view === "board";
     const me = board ? null : this.player(view);
@@ -987,6 +1003,8 @@ class Game {
         final: q.final,
         text: ph === "stake" ? null : tx(q.text),
         options: ph === "stake" ? null : q.options.map(tx),
+        // телефону — ещё и перевод на его язык (если включено и есть в банке); доске не нужен
+        tr: !board && opts && opts.lang ? this.translateQuestion(opts.lang, ph === "stake") : null,
       } : null,
       // кто именно ответил — только доске; телефону — число (имена и порядок ответов не нужны)
       answered: board && (ph === "answer" || ph === "fanswer") ? Object.keys(s.answers) : null,

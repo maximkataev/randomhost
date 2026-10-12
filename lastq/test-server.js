@@ -566,3 +566,21 @@ test("пинг комнат «в игре»: ping-кадры каждые PING_M
   assert.equal(b.ws.readyState, 1, "порог тишины ≥ 20 с: сокет жив");
   for (const c of [b, a, z]) c.close();
 });
+
+// ---- T-W2-05 (lastq-035): язык телефона и правила в hello ----
+test("hello несёт rules (RULE_U17_LANG_FOLLOW выкл); сообщение lang не ломает; question.tr без флага не приходит", async () => {
+  const { code, hostToken } = await createRoom({}, 8);
+  const b = await board(code, hostToken);
+  const a = await player(code, "Аня");
+  const z = await player(code, "Зоя");
+  a.send({ type: "lang", lang: "en" });
+  a.send({ type: "lang", lang: "xx" }); // мусор — молча игнорируется
+  b.send({ type: "start" });
+  await a.phase("answer");
+  assert.equal(a.state.question.tr, null);
+  const probe = client(code);
+  await probe.open;
+  await new Promise((r) => setTimeout(r, 200));
+  assert.deepEqual(probe.msgs.find((m) => m.type === "hello").rules, { RULE_U17_LANG_FOLLOW: false });
+  for (const c of [b, a, z, probe]) c.close();
+});
