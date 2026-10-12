@@ -176,4 +176,57 @@ test("сервер", async (t) => {
     const r = await fetch(`${base}/api/session?r=${room.code}`, { headers: { "x-real-ip": "2001:db8:7:7:abcd::1" } });
     assert.equal(r.status, 404);
   });
+
+  // ---- T-W0-05: сканер секретов (tools/testkit/scan.js) по трём видам: доска, игрок, сокет без токена ----
+  await t.test("секреты не в кадрах: target чужой карточки (в т.ч. после name_taken), чужие подсказки в фазе clue, токены", async () => {
+    const { scanFrames } = require("../tools/testkit/scan");
+    const room = await createRoom({ lang: "ru" }, 4);
+    const b = await board(room.code, room.hostToken);
+    const ps = [await player(room.code, "Оля"), await player(room.code, "Петя"), await player(room.code, "Вася")];
+    const anon = client(room.code);
+    await anon.open;
+    b.send({ type: "start" });
+    await allClue(ps); // подсказки: «подсказка а/б/в»
+    await b.wait(statePred((s) => s.phase === "guess"));
+    // вор под занятым именем — получает name_taken и не получает ни карточку, ни target
+    const thief = client(room.code);
+    await thief.open;
+    thief.send({ type: "join", name: "Оля" });
+    const r = await thief.wait((m) => m.type === "error" || m.type === "joined");
+    assert.strictEqual(r.error, "name_taken");
+    await sleep(300);
+    // все, кроме автора, фиксируют угол → раскрытие
+    const author = b.state.card.author;
+    for (const p of ps) if (p.id !== author) p.send({ type: "lock", angle: 90 });
+    await b.wait(statePred((s) => s.phase === "reveal"), 8000);
+    await sleep(200);
+
+    const cut = (c) => c.raw.map((x) => JSON.parse(x));
+    const clients = [["board", b], ["player", ps[0]], ["player", ps[1]], ["player", ps[2]], ["anon", anon], ["anon", thief]];
+    let scanned = 0;
+    for (const [view, c] of clients) {
+      const frames = cut(c).map((f) => ({ view, frame: f }));
+      scanned += frames.length;
+      const foreign = ps.map((p) => p.token).filter((x) => x && x !== c.token);
+      // до раскрытия (lobby/clue/guess): target — только в своей me.card (телефон автора карточки); доске и анонимам — нигде
+      const v = scanFrames(frames, {
+        phases: ["lobby", "clue", "guess"],
+        forbiddenKeys: [(p, k) => k === "target" && !(view === "player" && p === "state.me.card.target") && "target чужой карточки", "hostToken"],
+        forbiddenSubstrings: view === "board" ? foreign : foreign.concat(room.hostToken),
+      });
+      assert.deepStrictEqual(v, [], `${view}: ${JSON.stringify(v.slice(0, 3))}`);
+    }
+    // в фазе clue чужие тексты подсказок никому не уходят (кроме автора — его собственный me.card.clue)
+    const ids = ["подсказка а", "подсказка б", "подсказка в"];
+    ps.forEach((p, i) => {
+      const others = ids.filter((_, j) => j !== i);
+      const v = scanFrames(cut(p).map((f) => ({ view: "player", frame: f })), { phases: ["clue"], forbiddenSubstrings: others });
+      assert.deepStrictEqual(v, [], `игрок ${i}: чужая подсказка в фазе clue ${JSON.stringify(v.slice(0, 2))}`);
+    });
+    const anonClue = scanFrames(cut(anon).map((f) => ({ view: "anon", frame: f })), { phases: ["clue"], forbiddenSubstrings: ids });
+    assert.deepStrictEqual(anonClue, [], "сокет без токена видит подсказки в фазе clue");
+    assert.ok(scanned > 15, "кадров мало — проверка пустая: " + scanned);
+    assert.ok(cut(ps[0]).some((m) => m.state && m.state.me && m.state.me.card && m.state.me.card.target != null), "свой target телефон не получал — проверка пустая");
+    for (const c of [b, thief, anon, ...ps]) c.close();
+  });
 });
