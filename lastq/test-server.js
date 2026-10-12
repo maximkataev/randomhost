@@ -22,7 +22,7 @@ for (const l of ["ru", "en", "el"]) fs.writeFileSync(path.join(BANK, l + ".json"
 
 function startServer() {
   proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300", GHOST_TTL_MS: "1500", LQ_CONTENT_DIR: BANK },
+    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300", GHOST_TTL_MS: "1500", CLAIM_GRACE_MS: "200", LQ_CONTENT_DIR: BANK },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";
@@ -415,4 +415,105 @@ test("leave посреди партии и вход тем же именем с 
   const other = await player(code, "Пётр");
   assert.notEqual(other.id, a.id);
   for (const x of [b, z, c, back, other]) try { x.close(); } catch {}
+});
+
+// ---- T-W2-32 (lastq-004, lastq-007): подхват по имени — только с подтверждением человека и только с того же IP ----
+function clientAs(code, ip) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/lastq/ws?r=${code}`, { headers: { "x-real-ip": ip } });
+  const c = { ws, msgs: [], state: null };
+  const waiters = [];
+  ws.on("message", (raw) => {
+    const m = JSON.parse(raw);
+    c.msgs.push(m);
+    if (m.type === "state" || m.type === "hello") c.state = m.state;
+    for (const w of waiters.slice()) if (w.pred(m)) { waiters.splice(waiters.indexOf(w), 1); w.resolve(m); }
+  });
+  c.open = new Promise((res, rej) => { ws.once("open", res); ws.once("error", rej); });
+  c.send = (m) => ws.send(JSON.stringify(m));
+  c.next = (pred, ms = 5000) => new Promise((resolve, reject) => {
+    const hit = c.msgs.find(pred);
+    if (hit) return resolve(hit);
+    waiters.push({ pred, resolve });
+    setTimeout(() => reject(new Error("не дождались: " + pred.toString())), ms);
+  });
+  c.close = () => ws.close();
+  return c;
+}
+async function claimCapable(code, name, ip, extra = {}) {
+  const c = clientAs(code, ip);
+  await c.open;
+  await c.next((m) => m.type === "hello");
+  c.send({ type: "join", name, caps: ["claim"], ...extra });
+  return c;
+}
+
+test("подхват: name_claim (с очками) → claim → та же запись, прежний токен отозван; «Я другой» → «Имя (2)»", async () => {
+  const { code, hostToken } = await createRoom();
+  const b = await board(code, hostToken);
+  const a = await player(code, "Игорь🔥");
+  const z = await player(code, "Зоя");
+  b.send({ type: "start" });
+  await a.phase("read");
+  a.close();
+  await new Promise((r) => setTimeout(r, 1000)); // грация офлайна (300 мс) и пауза подхвата (200 мс) прошли
+
+  // тот же IP (127.0.0.1 → нет заголовка; используем обычного клиента), с caps:["claim"]
+  const n1 = client(code);
+  await n1.open;
+  n1.send({ type: "join", name: "игорь🔥 ", caps: ["claim"] });
+  const q = await n1.wait((m) => m.type === "error" && m.error === "name_claim");
+  assert.equal(q.name, "Игорь🔥");
+  assert.ok(q.summary && typeof q.summary.score === "number");
+  assert.equal(n1.msgs.some((m) => m.type === "joined"), false, "молча не вошёл");
+
+  // «Я другой»: новое место «Игорь🔥 (2)», старое не тронуто
+  n1.send({ type: "join", name: "игорь🔥 ", caps: ["claim"], fresh: true });
+  const f = await n1.wait((m) => m.type === "joined");
+  assert.notEqual(f.playerId, a.id);
+  assert.equal(f.name, "игорь🔥 (2)".replace("игорь", "игорь"));
+  assert.equal(f.renamed, true);
+
+  // «Это я»: с другого сокета; тот же playerId, resumed
+  const n2 = client(code);
+  await n2.open;
+  n2.send({ type: "join", name: "Игорь🔥", caps: ["claim"] });
+  await n2.wait((m) => m.type === "error" && m.error === "name_claim");
+  n2.send({ type: "join", name: "Игорь🔥", caps: ["claim"], claim: true });
+  const j = await n2.wait((m) => m.type === "joined");
+  assert.equal(j.playerId, a.id);
+  assert.equal(j.resumed, true);
+  assert.notEqual(j.token, a.token);
+  const old = await player(code, "", a.token);
+  assert.equal(old.joinMsg.error, "token_gone", "прежний токен отозван");
+  for (const c of [b, z, n1, n2, old]) try { c.close(); } catch {}
+});
+
+test("подхват: в лобби тоже с подтверждением; с чужого IP — подхвата нет вообще («Имя (2)», IP-условие не ослаблено)", async () => {
+  const { code } = await createRoom();
+  const a = await player(code, "Вера");
+  a.close();
+  await new Promise((r) => setTimeout(r, 700));
+  const same = client(code);
+  await same.open;
+  same.send({ type: "join", name: "Вера", caps: ["claim"] });
+  const q = await same.wait((m) => m.type === "error" && m.error === "name_claim");
+  assert.equal(q.name, "Вера");
+  // чужой адрес: даже claim:true не даёт чужого места
+  const other = await claimCapable(code, "Вера", "203.0.113.9", { claim: true });
+  const j = await other.next((m) => m.type === "joined" || (m.type === "error" && m.error !== "hello"));
+  assert.equal(j.type, "joined");
+  assert.notEqual(j.playerId, a.id, "место чужого IP не отдано");
+  assert.equal(j.name, "Вера (2)");
+  for (const c of [same, other]) try { c.close(); } catch {}
+});
+
+test("подхват: клиент без caps — по-старому, молча (тот же IP, место уже выпало)", async () => {
+  const { code } = await createRoom();
+  const a = await player(code, "Лёва");
+  a.close();
+  await new Promise((r) => setTimeout(r, 700));
+  const legacy = await player(code, "Лёва");
+  assert.equal(legacy.id, a.id);
+  assert.equal(legacy.joinMsg.resumed, true);
+  legacy.close();
 });

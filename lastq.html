@@ -107,6 +107,7 @@
   .enter input::placeholder { color: var(--chalk-2); opacity: .6; }
   .enter input:focus { outline: none; border-bottom-color: var(--gold); }
   /* счётчик имени «12/16» (MP.nameCounter): в поле, когда осталось ≤ 4 знаков; место под него занято всегда — поле не прыгает */
+  .claimbtns { display: grid; gap: 10px; margin-top: 14px; }
   .fld { position: relative; }
   .fld.cnt-on input { padding-right: 56px; }
   .fld .cnt { position: absolute; right: 0; bottom: 8px; font: 800 13px/1 var(--mono); letter-spacing: .04em; color: var(--chalk-2); pointer-events: none; font-style: normal; }
@@ -413,6 +414,8 @@ window.I18N_DICT = {
     expired_title: `Комната закрыта`, expired_text: `Она пустовала полчаса или ведущий её закрыл.`, expired_new: `Создать новую`,
     paused: `Все отключились — ждём`,
     rj_not_now: `Уже поздно`, rj_closed: `Ставки уже закрыты`, rj_already: `Уже выбрано`, rj_not_in_question: `Ты со следующего вопроса`,
+    claim_title: `Это ты?`, claim_text: `Игрок «{name}» без связи. Очки: {n}`, claim_text0: `Игрок «{name}» без связи`, btn_claim_yes: `Это я`, btn_claim_no: `Нет, я другой`,
+    welcome_back: `С возвращением`, err_name_taken: `Это имя сейчас занято. Возьми другое`,
     lobby_wait_n: `Ждём, пока ведущий начнёт. В сети: {n}`,
     bet_off: `нет связи — ставка закрыта`, rj_ghost: `Игрок без связи — ставка на него закрыта`,
     in_as: `Имя занято. Ты в игре как {name}`,
@@ -470,6 +473,8 @@ window.I18N_DICT = {
     expired_title: `Room closed`, expired_text: `It sat empty for half an hour or the host closed it.`, expired_new: `Create a new one`,
     paused: `Everyone dropped — waiting`,
     rj_not_now: `Too late`, rj_closed: `Betting is closed`, rj_already: `Already picked`, rj_not_in_question: `You're in from the next question`,
+    claim_title: `Is this you?`, claim_text: `Player “{name}” is offline. Score: {n}`, claim_text0: `Player “{name}” is offline`, btn_claim_yes: `That's me`, btn_claim_no: `No, someone else`,
+    welcome_back: `Welcome back`, err_name_taken: `That name is taken right now. Pick another`,
     lobby_wait_n: `Waiting for the host to start. Online: {n}`,
     bet_off: `offline — betting is closed`, rj_ghost: `That player is offline — betting on them is closed`,
     in_as: `That name is taken. You're in as {name}`,
@@ -527,6 +532,8 @@ window.I18N_DICT = {
     expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης.`, expired_new: `Φτιάξε καινούργιο`,
     paused: `Όλοι αποσυνδέθηκαν — περιμένουμε`,
     rj_not_now: `Πολύ αργά`, rj_closed: `Τα στοιχήματα έκλεισαν`, rj_already: `Έχει ήδη επιλεγεί`, rj_not_in_question: `Παίζεις από την επόμενη ερώτηση`,
+    claim_title: `Είσαι εσύ;`, claim_text: `Ο παίκτης «{name}» είναι εκτός σύνδεσης. Πόντοι: {n}`, claim_text0: `Ο παίκτης «{name}» είναι εκτός σύνδεσης`, btn_claim_yes: `Εγώ είμαι`, btn_claim_no: `Όχι, είμαι άλλος`, //EL:unverified
+    welcome_back: `Καλώς ξαναήρθες`, err_name_taken: `Το όνομα είναι πιασμένο αυτή τη στιγμή. Διάλεξε άλλο`, //EL:unverified
     lobby_wait_n: `Περιμένουμε να ξεκινήσει ο οικοδεσπότης. Συνδεδεμένοι: {n}`, //EL:unverified
     bet_off: `εκτός σύνδεσης — το στοίχημα έκλεισε`, rj_ghost: `Ο παίκτης είναι εκτός σύνδεσης — το στοίχημα έκλεισε`, //EL:unverified
     in_as: `Το όνομα είναι πιασμένο. Μπήκες ως {name}`, //EL:unverified
@@ -555,11 +562,27 @@ let joinErr = null;
 // rejoining — после обрыва входим своим токеном заново: экран не трогаем до joined (иначе мелькает вход и сбивается Камера)
 let replacedHere = false, rejoining = false;
 let autoJoined = false; // автовход по имени после token_gone — один раз
+// вход по имени (T-W2-32): MP.joinFlow («Это ты?», тихие повторы), «ты открыл игру в другой вкладке» (MP.replacedTab)
+let flow = null, tab = null;
+let joinName = ""; // имя, с которым входим по имени: из формы либо сохранённое
+let claimPrompt = null; // {name, summary, accept, decline}: открытый экран «Это ты?»
 let stakeDraft = null, stakeEdit = false; // финальная ставка: черновик ползунка
 const tokenKey = () => "lastq-token-" + CODE;
 // каркас mp-common.js (T-W1-04): без него (или при MP_OFF на сервере) страница работает по-старому
 const mpOn = () => !!(window.MP && !MP.off);
 function savedName() { try { return localStorage.getItem("lastq-name") || ""; } catch (e) { return ""; } }
+// все входы ПО ИМЕНИ идут одним путём; без mp-common (или при MP_OFF) — прежнее сообщение без caps
+function buildJoin() {
+  const m = { type: "join" };
+  if (joinName) m.name = joinName;
+  return m;
+}
+function doJoin(extra) {
+  if (flow && flow.join(extra)) return;
+  const m = buildJoin();
+  if (extra) for (const k in extra) m[k] = extra[k];
+  conn.send(m);
+}
 const NAME_LIMIT = () => (window.MP && MP.limits && MP.limits.name) || 16;
 try { token = localStorage.getItem(tokenKey()); } catch (e) {}
 
@@ -657,11 +680,26 @@ function renderEnter() {
     if (!name) { document.getElementById("err").textContent = T("err_name"); return; }
     try { localStorage.setItem("lastq-name", name); } catch (e2) {}
     joinErr = null;
-    conn.send({ type: "join", name });
+    joinName = name;
+    doJoin();
     lqWake.on();
   };
 }
 
+// «Это ты?»: офлайн-место с таким именем можно вернуть одним тапом; «Нет, я другой» — новое место «Имя (2)» (lastq-004)
+function renderClaim() {
+  if (!claimPrompt) return;
+  screen = "claim";
+  const c = claimPrompt;
+  const sc = c.summary && typeof c.summary.score === "number" ? c.summary.score : null;
+  const text = sc == null ? tpl("claim_text0", { name: c.name }) : tpl("claim_text", { name: c.name, n: lqNum(sc) });
+  screenKey = "";
+  show(`<div class="card status"><h2>${escapeHtml(T("claim_title"))}</h2><p>${escapeHtml(text)}</p>
+    <div class="claimbtns"><button class="btn" id="claimyes" type="button">${escapeHtml(T("btn_claim_yes"))}</button>
+    <button class="btn ghost" id="claimno" type="button">${escapeHtml(T("btn_claim_no"))}</button></div></div>`, "claim");
+  document.getElementById("claimyes").onclick = () => { const p = claimPrompt; claimPrompt = null; screen = null; if (p) p.accept(); };
+  document.getElementById("claimno").onclick = () => { const p = claimPrompt; claimPrompt = null; screen = null; if (p) p.decline(); };
+}
 function renderCenter(titleKey, textKey, extra, key) {
   show(`<div class="card status"><h2>${T(titleKey)}</h2>${textKey ? `<p>${T(textKey)}</p>` : ""}${extra || ""}</div>`, key || "c:" + titleKey);
 }
@@ -1206,7 +1244,7 @@ function render() {
   if (dead || !state) return;
   if (rejoining) return;
   if (!me) {
-    if (screen === "kicked" || screen === "replaced" || screen === "enter") return;
+    if (screen === "kicked" || screen === "replaced" || screen === "enter" || screen === "claim") return;
     return renderEnter();
   }
   if (!mine()) return renderEnter();
@@ -1323,6 +1361,11 @@ function flushQueued() {
   }, onDropped);
 }
 function onMessage(m) {
+  if (mpOn()) {
+    if (m.type === "hello" && MP.applyHello(m) === false) { flow = tab = null; } // MP_OFF на сервере: старый протокол
+    else if (tab && tab.handle(m)) return;
+    else if (flow && flow.handle(m)) return;
+  }
   switch (m.type) {
     case "hello":
     case "state":
@@ -1352,7 +1395,9 @@ function onMessage(m) {
       if (m.name) {
         try { localStorage.setItem("lastq-name", m.name); } catch (e) {}
         if (m.renamed) toast(tpl("in_as", { name: m.name }));
+        else if (m.byName) toast(T("welcome_back"));
       }
+      claimPrompt = null;
       lqWake.on();
       // тот же игрок после обрыва — экран оставляем как есть (Камера не перемонтируется); ответ испытания, если не дошёл, — ещё раз
       if (!same) { screen = null; screenKey = ""; }
@@ -1392,7 +1437,8 @@ function onMessage(m) {
           if (saved && !autoJoined && state && (state.phase === "lobby" || state.phase === "finished") && screen !== "kicked" && screen !== "replaced") {
             autoJoined = true;
             me = null;
-            conn.send({ type: "join", name: saved });
+            joinName = saved;
+            doJoin();
             break;
           }
         }
@@ -1410,17 +1456,36 @@ function onMessage(m) {
       renderCenter("kicked_title");
       break;
     case "replaced":
-      conn.flush(() => false);
-      me = null;
-      run = null;
-      rejoining = false;
-      replacedHere = true;
-      screen = "replaced";
-      renderCenter("replaced_title", "replaced_text", `<button class="btn" style="margin-top:14px" id="here" type="button">${T("btn_back_here")}</button>`);
-      document.getElementById("here").onclick = () => { replacedHere = false; conn.send({ type: "join", token }); };
+      showReplaced(m);
       break;
   }
 }
+
+// «Игра открыта в другой вкладке»: здесь игра на паузе; «Играть здесь» (или сам возврат вкладки на экран) возвращает место
+function showReplaced(m) {
+  conn.flush(() => false);
+  me = null;
+  run = null;
+  rejoining = false;
+  replacedHere = true;
+  screen = "replaced";
+  // место забрали подтверждённым подхватом с другого устройства — авто-возврат 60 с молчит (две вкладки не дерутся)
+  if (m && m.by === "claim" && tab) tab.noteClaimElsewhere(Date.now());
+  renderCenter("replaced_title", "replaced_text", `<button class="btn" style="margin-top:14px" id="here" type="button">${T("btn_back_here")}</button>`);
+  document.getElementById("here").onclick = playHere;
+}
+function playHere() {
+  replacedHere = false;
+  if (tab && tab.back()) return;
+  conn.send({ type: "join", token });
+}
+// вкладка снова на виду: игра ушла в другое окно — забираем место обратно сама, не чаще раза в 5 с (К-12)
+function maybeAutoReturn() {
+  if (document.hidden || screen !== "replaced" || !token || !tab || !tab.canAutoReturn(Date.now())) return;
+  playHere();
+}
+document.addEventListener("visibilitychange", maybeAutoReturn);
+window.addEventListener("focus", maybeAutoReturn);
 
 // не ушло (связь оборвалась): ответ на вопрос можно дать ещё раз, ответ испытания уйдёт сам после переподключения
 // действие просрочено в очереди обрыва (30 с) или вытеснено переполнением: то же, что «не ушло»
@@ -1433,6 +1498,28 @@ function onSendFail(msg) {
   if (msg.type === "cell" && run && run.ch.id === msg.cid) run.lost = true;
 }
 
+if (window.MP) {
+  flow = MP.joinFlow({
+    send: (m) => conn.send(m),
+    buildJoin,
+    onClaimPrompt: (c) => { claimPrompt = c; renderClaim(); },
+    // «подождите» не бесконечно: после повторов — обычное «имя занято»
+    onGiveUp: () => { joinErr = "err_name_taken"; me = null; renderEnter(); },
+  });
+  tab = MP.replacedTab({
+    rejoin: () => conn.send({ type: "join", token }),
+    onReplaced: () => {},
+    auto: true,
+    // токен отозван (место вернули с другого устройства): обычный вход по имени; сохранённого имени нет — форма
+    onTokenGone: () => {
+      try { localStorage.removeItem(tokenKey()); } catch (e) {}
+      token = null; me = null; joinErr = null;
+      if (savedName()) { joinName = savedName(); doJoin(); } else { screen = null; renderEnter(); }
+    },
+  });
+}
+// сменили язык на экране «Это ты?» — перерисовать
+window.addEventListener("langchange", () => { if (screen === "claim") renderClaim(); });
 function start() {
   if (!CODE) return renderLanding();
   renderCenter("wait_title");

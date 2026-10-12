@@ -322,6 +322,7 @@ async function run() {
     check(!!(await waitFor(board, "!!document.getElementById('startbtn') && document.body.classList.contains('host')", 8000)), "доска: лобби, ведущий");
     check((await board.evaluate("document.getElementById('seats').getBoundingClientRect().left < document.getElementById('qr').getBoundingClientRect().left")) === true, "доска: игроки слева от QR");
     // галочки: «Короткая партия» включаем настоящим нажатием, «Финал» проверяем, что включён
+    await wait(500); // после host_ok приходит снимок и галочки перерисовываются: нажатие между press и release терялось (мигало)
     await mustTap(board, ".tog[data-k=short]", 0, "галочка «Короткая партия»");
     check(!!(await waitFor(board, "window.lqBoard.state.settings.short === true", 3000)), "доска: «Короткая партия» включилась");
     check((await board.evaluate("window.lqBoard.state.settings.final")) === true, "доска: «Финал со ставками» включён по умолчанию");
@@ -514,6 +515,24 @@ async function run() {
       check(!!(await waitFor(L, "window.lqPhone.me && window.lqPhone.state && window.lqPhone.state.phase === 'finished' && !!document.querySelector('.center')", 6000)), "поздний: попал на итоги");
       check((await L.evaluate("!document.querySelector('.center .big') && /следующей партии|next game|επόμενη/.test(document.querySelector('.center').textContent)")) === true, "поздний: нет «N место», есть пояснение");
       await L.shot("p_final_late");
+
+      // ---------- T-W2-32 (lastq-004): тот же человек с чистого устройства — «Это ты?», «Это я» возвращает запись ----------
+      const lateId = await L.evaluate("window.lqPhone.me");
+      await L.call("Page.close"); // вкладка закрыта — сокет места закрыт
+      await wait(10500); // грация офлайна (8 с) + пауза подхвата (2 с)
+      const N = await cdp(`${BASE}/lastq.html?r=${CODE}`, [390, 844], "Поздний-2");
+      pages.push(N);
+      check(!!(await waitFor(N, "!!document.getElementById('name')", 8000)), "чистое устройство: экран входа");
+      await N.evaluate(`document.getElementById('name').value = ""`);
+      await N.evaluate(`document.getElementById('name').focus()`);
+      await N.call("Input.insertText", { text: "поздний " });
+      await mustTap(N, "#enterform button[type=submit]", 0, "кнопка «Войти» (чистое устройство)");
+      check(!!(await waitFor(N, "!!document.getElementById('claimyes') && !!document.getElementById('claimno')", 6000)), "офлайн-место с тем же именем: экран «Это ты?»");
+      check((await N.evaluate("document.documentElement.scrollWidth <= innerWidth")) === true, "«Это ты?»: без прокрутки вбок");
+      if (process.env.DEBUG_CLAIM) console.log("N:", await N.evaluate("document.body.innerText.slice(0, 300)"), JSON.stringify(S().players.map((x) => [x.name, x.online])));
+      await N.shot("p_claim");
+      await mustTap(N, "#claimyes", 0, "«Это я»");
+      check(!!(await waitFor(N, `window.lqPhone.me === ${JSON.stringify(lateId)}`, 6000)), "«Это я»: та же запись, а не «Поздний (2)»");
     }
 
     // ---------- перезагрузка телефона: возвращается по токену ----------
