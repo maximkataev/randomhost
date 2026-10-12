@@ -269,6 +269,21 @@ def handoff_stage(browser, lang_script, errs):
     ntxt = nph.evaluate("document.getElementById('app').innerText")
     check(norm(nph.evaluate("T('noroom_title')")) in norm(ntxt) and norm(nph.evaluate("T('expired_title')")) not in norm(ntxt), "неверный код: «Такой комнаты нет» и поле кода")
     nctx.close()
+    # T-W2-05: язык комнаты не совпадает с интерфейсом телефона — подсказка, язык под пальцем не меняется, в лобби подпись колоды
+    other = "en" if LANG != "en" else "ru"
+    room2 = json.loads(urllib.request.urlopen(urllib.request.Request(f"{BASE}/crowd/api/rooms", data=json.dumps({"settings": {"lang": other}}).encode(), method="POST")).read())
+    lctx, lph = mk_page(browser, 390, 780, True, lang_script, errs, "pLang")
+    lph.goto(f"{BASE}/crowd.html?r={room2['code']}", wait_until="domcontentloaded")
+    lph.wait_for_selector("#langhint:not([hidden])", timeout=10000)
+    check(lph.evaluate("I18N.lang") == LANG, "подсказка языка комнаты показана, язык интерфейса не изменён")
+    lph.click("#langhint button:not(.yes)")
+    check(lph.evaluate("document.getElementById('langhint').hidden"), "«Нет» скрывает подсказку")
+    lph.fill("#name", "Полиглот")
+    lph.evaluate("document.getElementById('enterform').requestSubmit()")
+    lph.wait_for_function("window.wvPhone && wvPhone.me", timeout=10000)
+    lph.wait_for_selector("#langdeck", timeout=5000)
+    check(bool(lph.evaluate("document.getElementById('langdeck').textContent.trim()")), "в лобби подписан язык колоды комнаты")
+    lctx.close()
     for c in (bctx, b2ctx, b3ctx, ctxB):
         c.close()
     for c, _ in phones:

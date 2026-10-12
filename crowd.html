@@ -53,6 +53,12 @@
   .conn.on { visibility: visible; }
   .toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 30; background: var(--paper); color: var(--bg); font-weight: 800; font-size: 15px; padding: 10px 16px; border-radius: var(--r); max-width: calc(100% - 32px); text-align: center; visibility: hidden; }
   .toast.on { visibility: visible; }
+  /* подсказка «Язык комнаты: EN. Переключить?» (U-17, класс A): плоская плита внизу, кнопки 44px */
+  .langhint { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 31; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 12px; background: var(--paper); color: var(--bg); border-radius: var(--r); font-weight: 800; font-size: 15px; }
+  .langhint[hidden] { display: none; }
+  .langhint span { flex: 1 1 160px; min-width: 0; }
+  .langhint button { min-height: 44px; min-width: 44px; padding: 0 14px; border: 2px solid var(--bg); border-radius: var(--r); background: transparent; color: var(--bg); font-weight: 800; font-size: 15px; }
+  .langhint button.yes { background: var(--bg); color: var(--paper); }
 
   /* рамка по краю экрана, пока включён ва-банк */
   #frame { position: fixed; inset: 0; z-index: 20; pointer-events: none; opacity: 0; transition: opacity .15s; box-shadow: inset 0 0 0 6px var(--hot); }
@@ -282,6 +288,7 @@
 <div id="frame"></div>
 <div id="app"></div>
 <div class="toast" id="toast" role="status"></div>
+<div class="langhint" id="langhint" hidden></div>
 
 <script>
 window.I18N_DICT = {
@@ -343,6 +350,7 @@ window.I18N_DICT = {
     rj_pick_first: `Сначала выбери сторону`, rj_rate: `Слишком часто — попробуй ещё раз через пару секунд`, rj_no_banks: `Ва-банки кончились`, rj_no_bank_here: `Здесь ва-банка нет`,
     kicked_title: `Ведущий убрал тебя из комнаты`,
     replaced_title: `Ты зашёл с другой вкладки`, replaced_text: `Здесь игра на паузе`, btn_back_here: `Играть здесь`,
+    lang_hint: `Язык комнаты: {lang}. Переключить?`, lang_hint_yes: `Переключить`, lang_hint_no: `Нет`, lang_deck: `Вопросы: {lang}`,
     noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код: в нём слово и две цифры`, btn_go: `Перейти`,
     expired_title: `Комната закрылась`, expired_text: `Она живёт полчаса без игры. Открой новую`, expired_new: `На главную`,
   },
@@ -404,6 +412,7 @@ window.I18N_DICT = {
     rj_pick_first: `Pick a side first`, rj_rate: `Too fast — try again in a couple of seconds`, rj_no_banks: `No all-ins left`, rj_no_bank_here: `No all-in here`,
     kicked_title: `The host removed you from the room`,
     replaced_title: `You joined from another tab`, replaced_text: `The game is paused here`, btn_back_here: `Play here`,
+    lang_hint: `Room language: {lang}. Switch?`, lang_hint_yes: `Switch`, lang_hint_no: `No`, lang_deck: `Questions: {lang}`,
     noroom_title: `There is no such room`, noroom_text: `Check the code: a word and two digits`, btn_go: `Go`,
     expired_title: `The room has closed`, expired_text: `It lives for half an hour without a game. Open a new one`, expired_new: `Home`,
   },
@@ -467,6 +476,7 @@ window.I18N_DICT = {
     rj_pick_first: `Διάλεξε πρώτα πλευρά`, rj_rate: `Πολύ γρήγορα — δοκίμασε ξανά σε λίγα δευτερόλεπτα`, rj_no_banks: `Τέλειωσαν τα all-in`, rj_no_bank_here: `Εδώ δεν υπάρχει all-in`,
     kicked_title: `Ο οικοδεσπότης σε έβγαλε από το δωμάτιο`,
     replaced_title: `Μπήκες από άλλη καρτέλα`, replaced_text: `Εδώ το παιχνίδι είναι σε παύση`, btn_back_here: `Παίξε εδώ`,
+    lang_hint: `Γλώσσα δωματίου: {lang}. Αλλαγή;`, lang_hint_yes: `Αλλαγή`, lang_hint_no: `Όχι`, lang_deck: `Ερωτήσεις: {lang}`, //EL:unverified
     noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό: μια λέξη και δύο ψηφία`, btn_go: `Πήγαινε`, //EL:unverified
     expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Ζει μισή ώρα χωρίς παιχνίδι. Άνοιξε νέο`, expired_new: `Αρχική`,
   },
@@ -491,7 +501,7 @@ let conn = null, state = null, me = null, token = null, dead = false;
 let screen = null, screenKey = "";
 let joinErr = null;
 // вход по имени (T-W1-06): MP.joinFlow («Это ты?», тихие повторы), счётчик имени, «ты открыл игру в другой вкладке»
-let flow = null, tab = null;
+let flow = null, tab = null, langFollow = null;
 let joinName = ""; // имя, с которым входим: из формы либо сохранённое — уходит вместе с токеном
 let claimPrompt = null; // {name, summary, accept, decline}: открытый экран «Это ты?»
 let waitPhase = null; // «имя занято в секретной фазе»: повторим вход, когда фаза сменится
@@ -789,6 +799,29 @@ function bindAvatars() {
     x.onclick = () => { conn.send({ type: "avatar", avatar: x.dataset.a }); wvVibrate(10); avOpen = false; screenKey = ""; render(); };
   });
 }
+const LANG_NAMES = { ru: "Русский", en: "English", el: "Ελληνικά" };
+// «Язык комнаты: EN. Переключить?» — только подсказка; язык под пальцем не меняется (не в vote/opinion).
+// Автоматическое следование — за флагом MP.rules.RULE_U17_LANG_FOLLOW (по умолчанию выкл., U-17 класс B).
+function hideLangHint() { const h = document.getElementById("langhint"); if (h) { h.hidden = true; h.textContent = ""; } }
+function showLangHint(s) {
+  const h = document.getElementById("langhint");
+  if (!h) return;
+  h.textContent = "";
+  const t = document.createElement("span");
+  t.textContent = tpl("lang_hint", { lang: LANG_NAMES[s.lang] || s.lang.toUpperCase() });
+  const yes = document.createElement("button"); yes.type = "button"; yes.className = "yes"; yes.textContent = T("lang_hint_yes");
+  const no = document.createElement("button"); no.type = "button"; no.textContent = T("lang_hint_no");
+  yes.onclick = () => { hideLangHint(); s.accept(); };
+  no.onclick = () => { hideLangHint(); s.decline(); };
+  h.append(t, yes, no);
+  h.hidden = false;
+}
+// Подсказка живёт только в лобби / итогах / на входе: в игре плита закрыла бы кнопки голосования.
+function checkRoomLang() {
+  if (!langFollow || !state) return;
+  if (state.phase !== "lobby" && state.phase !== "finished") { hideLangHint(); return; }
+  langFollow.check();
+}
 function renderLobby() {
   setScene("day");
   setFrame(false);
@@ -797,13 +830,16 @@ function renderLobby() {
   const need = Math.max(0, state.minPlayers - list.length);
   const html = `<div class="me-badge">${avBtnHtml(avHtml(p))}<div style="min-width:0"><div class="fine">${escapeHtml(T("lobby_in"))}</div><b>${escapeHtml(p.name)}</b></div></div>
     ${avPickHtml()}
-    <div class="note lobcode" style="flex:0 0 auto"><div class="eyebrow">${escapeHtml(T("code_ph"))}</div><div class="signcode">${escapeHtml(CODE)}</div><h2>${escapeHtml(T("lobby_wait"))}</h2><p class="fine" id="lobnote"></p></div>
+    <div class="note lobcode" style="flex:0 0 auto"><div class="eyebrow">${escapeHtml(T("code_ph"))}</div><div class="signcode">${escapeHtml(CODE)}</div><h2>${escapeHtml(T("lobby_wait"))}</h2><p class="fine" id="lobnote"></p><p class="fine" id="langdeck"></p></div>
     <section class="roster"><div class="roster-h"><span>${escapeHtml(T("lobby_players"))}</span><b id="lobcnt"></b></div><ul class="plist" id="plist"></ul></section>
     <button class="link" id="leave" type="button">${escapeHtml(T("btn_leave"))}</button>`;
   show(html, "lobby:" + avKey());
   bindAvatars();
   document.getElementById("lobnote").textContent = need ? tpl("lobby_need", { n: need }) : T("lobby_look");
   document.getElementById("lobcnt").textContent = list.length + " / 12";
+  // колода комнаты на другом языке, чем интерфейс телефона: говорим об этом (crowd-006)
+  const deckLang = state.settings && state.settings.lang;
+  document.getElementById("langdeck").textContent = deckLang && deckLang !== wvLang() && LANG_NAMES[deckLang] ? tpl("lang_deck", { lang: LANG_NAMES[deckLang] }) : "";
   const ul = document.getElementById("plist");
   const empties = Math.max(need, 8 - list.length);
   ul.innerHTML = list.map((x) => `<li class="${x.id === me ? "me" : ""} ${x.online ? "" : "off"}">${avHtml(x)}<span>${escapeHtml(x.name)}</span></li>`).join("") +
@@ -1151,6 +1187,7 @@ function frame() {
 }
 
 window.addEventListener("langchange", () => {
+  hideLangHint();
   if (screen === "enter") return renderEnter();
   screenKey = "";
   if (screen === "expired") return renderExpired();
@@ -1200,6 +1237,7 @@ function onMessage(m) {
     case "state":
       state = m.state;
       if (m.type === "hello" && goneFlow) goneFlow.hello();
+      checkRoomLang();
       // сервер сказал «имя занято, пока идёт секретная фаза» — входим сами, как только фаза сменилась
       if (waitPhase && !me && state.phase !== waitPhase) { waitPhase = null; joinErr = null; doJoin(); }
       if (rateTries && state.me && (want.vote == null || state.me.vote === want.vote) && (want.bank == null || !!state.me.bank === want.bank)) rateTries = 0;
@@ -1318,6 +1356,13 @@ if (window.MP) {
     onClaimPrompt: (c) => { claimPrompt = c; renderClaim(); },
     // «подождите» не бесконечно: после повторов — обычное «имя занято»
     onGiveUp: () => { joinErr = "err_name_taken"; me = null; renderEnter(); },
+  });
+  // язык комнаты: подсказка (класс A) или, за флагом, авто-следование; ручной выбор не сбивается
+  langFollow = MP.followRoomLang({
+    enabled: true,
+    auto: !!(MP.rules && MP.rules.RULE_U17_LANG_FOLLOW),
+    getRoomLang: () => state && state.settings && state.settings.lang,
+    onSuggest: showLangHint,
   });
   tab = MP.replacedTab({
     rejoin: () => doJoin(),
