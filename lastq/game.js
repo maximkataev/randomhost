@@ -46,6 +46,8 @@ const T = {
 const PASS_SILENCE = 4000; // «Передачка»: подсказчик молчит — код на доску (§4.2)
 const BET_POINTS = 20; // угаданная ставка на спасение (§4.1)
 const BET_WINDOW = 3000; // ставки — только первые 3 с после «Приготовься», по одной на узника: позже исход уже виден (§4.1)
+const SKIP_MIN_MS = 800; // «Дальше» ведущего не раньше чем через столько от старта фазы (U-12)
+const SKIPPABLE = ["answer", "fanswer", "reveal", "stake"];
 const STAKE_FLOOR = 200; // в финале можно поставить до 200, даже если очков меньше (§5)
 const GROUPS_OFFERED = ["hands", "eyes", "head"];
 
@@ -874,6 +876,17 @@ class Game {
     this.clearQuestion();
     s.fsteps = null;
     return ev.concat([{ type: "lobby" }]);
+  }
+
+  // «Дальше» ведущего (T-W3-17, lastq-016, U-12): ответ / ставка / раскрытие закрываются как «время вышло» — то же
+  // состояние, что даёт таймаут, без бонусов и новых правил (не ответивший — ошибся, не поставивший — 0). Камеру,
+  // приговор и заставки не пропускаем. Не раньше SKIP_MIN_MS от старта фазы: не промахнуться по тапу.
+  skipPhase(now) {
+    const s = this.s;
+    if (!SKIPPABLE.includes(s.phase) || s.paused != null || s.phaseEnd == null) return { ok: false, reason: "bad_phase", events: [] };
+    if (now - s.phaseStart < SKIP_MIN_MS) return { ok: false, reason: "too_early", events: [] };
+    s.phaseEnd = now;
+    return { ok: true, events: this.tick(now) };
   }
 
   abort(now) {

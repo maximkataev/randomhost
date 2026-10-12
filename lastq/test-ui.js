@@ -519,6 +519,18 @@ async function run() {
     check((await board.evaluate("!!document.querySelector('.podium .p1')")) === true, "доска: пьедестал");
     check((await board.evaluate("document.querySelectorAll('.award').length")) >= 1, "доска: награды");
     check((await board.evaluate("!!document.getElementById('again')")) === true, "доска: «Ещё партия»");
+    // T-W3-17 (U-14): те же две галочки и подпись «Играть: …» на итогах; тап по «Короткой» меняет подпись и настройку
+    check((await board.evaluate("document.querySelectorAll('#ftoggles .tog').length")) === 2, "доска (итоги): две галочки настроек");
+    const playBefore = await board.evaluate("document.getElementById('playnow').textContent");
+    check(/\S/.test(playBefore), "доска (итоги): подпись «Играть: …» — " + playBefore);
+    const shortBefore = await board.evaluate("!!window.lqBoard.state.settings.short");
+    await mustTap(board, "#ftoggles .tog", 0, "галочка «Короткая партия» на итогах");
+    check(!!(await waitFor(board, `!!window.lqBoard.state.settings.short === ${!shortBefore} && document.getElementById('playnow').textContent !== ${JSON.stringify(playBefore)}`, 4000)), "итоги: «Короткая партия» поменяла настройку и подпись");
+    if (shortBefore) {
+      // комната была «короткой»: вернуть галочку — следующая партия стартует короткой, как и шла
+      await mustTap(board, "#ftoggles .tog", 0, "галочка «Короткая партия» (обратно)");
+      check(!!(await waitFor(board, "window.lqBoard.state.settings.short === true", 4000)), "итоги: галочка вернулась");
+    }
     for (const p of phones) { await p.shot(`p_final_${p.name}`); await layout([p], "итоги", false); }
     const rk = S().ranking;
     check(rk && rk[0].id === A.id, "победила Аня (верно везде и всё на финал)");
@@ -601,7 +613,17 @@ async function run() {
     // ---------- ещё партия ----------
     await mustTap(board, "#again", 0, "«Ещё партия»");
     check(!!(await waitFor(board, "['intro','read'].includes(window.lqBoard.state.phase) && window.lqBoard.state.game === 2", 5000)), "«Ещё партия»: новая партия пошла");
-    await mustTap(board, "#endbtn", 0, "«Закончить»");
+    check((await board.evaluate("window.lqBoard.state.settings.short")) === true, "«Ещё партия»: стартовала короткая — настройка с итогов");
+    check((await board.evaluate("window.lqBoard.state.plan ? window.lqBoard.state.plan.length : window.lqBoard.state.qTotal")) <= 4, "«Ещё партия»: короткая — не больше 4 вопросов");
+    // «Закончить» двухтактно: первый тап взводит («Точно закончить?»), партия идёт; второй — итоги (U-12, без confirm())
+    await mustTap(board, "#endbtn", 0, "«Закончить» (1-й тап)");
+    await wait(300);
+    check((await board.evaluate("window.lqBoard.state.phase")) !== "finished", "«Закончить»: первый тап партию не завершает");
+    check((await board.evaluate("document.getElementById('endbtn').dataset.armed === '1'")) === true, "«Закончить»: кнопка взведена — «Точно закончить?»");
+    // ✕ у имени на шкале в партии: двухтактный (убирает игрока только вторым тапом)
+    check((await board.evaluate("document.querySelectorAll('#track .lname .x').length")) >= 1, "доска: в партии у ведущего есть ✕ у имён на шкале");
+    check((await board.evaluate("window.lqBoard.state.players.filter((p) => !p.left).length")) >= 3, "до ✕: игроки на месте");
+    await mustTap(board, "#endbtn", 0, "«Закончить» (2-й тап)");
     check(!!(await waitFor(board, "window.lqBoard.state.phase === 'finished'", 5000)), "«Закончить»: итоги");
 
     for (const p of pages) check(p.errors.length === 0, `${p.name}: без ошибок консоли` + (p.errors.length ? ": " + p.errors.slice(0, 3).join(" | ") : ""));

@@ -865,3 +865,49 @@ test("question.tr: за флагом, по тому же id и порядку в
     assert.equal(g.snapshot(g.s.phaseStart + 10, "p0", { lang: "en" }).question.tr, null, "флаг выкл — перевода нет");
   });
 });
+
+// ---- T-W3-17 (lastq-016, U-12): «Дальше» ведущего ----
+test("skipPhase: ответ → раскрытие (не ответивший — ошибся), раскрытие → дальше, ставка → вопрос финала; Камеру и заставки не пропускает; не раньше 800 мс", () => {
+  const g = setup(3, {}, 11);
+  g.start(0);
+  let t = until(g, "answer", 0);
+  assert.equal(g.skipPhase(g.s.phaseStart + 300).reason, "too_early", "промах по тапу");
+  g.answer("p0", right(g), t + 900);
+  const r = g.skipPhase(g.s.phaseStart + 1000);
+  assert.ok(r.ok);
+  assert.equal(g.s.phase, "reveal");
+  assert.deepEqual(g.s.prisoners.slice().sort(), ["p1", "p2"], "не ответившие — в Камере, как при «время вышло»");
+  // reveal → Камера (есть узники): пропуск раскрытия открывает её
+  assert.ok(g.skipPhase(g.s.phaseStart + 1000).ok);
+  assert.equal(g.s.phase, "cell");
+  assert.equal(g.skipPhase(g.s.phaseStart + 5000).reason, "bad_phase", "Камеру пропустить нельзя");
+  // заставка и лобби — тоже нет
+  const h = setup(2, {}, 3);
+  assert.equal(h.skipPhase(0).reason, "bad_phase");
+  h.start(0);
+  assert.equal(h.s.phase, "intro");
+  assert.equal(h.skipPhase(2000).reason, "bad_phase");
+  // пауза
+  const p = setup(2, {}, 3);
+  p.start(0);
+  const tp = until(p, "answer", 0);
+  p.pause(tp + 10);
+  assert.equal(p.skipPhase(tp + 2000).reason, "bad_phase");
+});
+
+test("skipPhase: ставка финала закрывается без ставки (0), дальше — вопрос финала", () => {
+  const g = setup(3, { short: true }, 9);
+  g.start(0);
+  let t = 0;
+  for (let q = 0; q < 4; q++) {
+    t = until(g, "answer", t);
+    for (const p of ["p0", "p1", "p2"]) g.answer(p, right(g), t + 100);
+  }
+  t = until(g, "stake", t);
+  g.stake("p0", 100, t + 10);
+  const r = g.skipPhase(g.s.phaseStart + 1000);
+  assert.ok(r.ok);
+  assert.equal(g.s.phase, "fread");
+  assert.equal(g.s.stakes.p0, 100);
+  assert.ok(g.s.stakes.p1 == null || g.s.stakes.p1 === 0, "кто не поставил — ставка 0, не случайная");
+});
