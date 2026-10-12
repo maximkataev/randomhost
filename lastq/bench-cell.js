@@ -59,7 +59,7 @@ const HUMAN = {
   keys: [[1400, 3300, 4300], [0.04, 0.1, 0.2]],
   cipher: [[2000, 3800, 4800], [0.04, 0.1, 0.2]],
   pass: [[4500, 4500, 5000], [0.05, 0.08, 0.1]],
-  torch: [[2500, 3500, 4500], [0.05, 0.1, 0.18]],
+  torch: [[2500, 3500, 4500], [0.08, 0.1, 0.18]],
   rustkeys: [[500, 500, 500], [0.1, 0.18, 0.28]],
   signals: [[300, 300, 300], [0.1, 0.18, 0.26]],
   // голова (сверх MIN_HEAD = 1200)
@@ -136,11 +136,12 @@ function lognorm(rnd, mean) {
 
 // одна Камера: need испытаний за budget мс; mode — "honest" | "tapper"
 function cell({ lvl, stage, group, need, budget, mode, rnd, canPass }) {
-  let t = 0, done = 0, last = null;
+  let t = 0, done = 0, last = null, lastMin = 0;
   const seen = [], used = {};
   while (t < budget) {
-    const ch = C.generate({ lvl, stage, rnd, group, last, seen, used, canPass });
-    seen.push(ch.type); last = ch.type;
+    // lastMin — как в game.issue(): два «тяжёлых» (minMs ≥ 3 с) подряд узнику не выдаём (T-W3-29, lastq-021)
+    const ch = C.generate({ lvl, stage, rnd, group, last, seen, used, canPass, lastMin: process.env.BENCH_NO_LASTMIN ? 0 : lastMin });
+    seen.push(ch.type); last = ch.type; lastMin = ch.minMs;
     const n = choices(ch);
     let dt, ok;
     if (mode === "tapper" && n > 0) {

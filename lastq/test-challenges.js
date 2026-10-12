@@ -319,3 +319,15 @@ test("Труба: трасса вне трубы или не от старта �
     assert.equal(C.check(ch, teleport, 99999), "wrong");
   }
 });
+
+test("Фонарик: 🔑 вне стартового пятна света (виден только после движения) (T-W3-04, lastq-042)", () => {
+  for (const lvl of [1, 2, 3]) for (let s = 1; s <= 400; s++) {
+    const ch = C.generate({ lvl, rnd: mulberry(s * 17 + lvl), only: "torch" });
+    const v = ch.view;
+    const k = v.pos[ch.answer];
+    assert.equal(v.items[ch.answer], v.target);
+    // пятно — круг радиуса light·1,35 меньшей стороны из центра поля; расстояние в долях меньшей стороны не меньше
+    assert.ok(Math.hypot(k[0] - 0.5, k[1] - 0.5) > v.light * 1.35, `lvl ${lvl} seed ${s}: ключ в стартовом пятне`);
+  }
+  assert.equal(C.generate({ lvl: 1, rnd: mulberry(1), only: "torch" }).view.light, 0.2);
+});

@@ -46,6 +46,16 @@ const T = {
 const PASS_SILENCE = 4000; // «Передачка»: подсказчик молчит — код на доску (§4.2)
 const BET_POINTS = 20; // угаданная ставка на спасение (§4.1)
 const BET_WINDOW = 3000; // ставки — только первые 3 с после «Приготовься», по одной на узника: позже исход уже виден (§4.1)
+// RULE_U45_BET_WINDOW (класс B, T-W3-29, U-45, lastq-018): окно ставок на спасение растёт с числом узников:
+// clamp(2000 + 1000·N, 3000, 6000) мс вместо 3000 на любое N (при 5 узниках выходило ~0,6 с на ставку). По умолчанию выкл —
+// «как сейчас» (BET_WINDOW). Читается при открытии Камеры; конец окна — в s.betUntil (старые дампы без поля — как раньше).
+const betWindowFor = (n) => (process.env.RULE_U45_BET_WINDOW === "1" ? Math.max(BET_WINDOW, Math.min(6000, 2000 + 1000 * n)) : BET_WINDOW);
+// RULE_U46_MINMS (класс B, T-W3-29, U-46, lastq-021): при выдаче испытания узнику оставляем запас на остальные:
+// fitMs + 800 + (осталось_после_этого) · 1200 ≤ времени до конца Камеры (без флага — только «влезает ли одно», как раньше).
+// Правило «не два тяжёлых (minMs ≥ 3 с) подряд» — всегда (класс A: на стенде честный 89/83/49 не меняется, ±2 п. п.).
+const reserveMinMs = () => process.env.RULE_U46_MINMS === "1";
+const SKIP_MIN_MS = 800; // «Дальше» ведущего не раньше чем через столько от старта фазы (U-12)
+const SKIPPABLE = ["answer", "fanswer", "reveal", "stake"];
 const STAKE_FLOOR = 200; // в финале можно поставить до 200, даже если очков меньше (§5)
 const GROUPS_OFFERED = ["hands", "eyes", "head"];
 
@@ -517,7 +527,14 @@ class Game {
     s.phaseStart = now;
     s.phaseEnd = ready + CH.cellMs(s.group, this.stage());
     s.cellReady = ready;
+    s.betUntil = ready + betWindowFor(s.prisoners.length);
     return [{ type: "cell", prisoners: s.prisoners.slice(), group: s.group }].concat(this.maybeAdvance(now));
+  }
+
+  // конец окна ставок; старый дамп без betUntil — окно 3 с после «Приготовься», как раньше
+  betEnd() {
+    const s = this.s;
+    return s.betUntil != null ? s.betUntil : s.cellReady + BET_WINDOW;
   }
 
   // свободные: кто не в Камере и может ставить/подсказывать
@@ -541,10 +558,12 @@ class Game {
     const left = s.phaseEnd != null && (s.phase === "cell" || s.phase === "fcell") ? s.phaseEnd - at : Infinity;
     let ch = null;
     for (let k = 0; k < 8; k++) {
-      const x = CH.generate({ lvl: CH.levelFor(s.group, this.stage()), stage: this.stage(), rnd: this.rnd, group: s.group, last: c.last, seen, used: s.usedBank, canPass });
+      const x = CH.generate({ lvl: CH.levelFor(s.group, this.stage()), stage: this.stage(), rnd: this.rnd, group: s.group, last: c.last, seen, used: s.usedBank, canPass, lastMin: c.lastMin });
       const need = x.fitMs ?? x.minMs;
+      // запас на остальные испытания (RULE_U46_MINMS): после этого осталось c.need − c.done − 1 по ~1,2 с
+      const rest = reserveMinMs() ? Math.max(0, c.need - c.done - 1) * 1200 : 0;
       if (!ch || need < (ch.fitMs ?? ch.minMs)) ch = x;
-      if (need + 800 <= left) { ch = x; break; }
+      if (need + 800 + rest <= left) { ch = x; break; }
     }
     ch.id = ++s.seq;
     ch.at = at;
@@ -557,6 +576,7 @@ class Game {
     seen.push(ch.type);
     if (seen.length >= CH.poolFor({ lvl: ch.lvl, group: s.group, canPass: true, stage: this.stage() }).length) seen.length = 0;
     c.last = ch.type;
+    c.lastMin = ch.minMs; // два тяжёлых подряд не выдаём (CH.generate, lastMin)
     c.ch = ch;
   }
 
@@ -597,7 +617,7 @@ class Game {
     // узник без связи: ставка «сгорит» была бы гарантированными +20 (lastq-001); и вышедший в обрыв позже ставку не кормит
     const target = this.player(prisoner);
     if ((s.cell[prisoner] && s.cell[prisoner].ghost) || !target || target.left || !target.online) return { ok: false, reason: "ghost" };
-    if (now > s.cellReady + BET_WINDOW) return { ok: false, reason: "closed" };
+    if (now > this.betEnd()) return { ok: false, reason: "closed" };
     if (s.bets[id] && s.bets[id][prisoner] != null) return { ok: false, reason: "already" };
     (s.bets[id] = s.bets[id] || {})[prisoner] = escape;
     return { ok: true, events: [] };
@@ -876,6 +896,17 @@ class Game {
     return ev.concat([{ type: "lobby" }]);
   }
 
+  // «Дальше» ведущего (T-W3-17, lastq-016, U-12): ответ / ставка / раскрытие закрываются как «время вышло» — то же
+  // состояние, что даёт таймаут, без бонусов и новых правил (не ответивший — ошибся, не поставивший — 0). Камеру,
+  // приговор и заставки не пропускаем. Не раньше SKIP_MIN_MS от старта фазы: не промахнуться по тапу.
+  skipPhase(now) {
+    const s = this.s;
+    if (!SKIPPABLE.includes(s.phase) || s.paused != null || s.phaseEnd == null) return { ok: false, reason: "bad_phase", events: [] };
+    if (now - s.phaseStart < SKIP_MIN_MS) return { ok: false, reason: "too_early", events: [] };
+    s.phaseEnd = now;
+    return { ok: true, events: this.tick(now) };
+  }
+
   abort(now) {
     const s = this.s;
     if (s.phase === "lobby" || s.phase === "finished") return [];
@@ -945,9 +976,9 @@ class Game {
       cell = s.prisoners.map((id) => {
         const c = s.cell[id] || {};
         // пока открыто окно ставок — прогресс узника не показываем никому, кроме него самого (исход не должен подсказывать ставку)
-        const hide = inCell && now < s.cellReady + BET_WINDOW;
+        const hide = inCell && now < this.betEnd();
         const pl = this.player(id);
-        const x = { id, done: hide ? 0 : c.done || 0, need: c.need || s.cellNeed, escaped: !hide && !!c.escaped, burned: !!c.burned, locked: !hide && c.lockUntil > now, type: c.ch ? c.ch.type : null, offline: !!c.ghost || !pl || !pl.online };
+        const x = { id, done: hide ? 0 : c.done || 0, need: c.need || s.cellNeed, escaped: !hide && !!c.escaped, burned: !!c.burned, locked: !hide && c.lockUntil > now, type: c.ch ? c.ch.type : null, offline: !!c.ghost || !pl || !pl.online, cellsBefore: pl ? Math.max(0, (pl.stats.cells || 0) - 1) : 0 };
         // доске — вопрос «Головы» (не на память), чтобы зал подсказывал; и код «Передачки» после 4 с тишины
         if (board && c.ch && c.ch.at <= now && c.ch.group === "head" && !CH.MEMORY_TYPES.includes(c.ch.type)) x.ch = Game.chView(c.ch);
         if (board && c.ch && c.ch.type === "pass" && c.ch.view.where === "tv") x.passCode = c.ch.answer;
@@ -1018,7 +1049,7 @@ class Game {
       group: revealed ? s.group : null,
       groupAuto: revealed ? !!s.groupAuto : null,
       cellEnd: inCell ? s.phaseEnd : null,
-      betUntil: inCell ? s.cellReady + BET_WINDOW : null,
+      betUntil: inCell ? this.betEnd() : null,
       cell,
       betN: inCell ? Object.keys(s.bets).length : null,
       freeN: inCell ? this.free().filter((p) => p.online).length : null,

@@ -699,6 +699,13 @@ function handle(room, client, msg) {
       for (const c of room.sockets) if (c.playerId === msg.playerId) { c.playerId = null; send(c.ws, { type: "kicked" }); }
       return afterChange(room, events);
     }
+    case "skip": {
+      // «Дальше»: только ведущему (client.host выдаёт проверенный токен ведущего); как «время вышло», двухтактно на доске (U-12)
+      if (!client.host) return;
+      const r = g.skipPhase(t);
+      if (!r.ok) return reply({ type: "rejected", action: "skip", reason: r.reason });
+      return afterChange(room, r.events);
+    }
     case "end": return client.host ? afterChange(room, g.abort(t)) : undefined;
     case "lobby": {
       if (!client.host) return;

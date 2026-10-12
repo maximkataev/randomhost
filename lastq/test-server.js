@@ -584,3 +584,27 @@ test("hello несёт rules (RULE_U17_LANG_FOLLOW выкл); сообщение
   assert.deepEqual(probe.msgs.find((m) => m.type === "hello").rules, { RULE_U17_LANG_FOLLOW: false });
   for (const c of [b, a, z, probe]) c.close();
 });
+
+// ---- T-W3-17 (lastq-016, U-12): «Дальше» ведущего ----
+test("skip: только ведущий; ответ закрывается как «время вышло»; слишком рано — rejected too_early; телефон и зритель не могут", async () => {
+  const { code, hostToken } = await createRoom({}, 1);
+  const b = await board(code, hostToken);
+  const a = await player(code, "Аня");
+  const z = await player(code, "Зоя");
+  const watcher = client(code);
+  await watcher.open;
+  b.send({ type: "start" });
+  await a.phase("answer", 15000);
+  // телефон и безымянный сокет — молча игнорируются
+  a.send({ type: "skip" });
+  watcher.send({ type: "skip" });
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(b.state.phase, "answer", "не ведущий пропустил фазу");
+  b.send({ type: "skip" }); // раньше 800 мс — может отказать; повторяем после паузы
+  await new Promise((r) => setTimeout(r, 900));
+  b.send({ type: "skip" });
+  const rv = await b.phase("reveal", 5000);
+  assert.ok(rv.state.right != null);
+  assert.ok(rv.state.prisoners.length >= 1 || rv.state.picks, "никто не отвечал — все в Камере");
+  for (const c of [b, a, z, watcher]) c.close();
+});

@@ -742,7 +742,7 @@ const GEN = {
   // ---- внимание: новые (11.10) ----
   torch(lvl, rnd) {
     // тёмная камера: в круге света видно предметы; ищем один — остальные похожие
-    const n = by(lvl, 4, 6, 8), light = by(lvl, 0.26, 0.21, 0.17);
+    const n = by(lvl, 4, 6, 8), light = by(lvl, 0.2, 0.21, 0.17); // ур. 1: 0,26 → 0,20 (lastq-042)
     const target = "🔑";
     const decoys = by(lvl, ["🧦", "🥫", "📎", "🪣", "🧽", "🔦", "🍞"], ["🔒", "🪙", "🔧", "🔔", "📎", "🪛"], ["🗝️", "🔒", "🪙", "🔧", "🔪", "🪛", "🔔"]);
     const items = [target].concat(shuffle(decoys, rnd).slice(0, n - 1));
@@ -756,7 +756,17 @@ const GEN = {
     // перемешиваем порядок, чтобы цель не всегда была первой
     const order = shuffle(range(0, n - 1), rnd);
     const outItems = order.map((i) => items[i]);
-    return { view: { items: outItems, pos, light, target }, answer: outItems.indexOf(target), minMs: MIN_HEAD };
+    // 🔑 не в стартовом пятне света (круг из центра поля радиусом light·1,35 стороны) — иначе он виден до первого движения
+    // (lastq-042). Меняем местами позиции целевого предмета и самого дальнего от центра; состав позиций тот же, rnd не тратим.
+    const ti = outItems.indexOf(target);
+    const far = (q) => Math.hypot(q[0] - 0.5, q[1] - 0.5);
+    const lit = light * 1.35 + 0.04;
+    if (far(pos[ti]) <= lit) {
+      let bj = ti;
+      pos.forEach((q, j) => { if (far(q) > far(pos[bj])) bj = j; });
+      if (bj !== ti) { const tmp = pos[ti]; pos[ti] = pos[bj]; pos[bj] = tmp; }
+    }
+    return { view: { items: outItems, pos, light, target }, answer: ti, minMs: MIN_HEAD };
   },
   rustkeys(lvl, rnd) {
     // падают ключи: золотые ловим, ржавые пропускаем
@@ -921,7 +931,10 @@ function poolFor({ lvl, group, canPass, stage = 3 }) {
     return true;
   });
 }
-function generate({ lvl, rnd, group, last, seen, used, canPass, only, stage }) {
+// «тяжёлое» испытание: обязательная задержка minMs не меньше 3 с (перекличка, ржавые ключи, сигналы, стаканы, светофор).
+// lastMin — minMs прошлого испытания этого узника: два тяжёлых подряд не даём, пока есть выбор (lastq-021, T-W3-29)
+const HEAVY_MS = 3000;
+function generate({ lvl, rnd, group, last, seen, used, canPass, only, stage, lastMin }) {
   used = used || {};
   for (const k of QUIZ_TYPES) if (!Array.isArray(used[k])) used[k] = [];
   let types = only ? [only] : poolFor({ lvl, group, canPass, stage });
@@ -940,10 +953,14 @@ function generate({ lvl, rnd, group, last, seen, used, canPass, only, stage }) {
     order.push(t);
     left = left.filter((u) => u !== t);
   }
+  let heavy = null;
   for (const t of order) {
     const c = GEN[t](lvl, rnd, used);
-    if (c) return { type: t, group: TYPE_GROUP[t], lvl, ...c };
+    if (!c) continue;
+    if (lastMin >= HEAVY_MS && c.minMs >= HEAVY_MS && !only) { if (!heavy) heavy = { type: t, group: TYPE_GROUP[t], lvl, ...c }; continue; }
+    return { type: t, group: TYPE_GROUP[t], lvl, ...c };
   }
+  if (heavy) return heavy;
   const c = GEN.dig(lvl, rnd);
   return { type: "dig", group: "hands", lvl, ...c };
 }
@@ -1033,5 +1050,5 @@ function verdict(ch, ans, elapsed) {
   }
 }
 
-return { LEVELS, CELL, CELL_READY_MS, levelFor, cellMs, GROUPS, TYPE_GROUP, OWN, SLOW, MEMORY_TYPES, QUIZ_TYPES, MIN_FAST, MIN_HEAD, WRONG_LOCK_MS, GLYPH_COUNT, COLOR_KEYS, WIRE_KEYS, MANUAL, MEANING, GEN, tri, clueOk, poolFor, generate, check, setBank, bank };
+return { LEVELS, CELL, CELL_READY_MS, levelFor, cellMs, GROUPS, TYPE_GROUP, OWN, SLOW, MEMORY_TYPES, QUIZ_TYPES, MIN_FAST, MIN_HEAD, HEAVY_MS, WRONG_LOCK_MS, GLYPH_COUNT, COLOR_KEYS, WIRE_KEYS, MANUAL, MEANING, GEN, tri, clueOk, poolFor, generate, check, setBank, bank };
 });
