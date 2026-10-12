@@ -126,7 +126,7 @@
  *     api.offline(); api.silentMs(). Пинг: 5 с в игре (inGame()), 10 с в лобби. onOffline — тишина > warnMs (баннер,
  *     без закрытия); onDead — тишина > closeMs (игра закрывает сокет и переподключается), по разу за период.
  *
- *   MP.progress.text(done, total, secsLeft?, {kind = 'answered' | 'voted', lang?}) -> "Ответили 4 из 6 · ~40 с"  (T-W1-14)
+ *   MP.progress.text(done, total, secsLeft?, {kind = 'answered' | 'voted' | 'wrote' | 'locked', lang?}) -> "Ответили 4 из 6 · ~40 с"  (T-W1-14)
  *     done ограничен total; секунды с «~» (шагом 5 с выше 10); язык: opts.lang | I18N.lang | ru (ru/en/el).
  *
  *   MP.rank(players, {score = 'score' | fn, tiebreak(a, b), exclude(p), fallbackAll = true})  (T-W1-15)
@@ -841,9 +841,10 @@
   // «Ответили 4 из 6 · ~40 с» (T-W1-14, пакет P6, U-29). Знаменатель считает игра (онлайн + уже ответившие);
   // здесь — только строка: done не больше total («4 из 3» не бывает), секунды — «~», шагом 5 с выше 10.
   var PROGRESS_I18N = {
-    ru: { answered: 'Ответили {a} из {b}', voted: 'Проголосовали {a} из {b}', secs: ' · ~{s} с' },
-    en: { answered: '{a} of {b} answered', voted: '{a} of {b} voted', secs: ' · ~{s} s' },
-    el: { answered: 'Απάντησαν {a} από {b}', voted: 'Ψήφισαν {a} από {b}', secs: ' · ~{s} δ' } //EL:unverified
+    // wrote/locked — «На одной волне» (T-W3-22): «Написали N из M» (подсказки) и «Зафиксировали N из M» (стрелки)
+    ru: { answered: 'Ответили {a} из {b}', voted: 'Проголосовали {a} из {b}', wrote: 'Написали {a} из {b}', locked: 'Зафиксировали {a} из {b}', secs: ' · ~{s} с' },
+    en: { answered: '{a} of {b} answered', voted: '{a} of {b} voted', wrote: '{a} of {b} wrote', locked: '{a} of {b} locked in', secs: ' · ~{s} s' },
+    el: { answered: 'Απάντησαν {a} από {b}', voted: 'Ψήφισαν {a} από {b}', wrote: 'Έγραψαν {a} από {b}', locked: 'Κλείδωσαν {a} από {b}', secs: ' · ~{s} δ' } //EL:unverified
   };
   function progressLang(lang) {
     if (lang && PROGRESS_I18N[lang]) return lang;
@@ -858,7 +859,7 @@
       var d = Math.max(0, Math.floor(Number(done) || 0));
       var tt = Math.max(d, Math.floor(Number(total) || 0));
       var dict = PROGRESS_I18N[progressLang(o.lang)];
-      var s = dict[o.kind === 'voted' ? 'voted' : 'answered'].replace('{a}', d).replace('{b}', tt);
+      var s = dict[o.kind === 'voted' || o.kind === 'wrote' || o.kind === 'locked' ? o.kind : 'answered'].replace('{a}', d).replace('{b}', tt);
       var left = Number(secsLeft);
       if (isFinite(left) && left > 0) {
         var r = left > 10 ? Math.round(left / 5) * 5 : Math.ceil(left);

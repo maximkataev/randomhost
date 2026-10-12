@@ -31,14 +31,17 @@ const WV_SHARED_I18N = {
     game_name: "На одной волне",
     r_0: "Настройка", r_1: "Двойная волна",
     r_0_d: "Каждый прячет точку на шкале и подсказывает одной фразой. Остальные ловят волну",
-    r_1_d: "То же самое, очки ×2",
+    r_1_d: "Новые шкалы, те же правила",
     round_n: "Раунд {n}",
     pts: "+{n}", sec: "{s} с",
     bull: "В яблочко!", wave: "На одной волне!", miss: "Мимо", miss_short: "мимо",
     clue_by: "Подсказывает {name}",
     card_of: "{i}/{n}",
     aw_telepath: "Телепат", aw_telepath_d: "в яблочко: {n}",
-    aw_clear: "Ясно выражается", aw_clear_d: "в среднем {n} очков за подсказку",
+    aw_clear: "Ясно выражается", aw_clear_d: "в среднем {n} {w} за подсказку",
+    pts_w: ["очко", "очка", "очков"],
+    c_none: "Никто не успел зафиксировать — шкала сгорела", none_locked: "Никто не зафиксировал — 0",
+    aw_you: "Это ты!", next_in: "Дальше через", avg_line: "в среднем у угадавших {a} → тебе {m}",
     aw_miss: "Мимо кассы", aw_miss_d: "{name} — мимо центра на {n}°",
     podium: "Итоги",
     c_side: ["Все мимо — и все в одну сторону!", "Дружно промахнулись. Зато единодушно"],
@@ -55,14 +58,17 @@ const WV_SHARED_I18N = {
     game_name: "Same Wave",
     r_0: "Tuning In", r_1: "Double Wave",
     r_0_d: "Everyone hides a point on a scale and gives one clue. The rest try to catch the wave",
-    r_1_d: "Same thing, points ×2",
+    r_1_d: "New scales, same rules",
     round_n: "Round {n}",
     pts: "+{n}", sec: "{s}s",
     bull: "Bullseye!", wave: "Same wave!", miss: "Miss", miss_short: "miss",
     clue_by: "Clue by {name}",
     card_of: "{i}/{n}",
     aw_telepath: "Telepath", aw_telepath_d: "bullseyes: {n}",
-    aw_clear: "Crystal Clear", aw_clear_d: "{n} points per clue on average",
+    aw_clear: "Crystal Clear", aw_clear_d: "{n} {w} per clue on average",
+    pts_w: ["point", "points"],
+    c_none: "Nobody locked in — the scale burned out", none_locked: "Nobody locked in — 0",
+    aw_you: "That's you!", next_in: "Next in", avg_line: "guessers averaged {a} → you get {m}",
     aw_miss: "Way Off", aw_miss_d: "{name} missed the center by {n}°",
     podium: "Results",
     c_side: ["All missed — in the same direction!", "Missed together. At least you agree"],
@@ -79,14 +85,17 @@ const WV_SHARED_I18N = {
     game_name: "Στο ίδιο κύμα",
     r_0: "Συντονισμός", r_1: "Διπλό κύμα",
     r_0_d: "Ο καθένας κρύβει ένα σημείο στην κλίμακα και δίνει ένα στοιχείο. Οι άλλοι πιάνουν το κύμα",
-    r_1_d: "Το ίδιο, πόντοι ×2",
+    r_1_d: "Νέες κλίμακες, ίδιοι κανόνες", //EL:unverified
     round_n: "Γύρος {n}",
     pts: "+{n}", sec: "{s} δ",
     bull: "Διάνα!", wave: "Στο ίδιο κύμα!", miss: "Άστοχο", miss_short: "άστοχο",
     clue_by: "Στοιχείο: {name}",
     card_of: "{i}/{n}",
     aw_telepath: "Τηλεπαθητικός", aw_telepath_d: "διάνες: {n}",
-    aw_clear: "Μιλάει καθαρά", aw_clear_d: "κατά μέσο όρο {n} πόντοι ανά στοιχείο",
+    aw_clear: "Μιλάει καθαρά", aw_clear_d: "κατά μέσο όρο {n} {w} ανά στοιχείο",
+    pts_w: ["πόντος", "πόντοι"],
+    c_none: "Κανείς δεν πρόλαβε να κλειδώσει — η κλίμακα κάηκε", none_locked: "Κανείς δεν κλείδωσε — 0", //EL:unverified
+    aw_you: "Εσύ είσαι!", next_in: "Επόμενο σε", avg_line: "μέσος όρος {a} → για σένα {m}", //EL:unverified
     aw_miss: "Άσχετος", aw_miss_d: "{name}: {n}° μακριά από το κέντρο",
     podium: "Αποτελέσματα",
     c_side: ["Όλοι άστοχοι — και προς την ίδια μεριά!", "Αστοχία όλοι μαζί. Τουλάχιστον συμφωνείτε"],
@@ -114,6 +123,16 @@ function wvT(key) {
 const wvTpl = (key, vars) => String(wvT(key)).replace(/\{(\w+)\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m));
 const wvLang = () => (window.I18N && window.I18N.lang) || "ru";
 const wvSec = (ms) => String(Math.round(Math.max(0, ms) / 100) / 10).replace(".", wvLang() === "en" ? "." : ",");
+// число + слово: ru — 1 очко, 2–4 очка, 5–20 очков (11–14 — «очков»); en/el — один/много
+function wvPlural(n, forms) {
+  const f = Array.isArray(forms) ? forms : [String(forms)];
+  const a = Math.abs(Math.round(Number(n) || 0));
+  if (f.length >= 3) {
+    const m10 = a % 10, m100 = a % 100;
+    return m10 === 1 && m100 !== 11 ? f[0] : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? f[1] : f[2];
+  }
+  return a === 1 ? f[0] : f[f.length - 1];
+}
 // имена через запятую — именительный падеж, не склоняем
 const wvNames = (ids, player) => ids.map((id) => (player(id) || {}).name || "?").join(", ");
 

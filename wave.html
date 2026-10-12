@@ -265,6 +265,25 @@
     html.kb #write .err:empty { min-height: 0; }
   }
 
+  /* итоги и раскрытие на телефоне (T-W3-22): награды, «+N за раунд», список очков под шкалой */
+  .awards { display: grid; gap: 10px; }
+  .award { background: var(--paper); border: 3px solid var(--ink); padding: 10px 12px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; align-items: center; }
+  .award.me { background: var(--ink); color: var(--paper); }
+  .award .av { width: 38px; height: 38px; font-size: 21px; }
+  .award .eyebrow { opacity: .75; }
+  .award b { display: block; font-size: 20px; line-height: 1.1; overflow-wrap: anywhere; }
+  .award p { margin: 2px 0 0; font-size: 15px; font-weight: 700; }
+  .award .you { display: inline-block; background: var(--paper); color: var(--ink); font-weight: 1000; font-size: 13px; text-transform: uppercase; padding: 2px 6px; margin-top: 4px; }
+  .award .more { grid-column: 1 / -1; display: grid; gap: 6px; }
+  .award q { font-weight: 1000; font-size: 18px; line-height: 1.1; quotes: "«" "»" "“" "”"; overflow-wrap: anywhere; }
+  .award .dialbox { width: min(100%, 280px); }
+  .award .poles { margin-top: 2px; } .award .poles span { font-size: 13px; }
+  .row .s small.plus { font-size: 13px; font-weight: 900; opacity: .85; margin-left: 6px; }
+  .rvlist { display: grid; gap: 6px; }
+  .rvlist .row { grid-template-columns: 34px 1fr auto; animation: pop .35s var(--press) both; animation-delay: var(--d, 0ms); }
+  .rvlist .row .s.zero { font-size: 14px; text-transform: uppercase; opacity: .75; }
+  .avgline { font-weight: 800; font-size: 15px; text-align: center; margin: 0; }
+  .leaders .players { justify-content: center; }
   .stamp { display: inline-block; background: var(--ink); color: var(--paper); padding: 8px 12px; font-weight: 1000; font-size: 16px; text-transform: uppercase; transform: rotate(-3deg); }
   .gain { font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; font-size: clamp(56px, 21vw, 120px); line-height: .85; text-align: center; font-variant-numeric: tabular-nums; animation: pop .5s var(--press) both; }
   .gain small { display: block; font-size: 16px; font-stretch: 100%; font-variation-settings: "wdth" 100; text-transform: uppercase; letter-spacing: .06em; margin-top: 8px; }
@@ -799,6 +818,11 @@ function clueBox(card) {
   const a = player(card.author);
   return `<div class="clue"><div class="eyebrow"><span>${escapeHtml(tpl("clue_by", { name: a ? a.name : "?" }))}</span><span>${escapeHtml(tpl("card_of", { i: card.n, n: card.of }))}</span></div><q>${escapeHtml(card.clue)}</q></div>`;
 }
+// «Написали 2 из 4» / «Зафиксировали 2 из 4»: строку и «не больше знаменателя» даёт MP.progress (T-W1-14); без него — свои ключи
+function progLine(kind, n, m, fallbackKey) {
+  if (window.MP && MP.progress && !MP.off) return MP.progress.text(n, m, null, { kind, lang: wvLang() });
+  return tpl(fallbackKey, { n, m });
+}
 
 // ---------- экраны по фазам ----------
 let avOpen = false; // открыт ли выбор аватарки
@@ -835,14 +859,20 @@ function renderIntro() {
   if (screenKey === key) return;
   show(`<div class="center" style="display:grid;gap:16px"><div class="eyebrow">${escapeHtml(tpl("round_n", { n: state.ri + 1 }))}</div>
     <h1 class="shout">${escapeHtml(T("r_" + state.ri))}</h1><div><span class="stamp">${escapeHtml(tpl("intro_mult", { n: state.mult }))}</span></div>
-    <p class="lede">${escapeHtml(T("r_" + state.ri + "_d"))}</p></div>`, key, true);
+    <p class="lede">${escapeHtml(T("r_" + state.ri + "_d"))}</p>${state.ri > 0 ? leadersHtml() : ""}</div>`, key, true);
+}
+// перед удвоением — кто впереди (на доске то же): подогревает второй раунд
+function leadersHtml() {
+  const list = state.players.filter((p) => !p.left).slice().sort((a, b) => b.score - a.score).slice(0, 3);
+  if (!list.length || !list[0].score) return "";
+  return `<div class="leaders" style="display:grid;gap:8px"><div class="eyebrow">${escapeHtml(T("leaders"))}</div><div class="players">${list.map((p) => `<span class="pl${p.id === me ? " me" : ""}">${avHtml(p)}<b>${escapeHtml(p.name)}</b> ${p.score}</span>`).join("")}</div></div>`;
 }
 
 // низкое окно (iPhone SE, боком): справка по «?», поле и «Отправить» в один ряд, подсказка в поле короче
 const shortScreen = () => (window.matchMedia ? matchMedia("(max-height: 600px)").matches : innerHeight <= 600);
 function renderClue() {
   const c = state.me.card;
-  const waitLine = () => tpl("clue_wait", { n: state.clued.length, m: state.roster.length });
+  const waitLine = () => progLine("wrote", state.clued.length, state.roster.length, "clue_wait");
   if (!c) {
     const key = "clue-late:" + roundKey() + wvLang();
     if (screenKey !== key) show(`${headHtml(roundLabel())}<h2 class="shout">${T("clue_title")}</h2><p class="lede">${T("late_join")}</p><p class="fine" id="cw"></p>${playersHtml(state.clued)}`, key);
@@ -915,14 +945,14 @@ function renderGuess() {
     const key = "mine:" + cardKey() + wvLang();
     if (screenKey !== key) show(`${headHtml(roundLabel())}<h2 class="shout">${T("mine_title")}</h2>${clueBox(card)}${dialHtml({ target: s.card.target }, card.l, card.r)}<p class="fine" id="lw"></p>${reactsHtml()}`, key);
     bindReacts();
-    document.getElementById("lw").textContent = tpl("mine_wait", { n, m });
+    document.getElementById("lw").textContent = progLine("locked", n, m, "mine_wait");
     return;
   }
   if (s.guess != null) {
     const key = "locked:" + cardKey() + wvLang();
     if (screenKey !== key) show(`${headHtml(roundLabel())}${clueBox(card)}${dialHtml({ needle: s.guess }, card.l, card.r)}<span class="stamp" style="align-self:center">🔒 ${T("locked_title")}</span><p class="fine center" id="lw"></p>${reactsHtml()}`, key);
     bindReacts();
-    document.getElementById("lw").textContent = tpl("locked_wait", { n, m });
+    document.getElementById("lw").textContent = progLine("locked", n, m, "locked_wait");
     return;
   }
   if (needleKey !== cardKey()) {
@@ -999,10 +1029,19 @@ function renderReveal() {
   if (guesses.length) guesses[guesses.length - 1].best = guesses[guesses.length - 1].pts > 0;
   let gain;
   // промах и «не успел» — крупный ноль и подпись словом: длинное слово кеглем очков не влезает в 320 px (греческое «άστοχο»)
-  if (s.myCard) gain = `<div class="gain" style="animation-delay:${plan.done}ms">${s.gain ? "+" + s.gain : "0"}<small>${T("author_pts")}</small></div>`;
+  if (s.myCard && !guesses.length) gain = `<div class="gain" style="animation-delay:${plan.done}ms">0<small>${T("none_locked")}</small></div>`;
+  else if (s.myCard) gain = `<div class="gain" style="animation-delay:${plan.done}ms">${s.gain ? "+" + s.gain : "0"}<small>${T("author_pts")}</small></div>`;
   else if (s.gain == null) gain = `<div class="gain" style="animation-delay:${plan.done}ms">0<small>${T("no_guess")}</small></div>`;
   else gain = `<div class="gain" style="animation-delay:${plan.done}ms">${s.gain ? "+" + s.gain : "0"}<small>${s.gain ? T("your_pts") : T("missed")}</small></div>`;
-  show(`${headHtml(roundLabel())}${clueBox(card)}${dialHtml({ target: card.target, shutter: "open", guesses, plan }, card.l, card.r)}${card.wave ? `<span class="stamp" style="align-self:center;font-size:22px;animation:pop .4s var(--press) both;animation-delay:${plan.done}ms">🌊 ${T("wave_you")}</span>` : ""}${gain}`, key);
+  // автору — откуда взялись его очки; всем — кто сколько набрал (по убыванию), строки появляются вместе с плашками
+  let avg = "";
+  if (s.myCard && guesses.length) {
+    const mean = Math.round(guesses.reduce((a, g) => a + (g.pts || 0), 0) / guesses.length);
+    avg = `<p class="avgline">${escapeHtml(tpl("avg_line", { a: mean, m: s.gain || 0 }))}</p>`;
+  }
+  const order = guesses.map((g, i) => ({ g, at: plan.badgeAt(i) })).sort((x, y) => (y.g.pts || 0) - (x.g.pts || 0) || x.g.dist - y.g.dist);
+  const list = order.length ? `<div class="rvlist">${order.map((x) => { const p = player(x.g.id); return p ? `<div class="row${x.g.id === me ? " me" : ""}" style="--d:${x.at}ms"><span>${avHtml(p)}</span><span class="who"><b>${escapeHtml(p.name)}</b></span><span class="s${x.g.pts ? "" : " zero"}">${x.g.pts ? "+" + x.g.pts : escapeHtml(T("miss_short"))}</span></div>` : ""; }).join("")}</div>` : "";
+  show(`${headHtml(roundLabel())}${clueBox(card)}${dialHtml({ target: card.target, shutter: "open", guesses: dialGuesses, plan }, card.l, card.r)}${card.wave ? `<span class="stamp" style="align-self:center;font-size:22px;animation:pop .4s var(--press) both;animation-delay:${plan.done}ms">🌊 ${T("wave_you")}</span>` : ""}${gain}${avg}${list}`, key);
   const bar = document.getElementById("timer");
   if (bar) bar.firstChild.style.transform = "none";
   clearTimeout(renderReveal.t);
@@ -1021,8 +1060,8 @@ function whoHtml(p) {
   const off = p.online === false ? `<small>${escapeHtml(T("off_note"))}</small>` : "";
   return `<span class="who"><b>${escapeHtml(p.name)}</b>${sn}${off}</span>`;
 }
-function tableHtml(list) {
-  return `<div class="table">${list.map((p, i) => `<div class="row${p.id === me ? " me" : ""}${p.online === false ? " off" : ""}"><span class="n">${wvRank(list, p)}</span>${avHtml(p)}${whoHtml(p)}<span class="s">${p.score}</span></div>`).join("")}</div>`;
+function tableHtml(list, rounds) {
+  return `<div class="table">${list.map((p, i) => `<div class="row${p.id === me ? " me" : ""}${p.online === false ? " off" : ""}"><span class="n">${wvRank(list, p)}</span>${avHtml(p)}${whoHtml(p)}<span class="s">${p.score}${rounds && p.round ? `<small class="plus">+${p.round}</small>` : ""}</span></div>`).join("")}</div>`;
 }
 // в итогах не участвует вошедший после финала (played === false); не играл никто — таблица по всем
 function ranked() {
@@ -1037,7 +1076,7 @@ function renderScores() {
   if (screenKey === key) return;
   const list = ranked();
   const place = placeOf(list);
-  show(`<div><div class="eyebrow">${T("scores_title")}</div><h1 class="shout" style="margin-top:6px">${escapeHtml(tpl("place", { n: place }))}</h1></div>${tableHtml(list)}${reactsHtml()}`, key);
+  show(`${headHtml(escapeHtml(T("next_in")))}<div><div class="eyebrow">${T("scores_title")}</div><h1 class="shout" style="margin-top:6px">${escapeHtml(tpl("place", { n: place }))}</h1></div>${tableHtml(list, true)}${reactsHtml()}`, key);
   bindReacts();
 }
 
@@ -1048,10 +1087,15 @@ function renderFinal() {
   const p = mine();
   const place = placeOf(list);
   const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : T("final_sub");
+  // на шкале-примере плашки очков только у лучших трёх, остальные — списком под шкалой (иначе на 320 px они слипаются)
+  const byPts = guesses.slice().sort((a, b) => (b.pts || 0) - (a.pts || 0) || a.dist - b.dist);
+  const topIds = new Set(byPts.slice(0, 3).map((g) => g.id));
+  const dialGuesses = guesses.map((g) => (topIds.has(g.id) ? g : Object.assign({}, g, { pts: undefined })));
+  dialGuesses.forEach((g) => { if (g.pts === undefined) delete g.pts; });
   // вошёл после финала: места нет — не «0-е место», а объяснение
   const head = place ? `<h1 class="shout">${escapeHtml(tpl("place", { n: place }))}</h1><p class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></p>` : `<h2 class="shout">${escapeHtml(p.avatar)} ${escapeHtml(p.name)}</h2><p class="lede">${escapeHtml(T("late_final"))}</p>`;
   show(`<div class="center" style="display:grid;gap:10px"><div class="eyebrow">${T("final_title")}</div>${head}
-    <p class="fine">${escapeHtml(sub)}</p></div>${tableHtml(list)}${reactsHtml()}
+    <p class="fine">${escapeHtml(sub)}</p></div>${awardsHtml()}${tableHtml(list)}${reactsHtml()}
     <div class="dock endbar"><a class="btn ghost" id="homebtn" href="index.html">${T("btn_home")}</a></div>`, key);
   bindReacts();
   if (place === 1 && state.finishedReason === "done") wvSfx.fanfare();
@@ -1091,6 +1135,30 @@ function frame() {
   const left = state.phaseEnd - now;
   const total = Math.max(1, state.phaseEnd - state.phaseStart);
   const bar = document.getElementById("timer");
+// награды партии (state.awards приходит только в finished): у кого что, своя — выделена; «Раскол» и «Мимо кассы» — с мини-шкалой
+function awardsHtml() {
+  const aw = state.awards;
+  if (!aw) return "";
+  const rows = [];
+  const nameOf = (id) => (player(id) || {}).name || "?";
+  const av = (id) => { const p = player(id); return p ? avHtml(p) : `<i class="av" style="--pc:#111">?</i>`; };
+  const youTag = `<span class="you">${escapeHtml(T("aw_you"))}</span>`;
+  const row = (label, avatar, who, desc, mine, more) => `<div class="award${mine ? " me" : ""}">${avatar}<div><div class="eyebrow">${escapeHtml(label)}</div><b>${escapeHtml(who)}</b><p>${escapeHtml(desc)}</p>${mine ? youTag : ""}</div>${more ? `<div class="more">${more}</div>` : ""}</div>`;
+  const mini = (uid, h, gs) => `<q>${escapeHtml(h.clue)}</q><div class="dialbox">${wvDialSvg({ uid, target: h.target, guesses: gs, bands: state.bands })}</div>${polesHtml(h.l, h.r)}`;
+  if (aw.telepath && aw.telepath.ids.length) rows.push(row(T("aw_telepath"), av(aw.telepath.ids[0]), wvNames(aw.telepath.ids, player), tpl("aw_telepath_d", { n: aw.telepath.n }), aw.telepath.ids.indexOf(me) >= 0));
+  if (aw.clear && aw.clear.ids.length) rows.push(row(T("aw_clear"), av(aw.clear.ids[0]), wvNames(aw.clear.ids, player), tpl("aw_clear_d", { n: aw.clear.n, w: wvPlural(aw.clear.n, T("pts_w")) }), aw.clear.ids.indexOf(me) >= 0));
+  if (aw.miss) {
+    const h = (state.history || []).find((x) => x.clue === aw.miss.clue && x.guesses[aw.miss.playerId] != null);
+    const p = player(aw.miss.playerId) || { color: "#111", avatar: "?" };
+    const more = h ? mini("awm", h, [{ a: h.guesses[aw.miss.playerId], color: p.color, avatar: p.avatar }]) : `<q>${escapeHtml(aw.miss.clue)}</q>${polesHtml(aw.miss.l, aw.miss.r)}`;
+    rows.push(row(T("aw_miss"), av(aw.miss.playerId), nameOf(aw.miss.playerId), tpl("aw_miss_d", { name: nameOf(aw.miss.playerId), n: aw.miss.dist }), aw.miss.playerId === me, more));
+  }
+  if (aw.split) {
+    const gs = Object.keys(aw.split.guesses).map((id) => { const p = player(id) || { color: "#111", avatar: "?" }; return { a: aw.split.guesses[id], color: p.color, avatar: p.avatar }; });
+    rows.push(row(T("aw_split"), `<i class="av" style="--pc:#111;color:#fff">⚡</i>`, tpl("aw_split_d", { n: aw.split.spread }), "", aw.split.author === me, mini("aws", aw.split, gs)));
+  }
+  return rows.length ? `<div class="awards">${rows.join("")}</div>` : "";
+}
   if (bar && state.phase !== "reveal") {
     bar.firstChild.style.transform = `scaleX(${Math.max(0, Math.min(1, left / total))})`;
     bar.classList.toggle("hot", left < 5000);

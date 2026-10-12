@@ -901,6 +901,7 @@ function drawGuess() {
 
 // реплика ведущего на раскрытии, когда нет ни «в яблочко», ни «на одной волне» (просьба игроков: «после промаха нет соли»)
 function hostLine(card, guesses) {
+  if (guesses.length === 0) return T("c_none"); // никто не зафиксировал: раскрытие без слов оставляло пустую плашку (wave-032)
   if (guesses.length < 2) return "";
   const pick = (k) => { const v = T(k); return Array.isArray(v) ? v[card.n % v.length] : v; };
   const as = guesses.map((g) => g.a);
@@ -965,7 +966,8 @@ function drawScores() {
   const next = state.ri + 1 < state.rounds ? "#ff5fa2" : "#c6f432";
   main.innerHTML = `<div class="screen"><h1 class="shout" style="font-size:clamp(40px,8vh,110px)">${escapeHtml(tpl("scores_title", { n: state.ri + 1 }))}</h1>
     <div class="board" style="--next:${next}">${list.map((p, i) => {
-      const old = Math.min(was[p.id] || 0, p.score), g = p.score - old;
+      // сервер присылает «за раунд» (после перезагрузки доски «+0» не показываем); старый сервер — по памяти табло
+      const old = typeof p.round === "number" ? Math.max(0, p.score - p.round) : Math.min(was[p.id] || 0, p.score), g = p.score - old;
       const kb = isHost && p.online === false ? kickBtnHtml(p) : "";
       return `<div class="brow${p.online === false ? " off" : ""}${kb ? " kickable" : ""}"><span class="n">${wvRank(list, p)}</span>${avHtml(p)}<b>${escapeHtml(p.name)}${snail(p)}</b><div class="bar"><div class="old" style="--o:${(old / max) * 100}%"></div><div class="add${g > 0 ? "" : " empty"}" style="--g:${(g / max) * 100}%">${g > 0 ? "+" + g : ""}</div></div><span class="s" data-to="${p.score}" data-from="${old}">${old}</span>${kb}</div>`;
     }).join("")}</div></div>`;
@@ -1008,7 +1010,7 @@ function drawFinal() {
       <div class="dialwrap"><div class="dialbox">${wvDialSvg({ uid: "split", target: aw.split.target, guesses: gs })}</div></div>
       <div class="dp"><span>← ${wvPole(aw.split.l)}</span><span>${wvPole(aw.split.r)} →</span></div></div>`);
   } else if (aw.split) rows.push(`<div class="aw"><i class="av" style="--pc:#111">⚡</i><div><div class="eyebrow">${T("aw_split")}</div><b><q>${escapeHtml(aw.split.clue)}</q></b><p>${escapeHtml(aw.split.l)} ↔ ${escapeHtml(aw.split.r)} — ${escapeHtml(tpl("aw_split_d", { n: aw.split.spread }))}</p></div></div>`);
-  if (aw.clear) rows.push(`<div class="aw">${firstAv(aw.clear.ids)}<div><div class="eyebrow">${T("aw_clear")}</div><b>${escapeHtml(names(aw.clear.ids))}</b><p>${escapeHtml(tpl("aw_clear_d", { n: aw.clear.n }))}</p></div></div>`);
+  if (aw.clear) rows.push(`<div class="aw">${firstAv(aw.clear.ids)}<div><div class="eyebrow">${T("aw_clear")}</div><b>${escapeHtml(names(aw.clear.ids))}</b><p>${escapeHtml(tpl("aw_clear_d", { n: aw.clear.n, w: wvPlural(aw.clear.n, T("pts_w")) }))}</p></div></div>`);
   // «Мимо кассы» — повтор той самой шкалы: сектор и промахнувшаяся стрелка, над этим смеются
   let replay = "";
   if (aw.miss) {

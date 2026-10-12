@@ -529,3 +529,49 @@ test("skip ведущего: clue → guess с 🐌 у неписавших, gue
   for (let guard = 0; g.s.phase !== "finished" && guard < 80; guard++) { if (g.s.phase === "clue") toGuess(g); else g.tick(g.s.phaseEnd); }
   assert.strictEqual(g.skip(g.s.phaseStart + 5000).ok, false);
 });
+
+// ---------- T-W3-22: итог раунда на телефоне и «Ясно выражается» ----------
+test("снимок scores несёт «за раунд» (round): в первом раунде равен счёту, вне scores поля нет", () => {
+  const g = game(3);
+  let seenScores = 0;
+  for (let guard = 0; g.s.phase !== "finished" && guard < 100; guard++) {
+    if (g.s.phase === "clue") toGuess(g);
+    else if (g.s.phase === "guess") {
+      const a = g.author();
+      const t = g.s.cards[a].target;
+      for (const id of g.s.queue) if (id !== a) g.lock(id, t, 0);
+    } else if (g.s.phase === "scores") {
+      const snap = g.snapshot(0, "board");
+      assert.ok(snap.players.every((p) => typeof p.round === "number" && p.round >= 0));
+      if (seenScores === 0) {
+        assert.ok(snap.players.every((p) => p.round === p.score));
+        assert.ok(snap.players.some((p) => p.round > 0));
+      } else assert.ok(snap.players.some((p) => p.round < p.score), "второй раунд: прибавка меньше счёта");
+      seenScores++;
+      g.tick(g.s.phaseEnd);
+    } else {
+      assert.ok(g.snapshot(0, "board").players.every((p) => p.round === undefined));
+      g.tick(g.s.phaseEnd);
+    }
+  }
+  assert.strictEqual(seenScores, 2);
+});
+
+test("«Ясно выражается»: 🐌 — ноль в знаменателе, одна удачная подсказка при пропусках не выигрывает", () => {
+  const g = game(3);
+  const st = (id, o) => Object.assign(g.player(id).stats, o);
+  st("P1", { authorSum: 800, authorN: 2, skipped: 0 }); // 400 в среднем
+  st("P2", { authorSum: 600, authorN: 1, skipped: 0 }); // 600
+  st("P3", { authorSum: 900, authorN: 1, skipped: 2 }); // 900 / 3 = 300
+  let a = g.awards();
+  assert.deepStrictEqual(a.clear.ids, ["P2"]);
+  st("P2", { skipped: 3 }); // 600 / 4 = 150
+  a = g.awards();
+  assert.deepStrictEqual(a.clear.ids, ["P1"]);
+  assert.strictEqual(a.clear.n, 400);
+  // без единой раскрытой шкалы награды нет, даже с 🐌
+  st("P1", { authorSum: 0, authorN: 0, skipped: 2 });
+  st("P2", { authorSum: 0, authorN: 0, skipped: 1 });
+  st("P3", { authorSum: 0, authorN: 0, skipped: 1 });
+  assert.strictEqual(g.awards().clear, null);
+});

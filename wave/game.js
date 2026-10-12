@@ -426,6 +426,7 @@ class Game {
     }
     for (let i = q.length - 1; i > 0; i--) { const j = this.rnd(i + 1); [q[i], q[j]] = [q[j], q[i]]; }
     s.queue = q;
+      p.rs = p.score; // счёт на начало раунда: «+N за раунд» в снимке фазы scores (T-W3-22, wave-041)
     s.qi = -1;
     return this.nextCard(now);
   }
@@ -572,7 +573,9 @@ class Game {
     }
     return {
       telepath: top((p) => p.stats.bulls),
-      clear: top((p) => (p.stats.authorN ? p.stats.authorSum / p.stats.authorN : null)),
+      // «Ясно выражается»: среднее по ВСЕМ своим шкалам, 🐌 (не успел с подсказкой) — как ноль в знаменателе, иначе одна
+      // удачная подсказка при двух пропусках выигрывала бы награду (T-W3-22, wave P2-4, U-37)
+      clear: top((p) => (p.stats.authorN ? p.stats.authorSum / (p.stats.authorN + (p.stats.skipped || 0)) : null)),
       miss: w && w.dist >= 40 && this.player(w.playerId) ? w : null,
       split,
     };
@@ -721,3 +724,5 @@ class Game {
 }
 
 module.exports = { Game, EXTRA_MS, ROUNDS, T, REVEAL_STEP, DEFAULTS, OPTIONS, REROLLS, MAX_PLAYERS, MIN_PLAYERS, CLUE_MAX, BANDS, WAVE_BONUS, REACTIONS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText, checkClue, stemClash, points, nameKey };
+        // очки за только что сыгранный раунд — телефону и доске на фазе scores (после reload доски «+0» не показываем)
+        ...(s.phase === "scores" && typeof p.rs === "number" ? { round: Math.max(0, p.score - p.rs) } : {}),
