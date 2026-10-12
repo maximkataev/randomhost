@@ -656,7 +656,12 @@ function handle(room, client, msg) {
       return afterChange(room, events);
     }
     // ---- игрок ----
-    case "answer": return me ? act("answer", g.answer(me, Number(msg.mid), msg.ans, t)) : undefined;
+    case "answer": {
+      if (!me) return undefined;
+      // черновик (RULE_U28_SERVER_DRAFT): тихо, без снимка всем и без отказов — это не действие, а страховка
+      if (msg.draft === true) { g.answerDraft(me, Number(msg.mid), msg.ans); return undefined; }
+      return act("answer", g.answer(me, Number(msg.mid), msg.ans, t));
+    }
     case "hint": return me ? act("hint", g.hint(me, Number(msg.mid), t)) : undefined;
     case "vote": {
       if (!me) return;

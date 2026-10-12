@@ -737,3 +737,95 @@ test("🐌-ответ не становится «Ответом вечера» 
     assert.strictEqual(m.result.points[pick], Math.round(m.result.tally[pick] * POINTS * ROUNDS.duel.mult * 0.5));
   });
 });
+
+// ---- T-W2-18 (quip-018, U-28): серверный черновик ответа — только за RULE_U28_SERVER_DRAFT ----
+function withDraftRule(on, fn) {
+  const was = process.env.RULE_U28_SERVER_DRAFT;
+  if (on) process.env.RULE_U28_SERVER_DRAFT = "1"; else delete process.env.RULE_U28_SERVER_DRAFT;
+  try { fn(); } finally { if (was === undefined) delete process.env.RULE_U28_SERVER_DRAFT; else process.env.RULE_U28_SERVER_DRAFT = was; }
+}
+
+test("RULE_U28_SERVER_DRAFT выкл (по умолчанию): черновик отклонён, не успел — 🐌, в снимке draft нет", () => {
+  withDraftRule(false, () => {
+    const g = game(5);
+    const m = g.s.matchups[0];
+    const id = m.authors[0];
+    const r = g.answerDraft(id, m.id, "почти готово");
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.reason, "off");
+    assert.ok(!g.snapshot(T.intro + 1, id).serverDraft);
+    g.tick(g.s.phaseEnd);
+    assert.strictEqual(g.s.phase === "answer", false);
+    const a = m.answers[id];
+    assert.strictEqual(a.hint, true);
+    assert.strictEqual(a.late, true);
+  });
+});
+
+test("RULE_U28_SERVER_DRAFT=1: набранное, но не отправленное засчитывается вместо 🐌 как рукописный ответ", () => {
+  withDraftRule(true, () => {
+    const g = game(5);
+    const m = g.s.matchups[0];
+    const [a, b] = m.authors;
+    assert.strictEqual(g.snapshot(T.intro + 1, a).serverDraft, true);
+    assert.ok(g.answerDraft(a, m.id, "  Кот   в мешке  ").ok);
+    // черновик виден только владельцу и только пока не отправил; другим и доске — нет
+    const mineP = g.snapshot(T.intro + 1, a).me.prompts.find((p) => p.id === m.id);
+    assert.deepStrictEqual(mineP.draft, { text: "Кот в мешке" });
+    assert.strictEqual(g.snapshot(T.intro + 1, b).me.prompts.find((p) => p.id === m.id).draft, null);
+    assert.ok(!JSON.stringify(g.snapshot(T.intro + 1, "board")).includes("Кот в мешке"));
+    assert.ok(!JSON.stringify(g.snapshot(T.intro + 1, b)).includes("Кот в мешке"));
+    // отправка не нужна: фаза не двигалась и «answered» не ставился
+    assert.strictEqual(g.s.phase, "answer");
+    assert.ok(!m.answers[a]);
+    g.answer(b, m.id, "второй ответ", T.intro + 2000);
+    g.tick(g.s.phaseEnd);
+    const got = m.answers[a];
+    assert.strictEqual(got.text, "Кот в мешке");
+    assert.strictEqual(got.hint, false);
+    assert.strictEqual(got.late, false);
+    // полный балл: поздней пометки нет
+    assert.strictEqual(g.s.matchups[0].answers[a].late, false);
+  });
+});
+
+test("RULE_U28_SERVER_DRAFT=1: финал — черновик засчитывается только при трёх пунктах, иначе 🐌; пустой черновик стирает прежний", () => {
+  withDraftRule(true, () => {
+    const g = game(3, { short: true });
+    // пропускаем дуэли до финала
+    while (g.s.plan[g.s.ri] !== "final" || g.s.phase !== "answer") { if (g.s.phase === "answer") answerAll(g, g.s.phaseStart + 1); else g.tick(g.s.phaseEnd); }
+    const m = g.s.matchups[0];
+    const [full, part, none] = m.authors;
+    assert.ok(g.answerDraft(full, m.id, ["раз", "два", "три"]).ok);
+    assert.ok(g.answerDraft(part, m.id, ["раз", "", "три"]).ok);
+    g.answerDraft(none, m.id, ["x", "y", "z"]);
+    g.answerDraft(none, m.id, []); // стёр всё — черновика нет
+    g.tick(g.s.phaseEnd);
+    assert.deepStrictEqual(m.answers[full].items, ["раз", "два", "три"]);
+    assert.strictEqual(m.answers[full].late, false);
+    assert.strictEqual(m.answers[part].late, true, "два пункта из трёх — не черновик, а 🐌");
+    assert.strictEqual(m.answers[part].hint, true);
+    assert.strictEqual(m.answers[none].late, true);
+  });
+});
+
+test("RULE_U28_SERVER_DRAFT=1: чужая схватка, уже отправленный ответ и чужая фаза — отказ; повторный черновик заменяет", () => {
+  withDraftRule(true, () => {
+    const g = game(5);
+    const m = g.s.matchups[0];
+    const other = g.s.matchups.find((x) => !x.authors.includes(m.authors[0]));
+    const id = m.authors[0];
+    if (other) assert.strictEqual(g.answerDraft(id, other.id, "не моё").reason, "not_yours");
+    assert.ok(g.answerDraft(id, m.id, "первый").ok);
+    assert.ok(g.answerDraft(id, m.id, "второй").ok);
+    assert.strictEqual(m.adrafts[id].text, "второй");
+    g.answer(id, m.id, "отправил", T.intro + 1000);
+    assert.strictEqual(g.answerDraft(id, m.id, "поздно").reason, "answered");
+    assert.strictEqual(g.snapshot(T.intro + 1, id).me.prompts.find((p) => p.id === m.id).draft, null);
+    // не-фаза ответов
+    const h = game(5);
+    const mm = h.s.matchups[0];
+    answerAll(h);
+    assert.strictEqual(h.answerDraft(mm.authors[0], mm.id, "x").reason, "not_answer");
+  });
+});

@@ -614,3 +614,46 @@ test("hello отдаёт limits.name — страница строит счёт�
   assert.strictEqual(hello.limits.name, 16);
   c.close();
 });
+
+// ---------- T-W2-18: черновик ответа на сервере (quip-018, U-28, RULE_U28_SERVER_DRAFT) ----------
+
+test("черновик ответа: правило выкл. — игнорируется молча, в снимке draft нет; вкл. — переживает reload и засчитывается по таймеру", async () => {
+  // выкл. (по умолчанию)
+  const room = await createRoom({}, 1);
+  const b = await board(room.code, room.hostToken);
+  const ps = [await player(room.code, "Аня"), await player(room.code, "Боря"), await player(room.code, "Вика")];
+  b.send({ type: "start" });
+  const m = await ps[0].wait(statePred((s) => s.phase === "answer" && s.me && s.me.prompts.length));
+  assert.ok(!m.state.serverDraft);
+  const before = ps[0].msgs.length;
+  ps[0].send({ type: "answer", mid: m.state.me.prompts[0].id, ans: "не засчитают", draft: true });
+  await sleep(300);
+  assert.ok(!ps[0].msgs.slice(before).some((x) => x.type === "rejected" || x.type === "error"), "без правила — ни отказа, ни ошибки");
+  for (const c of [b, ...ps]) c.close();
+
+  await withServer({ RULE_U28_SERVER_DRAFT: "1" }, async () => {
+    const r2 = await createRoom({}, 20);
+    const b2 = await board(r2.code, r2.hostToken);
+    const q = [await player(r2.code, "Аня"), await player(r2.code, "Боря"), await player(r2.code, "Вика")];
+    b2.send({ type: "start" });
+    const s1 = await q[0].wait(statePred((s) => s.phase === "answer" && s.me && s.me.prompts.length));
+    assert.strictEqual(s1.state.serverDraft, true);
+    const first = s1.state.me.prompts[0];
+    q[0].send({ type: "answer", mid: first.id, ans: "Черновик Ани", draft: true });
+    await sleep(150);
+    // reload: новый сокет по токену получает свой черновик в prompts[].draft; другим и доске он не виден
+    const back = await player(r2.code, "", q[0].token);
+    const again = await back.wait(statePred((s) => s.me && s.me.prompts.some((p) => p.id === first.id && p.draft)));
+    assert.deepStrictEqual(again.state.me.prompts.find((p) => p.id === first.id).draft, { text: "Черновик Ани" });
+    for (const c of [b2, q[1], q[2]]) assert.ok(!c.raw.some((r) => r.includes("Черновик Ани")), "черновик утёк чужому сокету");
+    // остальные отвечают, Аня молчит: таймер (speed 20) — черновик вместо 🐌
+    await answerAll([q[1], q[2]]);
+    const v = await b2.wait(statePred((s) => s.phase === "vote" && s.current && s.current.answers), 20000);
+    assert.ok(v.state.current.answers.length >= 2);
+    // раскрытие длится доли секунды (speed 20): ждём конца раунда и смотрим на все полученные кадры
+    await b2.wait(statePred((s) => s.phase === "scores" || s.phase === "finished"), 30000);
+    const seen = b2.raw.map((r) => JSON.parse(r)).some((x) => x.state && x.state.phase === "reveal" && x.state.current && (x.state.current.answers || []).some((a) => a.text === "Черновик Ани" && a.playerId === q[0].id && a.late === false && a.hint === false));
+    assert.ok(seen, "черновик Ани засчитан вместо 🐌: рукописный, не late");
+    for (const c of [b2, back, ...q]) c.close();
+  });
+});

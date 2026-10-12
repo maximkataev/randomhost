@@ -641,6 +641,46 @@ function doJoin(extra) {
   conn.send(m);
 }
 const drafts = {}; // mid → черновик (строка или три строки): переживает перерисовки
+// Черновик ответа переживает reload и закрытую вкладку (T-W2-18, quip-018): MP.draft — localStorage, TTL 2 ч (К-6).
+// Ключ слота — публичное «партия:раунд:схватка»; в слоте только текст самого игрока, один слот на комнату.
+// При включённом правиле U-28 (state.serverDraft) черновик ещё и уходит на сервер: по таймеру он засчитается вместо 🐌.
+const draftStore = window.MP && MP.draft && !MP.off ? MP.draft({ game: "quip", room: CODE, max: 400 }) : null;
+let draftSaved = null; // ключ слота, в котором сейчас лежит текст этого игрока
+let draftTimer = null;
+const draftKey = (mid) => "quip:" + (state ? state.game + ":" + state.ri : "-") + ":" + mid;
+const three = (a) => (Array.isArray(a) ? a : []).concat(["", "", ""]).slice(0, 3).map((x) => String(x == null ? "" : x));
+function loadDraft(pr, isFinal) {
+  if (drafts[pr.id] != null) return drafts[pr.id];
+  let v = null;
+  // с сервера (U-28): после reload и со второго телефона
+  if (pr.draft) v = isFinal ? three(pr.draft.items) : String(pr.draft.text || "");
+  if (v == null && draftStore) {
+    const raw = draftStore.load(draftKey(pr.id));
+    if (raw) {
+      if (isFinal) { try { v = three(JSON.parse(raw)); } catch (e) { v = null; } } else v = raw;
+    }
+  }
+  if (v != null) drafts[pr.id] = v;
+  return v;
+}
+// quiet — только в памяти (перерисовка с уже известным текстом): ни хранилище, ни сервер не дёргаем
+function saveDraft(mid, value, isFinal, quiet) {
+  drafts[mid] = value;
+  if (quiet) return;
+  if (draftStore) {
+    draftSaved = draftKey(mid);
+    draftStore.save(draftSaved, Array.isArray(value) ? (value.some(Boolean) ? JSON.stringify(value) : "") : String(value || ""));
+  }
+  if (state && state.serverDraft && conn) {
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(() => { if (conn && state && state.phase === "answer") conn.send({ type: "answer", mid, ans: value, draft: true }); }, 1500);
+  }
+}
+function dropDraft() {
+  draftSaved = null;
+  clearTimeout(draftTimer);
+  if (draftStore) draftStore.clear();
+}
 let hintArmed = null; // mid, для которого кнопка подсказки ждёт второго нажатия
 let justHinted = null; // mid, у которого только что перевернулась подсказка
 let langPicked = false;
@@ -769,6 +809,7 @@ function renderCenter(titleKey, textKey, extra, key) {
 function renderExpired() {
   dead = true;
   screen = "expired";
+  dropDraft();
   try { localStorage.removeItem(tokenKey()); } catch (e) {}
   renderCenter("expired_title", "expired_text", `<a class="btn" style="margin-top:14px" href="quip.html">${T("expired_new")}</a>`);
 }
@@ -875,7 +916,7 @@ function renderAnswer() {
   const key = "ans:" + cur.id + ":" + s.hintsLeft + ":" + (hintArmed === cur.id) + qpLang();
   if (screenKey === key) return;
   const final = cur.deck === "final";
-  const d = drafts[cur.id] || (final ? ["", "", ""] : "");
+  const d = loadDraft(cur, final) || (final ? ["", "", ""] : "");
   const hintLabel = s.hintsLeft <= 0 ? T("btn_hint_none") : hintArmed === cur.id ? T("btn_hint_sure") : tpl("btn_hint", { n: s.hintsLeft });
   const promptKind = promptKindOf(cur.prompt);
   show(`<div class="ahead"><span class="left">${escapeHtml(tpl("q_of", { i: list.indexOf(cur) + 1, n: list.length }))}</span><span id="tleft"></span></div>${timerHtml()}
@@ -892,23 +933,23 @@ function renderAnswer() {
   if (final) {
     const inputs = [...form.querySelectorAll("input")];
     inputs.forEach((inp, i) => {
-      const upd = () => {
-        drafts[cur.id] = inputs.map((x) => x.value);
+      const upd = (quiet) => {
+        saveDraft(cur.id, inputs.map((x) => x.value), true, quiet === true);
         const lm = limItem(), c = inp.parentNode.querySelector(".icnt");
         if (c) c.textContent = inp.value.length > lm - 10 ? `${inp.value.length}/${lm}` : "";
       };
-      inp.oninput = upd;
-      upd();
+      inp.oninput = () => upd(false);
+      upd(true);
       inp.onkeydown = (e) => { if (e.key === "Enter" && i < 2) { e.preventDefault(); inputs[i + 1].focus(); } };
     });
     const first = inputs.find((x) => !x.value) || inputs[0];
     if (!matchMedia("(pointer: coarse)").matches) first.focus();
   } else {
     const ta = document.getElementById("ta");
-    const upd = () => { drafts[cur.id] = ta.value; cnt.textContent = ta.value.length > limAnswer() - 20 ? `${ta.value.length}/${limAnswer()}` : ""; };
-    ta.oninput = upd;
+    const upd = (quiet) => { saveDraft(cur.id, ta.value, false, quiet === true); cnt.textContent = ta.value.length > limAnswer() - 20 ? `${ta.value.length}/${limAnswer()}` : ""; };
+    ta.oninput = () => upd(false);
     ta.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit ? form.requestSubmit() : form.onsubmit(e); } };
-    upd();
+    upd(true);
     if (!matchMedia("(pointer: coarse)").matches) ta.focus();
   }
   form.onsubmit = (e) => {
@@ -917,6 +958,7 @@ function renderAnswer() {
     const ans = final ? (val || []).map((x) => String(x || "").trim()) : String(val || "").trim();
     if (final ? !ans.some(Boolean) : !ans) { toast(T("rj_empty")); return; }
     if (final && ans.filter(Boolean).length < 3) { toast(T("rj_need_three")); return; }
+    clearTimeout(draftTimer); // отложенный черновик после настоящего ответа не нужен
     conn.send({ type: "answer", mid: cur.id, ans });
     qpSfx.send();
     qpVibrate(15);
@@ -943,6 +985,11 @@ function renderVote() {
     const mineA = c.answers.find((a) => a.mine);
     if (mineA) toast(T("got_hint") + " " + (mineA.items ? mineA.items.join(" / ") : mineA.text));
     justHinted = null;
+  }
+  // после reload: свой голос и отметки приходят с сервера (myVotes/myDraft) — «Твой голос» не пустеет
+  if (!picks.length && s) {
+    if (s.voted && s.myVotes) picks = s.myVotes.slice();
+    else if (s.myDraft) picks = s.myDraft.slice();
   }
   const voted = s && (s.voted || sentVote === c.id);
   const key = "vote:" + c.id + ":" + voted + ":" + (s && s.canVote) + ":" + picks.join(",") + qpLang();
@@ -1117,7 +1164,7 @@ function flushQueued() {
 // действие не дошло до сервера (очередь протухла/переполнена/отброшена): снимаем «ушло» и говорим об этом.
 // Если сервер успел его принять (по снимку видно), молчим.
 function lostAction(m) {
-  if (!m || dead) return;
+  if (!m || dead || m.draft === true) return;
   const st = state && state.me;
   let applied = false;
   if (m.type === "answer" || m.type === "hint") {
@@ -1142,6 +1189,9 @@ function onMessage(m) {
     case "hello":
     case "state":
       state = m.state;
+      // принятый ответ (или ушедшая фаза ответов) — черновик в хранилище больше не нужен
+      if (draftSaved && (state.phase !== "answer" || (state.me && state.me.prompts.some((x) => x.done && draftKey(x.id) === draftSaved)))) dropDraft();
+      else if (m.type === "hello" && state.phase !== "answer" && draftStore) dropDraft();
       // сервер сказал «имя занято, пока идёт вопрос» — входим сами, как только фаза сменилась
       if (waitPhase && !me && state.phase !== waitPhase) { waitPhase = null; joinErr = null; doJoin(); }
       if (m.type === "hello" && needJoin) {
@@ -1209,6 +1259,7 @@ function onMessage(m) {
       try { localStorage.removeItem(tokenKey()); } catch (e) {}
       token = null;
       joinName = "";
+      dropDraft();
       screen = "kicked";
       renderCenter("kicked_title");
       break;
