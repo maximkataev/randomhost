@@ -398,6 +398,44 @@ const SOLVER = String.raw`(async () => {
     check(typeof doing === "string" && doing.length > 3, `доска: подпись «что делает держатель» (${doing})`);
     check((await board.evaluate("state.challenges && Object.keys(state.challenges).length >= 0")) === true, "доска видит испытания держателя");
 
+    // --- 4а. «нет связи» (bomb-003): метка на карточке держателя и в подписи по центру; карточки не двигаются
+    {
+      await board.call("Page.bringToFront"); // метка в .st и раскладка карточек живут в rAF — в фоновой вкладке он не идёт
+      await wait(900);
+      const before = await board.evaluate(`(() => { const o = {}; document.querySelectorAll(".pc").forEach((c) => { const r = c.getBoundingClientRect(); o[c.dataset.id] = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; }); return o; })()`);
+      const hid = await board.evaluate("state.bombs[0].holder");
+      await board.evaluate(`(() => { const p = state.players.find((x) => x.id === ${JSON.stringify(hid)}); p.online = false; render(); })()`);
+      await wait(900);
+      const mark = await board.evaluate(`(() => { const c = document.querySelector('.pc[data-id=' + JSON.stringify(${JSON.stringify(hid)}) + ']'); return { st: c.querySelector(".st").textContent, doing: document.getElementById("doing").textContent }; })()`);
+      check(/нет связи/.test(mark.st) && /⚡/.test(mark.st), `доска: у держателя без связи «🧨 ⚡ нет связи» (${mark.st})`);
+      check(/без связи/.test(mark.doing), `доска: подпись по центру «без связи…» (${mark.doing})`);
+      const after = await board.evaluate(`(() => { const o = {}; document.querySelectorAll(".pc").forEach((c) => { const r = c.getBoundingClientRect(); o[c.dataset.id] = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; }); return o; })()`);
+      check(JSON.stringify(before) === JSON.stringify(after), "доска: карточки не сдвинулись и не изменили размер от метки «нет связи»");
+      await board.evaluate(`(() => { state.players.find((x) => x.id === ${JSON.stringify(hid)}).online = true; })()`);
+
+      // телефон: плитки целей — серая «нет связи»; с правилом U-26 — disabled; размер плитки не меняется
+      const res = await phones[0].evaluate(`(() => {
+        const me = window.bmPhone.me, real = window.bmPhone.state;
+        const run = (onlineOnly, offId) => {
+          const fake = JSON.parse(JSON.stringify(real));
+          fake.phase = "live"; fake.onlineOnly = onlineOnly;
+          fake.bombs = [{ id: 0, holder: me, from: null, since: Date.now(), alive: true, commit: "0".repeat(64) }];
+          fake.me = { id: me, challenge: null, armed: true, holding: [0], passN: { 0: 0 } };
+          fake.players.forEach((p) => { p.online = p.id !== offId; });
+          screen = null; state = fake; renderTargets();
+          return [...document.querySelectorAll("#targets .target")].map((t) => ({ off: t.classList.contains("off"), disabled: t.disabled, small: (t.querySelector("small") || {}).textContent || "", h: Math.round(t.getBoundingClientRect().height) }));
+        };
+        const other = real.players.find((p) => p.id !== me).id;
+        const base = run(false, null), soft = run(false, other), hard = run(true, other);
+        return { base, soft, hard };
+      })()`);
+      const offSoft = res.soft.find((t) => t.off), offHard = res.hard.find((t) => t.off);
+      check(offSoft && offSoft.small === "нет связи" && !offSoft.disabled, "телефон: офлайн-плитка серая с «нет связи», без правила — нажимается");
+      check(offHard && offHard.small === "нет связи" && offHard.disabled, "телефон: с RULE_U26_BOMB_ONLINE офлайн-плитка disabled");
+      check(res.base.map((t) => t.h).join() === res.hard.map((t) => t.h).join(), "телефон: высота плиток не меняется от метки «нет связи»");
+      await phones[0].evaluate("screen = null; targetsKey = ''; render();");
+    }
+
     // --- 5. ведущий останавливает раунд → итоги, печать сверяется в браузере
     await board.evaluate("document.querySelector('#hostbar button:not(.linkbtn)').click()");
     await wait(2000);

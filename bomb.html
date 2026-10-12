@@ -122,6 +122,7 @@
   .pl.me { background: var(--paper-2); }
   .pl.hold { background: var(--yellow); }
   .pl.out { opacity: .4; }
+  .pl.off:not(.hold) { opacity: .6; }
   .pl .tag { font-size: 18px; }
   .av { flex: none; width: 28px; height: 28px; border: 2.5px solid var(--ink); border-radius: 50%; background: var(--pc, #ccc); display: grid; place-items: center; font: 900 12px/1 var(--font); color: #fff; text-shadow: 1px 1px 0 var(--ink); }
   /* реакции прилипают к низу экрана: при 16 игроках список длиннее экрана, а кнопки должны быть под пальцем */
@@ -195,6 +196,7 @@
   .targets.few { grid-template-columns: 1fr; }
   .target { min-height: 76px; color: var(--ink); border: var(--line); background: #fff; box-shadow: 4px 4px 0 var(--ink); display: flex; align-items: center; gap: 10px; padding: 0 10px; font-weight: 900; font-size: 22px; min-width: 0; text-align: left; }
   .target span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .target.off { opacity: .6; }
   .target small { display: block; font-size: 13px; font-weight: 700; color: var(--ink-2); }
   .target:not(:disabled):active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--ink); background: var(--yellow); }
   .throwing .target { pointer-events: none; }
@@ -486,6 +488,7 @@ window.I18N_DICT = {
     kicked_title: `Ведущий убрал тебя из комнаты`,
     replaced_title: `Ты открыл(а) игру на другом устройстве`, replaced_text: `Здесь управлять больше нельзя.`, btn_back_here: `Играть здесь`,
     rj_no_return: `Сразу вернуть нельзя — выбери другого`, rj_not_live: `Раунд уже закончился`, rj_bad_target: `Этот игрок уже не в игре`, send_lost: `Не дошло — нажми ещё раз`,
+    rj_offline: `У этого игрока нет связи — выбери другого`, no_link: `нет связи`,
     // испытания
     t_wires: `Перережь {n} провода!`, t_wires5: `Перережь {n} проводов!`,
     t_swipe: `Смахни по стрелкам`, swipe_here: `Смахивай здесь`,
@@ -548,6 +551,7 @@ window.I18N_DICT = {
     kicked_title: `The host removed you from the room`,
     replaced_title: `You opened the game on another device`, replaced_text: `You can't play from here anymore.`, btn_back_here: `Play here`,
     rj_no_return: `Can't throw it straight back — pick someone else`, rj_not_live: `The round is already over`, rj_bad_target: `That player is no longer in the game`, send_lost: `Didn't go through — tap again`,
+    rj_offline: `That player has no connection — pick someone else`, no_link: `no signal`,
     t_wires: `Cut {n} wires!`, t_wires5: `Cut {n} wires!`,
     t_swipe: `Swipe along the arrows`, swipe_here: `Swipe here`,
     t_hold: `Hold and release in the green zone`, hold_btn: `Hold`,
@@ -609,6 +613,7 @@ window.I18N_DICT = {
     kicked_title: `Ο οικοδεσπότης σε αφαίρεσε`,
     replaced_title: `Άνοιξες το παιχνίδι σε άλλη συσκευή`, replaced_text: `Από εδώ δεν παίζεις πια.`, btn_back_here: `Παίξε εδώ`,
     rj_no_return: `Δεν τη γυρνάς αμέσως πίσω — διάλεξε άλλον`, rj_not_live: `Ο γύρος τελείωσε`, rj_bad_target: `Αυτός ο παίκτης δεν παίζει πια`, send_lost: `Δεν στάλθηκε — πάτα ξανά`, //EL:unverified
+    rj_offline: `Αυτός ο παίκτης δεν έχει σύνδεση — διάλεξε άλλον`, no_link: `χωρίς σύνδεση`, //EL:unverified
 
     t_wires: `Κόψε {n} καλώδια!`, t_wires5: `Κόψε {n} καλώδια!`,
     t_swipe: `Σύρε όπως δείχνουν τα βέλη`, swipe_here: `Σύρε εδώ`,
@@ -794,7 +799,12 @@ function renderExpired() {
 
 // ---------- спокойные экраны: лобби, отсчёт, бомба у другого ----------
 function playersList(holders) {
-  return state.players.filter((p) => !p.left).map((p) => `<div class="pl${p.id === me ? " me" : ""}${holders.includes(p.id) ? " hold" : ""}${p.out ? " out" : ""}">${avHtml(p)}<b>${escapeHtml(p.name)}</b><span class="tag">${holders.includes(p.id) ? "💣" : p.out ? "💥" : ""}</span></div>`).join("");
+  // «нет связи» — серая плитка и 📵 в уже существующей метке: размер плитки не меняется
+  return state.players.filter((p) => !p.left).map((p) => {
+    const off = p.online === false && !p.out;
+    const tag = holders.includes(p.id) ? (off ? "💣📵" : "💣") : p.out ? "💥" : off ? "📵" : "";
+    return `<div class="pl${p.id === me ? " me" : ""}${holders.includes(p.id) ? " hold" : ""}${p.out ? " out" : ""}${off ? " off" : ""}"${off ? ` title="${escapeHtml(T("no_link"))}"` : ""}>${avHtml(p)}<b>${escapeHtml(p.name)}</b><span class="tag">${tag}</span></div>`;
+  }).join("");
 }
 function reactsHtml() {
   return `<div class="reacts">${REACTIONS.map((e) => `<button type="button" data-e="${e}">${e}</button>`).join("")}</div>`;
@@ -838,7 +848,7 @@ function renderCalm() {
     k = T("holds_k"); big = names.join(" + "); sub = T("calm_sub"); color = holders.length === 1 ? (player(holders[0]) || {}).color : "";
     if (p && p.out) { k = T("out_title"); big = "💥"; sub = T("out_sub"); color = ""; }
   }
-  const key = [ph, k, big, sub, holders.join(), state.players.map((x) => x.id + x.out + x.left).join(), bmLang()].join("|");
+  const key = [ph, k, big, sub, holders.join(), state.players.map((x) => x.id + x.out + x.left + (x.online === false ? "!" : "")).join(), bmLang()].join("|");
   if (screen === "calm" && key === calmKey) return;
   screen = "calm";
   calmKey = key;
@@ -1477,7 +1487,8 @@ function renderTargets() {
   const b = state.bombs.filter((x) => x.alive && x.holder === me).sort((x, y) => x.since - y.since)[0];
   const alive = state.players.filter((p) => !p.left && !p.out);
   const blockFrom = !state.settings.returnOk && alive.length > 2 && b ? b.from : null;
-  const key = alive.map((p) => p.id + p.online).join() + "|" + blockFrom + "|" + bmLang();
+  const onlineOnly = !!state.onlineOnly; // сервер включил RULE_U26_BOMB_ONLINE: на «нет связи» кидать нельзя
+  const key = alive.map((p) => p.id + p.online).join() + "|" + blockFrom + "|" + onlineOnly + "|" + bmLang();
   if (screen === "targets" && key === targetsKey) return;
   const fresh = screen !== "targets";
   screen = "targets";
@@ -1494,8 +1505,11 @@ function renderTargets() {
     if (p.id === me) continue;
     const t = el("button", "target");
     t.type = "button";
-    t.innerHTML = `${avHtml(p)}<span>${escapeHtml(p.name)}${p.id === blockFrom ? `<small>${T("just_threw")}</small>` : ""}</span>`;
-    t.disabled = p.id === blockFrom;
+    const noLink = p.online === false;
+    // метка — в той же <small>, что и «только что кинул(а)»: плитка не растёт
+    t.innerHTML = `${avHtml(p)}<span>${escapeHtml(p.name)}${p.id === blockFrom ? `<small>${T("just_threw")}</small>` : noLink ? `<small>${T("no_link")}</small>` : ""}</span>`;
+    if (noLink) t.classList.add("off");
+    t.disabled = p.id === blockFrom || (noLink && onlineOnly);
     t.onclick = () => {
       if (Date.now() - throwingAt < 800) return;
       throwingAt = Date.now();

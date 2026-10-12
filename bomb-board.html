@@ -388,7 +388,7 @@ window.I18N_DICT = {
     btn_start: `Поджечь фитиль`, btn_again: `Ещё раунд`, btn_lobby: `В лобби`, btn_end: `Остановить раунд`,
     need_two: `Нужно хотя бы 2 игрока на связи`,
     two_note: `Две бомбы — с 6 игроков. Пока будет одна`,
-    kick: `Убрать`, offline: `не в сети`,
+    kick: `Убрать`, offline: `не в сети`, nolink: `нет связи`, doing_off: `{name} без связи…`,
     now_holds: `Сейчас держит`, now_hold2: `Держат`,
     doing: `{name} {what}…`, armed: `{name} выбирает, в кого кинуть!`, fresh: `{name} получил(а) бомбу!`,
     danger: `Может рвануть в любой момент`,
@@ -432,7 +432,7 @@ window.I18N_DICT = {
     btn_start: `Light the fuse`, btn_again: `Another round`, btn_lobby: `To lobby`, btn_end: `Stop round`,
     need_two: `Need at least 2 players online`,
     two_note: `Two bombs start at 6 players. For now there'll be one`,
-    kick: `Remove`, offline: `offline`,
+    kick: `Remove`, offline: `offline`, nolink: `no signal`, doing_off: `{name} has no signal…`,
     now_holds: `Holding it now`, now_hold2: `Holding`,
     doing: `{name} {what}…`, armed: `{name} is picking a target!`, fresh: `{name} got the bomb!`,
     danger: `Could blow any second`,
@@ -476,7 +476,7 @@ window.I18N_DICT = {
     btn_start: `Άναψε το φιτίλι`, btn_again: `Άλλος γύρος`, btn_lobby: `Στο λόμπι`, btn_end: `Διακοπή γύρου`,
     need_two: `Χρειάζονται τουλάχιστον 2 συνδεδεμένοι παίκτες`,
     two_note: `Δύο βόμβες από 6 παίκτες. Προς το παρόν θα είναι μία`,
-    kick: `Αφαίρεση`, offline: `εκτός σύνδεσης`,
+    kick: `Αφαίρεση`, offline: `εκτός σύνδεσης`, nolink: `χωρίς σύνδεση`, doing_off: `{name} χωρίς σύνδεση…`, //EL:unverified
     now_holds: `Την κρατά τώρα`, now_hold2: `Την κρατούν`,
     doing: `{name} {what}…`, armed: `{name} διαλέγει σε ποιον θα την πετάξει!`, fresh: `{name} πήρε τη βόμβα!`,
     danger: `Μπορεί να σκάσει ανά πάσα στιγμή`,
@@ -887,7 +887,8 @@ function drawCenter() {
   let doing = "";
   if (live()) {
     const p0 = holders.map(player).find(Boolean);
-    if (p0 && p0.armed) doing = tpl("armed", { name: p0.name });
+    if (p0 && p0.online === false) doing = tpl("doing_off", { name: p0.name });
+    else if (p0 && p0.armed) doing = tpl("armed", { name: p0.name });
     else if (p0 && p0.solving) doing = tpl("doing", { name: p0.name, what: T("ch_" + p0.solving) });
     else if (p0) doing = tpl("fresh", { name: p0.name });
   } else if (ph === "boom" || ph === "finished") {
@@ -1165,7 +1166,7 @@ function frame() {
       if (!c) continue;
       const st = c.querySelector(".st");
       const hb = state.bombs.find((x) => x.alive && x.holder === p.id);
-      st.textContent = hb ? "🧨 " + bmSec(now - hb.since) : p.out ? T("out_mark") : !p.online ? T("offline") : "";
+      st.textContent = hb ? (p.online === false ? "🧨 ⚡ " + T("nolink") : "🧨 " + bmSec(now - hb.since)) : p.out ? T("out_mark") : !p.online ? T("offline") : "";
       c.classList.toggle("hot", !!hb && now - hb.since > 6000);
     }
   } else if (state.phase === "countdown") {

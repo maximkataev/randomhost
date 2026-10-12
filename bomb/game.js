@@ -35,6 +35,11 @@ const T = {
   boom: 4500, // вспышка и «Не повезло: …»
 };
 
+// RULE_U26_BOMB_ONLINE (класс B, T-W2-14, U-26): бомба достаётся и кидается только тем, кто на связи.
+// По умолчанию выкл — поведение как в спеке §4 (кидать можно и «призраку»). Читается при каждом вызове:
+// тесты и стенд переключают без перезагрузки модуля.
+const onlineRule = () => process.env.RULE_U26_BOMB_ONLINE === "1";
+
 const MAX_PLAYERS = 16;
 const MIN_PLAYERS = 2;
 const TWO_BOMBS_MIN = 6;
@@ -120,6 +125,13 @@ class Game {
     return this.s.players.filter((p) => !p.out && !p.left);
   }
 
+  // живые участники партии, кто на связи; без флага RULE_U26_BOMB_ONLINE — все живые, как раньше.
+  // Пусто никогда не возвращает ради флага: вызывающий сам решает, что делать с «никого на связи»
+  active() {
+    const a = this.alive();
+    return onlineRule() ? a.filter((p) => p.online !== false) : a;
+  }
+
   // кидать можно только живым участникам партии; в лобби и на итогах — вход открыт
   addPlayer({ id, name }) {
     const s = this.s;
@@ -148,8 +160,16 @@ class Game {
     const s = this.s;
     const p = this.player(id);
     if (!p) return [];
-    if (s.phase === "lobby" || s.phase === "finished") {
+    if (s.phase === "lobby") {
       s.players = s.players.filter((x) => x !== p);
+      return [{ type: "left", playerId: id }];
+    }
+    // В итогах запись не удаляем (N1): на неё ссылаются статистика и «проиграл» — иначе в итогах «?».
+    // left убирает игрока из списков живых и мест; toLobby вычистит его вместе с остальными ушедшими.
+    if (s.phase === "finished") {
+      if (!p.left) p.left = true;
+      delete s.challenges[id];
+      delete s.armed[id];
       return [{ type: "left", playerId: id }];
     }
     if (p.left) return [];
@@ -168,7 +188,9 @@ class Game {
     if (s.phase === "live") {
       for (const b of s.bombs) {
         if (!b.alive || b.holder !== id) continue;
-        const alive = this.alive();
+        // с RULE_U26_BOMB_ONLINE — только из тех, кто на связи (запас: все живые)
+        let alive = this.active();
+        if (!alive.length) alive = this.alive();
         const to = alive[this.rnd(alive.length)];
         b.holder = to.id; b.from = null; b.since = now;
         ev.push({ type: "pass", bomb: b.id, from: id, to: to.id, at: now, dropped: true });
@@ -191,13 +213,13 @@ class Game {
   }
 
   bombCount() {
-    return this.s.settings.mode === "two" && this.alive().length >= TWO_BOMBS_MIN ? 2 : 1;
+    return this.s.settings.mode === "two" && this.active().length >= TWO_BOMBS_MIN ? 2 : 1;
   }
 
   start(now) {
     const s = this.s;
     if (s.phase !== "lobby" && s.phase !== "finished") return { ok: false, reason: "started" };
-    if (this.alive().length < MIN_PLAYERS) return { ok: false, reason: "few_players" };
+    if (this.active().length < MIN_PLAYERS) return { ok: false, reason: "few_players" };
     s.game++;
     s.roundInGame = 0;
     s.seals = [];
@@ -240,10 +262,12 @@ class Game {
     s.phaseEnd = null;
     s.startedAt = now;
     // первые держатели — случайные и разные (две бомбы не начинают у одного)
-    let pool = this.alive();
+    // с RULE_U26_BOMB_ONLINE пул — только те, кто на связи; никого нет — все живые (чтобы не упасть)
+    const fromPool = () => { const a = this.active(); return a.length ? a : this.alive(); };
+    let pool = fromPool();
     const ev = [{ type: "live" }];
     for (const b of s.bombs) {
-      if (!pool.length) pool = this.alive();
+      if (!pool.length) pool = fromPool();
       const p = pool.splice(this.rnd(pool.length), 1)[0];
       b.holder = p.id;
       b.since = now;
@@ -311,7 +335,8 @@ class Game {
   canTarget(b, fromId, toId) {
     const to = this.player(toId);
     if (!to || to.out || to.left || toId === fromId) return false;
-    if (!this.s.settings.returnOk && this.alive().length > 2 && b.from === toId) return false;
+    if (onlineRule() && to.online === false) return false;
+    if (!this.s.settings.returnOk && this.active().length > 2 && b.from === toId) return false;
     return true;
   }
 
@@ -336,6 +361,7 @@ class Game {
     const b = ref ? mine.find((x) => x.id === ref.b) || mine[0] : mine[0];
     const to = this.player(toId);
     if (!to || to.out || to.left || toId === id) return { ok: false, reason: "bad_target" };
+    if (onlineRule() && to.online === false) return { ok: false, reason: "offline" };
     if (!this.canTarget(b, id, toId)) return { ok: false, reason: "no_return" };
     s.log.push({ b: b.id, from: id, to: toId, at: now, held: now - b.since });
     b.from = id;
@@ -404,7 +430,7 @@ class Game {
   afterBoom(now) {
     const s = this.s;
     if (s.settings.mode === "elim") {
-      const alive = this.alive();
+      const alive = this.active();
       if (alive.length >= 2) return this.beginRound(now);
       return this.finish("last", now);
     }
@@ -432,7 +458,8 @@ class Game {
     s.armed = {};
     s.finishedReason = reason;
     if (s.settings.mode === "elim") {
-      const alive = this.alive();
+      // победитель — единственный живой; с RULE_U26_BOMB_ONLINE ушедшие без связи не мешают финалу
+      const alive = this.active();
       if (alive.length === 1) s.winnerId = alive[0].id;
     }
     return [{ type: "final", reason }];
@@ -525,6 +552,8 @@ class Game {
       winnerId: s.phase === "finished" ? s.winnerId : null,
       finishedReason: s.phase === "finished" ? s.finishedReason : null,
       twoBombsMin: TWO_BOMBS_MIN,
+      // правило U-26 включено: клиент серит плитки «нет связи» и не даёт на них нажать (сервер всё равно проверяет)
+      onlineOnly: onlineRule(),
       // доска видит код «Зала», только если он показан на общем экране; держатель — никогда
       challenges: board ? Object.fromEntries(Object.entries(s.challenges).map(([k, c]) => [k, c.type === "crowd" && c.view.where === "tv" ? { ...pub(c), code: c.answer } : pub(c)])) : null,
       me: me ? {

@@ -13,10 +13,11 @@ const WebSocket = require("ws");
 const DUMP = path.join(os.tmpdir(), `bomb-test-${process.pid}.json`);
 const port = 4400 + (process.pid % 500);
 let proc = null;
+let serverEnv = {}; // дополнительные переменные окружения следующего запуска (флаги правил, таймеры)
 
 function startServer() {
   proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300" },
+    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300", ...serverEnv },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";
@@ -559,3 +560,43 @@ test("restore-from-prev-dump: passN после рестарта считаетс
   await b.wait(statePred((s) => s.phase === "finished"));
   for (const x of [b, back]) x.close();
 });
+
+// ---- T-W2-14: бросок на офлайн — за RULE_U26_BOMB_ONLINE ----
+for (const flag of [true, false]) {
+  test(`бросок в закрывшегося: ${flag ? "RULE_U26_BOMB_ONLINE=1 — rejected offline" : "флаг выкл — бросок проходит, как в спеке §4"}`, async () => {
+    await stopServer();
+    serverEnv = flag ? { RULE_U26_BOMB_ONLINE: "1" } : {};
+    await startServer();
+    try {
+      const { code, hostToken } = await createRoom({ fuse: "long" });
+      const b = await board(code, hostToken);
+      const ps = [await player(code, "Аня"), await player(code, "Петя"), await player(code, "Оля")];
+      b.send({ type: "start" });
+      const live = await b.wait(statePred((s) => s.phase === "live"), 6000);
+      const holder = ps.find((p) => p.id === live.state.bombs[0].holder);
+      const rest = ps.filter((p) => p !== holder);
+      // один из двух остальных закрыл вкладку; ждём, пока сервер отметит его «нет связи» (OFFLINE_GRACE_MS=300)
+      rest[0].close();
+      await b.wait(statePred((s) => s.players.some((p) => p.id === rest[0].id && p.online === false)), 4000);
+      const m = await holder.wait(statePred((s) => s.me && s.me.challenge));
+      const c = m.state.me.challenge;
+      await sleep(minWait(c));
+      holder.send({ type: "answer", cid: c.id, ans: solveView(c) });
+      await holder.wait(statePred((s) => s.me && s.me.armed));
+      holder.send({ type: "pass", to: rest[0].id });
+      if (flag) {
+        await holder.wait((x) => x.type === "rejected" && x.action === "pass" && x.reason === "offline");
+        assert.strictEqual(b.state.bombs[0].holder, holder.id, "бомба не ушла");
+        holder.send({ type: "pass", to: rest[1].id }); // живому — можно
+        await b.wait(statePred((s) => s.bombs[0].holder === rest[1].id && s.passes === 1));
+      } else {
+        await b.wait(statePred((s) => s.bombs[0].holder === rest[0].id && s.passes === 1));
+      }
+      for (const x of [b, ...ps]) x.close();
+    } finally {
+      await stopServer();
+      serverEnv = {};
+      await startServer();
+    }
+  });
+}
