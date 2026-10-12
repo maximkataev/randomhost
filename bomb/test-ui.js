@@ -176,7 +176,8 @@ const SOLVER = String.raw`(async () => {
   server.stderr.on("data", (d) => (slog += d));
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "bomb-ui-"));
   const chrome = spawn(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--autoplay-policy=no-user-gesture-required", `--user-data-dir=${profile}`, `--remote-debugging-port=${PORT}`, "--window-size=1440,900", "about:blank"], { stdio: "ignore" });
-  await wait(2500);
+  // Chrome на нагруженной машине поднимается дольше 2,5 с — ждём порт отладки до 30 с
+  for (let i = 0; i < 60; i++) { try { await fetch(`http://localhost:${PORT}/json/version`); break; } catch (e) { await wait(500); } }
   const pages = [];
   try {
     // --- 1. стартовый экран
@@ -302,6 +303,13 @@ const SOLVER = String.raw`(async () => {
     for (const [i, ph] of phones.entries()) check((await ph.evaluate("window.bmPhone.me")) != null, `телефон ${names[i]}: вошёл`);
     check((await board.evaluate("state.players.length")) === 3, "доска: трое в лобби");
     await board.shot("b_lobby");
+    // T-W3-14 (bomb-008): ✕ не меньше 36×36 и убирает со второго тапа; QR крупнее 136 css-px при высоте 900
+    const lobbyM = await board.evaluate(`(() => { const x = document.querySelector(".seat .x"); const q = document.getElementById("qr").getBoundingClientRect(); const r = x.getBoundingClientRect(); x.click(); return { w: Math.round(r.width), h: Math.round(r.height), qr: Math.round(q.width), armed: !!document.querySelector(".seat .x[data-armed]"), n: state.players.length }; })()`);
+    check(lobbyM && lobbyM.w >= 36 && lobbyM.h >= 36, `лобби: ✕ не меньше 36×36 (${lobbyM && lobbyM.w}×${lobbyM && lobbyM.h})`);
+    check(lobbyM && lobbyM.armed && lobbyM.n === 3, "лобби: первый тап по ✕ взводит «Убрать?», игрок остаётся");
+    check(lobbyM && lobbyM.qr >= 136, `лобби: QR не меньше 136 (${lobbyM && lobbyM.qr})`);
+    await wait(3300);
+    check((await board.evaluate("!document.querySelector('.seat .x[data-armed]') && state.players.length")) === 3, "лобби: без второго тапа ✕ сам снимается, игрок на месте");
     await phones[0].shot("p_lobby");
 
     // --- 3. галерея испытаний: подсовываем пульту каждое испытание и рисуем, ничего не отправляя
@@ -494,6 +502,10 @@ const SOLVER = String.raw`(async () => {
     }
 
     // --- 5. ведущий останавливает раунд → итоги, печать сверяется в браузере
+    // T-W3-14 (bomb-005): «Остановить раунд» — два тапа; первый только взводит
+    await board.evaluate("document.querySelector('#hostbar button:not(.linkbtn)').click()");
+    await wait(300);
+    check((await board.evaluate("state.phase")) === "live" && (await board.evaluate("document.querySelector('#hostbar button[data-armed]') !== null")), "«Остановить раунд»: первый тап взводит, раунд идёт");
     await board.evaluate("document.querySelector('#hostbar button:not(.linkbtn)').click()");
     await wait(2000);
     check((await board.evaluate("state.phase")) === "finished", "раунд остановлен ведущим");
@@ -536,6 +548,8 @@ const SOLVER = String.raw`(async () => {
       check(armed, `«Зал» (${ch.view.where}): держатель ввёл код и может кидать`);
       if (armed) crowdDone++;
       await board.evaluate("document.querySelector('#hostbar button:not(.linkbtn)').click()");
+      await wait(150);
+      await board.evaluate("document.querySelector('#hostbar button:not(.linkbtn)').click()");
       await wait(1500);
     }
     check(crowdDone >= 1, "«Зал» пройден по-настоящему");
@@ -547,11 +561,32 @@ const SOLVER = String.raw`(async () => {
     await wait(400);
     await board.evaluate("document.getElementById('again').click()");
     await wait(3500);
+    await board.evaluate(`(() => {
+      window.__kap = null;
+      new MutationObserver((muts) => {
+        const arena = document.getElementById("arena");
+        for (const m of muts) for (const k of m.addedNodes) {
+          if (!k.classList || !k.classList.contains("kapow")) continue;
+          requestAnimationFrame(() => {
+            const ar = arena.getBoundingClientRect(), sc = ar.width / arena.clientWidth || 1;
+            const rg = document.createRange(); rg.selectNodeContents(document.getElementById("holder")); const nr = rg.getBoundingClientRect();
+            const cx = parseFloat(k.style.left), cy = parseFloat(k.style.top), hw = k.offsetWidth / 2, hh = k.offsetHeight / 2;
+            const x0 = (nr.left - ar.left) / sc, x1 = (nr.right - ar.left) / sc, y0 = (nr.top - ar.top) / sc, y1 = (nr.bottom - ar.top) / sc;
+            window.__kap = { over: !(cx + hw <= x0 || cx - hw >= x1 || cy + hh <= y0 || cy - hh >= y1), z: k.style.zIndex };
+          });
+        }
+      }).observe(document.getElementById("arena"), { childList: true });
+    })()`);
     const victimPhone = await board.evaluate("state.bombs[0].holder");
     const waitBoom = async () => { for (let i = 0; i < 100; i++) { if ((await board.evaluate("state.phase")) === "boom") return true; await wait(500); } return false; };
     check(await waitBoom(), "взрыв случился сам по фитилю");
     await wait(300);
     await board.shot("b_boom");
+    // T-W3-14 (bomb-006): «БУМ!» не лежит на имени проигравшего (наблюдатель в странице записал положение звезды сразу при появлении)
+    const kap = await board.evaluate("window.__kap || { none: true }");
+    check(kap && !kap.none && (!kap.over || kap.z === "2"), "взрыв: «БУМ!» не перекрывает имя проигравшего" + (kap && kap.none ? " (звезды нет)" : ""));
+    await wait(2000);
+    check((await board.evaluate("document.querySelectorAll('.kapow').length")) === 0, "взрыв: «БУМ!» исчезает за ~2 с, а не висит 4 с");
     const vIdx = (await Promise.all(phones.map((p) => p.evaluate("window.bmPhone.me")))).indexOf(victimPhone);
     if (vIdx >= 0) await phones[vIdx].shot("p_boom_victim");
     await phones[(vIdx + 1) % 3].shot("p_boom_other");
