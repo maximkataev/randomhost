@@ -659,3 +659,73 @@ test("cleanName/cleanText режут по символам, а не по UTF-16 
   assert.equal(nameKey("  Ёж Игорь "), nameKey("еж игорь"));
   assert.equal(nameKey("ХИТРЫЙ"), nameKey("хитрый "));
 });
+
+// ---------- T-W2-29: призраки и ставки; RULE_U08_GHOST_OUT ----------
+function withEnv(name, value, fn) {
+  const prev = process.env[name];
+  if (value == null) delete process.env[name]; else process.env[name] = value;
+  try { return fn(); } finally { if (prev == null) delete process.env[name]; else process.env[name] = prev; }
+}
+
+test("ставка на узника без связи закрыта (ghost); в снимке узник помечен offline (lastq-001)", () => {
+  const g = setup(4);
+  g.start(0);
+  let t = until(g, "answer", 0);
+  g.answer("p0", right(g), t + 100);
+  g.answer("p1", right(g), t + 120);
+  g.answer("p2", wrong(g), t + 150);
+  g.setOnline("p2", false, t + 160);
+  g.answer("p3", wrong(g), t + 170);
+  t = until(g, "cell", t);
+  assert.equal(g.s.cell.p2.ghost, true);
+  assert.equal(g.s.cell.p3.ghost, false);
+  assert.equal(g.bet("p0", "p2", false, t + 50).reason, "ghost", "на призрака ставить нельзя");
+  assert.ok(g.bet("p0", "p3", false, t + 60).ok, "на онлайн-узника можно");
+  const snap = g.snapshot(t + 100, "p0");
+  assert.equal(snap.cell.find((x) => x.id === "p2").offline, true);
+  assert.equal(snap.cell.find((x) => x.id === "p3").offline, false);
+});
+
+test("узник ушёл в офлайн ПОСЛЕ ставки и не выбрался — ставка «сгорит» не засчитывается; онлайн-узник — засчитывается", () => {
+  const g = setup(4);
+  g.start(0);
+  let t = until(g, "answer", 0);
+  g.answer("p0", right(g), t + 100);
+  g.answer("p1", right(g), t + 120);
+  g.answer("p2", wrong(g), t + 150);
+  g.answer("p3", wrong(g), t + 170);
+  t = until(g, "cell", t);
+  assert.ok(g.bet("p0", "p2", false, t + 50).ok);
+  assert.ok(g.bet("p0", "p3", false, t + 60).ok);
+  const hits0 = g.player("p0").stats.betHits;
+  g.setOnline("p2", false, t + 500); // выбил сетью
+  until(g, "verdict", t);
+  assert.deepEqual(g.s.result.burned.sort(), ["p2", "p3"]);
+  assert.equal(g.s.result.betGain.p0, 20, "засчитана только ставка на p3");
+  assert.equal(g.player("p0").stats.betHits, hits0 + 1);
+});
+
+test("RULE_U08_GHOST_OUT: по умолчанию выпавший до вопроса отвечает (и идёт в Камеру); при =1 — вне eligible, очков не теряет", () => {
+  for (const [flag, inQuestion] of [[null, true], ["1", false]]) {
+    withEnv("RULE_U08_GHOST_OUT", flag, () => {
+      const g = setup(4);
+      g.start(0);
+      g.setOnline("p3", false, 10);
+      const t = until(g, "answer", 0);
+      assert.equal(g.s.eligible.includes("p3"), inQuestion, "flag=" + flag);
+      // и на последний вопрос — финал
+      assert.equal(g.s.eligible.length, inQuestion ? 4 : 3);
+    });
+  }
+});
+
+test("RULE_U08_GHOST_OUT=1: если на связи меньше двух — вопрос идёт всем присутствующим (К-13)", () => {
+  withEnv("RULE_U08_GHOST_OUT", "1", () => {
+    const g = setup(3);
+    g.start(0);
+    g.setOnline("p1", false, 5);
+    g.setOnline("p2", false, 5);
+    until(g, "answer", 0);
+    assert.equal(g.s.eligible.length, 3);
+  });
+});

@@ -891,9 +891,10 @@ function drawAnswered() {
   const strip = $("strip");
   if (!strip) return;
   if (state.phase === "read" || state.phase === "fread") { strip.innerHTML = `<span id="readin"></span>`; return; }
-  const elig = state.eligible.filter((id) => { const p = player(id); return p && !p.left; });
   const ans = state.answered || [];
-  const k = ans.join(",");
+  // «ответили n из M»: серые (без связи и не ответившие) в M не входят — ответа от них никто не ждёт (lastq-003)
+  const elig = state.eligible.filter((id) => { const p = player(id); return p && !p.left && (p.online || ans.includes(id)); });
+  const k = ans.join(",") + "|" + elig.length;
   if (strip.dataset.k === k) return;
   strip.dataset.k = k;
   strip.innerHTML = `<span>${escapeHtml(tpl("answered_n", { n: ans.filter((id) => elig.includes(id)).length, m: elig.length }))}</span><span class="dots">${elig.map((id) => `<i class="${ans.includes(id) ? "on" : ""}" title="${escapeHtml(nameOf(id))}">${escapeHtml((player(id) || {}).avatar || "❔")}</i>`).join("")}</span>`;

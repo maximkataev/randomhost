@@ -55,6 +55,11 @@ const DEFAULTS = {
   lang: "ru",
 };
 
+// RULE_U08_GHOST_OUT (класс B, T-W2-29, lastq-003): выпавший ДО начала вопроса в нём не участвует — не отвечает,
+// не попадает в Камеру и не теряет очков. По умолчанию выкл: спека §8 «не ответил — ошибка, идёт в Камеру»;
+// иначе «выдернуть Wi-Fi на вопросе, который не знаешь» стало бы выигрышной стратегией. Читается при каждом вызове.
+const ghostOut = () => process.env.RULE_U08_GHOST_OUT === "1";
+
 const MAX_PLAYERS = 10;
 const MIN_PLAYERS = 2;
 const REACT_GAP = 2000;
@@ -137,6 +142,14 @@ class Game {
 
   present() {
     return this.s.players.filter((p) => !p.left);
+  }
+
+  // кто отвечает на вопрос: все присутствующие; при RULE_U08_GHOST_OUT=1 — только на связи (если их хотя бы двое: К-13)
+  questionPlayers() {
+    const ps = this.present();
+    if (!ghostOut()) return ps;
+    const on = ps.filter((p) => p.online);
+    return on.length >= MIN_PLAYERS ? on : ps;
   }
 
   addPlayer({ id, name }) {
@@ -360,7 +373,7 @@ class Game {
     const raw = this.pickQuestion(act);
     if (!raw) return this.finish("no_content", now);
     this.takeQuestion(raw);
-    s.eligible = this.present().map((p) => p.id);
+    s.eligible = this.questionPlayers().map((p) => p.id);
     s.phase = "read";
     s.phaseStart = now;
     s.phaseEnd = now + T.read;
@@ -445,7 +458,8 @@ class Game {
     for (const id of s.prisoners) {
       const p = this.player(id);
       p.stats.cells++;
-      s.cell[id] = { done: 0, need: cfg.need, ch: null, lockUntil: 0, last: null, escaped: false, burned: false, at: null };
+      // ghost: узник без связи к открытию Камеры — на него нельзя ставить, а его «сгорел» не кормит чужие ставки (lastq-001)
+      s.cell[id] = { done: 0, need: cfg.need, ch: null, lockUntil: 0, last: null, escaped: false, burned: false, at: null, ghost: !p.online };
       if (p.online) this.issue(id, now, ready);
     }
     s.bets = {};
@@ -530,6 +544,9 @@ class Game {
     if (!this.free().some((p) => p.id === id)) return { ok: false, reason: "not_free" };
     if (!s.prisoners.includes(prisoner)) return { ok: false, reason: "bad" };
     if (typeof escape !== "boolean") return { ok: false, reason: "bad" };
+    // узник без связи: ставка «сгорит» была бы гарантированными +20 (lastq-001); и вышедший в обрыв позже ставку не кормит
+    const target = this.player(prisoner);
+    if ((s.cell[prisoner] && s.cell[prisoner].ghost) || !target || target.left || !target.online) return { ok: false, reason: "ghost" };
     if (now > s.cellReady + BET_WINDOW) return { ok: false, reason: "closed" };
     if (s.bets[id] && s.bets[id][prisoner] != null) return { ok: false, reason: "already" };
     (s.bets[id] = s.bets[id] || {})[prisoner] = escape;
@@ -556,7 +573,12 @@ class Game {
       const b = this.player(bid);
       if (!b) continue;
       for (const [pid, esc] of Object.entries(picks)) {
-        if (esc === s.cell[pid].escaped) {
+        const cp = s.cell[pid];
+        if (!cp) continue;
+        // ставка на того, кто ушёл в офлайн и не выбрался, не засчитывается: «выбить сетью» — не способ заработать
+        const tp = this.player(pid);
+        if (!cp.escaped && (cp.ghost || !tp || tp.left || !tp.online)) continue;
+        if (esc === cp.escaped) {
           betGain[bid] = (betGain[bid] || 0) + BET_POINTS;
           b.stats.betHits++;
         }
@@ -592,7 +614,7 @@ class Game {
     this.takeQuestion(raw);
     s.act = 3;
     s.stakes = {};
-    s.eligible = this.present().map((p) => p.id);
+    s.eligible = this.questionPlayers().map((p) => p.id);
     s.phase = "stake";
     s.phaseStart = now;
     s.phaseEnd = now + T.stake;
@@ -855,7 +877,8 @@ class Game {
         const c = s.cell[id] || {};
         // пока открыто окно ставок — прогресс узника не показываем никому, кроме него самого (исход не должен подсказывать ставку)
         const hide = inCell && now < s.cellReady + BET_WINDOW;
-        const x = { id, done: hide ? 0 : c.done || 0, need: c.need || s.cellNeed, escaped: !hide && !!c.escaped, burned: !!c.burned, locked: !hide && c.lockUntil > now, type: c.ch ? c.ch.type : null };
+        const pl = this.player(id);
+        const x = { id, done: hide ? 0 : c.done || 0, need: c.need || s.cellNeed, escaped: !hide && !!c.escaped, burned: !!c.burned, locked: !hide && c.lockUntil > now, type: c.ch ? c.ch.type : null, offline: !!c.ghost || !pl || !pl.online };
         // доске — вопрос «Головы» (не на память), чтобы зал подсказывал; и код «Передачки» после 4 с тишины
         if (board && c.ch && c.ch.at <= now && c.ch.group === "head" && !CH.MEMORY_TYPES.includes(c.ch.type)) x.ch = Game.chView(c.ch);
         if (board && c.ch && c.ch.type === "pass" && c.ch.view.where === "tv") x.passCode = c.ch.answer;

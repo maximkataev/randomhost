@@ -235,6 +235,8 @@
   .bet .two button.on.n { background: var(--bad); border-color: var(--bad); color: var(--night); }
   .bet .done { grid-column: 1 / -1; font: 800 19px/1 var(--font); text-transform: uppercase; }
   .bet .done.y { color: var(--ok); } .bet .done.n { color: var(--bad); }
+  .bet.off { opacity: .6; border-left-color: var(--edge); }
+  .bet .done.off { color: var(--chalk-2); font-size: 16px; }
 
   /* своя дорожка на приговоре */
   .mylane { position: relative; height: 64px; margin: 16px 0 4px; background: var(--track); border-top: 3px solid var(--chalk); border-bottom: 3px solid var(--chalk); overflow: hidden; }
@@ -411,6 +413,7 @@ window.I18N_DICT = {
     expired_title: `Комната закрыта`, expired_text: `Она пустовала полчаса или ведущий её закрыл.`, expired_new: `Создать новую`,
     paused: `Все отключились — ждём`,
     rj_not_now: `Уже поздно`, rj_closed: `Ставки уже закрыты`, rj_already: `Уже выбрано`, rj_not_in_question: `Ты со следующего вопроса`,
+    bet_off: `нет связи — ставка закрыта`, rj_ghost: `Игрок без связи — ставка на него закрыта`,
     in_as: `Имя занято. Ты в игре как {name}`,
   },
   en: {
@@ -466,6 +469,7 @@ window.I18N_DICT = {
     expired_title: `Room closed`, expired_text: `It sat empty for half an hour or the host closed it.`, expired_new: `Create a new one`,
     paused: `Everyone dropped — waiting`,
     rj_not_now: `Too late`, rj_closed: `Betting is closed`, rj_already: `Already picked`, rj_not_in_question: `You're in from the next question`,
+    bet_off: `offline — betting is closed`, rj_ghost: `That player is offline — betting on them is closed`,
     in_as: `That name is taken. You're in as {name}`,
   },
   el: {
@@ -521,6 +525,7 @@ window.I18N_DICT = {
     expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης.`, expired_new: `Φτιάξε καινούργιο`,
     paused: `Όλοι αποσυνδέθηκαν — περιμένουμε`,
     rj_not_now: `Πολύ αργά`, rj_closed: `Τα στοιχήματα έκλεισαν`, rj_already: `Έχει ήδη επιλεγεί`, rj_not_in_question: `Παίζεις από την επόμενη ερώτηση`,
+    bet_off: `εκτός σύνδεσης — το στοίχημα έκλεισε`, rj_ghost: `Ο παίκτης είναι εκτός σύνδεσης — το στοίχημα έκλεισε`, //EL:unverified
     in_as: `Το όνομα είναι πιασμένο. Μπήκες ως {name}`, //EL:unverified
   },
 };
@@ -984,7 +989,9 @@ function renderBets() {
   const open = betsOpen();
   const hints = (s.passHints || []).map((h) => h.prisoner + h.code).join(",");
   // свои ставки в ключ не входят: после тапа кнопки блокируются сразу, а перерисовка съедала бы следующий тап
-  const key = "bets:" + qid() + ":" + open + ":" + hints + lqLang();
+  // узник без связи — строка серая, без кнопок (lastq-001): состав таких меняет ключ, ставки — нет
+  const offIds = cell.filter((x) => x.offline).map((x) => x.id).join(",");
+  const key = "bets:" + qid() + ":" + open + ":" + hints + ":" + offIds + lqLang();
   if (screenKey !== key) {
     const hintHtml = (s.passHints || []).map((h) => {
       const p = player(h.prisoner);
@@ -996,8 +1003,9 @@ function renderBets() {
       const my = s.bets[x.id];
       const locked = my != null || !open;
       const btn = (v, cls, label) => `<button type="button" class="${cls}${my === v ? " on" : ""}" data-v="${v ? 1 : 0}"${locked ? " disabled" : ""}>${label}</button>`;
-      const body = !open && my == null ? `<div class="done">${T("bet_none")}</div>` : `<div class="two">${btn(true, "y", T("bet_y"))}${btn(false, "n", T("bet_n"))}</div>`;
-      return `<div class="bet" style="--pc:${p.color}" data-id="${escapeHtml(x.id)}"><div class="who">${emo(p)}<b>${escapeHtml(p.name)}</b></div><div class="mini">${progressDots(x.done, x.need)}</div>${body}</div>`;
+      const off = !!x.offline && my == null;
+      const body = off ? `<div class="done off">${T("bet_off")}</div>` : !open && my == null ? `<div class="done">${T("bet_none")}</div>` : `<div class="two">${btn(true, "y", T("bet_y"))}${btn(false, "n", T("bet_n"))}</div>`;
+      return `<div class="bet${off ? " off" : ""}" style="--pc:${p.color}" data-id="${escapeHtml(x.id)}"><div class="who">${emo(p)}<b>${escapeHtml(p.name)}</b></div><div class="mini">${progressDots(x.done, x.need)}</div>${body}</div>`;
     }).join("");
     const sub = open ? `${T("bets_sub")} · <b id="betleft"></b>` : T("bets_closed");
     show(`${headHtml()}${hintHtml}<div><h2 style="font:900 26px/1.05 var(--font)">${T("bets_t")}</h2><p class="fine" style="margin:4px 0 0">${sub}</p></div><div class="bets">${rows}</div>`, key, true);
