@@ -618,7 +618,9 @@ function handle(room, client, msg) {
         if (leftSame && !takenNow.has(key)) {
           // вернувшийся ушедший (нажал «Выйти») получает свою запись; в vote/opinion — только с того же сокета:
           // иначе назвавший имя увидел бы чужой голос в своём снимке
-          if (SECRET_PHASES.includes(phase) && client.leftId !== leftSame.id) return tkReply({ reason: "secret", retry: true });
+          // токен этого места — доказательство владения: голос не утечёт чужому (T-W2-35: вернувшийся призрак)
+          const ownToken = !!msg.token && room.tokens[msg.token] === leftSame.id;
+          if (SECRET_PHASES.includes(phase) && client.leftId !== leftSame.id && !ownToken) return tkReply({ reason: "secret", retry: true });
           decision = { action: "create", kind: "left" };
         } else {
           decision = seats.decideJoin({

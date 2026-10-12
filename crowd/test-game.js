@@ -735,3 +735,66 @@ test("restore-from-prev-dump: без voidsUsed/replNext/round.repl/result.bankLa
   const snap = g2.snapshot(c2.t, c2.ids[0]);
   assert.ok(snap.awards !== undefined);
 });
+
+// ---------- T-W2-35: призраки не в партии (RULE_U08_GHOST_OUT) и вытеснение офлайн-места ----------
+function withFlag(name, value, fn) {
+  const old = process.env[name];
+  if (value == null) delete process.env[name]; else process.env[name] = value;
+  try { return fn(); } finally { if (old === undefined) delete process.env[name]; else process.env[name] = old; }
+}
+
+test("RULE_U08_GHOST_OUT выкл: офлайн к старту — в партии с нулём, как раньше", () => {
+  withFlag("RULE_U08_GHOST_OUT", null, () => {
+    const { g } = mk(4);
+    g.setOnline("p3", false, 1000);
+    assert.ok(g.start(2000).ok);
+    assert.strictEqual(g.present().length, 4);
+    assert.ok(g.player("p3") && !g.player("p3").left);
+  });
+});
+
+test("RULE_U08_GHOST_OUT=1: офлайн к старту — left, не в партии; вернулся по имени — садится обратно без очков", () => {
+  withFlag("RULE_U08_GHOST_OUT", "1", () => {
+    const { g } = mk(4);
+    g.setOnline("p3", false, 1000);
+    assert.ok(g.start(2000).ok);
+    assert.strictEqual(g.present().length, 3);
+    assert.strictEqual(g.player("p3").left, true);
+    const r = g.addPlayer({ id: "новый", name: "Игрок3", now: 3000 });
+    assert.ok(r.ok && r.restored);
+    assert.strictEqual(r.player.id, "p3");
+    assert.strictEqual(r.player.left, false);
+    assert.strictEqual(r.player.score, 0);
+  });
+});
+
+test("RULE_U08_GHOST_OUT=1: 2 на связи + 1 призрак -> few_players; призраки не занимают места", () => {
+  withFlag("RULE_U08_GHOST_OUT", "1", () => {
+    const a = mk(3);
+    a.g.setOnline("p2", false, 0);
+    assert.strictEqual(a.g.start(1).reason, "few_players");
+    const b = mk(12);
+    for (const id of ["p9", "p10", "p11"]) b.g.setOnline(id, false, 0);
+    assert.ok(b.g.start(10).ok);
+    assert.strictEqual(b.g.present().length, 9);
+    assert.ok(b.g.addPlayer({ id: "x1", name: "Новый1", now: 20 }).ok);
+  });
+});
+
+test("лобби: полная комната вытесняет давнее офлайн-место (старше GHOST_TTL_MS), свежее не трогает", () => {
+  const { g } = mk(12);
+  g.setOnline("p5", false, 1000);
+  g.setOnline("p6", false, 50000);
+  assert.strictEqual(g.addPlayer({ id: "x", name: "Новый", now: 60000 }).reason, "room_full");
+  const r = g.addPlayer({ id: "x", name: "Новый", now: 130000 });
+  assert.ok(r.ok);
+  assert.ok(!g.player("p5"));
+  assert.ok(g.player("p6"));
+});
+
+test("посреди партии место офлайн не вытесняется (room_full)", () => {
+  const { g } = mk(12);
+  g.start(0);
+  g.setOnline("p5", false, 1000);
+  assert.strictEqual(g.addPlayer({ id: "x", name: "Новый", now: 900000 }).reason, "room_full");
+});

@@ -767,3 +767,29 @@ function claimSuite(rule) {
 
 test("подхват места по имени, «Это ты?» (T-W1-06)", claimSuite(false));
 test("подхват места по имени с RULE_U01_CLAIM_IN_GAME=1 (T-W1-06)", claimSuite(true));
+
+// ---------- T-W2-35: призраки не в партии (RULE_U08_GHOST_OUT) ----------
+function ghostSuite(rule) {
+  return async (t) => {
+    startServer.env = { CLAIM_GRACE_MS: "300", ...(rule ? { RULE_U08_GHOST_OUT: "1" } : {}) };
+    await startServer();
+    t.after(async () => { await stopServer(); startServer.env = null; for (const f of [DUMP, STATS]) { try { fs.unlinkSync(f); } catch {} } });
+    await t.test(rule ? "флаг: офлайн к старту — left, возвращается по токену+имени" : "без флага: офлайн к старту — в партии (как раньше)", async () => {
+      const { room, b, ps } = await claimCtx(["Оля", "Петя", "Вася", "Гоша"]);
+      await goOffline(ps[3]);
+      const lob = await b.wait(statePred((s) => s.players.some((p) => p.online === false)));
+      assert.strictEqual(lob.state.players.length, 4, "в лобби призрак виден");
+      b.send({ type: "start" });
+      const st = await b.wait(statePred((s) => s.phase === "vote"));
+      assert.strictEqual(st.state.players.filter((p) => !p.left).length, rule ? 3 : 4);
+      if (rule) {
+        const back = await player(room.code, "Гоша", ps[3].token);
+        assert.strictEqual(back.id, ps[3].id, "место возвращено");
+        back.close();
+      }
+      b.close(); ps.forEach((p) => p.close());
+    });
+  };
+}
+test("призраки: без флага (T-W2-35)", ghostSuite(false));
+test("призраки: RULE_U08_GHOST_OUT=1 (T-W2-35)", ghostSuite(true));

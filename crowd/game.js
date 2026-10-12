@@ -30,6 +30,11 @@ const DEFAULTS = {
   lang: "ru",
 };
 
+// RULE_U08_GHOST_OUT (класс B, T-W2-35): офлайн к началу партии — не в партии (помечается left, запись и токен живы).
+// По умолчанию выкл — как раньше: призрак входит в партию с нулём. Читаем при каждом вызове (флаг виден и в тестах).
+const ghostOut = () => process.env.RULE_U08_GHOST_OUT === "1";
+const presence = require("../lib/presence");
+
 const MAX_PLAYERS = 12;
 const MIN_PLAYERS = 3;
 const MIN_CAST = 3; // меньше голосов — раунд аннулируется
@@ -217,11 +222,26 @@ class Game {
     }
   }
 
+  // самое давнее офлайн-место (не в партии) уходит; true, если место освободилось
+  evictGhost(now) {
+    const s = this.s;
+    if (now == null || (s.phase !== "lobby" && s.phase !== "finished")) return false;
+    presence.ensureOffSince(this.present(), now);
+    const id = presence.evictOldestGhost(this.present(), { now, stage: s.phase });
+    if (!id) return false;
+    s.players = s.players.filter((x) => x.id !== id);
+    return true;
+  }
+
   addPlayer({ id, name, now = null }) {
     const s = this.s;
     const have = this.player(id);
     if (have) return { ok: true, player: have };
-    if (this.present().length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
+    if (this.present().length >= MAX_PLAYERS) {
+      // комната полна офлайн-местами: в лобби/итогах вытесняем самое давнее (старше GHOST_TTL_MS, lib/presence);
+      // посреди партии место не освобождается (R1)
+      if (!this.evictGhost(now)) return { ok: false, reason: "room_full" };
+    }
     name = cleanName(name);
     if (!name) return { ok: false, reason: "bad_name" };
     const inGame = s.phase !== "lobby" && s.phase !== "finished";
@@ -270,7 +290,7 @@ class Game {
 
   setOnline(id, online, now) {
     const p = this.player(id);
-    if (p) p.online = online;
+    if (p) presence.setOnline(p, online, now);
     return this.maybeAdvance(now);
   }
 
@@ -358,7 +378,10 @@ class Game {
   start(now) {
     const s = this.s;
     if (s.phase !== "lobby" && s.phase !== "finished") return { ok: false, reason: "started" };
-    const ps = this.present();
+    let ps = this.present();
+    // RULE_U08_GHOST_OUT: офлайн к старту — не в партии; играют те, кто на связи
+    const ghosts = ghostOut() ? ps.filter((p) => p.online === false) : [];
+    if (ghosts.length) ps = ps.filter((p) => p.online !== false);
     if (ps.length < MIN_PLAYERS) return { ok: false, reason: "few_players" };
     if (this.bank().length < 8) return { ok: false, reason: "no_content" };
     s.game++;
@@ -382,7 +405,9 @@ class Game {
     s.next = null;
     s.awards = null;
     s.finishedReason = null;
-    s.players = ps; // ушедшие в прошлой партии больше не нужны
+    // ушедшие в прошлой партии больше не нужны; офлайн-места (RULE_U08_GHOST_OUT) — left без очков: вернутся через findLeft
+    for (const p of ghosts) { p.left = true; p.score = 0; p.stats = this.freshStats(); p.banks = this.banksTotal(); p.joinedAt = null; }
+    s.players = ps.concat(ghosts);
     for (const p of ps) { p.score = 0; p.banks = this.banksTotal(); p.stats = this.freshStats(); p.joinedAt = null; }
     return { ok: true, events: [{ type: "started", game: s.game }, ...this.startRound("normal", now)] };
   }
