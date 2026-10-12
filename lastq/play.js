@@ -264,8 +264,8 @@ function describe(s, me) {
   if (s.phase === "read" || s.phase === "fread") out.push(`Кнопки откроются через ~${sec(s.phaseEnd)} с. Можно уже сейчас: answer <A..D> — пульт дождётся открытия и отправит.`);
   if (s.phase === "answer" || s.phase === "fanswer") {
     if (!my.inQuestion) out.push(final ? "В финале ты не участвуешь — смотри." : "Ты вошёл посреди партии — отвечаешь со следующего вопроса.");
-    else if (my.answer != null) out.push(`Твой ответ: ${L[my.answer]}. Ответили ${(s.answered || []).length}/${s.eligible.length}.`);
-    else out.push(`ОТВЕТЬ: answer <A..D>.${final ? " Бонуса за скорость в финале нет." : " Чем быстрее, тем больше бонус."} Ответили ${(s.answered || []).length}/${s.eligible.length}.`);
+    else if (my.answer != null) out.push(`Твой ответ: ${L[my.answer]}. Ответили ${s.answeredN != null ? s.answeredN : (s.answered || []).length}/${s.eligible.length}.`);
+    else out.push(`ОТВЕТЬ: answer <A..D>.${final ? " Бонуса за скорость в финале нет." : " Чем быстрее, тем больше бонус."} Ответили ${s.answeredN != null ? s.answeredN : (s.answered || []).length}/${s.eligible.length}.`);
   }
   if (s.phase === "reveal" || s.phase === "fshow") {
     if (my.inQuestion) out.push(my.answer === s.right ? `ВЕРНО!${my.gain ? " +" + my.gain : ""}` : `МИМО — ты в ${s.phase === "fshow" ? "финальной Камере" : "Камере"}.`);

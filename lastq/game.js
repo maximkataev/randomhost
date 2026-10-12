@@ -905,7 +905,9 @@ class Game {
         text: ph === "stake" ? null : tx(q.text),
         options: ph === "stake" ? null : q.options.map(tx),
       } : null,
-      answered: ph === "answer" || ph === "fanswer" ? Object.keys(s.answers) : null,
+      // кто именно ответил — только доске; телефону — число (имена и порядок ответов не нужны)
+      answered: board && (ph === "answer" || ph === "fanswer") ? Object.keys(s.answers) : null,
+      answeredN: ph === "answer" || ph === "fanswer" ? Object.keys(s.answers).length : null,
       eligible: s.eligible,
       right: revealed && q ? q.right : null,
       picks: revealed && s.result ? s.result.picks : null,
@@ -921,7 +923,10 @@ class Game {
       freeN: inCell ? this.free().filter((p) => p.online).length : null,
       verdict: afterCell && s.result ? { escaped: s.result.escaped, burned: s.result.burned, delta: s.result.delta, betGain: s.result.betGain, bets: s.result.bets } : null,
       stakedN: ph === "stake" ? Object.keys(s.stakes).length : null,
-      fsteps: ph === "freveal" ? s.fsteps : null,
+      // телефону — только свой шаг (чужие ставки/итоги до раскрытия не уходят), плюс позиция в очереди и длина очереди
+      fsteps: ph === "freveal" && s.fsteps ? (board ? s.fsteps : s.fsteps.filter((x) => me && x.id === me.id)) : null,
+      fpos: ph === "freveal" && s.fsteps && !board && me ? (s.fsteps.findIndex((x) => x.id === me.id) >= 0 ? s.fsteps.findIndex((x) => x.id === me.id) : null) : null,
+      fN: ph === "freveal" && s.fsteps ? s.fsteps.length : null,
       awards: ph === "finished" ? s.awards || null : null,
       ranking: ph === "finished" ? s.ranking || null : null,
       finishedReason: ph === "finished" ? s.finishedReason : null,

@@ -481,6 +481,8 @@ async function run() {
         const shown = await waitFor(board, "document.querySelectorAll('.frow .d.plus, .frow .d.minus').length >= 3", 15000);
         check(!!shown, "доска: ставки раскрыты по одному");
         await A.shot("p_freveal_Аня");
+        // T-W0-06: телефон получает только свой шаг (+fpos), чужие итоги и список ответивших не уходят
+        check((await A.evaluate("(() => { const s = window.lqPhone.state; return (s.fsteps || []).length <= 1 && (s.fsteps || []).every((x) => x.id === window.lqPhone.me) && s.answered == null; })()")) === true, "телефон (freveal): в fsteps только свой шаг, answered не приходит");
         continue;
       }
       if (s.phase === "verdict" || s.phase === "reveal" || s.phase === "cell") { await wait(200); continue; }

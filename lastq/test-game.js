@@ -234,6 +234,9 @@ test("тайны: до раскрытия ни верного ответа, ни
     assert.equal(s.palach, null);
     assert.equal(s.gain, null);
     if (v === "p1") assert.equal(s.me.answer, null);
+    // T-W0-06: имена ответивших — только доске; телефону и зрителю — число
+    assert.equal(s.answeredN, 1);
+    if (v === "board") assert.deepEqual(s.answered, ["p0"]); else assert.equal(s.answered, null);
   }
   assert.equal(g.snapshot(t + 200, "p0").me.answer, right(g));
   g.answer("p1", wrong(g), t + 300);
@@ -292,6 +295,17 @@ test("финал: тема на ставках, ставка до max(очки, 
   assert.equal(g.player("p2").score, -200);
   // снизу таблицы вверх
   assert.deepEqual(g.s.fsteps.map((x) => x.before), g.s.fsteps.map((x) => x.before).slice().sort((a, b) => a - b));
+  // T-W0-06: телефон получает только свой шаг раскрытия (+fpos/fN), доска — весь список
+  const fb = g.snapshot(t, "board");
+  assert.equal(fb.fsteps.length, g.s.fsteps.length);
+  for (const id of ["p0", "p1", "p2"]) {
+    const ph = g.snapshot(t, id);
+    assert.deepEqual(ph.fsteps.map((x) => x.id), [id], "телефон: только свой шаг");
+    assert.equal(ph.fpos, g.s.fsteps.findIndex((x) => x.id === id));
+    assert.equal(ph.fN, g.s.fsteps.length);
+    assert.ok(!JSON.stringify(ph).includes('"answered":['), "телефону не уходит список ответивших");
+  }
+  assert.deepEqual(g.snapshot(t, null).fsteps, [], "зритель без места: пусто");
   t = until(g, "finished", t);
   assert.equal(g.s.ranking[0].id, "p0");
   assert.ok(g.s.awards.kamikaze.ids.includes("p0"));
