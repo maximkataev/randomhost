@@ -132,7 +132,13 @@ const wvSfx = (function () {
 })();
 
 // ---------- вибрация: не везде есть, а где есть — может бросить исключение ----------
-function wvVibrate(p) { if (navigator.vibrate) try { navigator.vibrate(p); } catch (e) {} }
+// вибро только после жеста (иначе Chrome пишет «Blocked call to navigator.vibrate»): через MP.vibrate; без него — свой флаг
+function wvVibrate(p) {
+  if (window.MP && typeof MP.vibrate === "function") { MP.vibrate(p); return; }
+  if (!navigator.vibrate) return;
+  if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
+  try { navigator.vibrate(p); } catch (e) {}
+}
 
 // ---------- часы сервера ----------
 // Смещение «сервер − устройство» по самому быстрому ping/pong (RTT/2); пока замера нет —
