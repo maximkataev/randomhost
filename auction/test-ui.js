@@ -88,6 +88,9 @@ async function typeText(page, text) {
     const gone = await cdp(`${BASE}/auction.html?r=ZZZZ&name=Тест`);
     await wait(5000);
     check(await evaluateSafe(gone, "!!document.querySelector('.expired')"), "закрытая комната: показан экран «комнаты нет», а не бесконечное переподключение");
+    // T-W2-04: неверный код (hello не приходил) — «Такой комнаты нет» и поле кода, а не «закрыта по неактивности»
+    check(hasFrag(await evaluateSafe(gone, "(document.querySelector('.expired h1') || {}).textContent || ''"), await i18nFrag(gone, "noroom_title")), "неверный код: заголовок «Такой комнаты нет»");
+    check(await evaluateSafe(gone, "!!document.getElementById('codein') && normCode('bear 74!') === 'BEAR74'"), "неверный код: поле кода есть, ввод нормализуется до отправки");
     await gone.shot("ui_room_gone");
     await gone.close();
 

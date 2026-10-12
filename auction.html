@@ -144,6 +144,8 @@
   .mid { font: 700 14px/1 var(--display); text-transform: uppercase; letter-spacing: .05em; color: var(--text); background: none; border: 1px solid var(--glass-line); border-radius: 999px; padding: 15px; width: 100%; }
   .mid:active { background: rgba(255, 255, 255, .08); }
   /* T-W2-09: плашка «Ты в игре как…» (вернули место по имени) и «Имя занято…» — поверх экрана, вёрстку не двигает */
+  .codeform { display: grid; gap: 10px; }
+  .codeform input { text-transform: uppercase; }
   .seatplate { position: fixed; left: 16px; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 40; display: none; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 16px; background: rgba(20, 18, 34, .96); border: 1px solid var(--c1); box-shadow: 0 8px 28px rgba(0, 0, 0, .45); font: 600 14.5px/1.35 var(--body); color: var(--text); }
   .seatplate.on { display: flex; }
   .seatplate .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -593,6 +595,9 @@ window.I18N_DICT = {
     own_bid_go: `Ставлю`,
     own_bid_min: `Минимум {money}`,
     own_bid_max: `У тебя только {money}`,
+    noroom_title: `Такой комнаты нет`,
+    noroom_text: `Проверь код — в нём слово и две цифры`,
+    btn_go: `Перейти`,
     expired_title: `Комната закрыта`,
     expired_text: `В этой комнате полчаса ничего не происходило, и она закрылась. Попроси ведущего создать новую.`,
     expired_new: `Создать свою комнату`,
@@ -766,6 +771,9 @@ window.I18N_DICT = {
     own_bid_go: `Bid`,
     own_bid_min: `At least {money}`,
     own_bid_max: `You only have {money}`,
+    noroom_title: `There is no such room`,
+    noroom_text: `Check the code: a word and two digits`,
+    btn_go: `Go`,
     expired_title: `Room closed`,
     expired_text: `Nothing happened in this room for half an hour, so it closed. Ask the host to start a new one.`,
     expired_new: `Create your own room`,
@@ -933,6 +941,9 @@ window.I18N_DICT = {
     own_bid_go: `Δίνω`,
     own_bid_min: `Τουλάχιστον {money}`,
     own_bid_max: `Έχεις μόνο {money}`,
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, //EL:unverified
+    noroom_text: `Έλεγξε τον κωδικό: μια λέξη και δύο ψηφία`, //EL:unverified
+    btn_go: `Πήγαινε`, //EL:unverified
     expired_title: `Το δωμάτιο έκλεισε`,
     expired_text: `Μισή ώρα δεν έγινε τίποτα σε αυτό το δωμάτιο και έκλεισε. Ζήτα από τον host να φτιάξει καινούργιο.`,
     expired_new: `Φτιάξε δικό σου δωμάτιο`,
@@ -1130,8 +1141,37 @@ let overlayKey = null;
 // Терминальное состояние: комнаты больше нет. Флаг гасит переподключение — без него onClose
 // каждые 2 секунды заново дёргал бы join() к несуществующей комнате и перерисовывал экран.
 let dead = false;
+// Неверный код (E-08): hello не приходил ни разу — комнаты с таким кодом нет (или её давно убрали), а не «закрылась».
+// Серверного различителя нет (К-11), поэтому судим по клиенту: был hello (MP.roomGone) — закрыта, не было — «нет такой».
+const normCode = (raw) => (window.MP && MP.roomGone ? MP.roomGone.normalize(raw) : String(raw || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12));
+function codeFormHtml(value) {
+  return `<form class="codeform" id="codeform" autocomplete="off"><input type="text" id="codein" maxlength="24" value="${escapeHtml(value || "")}" placeholder="${escapeHtml(I18N.t("prompt_code"))}" aria-label="${escapeHtml(I18N.t("prompt_code"))}" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go"><button class="big" type="submit">${escapeHtml(I18N.t("btn_go"))}</button></form>`;
+}
+function bindCodeForm() {
+  const f = document.getElementById("codeform");
+  if (!f) return;
+  f.onsubmit = (e) => {
+    e.preventDefault();
+    const c = normCode(document.getElementById("codein").value); // уходим с кодом уже после фильтра
+    if (c) location.href = `auction.html?r=${encodeURIComponent(c)}`;
+  };
+}
+let deadScreen = "expired";
+function renderNoRoom() {
+  dead = true;
+  deadScreen = "noroom";
+  setOverlay(null);
+  screenMode("enter");
+  app.innerHTML = `<div class="center expired"><h1>${escapeHtml(I18N.t("noroom_title"))}</h1><p class="sub">${escapeHtml(I18N.t("noroom_text"))}</p>${codeFormHtml(CODE)}
+    <a class="link expired-new" href="auction.html">${escapeHtml(I18N.t("expired_new"))}</a></div>`;
+  bindCodeForm();
+}
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({ showForm: renderNoRoom, onClosed: () => renderExpired() }) : null;
+// комнаты нет: до первого hello — «Такой комнаты нет» + поле кода, после — «закрыта»; без mp-common — как раньше
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else renderExpired(); }
 function renderExpired() {
   dead = true;
+  deadScreen = "expired";
   try { localStorage.removeItem("auction-token-" + CODE); } catch (e) {}
   setOverlay(null);
   screenMode("enter");
@@ -1182,7 +1222,7 @@ function setOverlay(key, vars) {
 
 // Смена языка: статические узлы обновит сам i18n.js, но все экраны пульта строит JS — перерисовываем.
 window.addEventListener("langchange", () => {
-  if (dead) return renderExpired();
+  if (dead) return deadScreen === "noroom" ? renderNoRoom() : renderExpired();
   if (overlayKey) setOverlay(overlayKey, overlayVars);
   if (state) { app.innerHTML = ""; lastLot = -1; introShown = null; render(); return; }
   const input = document.getElementById("name");
@@ -1247,7 +1287,14 @@ async function renderCreate() {
       location.href = `auction-board.html?r=${data.code}&t=${data.hostToken}`;
     } catch (err) { btn.disabled = false; btn.textContent = I18N.t("btn_create"); alert(err.message); }
   };
-  document.getElementById("havecode").onclick = (e) => { e.preventDefault(); const c = prompt(I18N.t("prompt_code")); if (c) location.href = `auction.html?r=${encodeURIComponent(c.replace(/\s+/g, "").toUpperCase())}`; };
+  // поле кода прямо на экране (раньше prompt(): на телефоне он блокирует страницу и не переводится, E-36)
+  document.getElementById("havecode").onclick = (e) => {
+    e.preventDefault();
+    const sub = document.querySelector(".cta .sub2");
+    sub.innerHTML = codeFormHtml("");
+    bindCodeForm();
+    document.getElementById("codein").focus();
+  };
 }
 
 // ---------- живая лента лотов на стартовом экране ----------
@@ -1449,6 +1496,7 @@ function join(name) {
         // плашка: вернули место по имени без токена (resumed) или имя было занято (renamed, E-06); по токену — молча
         pendingPlate = msg.resumed ? { kind: "resumed", name: msg.name } : msg.renamed ? { kind: "renamed", name: msg.name } : null;
       }
+      if (msg.type === "hello" && goneFlow) goneFlow.hello();
       if (msg.type === "hello" || msg.type === "state") setState(msg.state);
       if (msg.type === "event") onEvent(msg.event);
       if (msg.type === "host_ok" && msg.remote) { isHostRemote = true; if (overlayKey) setOverlay(overlayKey, overlayVars); render(); }
@@ -1461,7 +1509,7 @@ function join(name) {
         ws.close();
         // Комната закрылась по неактивности — переподключаться некуда: возвращать игрока на ввод
         // имени значит гонять его по кругу «нет связи → введи имя → нет связи».
-        if (msg.error === "room_expired") renderExpired();
+        if (msg.error === "room_expired") onRoomGone();
         // игрока по токену больше нет (выгнали в лобби, пока телефон был офлайн, или ведущий начал
         // новую игру без него) — забываем токен и спрашиваем имя, а не висим фантомом
         else if (msg.error === "token_gone") { token = null; me = null; state = null; try { localStorage.removeItem("auction-token-" + CODE); } catch {} setOverlay(null); renderJoin(); }
@@ -1488,7 +1536,7 @@ function join(name) {
       setNote(I18N.t(msg.type === "bid" && alive ? "note_send_fail" : "note_not_sent"));
     },
     // комнаты больше нет — показываем это прямо, вместо вечного «переподключаемся…»
-    onGone: () => renderExpired(),
+    onGone: () => onRoomGone(),
   });
 }
 const sendMsg = (m) => ws && ws.send(m);
@@ -2034,7 +2082,7 @@ function escapeHtml(t) { return String(t).replace(/[&<>"']/g, (c) => ({ "&": "&a
 
 // Старт — последней строкой: к этому моменту объявлены все let/const, которые трогают join() и рендер.
 if (!CODE) renderCreate();
-else { try { token = localStorage.getItem("auction-token-" + CODE); } catch {} if (token) join(""); else if (params.get("name")) join(params.get("name")); else renderJoin(); }
+else { try { token = localStorage.getItem("auction-token-" + CODE); } catch {} if (token && goneFlow) goneFlow.hello(); if (token) join(""); else if (params.get("name")) join(params.get("name")); else renderJoin(); }
 </script>
 </body>
 </html>
