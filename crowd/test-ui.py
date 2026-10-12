@@ -73,12 +73,12 @@ def run(pw, code, token):
     errs = []
     lang_script = f"try{{localStorage.setItem('site-lang','{LANG}')}}catch(e){{}}"
     bctx, board = mk_page(browser, BW, BH, False, lang_script + f"try{{localStorage.setItem('crowd-host-{code}','{token}')}}catch(e){{}}", errs, "board")
-    board.goto(f"{BASE}/crowd-board.html?r={code}")
+    board.goto(f"{BASE}/crowd-board.html?r={code}", wait_until="domcontentloaded")
     board.wait_for_function("window.wvBoard && wvBoard.state")
     phones = []
     for i in range(N):
         ctx, p = mk_page(browser, WIDTHS[i % len(WIDTHS)], 780 if i else 460, True, lang_script, errs, f"phone{i}")
-        p.goto(f"{BASE}/crowd.html?r={code}")
+        p.goto(f"{BASE}/crowd.html?r={code}", wait_until="domcontentloaded")
         p.wait_for_selector("#name")
         p.fill("#name", f"Игрок{i + 1}")
         p.evaluate("document.getElementById('enterform').requestSubmit()")
@@ -93,7 +93,7 @@ def run(pw, code, token):
     board.wait_for_function(f"wvBoard.state.players.some(p => p.id === '{old_id}' && !p.online)", timeout=15000)
     time.sleep(2.5)  # CLAIM_GRACE_MS: сокет места закрыт достаточно давно
     ctx, p0 = mk_page(browser, WIDTHS[0], 460, True, lang_script, errs, "phone0b")
-    p0.goto(f"{BASE}/crowd.html?r={code}")
+    p0.goto(f"{BASE}/crowd.html?r={code}", wait_until="domcontentloaded")
     p0.wait_for_selector("#name")
     p0.fill("#name", "Игрок1")
     p0.evaluate("document.getElementById('enterform').requestSubmit()")
@@ -203,7 +203,7 @@ def handoff_stage(browser, lang_script, errs):
     room = json.loads(urllib.request.urlopen(urllib.request.Request(f"{BASE}/crowd/api/rooms", data=json.dumps({"settings": {"lang": LANG, "short": True, "opinion": False}, "speed": 1}).encode(), method="POST")).read())
     code, token = room["code"], room["hostToken"]
     bctx, board = mk_page(browser, BW, BH, False, lang_script + f"try{{localStorage.setItem('crowd-host-{code}','{token}')}}catch(e){{}}", errs, "boardH")
-    board.goto(f"{BASE}/crowd-board.html?r={code}")
+    board.goto(f"{BASE}/crowd-board.html?r={code}", wait_until="domcontentloaded")
     board.wait_for_function("window.wvBoard && wvBoard.state && document.body.classList.contains('host')")
     check(board.evaluate("!!document.querySelector('#hostctl .linkbtn')"), "у ведущего на доске есть «Ссылка ведущего»")
     url = board.evaluate("HL.url()")
@@ -211,7 +211,7 @@ def handoff_stage(browser, lang_script, errs):
     check(token not in board.evaluate("document.body.innerText"), "токен не нарисован на экране")
     # чистый контекст по ссылке: токен подхватывается, адрес очищается, команды ведущего проходят
     b2ctx, board2 = mk_page(browser, BW, BH, False, lang_script, errs, "boardH2")
-    board2.goto(url.replace("http://127.0.0.1:%d" % PORT, BASE) if url.startswith("http") else f"{BASE}/{url}")
+    board2.goto(url.replace("http://127.0.0.1:%d" % PORT, BASE) if url.startswith("http") else f"{BASE}/{url}", wait_until="domcontentloaded")
     board2.wait_for_function("document.body.classList.contains('host')", timeout=8000)
     check("h=" not in board2.evaluate("location.search"), "?h= убран из адреса")
     board.wait_for_selector("#hostctl .note", timeout=5000)
@@ -219,7 +219,7 @@ def handoff_stage(browser, lang_script, errs):
     check(board.evaluate("document.querySelectorAll('#hostctl .linkbtn').length") == 1, "у зрителя есть «Забрать управление»")
     # чистый контекст без ключа: «Я ведущий»
     b3ctx, board3 = mk_page(browser, BW, BH, False, lang_script, errs, "boardH3")
-    board3.goto(f"{BASE}/crowd-board.html?r={code}")
+    board3.goto(f"{BASE}/crowd-board.html?r={code}", wait_until="domcontentloaded")
     board3.wait_for_function("window.wvBoard && wvBoard.state")
     board3.wait_for_selector("#hostctl .linkbtn", timeout=5000)
     check(not board3.evaluate("document.body.classList.contains('host')"), "без ключа — зритель, «Я ведущий» предложено")
@@ -227,7 +227,7 @@ def handoff_stage(browser, lang_script, errs):
     phones = []
     for i in range(3):
         ctx, p = mk_page(browser, 390, 780, True, lang_script, errs, f"pH{i}")
-        p.goto(f"{BASE}/crowd.html?r={code}")
+        p.goto(f"{BASE}/crowd.html?r={code}", wait_until="domcontentloaded")
         p.wait_for_selector("#name")
         p.fill("#name", f"Ведомый{i + 1}")
         p.evaluate("document.getElementById('enterform').requestSubmit()")
@@ -238,7 +238,7 @@ def handoff_stage(browser, lang_script, errs):
     ctxB = browser.new_context(user_agent=UA, viewport={"width": 390, "height": 780}, is_mobile=True, has_touch=True)
     ctxB.add_init_script(lang_script + f"try{{localStorage.setItem('{keyname}','{ptoken}');localStorage.setItem('crowd-name','Ведомый3')}}catch(e){{}}")
     pB = ctxB.new_page()
-    pB.goto(f"{BASE}/crowd.html?r={code}")
+    pB.goto(f"{BASE}/crowd.html?r={code}", wait_until="domcontentloaded")
     pB.wait_for_function("window.wvPhone && wvPhone.me", timeout=10000)
     phones[2][1].wait_for_selector("#here", timeout=8000)
     check(True, "вкладка, которую заменили, показывает «Играть здесь»")
@@ -262,6 +262,13 @@ def handoff_stage(browser, lang_script, errs):
     phones[0][0].set_offline(False)
     p0.wait_for_function("wvPhone.state && wvPhone.state.me && wvPhone.state.me.vote === 'a'", timeout=25000)
     check(True, "голос, нажатый без связи, дошёл после возвращения")
+    # T-W2-43: неверный код — «Такой комнаты нет» + поле кода, не «Комната закрылась»
+    nctx, nph = mk_page(browser, 390, 780, True, lang_script, [], "pNoRoom")
+    nph.goto(f"{BASE}/crowd.html?r=NOPE99", wait_until="domcontentloaded")
+    nph.wait_for_selector("#codeform", timeout=10000)
+    ntxt = nph.evaluate("document.getElementById('app').innerText")
+    check(norm(nph.evaluate("T('noroom_title')")) in norm(ntxt) and norm(nph.evaluate("T('expired_title')")) not in norm(ntxt), "неверный код: «Такой комнаты нет» и поле кода")
+    nctx.close()
     for c in (bctx, b2ctx, b3ctx, ctxB):
         c.close()
     for c, _ in phones:
@@ -273,12 +280,12 @@ def pause_stage(browser, lang_script, errs):
     room = json.loads(urllib.request.urlopen(urllib.request.Request(f"{BASE}/crowd/api/rooms", data=json.dumps({"settings": {"lang": LANG, "short": True, "opinion": False}}).encode(), method="POST")).read())
     code, token = room["code"], room["hostToken"]
     bctx, board = mk_page(browser, BW, BH, False, lang_script + f"try{{localStorage.setItem('crowd-host-{code}','{token}')}}catch(e){{}}", errs, "board2")
-    board.goto(f"{BASE}/crowd-board.html?r={code}")
+    board.goto(f"{BASE}/crowd-board.html?r={code}", wait_until="domcontentloaded")
     board.wait_for_function("window.wvBoard && wvBoard.state")
     phones = []
     for i in range(3):
         ctx, p = mk_page(browser, 390, 780, True, lang_script, errs, f"p2-{i}")
-        p.goto(f"{BASE}/crowd.html?r={code}")
+        p.goto(f"{BASE}/crowd.html?r={code}", wait_until="domcontentloaded")
         p.wait_for_selector("#name")
         p.fill("#name", f"Молчун{i + 1}")
         p.evaluate("document.getElementById('enterform').requestSubmit()")

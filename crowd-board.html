@@ -424,7 +424,7 @@ window.I18N_DICT = {
   ru: {
     out_title: `Мимо большинства`, votes_lbl: `голоса`, room_lbl: `Комната открыта`, await_votes: `ждём голоса`,
     _title: `Как все — общий экран`, game_name: `Как все`,
-    creating: `Открываем комнату…`, expired: `Комната закрылась — открой новую`, err_connect: `Связь потеряна — переподключаемся…`, conn_lost: `Нет связи — проверяем…`,
+    noroom: `Такой комнаты нет — проверь код в адресе`, creating: `Открываем комнату…`, expired: `Комната закрылась — открой новую`, err_connect: `Связь потеряна — переподключаемся…`, conn_lost: `Нет связи — проверяем…`,
     tagline: `Угадай, что скажет <b>большинство</b>`,
     q_of: `Вопрос {n} из {t}`, q_final: `Финал ×2`, q_extra: `Допвопрос ×2`, q_decider: `Решающий вопрос`,
     ready_of: `{r} из {n} готовы`, ab_a: `А`, ab_b: `Б`,
@@ -461,7 +461,7 @@ window.I18N_DICT = {
   en: {
     out_title: `Missed the crowd`, votes_lbl: `votes`, room_lbl: `Room is open`, await_votes: `waiting for votes`,
     _title: `Go With the Crowd — shared screen`, game_name: `Go With the Crowd`,
-    creating: `Opening a room…`, expired: `The room has closed — open a new one`, err_connect: `Connection lost — reconnecting…`, conn_lost: `No connection — checking…`,
+    noroom: `There is no such room — check the code in the address`, creating: `Opening a room…`, expired: `The room has closed — open a new one`, err_connect: `Connection lost — reconnecting…`, conn_lost: `No connection — checking…`,
     tagline: `Guess what the <b>majority</b> will say`,
     q_of: `Question {n} of {t}`, q_final: `Final ×2`, q_extra: `Bonus question ×2`, q_decider: `Deciding question`,
     ready_of: `{r} of {n} ready`, ab_a: `A`, ab_b: `B`,
@@ -498,6 +498,7 @@ window.I18N_DICT = {
   el: {
     out_title: `Έχασαν την πλειοψηφία`, votes_lbl: `ψήφοι`, room_lbl: `Το δωμάτιο είναι ανοιχτό`, await_votes: `περιμένουμε ψήφους`,
     _title: `Όπως όλοι — κοινή οθόνη`, game_name: `Όπως όλοι`,
+    noroom: `Δεν υπάρχει τέτοιο δωμάτιο — έλεγξε τον κωδικό στη διεύθυνση`, //EL:unverified
     creating: `Άνοιγμα δωματίου…`, expired: `Το δωμάτιο έκλεισε — άνοιξε νέο`, err_connect: `Χάθηκε η σύνδεση — επανασύνδεση…`, conn_lost: `Χωρίς σύνδεση — έλεγχος…`, //EL:unverified
    
     tagline: `Μάντεψε τι θα πει η <b>πλειοψηφία</b>`,
@@ -864,7 +865,7 @@ const hasHostToken = () => { try { return !!localStorage.getItem(hostKey()); } c
 function drawHostCtl() {
   const bar = $("hostctl");
   if (!bar) return;
-  if (dead || !state || !HL || !CODE) { bar.replaceChildren(); hostCtlKey = ""; return; }
+  if (dead || !state || !HL || !CODE) { bar.innerHTML = ""; hostCtlKey = ""; return; }
   const key = [isHost, hostLost, pasteOpen, hostNote, wvLang(), hasHostToken()].join("|");
   if (key === hostCtlKey) return;
   hostCtlKey = key;
@@ -902,7 +903,8 @@ function drawHostCtl() {
     nodes.push(im);
   }
   if (hostNote) { const n = document.createElement("span"); n.className = "note"; n.textContent = hostNote; nodes.push(n); }
-  bar.replaceChildren(...nodes);
+  bar.innerHTML = "";
+  nodes.forEach((n) => bar.appendChild(n)); // без replaceChildren: проекторы на Chromium 80–83
 }
 
 // ---------- шапка ----------
@@ -1609,6 +1611,7 @@ function setState(s) { s.__at = performance.now(); state = s; }
 function onMessage(m) {
   switch (m.type) {
     case "hello":
+      if (goneFlow) goneFlow.hello();
       setState(m.state);
       if (!isHost) {
         let token = null;
@@ -1638,7 +1641,7 @@ function onMessage(m) {
       render();
       break;
     case "error":
-      if (m.error === "room_expired") gone();
+      if (m.error === "room_expired") onRoomGone();
       if (m.error === "bad host token") {
         // чужой/протухший токен: убираем его и просим вставить ссылку ведущего
         hostLost = false;
@@ -1654,6 +1657,12 @@ function gone() {
   upper.innerHTML = "";
   showBanner(T("expired"));
 }
+// hello не приходил ни разу — такой комнаты нет (опечатка в адресе), а не «закрылась» (MP.roomGone, T-W2-43)
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({
+  showForm: () => { dead = true; upper.innerHTML = ""; showBanner(T("noroom")); },
+  onClosed: () => gone(),
+}) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else gone(); }
 async function boot() {
   const h = params.get("h");
   if (h && CODE) {
@@ -1672,7 +1681,7 @@ async function boot() {
   conn = wvConnect({
     code: CODE,
     onMessage,
-    onGone: gone,
+    onGone: onRoomGone,
     onOpen: () => { isHost = false; },
     // «lost» — сокет закрыт, переподключаемся; «quiet» — сокет жив, но молчит дольше 10 с (MP.conn)
     onState: (st) => { netLost = st === "lost"; if (st === "open") netQuiet = false; showNet(); },

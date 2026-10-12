@@ -343,6 +343,7 @@ window.I18N_DICT = {
     rj_pick_first: `Сначала выбери сторону`, rj_rate: `Слишком часто — попробуй ещё раз через пару секунд`, rj_no_banks: `Ва-банки кончились`, rj_no_bank_here: `Здесь ва-банка нет`,
     kicked_title: `Ведущий убрал тебя из комнаты`,
     replaced_title: `Ты зашёл с другой вкладки`, replaced_text: `Здесь игра на паузе`, btn_back_here: `Играть здесь`,
+    noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код: в нём слово и две цифры`, btn_go: `Перейти`,
     expired_title: `Комната закрылась`, expired_text: `Она живёт полчаса без игры. Открой новую`, expired_new: `На главную`,
   },
   en: {
@@ -403,6 +404,7 @@ window.I18N_DICT = {
     rj_pick_first: `Pick a side first`, rj_rate: `Too fast — try again in a couple of seconds`, rj_no_banks: `No all-ins left`, rj_no_bank_here: `No all-in here`,
     kicked_title: `The host removed you from the room`,
     replaced_title: `You joined from another tab`, replaced_text: `The game is paused here`, btn_back_here: `Play here`,
+    noroom_title: `There is no such room`, noroom_text: `Check the code: a word and two digits`, btn_go: `Go`,
     expired_title: `The room has closed`, expired_text: `It lives for half an hour without a game. Open a new one`, expired_new: `Home`,
   },
   el: {
@@ -465,6 +467,7 @@ window.I18N_DICT = {
     rj_pick_first: `Διάλεξε πρώτα πλευρά`, rj_rate: `Πολύ γρήγορα — δοκίμασε ξανά σε λίγα δευτερόλεπτα`, rj_no_banks: `Τέλειωσαν τα all-in`, rj_no_bank_here: `Εδώ δεν υπάρχει all-in`,
     kicked_title: `Ο οικοδεσπότης σε έβγαλε από το δωμάτιο`,
     replaced_title: `Μπήκες από άλλη καρτέλα`, replaced_text: `Εδώ το παιχνίδι είναι σε παύση`, btn_back_here: `Παίξε εδώ`,
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό: μια λέξη και δύο ψηφία`, btn_go: `Πήγαινε`, //EL:unverified
     expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Ζει μισή ώρα χωρίς παιχνίδι. Άνοιξε νέο`, expired_new: `Αρχική`,
   },
 };
@@ -725,6 +728,24 @@ function showReplaced() {
   renderCenter("replaced_title", "replaced_text", `<button class="btn" id="here" type="button">${escapeHtml(T("btn_back_here"))}</button>`);
   document.getElementById("here").onclick = () => { if (tab && tab.back()) return; doJoin(); };
 }
+// Неверный код: hello не приходил ни разу — комнаты с таким кодом нет (или её давно убрали), а не «закрылась».
+// Серверного различителя нет (К-11, closedCodes не вводим): решает MP.roomGone по тому, был ли hello.
+function renderNoRoom() {
+  dead = true;
+  screen = "noroom";
+  try { localStorage.removeItem(tokenKey()); } catch (e) {}
+  const form = `<form id="codeform" class="enter" autocomplete="off"><label class="fld"><span>${escapeHtml(T("code_ph"))}</span><input class="field code" id="code2" maxlength="12" value="${escapeHtml(CODE)}" autocapitalize="characters" autocomplete="off" enterkeyhint="go" aria-label="${escapeHtml(T("code_ph"))}"></label><div class="err" id="err2" role="alert"></div><button class="btn" type="submit">${escapeHtml(T("btn_go"))}</button><a class="btn ghost" href="index.html">${escapeHtml(T("expired_new"))}</a></form>`;
+  screenKey = "";
+  renderCenter("noroom_title", "noroom_text", form, "noroom");
+  document.getElementById("codeform").onsubmit = (e) => {
+    e.preventDefault();
+    const c = cleanCode(document.getElementById("code2").value); // уходим с кодом уже после фильтра
+    if (!c) { document.getElementById("err2").textContent = T("err_code"); return; }
+    location.href = "crowd.html?r=" + encodeURIComponent(c);
+  };
+}
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({ showForm: renderNoRoom, onClosed: () => renderExpired() }) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else renderExpired(); }
 function renderExpired() {
   dead = true;
   screen = "expired";
@@ -1133,6 +1154,7 @@ window.addEventListener("langchange", () => {
   if (screen === "enter") return renderEnter();
   screenKey = "";
   if (screen === "expired") return renderExpired();
+  if (screen === "noroom") return renderNoRoom();
   if (screen === "claim") return renderClaim();
   if (screen === "kicked" || screen === "replaced" || screen === "left") return;
   if (!state) return renderCenter("wait_title");
@@ -1177,6 +1199,7 @@ function onMessage(m) {
     case "hello":
     case "state":
       state = m.state;
+      if (m.type === "hello" && goneFlow) goneFlow.hello();
       // сервер сказал «имя занято, пока идёт секретная фаза» — входим сами, как только фаза сменилась
       if (waitPhase && !me && state.phase !== waitPhase) { waitPhase = null; joinErr = null; doJoin(); }
       if (rateTries && state.me && (want.vote == null || state.me.vote === want.vote) && (want.bank == null || !!state.me.bank === want.bank)) rateTries = 0;
@@ -1233,7 +1256,7 @@ function onMessage(m) {
       break;
     case "error":
       conn.flush(() => false, () => {});
-      if (m.error === "room_expired") return renderExpired();
+      if (m.error === "room_expired") return onRoomGone();
       if (["room_full", "token_gone", "bad_name", "name_taken"].includes(m.error)) {
         if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
         joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
@@ -1271,7 +1294,7 @@ function start() {
   conn = wvConnect({
     code: CODE,
     onMessage,
-    onGone: renderExpired,
+    onGone: onRoomGone,
     // переподключились — снова входим своим токеном (hello придёт первым)
     onOpen: () => { needJoin = true; if (token && !replacedHere) conn.gated = true; },
     keep: stillWanted,
