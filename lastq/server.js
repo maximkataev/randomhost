@@ -20,6 +20,7 @@ const { WebSocketServer } = require("ws");
 const { roomCode } = require("../lib/codes");
 const { clientIp, createGuessLimiter, rateOk: netRateOk, send } = require("../lib/net");
 const names = require("../lib/names");
+const presence = require("../lib/presence");
 const { Game, clampSettings, cleanName, nameKey, NAME_MAX } = require("./game");
 const CONTENT = require("./content");
 
@@ -523,8 +524,10 @@ function handle(room, client, msg) {
         const name = names.nextFreeName(cleaned, takenKeys, NAME_MAX) || cleaned;
         renamed = nameKey(name) !== nameKey(cleaned);
         playerId = "u_" + crypto.randomBytes(5).toString("hex");
-        const r = g.addPlayer({ id: playerId, name });
+        const r = g.addPlayer({ id: playerId, name, now: t });
         if (!r.ok) return reply({ type: "error", error: r.reason });
+        // комната была полна: вытеснено самое давнее офлайн-место (lib/presence R2) — токен его владельца больше не действует
+        if (r.evicted) pruneTokens(room);
         client.newPlayerAt = now();
         const token = crypto.randomBytes(12).toString("base64url");
         room.tokens[token] = playerId;
@@ -543,7 +546,7 @@ function handle(room, client, msg) {
       // после рестарта: вернувшиеся по одному — остальным фора, как при обычном обрыве (до этого все «на паузе»)
       if (room.restored) {
         room.restored = false;
-        for (const p of g.s.players) if (p.id !== playerId && !p.left) { p.online = true; scheduleOffline(room, p.id); }
+        for (const p of g.s.players) if (p.id !== playerId && !p.left) { presence.setOnline(p, true, t); scheduleOffline(room, p.id); }
       }
       return afterChange(room, [{ type: "online", playerId }, ...g.setOnline(playerId, true, t)]);
     }
@@ -592,6 +595,7 @@ function handle(room, client, msg) {
       if (!client.host) return;
       const r = g.start(t);
       if (!r.ok) return reply({ type: "rejected", action: "start", reason: r.reason });
+      pruneTokens(room); // уйдшие в left перед партией: их токены ведут в token_gone, а не к призраку
       return afterChange(room, r.events);
     }
     case "kick": {
@@ -604,8 +608,9 @@ function handle(room, client, msg) {
     case "end": return client.host ? afterChange(room, g.abort(t)) : undefined;
     case "lobby": {
       if (!client.host) return;
+      // «на связи» — по сокетам, и ДО toLobby: иначе офлайн-метки (offSince) ставились бы уже после чистки (lastq-002)
+      for (const p of g.s.players) presence.setOnline(p, [...room.sockets].some((c) => c.playerId === p.id), t);
       const events = g.toLobby(t);
-      for (const p of g.s.players) p.online = [...room.sockets].some((c) => c.playerId === p.id);
       pruneTokens(room);
       return afterChange(room, events);
     }
@@ -638,6 +643,32 @@ setInterval(() => {
   statBlips = statBack = statDrops = 0;
   if (rssMb > 100) console.warn(`${LOG} ВНИМАНИЕ: RSS ${rssMb} МБ при лимите контейнера 128 МБ, комнат ${rooms.size}`);
 }, SWEEP);
+
+// Лобби и итоги: офлайн-место живёт GHOST_TTL_MS (lib/presence, env GHOST_TTL_MS, по умолч. 120 с), потом снимается
+// и «N из M» перестаёт копить серых. В партии место не освобождается никогда (R1). В итогах — только без участия.
+function sweepGhosts(room) {
+  const g = room.game;
+  const ph = g.s.phase;
+  if (ph !== "lobby" && ph !== "finished") return;
+  const t = clock(room);
+  presence.ensureOffSince(g.s.players, t);
+  const ranked = new Set((g.s.ranking || []).map((r) => r.id));
+  const ids = presence.ghostsToDrop({ players: g.s.players, now: t, stage: ph, protect: (id) => ranked.has(id), earnedKeys: ["score"] });
+  if (!ids.length) return;
+  const events = [];
+  for (const id of ids) {
+    if ([...room.sockets].some((c) => c.playerId === id)) continue; // вернулся между проверкой и снятием
+    events.push(...g.removePlayer(id, t));
+  }
+  pruneTokens(room);
+  console.log(`${LOG} ${room.code}: серых мест снято: ${ids.length} (${ph})`);
+  afterChange(room, events);
+}
+setInterval(() => {
+  for (const room of rooms.values()) {
+    try { sweepGhosts(room); } catch (err) { console.error(`${LOG} уборка призраков упала:`, err); }
+  }
+}, Math.min(5000, Math.max(100, Math.floor(presence.GHOST_TTL_MS / 4)))).unref();
 
 setInterval(() => {
   const t = now();
@@ -675,7 +706,8 @@ function restore() {
       const room = newRoom({ code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: Game.from(r.state, rnd, CONTENT), tokens: r.tokens || {}, touched: r.touched });
       // все офлайн до возвращения: время партии стоит (иначе она доиграется без игроков);
       // первого вернувшегося движок снимает с паузы, остальным — обычная фора OFFLINE_GRACE_MS (см. join)
-      for (const p of room.game.s.players) p.online = false;
+      for (const p of room.game.s.players) presence.setOnline(p, false, now());
+      presence.onRestore(room.game.s.players, now()); // offSince = момент restore: после деплоя лобби не опустеет (T-W0-31)
       room.game.pause(now());
       room.restored = true;
       pruneTokens(room);

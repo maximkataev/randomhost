@@ -617,6 +617,7 @@ window.I18N_DICT = {
     end_q: `Закончить партию? Сразу покажем итоги`, rj_start_few_players: `Нужно хотя бы двое игроков`, rj_start_no_content: `Вопросы не загрузились — попробуйте позже`, rj_start_started: `Партия уже идёт`,
     _title: `Последний вопрос — общий экран`,
     lobby_who: `Игроки`, lobby_n: `{n} из 10`, lobby_empty: `свободно`, offline: `не в сети`, kick: `Убрать`,
+    lobby_n_on: `{n} в сети из {m}`, need_online: `Нужны хотя бы двое в сети`,
     lobby_scan: `Наведи камеру телефона на QR или открой ссылку и введи имя.`,
     set_short: `Короткая партия`, set_short_d: `2 + 2 вопроса и финал, минут пять`,
     set_final: `Финал со ставками`, set_final_d: `В конце — один трудный вопрос на все очки`,
@@ -650,6 +651,7 @@ window.I18N_DICT = {
     end_q: `End the game? Results will show right away`, rj_start_few_players: `At least two players needed`, rj_start_no_content: `Questions failed to load — try again later`, rj_start_started: `The game is already on`,
     _title: `Last Question — shared screen`,
     lobby_who: `Players`, lobby_n: `{n} of 10`, lobby_empty: `free`, offline: `offline`, kick: `Remove`,
+    lobby_n_on: `{n} online of {m}`, need_online: `At least two players need to be online`,
     lobby_scan: `Point your phone camera at the QR or open the link and type your name.`,
     set_short: `Short game`, set_short_d: `2 + 2 questions and the final, about five minutes`,
     set_final: `Final with bets`, set_final_d: `One hard question at the end for all your points`,
@@ -683,6 +685,7 @@ window.I18N_DICT = {
     end_q: `Τέλος παρτίδας; Θα δείξουμε αμέσως τα αποτελέσματα`, rj_start_few_players: `Χρειάζονται τουλάχιστον δύο παίκτες`, rj_start_no_content: `Οι ερωτήσεις δεν φορτώθηκαν — δοκιμάστε αργότερα`, rj_start_started: `Η παρτίδα έχει ήδη ξεκινήσει`,
     _title: `Τελευταία ερώτηση — κοινή οθόνη`,
     lobby_who: `Παίκτες`, lobby_n: `{n} από 10`, lobby_empty: `ελεύθερη`, offline: `εκτός σύνδεσης`, kick: `Αφαίρεση`,
+    lobby_n_on: `{n} συνδεδεμένοι από {m}`, need_online: `Χρειάζονται τουλάχιστον δύο συνδεδεμένοι`, //EL:unverified
     lobby_scan: `Στρέψε την κάμερα του κινητού στο QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.`,
     set_short: `Σύντομη παρτίδα`, set_short_d: `2 + 2 ερωτήσεις και τελικός, περίπου πέντε λεπτά`,
     set_final: `Τελικός με πονταρίσματα`, set_final_d: `Στο τέλος μία δύσκολη ερώτηση για όλους τους πόντους`,
@@ -832,16 +835,18 @@ function drawLobby() {
   });
   $("seats").replaceChildren(...nodes);
   ps.forEach((p) => seen.add(p.id));
-  $("seatn").textContent = tpl("lobby_n", { n: ps.length });
+  // «N в сети из M»: серые места (телефон погас) не делают комнату «полной» и не считаются готовыми (lastq-002, lastq-058)
+  const onlineN = ps.filter((p) => p.online).length;
+  $("seatn").textContent = onlineN < ps.length ? tpl("lobby_n_on", { n: onlineN, m: ps.length }) : tpl("lobby_n", { n: ps.length });
   const st = state.settings;
   $("toggles").innerHTML = [["short", "set_short"], ["final", "set_final"]].map(([k, l]) =>
     `<button type="button" class="tog${st[k] ? " on" : ""}" data-k="${k}" aria-pressed="${!!st[k]}"${isHost ? "" : " disabled"}><span class="bx">${st[k] ? "✓" : ""}</span><span><b>${T(l)}</b><span>${T(l + "_d")}</span></span></button>`).join("");
   $("toggles").querySelectorAll(".tog").forEach((b) => {
     b.onclick = () => conn.send({ type: "settings", settings: { [b.dataset.k]: !state.settings[b.dataset.k] } });
   });
-  const need = Math.max(0, state.minPlayers - ps.length);
+  const need = Math.max(0, state.minPlayers - onlineN);
   $("startbtn").disabled = !isHost || need > 0;
-  $("starthint").textContent = !isHost ? T("viewer") : need > 0 ? T("need_more") : "";
+  $("starthint").textContent = !isHost ? T("viewer") : need > 0 ? T(ps.length >= state.minPlayers ? "need_online" : "need_more") : "";
 }
 
 // ---------- заставка акта ----------

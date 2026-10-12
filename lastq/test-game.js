@@ -729,3 +729,49 @@ test("RULE_U08_GHOST_OUT=1: если на связи меньше двух — �
     assert.equal(g.s.eligible.length, 3);
   });
 });
+
+// ---------- T-W2-30: призраки в лобби ----------
+test("addPlayer на полной комнате вытесняет самое давнее офлайн-место старше GHOST_TTL; свежий призрак не вытесняется", () => {
+  const g = Game.create({ settings: {}, code: "T", rnd: mulberry(3), content: bank() });
+  for (let i = 0; i < 10; i++) g.addPlayer({ id: "p" + i, name: "И" + i });
+  const t0 = 1000000;
+  g.setOnline("p3", false, t0);
+  g.setOnline("p5", false, t0 + 1000);
+  // оба призрака моложе порога — места нет
+  assert.equal(g.addPlayer({ id: "n1", name: "Новый", now: t0 + 60000 }).reason, "room_full");
+  // p3 (самый давний) старше 120 с — вытесняется
+  const r = g.addPlayer({ id: "n2", name: "Новый", now: t0 + 130000 });
+  assert.ok(r.ok);
+  assert.equal(r.evicted, "p3");
+  assert.equal(g.player("p3"), undefined);
+  assert.ok(g.player("p5"), "второй призрак (ещё не старше порога) остался");
+  assert.equal(g.present().length, 10);
+});
+
+test("start: «двое» — на связи; серые перед партией уходят в left, а не в вопрос", () => {
+  const g = setup(3);
+  g.setOnline("p1", false, 1000);
+  g.setOnline("p2", false, 1000);
+  assert.equal(g.start(2000).reason, "few_players", "1 онлайн + 2 серых");
+  assert.equal(g.snapshot(2000, "p0").onlineN, 1);
+  g.setOnline("p2", true, 3000);
+  const r = g.start(20000); // p1 офлайн дольше грации (8 с) — в left
+  assert.ok(r.ok);
+  assert.equal(g.player("p1"), undefined, "серый не попал в партию");
+  assert.deepEqual(g.s.eligible.length ? g.s.eligible : g.present().map((p) => p.id), g.present().map((p) => p.id));
+  assert.equal(g.present().length, 2);
+});
+
+test("toLobby после партии: места, отмеченные офлайн, получают offSince (чистит их таймер GHOST_TTL_MS)", () => {
+  const g = setup(3);
+  g.start(0);
+  const t = until(g, "answer", 0);
+  g.setOnline("p2", false, t + 50);
+  assert.ok(Number.isFinite(g.player("p2").offSince));
+  g.toLobby(t + 100);
+  assert.equal(g.s.phase, "lobby");
+  assert.equal(g.player("p2").online, false);
+  assert.equal(g.player("p2").offSince, t + 50, "метка не сбрасывается");
+  g.setOnline("p2", true, t + 200);
+  assert.equal(g.player("p2").offSince, undefined);
+});

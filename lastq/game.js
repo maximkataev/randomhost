@@ -152,11 +152,31 @@ class Game {
     return on.length >= MIN_PLAYERS ? on : ps;
   }
 
-  addPlayer({ id, name }) {
+  onlineN() {
+    return this.present().filter((p) => p.online).length;
+  }
+
+  // Комната полна: в лобби и итогах вытесняем самого давнего офлайн-места СТАРШЕ GHOST_TTL (lib/presence R2);
+  // в итогах — только того, кто не участвовал в партии (нет в ranking, нет очков). id вытесненного — evicted.
+  evictGhost(now) {
+    const s = this.s;
+    if (s.phase !== "lobby" && s.phase !== "finished") return null;
+    const ranked = new Set((s.ranking || []).map((r) => r.id));
+    const id = presence.evictOldestGhost(s.players, { now, stage: s.phase, protect: (x) => ranked.has(x), earnedKeys: ["score"] });
+    if (!id) return null;
+    s.players = s.players.filter((p) => p.id !== id);
+    return id;
+  }
+
+  addPlayer({ id, name, now }) {
     const s = this.s;
     const have = this.player(id);
     if (have) return { ok: true, player: have };
-    if (this.present().length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
+    let evicted = null;
+    if (this.present().length >= MAX_PLAYERS) {
+      evicted = this.evictGhost(Number.isFinite(now) ? now : Date.now());
+      if (!evicted) return { ok: false, reason: "room_full" };
+    }
     name = cleanName(name);
     if (!name) return { ok: false, reason: "bad_name" };
     const used = new Set(this.present().map((p) => p.color));
@@ -177,7 +197,7 @@ class Game {
     if (s.players.length >= MAX_PLAYERS * 3) return { ok: false, reason: "room_full" };
     s.players.push(p);
     // вошёл посреди партии — отвечает со следующего вопроса с 0 очков (§8)
-    return { ok: true, player: p };
+    return { ok: true, player: p, evicted };
   }
 
   static freshStats() {
@@ -206,7 +226,7 @@ class Game {
     const p = this.player(id);
     if (!p) return [];
     const was = p.online;
-    p.online = online;
+    presence.setOnline(p, online, now); // offline: offSince = now (лобби: GHOST_TTL_MS, вытеснение); online: метка снимается
     if (online) {
       const ev = this.resume(now);
       // вернулся из офлайна посреди Камеры — играет оставшееся время; испытание новое (расписание от момента показа),
@@ -316,9 +336,12 @@ class Game {
   start(now) {
     const s = this.s;
     if (s.phase !== "lobby" && s.phase !== "finished") return { ok: false, reason: "started" };
-    const ps = this.present();
-    if (ps.length < MIN_PLAYERS) return { ok: false, reason: "few_players" };
+    // «двое» — двое НА СВЯЗИ: серые места (телефон погас до старта) партию не заводят и в неё не попадают (lastq-002)
+    if (this.onlineN() < MIN_PLAYERS) return { ok: false, reason: "few_players" };
     if (!this.bank().some((q) => !q.final)) return { ok: false, reason: "no_content" };
+    // офлайн дольше грации уходят в left (токен жив: вернуться можно, но уже посреди партии, без очков)
+    presence.pruneOfflineForNewGame(s.players, { now });
+    const ps = this.present();
     s.game++;
     s.plan = (s.settings.short ? QUESTIONS.short : QUESTIONS.normal).slice();
     s.qn = -1;
@@ -961,6 +984,7 @@ class Game {
       ranking: ph === "finished" ? s.ranking || null : null,
       finishedReason: ph === "finished" ? s.finishedReason : null,
       minPlayers: MIN_PLAYERS,
+      onlineN: this.onlineN(),
       avatarChoices: s.phase === "lobby" || s.phase === "finished" ? AVATAR_CHOICES : null,
       maxPlayers: MAX_PLAYERS,
       me: mePart,

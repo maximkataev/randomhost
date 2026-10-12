@@ -22,7 +22,7 @@ for (const l of ["ru", "en", "el"]) fs.writeFileSync(path.join(BANK, l + ".json"
 
 function startServer() {
   proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300", LQ_CONTENT_DIR: BANK },
+    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300", GHOST_TTL_MS: "1500", LQ_CONTENT_DIR: BANK },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";
@@ -355,4 +355,39 @@ test("секреты не в кадрах: событие «answered» с player
   const leaked = [["игрок", z], ["сокет без токена", anon]].filter(([, c]) => c.events.some((e) => e.type === "answered" && e.playerId));
   assert.deepStrictEqual(leaked.map(([n]) => n), [], "кто ответил, ушло как событие: " + JSON.stringify(leaked.map(([, c]) => c.events.filter((e) => e.type === "answered"))));
   for (const c of [b, a, z, anon]) c.close();
+});
+
+// ---- T-W2-30 (lastq-002, lastq-058): серые места в лобби живут GHOST_TTL_MS; Start — по онлайну ----
+test("лобби: офлайн-место снимается через GHOST_TTL_MS, токен вернувшегося — token_gone; онлайн-игрок остаётся", async () => {
+  const { code } = await createRoom();
+  const a = await player(code, "Аня");
+  const z = await player(code, "Зоя");
+  const watcher = client(code);
+  await watcher.open;
+  a.close();
+  // сначала место серое, потом исчезает
+  await z.wait((m) => m.type === "state" && m.state.players.some((p) => p.name === "Аня" && p.online === false), 4000);
+  await z.wait((m) => m.type === "state" && !m.state.players.some((p) => p.name === "Аня"), 6000);
+  assert.ok(z.state.players.some((p) => p.name === "Зоя" && p.online));
+  const back = await player(code, "", a.token);
+  assert.equal(back.joinMsg.type, "error");
+  assert.equal(back.joinMsg.error, "token_gone");
+  // вошёл тем же именем — обычное новое место, без «(2)»
+  const again = await player(code, "Аня");
+  assert.equal(again.joinMsg.name, "Аня");
+  for (const c of [z, watcher, back, again]) try { c.close(); } catch {}
+});
+
+test("лобби: Start требует двоих НА СВЯЗИ — один онлайн и один серый = few_players", async () => {
+  const { code, hostToken } = await createRoom();
+  const b = await board(code, hostToken);
+  const a = await player(code, "Аня");
+  const z = await player(code, "Зоя");
+  z.close();
+  await a.wait((m) => m.type === "state" && m.state.players.some((p) => p.name === "Зоя" && p.online === false), 4000);
+  assert.equal(a.state.onlineN, 1);
+  b.send({ type: "start" });
+  const rj = await b.wait((m) => m.type === "rejected" && m.action === "start");
+  assert.equal(rj.reason, "few_players");
+  for (const c of [b, a]) c.close();
 });

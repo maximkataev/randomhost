@@ -413,6 +413,7 @@ window.I18N_DICT = {
     expired_title: `Комната закрыта`, expired_text: `Она пустовала полчаса или ведущий её закрыл.`, expired_new: `Создать новую`,
     paused: `Все отключились — ждём`,
     rj_not_now: `Уже поздно`, rj_closed: `Ставки уже закрыты`, rj_already: `Уже выбрано`, rj_not_in_question: `Ты со следующего вопроса`,
+    lobby_wait_n: `Ждём, пока ведущий начнёт. В сети: {n}`,
     bet_off: `нет связи — ставка закрыта`, rj_ghost: `Игрок без связи — ставка на него закрыта`,
     in_as: `Имя занято. Ты в игре как {name}`,
   },
@@ -469,6 +470,7 @@ window.I18N_DICT = {
     expired_title: `Room closed`, expired_text: `It sat empty for half an hour or the host closed it.`, expired_new: `Create a new one`,
     paused: `Everyone dropped — waiting`,
     rj_not_now: `Too late`, rj_closed: `Betting is closed`, rj_already: `Already picked`, rj_not_in_question: `You're in from the next question`,
+    lobby_wait_n: `Waiting for the host to start. Online: {n}`,
     bet_off: `offline — betting is closed`, rj_ghost: `That player is offline — betting on them is closed`,
     in_as: `That name is taken. You're in as {name}`,
   },
@@ -525,6 +527,7 @@ window.I18N_DICT = {
     expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης.`, expired_new: `Φτιάξε καινούργιο`,
     paused: `Όλοι αποσυνδέθηκαν — περιμένουμε`,
     rj_not_now: `Πολύ αργά`, rj_closed: `Τα στοιχήματα έκλεισαν`, rj_already: `Έχει ήδη επιλεγεί`, rj_not_in_question: `Παίζεις από την επόμενη ερώτηση`,
+    lobby_wait_n: `Περιμένουμε να ξεκινήσει ο οικοδεσπότης. Συνδεδεμένοι: {n}`, //EL:unverified
     bet_off: `εκτός σύνδεσης — το στοίχημα έκλεισε`, rj_ghost: `Ο παίκτης είναι εκτός σύνδεσης — το στοίχημα έκλεισε`, //EL:unverified
     in_as: `Το όνομα είναι πιασμένο. Μπήκες ως {name}`, //EL:unverified
   },
@@ -551,10 +554,12 @@ let joinErr = null;
 // replacedHere — игру забрала другая вкладка: на переподключении сами не входим, пока не нажмут «Играть здесь».
 // rejoining — после обрыва входим своим токеном заново: экран не трогаем до joined (иначе мелькает вход и сбивается Камера)
 let replacedHere = false, rejoining = false;
+let autoJoined = false; // автовход по имени после token_gone — один раз
 let stakeDraft = null, stakeEdit = false; // финальная ставка: черновик ползунка
 const tokenKey = () => "lastq-token-" + CODE;
 // каркас mp-common.js (T-W1-04): без него (или при MP_OFF на сервере) страница работает по-старому
 const mpOn = () => !!(window.MP && !MP.off);
+function savedName() { try { return localStorage.getItem("lastq-name") || ""; } catch (e) { return ""; } }
 const NAME_LIMIT = () => (window.MP && MP.limits && MP.limits.name) || 16;
 try { token = localStorage.getItem(tokenKey()); } catch (e) {}
 
@@ -739,7 +744,10 @@ const letterCss = (i) => `--lc:var(--c${i})`;
 function renderLobby() {
   const key = "lobby:" + state.players.map((p) => p.id + p.online).join(",") + avKey() + lqLang();
   if (screenKey === key) return;
-  show(`${meBadge()}${avPickHtml()}<div class="status"><p>${T("lobby_wait")}</p></div>${playersHtml()}
+  // сколько на связи: серые места (телефон погас) в «готовых» не считаются; без двух на связи партия не начнётся
+  const onl = state.players.filter((p) => !p.left && p.online).length;
+  const waitText = onl < state.minPlayers ? T("lobby_wait") : tpl("lobby_wait_n", { n: onl });
+  show(`${meBadge()}${avPickHtml()}<div class="status"><p>${escapeHtml(waitText)}</p></div>${playersHtml()}
     <button type="button" class="leave" id="leave">${T("btn_leave")}</button>`, "lobby:" + key, true);
   screenKey = key;
   bindReacts();
@@ -1338,6 +1346,7 @@ function onMessage(m) {
       joinErr = null;
       rejoining = false;
       replacedHere = false;
+      autoJoined = false;
       try { localStorage.setItem(tokenKey(), token); } catch (e) {}
       // итоговое имя от сервера («Игорь (2)», если занято): дальше входим с ним, игрок узнаёт о переименовании (lastq-005/006)
       if (m.name) {
@@ -1374,7 +1383,19 @@ function onMessage(m) {
       if (m.error === "room_expired") return renderExpired();
       if (["room_full", "token_gone", "bad_name"].includes(m.error)) {
         rejoining = false;
-        if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
+        if (m.error === "token_gone") {
+          try { localStorage.removeItem(tokenKey()); } catch (e) {}
+          token = null;
+          // место снято (серым в лобби дольше GHOST_TTL или перед партией): в лобби/итогах входим сами с сохранённым именем,
+          // а не показываем форму — для человека это мигание, не шаг (lastq-002). Один раз на подключение: без цикла.
+          const saved = savedName();
+          if (saved && !autoJoined && state && (state.phase === "lobby" || state.phase === "finished") && screen !== "kicked" && screen !== "replaced") {
+            autoJoined = true;
+            me = null;
+            conn.send({ type: "join", name: saved });
+            break;
+          }
+        }
         joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
         me = null;
         renderEnter();
