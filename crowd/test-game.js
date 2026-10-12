@@ -711,3 +711,27 @@ test("агрегат мнений: при 1–2 ответивших не пок
   ["a", "b", "b", "skip", "skip"].forEach((v, i) => c2.g.opinion("p" + i, v, 0));
   assert.deepStrictEqual(c2.g.s.round.result.opinions, { a: 1, b: 2, skip: 2 });
 });
+
+// ---- T-W0-31: restore из дампа прошлой версии без новых полей (шаблон — tools/testkit/restore.js) ----
+test("restore-from-prev-dump: без voidsUsed/replNext/round.repl/result.bankLate — партия доигрывается до финала, очки конечные, замены не включаются (T-W0-31)", () => {
+  const restore = require("../tools/testkit/restore");
+  const ctx = mk(4, { short: true });
+  ctx.g.start(0);
+  const mid = JSON.parse(JSON.stringify(ctx.g.s));
+  assert.ok("voidsUsed" in mid && "repl" in mid.round, "текущая версия пишет новые поля");
+  const { state } = restore.stripFields(mid, ["voidsUsed", "replNext", "round.repl", "round.result.bankLate", "round.result.replace", "round.result.replaceNo", "round.result.replaceMax"]);
+  restore.assertAbsent(state, ["voidsUsed", "round.repl"]);
+  const g2 = Game.from(state, rndFrom(9), { ru: bank() });
+  const c2 = { g: g2, ids: ctx.ids, t: 0 };
+  let guard = 0;
+  while (g2.s.phase !== "finished" && guard++ < 60) {
+    skipIntro(c2);
+    if (g2.s.phase === "vote") round(c2, ["a", "b", "a", "b"], { bank: [c2.ids[0]] });
+    else { c2.t = g2.s.phaseEnd; g2.tick(c2.t); }
+  }
+  assert.strictEqual(g2.s.phase, "finished", "партия дошла до финала");
+  for (const p of g2.s.players) assert.ok(Number.isFinite(p.score), "очки конечные: " + p.score);
+  assert.ok(!Number.isNaN(g2.s.voidsUsed), "voidsUsed не NaN");
+  const snap = g2.snapshot(c2.t, c2.ids[0]);
+  assert.ok(snap.awards !== undefined);
+});

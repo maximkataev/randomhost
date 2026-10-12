@@ -478,4 +478,47 @@ test("сервер", async (t) => {
     assert.ok(opinionFrames > 0, "фазы opinion не было — проверка мнений пустая");
     for (const c of [b, anon, ...ps]) c.close();
   });
+
+  // ---- T-W0-31: restore из дампа прошлой версии без новых полей (шаблон — tools/testkit/restore.js) ----
+  await t.test("restore-from-prev-dump: без bankLate/replace/repl/replNext/voidsUsed — итог раунда читается, партия идёт дальше, финал с наградами (T-W0-31)", async () => {
+    const restore = require("../tools/testkit/restore");
+    const room = await createRoom({ lang: "ru", opinion: false, short: true });
+    const b = await board(room.code, room.hostToken);
+    const ps = [await player(room.code, "Оля"), await player(room.code, "Петя"), await player(room.code, "Вася")];
+    b.send({ type: "start" });
+    await b.wait(statePred((s) => s.phase === "vote"));
+    ps[0].send({ type: "vote", side: "a" });
+    ps[1].send({ type: "vote", side: "a" });
+    ps[2].send({ type: "vote", side: "b" });
+    await ps[2].wait(statePred((s) => s.me && s.me.vote === "b"));
+    ps[0].send({ type: "bank", on: true });
+    await ps[0].wait(statePred((s) => s.me && s.me.bank === true));
+    for (const p of ps) p.send({ type: "confirm" });
+    const rv = await b.wait(statePred((s) => s.phase === "reveal"));
+    assert.ok("bankLate" in rv.state.round.result && "replace" in rv.state.round.result, "текущая версия пишет bankLate/replace в итог");
+    const tokens = ps.map((p) => p.token);
+    for (const c of [b, ...ps]) c.close();
+    await stopServer(); // SIGTERM пишет дамп
+    const dump = JSON.parse(fs.readFileSync(DUMP, "utf8"));
+    assert.ok(dump.some((r) => r.code === room.code), "комната в дампе");
+    const paths = ["voidsUsed", "replNext", "round.repl", "round.result.bankLate", "round.result.replace", "round.result.replaceNo", "round.result.replaceMax"];
+    const old = restore.makeOldDump(dump, paths);
+    const mine = old.find((r) => r.code === room.code).state;
+    assert.ok(!("voidsUsed" in mine) && !("bankLate" in (mine.round.result || {})), "в «старом» дампе новых полей нет");
+    fs.writeFileSync(DUMP, JSON.stringify(old));
+    await startServer();
+    const b2 = await board(room.code, room.hostToken);
+    const back = [];
+    for (const tok of tokens) back.push(await player(room.code, "", tok));
+    const s2 = await b2.wait(statePred((s) => s.phase === "reveal" || s.phase === "scores" || s.phase === "vote" || s.phase === "intro"));
+    assert.ok(s2.state.players.length === 3, "игроки на месте");
+    // телефон читает свой итог без падения (bankLate/bankBack — false, не исключение)
+    const me0 = await back[0].wait(statePred((s) => s.me && s.me.id === ps[0].id));
+    assert.strictEqual(me0.state.me.bankLate === undefined || me0.state.me.bankLate === false, true);
+    // партия идёт дальше: ведущий доигрывает до итогов, награды считаются
+    b2.send({ type: "end" });
+    const fin = await b2.wait(statePred((s) => s.phase === "finished"));
+    assert.ok(fin.state.awards !== undefined, "награды в финале");
+    for (const c of [b2, ...back]) c.close();
+  });
 });
