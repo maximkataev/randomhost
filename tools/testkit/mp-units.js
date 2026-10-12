@@ -270,5 +270,63 @@ test("авто-возврат: выключен по умолчанию; ≥ 5 �
   assert.equal(rt.canAutoReturn(1e6 + 66000), true);
 });
 
+console.log("conn");
+test("тишина: >10 с — onOffline один раз, >22 с — onDead один раз; сообщение возвращает onOnline", () => {
+  const w = load();
+  const ev = [];
+  let hidden = false;
+  const c = w.MP.conn({ ping: () => ev.push("ping"), inGame: () => true, hidden: () => hidden,
+    onOffline: () => ev.push("off"), onOnline: () => ev.push("on"), onDead: () => ev.push("dead") });
+  c.seen(0);
+  for (let t = 1000; t <= 10000; t += 1000) c.tick(t);
+  assert.ok(!ev.includes("off"), "до 10 с баннера нет");
+  c.tick(10500); c.tick(11000);
+  assert.equal(ev.filter((x) => x === "off").length, 1);
+  for (let t = 12000; t <= 22000; t += 1000) c.tick(t);
+  assert.ok(!ev.includes("dead"));
+  c.tick(22500); c.tick(23000);
+  assert.equal(ev.filter((x) => x === "dead").length, 1);
+  c.seen(24000);
+  assert.equal(ev[ev.length - 1], "on");
+  assert.equal(c.offline(), false);
+});
+test("пинг: 5 с в игре, 10 с в лобби", () => {
+  const w = load();
+  let game = true, n = 0;
+  const c = w.MP.conn({ ping: () => n++, inGame: () => game });
+  c.seen(0);
+  for (let t = 0; t <= 20000; t += 1000) { c.seen(t); c.tick(t); }
+  assert.equal(n, 5); // 0, 5, 10, 15, 20
+  game = false; n = 0;
+  const l = w.MP.conn({ ping: () => n++, inGame: () => game });
+  for (let t = 0; t <= 20000; t += 1000) { l.seen(t); l.tick(t); }
+  assert.equal(n, 3); // 0, 10, 20
+});
+test("вкладка скрыта — тишина не считается; после возврата отсчёт заново", () => {
+  const w = load();
+  const ev = [];
+  let hidden = false;
+  const c = w.MP.conn({ hidden: () => hidden, onOffline: () => ev.push("off"), onDead: () => ev.push("dead") });
+  c.seen(0);
+  hidden = true;
+  c.tick(5000); c.tick(60000);
+  assert.deepEqual(ev, []);
+  hidden = false;
+  c.visible(60000);
+  c.tick(61000); c.tick(65000);
+  assert.deepEqual(ev, []);
+  c.tick(70500);
+  assert.deepEqual(ev, ["off"]);
+});
+test("MP.off — conn молчит", () => {
+  const w = load({ storage: {} });
+  w.MP.applyHello({ mp: false });
+  const ev = [];
+  const c = w.MP.conn({ ping: () => ev.push("ping"), onOffline: () => ev.push("off") });
+  c.tick(1000); c.tick(99000);
+  assert.deepEqual(ev, []);
+  assert.equal(c.start(), false);
+});
+
 console.log("\n" + passed + " пройдено, " + failed + " провалено");
 process.exit(failed ? 1 : 0);

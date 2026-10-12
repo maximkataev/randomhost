@@ -85,7 +85,8 @@
   /* ссылка «все игры» не переносится на вторую строку (греческая длинная) — обрезается */
   .util a { color: var(--ink); text-decoration: none; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; padding: 8px 0; }
   .sound-toggle-btn { flex: none; width: calc(var(--lsh, 44px) * 1.25); height: var(--lsh, 44px); border: 2px solid rgba(255, 225, 77, .45); border-radius: 999px; background: var(--deep); color: var(--text); font-size: 17px; display: grid; place-items: center; padding: 0; }
-  .conn { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 30; background: var(--pink); color: #fff; font-weight: 700; padding: 7px 14px; visibility: hidden; white-space: nowrap; border-radius: 999px; }
+  /* баннер «нет связи»: под строкой с переключателем языка (--lsc — её центр), а не поверх него; клики сквозь */
+  .conn { position: fixed; left: 50%; top: calc(var(--lsc, 30px) * 2 + 4px); transform: translateX(-50%); z-index: 30; background: var(--pink); color: #fff; font-weight: 700; padding: 7px 14px; visibility: hidden; max-width: calc(100% - 32px); text-align: center; border-radius: 16px; pointer-events: none; }
   .conn.on { visibility: visible; }
   .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: var(--deep); color: #fff; font-weight: 700; padding: 12px 18px; max-width: calc(100% - 32px); visibility: hidden; border-radius: 16px; box-shadow: 0 6px 0 var(--ink); }
   .toast.on { visibility: visible; animation: toast .35s var(--boing); }
@@ -526,6 +527,7 @@ window.I18N_DICT = {
   },
 };
 </script>
+<script src="mp-common.js"></script>
 <script src="quip-shared.js"></script>
 <script src="i18n.js"></script>
 <script src="sound-toggle.js" defer></script>
@@ -1080,6 +1082,12 @@ function start() {
   if (!CODE) return renderLanding();
   renderCenter("wait_title");
   const banner = document.getElementById("conn");
+  let netLost = false, netQuiet = false;
+  const showNet = () => {
+    banner.textContent = T(netLost ? "err_connect" : "conn_lost");
+    banner.classList.toggle("on", netLost || netQuiet);
+  };
+  window.addEventListener("langchange", showNet);
   conn = qpConnect({
     code: CODE,
     onMessage,
@@ -1087,7 +1095,9 @@ function start() {
     onDrop: lostAction,
     // переподключились — снова входим своим токеном (hello придёт первым)
     onOpen: () => { needJoin = true; if (token) conn.gated = true; },
-    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+    // «lost» — сокет закрыт, переподключаемся; «quiet» — сокет жив, но молчит дольше 10 с (MP.conn): только предупреждение
+    onState: (st) => { netLost = st === "lost"; if (st === "open") netQuiet = false; showNet(); },
+    onQuiet: (q) => { netQuiet = !!q; showNet(); },
   });
   requestAnimationFrame(frame);
   // ручка для стенда: состояние и отправка

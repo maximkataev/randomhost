@@ -15,7 +15,7 @@ let proc = null;
 
 function startServer() {
   proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300" },
+    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300", PING_MS: "1000" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";
@@ -444,4 +444,24 @@ test("секреты не в кадрах: авторство и подсказ�
   const vf = frames(b).filter((f) => f.state && f.state.phase === "vote" && f.state.current && f.state.current.answers);
   assert.ok(vf.length > 0 && vf[0].state.current.answers.length >= 2, "в фазе vote ответов нет — проверка пустая");
   for (const c of [b, anon, ...ps]) c.close();
+});
+
+test("пинг комнат «в игре»: сервер шлёт ping-кадры каждые PING_MS; в лобби быстрого пинга нет (T-W1-08)", async () => {
+  const room = await createRoom({ short: true });
+  const b = await board(room.code, room.hostToken);
+  const ps = [await player(room.code, "Аня"), await player(room.code, "Боря"), await player(room.code, "Вика")];
+  const pings = { lobby: 0, game: 0 };
+  let phase = "lobby";
+  b.ws.on("ping", () => { pings[phase]++; });
+  // лобби: общий цикл (SWEEP = 25 с) за 2.5 с не сработает, а быстрый — не должен вообще
+  await sleep(2500);
+  assert.strictEqual(pings.lobby, 0, "быстрый пинг не должен идти в лобби");
+  phase = "game";
+  b.send({ type: "start" });
+  await b.wait(statePred((s) => s.phase !== "lobby"));
+  await sleep(3500);
+  assert.ok(pings.game >= 2, "в игре ping-кадров мало: " + pings.game);
+  // мёртвый (не отвечающий) сокет за такое время не закрывается: порог тишины ≥ 20 с
+  assert.strictEqual(b.ws.readyState, 1);
+  for (const c of [b, ...ps]) c.close();
 });

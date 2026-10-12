@@ -58,6 +58,7 @@ const QP_SHARED_I18N = {
     best: "Ответ вечера", hint_star: "Подсказка смешнее всех", fastest: "Самый быстрый",
     avg_s: "в среднем {s} с",
     err_connect: "Нет связи с сервером, переподключаемся…",
+    conn_lost: "Нет связи — проверяем…",
   },
   en: {
     game_name: "Point Blank",
@@ -90,6 +91,7 @@ const QP_SHARED_I18N = {
     best: "Line of the night", hint_star: "Funniest hint", fastest: "Fastest",
     avg_s: "avg {s} s",
     err_connect: "No connection, reconnecting…",
+    conn_lost: "No connection — checking…",
   },
   el: {
     game_name: "Ευθέως",
@@ -122,6 +124,7 @@ const QP_SHARED_I18N = {
     best: "Η ατάκα της βραδιάς", hint_star: "Η πιο αστεία βοήθεια", fastest: "Πιο γρήγορο χέρι",
     avg_s: "μ.ό. {s} δ",
     err_connect: "Χωρίς σύνδεση, επανασύνδεση…",
+    conn_lost: "Χωρίς σύνδεση — έλεγχος…", //EL:unverified
   },
 };
 (function mergeSharedDict() {
@@ -439,11 +442,14 @@ const BM_POLL_FETCH_MS = 28000;
 const BM_PROBE_MS = 3000;
 const QP_QUEUE_TTL = 30000; // сколько действие, нажатое без связи, ждёт возвращения
 
-function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone }) {
+function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone, onQuiet }) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   let closed = false, opened = false, sid = null, ws = null, polling = false, pollAbort = null;
   let lastSeen = 0, beat = null, notified = false, probeTimer = null;
-  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } clearTimeout(probeTimer); probeTimer = null; };
+  // MP.conn (mp-common.js, T-W1-08): пинг 5 с в игре / 10 с в лобби, баннер «нет связи» после 10 с тишины,
+  // закрытие и переподключение после 22 с. Без mp-common.js (или при MP.off) — прежний цикл ниже (20 с / 45 с).
+  let mpConn = null, inGame = false;
+  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } if (mpConn) { mpConn.stop(); mpConn = null; } clearTimeout(probeTimer); probeTimer = null; };
   const fireClose = () => {
     if (closed || notified) return;
     notified = true;
@@ -458,14 +464,31 @@ function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
   const deliver = (m) => {
     if (closed) return;
     lastSeen = Date.now();
+    // сервер выключил каркас (MP_OFF=1): возвращаемся к прежнему циклу пингов
+    if (m && m.type === "hello" && window.MP && MP.applyHello && !MP.applyHello(m) && mpConn) { startBeat(); }
+    if (mpConn) mpConn.seen(lastSeen);
     if (m && m.type === "pong") { if (typeof m.c === "number") qpClockSample(m.t, m.c); return; }
-    if (m && (m.type === "state" || m.type === "hello") && m.state) qpStateSample(m.state.serverNow);
+    if (m && (m.type === "state" || m.type === "hello") && m.state) {
+      qpStateSample(m.state.serverNow);
+      inGame = !!m.state.phase && m.state.phase !== "lobby" && m.state.phase !== "finished";
+    }
     onMessage(m);
   };
   const startBeat = () => {
     stopBeat();
     lastSeen = Date.now();
     ping(); setTimeout(ping, 400); setTimeout(ping, 1500);
+    if (window.MP && typeof MP.conn === "function" && !MP.off) {
+      mpConn = MP.conn({
+        ping: () => { if (!closed) ping(); },
+        inGame: () => inGame,
+        onOffline: () => { if (onQuiet) onQuiet(true); },
+        onOnline: () => { if (onQuiet) onQuiet(false); },
+        onDead: () => fireClose(),
+      });
+      mpConn.start();
+      return;
+    }
     beat = setInterval(() => {
       if (closed) return stopBeat();
       if (Date.now() - lastSeen > 45000) { fireClose(); return; }
@@ -490,6 +513,8 @@ function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
         });
     },
     close() { closed = true; stopBeat(); try { if (ws) ws.close(); } catch (e) {} try { if (pollAbort) pollAbort.abort(); } catch (e) {} sid = null; },
+    // вкладка снова видна: тишину пока вкладка была скрыта MP.conn не считает
+    visible() { if (mpConn) mpConn.visible(Date.now()); },
     probe(ms) {
       if (closed || !opened) return;
       clearTimeout(probeTimer);
@@ -558,7 +583,7 @@ function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
 }
 
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
-function qpConnect({ code, onMessage, onOpen, onGone, onState, onDrop }) {
+function qpConnect({ code, onMessage, onOpen, onGone, onState, onDrop, onQuiet }) {
   let t = null, delay = 500, stopped = false, sweeper = null, curAt = 0;
   // Действие, нажатое между обрывом и возвращением связи, раньше терялось молча (а кнопка уже горела «ушло»).
   // Теперь оно ждёт в очереди и уходит после входа по токену: сокет без игрока действие бы отбросил.
@@ -605,6 +630,7 @@ function qpConnect({ code, onMessage, onOpen, onGone, onState, onDrop }) {
     holder.api = qpOpenTransport({
       code,
       onMessage,
+      onQuiet,
       // отправка не удалась (сокет умер, POST не прошёл трижды): держим в очереди до возвращения связи и проверяем сокет
       onSendFail: (m) => { if (stopped) return; enqueue(m, curAt); if (holder.api && holder.api.mode !== "none") holder.api.probe(); },
       onOpen: () => { delay = 500; if (onState) onState("open"); if (onOpen) onOpen(); },
@@ -615,7 +641,7 @@ function qpConnect({ code, onMessage, onOpen, onGone, onState, onDrop }) {
   open();
   // вернулись в вкладку или сеть появилась — проверяем, жив ли сокет, не дожидаясь 45 с тишины
   const wake = () => { if (holder.api && holder.api.mode !== "none") holder.api.probe(); };
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (holder.api && holder.api.visible) holder.api.visible(); wake(); } });
   window.addEventListener("online", wake);
   return holder;
 }

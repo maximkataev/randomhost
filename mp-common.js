@@ -50,6 +50,13 @@
  *     api.canAutoReturn(now) -> bool   auto && ≥ autoMinMs с прошлого авто-возврата && за claimQuietMs не было
  *                                      claim с другого устройства (api.noteClaimElsewhere(now))
  *     api.isReplaced()
+ *
+ *   MP.conn({ping, inGame, onOffline, onOnline, onDead, hidden, pingGameMs = 5000, pingLobbyMs = 10000,
+ *             warnMs = 10000, closeMs = 22000, tickMs = 1000, now, setInterval, clearInterval}) -> api  (T-W1-08)
+ *     Живость сокета по тишине. api.start()/stop(); api.seen() — на КАЖДОЕ входящее сообщение (в т.ч. pong);
+ *     api.visible() — вкладка снова видна (тишина при document.hidden не считается); api.tick(now) — шаг (тесты);
+ *     api.offline(); api.silentMs(). Пинг: 5 с в игре (inGame()), 10 с в лобби. onOffline — тишина > warnMs (баннер,
+ *     без закрытия); onDead — тишина > closeMs (игра закрывает сокет и переподключается), по разу за период.
  */
 (function (root) {
   'use strict';
@@ -282,6 +289,87 @@
         if (n - lastAuto < autoMinMs) return false;
         if (n - claimElsewhereAt < quietMs) return false;
         return true;
+      }
+    };
+    return api;
+  };
+
+  // ── conn ───────────────────────────────────────────────────────────────────────────────────────
+  // Живость соединения по тишине (T-W1-08, пакет P5). Игра передаёт, как слать ping и когда пришло последнее
+  // сообщение; модуль решает, когда пинговать, когда показать «нет связи» и когда закрывать сокет.
+  //   тишина > warnMs (10 с)  ->onOffline() один раз, без закрытия (баннер);
+  //   тишина > closeMs (22 с) -> onDead() один раз за период тишины (игра закрывает сокет и переподключается);
+  //   любое сообщение (api.seen()) -> onOnline(), если было onOffline.
+  // Пока вкладка скрыта (document.hidden), тишиной ничего не считается; при возврате отсчёт идёт с этого момента
+  // (api.visible()), чтобы не закрывать сокет сразу после разблокировки телефона.
+  MP.conn = function (opts) {
+    var o = opts || {};
+    var setIv = o.setInterval || function (fn, ms) { return root.setInterval(fn, ms); };
+    var clearIv = o.clearInterval || function (id) { return root.clearInterval(id); };
+    var nowFn = o.now || function () { return Date.now(); };
+    var pingGameMs = typeof o.pingGameMs === 'number' ? o.pingGameMs : 5000;
+    var pingLobbyMs = typeof o.pingLobbyMs === 'number' ? o.pingLobbyMs : 10000;
+    var warnMs = typeof o.warnMs === 'number' ? o.warnMs : 10000;
+    var closeMs = typeof o.closeMs === 'number' ? o.closeMs : 22000;
+    var tickMs = typeof o.tickMs === 'number' ? o.tickMs : 1000;
+    var lastSeen = null, lastPing = null, base = null;
+    var offline = false, dead = false, iv = null;
+
+    function isHidden() {
+      if (typeof o.hidden === 'function') return !!o.hidden();
+      return !!(root.document && root.document.hidden);
+    }
+    var api = {
+      offline: function () { return offline; },
+      silentMs: function (now) {
+        var n = typeof now === 'number' ? now : nowFn();
+        var from = Math.max(lastSeen === null ? -Infinity : lastSeen, base === null ? -Infinity : base);
+        return from === -Infinity ? 0 : Math.max(0, n - from);
+      },
+      // пришло любое сообщение от сервера
+      seen: function (now) {
+        lastSeen = typeof now === 'number' ? now : nowFn();
+        dead = false;
+        if (offline) {
+          offline = false;
+          if (typeof o.onOnline === 'function') o.onOnline();
+        }
+      },
+      // вкладка снова видна: молчание до этого не считаем, сразу пингуем
+      visible: function (now) {
+        base = typeof now === 'number' ? now : nowFn();
+        lastPing = null;
+      },
+      tick: function (now) {
+        if (MP.off) return;
+        var n = typeof now === 'number' ? now : nowFn();
+        if (base === null && lastSeen === null) base = n;
+        if (isHidden()) { base = n; return; }
+        var inGame = typeof o.inGame === 'function' ? !!o.inGame() : false;
+        var every = inGame ? pingGameMs : pingLobbyMs;
+        if (lastPing === null || n - lastPing >= every) {
+          lastPing = n;
+          if (typeof o.ping === 'function') o.ping();
+        }
+        var silent = api.silentMs(n);
+        if (silent > warnMs && !offline) {
+          offline = true;
+          if (typeof o.onOffline === 'function') o.onOffline(silent);
+        }
+        if (silent > closeMs && !dead) {
+          dead = true;
+          if (typeof o.onDead === 'function') o.onDead(silent);
+        }
+      },
+      start: function () {
+        if (MP.off || iv !== null) return false;
+        base = nowFn();
+        iv = setIv(function () { api.tick(); }, tickMs);
+        return true;
+      },
+      stop: function () {
+        if (iv !== null) { clearIv(iv); iv = null; }
+        offline = false;
       }
     };
     return api;
