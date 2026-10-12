@@ -204,7 +204,10 @@
   .toast { pointer-events: none; }
   body.is-touch.playing .toast { bottom: calc(130px + env(safe-area-inset-bottom, 0px)); }
 
-  .conn { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: rgba(205, 48, 58, 0.95); color: #fff; font-weight: 800; font-size: 14px; padding: 9px 14px; border-radius: 12px; display: none; white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; }
+  /* плашка связи — вверху и не ловит касания: внизу она закрывала кнопку ⚡ и футер панели (rapids-024) */
+  @media (min-width: 900px) { body.with-panel .conn { margin-left: 170px; } }
+  @media (max-height: 500px) and (min-width: 600px) { body.with-panel .conn { margin-left: 150px; } }
+  .conn { position: fixed; left: 50%; bottom: auto; top: calc(52px + env(safe-area-inset-top, 0px)); pointer-events: none; transform: translateX(-50%); z-index: 30; background: rgba(205, 48, 58, 0.95); color: #fff; font-weight: 800; font-size: 14px; padding: 9px 14px; border-radius: 12px; display: none; white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; }
   .conn.on { display: block; }
   .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: #fff; color: #0b2a22; font-weight: 800; font-size: 14px; padding: 10px 16px; border-radius: 12px; max-width: calc(100% - 32px); display: none; }
   .toast.on { display: block; animation: toastIn 0.3s ease-out; }
@@ -475,6 +478,7 @@ window.I18N_DICT = {
     net.ws = ws;
     ws.onopen = () => {
       net.open = true; net.everOpen = true; net.retry = 0;
+      net.openedAt = performance.now(); net.lastSnapAt = 0;
       $("conn").classList.remove("on");
       if (net.token || net.wantJoin) sendJoin();
     };
@@ -729,6 +733,8 @@ window.I18N_DICT = {
   setInterval(sendInput, 100);
   addEventListener("visibilitychange", () => { if (document.hidden) { down.clear(); touches.clear(); sendInput(); } });
   addEventListener("pagehide", () => { down.clear(); touches.clear(); sendInput(); });
+  // вернулись во вкладку: счёт молчания начинаем заново (иначе баннер вспыхнет от времени в фоне)
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) net.lastSnapAt = performance.now(); });
   addEventListener("blur", sendInput);
   function pushInput(dt) {
     sendInput();
@@ -1116,9 +1122,21 @@ window.I18N_DICT = {
       else if (CODE) {
         if (net.open && now - pingAt > 2000) { pingAt = now; send({ type: "ping", c: now, rtt: Math.round(net.rtt) }); }
         // сокет открыт, но снимков нет — сеть встала молча: плашка, а своя утка больше не едет по предсказанию
-        const silent = net.open && net.lastSnapAt && now - net.lastSnapAt > 1500;
+        // сторож: 1,5 с без снимков — плашка и предсказание выключено, 4 с — закрываем сокет (дальше обычный реконнект);
+        // только у вошедшего и пока вкладка видима
+        const watch = net.open && net.me && !document.hidden;
+        const age = now - Math.max(net.lastSnapAt, net.openedAt || 0);
+        const silent = watch && age > 1500;
         if (silent) { pred.on = false; $("conn").textContent = T("conn_lost"); }
-        if (net.open) $("conn").classList.toggle("on", !!silent);
+        if (net.open && !document.hidden) $("conn").classList.toggle("on", !!silent);
+        if (watch && age > 4000) {
+          // не ждём onclose: у полуоткрытого TCP он приходит через минуты — отцепляем сокет и переподключаемся с тем же токеном
+          net.lastSnapAt = now; net.openedAt = now;
+          const ws = net.ws;
+          if (ws) { ws.onclose = ws.onmessage = ws.onerror = null; try { ws.close(); } catch (e) {} }
+          net.open = false;
+          retryLater();
+        }
         pushInput(dt);
         const snap = sampled();
         if (snap) {
