@@ -346,13 +346,16 @@ class Game {
   }
 
   // «Другие шкалы»: новые варианты вместо нынешних, пока шкала не выбрана; не больше REROLLS за раунд
-  reroll(id, now) {
+  // left — сколько перетасовок оставалось у игрока в момент нажатия (необязательно): повтор того же нажатия после обрыва
+  // не должен тратить вторую перетасовку и подменять варианты, на которые игрок уже смотрит
+  reroll(id, now, left) {
     const s = this.s;
     if (s.phase !== "clue") return { ok: false, reason: "not_clue" };
     const c = s.cards[id];
     if (!c) return { ok: false, reason: "not_in_round" };
     if (c.pick != null) return { ok: false, reason: "picked" };
     if ((c.rerolls || 0) >= REROLLS) return { ok: false, reason: "no_rerolls" };
+    if (Number.isInteger(left) && left !== REROLLS - (c.rerolls || 0)) return { ok: false, reason: "stale" };
     const was = new Set(c.options.map((o) => o.id));
     // нынешние варианты уже помечены сыгранными, так что свежие с ними не совпадут (разве что колода кончилась и пошла по кругу)
     let fresh = this.takeScales(OPTIONS).filter((o) => !was.has(o.id));

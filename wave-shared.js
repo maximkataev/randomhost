@@ -353,50 +353,62 @@ function wvOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
   return api;
 }
 
-// сколько действие из очереди ещё считается свежим: позже нажатие уже не нужно, и страница об этом скажет
-const WV_QUEUE_TTL_MS = 6000;
+// Потолок возраста действия в очереди — по ТИПУ (MP.sendQueue). Раньше было общие 6 с и «просрочено»;
+// теперь решает keep(m) страницы: «Зафиксировать» и подсказка актуальны, пока не сменилась карточка/раунд,
+// а выбор шкалы без связи 90 с — тоже ещё нужен. Потолок страхует от залежавшегося.
+const WV_QUEUE_CEILING_MS = { "*": 90000 };
 
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
 function wvConnect({ code, onMessage, onOpen, onGone, onState, onDrop }) {
   let t = null, delay = 500, stopped = false;
   // Действие, нажатое между обрывом и возвращением связи, раньше терялось молча (а кнопка уже горела «ушло»).
-  // Теперь оно ждёт в очереди и уходит после входа по токену: сокет без игрока действие бы отбросил.
-  const queue = [];
+  // Теперь оно ждёт в очереди MP.sendQueue и уходит после входа по токену: сокет без игрока действие бы отбросил.
+  // Если общего каркаса нет (аварийный выключатель mp-off) — очереди нет: действие без связи сразу «не дошло».
+  const queue = window.MP && MP.sendQueue ? MP.sendQueue({
+    send: (m) => { if (holder.api) holder.api.send(m); },
+    onDrop: (m, why, at) => { if (onDrop) onDrop(m, why, at); },
+    ceilingMs: WV_QUEUE_CEILING_MS,
+    replace: ["lock", "clue"], // «Зафиксировать» и подсказка: свежее заменяет прежнее, а не копится рядом
+    max: 8,
+    minGapMs: 250,
+    probe: (ms) => { if (holder.api) holder.api.probe(ms); },
+  }) : null;
+  const enqueue = (m) => {
+    if (queue) return queue.push(m);
+    if (onDrop) onDrop(m, "off", Date.now());
+    return false;
+  };
   const holder = {
     api: null,
     onDrop,
+    queue,
     gated: false, // страница держит действия до входа по токену и сама снимает флаг через flush
     send(m) {
       const a = holder.api;
-      if (m && m.type !== "ping" && m.type !== "join" && m.type !== "host" && (holder.gated || !a || a.mode === "none" || a.mode === "connecting")) {
-        // «Зафиксировать» и подсказка: свежее заменяет прежнее, а не копится рядом
-        if (m.type === "lock" || m.type === "clue") for (let i = queue.length - 1; i >= 0; i--) if (queue[i].m.type === m.type) queue.splice(i, 1);
-        queue.push({ m, at: Date.now() });
-        // переполнение — не молча: страница снимет «отправлено» с кнопки и скажет, что не ушло
-        if (queue.length > 8) { const old = queue.shift(); if (onDrop) onDrop(old.m); }
+      // пока очередь разгребается (шаг 4/с), новое действие встаёт за ней: порядок не нарушаем
+      if (m && m.type !== "ping" && m.type !== "join" && m.type !== "host" && (holder.gated || !a || a.mode === "none" || a.mode === "connecting" || (queue && queue.isFlushing()))) {
+        enqueue(m);
         return;
       }
       if (a) a.send(m);
     },
-    // keep(m) — нужно ли это действие ещё; просроченные и ненужные отбрасываются через onDrop
-    flush(keep, onDrop) {
+    // keep(m) — нужно ли это действие ещё; ненужные и залежавшиеся отбрасываются через onDrop
+    flush(keep, dropFn) {
       holder.gated = false;
-      const items = queue.splice(0);
-      for (const it of items) {
-        if (Date.now() - it.at > WV_QUEUE_TTL_MS || (keep && !keep(it.m))) { const f = onDrop || holder.onDrop; if (f) f(it.m, it.at); continue; }
-        if (holder.api) holder.api.send(it.m);
-      }
+      if (queue) queue.flush(keep, dropFn);
     },
-    stop() { stopped = true; clearTimeout(t); queue.length = 0; if (holder.api) holder.api.close(); },
+    // «тишина»: проверить, жив ли сокет (страница зовёт, когда кнопка отпущена без ответа)
+    probe(ms) { if (holder.api && holder.api.mode !== "none") holder.api.probe(ms); },
+    stop() { stopped = true; clearTimeout(t); if (queue) queue.clear(); if (holder.api) holder.api.close(); },
   };
   const open = () => {
     if (stopped) return;
     if (onState) onState("connecting");
     holder.api = wvOpenTransport({
       code,
-      onMessage,
+      onMessage: (m) => { if (queue) queue.heard(); onMessage(m); },
       // отправка не удалась после повторов (long-polling): не теряем, а ставим в очередь до входа по токену
-      onSendFail: (m) => { if (stopped || !m || m.type === "join" || m.type === "host") return; queue.push({ m, at: Date.now() }); if (queue.length > 8) { const old = queue.shift(); if (onDrop) onDrop(old.m); } },
+      onSendFail: (m) => { if (stopped || !m || m.type === "join" || m.type === "host") return; enqueue(m); },
       onOpen: () => { delay = 500; if (onState) onState("open"); if (onOpen) onOpen(); },
       onClose: () => { if (stopped) return; if (onState) onState("lost"); t = setTimeout(open, delay); delay = Math.min(delay * 2, 8000); },
       onGone: () => { stopped = true; if (onGone) onGone(); },

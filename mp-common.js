@@ -14,7 +14,7 @@
  *   • сервер шлёт hello.mp === false (env MP_OFF=1)  -> MP.applyHello(hello) возвращает false,
  *     MP.off = true, все модули становятся пустыми (joinFlow.handle -> false, nameCounter без DOM).
  *
- * ПУБЛИЧНЫЙ API (MP.version = "1.0.0")
+ * ПУБЛИЧНЫЙ API (MP.version = "1.1.0")
  *   MP.store.get(k) / set(k,v) / del(k)      localStorage в try/catch (null при недоступности)
  *   MP.applyHello(hello) -> bool             hello.mp === false -> выключить; иначе запомнить hello.limits
  *   MP.limits                                 {name, answer, item, clue, …} из hello.limits ({} по умолч.)
@@ -50,11 +50,39 @@
  *     api.canAutoReturn(now) -> bool   auto && ≥ autoMinMs с прошлого авто-возврата && за claimQuietMs не было
  *                                      claim с другого устройства (api.noteClaimElsewhere(now))
  *     api.isReplaced()
+ *
+ *   MP.draft({game, room, ttlMs = 7200000, max, now}) -> d    черновик подсказки/ответа (К-6: localStorage, TTL 2 ч)
+ *     ключ localStorage: "mp:draft:<game>:<ROOM>", значение {k, t, at}; один слот на комнату.
+ *     d.save(k, text)   k — ключ фазы/раунда (ТОЛЬКО публичный: «game:ri»; сектор/target сюда не передавать);
+ *                       пустой текст = удалить; текст режется по символам до max (MP.limits.clue → 200)
+ *     d.load(k) -> string|null   текст, если слот того же k и моложе TTL; чужой k или просрочка — слот удаляется
+ *     d.clear()         удалить слот (принятая отправка / kicked / expired)
+ *     d.key()           ключ localStorage
+ *   Любая ошибка хранилища (приватный режим, квота) глотается: черновик просто не переживёт reload.
+ *
+ *   MP.sendQueue({send, keep, onDrop, ceilingMs = 90000, replace, max = 8, minGapMs = 250,
+ *                 probe, silenceMs = 8000, probeMs = 1500, now, setTimeout, clearTimeout}) -> q
+ *     очередь действий, нажатых при обрыве; транспорт игры остаётся её собственным.
+ *     send(m)           реальная отправка (игра: holder.api.send)
+ *     keep(m) -> bool   актуально ли действие в момент отправки (проверяется на КАЖДОМ сообщении, не только в flush)
+ *     onDrop(m, reason, at)   ОБЯЗАТЕЛЕН: reason = "expired" | "unwanted" | "overflow" | "off"; игра снимает «ушло» с кнопки
+ *     ceilingMs         потолок возраста — число или {тип: мс, "*": по умолчанию}. По ТИПУ действия, а не общий:
+ *                       ответы/черновики/lock — 90 с, быстрые (бросок, ставка, лайк) — 3–5 с
+ *     replace           массив типов ("lock","clue") или fn(m) -> ключ|null: новое действие заменяет старое того же ключа
+ *                       (замена — не потеря, onDrop не зовётся)
+ *     max               общий размер; старейшее вытесняется через onDrop("overflow")
+ *     minGapMs          повтор очереди не быстрее 4/с (иначе упрёмся в MSG_RATE/CMD_RATE сервера)
+ *     probe(ms)         зовётся, если очередь стоит дольше silenceMs без вестей (игра: transport.probe)
+ *     q.push(m) -> bool       false (и onDrop "off") при MP.off
+ *     q.flush(keep?, onDrop?) связь вернулась: отправить подходящее с шагом minGapMs; ненужное — в onDrop.
+ *                       flush(function () { return false; }) — выбросить всё (kicked / expired)
+ *     q.heard()         пришло любое сообщение сервера (сбрасывает «тишину»)
+ *     q.size() / q.has(type) / q.clear() (без onDrop) / q.setCeiling(type, ms)
  */
 (function (root) {
   'use strict';
 
-  var VERSION = '1.0.0';
+  var VERSION = '1.1.0';
 
   function safeGet(k) {
     try { return root.localStorage ? root.localStorage.getItem(k) : null; } catch (e) { return null; }
@@ -285,6 +313,142 @@
       }
     };
     return api;
+  };
+
+  // ── draft ──────────────────────────────────────────────────────────────────────────────────────
+  MP.draft = function (opts) {
+    var o = opts || {};
+    var ttl = typeof o.ttlMs === 'number' ? o.ttlMs : 2 * 60 * 60 * 1000;
+    var key = 'mp:draft:' + String(o.game || '') + ':' + String(o.room || '').toUpperCase();
+    function nowOf() { return typeof o.now === 'function' ? o.now() : Date.now(); }
+    function maxLen() { return typeof o.max === 'number' ? o.max : (MP.limits && MP.limits.clue) || 200; }
+    function read() {
+      var raw = safeGet(key);
+      if (!raw) return null;
+      try {
+        var v = JSON.parse(raw);
+        if (v && typeof v === 'object' && typeof v.k === 'string' && typeof v.t === 'string' && typeof v.at === 'number') return v;
+      } catch (e) { /* битая запись */ }
+      safeDel(key);
+      return null;
+    }
+    return {
+      key: function () { return key; },
+      save: function (k, text) {
+        if (MP.off) return false;
+        var t = clip(text, maxLen());
+        if (!t.trim()) { safeDel(key); return false; }
+        return safeSet(key, JSON.stringify({ k: String(k), t: t, at: nowOf() }));
+      },
+      load: function (k) {
+        if (MP.off) return null;
+        var v = read();
+        if (!v) return null;
+        if (v.k !== String(k) || nowOf() - v.at > ttl || nowOf() < v.at - 60000) { safeDel(key); return null; }
+        return v.t;
+      },
+      clear: function () { safeDel(key); }
+    };
+  };
+
+  // ── sendQueue ──────────────────────────────────────────────────────────────────────────────────
+  MP.sendQueue = function (opts) {
+    var o = opts || {};
+    var t = timers(o);
+    var DEFAULT_CEIL = 90000;
+    var ceil = {};
+    if (typeof o.ceilingMs === 'number') ceil['*'] = o.ceilingMs;
+    else copyInto(ceil, o.ceilingMs);
+    if (typeof ceil['*'] !== 'number') ceil['*'] = DEFAULT_CEIL;
+    var maxItems = typeof o.max === 'number' ? o.max : 8;
+    var minGap = typeof o.minGapMs === 'number' ? o.minGapMs : 250;
+    var silenceMs = typeof o.silenceMs === 'number' ? o.silenceMs : 8000;
+    var probeMs = typeof o.probeMs === 'number' ? o.probeMs : 1500;
+    var items = [];
+    var flushing = false;
+    var flushKeep = null, flushDrop = null;
+    var lastSent = -Infinity, lastHeard = -Infinity, lastProbe = -Infinity;
+    var pumpTimer = null, silenceTimer = null;
+
+    function nowOf() { return typeof o.now === 'function' ? o.now() : Date.now(); }
+    function ceilingFor(m) {
+      var ty = m && m.type;
+      return typeof ceil[ty] === 'number' ? ceil[ty] : ceil['*'];
+    }
+    function repKey(m) {
+      if (typeof o.replace === 'function') return o.replace(m);
+      if (o.replace && o.replace.indexOf && m && o.replace.indexOf(m.type) >= 0) return m.type;
+      return null;
+    }
+    function drop(it, reason) {
+      var f = flushDrop || o.onDrop;
+      if (typeof f === 'function') f(it.m, reason, it.at);
+    }
+    function wanted(m) {
+      var f = flushing && flushKeep ? flushKeep : o.keep;
+      return typeof f !== 'function' || !!f(m);
+    }
+    function stopPump() { if (pumpTimer !== null) { t.clear(pumpTimer); pumpTimer = null; } }
+    function stopSilence() { if (silenceTimer !== null) { t.clear(silenceTimer); silenceTimer = null; } }
+    function pump() {
+      stopPump();
+      while (items.length) {
+        var it = items[0];
+        var n = nowOf();
+        if (n - it.at > ceilingFor(it.m)) { items.shift(); drop(it, 'expired'); continue; }
+        if (!wanted(it.m)) { items.shift(); drop(it, 'unwanted'); continue; }
+        var wait = lastSent + minGap - n;
+        if (wait > 0) { pumpTimer = t.set(pump, wait); return; }
+        items.shift();
+        lastSent = n;
+        if (typeof o.send === 'function') o.send(it.m);
+      }
+      flushing = false; flushKeep = null; flushDrop = null;
+      stopSilence();
+    }
+    function watchSilence() {
+      if (silenceTimer !== null || flushing || typeof o.probe !== 'function') return;
+      silenceTimer = t.set(function () {
+        silenceTimer = null;
+        if (!items.length || flushing) return;
+        var n = nowOf();
+        var quietSince = Math.max(lastHeard, items[0].at);
+        if (n - quietSince > silenceMs && n - lastProbe > silenceMs) { lastProbe = n; o.probe(probeMs); }
+        watchSilence();
+      }, 1000);
+    }
+
+    var q = {
+      push: function (m) {
+        if (!m) return false;
+        if (MP.off) { drop({ m: m, at: nowOf() }, 'off'); return false; }
+        var k = repKey(m);
+        if (k != null) {
+          for (var i = items.length - 1; i >= 0; i--) if (repKey(items[i].m) === k) items.splice(i, 1);
+        }
+        items.push({ m: m, at: nowOf() });
+        while (items.length > maxItems) drop(items.shift(), 'overflow');
+        if (flushing) pump(); else watchSilence();
+        return true;
+      },
+      flush: function (keepFn, dropFn) {
+        flushing = true;
+        flushKeep = typeof keepFn === 'function' ? keepFn : null;
+        flushDrop = typeof dropFn === 'function' ? dropFn : null;
+        stopSilence();
+        pump();
+      },
+      heard: function () { lastHeard = nowOf(); },
+      size: function () { return items.length; },
+      isFlushing: function () { return flushing; },
+      has: function (type) {
+        for (var i = 0; i < items.length; i++) if (items[i].m.type === type) return true;
+        return false;
+      },
+      setCeiling: function (type, ms) { ceil[type] = ms; },
+      clear: function () { items = []; flushing = false; flushKeep = null; flushDrop = null; stopPump(); stopSilence(); }
+    };
+    return q;
   };
 
   root.MP = MP;
