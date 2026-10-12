@@ -513,7 +513,9 @@ test("секреты не в кадрах: доска / игрок / сокет 
 // passN, бросок с {b,n} проходит, повтор с устаревшим n — rejected stale.
 test("restore-from-prev-dump: passN после рестарта считается по s.log; pass с b/n проходит, повтор — stale (T-W0-31)", async () => {
   const restore = require("../tools/testkit/restore");
-  const { code, hostToken } = await createRoom();
+  // «длинный» фитиль: кейс идёт в реальном времени (бросок, рестарт сервера, испытание) — с коротким (20–45 с)
+  // бомба иногда взрывалась до конца кейса, и тест мигал
+  const { code, hostToken } = await createRoom({ fuse: "long" });
   let b = await board(code, hostToken);
   const ps = [await player(code, "Аня"), await player(code, "Петя"), await player(code, "Оля")];
   b.send({ type: "start" });
@@ -535,13 +537,19 @@ test("restore-from-prev-dump: passN после рестарта считаетс
   const hb = await b.wait(statePred((s) => s.phase === "live"));
   assert.strictEqual(hb.state.passes, 1);
   const back = await player(code, "", tokens[to]);
-  const ch = await back.wait(statePred((s) => s.me && s.me.challenge));
-  const c = ch.state.me.challenge;
-  await sleep(minWait(c));
-  back.send({ type: "answer", cid: c.id, ans: solveView(c) });
-  const armed = await back.wait(statePred((s) => s.me && s.me.armed));
+  await back.wait(statePred((s) => s.me && s.me.challenge));
+  // после рестарта испытание у держателя могло протухнуть (TTL) и смениться новым — отвечаем на актуальное, до 4 попыток
+  let armed = null;
+  for (let attempt = 0; attempt < 4 && !armed; attempt++) {
+    const c = back.state.me.challenge;
+    await sleep(minWait(c));
+    back.send({ type: "answer", cid: c.id, ans: solveView(c) });
+    try { armed = await back.wait(statePred((s) => s.me && s.me.armed), 2500); } catch { /* испытание сменилось — берём новое */ }
+  }
+  assert.ok(armed, "держатель вооружился после рестарта");
   assert.strictEqual(armed.state.me.passN[0], 1, "passN восстановлен из log");
-  const target = ps.find((p) => p.id !== to).id;
+  // не «обратно отправителю» (тот, кто бросил первым, — holder): по умолчанию это запрещено
+  const target = ps.find((p) => p.id !== to && p.id !== holder.id).id;
   back.send({ type: "pass", to: target, b: 0, n: 1 });
   await b.wait(statePred((s) => s.bombs[0].holder === target && s.passes === 2));
   // повтор с тем же n — устарел
