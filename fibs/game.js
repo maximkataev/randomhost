@@ -142,6 +142,11 @@ function isTruth(text, fact) {
   return false;
 }
 
+// Правила класса B (IMPLEMENTATION-PLAN §2.3б): env сервера, по умолчанию «как сейчас». Читается в момент вызова.
+function ruleOn(name) {
+  return /^(1|true|on|yes)$/i.test(String(process.env[name] || ""));
+}
+
 class Game {
   constructor(state, rnd, content) {
     this.s = state;
@@ -238,7 +243,15 @@ class Game {
   setOnline(id, online, now) {
     const p = this.player(id);
     if (p) p.online = online;
-    return online ? [] : this.maybeAdvance(now);
+    if (!online) return this.maybeAdvance(now);
+    // RULE_U09B_CHOOSE_EXTEND: вернувшемуся без выбора возвращаем окно выбора, если «все выбрали» его сократили
+    // (не больше +8 с от возврата, не дальше исходного срока фазы, одно продление на фазу)
+    const s = this.s;
+    if (p && !p.left && s.phase === "choose" && !s.picks[id] && !s.chooseExtended && ruleOn("RULE_U09B_CHOOSE_EXTEND")) {
+      const end = Math.max(s.phaseEnd, Math.min(s.phaseStart + T.choose, now + 8000));
+      if (end > s.phaseEnd) { s.phaseEnd = end; s.chooseExtended = true; }
+    }
+    return [];
   }
 
   // ---------- банк ----------
@@ -462,7 +475,8 @@ class Game {
     // не успел — заготовленная ложь с 🐌, лимит не тратит (§3)
     for (const id of s.roster) {
       const p = this.player(id);
-      if (!s.lies[id] && p && !p.left) s.lies[id] = { ...this.pickCanned(), hint: true, late: true, at: now };
+      // призрак (нет связи) заготовку не получает: ни очков за обманутых, ни лайков (U-09)
+      if (!s.lies[id] && p && !p.left && p.online) s.lies[id] = { ...this.pickCanned(), hint: true, late: true, at: now };
     }
     // одинаковая ложь склеивается в один вариант, авторы делят его (§4)
     const byKey = new Map();
@@ -495,6 +509,7 @@ class Game {
     s.phase = "choose";
     s.phaseStart = now;
     s.phaseEnd = now + T.choose;
+    s.chooseExtended = false;
     return [{ type: "choose" }];
   }
 

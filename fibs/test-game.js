@@ -229,7 +229,7 @@ test("не успел соврать — заготовка с 🐌, лимит 
   g.tick(g.s.phaseEnd);
   assert.strictEqual(g.s.phase, "choose");
   assert.ok(g.s.lies.P3.late && g.s.lies.P3.hint);
-  assert.ok(g.s.lies.P4.late);
+  assert.strictEqual(g.s.lies.P4, undefined, "призрак (нет связи) заготовку не получает — fibs-021");
   assert.strictEqual(g.player("P3").hintsUsed, 0);
   // P4 офлайн — выбор без него
   for (const id of ["P1", "P2", "P3"]) g.choose(id, [truthIdx(g)], g.s.phaseStart + 10);
@@ -513,4 +513,72 @@ test("«один выстрел на факт»: отказ «правда» н�
   // дальше приём закрыт: ни правду, ни другую ложь «проверить» нельзя — ответ всегда «уже отправлено»
   for (const t of [f.answer, "ещё ложь", f.alts[0]]) assert.strictEqual(g.lie("P1", t, 6000).reason, "done");
   assert.strictEqual(g.s.tries, undefined, "мёртвого счётчика попыток нет");
+});
+
+// ---------- T-W0-11: призрак без очков, продление выбора ----------
+
+// ложь у всех, кроме P4; P4 офлайн; время лжи вышло
+function ghostGame() {
+  const g = game(4);
+  g.pickTopic(g.s.chooser, g.s.topics[0], 5000);
+  g.lie("P1", "раз", 6000);
+  g.lie("P2", "два", 6000);
+  g.setOnline("P4", false, 6000);
+  g.tick(g.s.phaseEnd);
+  assert.strictEqual(g.s.phase, "choose");
+  return g;
+}
+
+test("призрак не копит очки: нет заготовки, нет обманутых и лайков; онлайн-опоздавшему 🐌 по-прежнему ставится", () => {
+  const g = ghostGame();
+  assert.ok(!g.s.options.some((o) => o.authors.includes("P4")));
+  assert.ok(g.s.lies.P3.late, "онлайн, но не успел — 🐌 как раньше");
+  // все выбирают ложь «раз» (P1): очки только P1; призрак ни при чём
+  const i = lieOf(g, "P1");
+  for (const id of ["P2", "P3"]) g.choose(id, [i], g.s.phaseStart + 10);
+  g.like("P2", i, g.s.phaseStart + 20);
+  g.tick(g.s.phaseEnd);
+  g.tick(g.s.phaseEnd);
+  assert.strictEqual(g.player("P4").score, 0);
+  assert.strictEqual(g.s.result.gain.P4, undefined);
+  assert.ok(g.player("P1").score > 0);
+  // вернулся — следующий факт обычный
+  g.setOnline("P4", true, g.s.phaseStart);
+  g.tick(g.s.phaseEnd);
+  g.pickTopic(g.s.chooser, g.s.topics[0], g.s.phaseStart + 100);
+  assert.ok(g.s.roster.includes("P4"));
+});
+
+test("RULE_U09B_CHOOSE_EXTEND: по умолчанию выкл — возврат окно не меняет; включён — не больше +8 с и один раз на фазу", () => {
+  const key = "RULE_U09B_CHOOSE_EXTEND";
+  const saved = process.env[key];
+  try {
+    for (const on of [false, true]) {
+      if (on) process.env[key] = "1"; else delete process.env[key];
+      const g = game(4);
+      g.keepGrace = true;
+      g.pickTopic(g.s.chooser, g.s.topics[0], 5000);
+      g.lie("P1", "раз", 6000); g.lie("P2", "два", 6000); g.lie("P3", "три", 6000);
+      g.setOnline("P4", false, 6500);
+      // P4 без лжи ушёл — все остальные соврали, фаза выбора открылась сразу
+      assert.strictEqual(g.s.phase, "choose");
+      const t0 = g.s.phaseStart;
+      for (const id of ["P1", "P2", "P3"]) g.choose(id, [truthIdx(g)], t0 + 1000);
+      assert.strictEqual(g.s.phaseEnd, t0 + 1000 + LIKE_GRACE, "все онлайн-выбравшие сократили окно");
+      const short = g.s.phaseEnd;
+      g.setOnline("P4", true, t0 + 1500);
+      if (!on) { assert.strictEqual(g.s.phaseEnd, short, "флаг выкл: как сейчас"); continue; }
+      assert.strictEqual(g.s.phaseEnd, t0 + 1500 + 8000, "не больше +8 с от возврата");
+      assert.ok(g.s.phaseEnd <= t0 + T.choose, "не дальше исходного срока фазы");
+      // второй обрыв и возврат на той же фазе не продлевают снова
+      g.s.phaseEnd = short;
+      g.setOnline("P4", false, t0 + 1600);
+      g.setOnline("P4", true, t0 + 1700);
+      assert.strictEqual(g.s.phaseEnd, short);
+      // следующая фаза выбора — продление снова доступно
+      assert.strictEqual(g.s.chooseExtended, true);
+    }
+  } finally {
+    if (saved === undefined) delete process.env[key]; else process.env[key] = saved;
+  }
 });
