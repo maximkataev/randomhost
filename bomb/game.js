@@ -315,13 +315,25 @@ class Game {
     return true;
   }
 
-  pass(id, toId, now) {
+  // сколько раз бомба уже переходила из рук в руки (идемпотентность pass: повтор с устаревшим n отклоняется)
+  passCount(bombId) {
+    let n = 0;
+    for (const e of this.s.log) if (e.b === bombId) n++;
+    return n;
+  }
+
+  // ref = {b, n} — какую бомбу и после скольких передач игрок бросает; без ref (старая вкладка) — как раньше
+  pass(id, toId, now, ref) {
     const s = this.s;
     if (s.phase !== "live") return { ok: false, reason: "not_live" };
+    if (ref) {
+      const rb = s.bombs.find((x) => x.id === ref.b);
+      if (!rb || !rb.alive || rb.holder !== id || this.passCount(rb.id) !== ref.n) return { ok: false, reason: "stale" };
+    }
     const mine = this.holding(id).sort((a, b) => a.since - b.since);
     if (!mine.length) return { ok: false, reason: "no_bomb" };
     if (!s.armed[id]) return { ok: false, reason: "not_armed" };
-    const b = mine[0];
+    const b = ref ? mine.find((x) => x.id === ref.b) || mine[0] : mine[0];
     const to = this.player(toId);
     if (!to || to.out || to.left || toId === id) return { ok: false, reason: "bad_target" };
     if (!this.canTarget(b, id, toId)) return { ok: false, reason: "no_return" };
@@ -517,6 +529,8 @@ class Game {
         challenge: pub(s.challenges[me.id]),
         armed: !!s.armed[me.id],
         holding: this.holding(me.id).map((b) => b.id),
+        // сколько передач у каждой бомбы в руках: телефон шлёт это в pass как n
+        passN: Object.fromEntries(this.holding(me.id).map((b) => [b.id, this.passCount(b.id)])),
         // я помощник: кому продиктовать код
         hints: Object.entries(s.challenges).filter(([, c]) => c.type === "crowd" && c.helper === me.id).map(([holder, c]) => ({ holder, code: c.answer, cid: c.id })),
       } : null,

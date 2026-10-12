@@ -482,7 +482,7 @@ window.I18N_DICT = {
     expired_title: `Комната закрылась`, expired_text: `Попроси ведущего создать новую.`, expired_new: `Новая комната`,
     kicked_title: `Ведущий убрал тебя из комнаты`,
     replaced_title: `Ты открыл(а) игру на другом устройстве`, replaced_text: `Здесь управлять больше нельзя.`, btn_back_here: `Играть здесь`,
-    rj_no_return: `Сразу вернуть нельзя — выбери другого`, rj_not_live: `Раунд уже закончился`, rj_bad_target: `Этот игрок уже не в игре`,
+    rj_no_return: `Сразу вернуть нельзя — выбери другого`, rj_not_live: `Раунд уже закончился`, rj_bad_target: `Этот игрок уже не в игре`, send_lost: `Не дошло — нажми ещё раз`,
     // испытания
     t_wires: `Перережь {n} провода!`, t_wires5: `Перережь {n} проводов!`,
     t_swipe: `Смахни по стрелкам`, swipe_here: `Смахивай здесь`,
@@ -543,7 +543,7 @@ window.I18N_DICT = {
     expired_title: `The room has closed`, expired_text: `Ask the host to create a new one.`, expired_new: `New room`,
     kicked_title: `The host removed you from the room`,
     replaced_title: `You opened the game on another device`, replaced_text: `You can't play from here anymore.`, btn_back_here: `Play here`,
-    rj_no_return: `Can't throw it straight back — pick someone else`, rj_not_live: `The round is already over`, rj_bad_target: `That player is no longer in the game`,
+    rj_no_return: `Can't throw it straight back — pick someone else`, rj_not_live: `The round is already over`, rj_bad_target: `That player is no longer in the game`, send_lost: `Didn't go through — tap again`,
     t_wires: `Cut {n} wires!`, t_wires5: `Cut {n} wires!`,
     t_swipe: `Swipe along the arrows`, swipe_here: `Swipe here`,
     t_hold: `Hold and release in the green zone`, hold_btn: `Hold`,
@@ -603,7 +603,8 @@ window.I18N_DICT = {
     expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Ζήτα από τον οικοδεσπότη νέο.`, expired_new: `Νέο δωμάτιο`,
     kicked_title: `Ο οικοδεσπότης σε αφαίρεσε`,
     replaced_title: `Άνοιξες το παιχνίδι σε άλλη συσκευή`, replaced_text: `Από εδώ δεν παίζεις πια.`, btn_back_here: `Παίξε εδώ`,
-    rj_no_return: `Δεν τη γυρνάς αμέσως πίσω — διάλεξε άλλον`, rj_not_live: `Ο γύρος τελείωσε`, rj_bad_target: `Αυτός ο παίκτης δεν παίζει πια`,
+    rj_no_return: `Δεν τη γυρνάς αμέσως πίσω — διάλεξε άλλον`, rj_not_live: `Ο γύρος τελείωσε`, rj_bad_target: `Αυτός ο παίκτης δεν παίζει πια`, send_lost: `Δεν στάλθηκε — πάτα ξανά`, //EL:unverified
+
     t_wires: `Κόψε {n} καλώδια!`, t_wires5: `Κόψε {n} καλώδια!`,
     t_swipe: `Σύρε όπως δείχνουν τα βέλη`, swipe_here: `Σύρε εδώ`,
     t_hold: `Κράτα και άφησε στην πράσινη ζώνη`, hold_btn: `Κράτα`,
@@ -651,6 +652,9 @@ let screen = null; // landing | enter | calm | hot | targets | boom | final | ex
 let joinErr = null;
 const tokenKey = () => "bomb-token-" + CODE;
 try { token = localStorage.getItem(tokenKey()); } catch (e) {}
+// после reload с токеном форму входа не показываем, пока сервер не ответил на join (страховка — 4 с)
+let joinWait = !!token, joinWaitT = null;
+let userActAt = 0; // когда игрок в последний раз сам нажал бросок/ответ: тост «раунд закончился» — только после этого
 
 const player = (id) => state && state.players.find((p) => p.id === id);
 const mine = () => (state && me ? player(me) : null);
@@ -843,6 +847,7 @@ function submit(ans) {
   const c = state && state.me && state.me.challenge;
   if (!c || chSolved) return;
   chSolved = true;
+  userActAt = Date.now();
   lastAns = { cid: c.id, ans };
   const pad = document.getElementById("pad");
   const wait = Math.max(0, c.at + c.minMs + 60 - bmNow());
@@ -1464,17 +1469,33 @@ function renderTargets() {
       t.style.background = "var(--yellow)";
       bmSfx.whoosh();
       bmVibrate(20);
-      conn.send({ type: "pass", to: p.id });
+      userActAt = Date.now();
+      const ref = passRef();
+      conn.send(ref ? { type: "pass", to: p.id, b: ref.b, n: ref.n } : { type: "pass", to: p.id });
       // подтверждения нет (связь пропала, пока тап летел) — не оставляем кнопки мёртвыми
       setTimeout(() => {
         if (!box.isConnected) return;
         throwingAt = 0;
         box.classList.remove("throwing");
         t.style.background = "";
-      }, 2500);
+      }, 3000);
     };
     box.append(t);
   }
+}
+
+// какую бомбу и после скольких передач бросает игрок: сервер по этой паре узнаёт повтор (b/n; нет полей — как раньше)
+function passRef() {
+  if (!state || !state.me || !state.me.passN) return null;
+  const mineB = state.bombs.filter((x) => x.alive && x.holder === me).sort((x, y) => x.since - y.since)[0];
+  if (!mineB || typeof state.me.passN[mineB.id] !== "number") return null;
+  return { b: mineB.id, n: state.me.passN[mineB.id] };
+}
+function releaseThrowing() {
+  throwingAt = 0;
+  const box = document.getElementById("targets");
+  if (box) box.classList.remove("throwing");
+  targetsKey = "";
 }
 
 // ---------- взрыв и итоги ----------
@@ -1549,6 +1570,16 @@ function render() {
       if (name && !autoJoinSent) { autoJoinSent = true; joinErr = null; conn.send({ type: "join", name }); return; }
     }
     if (screen === "enter") return;
+    // вход по токену ещё не подтверждён — форму не мелькаем (после reload игрок вернётся сам)
+    if (joinWait && token) {
+      if (screen !== "wait") { screen = "wait"; renderCenter("wait_title"); }
+      return;
+    }
+    // зритель после reload в идущем раунде: экран зрителя, а не форма с отказом game_started
+    if (state.phase !== "lobby" && state.phase !== "finished") {
+      if (screen !== "spect") { screen = "spect"; renderCenter("spectator", "spectator_sub"); }
+      return;
+    }
     // раунд закончился — зритель может войти
     return renderEnter();
   }
@@ -1607,7 +1638,7 @@ function flushQueued() {
     const mc = state && state.me;
     if (!mc) return false;
     if (q.type === "answer") return !!(mc.challenge && mc.challenge.id === q.cid);
-    if (q.type === "pass") return !!mc.armed;
+    if (q.type === "pass") return !!mc.armed && (typeof q.b !== "number" || (mc.holding || []).includes(q.b));
     return true;
   });
 }
@@ -1616,7 +1647,11 @@ function onMessage(m) {
     case "hello":
     case "state":
       state = m.state;
-      if (m.type === "hello" && token && needJoin) { needJoin = false; conn.send({ type: "join", token }); }
+      if (m.type === "hello" && token && needJoin) {
+        needJoin = false;
+        conn.send({ type: "join", token });
+        if (joinWait && !joinWaitT) joinWaitT = setTimeout(() => { joinWait = false; if (!me && state) render(); }, 4000);
+      }
       render();
       // вернулись по токену: действия, нажатые в обрыв, отправляем, когда сервер снова признал нас
       if (pendingFlush && state.me) { pendingFlush = false; flushQueued(); }
@@ -1626,6 +1661,7 @@ function onMessage(m) {
       const was = me;
       me = m.playerId;
       token = m.token;
+      joinWait = false;
       joinErr = null;
       try { localStorage.setItem(tokenKey(), token); } catch (e) {}
       keepAwake();
@@ -1649,9 +1685,14 @@ function onMessage(m) {
         if (again) setTimeout(() => { if (state && state.me && state.me.challenge && state.me.challenge.id === again.cid) conn.send({ type: "answer", cid: again.cid, ans: again.ans }); }, 350);
         break;
       }
-      if (T("rj_" + m.reason) !== "rj_" + m.reason) toast(T("rj_" + m.reason));
+      if (T("rj_" + m.reason) !== "rj_" + m.reason) {
+        // «раунд закончился» — только как ответ на нажатие игрока и не поверх экрана взрыва/итогов
+        if (m.reason === "not_live" && (Date.now() - userActAt > 4000 || (state && (state.phase === "boom" || state.phase === "finished")))) break;
+        toast(T("rj_" + m.reason));
+      }
       break;
     case "error":
+      joinWait = false;
       conn.flush(() => false);
       if (m.error === "room_expired") return renderExpired();
       if (["game_started", "room_full", "token_gone", "bad_name"].includes(m.error)) {
@@ -1663,6 +1704,7 @@ function onMessage(m) {
       }
       break;
     case "kicked":
+      joinWait = false;
       conn.flush(() => false);
       me = null;
       try { localStorage.removeItem(tokenKey()); } catch (e) {}
@@ -1671,6 +1713,7 @@ function onMessage(m) {
       renderCenter("kicked_title");
       break;
     case "replaced":
+      joinWait = false;
       me = null;
       screen = "replaced";
       renderCenter("replaced_title", "replaced_text", `<button class="btn" id="here" type="button">${T("btn_back_here")}</button>`);
@@ -1694,6 +1737,19 @@ function start() {
     code: CODE,
     onMessage,
     onGone: renderExpired,
+    // действие не ушло (обрыв дольше 30 с, очередь переполнена): снимаем «улетело» и говорим игроку
+    onSendFail: (msg) => {
+      if (!msg) return;
+      if (msg.type === "pass") {
+        releaseThrowing();
+        if (state && state.phase === "live") { toast(T("send_lost")); render(); }
+      } else if (msg.type === "answer") {
+        chSolved = false;
+        const pd = document.getElementById("pad");
+        if (pd) pd.style.pointerEvents = "";
+        toast(T("send_lost"));
+      }
+    },
     // переподключились — снова входим своим токеном (hello придёт первым)
     onOpen: () => { needJoin = true; if (token) conn.gated = true; },
     onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },

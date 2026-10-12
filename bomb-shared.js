@@ -496,7 +496,7 @@ function bmOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
 }
 
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
-function bmConnect({ code, onMessage, onOpen, onGone, onState }) {
+function bmConnect({ code, onMessage, onOpen, onGone, onState, onSendFail }) {
   let t = null, delay = 500, stopped = false;
   // Действие, нажатое между обрывом и возвращением связи, раньше терялось молча (а кнопка уже горела «ушло»).
   // Теперь оно ждёт в очереди и уходит после входа по токену: сокет без игрока действие бы отбросил.
@@ -508,7 +508,7 @@ function bmConnect({ code, onMessage, onOpen, onGone, onState }) {
       const a = holder.api;
       if (m && m.type !== "ping" && m.type !== "join" && m.type !== "host" && (holder.gated || !a || a.mode === "none" || a.mode === "connecting")) {
         queue.push({ m, at: Date.now() });
-        if (queue.length > 8) queue.shift();
+        if (queue.length > 8) { const old = queue.shift(); if (onSendFail) onSendFail(old.m); }
         return;
       }
       if (a) a.send(m);
@@ -518,18 +518,28 @@ function bmConnect({ code, onMessage, onOpen, onGone, onState }) {
       holder.gated = false;
       const items = queue.splice(0);
       for (const it of items) {
-        if (Date.now() - it.at > 6000 || (keep && !keep(it.m))) { if (onDrop) onDrop(it.m); continue; }
+        // в очереди действие живёт до 30 с: повтор безопасен — pass несёт b/n, а answer привязан к id испытания
+        if (Date.now() - it.at > 30000 || (keep && !keep(it.m))) { if (onDrop) onDrop(it.m); if (onSendFail) onSendFail(it.m); continue; }
         if (holder.api) holder.api.send(it.m);
       }
     },
-    stop() { stopped = true; clearTimeout(t); queue.length = 0; if (holder.api) holder.api.close(); },
+    stop() { stopped = true; clearTimeout(t); clearInterval(sweep); queue.length = 0; if (holder.api) holder.api.close(); },
   };
+  // связи нет дольше 30 с — действие из очереди не ждёт возвращения молча, а сообщает странице
+  const sweep = setInterval(() => {
+    if (!queue.length) return;
+    const now = Date.now();
+    for (let i = queue.length - 1; i >= 0; i--) {
+      if (now - queue[i].at > 30000) { const it = queue.splice(i, 1)[0]; if (onSendFail) onSendFail(it.m); }
+    }
+  }, 5000);
   const open = () => {
     if (stopped) return;
     if (onState) onState("connecting");
     holder.api = bmOpenTransport({
       code,
       onMessage,
+      onSendFail,
       onOpen: () => { delay = 500; if (onState) onState("open"); if (onOpen) onOpen(); },
       onClose: () => { if (stopped) return; if (onState) onState("lost"); t = setTimeout(open, delay); delay = Math.min(delay * 2, 8000); },
       onGone: () => { stopped = true; if (onGone) onGone(); },
