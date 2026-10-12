@@ -727,6 +727,7 @@ window.I18N_DICT = {
     my_card: `Твоя карта {icon} {card} → {name}: {out}`, on_me: `{name} → тебе: {icon} {card} — {out}`, card_ok: `сработала`,
     repeat_cut: `Фишек меньше, чем в прошлый раз — повтор урезан до {n}`,
     conn_queued: `Нет связи — отправим, когда связь вернётся`,
+    conn_resend: `Не дошло — отправляю ещё раз`, conn_dropped: `Не отправлено — нажми ещё раз`,
     cards_out: `Ты вне игры — карты больше не нужны.`,
     spec_title: `Ты зритель`, spec_text: `Партия уже идёт — сядешь за стол в следующей. А пока смотри, пиши в чат и реагируй.`, spec_strip: `👀 Ты зритель — сядешь в следующей партии`,
     kicked_again: `Сесть снова`,
@@ -861,6 +862,7 @@ window.I18N_DICT = {
     my_card: `Your card {icon} {card} → {name}: {out}`, on_me: `{name} → you: {icon} {card} — {out}`, card_ok: `worked`,
     repeat_cut: `Fewer chips than last time — repeat cut to {n}`,
     conn_queued: `No connection — we'll send it when it's back`,
+    conn_resend: `Didn't go through — sending again`, conn_dropped: `Not sent — tap again`,
     cards_out: `You're out — no more cards.`,
     spec_title: `You're watching`, spec_text: `The game was already on when you joined. You'll get a seat next game — meanwhile watch, chat and react.`, spec_strip: `👀 Watching — you'll play next game`,
     kicked_again: `Sit down again`,
@@ -995,6 +997,7 @@ window.I18N_DICT = {
     my_card: `Η κάρτα σου {icon} {card} → {name}: {out}`, on_me: `{name} → εσένα: {icon} {card} — {out}`, card_ok: `έπιασε`,
     repeat_cut: `Λιγότερες μάρκες από πριν — η επανάληψη κόπηκε στο {n}`,
     conn_queued: `Χωρίς σύνδεση — θα σταλεί όταν επανέλθει`,
+    conn_resend: `Δεν έφτασε — στέλνω ξανά`, conn_dropped: `Δεν στάλθηκε — πάτα ξανά`, // EL:unverified
     cards_out: `Αποκλείστηκες — δεν χρειάζεσαι πια κάρτες.`,
     spec_title: `Είσαι θεατής`, spec_text: `Το παιχνίδι είχε ήδη ξεκινήσει. Θα κάτσεις στο επόμενο — ως τότε βλέπεις, γράφεις και αντιδράς.`, spec_strip: `👀 Θεατής — παίζεις στο επόμενο`,
     kicked_again: `Κάτσε ξανά`,
@@ -1406,21 +1409,92 @@ function addChip(key) {
 }
 let lastAdded = null;
 
-// Ставки и «Готово» без связи не теряем: последнее такое сообщение ждёт переподключения
-// и уходит сразу после повторного входа за стол (иначе игрок молча получал штраф).
-let queued = {};
-function sendQ(m) { conn.send(m); }
+// Действия игрока — ставки, «Готово», карта, чат — без связи не теряем (иначе игрок молча получал штраф, roulette-016, N2, 026).
+//  1) не ушло (сокет закрыт, POST не прошёл): ждёт в очереди MP.sendQueue и уходит после повторного входа за стол;
+//  2) «ушло, а в снимке не появилось» (мёртвый Wi-Fi без FIN: send() не падает): через 1,5 с — «Не дошло — отправляю ещё раз»,
+//     до трёх раз, потом в очередь до возвращения связи. Подтверждение — сам снимок: мои ставки/«Готово»/карта.
+let queued = {}; // запасной вариант без mp-common: последнее сообщение каждого типа
+const QUEUED_TYPES = ["set_bets", "ready", "card", "chat"];
+function qKeep(m) {
+  if (!state) return false;
+  const ph = state.phase;
+  if (m.type === "set_bets" || m.type === "card") return ph === "betting";
+  if (m.type === "ready") return ph === "betting" || ph === "briefing";
+  if (m.type === "chat") return !!(state.settings && state.settings.chat);
+  return false;
+}
+function qDrop(m, reason) {
+  // «ненужное» (фаза сменилась) молча; не успели за потолок возраста — говорим, чтобы нажали ещё раз
+  if (reason === "expired" || reason === "overflow") toast(T("conn_dropped"));
+}
+const outq = window.MP && MP.sendQueue ? MP.sendQueue({
+  send: (m) => conn.send(m),
+  keep: qKeep,
+  onDrop: qDrop,
+  // быстрые действия (ставка, карта, чат) не должны выстрелить через минуту, когда стол уже ушёл вперёд
+  ceilingMs: { set_bets: 25000, ready: 25000, card: 20000, chat: 15000, "*": 20000 },
+  replace: ["set_bets", "ready", "chat"],
+  max: 6,
+  probe: (ms) => { if (conn && conn.api) conn.api.probe(ms); },
+}) : null;
+
+const ackWatch = {}; // type → {m, at, tries}
+let ackTimer = null;
+function sameBets(a, b) {
+  const ka = Object.keys(a || {}), kb = Object.keys(b || {});
+  if (ka.length !== kb.length) return false;
+  return ka.every((k) => (a[k] || 0) === (b[k] || 0));
+}
+function isAcked(k, w, p) {
+  if (k === "set_bets") return sameBets(p.bets, myBets);
+  if (k === "ready") return !!p.ready === (w.m.ready !== false);
+  if (k === "card") return (state.played || []).some((x) => x.by === me);
+  return true;
+}
+function ackTick() {
+  const keys = Object.keys(ackWatch);
+  if (!keys.length) { clearInterval(ackTimer); ackTimer = null; return; }
+  const p = mine();
+  const now = Date.now();
+  for (const k of keys) {
+    const w = ackWatch[k];
+    const live = state && p && (state.phase === "betting" || (k === "ready" && state.phase === "briefing"));
+    if (!live || isAcked(k, w, p)) { delete ackWatch[k]; continue; }
+    if (outq && outq.has(k)) { delete ackWatch[k]; continue; } // уже в очереди на возвращение связи
+    if (now - w.at < 1500) continue;
+    const m = k === "set_bets" ? { type: "set_bets", bets: myBets } : w.m;
+    if (w.tries >= 3) {
+      delete ackWatch[k];
+      if (outq) outq.push(m); // связь «жива», но молчит: пусть уйдёт сразу после повторного входа
+      continue;
+    }
+    w.tries++;
+    w.at = now;
+    toast(T("conn_resend"));
+    conn.send(m);
+  }
+}
+function sendQ(m) {
+  conn.send(m);
+  if (m.type === "set_bets" || m.type === "ready" || m.type === "card") {
+    ackWatch[m.type] = { m, at: Date.now(), tries: 0 };
+    if (!ackTimer) ackTimer = setInterval(ackTick, 500);
+  }
+}
 function onSendFail(m) {
-  if (m.type !== "set_bets" && m.type !== "ready") return;
-  queued[m.type] = m;
+  if (!m || QUEUED_TYPES.indexOf(m.type) === -1) return;
+  delete ackWatch[m.type];
+  if (!(outq && outq.push(m))) queued[m.type] = m; // MP.off: очередь отказалась — запасная карта
   toast(T("conn_queued"));
 }
 function flushQueued() {
+  if (outq && outq.size()) outq.flush(qKeep, qDrop);
   if (!state || state.phase !== "betting") { queued = {}; return; }
   const q = queued;
   queued = {};
   if (q.set_bets) conn.send(q.set_bets);
   if (q.ready) conn.send(q.ready);
+  if (q.card) conn.send(q.card);
 }
 
 function canBet() {
@@ -2170,13 +2244,26 @@ function openTargets(card) {
     const b = el("button", "target");
     b.innerHTML = `${chipHtml(p.color, initials(p.name))}<b>${escapeHtml(p.name)}</b><span class="s">${rlNum(p.stack)}</span>`;
     b.onclick = () => {
-      conn.send({ type: "card", card, target: p.id });
+      sendQ({ type: "card", card, target: p.id });
       closeSheet();
       toast(tpl("card_sent", { icon: RL_CARDS[card].icon, card: T("card_" + card), name: p.name }));
     };
     list.append(b);
   }
   openSheet([h, list]);
+}
+
+// Чат: клиентский троттлинг 3 с (как на сервере) — слишком рано: подсказка, поле не трогаем; шторка закрывается через
+// 400 мс, если сервер не отказал; отказ возвращает текст и оставляет шторку (roulette-026)
+let lastChatAt = 0, chatPending = null, chatCloseT = 0;
+function sendChat(text, input) {
+  if (Date.now() - lastChatAt < 3000) { toast(T("rj_too_fast")); return false; }
+  lastChatAt = Date.now();
+  chatPending = text;
+  conn.send({ type: "chat", text }); // сбой отправки уйдёт в очередь через onSendFail
+  clearTimeout(chatCloseT);
+  chatCloseT = setTimeout(() => { chatPending = null; if (input) input.value = ""; closeSheet(); }, 400);
+  return true;
 }
 
 function openChat() {
@@ -2196,16 +2283,14 @@ function openChat() {
     e.preventDefault();
     const text = input.value.trim();
     if (!text) return;
-    conn.send({ type: "chat", text });
-    input.value = "";
-    closeSheet();
+    sendChat(text, input);
   };
   // готовые фразы — одним тапом, без клавиатуры
   const quick = el("div", "quick");
   for (const q of T("quick").split("|")) {
     const b = el("button", null, q);
     b.type = "button";
-    b.onclick = () => { conn.send({ type: "chat", text: q }); closeSheet(); };
+    b.onclick = () => { sendChat(q, input); };
     quick.append(b);
   }
   openSheet([h, hint, form, quick]);
@@ -2276,7 +2361,7 @@ function renderBriefing(p) {
     </div>`;
     // раздача: карты влетают по одной со щелчком
     app.querySelectorAll(".bcard").forEach((_, i) => setTimeout(() => rlSfx.flip(), 200 + i * 150));
-    document.getElementById("bready").onclick = () => conn.send({ type: "ready", ready: !mine().ready });
+    document.getElementById("bready").onclick = () => sendQ({ type: "ready", ready: !mine().ready });
   }
   const rb = document.getElementById("bready");
   rb.textContent = T(p.ready ? "br_ready_on" : "br_ready");
@@ -2492,7 +2577,10 @@ function onMessage(m) {
       break;
     case "rejected":
       toast(T("rj_" + m.reason) !== "rj_" + m.reason ? T("rj_" + m.reason) : m.reason);
-      if (m.action === "set_bets" || m.action === "bet" || m.action === "ready") queued = {};
+      if (m.action === "set_bets" || m.action === "bet" || m.action === "ready") { queued = {}; if (outq) outq.clear(); }
+      delete ackWatch[m.action];
+      // чат не принят (слишком часто, заглушен): текст остаётся в поле, шторка не закрывается (roulette-026)
+      if (m.action === "chat" && chatPending !== null) { clearTimeout(chatCloseT); chatPending = null; }
       if (m.action === "set_bets" || m.action === "bet") { pendingUntil = 0; const p = mine(); if (p) myBets = Object.assign({}, p.bets); drawChips(); drawHud(); }
       break;
     case "error":
@@ -2534,7 +2622,11 @@ function start() {
     onGone: onRoomGone,
     // переподключились — снова садимся за стол своим токеном (hello придёт первым)
     onOpen: () => { me = null; },
+    // тишина > 10 с (сокет не закрыт: мёртвый Wi-Fi без FIN) — баннер сразу, не дожидаясь закрытия
+    onQuiet: (q) => { banner.textContent = T("conn_quiet"); banner.classList.toggle("on", q); },
     onState: (st) => { banner.textContent = T("conn_lost"); banner.classList.toggle("on", st === "lost"); },
+    // связь отвечает, а в очереди лежит то, что не ушло: досылаем (без повторного входа за стол сокет не переоткрывался)
+    onHeard: () => { if (outq && outq.size() && me && !outq.isFlushing()) flushQueued(); },
     onSendFail,
   });
 }
