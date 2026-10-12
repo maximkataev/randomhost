@@ -72,7 +72,7 @@ function rawWs(code) {
       await host.until((b) => b.roster && b.roster.length === 6, 3000);
       assert.strictEqual(host.hostId, host.id);
       const names = host.roster.map((p) => p.name).sort();
-      assert.deepStrictEqual(names, ["Бот", "Бот 2", "Бот 3", "Бот 4", "Бот 5", "Хост"]);
+      assert.deepStrictEqual(names, ["Бот", "Бот (2)", "Бот (3)", "Бот (4)", "Бот (5)", "Хост"]);
       assert.strictEqual(new Set(host.roster.map((p) => p.ci)).size, 6, "цвета разные");
       await host.until((b) => b.snap && b.snap.ph === "lobby", 2000);
     });
@@ -335,7 +335,7 @@ function rawWs(code) {
         b.close();
         await a.until((x) => x.roster.length === 1, 16000);
         const dt = Date.now() - t0;
-        assert(dt < 12000, "убран за " + dt + " мс (по умолчанию было бы ≥ 60 с)");
+        assert(dt < 12000, "убран за " + dt + " мс (по умолчанию было бы ≥ 120 с)");
         assert(/PONG_MISSES="abc" вне диапазона/.test(log), "мусор в env отвергнут с предупреждением");
         a.close();
       } finally { s2.kill("SIGTERM"); }
@@ -401,6 +401,182 @@ function rawWs(code) {
       assert.strictEqual(h.ok, true);
       ws.close(); host.close();
     });
+
+    await test("кик в отсчёте: кикнутый не «неудачник», при одной утке — aborted и лобби, ведущий дейлика не назначен (U-51 A)", async () => {
+      const r = await NetBot.createRoom(BASE);
+      const host = await NetBot.connect({ base: BASE, code: r.code, name: "Хост", hostToken: r.hostToken, think: false });
+      const b = await NetBot.connect({ base: BASE, code: r.code, name: "Боб", think: false });
+      host.send({ type: "start" });
+      await host.until((x) => x.phase === "countdown", 3000);
+      host.send({ type: "kick", playerId: b.id });
+      await host.until((x) => x.events.some((e) => e.type === "aborted"), 3000);
+      await host.until((x) => x.phase === "lobby", 3000);
+      assert(!host.events.some((e) => e.type === "host" || e.type === "over"), "дейлика нет");
+      assert(!host.events.some((e) => e.type === "removed" && !e.early), "наказания нет");
+      await wait(300);
+      assert.strictEqual(host.roster.length, 1);
+      host.close(); b.close();
+    });
+
+    // ----- призраки, подхват по имени, создатель (T-W2-39) -----
+    const joinRaw = async (code, msg) => {
+      const ws = await rawWs(code);
+      ws.send(JSON.stringify(Object.assign({ type: "join" }, msg)));
+      await wait(250);
+      ws.last = (t) => ws.msgs.filter((m) => m.type === t).pop();
+      return ws;
+    };
+
+    await test("подхват по имени: офлайн ≥ 2 с + caps -> «Это ты?», после подтверждения тот же playerId, старый токен отозван", async () => {
+      const r = await NetBot.createRoom(BASE);
+      const a = await NetBot.connect({ base: BASE, code: r.code, name: "Ася", hostToken: r.hostToken, think: false });
+      const b = await NetBot.connect({ base: BASE, code: r.code, name: "Боб", think: false });
+      const oldTok = b.token, bid = b.id;
+      b.close();
+      await wait(300);
+      // < 2 с: тихий повтор
+      const early = await joinRaw(r.code, { name: "боб", caps: ["claim"] });
+      assert.strictEqual(early.last("error").error, "name_claim");
+      assert.strictEqual(early.last("error").retry, true);
+      early.close();
+      await wait(2000);
+      // клиент без caps — прежнее поведение: «Боб (2)»
+      const legacy = await joinRaw(r.code, { name: "Боб" });
+      assert.strictEqual(legacy.last("joined").name, "Боб (2)");
+      assert.strictEqual(legacy.last("joined").renamed, true);
+      legacy.close();
+      await wait(200);
+      const w = await joinRaw(r.code, { name: "БОБ", caps: ["claim"] });
+      const ask = w.last("error");
+      assert.strictEqual(ask.error, "name_claim");
+      assert.strictEqual(ask.name, "Боб");
+      assert(!w.last("joined"), "без подтверждения место не отдано");
+      w.send(JSON.stringify({ type: "join", name: "БОБ", caps: ["claim"], claim: true }));
+      await wait(250);
+      const j = w.last("joined");
+      assert.strictEqual(j.playerId, bid);
+      assert.strictEqual(j.resumed, true);
+      assert.strictEqual(j.name, "Боб");
+      assert.notStrictEqual(j.token, oldTok, "выдан новый токен");
+      // старый токен больше не открывает место
+      const old = await joinRaw(r.code, { token: oldTok });
+      assert(!old.last("joined") || old.last("joined").playerId !== bid);
+      assert(a.roster.filter((p) => p.id === bid).length <= 1);
+      old.close(); w.close(); a.close();
+    });
+
+    await test("«Я другой» (fresh) и онлайн-тёзка: «Имя (2)»; joined.name и resumed по токену", async () => {
+      const r = await NetBot.createRoom(BASE);
+      const a = await NetBot.connect({ base: BASE, code: r.code, name: "Ася", hostToken: r.hostToken, think: false });
+      const x = await joinRaw(r.code, { name: "ася", caps: ["claim"] });
+      assert.strictEqual(x.last("joined").name, "ася (2)");
+      const tok = x.last("joined").token;
+      x.close();
+      await wait(2300);
+      const f = await joinRaw(r.code, { name: "ася (2)", caps: ["claim"], fresh: true });
+      assert.strictEqual(f.last("joined").name, "ася (3)");
+      f.close();
+      const back = await joinRaw(r.code, { token: tok });
+      assert.strictEqual(back.last("joined").resumed, true);
+      back.close(); a.close();
+    });
+
+    await test("в заплыве без флага: имя офлайн-игрока не подхватывается (новый вход — зритель «Имя (2)»), по токену — своя утка", async () => {
+      const r = await NetBot.createRoom(BASE);
+      const a = await NetBot.connect({ base: BASE, code: r.code, name: "Ася", hostToken: r.hostToken, style: "pro" });
+      const b = await NetBot.connect({ base: BASE, code: r.code, name: "Боб", style: "pro" });
+      a.send({ type: "start" });
+      await a.until((x) => x.phase === "race", 6000);
+      const tok = b.token, bid = b.id;
+      b.close();
+      await wait(2500);
+      const w = await joinRaw(r.code, { name: "Боб", caps: ["claim"] });
+      assert(!w.last("error") || w.last("error").error !== "name_claim", "в заплыве подтверждения по имени нет");
+      assert.strictEqual(w.last("joined").name, "Боб (2)");
+      assert.notStrictEqual(w.last("joined").playerId, bid);
+      const ret = await joinRaw(r.code, { token: tok });
+      assert.strictEqual(ret.last("joined").playerId, bid, "по токену — к своей утке");
+      assert.strictEqual(ret.last("joined").resumed, true);
+      ret.close(); w.close(); a.close();
+    });
+
+    await test("кик офлайн-создателя запрещён (creator_away); онлайн-создателя ведущий убрать может", async () => {
+      const r = await NetBot.createRoom(BASE);
+      const a = await NetBot.connect({ base: BASE, code: r.code, name: "Ася", hostToken: r.hostToken, think: false });
+      const b = await NetBot.connect({ base: BASE, code: r.code, name: "Боб", think: false });
+      const aid = a.id;
+      a.close();
+      await b.until((x) => x.hostId === b.id, 14000);
+      b.errors.length = 0;
+      b.send({ type: "kick", playerId: aid });
+      await b.until((x) => x.errors.includes("creator_away"), 3000);
+      assert(b.roster.some((p) => p.id === aid), "создатель остался в списке");
+      b.close();
+    });
+
+    // отдельный сервер с коротким сроком призраков (минимум env — 5 с) и короткой жизнью анонимов
+    {
+      const port3 = PORT + 400;
+      const base3 = `http://localhost:${port3}`;
+      const env3 = Object.assign({}, process.env, { PORT: String(port3), NODE_ENV: "development", DUMP_FILE: path.join(require("os").tmpdir(), `rapids-test-${port3}.json`), RAPIDS_CFG: JSON.stringify({ LEN: 1600 }), GHOST_TTL_MS: "5000", ANON_TTL_MS: "3000" });
+      const s3 = spawn(process.execPath, [path.join(__dirname, "server.js")], { env: env3, stdio: ["ignore", "pipe", "pipe"] });
+      s3.stdout.on("data", () => {}); s3.stderr.on("data", () => {});
+      const raw3 = (code) => new Promise((res, rej) => { const ws = new WebSocket(`ws://localhost:${port3}/rapids/ws?r=${code}`); ws.msgs = []; ws.on("message", (m) => ws.msgs.push(JSON.parse(m))); ws.on("open", () => res(ws)); ws.on("error", rej); });
+      try {
+        for (let i = 0; i < 50; i++) { try { if ((await fetch(base3 + "/rapids/api/health")).ok) break; } catch {} await wait(100); }
+
+        await test("призраки: зритель в заплыве уходит через GHOST_TTL_MS, участник — нет; в итогах уходит и участник (120 с по умолчанию, тут 5 с)", async () => {
+          const r = await NetBot.createRoom(base3);
+          const a = await NetBot.connect({ base: base3, code: r.code, name: "А", hostToken: r.hostToken, style: "pro" });
+          const b = await NetBot.connect({ base: base3, code: r.code, name: "Б", style: "pro" });
+          const c = await NetBot.connect({ base: base3, code: r.code, name: "В", style: "pro" });
+          a.send({ type: "start" });
+          await a.until((x) => x.phase === "race", 6000);
+          const d = await NetBot.connect({ base: base3, code: r.code, name: "Зритель", think: false });
+          await a.until((x) => x.roster.length === 4, 2000);
+          d.close(); c.close();
+          await wait(6200);
+          assert(!a.roster.some((p) => p.name === "Зритель"), "офлайн-зритель убран в заплыве");
+          assert(a.roster.some((p) => p.name === "В"), "офлайн-участник остался в заплыве");
+          assert.strictEqual(a.phase, "race", "заплыв ещё идёт");
+          await a.until((x) => x.phase === "over", 30000);
+          await a.until((x) => !x.roster.some((p) => p.name === "В"), 9000);
+          a.close(); b.close();
+        });
+
+        await test("вытеснение: 12 мест, один офлайн — 13-й входит после порога, не раньше", async () => {
+          const r = await NetBot.createRoom(base3);
+          const list = [];
+          for (let i = 0; i < 12; i++) list.push(await NetBot.connect({ base: base3, code: r.code, name: "П" + i, hostToken: i === 0 ? r.hostToken : undefined, think: false }));
+          list[11].close();
+          await wait(1500);
+          await assert.rejects(NetBot.connect({ base: base3, code: r.code, name: "Лишний", think: false }), /room_full/);
+          await wait(4200);
+          const extra = await NetBot.connect({ base: base3, code: r.code, name: "Лишний", think: false });
+          assert(extra.id);
+          await list[0].until((x) => x.roster.length === 12 && x.roster.some((q) => q.name === "Лишний"), 2000);
+          extra.close(); list.forEach((x) => x.close());
+        });
+
+        await test("ожидание подтверждения: сокет с name_claim живёт дольше ANON_TTL_MS (CLAIM_WAIT_MS), пустой аноним — рвётся", async () => {
+          const r = await NetBot.createRoom(base3);
+          const a = await NetBot.connect({ base: base3, code: r.code, name: "Ася", hostToken: r.hostToken, think: false });
+          const b = await NetBot.connect({ base: base3, code: r.code, name: "Боб", think: false });
+          b.close();
+          await wait(2300);
+          const w = await raw3(r.code);
+          w.send(JSON.stringify({ type: "join", name: "Боб", caps: ["claim"] }));
+          const anon = await raw3(r.code);
+          await wait(200);
+          assert(w.msgs.some((m) => m.error === "name_claim"));
+          // очистка раз в 20 с: ждём один её проход после ANON_TTL_MS
+          await wait(24000);
+          assert.strictEqual(anon.readyState, 3, "пустой аноним закрыт");
+          assert.strictEqual(w.readyState, 1, "ждущий подтверждения жив");
+          w.close(); a.close();
+        });
+      } finally { s3.kill("SIGTERM"); }
+    }
 
     await test("рестарт сервера: комната и токены живы, партия отменена", async () => {
       const r4 = await NetBot.createRoom(BASE);

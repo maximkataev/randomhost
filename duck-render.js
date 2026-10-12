@@ -1777,7 +1777,8 @@
       }
       return w;
     }
-    const shortName = (n, max = 14) => { n = String(n == null ? '' : n).trim(); return n.length > max ? n.slice(0, max - 1) + '…' : n; };
+    // режем по символам (Array.from), а не по UTF-16: эмодзи на границе не превращается в «�» (rapids-026)
+    const shortName = (n, max = 14) => { n = String(n == null ? '' : n).trim(); const a = Array.from(n); return a.length > max ? a.slice(0, max - 1).join('') + '…' : n; };
     // утка у самой кромки панели считается за кадром: вместо подписи — плашка со стрелкой, без двойных надписей
     const EDGE_IN = 10;
     const PLACE_C = { 1: '#ffd23f', 2: '#dfe6ea', 3: '#e3a06a' };

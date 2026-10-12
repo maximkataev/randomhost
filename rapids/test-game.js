@@ -329,6 +329,65 @@ test('ушёл посреди заплыва — сошёл с дистанци�
   assert.strictEqual(g.host.id, 'p1');
   assert(g.host.dnf);
 });
+// заплыв в отсчёте (до «Плывём!»)
+function countdownGame(n, seed, cfg) {
+  const g = createGame({ seed, cfg });
+  for (let i = 0; i < n; i++) g.addPlayer('p' + i, 'P' + i, i);
+  assert(g.start());
+  g.step(0.5);
+  assert.strictEqual(g.phase, 'countdown');
+  g.drainEvents();
+  return g;
+}
+test('кик в отсчёте (U-51 A): снят с заплыва без наказания, остальные плывут, неудачник — не он', () => {
+  const g = countdownGame(3, 51);
+  g.removePlayer('p1', { kick: true });
+  assert(!g.byId.has('p1'));
+  assert.strictEqual(g.phase, 'countdown');
+  assert(!g.drainEvents().some(e => e.type === 'aborted'));
+  run(g, DEFAULTS.COUNTDOWN + 0.2);
+  assert.strictEqual(g.phase, 'race');
+  place(P(g, 0), g.course.riverCx(g.course.FINISH_Y - 20), g.course.FINISH_Y - 20);
+  run(g, 2);
+  assert.strictEqual(g.phase, 'over');
+  assert.strictEqual(g.host.id, 'p2');
+  assert(!g.host.dnf);
+  assert(!g.stats.players.some(p => p.id === 'p1'));
+});
+test('кик в отсчёте при двух утках: заплыв отменён (aborted), лобби, дейлика нет', () => {
+  const g = countdownGame(2, 52);
+  g.removePlayer('p1', { kick: true });
+  const ev = g.drainEvents();
+  assert(ev.some(e => e.type === 'aborted'));
+  assert(!ev.some(e => e.type === 'host' || e.type === 'over'));
+  assert.strictEqual(g.phase, 'lobby');
+  assert.strictEqual(g.host, null);
+  assert.strictEqual(g.players.length, 1);
+  assert(g.players.every(p => !p.inGame));
+});
+test('добровольный выход в отсчёте — по умолчанию «как сейчас»: сошёл, последний', () => {
+  const g = countdownGame(3, 53);
+  g.removePlayer('p1');
+  assert(P(g, 1).dnf && P(g, 1).left);
+  assert(!g.drainEvents().some(e => e.type === 'aborted'));
+});
+test('добровольный выход в отсчёте с RULE_U51_COUNTDOWN_LEAVE — без наказания; двое -> aborted', () => {
+  const g = countdownGame(3, 54, { RULE_U51_COUNTDOWN_LEAVE: true });
+  g.removePlayer('p1');
+  assert(!g.byId.has('p1'));
+  g.removePlayer('p2');
+  assert.strictEqual(g.phase, 'lobby');
+  assert(g.drainEvents().some(e => e.type === 'aborted'));
+});
+test('с RULE_U51_COUNTDOWN_LEAVE выход ПОСЛЕ «Плывём!» — по-прежнему последний', () => {
+  const g = race(3, 55, { RULE_U51_COUNTDOWN_LEAVE: true });
+  g.removePlayer('p1');
+  assert(P(g, 1).dnf);
+  place(P(g, 0), g.course.riverCx(g.course.FINISH_Y - 20), g.course.FINISH_Y - 20);
+  run(g, 2);
+  assert.strictEqual(g.host.id, 'p1');
+  assert(g.host.dnf);
+});
 test('двое: один доплыл — второй ведёт', () => {
   const g = race(2, 44);
   const a = P(g, 1);
