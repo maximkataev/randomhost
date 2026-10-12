@@ -39,6 +39,23 @@ const wvSec = (ms) => String(Math.round(Math.max(0, ms) / 100) / 10).replace("."
 // имена через запятую — именительный падеж, не склоняем
 const wvNames = (ids, player) => ids.map((id) => (player(id) || {}).name || "?").join(", ");
 
+/*PLURAL-BEGIN*/
+// Склонение подписи по числу (crowd-021): ключ base + "_two" для 2 («twice»), затем base + "_" + категория
+// Intl.PluralRules(lang) (one / few / many / other), иначе сам base. RU: 1 раз, 2 раза, 5 раз, 21 раз.
+function wvPluralKey(base, n, lang, has) {
+  const k = [];
+  if (n === 2) k.push(base + "_two");
+  let cat = "other";
+  try { cat = new Intl.PluralRules(lang).select(n); } catch (e) {}
+  k.push(base + "_" + cat);
+  for (let i = 0; i < k.length; i++) if (has(k[i])) return k[i];
+  return base;
+}
+/*PLURAL-END*/
+// «есть ли такая форма» — по словарю ТЕКУЩЕГО языка: wvT() для чужих ключей отдаёт английский фоллбэк, это не форма
+const wvHasForm = (k) => { const d = (window.I18N_DICT || {})[wvLang()]; return !!(d && k in d); };
+const wvPluralTpl = (base, n, vars) => wvTpl(wvPluralKey(base, n, wvLang(), wvHasForm), vars);
+
 
 // ---------- звуки: короткий синтез без файлов ----------
 // Всё идёт в ctx.destination — sound-toggle.js перехватывает это подключение и глушит общий выключатель.
@@ -132,7 +149,13 @@ const wvSfx = (function () {
 })();
 
 // ---------- вибрация: не везде есть, а где есть — может бросить исключение ----------
-function wvVibrate(p) { if (navigator.vibrate) try { navigator.vibrate(p); } catch (e) {} }
+// вибро только после жеста (иначе Chrome пишет «Blocked call to navigator.vibrate»): через MP.vibrate; без него — свой флаг
+function wvVibrate(p) {
+  if (window.MP && typeof MP.vibrate === "function") { MP.vibrate(p); return; }
+  if (!navigator.vibrate) return;
+  if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
+  try { navigator.vibrate(p); } catch (e) {}
+}
 
 // ---------- часы сервера ----------
 // Смещение «сервер − устройство» по самому быстрому ping/pong (RTT/2); пока замера нет —

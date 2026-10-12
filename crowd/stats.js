@@ -15,7 +15,7 @@ const ROOM_CAP = 3; // раундов одного вопроса от одно�
 const ROOM_WINDOW_MS = 24 * 60 * 60 * 1000; // …за 24 ч (§6)
 const MAX_IDS = 20000; // потолок записей: чужой id из подделанного события не раздувает файл
 
-let data = {}; // id → {n, a, b, oa, ob}
+let data = {}; // id → {n, a, b, oa, ob, ill}
 let dirty = false;
 const perRoom = new Map(); // "код|id" → {n: сколько раз учтено, since: когда началось окно}
 
@@ -44,6 +44,7 @@ function record(room, e) {
   perRoom.set(key, have);
   const d = data[e.id] || (data[e.id] = { n: 0, a: 0, b: 0, oa: 0, ob: 0 });
   d.n++; d.a += e.a | 0; d.b += e.b | 0; d.oa += e.oa | 0; d.ob += e.ob | 0;
+  d.ill = (d.ill | 0) + (e.ill ? 1 : 0); // сколько раз условие «Иллюзии» выполнилось (T-W3-30, U-48)
   dirty = true;
 }
 

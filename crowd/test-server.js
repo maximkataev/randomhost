@@ -268,7 +268,7 @@ test("сервер", async (t) => {
     b.close(); ps.forEach((p) => p.close());
   });
 
-  await t.test("кик: выкинутый не возвращается ни под тем же именем, ни со старым токеном", async () => {
+  await t.test("кик без бана (U-06): выкинутый получает kicked, но может зайти снова — под тем же именем", async () => {
     const room = await createRoom({ lang: "ru" });
     const b = await board(room.code, room.hostToken);
     const ps = [await player(room.code, "Тролль"), await player(room.code, "Мила"), await player(room.code, "Нина")];
@@ -277,13 +277,16 @@ test("сервер", async (t) => {
     const again = client(room.code);
     await again.open;
     again.send({ type: "join", name: "тролль" });
-    await again.wait((m) => m.type === "kicked");
-    again.send({ type: "join", name: "Другое имя", token: ps[0].token });
+    const j = await again.wait((m) => m.type === "joined");
+    assert.ok(j.playerId && j.playerId !== ps[0].id, "новая запись, не бан");
+    assert.ok(!again.msgs.some((m) => m.type === "kicked"), "kicked после повторного входа нет");
+    // старый токен кикнутого запись не оживляет
+    const stale = client(room.code);
+    await stale.open;
+    stale.send({ type: "join", token: ps[0].token });
     await sleep(100);
-    assert.ok(!again.msgs.some((m) => m.type === "joined"), "со старым токеном не пускает");
-    const other = await player(room.code, "Новичок");
-    assert.ok(other.id);
-    again.close(); other.close(); b.close(); ps.forEach((p) => p.close());
+    assert.ok(!stale.msgs.some((m) => m.type === "joined" && m.playerId === ps[0].id), "старый токен не возвращает старую запись");
+    stale.close(); again.close(); b.close(); ps.forEach((p) => p.close());
   });
 
   await t.test("тихих отказов нет: частый join и флуд командами получают rejected/rate, «Готово» доходит", async () => {

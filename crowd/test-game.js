@@ -374,6 +374,50 @@ test("фаза «Мнение»: включается при ≥ 4 игрока�
   assert.deepStrictEqual(res.opinions, { a: 1, b: 4, skip: 0 });
 });
 
+test("«Иллюзия» подряд (RULE_U48_ILLUSION): по умолчанию как раньше; с флагом — не два раунда подряд, счётчик ill считает условие", () => {
+  const old = process.env.RULE_U48_ILLUSION;
+  const play = (flag) => {
+    if (flag) process.env.RULE_U48_ILLUSION = "1"; else delete process.env.RULE_U48_ILLUSION;
+    const ctx = mk(5, { opinion: true }); ctx.g.start(0);
+    const out = [];
+    for (let k = 0; k < 3; k++) {
+      ["a", "a", "a", "a", "b"].forEach((v, i) => { ctx.g.vote("p" + i, v, ctx.t); ctx.g.confirm("p" + i, ctx.t); });
+      assert.strictEqual(ctx.g.s.phase, "opinion");
+      ["b", "b", "b", "b", "a"].forEach((v, i) => ctx.g.opinion("p" + i, v, ctx.t));
+      out.push(!!ctx.g.s.round.result.illusion);
+      finishRoundSame(ctx);
+    }
+    return out;
+  };
+  const finishRoundSame = (ctx) => { ctx.t = ctx.g.s.phaseEnd; ctx.g.tick(ctx.t); ctx.t = ctx.g.s.phaseEnd; ctx.g.tick(ctx.t); };
+  try {
+    assert.deepStrictEqual(play(false), [true, true, true], "по умолчанию — на каждом раунде, где условие выполнено");
+    assert.deepStrictEqual(play(true), [true, false, true], "с флагом — вторая подряд подавлена, третья снова показывается");
+  } finally {
+    if (old === undefined) delete process.env.RULE_U48_ILLUSION; else process.env.RULE_U48_ILLUSION = old;
+  }
+});
+
+test("qstat несёт ill: условие «Иллюзии» выполнено — 1 даже когда плашка подавлена кулдауном", () => {
+  const old = process.env.RULE_U48_ILLUSION;
+  process.env.RULE_U48_ILLUSION = "1";
+  try {
+    const ctx = mk(5, { opinion: true }); ctx.g.start(0);
+    const ill = [];
+    for (let k = 0; k < 2; k++) {
+      ["a", "a", "a", "a", "b"].forEach((v, i) => { ctx.g.vote("p" + i, v, ctx.t); ctx.g.confirm("p" + i, ctx.t); });
+      let ev = [];
+      ["b", "b", "b", "b", "a"].forEach((v, i) => { ev = ev.concat(ctx.g.opinion("p" + i, v, ctx.t).events || []); });
+      const q = ev.find((e) => e.type === "qstat");
+      ill.push(q ? q.ill : null);
+      ctx.t = ctx.g.s.phaseEnd; ctx.g.tick(ctx.t); ctx.t = ctx.g.s.phaseEnd; ctx.g.tick(ctx.t);
+    }
+    assert.deepStrictEqual(ill, [1, 1]);
+  } finally {
+    if (old === undefined) delete process.env.RULE_U48_ILLUSION; else process.env.RULE_U48_ILLUSION = old;
+  }
+});
+
 test("«Иллюзия» не срабатывает на шуме (4:3 против 3:4) и при менее 4 мнений", () => {
   const ctx = mk(7, { opinion: true }); ctx.g.start(0);
   const { g } = ctx;

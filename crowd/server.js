@@ -753,13 +753,8 @@ function handle(room, client, msg) {
     case "kick": {
       if (!client.host) return;
       const kid = String(msg.playerId || "");
-      const victim = g.player(kid);
-      if (victim) {
-        const b = room.bans;
-        const key = nameKey(victim.name);
-        if (key && !b.keys.includes(key) && b.keys.length < 200) b.keys.push(key);
-        for (const [tk, id] of Object.entries(room.tokens)) if (id === kid && !b.tokens.includes(tk) && b.tokens.length < 400) b.tokens.push(tk);
-      }
+      // U-06 (класс A): кик — не бан. Имя по-прежнему занимается заново («Сесть снова»): бан по имени обходится
+      // переименованием, а общий Wi-Fi вечеринки по IP не отделить. Старые баны из дампа (room.bans) не пополняются.
       const events = g.removePlayer(kid, t);
       pruneTokens(room);
       for (const c of room.sockets) if (c.playerId === msg.playerId) { c.playerId = null; send(c.ws, { type: "kicked" }); }

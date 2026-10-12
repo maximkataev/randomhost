@@ -67,3 +67,23 @@ for (const lang of CONTENT.LANGS) {
     assert.ok(list.some((x) => x.kind === "yn" && x.lean === "b"));
   });
 }
+
+// склонение подписей наград (T-W3-18, crowd-021): wvPluralKey из crowd-shared.js (между маркерами PLURAL-BEGIN/END)
+test("склонения «N раз»: RU 1/2/5/11/21/22, EN once/twice/times, EL φορά/φορές", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "..", "crowd-shared.js"), "utf8");
+  const body = src.slice(src.indexOf("/*PLURAL-BEGIN*/"), src.indexOf("/*PLURAL-END*/"));
+  const wvPluralKey = new Function(body + "; return wvPluralKey;")();
+  const dict = {
+    ru: new Set(["aw_x_d_few"]),
+    en: new Set(["aw_x_d_one", "aw_x_d_two"]),
+    el: new Set(["aw_x_d_one"]),
+  };
+  const form = (lang, n) => wvPluralKey("aw_x_d", n, lang, (k) => dict[lang].has(k)).replace("aw_x_d", "") || "base";
+  const ru = { 1: "base", 2: "_few", 4: "_few", 5: "base", 11: "base", 12: "base", 21: "base", 22: "_few", 25: "base" };
+  for (const [n, want] of Object.entries(ru)) assert.strictEqual(form("ru", +n), want, `ru ${n}`);
+  assert.strictEqual(form("en", 1), "_one");
+  assert.strictEqual(form("en", 2), "_two");
+  assert.strictEqual(form("en", 3), "base");
+  assert.strictEqual(form("el", 1), "_one");
+  assert.strictEqual(form("el", 2), "base");
+});
