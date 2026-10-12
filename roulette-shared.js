@@ -168,6 +168,73 @@ const rlTpl = (key, vars) => String(rlT(key)).replace(/\{(\w+)\}/g, (m, k) => (v
 const RL_NUM_LOCALE = { ru: "ru-RU", en: "en-US", el: "el-GR" };
 const rlNum = (n) => Number(n).toLocaleString(RL_NUM_LOCALE[(window.I18N && window.I18N.lang) || "ru"] || "en-US");
 
+
+// ---------- чистые функции клиента (гоняются в Node: roulette/test-ui-units.js) ----------
+
+// вибро: Chrome пишет [Intervention] в консоль, если вибрировать до первого тапа
+function rlBuzz(pattern) {
+  try {
+    if (typeof navigator === "undefined" || !navigator.vibrate) return false;
+    if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return false;
+    return !!navigator.vibrate(pattern);
+  } catch (e) { return false; }
+}
+// сумма ставки в чипе: 1250 → «1 250» / «1,250», 12500 → «12,5k» / «12.5k»; разделители по языку
+function rlAmount(n, lang) {
+  n = Math.round(Number(n) || 0);
+  const loc = RL_NUM_LOCALE[lang || (window.I18N && window.I18N.lang) || "ru"] || "en-US";
+  if (n >= 10000) return (Math.round(n / 100) / 10).toLocaleString(loc, { maximumFractionDigits: 1 }) + "k";
+  return n.toLocaleString(loc);
+}
+
+// по кодовым точкам, а не по UTF-16: у «😀 Emoji Cat» аватар был «�E»
+function initials(name) { return Array.from(String(name || "?").replace(/^🤖\s*/, "").split(/\s+/).map((w) => Array.from(w)[0] || "").join("")).slice(0, 2).join("").toUpperCase(); }
+
+// Геометрия стола: зона чисел — 3 колонки × 13 строк (строка 0 — зеро). Координаты в долях зоны.
+// w, h — размер зоны в px: тап в табличку номера — всегда ставка на число, сплит/каре — только у самой линии.
+function hitKey(fx, fy, w, h) {
+  const rowsH = 13;
+  const cy = fy * rowsH;
+  const row = Math.floor(cy);
+  const cx = fx * 3;
+  const col = Math.min(2, Math.floor(cx));
+  const inX = cx - col;
+  const inY = cy - row;
+  const EDGE_X = 0.2, EDGE_Y = 0.3, STREET_X = 0.1;
+  if (row > 0 && w && h) {
+    const cw = w / 3, ch = h / 13;
+    const dx = Math.abs(inX - 0.5) * cw, dy = Math.abs(inY - 0.5) * ch;
+    // табличка номера 34×(до 24) px — вся целиком ставка на число
+    if (dx <= 19 && dy <= Math.min(12, ch * 0.41) + 1) return "n:" + (3 * (row - 1) + col + 1);
+  }
+  if (row === 0) {
+    // зеро: у нижней кромки — сплит/трио/«первые четыре» с числами первого ряда
+    if (inY < 1 - EDGE_Y) return "n:0";
+    if (col === 0 && inX < EDGE_X) return "co:0-1-2-3";
+    if (col === 0 && inX > 1 - EDGE_X) return "st:0-1-2";
+    if (col === 1 && inX < EDGE_X) return "st:0-1-2";
+    if (col === 1 && inX > 1 - EDGE_X) return "st:0-2-3";
+    if (col === 2 && inX < EDGE_X) return "st:0-2-3";
+    return rlKeyFor([0, col + 1]);
+  }
+  const r = row - 1; // ряд чисел 0..11
+  const n = 3 * r + col + 1;
+  const left = inX < EDGE_X, right = inX > 1 - EDGE_X, top = inY < EDGE_Y, bottom = inY > 1 - EDGE_Y;
+  // правая внешняя кромка (узкая) — стрит, на стыке рядов — сикслайн
+  if (col === 2 && inX > 1 - STREET_X) {
+    if (bottom && r < 11) return rlKeyFor([n - 2, n - 1, n, n + 1, n + 2, n + 3]);
+    if (top && r > 0) return rlKeyFor([n - 5, n - 4, n - 3, n - 2, n - 1, n]);
+    return rlKeyFor([n - 2, n - 1, n]);
+  }
+  const hn = right && col < 2 ? n + 1 : left && col > 0 ? n - 1 : null; // сосед по горизонтали (у col 2 справа — стрит выше)
+  const vn = bottom && r < 11 ? n + 3 : top && r > 0 ? n - 3 : top && r === 0 ? 0 : null; // по вертикали
+  if (hn && vn != null && vn !== 0) return rlKeyFor([n, hn, vn, vn + (hn - n)]);
+  if (hn && vn === 0) return rlKeyFor([0, n, hn]) || "n:" + n; // трио есть не у всех пар
+  if (hn) return rlKeyFor([n, hn]);
+  if (vn != null) return rlKeyFor([n, vn]);
+  return "n:" + n;
+}
+
 // человеческое имя ставки: «Сплит 17–20», «Красное»
 function rlBetName(key) {
   const b = RL_BETS[key];

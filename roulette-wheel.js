@@ -97,8 +97,10 @@ function initialsOf(p) {
   if (p && p.initials) return String(p.initials).slice(0, 3);
   return String((p && p.name) || "?").replace(/^\p{Extended_Pictographic}\s*/u, "").split(/\s+/).filter(Boolean).map((w) => [...w][0]).join("").slice(0, 2).toUpperCase() || "?";
 }
-// сумма ставки: 1 250 → «1 250», 12 500 → «12,5k»
+// сумма ставки: разделители по языку страницы (rlAmount из roulette-shared.js)
 function rlAmount(n) {
+  const g = globalThis.rlAmount;
+  if (typeof g === "function" && g !== rlAmount) return g(n);
   n = Math.round(Number(n) || 0);
   if (n >= 10000) return (Math.round(n / 100) / 10).toString().replace(".", ",") + "k";
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, "\u2009");
