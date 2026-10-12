@@ -91,6 +91,13 @@
   .conn.on { visibility: visible; }
   .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: var(--deep); color: #fff; font-weight: 700; padding: 12px 18px; max-width: calc(100% - 32px); visibility: hidden; border-radius: 16px; box-shadow: 0 6px 0 var(--ink); }
   .toast.on { visibility: visible; animation: toast .35s var(--boing); }
+  /* «Язык комнаты: EN. Переключить?» — поверх, ничего не сдвигает (правило «без скачков»); сам уходит через 12 с */
+  .langhint { position: fixed; left: 12px; right: 12px; top: calc(var(--lsc, 30px) * 2 + 4px); z-index: 31; display: flex; align-items: center; gap: 8px; background: var(--deep); color: #fff; border-radius: 16px; padding: 8px 8px 8px 14px; box-shadow: 0 6px 0 var(--ink); font-weight: 700; }
+  .langhint[hidden] { display: none; }
+  .langhint span { flex: 1; min-width: 0; }
+  .langhint button { flex: none; min-height: 44px; min-width: 44px; border: 0; border-radius: 12px; padding: 6px 12px; font: 700 15px/1.1 var(--font); }
+  .langhint .yes { background: var(--bulb); color: var(--ink); }
+  .langhint .no { background: transparent; color: #fff; text-decoration: underline; }
   @keyframes toast { from { transform: translate(-50%, 30px) scale(.9); } }
   /* overflow-x: clip — «хлопок» крупных надписей (scale) не расширяет страницу: на телефоне это сдвигало переключатель языка за край */
   /* экран пульта = сцена (то, что сейчас происходит) + стойка участника, прижатая к низу:
@@ -447,6 +454,7 @@
 <div class="conn" id="conn"></div>
 <div id="app"></div>
 <div class="toast" id="toast" role="status"></div>
+<div class="langhint" id="langhint" role="status" hidden></div>
 
 <script>
 window.I18N_DICT = {
@@ -458,6 +466,7 @@ window.I18N_DICT = {
     lede: `На экране вопрос. У тебя меньше минуты, чтобы ответить <b>смешнее всех</b>. Потом зал голосует.`,
     btn_create: `Открыть студию`, btn_creating: `Открываем…`,
     cta_sub: `Открывай на ноутбуке или ТВ — там будет сцена`,
+    lang_hint: `Язык комнаты: {lang}. Переключить?`, lang_yes: `Переключить`, lang_no: `Оставить`,
     have_code: `У меня есть код`, prompt_code: `Код комнаты`, btn_go: `Перейти`,
     noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код — он на общем экране`,
     rule1: `От трёх человек, все заходят с телефонов по QR с общего экрана`,
@@ -511,6 +520,7 @@ window.I18N_DICT = {
     lede: `A prompt hits the screen. You have under a minute to be <b>the funniest in the room</b>. Then the room votes.`,
     btn_create: `Open the studio`, btn_creating: `Opening…`,
     cta_sub: `Open it on a laptop or TV — that's the stage`,
+    lang_hint: `Room language: {lang}. Switch?`, lang_yes: `Switch`, lang_no: `Keep`,
     have_code: `I have a code`, prompt_code: `Room code`, btn_go: `Go`,
     noroom_title: `There is no such room`, noroom_text: `Check the code — it's on the shared screen`,
     rule1: `Three or more players, everyone joins by phone via the QR on the shared screen`,
@@ -563,6 +573,7 @@ window.I18N_DICT = {
     lede: `Στην οθόνη μια ερώτηση. Έχεις λιγότερο από ένα λεπτό να γίνεις <b>ο πιο αστείος</b>. Μετά ψηφίζει η αίθουσα.`,
     btn_create: `Άνοιξε το στούντιο`, btn_creating: `Ανοίγουμε…`,
     cta_sub: `Άνοιξέ το σε laptop ή τηλεόραση — εκεί είναι η σκηνή`,
+    lang_hint: `Γλώσσα δωματίου: {lang}. Αλλαγή;`, lang_yes: `Αλλαγή`, lang_no: `Να μείνει`, //EL:unverified
     have_code: `Έχω κωδικό`, prompt_code: `Κωδικός δωματίου`, btn_go: `Πήγαινε`, //EL:unverified
     noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό — είναι στην κοινή οθόνη`, //EL:unverified
     rule1: `Από τρεις παίκτες, όλοι μπαίνουν από το κινητό με το QR της κοινής οθόνης`,
@@ -693,6 +704,35 @@ let hintArmed = null; // mid, для которого кнопка подска�
 let justHinted = null; // mid, у которого только что перевернулась подсказка
 let langPicked = false;
 try { langPicked = !!localStorage.getItem("site-lang"); } catch (e) {}
+const LANG_NAME = { ru: "Русский", en: "English", el: "Ελληνικά" };
+let hintTimer = null;
+function hideLangHint() {
+  const h = document.getElementById("langhint");
+  if (h) h.hidden = true;
+  clearTimeout(hintTimer);
+}
+function showLangHint(c) {
+  const h = document.getElementById("langhint");
+  if (!h) return;
+  h.innerHTML = `<span>${escapeHtml(tpl("lang_hint", { lang: LANG_NAME[c.lang] || c.lang }))}</span><button class="yes" type="button">${escapeHtml(T("lang_yes"))}</button><button class="no" type="button">${escapeHtml(T("lang_no"))}</button>`;
+  h.hidden = false;
+  h.querySelector(".yes").onclick = () => { hideLangHint(); c.accept(); };
+  h.querySelector(".no").onclick = () => { hideLangHint(); c.decline(); };
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(hideLangHint, 12000);
+}
+const langFollow = window.MP && MP.followRoomLang && !MP.off ? MP.followRoomLang({
+  enabled: true,
+  auto: !!(MP.rules && MP.rules.RULE_U17_LANG_FOLLOW),
+  getRoomLang: () => (state && state.settings ? state.settings.lang : null),
+  onSuggest: showLangHint,
+}) : null;
+window.addEventListener("langchange", (e) => { if (!(e.detail && e.detail.initial)) hideLangHint(); });
+function followLang() {
+  if (langFollow) { langFollow.check(); return; }
+  // без mp-common — прежнее поведение: язык комнаты, если человек сам язык не выбирал
+  if (!langPicked && state && state.settings && window.I18N && I18N.setLang && state.settings.lang !== qpLang()) { langPicked = true; I18N.setLang(state.settings.lang); }
+}
 let hintSeen = null; // mid, чью перевёрнутую подсказку игрок успел увидеть
 let picks = []; // выбранные в голосовании
 let sentVote = null; // mid, за который голос уже отправлен
@@ -1238,9 +1278,10 @@ function onMessage(m) {
         // обрыв на экране «Это ты?»: повторяем join (без claim) — сервер продлевает ожидание, экран не пропадает
         else if (flow && flow.state().prompting) { needJoin = false; flow.resume(); }
       }
-      // язык пульта — язык комнаты, если человек сам его не выбирал (иначе телефон с русской
-      // локалью в греческой комнате показывал русский интерфейс при греческих вопросах)
-      if (m.type === "hello" && !langPicked && state.settings && window.I18N && I18N.setLang && state.settings.lang !== qpLang()) { langPicked = true; I18N.setLang(state.settings.lang); }
+      // язык комнаты (T-W2-05, U-17): телефон с русской локалью в греческой комнате увидел бы русский интерфейс при греческих
+      // вопросах. По умолчанию — подсказка «Язык комнаты: EL. Переключить?» (класс A); сам переключаться телефон
+      // начинает только при MP.rules.RULE_U17_LANG_FOLLOW (класс B, выкл.). Ручной выбор языка не сбивается.
+      if (m.type === "hello" || state.phase === "lobby") followLang();
       // новая схватка — сбрасываем выбор
       if (state.current && state.current.id !== prevMid) { picks = []; prevMid = state.current.id; }
       if (state.phase !== prevPhase) {

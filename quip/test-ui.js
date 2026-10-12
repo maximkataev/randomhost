@@ -103,12 +103,19 @@ async function waitFor(page, expr, ms = 20000, step = 150) {
   return null;
 }
 
+// Телефон с чужой локалью в комнате ru: подсказка «Язык комнаты: Русский. Переключить?» (T-W2-05, U-17 — сам язык не меняется)
+// (у телефона с языком комнаты подсказки нет — тогда ничего не делаем)
+async function acceptLangHint(ph) {
+  const shown = await waitFor(ph, "(() => { const h = document.getElementById('langhint'); return !!(h && !h.hidden && h.querySelector('.yes')); })()", 1200, 100);
+  if (shown) { await click(ph, "#langhint .yes"); await wait(250); }
+}
 async function joinPhones(code, names, sizes) {
   const phones = [];
   for (const [i, name] of names.entries()) {
     const ph = await cdp(`${BASE}/quip.html?r=${code}`, sizes[i % sizes.length]);
     ph.name = name;
     await waitFor(ph, "!!document.getElementById('name')", 8000);
+    await acceptLangHint(ph);
     await type(ph, "#name", name);
     await click(ph, "#enterform button[type=submit]");
     phones.push(ph);
@@ -424,6 +431,7 @@ async function main() {
     twin.name = "Тёзка";
     pages.push(twin);
     await waitFor(twin, "!!document.getElementById('name')", 8000);
+    await acceptLangHint(twin);
     check((await twin.evaluate("document.getElementById('name').placeholder")) === "Имя, до 16 знаков", "вход: подсказка «до 16 знаков» в поле имени");
     await type(twin, "#name", "Аня");
     await click(twin, "#enterform button[type=submit]");
@@ -436,6 +444,7 @@ async function main() {
     pages.push(cnt);
     cnt.name = "Счётчик";
     await waitFor(cnt, "!!document.getElementById('name')", 8000);
+    await acceptLangHint(cnt);
     const h0 = await cnt.evaluate("document.getElementById('enterform').getBoundingClientRect().height");
     await type(cnt, "#name", "Двенадцатьзн");
     await wait(150);
@@ -449,6 +458,7 @@ async function main() {
     claimer.name = "Возврат";
     pages.push(claimer);
     await waitFor(claimer, "!!document.getElementById('name')", 8000);
+    await acceptLangHint(claimer);
     await type(claimer, "#name", "Петя");
     await click(claimer, "#enterform button[type=submit]");
     check(!!(await waitFor(claimer, "!!document.getElementById('claimyes')", 6000)), "офлайн-место: экран «Это ты?»");
@@ -459,6 +469,72 @@ async function main() {
     await click(claimer, "#claimyes");
     check(!!(await waitFor(claimer, "window.qpPhone.me", 5000)), "«Да, это я»: вошёл");
     check((await claimer.evaluate("window.qpPhone.me")) === target, "«Да, это я»: то же место, а не новое");
+
+    // ---------- 6. черновик ответа переживает reload (T-W2-18, quip-018); «Дальше» и «End» — двумя тапами (T-W2-19) ----------
+    check((await board.evaluate("!!document.querySelector('#hostbar .linkbtn')")) === true, "доска: у ведущего есть «🔑 Ссылка ведущего»");
+    await wait(1300);
+    await click(board, "#startbtn");
+    const inAnswer = await waitFor(claimer, "(() => { const s = window.qpPhone.state; return s && s.phase === 'answer' && s.me && s.me.inRound && s.me.prompts.some((p) => !p.done) && !!document.getElementById('ta'); })()", 20000);
+    check(!!inAnswer, "новая партия: у «Пети» открыто поле ответа");
+    if (inAnswer) {
+      await type(claimer, "#ta", "Недописанный ответ до перезагрузки");
+      await wait(300);
+      await claimer.call("Page.reload");
+      check(!!(await waitFor(claimer, "window.qpPhone && window.qpPhone.me", 8000)), "черновик: телефон вернулся по токену");
+      const restored = await waitFor(claimer, "(document.getElementById('ta') || {}).value === 'Недописанный ответ до перезагрузки'", 6000);
+      check(!!restored, "черновик: после перезагрузки поле заполнено (MP.draft)");
+      await claimer.shot("p_draft_restored");
+    }
+    // «Дальше»: первый тап взводит (data-armed), фаза не двигается; второй — переходит
+    const skipVisible = await waitFor(board, "(() => { const b = document.getElementById('skipbtn'); return !!b && !b.classList.contains('hidden'); })()", 5000);
+    check(!!skipVisible, "доска: кнопка «Дальше» видна ведущему в игре");
+    await wait(900); // не раньше 800 мс от начала фазы
+    const ph0 = await board.evaluate("state.phase");
+    await click(board, "#skipbtn");
+    await wait(200);
+    check((await board.evaluate("document.getElementById('skipbtn').hasAttribute('data-armed')")) === true, "«Дальше»: первый тап взводит кнопку («Точно дальше?»)");
+    check((await board.evaluate("state.phase")) === ph0, "«Дальше»: один тап фазу не двигает");
+    await click(board, "#skipbtn");
+    check(!!(await waitFor(board, `state.phase !== ${JSON.stringify(ph0)}`, 3000)), "«Дальше»: второй тап — фаза сменилась");
+    // End: один тап партию не заканчивает, второй — заканчивает
+    await click(board, "#endbtn");
+    await wait(300);
+    check((await board.evaluate("state.phase")) !== "finished", "«End»: один тап партию не заканчивает");
+    check((await board.evaluate("document.getElementById('endbtn').hasAttribute('data-armed')")) === true, "«End»: кнопка взведена");
+    await click(board, "#endbtn");
+    check(!!(await waitFor(board, "state.phase === 'finished'", 3000)), "«End»: второй тап заканчивает шоу");
+
+    // ---------- 7. неверный код: «Такой комнаты нет», а не «закрыта» (T-W2-04, quip-029) ----------
+    const lost = await cdp(`${BASE}/quip.html?r=ZZZZ99`, [390, 844]);
+    lost.name = "Нет комнаты";
+    pages.push(lost);
+    check(!!(await waitFor(lost, "!!document.getElementById('codein')", 10000)), "неверный код: поле кода на экране");
+    check(/Такой комнаты нет|There is no such room/.test(await lost.evaluate("document.querySelector('.status h2').textContent")), "неверный код: «Такой комнаты нет»");
+    check((await lost.evaluate("document.getElementById('codein').value")) === "ZZZZ99", "неверный код: в поле — введённый код");
+    await lost.shot("p_noroom");
+    const lostBoard = await cdp(`${BASE}/quip-board.html?r=ZZZZ99`);
+    lostBoard.name = "Доска без комнаты";
+    pages.push(lostBoard);
+    check(!!(await waitFor(lostBoard, "!!document.getElementById('codein')", 10000)), "доска, неверный код: поле кода на экране");
+
+    // ---------- 8. язык комнаты: подсказка, а не молчаливая смена (T-W2-05, U-17) ----------
+    const lh = await cdp(`${BASE}/quip.html?r=${room.code}`, [390, 844]);
+    lh.name = "Язык комнаты";
+    pages.push(lh);
+    await waitFor(lh, "!!document.getElementById('name')", 8000);
+    await lh.evaluate("localStorage.setItem('site-lang', 'en')");
+    await lh.call("Page.reload");
+    const hintShown = await waitFor(lh, "(() => { const h = document.getElementById('langhint'); return !!(h && !h.hidden && h.querySelector('.yes')); })()", 6000, 100);
+    check(!!hintShown, "телефон en в комнате ru: подсказка «Language room → Русский» показана");
+    check(/Русский/.test(await lh.evaluate("(document.getElementById('langhint') || {}).textContent || ''")), "подсказка называет язык комнаты");
+    check((await lh.evaluate("I18N.lang")) === "en", "язык сам не сменился (RULE_U17_LANG_FOLLOW выкл.)");
+    await lh.shot("p_langhint");
+    await click(lh, "#langhint .no");
+    await wait(300);
+    check((await lh.evaluate("document.getElementById('langhint').hidden")) === true && (await lh.evaluate("I18N.lang")) === "en", "«Оставить»: подсказка ушла, язык не менялся");
+    await lh.call("Page.reload");
+    await wait(1500);
+    check((await lh.evaluate("document.getElementById('langhint').hidden")) === true, "после «Оставить» подсказка в этой вкладке не возвращается");
 
     for (const p of pages) check(p.errors.length === 0, `${p.name || "страница"}: без JS-ошибок` + (p.errors[0] ? ": " + p.errors[0] : ""));
   } catch (err) {
