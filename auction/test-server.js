@@ -602,6 +602,7 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
   await ghostSuite();
   await seatsSuite();
   await gamePingSuite();
+  await w3RulesSuite();
   await pingTtlSuite();
   await shutdownSuite();
 
@@ -1215,6 +1216,78 @@ async function gamePingSuite() {
     for (const c of [h1, live, h2, quiet]) { try { c.ws.close(); } catch {} }
   } finally {
     child.kill("SIGKILL");
+  }
+}
+
+// ---------- T-W3-24 / T-W3-20: судья по умолчанию без ключа, hello.rules, RULE_U20_DRY_T1 ----------
+// Свои инстансы без OPENAI_API_KEY: (A) значения по умолчанию, (B) RULE_U21_PASS_LABEL=1 + RULE_U20_DRY_T1=1.
+async function w3RulesSuite() {
+  const { spawn } = require("child_process");
+  const path = require("path");
+  const os = require("os");
+  const boot = (extra) => {
+    const PORT = 3800 + Math.floor(Math.random() * 90);
+    const B = `http://127.0.0.1:${PORT}`;
+    const env = { ...process.env, PORT: String(PORT), NODE_ENV: "production", ROOM_TTL_MS: "60000", DUMP_FILE: path.join(os.tmpdir(), `w3rules-${PORT}.json`), ...extra };
+    delete env.OPENAI_API_KEY;
+    const child = spawn(process.execPath, [path.join(__dirname, "server.js")], { env, stdio: "ignore" });
+    return { B, child };
+  };
+  const sock = (B, code, first) => new Promise((res) => {
+    const ws = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + code);
+    const c = { ws, msgs: [], send: (m) => ws.send(JSON.stringify(m)) };
+    ws.on("message", (raw) => { const m = JSON.parse(raw); c.msgs.push(m); if (m.state) c.state = m.state; if (m.type === "joined") { c.me = m.playerId; c.token = m.token; } });
+    ws.on("error", () => {});
+    ws.on("open", () => { ws.send(JSON.stringify(first)); setTimeout(() => res(c), 250); });
+  });
+  const up = async (B) => { for (let i = 0; i < 60; i++) { try { if ((await fetch(B + "/auction/api/health")).ok) return true; } catch {} await wait(100); } return false; };
+  const mk = async (B, settings) => (await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings }) })).json();
+  const a = boot({}), b = boot({ RULE_U21_PASS_LABEL: "1", RULE_U20_DRY_T1: "1" });
+  try {
+    if (!(await up(a.B)) || !(await up(b.B))) return check(false, "w3 rules: серверы поднялись");
+    // (A) по умолчанию: без ключа — judge "vote", в hello.rules ключа нет, флаг «Пас» выкл.
+    const r1 = await mk(a.B, { intro: 0 });
+    const h1 = await sock(a.B, r1.code, { type: "host", token: r1.hostToken });
+    const hello = h1.msgs.find((m) => m.type === "hello");
+    check(hello && hello.state.settings.judge === "vote", "judge по умолчанию без ключа: vote");
+    check(hello && hello.rules && hello.rules.judgeKey === false && hello.rules.RULE_U21_PASS_LABEL === false, "hello.rules: judgeKey:false, RULE_U21_PASS_LABEL:false по умолчанию");
+    const r2 = await mk(a.B, { intro: 0, judge: "chatgpt" });
+    const h2 = await sock(a.B, r2.code, { type: "host", token: r2.hostToken });
+    check(h2.msgs.find((m) => m.type === "hello").state.settings.judge === "chatgpt", "явно заданный judge не переписывается");
+    // lotT1 по умолчанию — полный T1 даже после пустых лотов
+    const p1 = await sock(a.B, r1.code, { type: "join", name: "Аня" });
+    const p2 = await sock(a.B, r1.code, { type: "join", name: "Боря" });
+    h1.send({ type: "settings", settings: { t1: 15000 } });
+    await until(() => h1.state?.players.length === 2);
+    h1.send({ type: "start" });
+    await until(() => h1.state.phase === "lot");
+    const skipAll = async () => {
+      const round = h1.state.round;
+      p1.send({ type: "skip", round }); p2.send({ type: "skip", round });
+      await until(() => h1.state.round > round, 8000);
+    };
+    await skipAll(); await skipAll();
+    check(h1.state.phase === "lot" && h1.state.lotT1 === 15000, "RULE_U20_DRY_T1 выкл.: после 2 пустых лотов T1 полный (lotT1 15000)");
+    // (B) флаги вкл.
+    const r3 = await mk(b.B, { intro: 0, t1: 15000 });
+    const h3 = await sock(b.B, r3.code, { type: "host", token: r3.hostToken });
+    const hb = h3.msgs.find((m) => m.type === "hello");
+    check(hb && hb.rules && hb.rules.RULE_U21_PASS_LABEL === true, "RULE_U21_PASS_LABEL=1 → hello.rules.RULE_U21_PASS_LABEL true");
+    const q1 = await sock(b.B, r3.code, { type: "join", name: "Аня" });
+    const q2 = await sock(b.B, r3.code, { type: "join", name: "Боря" });
+    await until(() => h3.state?.players.length === 2);
+    h3.send({ type: "start" });
+    await until(() => h3.state.phase === "lot");
+    check(h3.state.lotT1 === 15000, "RULE_U20_DRY_T1=1: первый лот — полный T1");
+    for (let i = 0; i < 2; i++) {
+      const round = h3.state.round;
+      q1.send({ type: "skip", round }); q2.send({ type: "skip", round });
+      await until(() => h3.state.round > round, 8000);
+    }
+    check(h3.state.phase === "lot" && h3.state.lotT1 === 10000, "RULE_U20_DRY_T1=1: после 2 пустых лотов lotT1 = 10000");
+    for (const c of [h1, h2, p1, p2, h3, q1, q2]) { try { c.ws.close(); } catch {} }
+  } finally {
+    a.child.kill("SIGKILL"); b.child.kill("SIGKILL");
   }
 }
 
