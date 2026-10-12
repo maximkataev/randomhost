@@ -35,7 +35,8 @@
     DASH_CD: 1.5,        // перезарядка рывка
     DASH_HIT: 150,       // добавка скорости цели от попадания рывком
     DASH_BUFFER: 0.12,   // нажал чуть раньше конца перезарядки — рывок всё равно случится
-    START_GUARD: 2,      // первые секунды боя рывок «перезаряжается»: соседа не сбить сразу после «Толкайся!» (плейтест 30.09)
+    START_GUARD: 2,      // первые секунды боя рывок «перезаряжается»: соседа не сбить сразу после «Толкайся!» (плейтест 30.09). 3,0 — за env START_GUARD (T-W3-27, floe-023)
+    START_RING: 0.45,    // радиус стартового кольца в долях R. 0,30 — за флагом RULE_U39_START_RING / env START_RING (T-W3-27, решение владельца U-39, «центр спасает»)
     REST: 0.55,          // упругость обычного столкновения
     TOUCH_WINDOW: 2,     // «кто столкнул» — последнее касание за столько секунд до падения
     AREA_PER_PLAYER: 13500, // площадь льда на пингвина на старте
@@ -396,7 +397,12 @@
       g.shardSt.forEach((x, i) => {
         if (x.st !== 'c') return;
         x.t += dt;
-        if (x.t >= x.dur) { x.st = 'g'; changed = true; emit('sink', { shard: i }); }
+        if (x.t >= x.dur) {
+          x.st = 'g'; changed = true; emit('sink', { shard: i });
+          // кто стоял на осколке — упадёт от таяния, а не «сам» (T-W3-27, floe-024)
+          const poly = g.floe.shards[i].poly;
+          for (const p of g.players) if (p.st === 'ice' && p.inGame && pointInPoly(p.x, p.y, poly)) p.meltAt = g.time;
+        }
       });
       if (changed) g.rimDirty = true;
     }
@@ -434,7 +440,7 @@
         inGame: false,       // участвует в текущей партии
         online: true, offlineSince: 0,
         lastTouch: null, fellAt: -1, fallT: 0, by: null, removed: false,
-        hits: 0, kos: 0, selfFall: false, place: 0, respawnAt: 0,
+        hits: 0, kos: 0, selfFall: false, melted: false, place: 0, respawnAt: 0,
       };
       g.players.push(p);
       g.byId.set(id, p);
@@ -532,14 +538,14 @@
       // по кругу на равном расстоянии от центра, порядок и поворот — жребий
       const order = list.slice();
       for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
-      const rot = rng() * TAU, rad = g.floe.R * 0.45;
+      const rot = rng() * TAU, rad = g.floe.R * cfg.START_RING;
       g.players.forEach(p => { p.inGame = false; p.st = 'gone'; });
       order.forEach((p, k) => {
         const a = rot + (k / order.length) * TAU;
         Object.assign(p, {
           x: Math.cos(a) * rad, y: Math.sin(a) * rad, vx: 0, vy: 0, dir: a + Math.PI,
           dashT: 0, cd: cfg.START_GUARD, wantDash: -1, st: 'ice', inGame: true, removed: false,
-          lastTouch: null, fellAt: -1, fallT: 0, by: null, hits: 0, kos: 0, selfFall: false, place: 0,
+          lastTouch: null, fellAt: -1, fallT: 0, by: null, hits: 0, kos: 0, selfFall: false, melted: false, place: 0,
         });
       });
       setPhase('countdown');
@@ -665,10 +671,13 @@
         emit('fall', { id: p.id, by: null, offline: true, x: p.x, y: p.y });
         return;
       }
+      // льдина ушла из-под ног (и никто не толкал) — не «сам себе враг»: cause 'melt', ведущим становится так же, по первому падению
+      const melt = !by && p.meltAt !== undefined && g.time - p.meltAt < 0.3;
       if (by) g.byId.get(by).kos++;
+      else if (melt) p.melted = true;
       else p.selfFall = true;
       g.fallsThisStep.push(p);
-      emit('fall', { id: p.id, by, x: p.x, y: p.y });
+      emit('fall', melt ? { id: p.id, by, cause: 'melt', x: p.x, y: p.y } : { id: p.id, by, x: p.x, y: p.y });
     }
 
     function stepOut(p, dt) {
@@ -737,8 +746,9 @@
         const removed = g.players.filter(p => p.inGame && p.removed);
         if (removed.length) {
           const p = removed[Math.floor(rng() * removed.length)];
-          g.host = { id: p.id, tie: 'lottery', at: g.clock, lottery: true };
-          emit('host', { id: p.id, tie: 'lottery', lottery: true });
+          // of — сколько снято: при одном «все отвалились — жребий» врал (floe-025); нет поля = как раньше
+          g.host = { id: p.id, tie: 'lottery', at: g.clock, lottery: true, of: removed.length };
+          emit('host', { id: p.id, tie: 'lottery', lottery: true, of: removed.length });
         }
       }
       if (g.host && live.length <= 1) return finish(live);
@@ -782,7 +792,7 @@
         pusher: maxKos > 0 ? played.filter(p => p.kos === maxKos).map(p => p.id) : [],
         maxKos,
         selfFallers: played.filter(p => p.selfFall).map(p => p.id),
-        players: played.map(p => ({ id: p.id, name: p.name, place: p.place, kos: p.kos, hits: p.hits, fellAt: p.fellAt, selfFall: p.selfFall, removed: p.removed })),
+        players: played.map(p => ({ id: p.id, name: p.name, place: p.place, kos: p.kos, hits: p.hits, fellAt: p.fellAt, selfFall: p.selfFall, melt: p.melted, removed: p.removed })),
       };
       setPhase('over');
       emit('over', { host: g.host, kings: g.kings, stats: g.stats });

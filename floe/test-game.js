@@ -144,6 +144,72 @@ test('первые 2 с боя рывка нет — соседа не сбит�
   assert(g.drainEvents().some(e => e.type === 'dash'));
 });
 
+console.log('Темп и таяние (T-W3-27)');
+test('START_GUARD и START_RING по умолчанию «как сейчас»: 2 с и 0,45·R; флаги меняют только их', () => {
+  assert.strictEqual(DEFAULTS.START_GUARD, 2);
+  assert.strictEqual(DEFAULTS.START_RING, 0.45);
+  const radii = (cfg) => {
+    const g = createGame({ seed: 3, cfg });
+    for (let i = 0; i < 6; i++) g.addPlayer('p' + i, 'P' + i, i);
+    assert(g.start());
+    return { R: g.floe.R, rs: g.players.map(p => Math.hypot(p.x, p.y)), cd: g.players.map(p => p.cd) };
+  };
+  const a = radii(undefined), b = radii({ START_RING: 0.30, START_GUARD: 3 });
+  a.rs.forEach(r => assert(Math.abs(r - a.R * 0.45) < 1e-6));
+  b.rs.forEach(r => assert(Math.abs(r - b.R * 0.30) < 1e-6));
+  assert(a.cd.every(c => c === 2) && b.cd.every(c => c === 3));
+  // соседи на кольце 0,30·R не пересекаются при n = 2..12 (расстояние между центрами ≥ 2·PR)
+  for (let n = 2; n <= 12; n++) {
+    const g = createGame({ seed: n, cfg: { START_RING: 0.30 } });
+    for (let i = 0; i < n; i++) g.addPlayer('p' + i, 'P' + i, i);
+    g.start();
+    const ps = g.players;
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) assert(Math.hypot(ps[i].x - ps[j].x, ps[i].y - ps[j].y) >= 2 * DEFAULTS.PR, `n=${n}: пересеклись`);
+  }
+});
+test('упал при сколе осколка — cause melt, не «сам себе враг»; ведущий всё равно назначен по первому падению', () => {
+  const g = fight(3, 5);
+  // самый дальний от центра осколок и точка внутри него
+  let k = 0, far = -1;
+  g.floe.shards.forEach((s, i) => { const d = Math.hypot(s.cx, s.cy); if (d > far) { far = d; k = i; } });
+  const sh = g.floe.shards[k];
+  parkOthers(g, [P(g, 0)]);
+  place(P(g, 0), sh.cx, sh.cy);
+  assert(pointInPoly(sh.cx, sh.cy, sh.poly));
+  g.shardSt[k].st = 'c'; g.shardSt[k].t = 0; g.shardSt[k].dur = 0.05;
+  let ev = [];
+  run(g, 0.5, () => { ev = ev.concat(g.drainEvents()); });
+  const f = ev.find(e => e.type === 'fall' && e.id === 'p0');
+  assert(f, 'падение p0 не случилось');
+  assert.strictEqual(f.cause, 'melt');
+  assert.strictEqual(f.by, null);
+  assert.strictEqual(P(g, 0).selfFall, false);
+  assert.strictEqual(P(g, 0).melted, true);
+  assert(g.host && g.host.id === 'p0');
+});
+test('упал сам с края — как раньше: без cause, selfFall', () => {
+  const g = fight(3, 6);
+  parkOthers(g, [P(g, 1)]);
+  place(P(g, 1), 0, g.floe.R * 2);
+  place(P(g, 0), -30, -30);
+  let ev = [];
+  run(g, 0.2, () => { ev = ev.concat(g.drainEvents()); });
+  const f = ev.find(e => e.type === 'fall' && e.id === 'p1');
+  assert(f && f.cause === undefined);
+  assert.strictEqual(P(g, 1).selfFall, true);
+});
+test('снят один из двоих — host.of === 1 (клиент не пишет «все отвалились»); двое из трёх — of === 2', () => {
+  const g = fight(2);
+  g.removePlayer('p0');
+  g.step(1 / 60);
+  assert(g.host && g.host.lottery === true);
+  assert.strictEqual(g.host.of, 1);
+  const h = fight(3);
+  h.removePlayer('p0'); h.removePlayer('p1');
+  h.step(1 / 60);
+  assert.strictEqual(h.host.of, 2);
+});
+
 console.log('Ведущий и конец партии');
 test('двое упали первыми в одном тике — ведёт тот, кто меньше попадал', () => {
   const g = fight(4);
