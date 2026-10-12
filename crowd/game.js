@@ -45,6 +45,11 @@ const deciderRule = () => {
 };
 const MAX_DECIDERS = 2;
 
+// RULE_U48_ILLUSION (класс B, T-W3-30; U-48): «Иллюзия» не два раунда подряд. Пороги 60/60 (≥ 4 мнений, обе шкалы ≥ 60 %)
+// остаются как в спеке §2. Выкл по умолчанию — как раньше. Счётчик `ill` в qstats (условие выполнено, ещё до кулдауна)
+// копится всегда: по нему через неделю игр видно, как часто условие встречается на живых людях.
+const illusionCooldown = () => process.env.RULE_U48_ILLUSION === "1";
+
 const MAX_PLAYERS = 12;
 const MIN_PLAYERS = 3;
 const MIN_CAST = 3; // меньше голосов — раунд аннулируется
@@ -163,6 +168,7 @@ class Game {
       deciderRuns: 0, // решающих вопросов в партии (старые дампы: deciderDone => 1, см. deciderRuns())
       sensUsed: 0,
       leanB: 0,
+      lastIll: false, // в предыдущем раунде показали «Иллюзию» (RULE_U48_ILLUSION; в старых дампах нет = false)
       drawn: 0,
       sdUsed: 0, // острых (spicy/dark) основных вопросов партии
       abUsed: 0, // «А или Б» среди основных
@@ -406,6 +412,7 @@ class Game {
     s.deciderRuns = 0;
     s.sensUsed = 0;
     s.leanB = 0;
+    s.lastIll = false;
     s.drawn = 0;
     s.sdUsed = 0;
     s.abUsed = 0;
@@ -643,6 +650,7 @@ class Game {
     const res = r.result;
     const hadOpinion = s.phase === "opinion";
     let opA = 0, opB = 0; // для статистики вопроса — сырые счётчики, даже если агрегат скрыт
+    let illCand = false; // условие «Иллюзии» выполнено (до кулдауна) — только для статистики
     if (!res.void) {
       const decider = !!r.only;
       for (const [id, pts] of Object.entries(res.pts)) {
@@ -671,17 +679,21 @@ class Game {
           const opSide = oa > ob ? "a" : "b";
           const voteShare = Math.max(res.a, res.b) / res.cast;
           const opShare = Math.max(oa, ob) / tot;
-          if (opSide !== res.side && voteShare >= ILLUSION_SHARE && opShare >= ILLUSION_SHARE) res.illusion = { vote: res.side, opinion: opSide };
+          if (opSide !== res.side && voteShare >= ILLUSION_SHARE && opShare >= ILLUSION_SHARE) {
+            illCand = true;
+            if (!(illusionCooldown() && s.lastIll)) res.illusion = { vote: res.side, opinion: opSide };
+          }
         }
       }
     }
+    s.lastIll = !!res.illusion; // следующий раунд: «Иллюзия» подряд не показываем (RULE_U48_ILLUSION)
     s.phase = "reveal";
     s.phaseStart = now;
     s.phaseEnd = now + (res.void ? REVEAL_VOID : T.reveal + REVEAL_STEP * res.order.length + (res.opinions ? REVEAL_OPINION : 0));
     const events = [{ type: "reveal", void: res.void, tie: res.tie, side: res.side }];
     if (res.illusion) events.push({ type: "illusion" });
     if (!res.void && !r.only && res.cast >= 4) {
-      events.push({ type: "qstat", id: r.q.id, a: res.a, b: res.b, oa: opA, ob: opB });
+      events.push({ type: "qstat", id: r.q.id, a: res.a, b: res.b, oa: opA, ob: opB, ill: illCand ? 1 : 0 });
     }
     return events;
   }
