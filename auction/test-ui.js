@@ -137,6 +137,18 @@ async function typeText(page, text) {
     const kxp = JSON.parse(kxProbe || "{}");
     check(kxp.vis1 === "hidden" && kxp.vis2 === "visible", "доска: ✕ в лобби скрыт у онлайн-места и виден у офлайн (" + kxProbe + ")");
     check(kxp.w1 > 0 && kxp.w1 === kxp.w2, "доска: ✕ не меняет ширину сида (место зарезервировано)");
+    // T-W3-12 (E-19/E-20): ✕ ≥ 36 px; масштаб с 1700; ступени высоты — по виртуальной высоте
+    check(await evaluateSafe(board, `(() => { const k = document.querySelector("#seatrow .seat .kx"); return !k || k.offsetWidth >= 36 && k.offsetHeight >= 36; })()`), "доска: ✕ в лобби не меньше 36×36 px");
+    for (const [w, h, scaled] of [[1920, 1080, true], [1760, 990, true], [1366, 768, false], [1280, 720, false]]) {
+      await board.call("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+      await evaluateSafe(board, "window.dispatchEvent(new Event('resize')); true");
+      await wait(500);
+      const fit = JSON.parse((await evaluateSafe(board, `JSON.stringify({ scaled: document.body.classList.contains("scaled"), z: parseFloat(document.body.style.getPropertyValue("--z")), h820: document.body.classList.contains("h820"), dh: document.documentElement.scrollHeight <= innerHeight + 1, tile: parseFloat(getComputedStyle(document.querySelector("#kind .tile")).fontSize) })`)) || "{}");
+      check(fit.scaled === scaled && (!scaled || fit.z > 1) && fit.h820 && fit.dh, `доска ${w}×${h}: масштаб ${scaled ? "включён с 1700" : "не нужен"} (z=${fit.z}), ступень h820 по виртуальной высоте, без вертикальной прокрутки страницы`);
+      check(fit.tile * (fit.z || 1) >= 12, `доска ${w}×${h}: фишки категорий ≥ 12 px на экране (${fit.tile} × ${fit.z})`);
+    }
+    await board.call("Emulation.clearDeviceMetricsOverride");
+    await wait(300);
 
     // --- перезагрузка пульта: вход по токену обязан вернуть того же игрока. Раньше join() на
     // верхнем уровне скрипта падал на TDZ (let lastName ниже) — пустой экран и авто-пауза партии.
