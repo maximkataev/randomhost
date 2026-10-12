@@ -97,8 +97,9 @@ async function browserCall(method, params = {}) {
 }
 
 // страница в своём контексте браузера: у каждого телефона своё localStorage
-async function cdp(url, size, name) {
-  const ctx = await browserCall("Target.createBrowserContext", {});
+async function cdp(url, size, name, sameContext) {
+  // sameContext — id контекста другой страницы: та же «вкладка того же браузера» (общее localStorage)
+  const ctx = sameContext ? { browserContextId: sameContext } : await browserCall("Target.createBrowserContext", {});
   const t = await browserCall("Target.createTarget", { url: "about:blank", browserContextId: ctx.browserContextId });
   const list = await (await fetch(`http://localhost:${PORT}/json/list`)).json();
   const target = list.find((x) => x.id === t.targetId);
@@ -130,7 +131,7 @@ async function cdp(url, size, name) {
     return r.result?.value;
   };
   const shot = async (n) => { const r = await call("Page.captureScreenshot", { format: "png" }); if (r && r.data) fs.writeFileSync(path.join(OUT, `${LANG}_${n}.png`), Buffer.from(r.data, "base64")); };
-  return { call, evaluate, shot, errors, name, size };
+  return { call, evaluate, shot, errors, name, size, ctxId: ctx.browserContextId };
 }
 
 async function waitFor(page, expr, ms = 20000, step = 120) {
@@ -533,6 +534,38 @@ async function run() {
       await N.shot("p_claim");
       await mustTap(N, "#claimyes", 0, "«Это я»");
       check(!!(await waitFor(N, `window.lqPhone.me === ${JSON.stringify(lateId)}`, 6000)), "«Это я»: та же запись, а не «Поздний (2)»");
+
+      // ---------- T-W2-33 (lastq-011): вторая вкладка того же браузера вытесняет первую; закрыли вторую — первая возвращается сама ----------
+      const N2 = await cdp(`${BASE}/lastq.html?r=${CODE}`, [390, 844], "Поздний-2 (вкладка 2)", N.ctxId);
+      pages.push(N2);
+      check(!!(await waitFor(N2, `window.lqPhone && window.lqPhone.me === ${JSON.stringify(lateId)}`, 8000)), "вторая вкладка: вошла по токену");
+      // в headless обе вкладки «видимы» и событие фокуса может прийти любой: вытесненной окажется та, что показывает «Играть здесь»
+      let loser = null, winner = null;
+      for (let i = 0; i < 50 && !loser; i++) {
+        for (const [x, y] of [[N, N2], [N2, N]]) if (await x.evaluate("!!document.getElementById('here')")) { loser = x; winner = y; }
+        if (!loser) await wait(120);
+      }
+      check(!!loser, "одна из вкладок: «Игра открыта в другой вкладке» и кнопка «Играть здесь»");
+      if (loser) {
+        await winner.call("Page.close");
+        await wait(300);
+        await loser.evaluate("window.dispatchEvent(new Event('focus'))"); // вернулись на вкладку
+      }
+      check(!!loser && !!(await waitFor(loser, `window.lqPhone.me === ${JSON.stringify(lateId)} && !document.getElementById('here')`, 6000)), "вытесненная вкладка вернулась в игру сама (авто-возврат)");
+    }
+
+    // ---------- T-W2-33 (lastq-012/013): «🔑 Ссылка ведущего»; вторая доска по ссылке не отбирает молча — «Забрать» ----------
+    check((await board.evaluate("(() => { const b = document.querySelector('#hostbar .linkbtn'); if (!b) return false; const r = b.getBoundingClientRect(); return r.width >= 44 && r.height >= 44; })()")) === true, "доска: кнопка «🔑 Ссылка ведущего» ≥ 44×44");
+    check((await board.evaluate("!document.getElementById('main').textContent.includes(" + JSON.stringify(res.hostToken) + ")")) === true, "доска: токен ведущего не нарисован на экране");
+    {
+      const B2 = await cdp(`${BASE}/lastq-board.html?r=${CODE}&h=${res.hostToken}`, null, "доска-2");
+      pages.push(B2);
+      check(!!(await waitFor(B2, "document.body.classList.contains('host')", 8000)), "доска-2 по ссылке ведущего: ведущая");
+      check(!!(await waitFor(board, "!document.body.classList.contains('host') && !!document.querySelector('#hostbar .note.warn')", 6000)), "первая доска: «Управление перешло к другому экрану»");
+      check((await board.evaluate("!!document.getElementById('hostbar').querySelector('button')")) === true, "первая доска: есть кнопка «Забрать»");
+      await mustTap(board, "#hostbar button.linkbtn", 0, "«Забрать»");
+      check(!!(await waitFor(board, "document.body.classList.contains('host')", 6000)), "«Забрать»: первая доска снова ведущая");
+      check(!!(await waitFor(B2, "!document.body.classList.contains('host')", 6000)), "доска-2 стала зрителем");
     }
 
     // ---------- перезагрузка телефона: возвращается по токену ----------

@@ -517,3 +517,31 @@ test("подхват: клиент без caps — по-старому, молч
   assert.equal(legacy.joinMsg.resumed, true);
   legacy.close();
 });
+
+// ---- T-W2-33 (lastq-012/013): вторая доска забирает управление; первая узнаёт (host_lost) и её команды отбиваются ----
+test("два host подряд: первая доска получает host_lost и больше не управляет; «Забрать» возвращает", async () => {
+  const { code, hostToken } = await createRoom();
+  const a = await player(code, "Аня");
+  const z = await player(code, "Зоя");
+  const b1 = await board(code, hostToken);
+  const b2 = await board(code, hostToken);
+  await new Promise((r) => setTimeout(r, 200));
+  assert.ok(b1.msgs.some((m) => m.type === "host_lost"), "первая доска не узнала о потере управления");
+  b1.send({ type: "settings", settings: { short: true } });
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(a.state.settings.short, false, "команда потерявшей доски не прошла");
+  b2.send({ type: "settings", settings: { short: true } });
+  await a.wait((m) => m.type === "state" && m.state.settings.short === true);
+  // «Забрать»: тот же токен с первой доски — управление к ней, вторая теряет
+  b1.send({ type: "host", token: hostToken });
+  await new Promise((r) => setTimeout(r, 300));
+  assert.ok(b1.msgs.filter((m) => m.type === "host_ok").length >= 2, "«Забрать» не вернуло управление");
+  assert.ok(b2.msgs.some((m) => m.type === "host_lost"), "вторая доска не узнала о потере");
+  // чужой токен — отказ
+  const bad = client(code);
+  await bad.open;
+  bad.send({ type: "host", token: "не-тот-токен" });
+  const e = await bad.wait((m) => m.type === "error" && m.error === "bad host token");
+  assert.ok(e);
+  for (const c of [a, z, b1, b2, bad]) c.close();
+});
