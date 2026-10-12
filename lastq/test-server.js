@@ -22,7 +22,7 @@ for (const l of ["ru", "en", "el"]) fs.writeFileSync(path.join(BANK, l + ".json"
 
 function startServer() {
   proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300", GHOST_TTL_MS: "1500", CLAIM_GRACE_MS: "200", LQ_CONTENT_DIR: BANK },
+    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300", GHOST_TTL_MS: "1500", CLAIM_GRACE_MS: "200", PING_MS: "1000", LQ_CONTENT_DIR: BANK },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";
@@ -544,4 +544,25 @@ test("два host подряд: первая доска получает host_lo
   const e = await bad.wait((m) => m.type === "error" && m.error === "bad host token");
   assert.ok(e);
   for (const c of [a, z, b1, b2, bad]) c.close();
+});
+
+// ---- T-W2-41 (lastq-036): серверный пинг комнат «в игре» ----
+test("пинг комнат «в игре»: ping-кадры каждые PING_MS; в лобби быстрого пинга нет; молчащий сокет за 3 с не закрывается", async () => {
+  const { code, hostToken } = await createRoom({ short: true });
+  const b = await board(code, hostToken);
+  const a = await player(code, "Аня");
+  const z = await player(code, "Зоя");
+  const pings = { lobby: 0, game: 0 };
+  let phase = "lobby";
+  b.ws.on("ping", () => { pings[phase]++; });
+  await new Promise((r) => setTimeout(r, 2500));
+  // общий SWEEP (25 с) мог попасть в окно одним пингом; быстрый цикл дал бы ≥ 2 за 2,5 с
+  assert.ok(pings.lobby <= 1, "быстрый пинг не должен идти в лобби: " + pings.lobby);
+  phase = "game";
+  b.send({ type: "start" });
+  await b.wait((m) => m.type === "state" && m.state.phase !== "lobby");
+  await new Promise((r) => setTimeout(r, 3500));
+  assert.ok(pings.game >= 2, "в игре ping-кадров мало: " + pings.game);
+  assert.equal(b.ws.readyState, 1, "порог тишины ≥ 20 с: сокет жив");
+  for (const c of [b, a, z]) c.close();
 });

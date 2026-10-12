@@ -65,7 +65,8 @@
   body.cellmode { background: #15191b; }
   body.cellmode .util, body.cellmode .lang-switch, body.ingame .util, body.ingame .lang-switch { display: none !important; }
   body.ingame #app { padding-top: 12px; }
-  .conn { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 30; background: var(--bad); color: var(--night); font-weight: 800; font-size: 15px; padding: 8px 12px; visibility: hidden; width: max-content; max-width: calc(100% - 16px); text-align: center; }
+  /* баннер «нет связи»: под строкой с переключателем языка (--lsc — её центр), а не поверх него; клики сквозь (lastq-036) */
+  .conn { position: fixed; left: 50%; top: calc(var(--lsc, 30px) * 2 + 4px); transform: translateX(-50%); z-index: 30; background: var(--bad); color: var(--night); font-weight: 800; font-size: 15px; padding: 8px 12px; visibility: hidden; width: max-content; max-width: calc(100% - 16px); text-align: center; pointer-events: none; }
   .conn.on { visibility: visible; }
   .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: var(--chalk); color: var(--night); font-weight: 700; padding: 11px 14px; max-width: calc(100% - 32px); visibility: hidden; }
   .toast.on { visibility: visible; }
@@ -1544,6 +1545,12 @@ function start() {
   if (!CODE) return renderLanding();
   renderCenter("wait_title");
   const banner = document.getElementById("conn");
+  let netLost = false, netQuiet = false;
+  const showNet = () => {
+    banner.textContent = T(netLost ? "err_connect" : "conn_lost");
+    banner.classList.toggle("on", netLost || netQuiet);
+  };
+  window.addEventListener("langchange", showNet);
   conn = lqConnect({
     code: CODE,
     onMessage,
@@ -1555,7 +1562,9 @@ function start() {
     },
     onSendFail,
     onDrop: (m) => onDropped(m),
-    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+    // «lost» — сокет закрыт, переподключаемся; «quiet» — сокет жив, но молчит дольше 10 с (MP.conn): только предупреждение
+    onState: (st) => { netLost = st === "lost"; if (st === "open") netQuiet = false; showNet(); },
+    onQuiet: (q) => { netQuiet = !!q; showNet(); },
   });
   requestAnimationFrame(frame);
   // ручка для стенда: состояние и отправка
