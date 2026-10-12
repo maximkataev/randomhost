@@ -1065,3 +1065,134 @@ test("судья: цены и траты в модель не уходят, пр
   const raw = buildPrompt("artist", players.map((p, i) => ({ pid: `p${i + 1}`, lots: p.lots })), 5, "base");
   assert.ok(!/29|\$/.test(raw));
 });
+
+// ---------- T-W2-07: away на старте (RULE_U08_GHOST_OUT) ----------
+function lobbyWith(n, offline = [], settings = {}) {
+  const g = Game.create({ kind: "test", cards, settings: { intro: 0, ...settings }, rng });
+  for (let i = 0; i < n; i++) g.addPlayer({ id: `p${i}`, name: `P${i}` });
+  for (const id of offline) g.setOnline(id, false, 0);
+  return g;
+}
+
+test("away: флаг выкл. — офлайн к старту не away, rounds по всем, как раньше", () => {
+  const g = lobbyWith(5, ["p4"]);
+  g.start(0);
+  assert.equal(g.player("p4").away, undefined);
+  assert.equal(g.s.rounds, Math.ceil(5 * 5 * 1.25));
+  assert.ok(g.contenders().some((p) => p.id === "p4"));
+});
+
+test("away: флаг вкл. — старт с 4 онлайн + 1 офлайн: rounds по четверым, пауза не встаёт", () => {
+  const g = lobbyWith(5, ["p4"]);
+  g.start(0, { ghostOut: true });
+  assert.equal(g.player("p4").away, true);
+  assert.equal(g.s.rounds, Math.ceil(4 * 5 * 1.25));
+  assert.equal(g.contenders().length, 4);
+  assert.ok(!g.s.paused);
+  assert.equal(g.tooManyOffline(), false);
+  assert.equal(g.snapshot(0).players.find((p) => p.id === "p4").away, true);
+});
+
+test("away: партия идёт до all_full без ожидания офлайн-места", () => {
+  const g = lobbyWith(3, ["p2"], { slots: 1 });
+  g.start(0, { ghostOut: true });
+  let t = 0, guard = 0;
+  while (g.s.phase !== "finished" && guard++ < 100) {
+    assert.ok(!g.s.paused, "пауза не должна вставать на away");
+    if (g.s.phase === "lot") g.bid("p0", 1, t);
+    t = g.s.deadline; g.tick(t);
+  }
+  assert.equal(g.s.phase, "finished");
+  assert.equal(g.s.finishedReason, "all_full");
+});
+
+test("away: вернувшийся играет как обычный участник (away снят, бюджет и слоты целы)", () => {
+  const g = lobbyWith(3, ["p2"]);
+  g.start(0, { ghostOut: true });
+  g.setOnline("p2", true, 1000);
+  assert.equal(g.player("p2").away, undefined);
+  assert.equal(g.player("p2").money, g.s.settings.budget);
+  assert.ok(g.contenders().some((p) => p.id === "p2"));
+});
+
+test("away: tooManyOffline не считает away (иначе лишняя пауза), старый дамп без away = false", () => {
+  const g = lobbyWith(4, ["p3"]);
+  g.start(0, { ghostOut: true });
+  g.setOnline("p2", false, 100); // один из трёх соперников отвалился — авто-пауза по правилам §7.4 ещё нет
+  assert.equal(g.contenders().length, 3);
+  assert.equal(g.contenders().filter((p) => !p.online).length, 1);
+  const old = Game.from(JSON.parse(JSON.stringify(g.s)));
+  delete old.s.players[3].away;
+  assert.equal(old.snapshot(0).players[3].away, false);
+});
+
+// ---------- T-W2-08: tied в closeVotes ----------
+function votingRoom(n) {
+  const g = setup(n, { slots: 1 });
+  g.s.players.forEach((p, i) => { p.lots.push({ name: "L" + i, emoji: "x", price: 1, round: i }); p.spent = i + 1; });
+  g.finish("all_full");
+  return g;
+}
+
+test("tied: голоса 1/0/0/0 — у первого нет, у мест 2–4 tied (по тратам)", () => {
+  const g = votingRoom(4);
+  g.vote("p1", "p0");
+  g.closeVotes(rng);
+  const r = g.s.results.ranking;
+  assert.equal(r[0].playerId, "p0");
+  assert.ok(!r[0].tied);
+  assert.ok(r.slice(1).every((x) => x.tied === true && x.tieKind === "spent"));
+  assert.deepEqual(r.slice(1).map((x) => x.playerId), ["p1", "p2", "p3"], "порядок «меньше потратил — выше» не меняется");
+  assert.equal(g.s.results.tieBreak, null, "до первого места дело не дошло");
+});
+
+test("tied: ноль голосов у всех — все tied; равные траты — tieKind coin", () => {
+  const g = votingRoom(3);
+  g.s.players.forEach((p) => { p.spent = 5; });
+  g.closeVotes(rng);
+  const r = g.s.results.ranking;
+  assert.ok(r.every((x) => x.tied === true && x.tieKind === "coin"));
+  assert.equal(g.s.results.votes, 0);
+});
+
+test("tied: все разные счета — поля tied нет; results.tieBreak сохранён для первого места", () => {
+  const g = votingRoom(3);
+  g.vote("p1", "p0"); g.vote("p2", "p0"); g.vote("p0", "p1");
+  g.closeVotes(rng);
+  assert.ok(g.s.results.ranking.every((x) => x.tied === undefined));
+  const h = votingRoom(2);
+  h.vote("p0", "p1"); h.vote("p1", "p0");
+  h.closeVotes(rng);
+  assert.equal(h.s.results.tieBreak, "spent");
+  assert.ok(h.s.results.ranking.every((x) => x.tied === true));
+});
+
+// ---------- T-W2-09: тёзка по ключу имени ----------
+test("имя: тёзка определяется по ключу (регистр, пробелы, ё=е), дописывается « 2»", () => {
+  const g = Game.create({ kind: "test", cards, settings: { intro: 0 }, rng });
+  g.addPlayer({ id: "a", name: "Маша" });
+  assert.equal(g.addPlayer({ id: "b", name: "маша" }).name, "маша 2");
+  assert.equal(g.addPlayer({ id: "c", name: " МАША " }).name, "МАША 3");
+  assert.equal(g.addPlayer({ id: "d", name: "Ёж" }).name, "Ёж");
+  assert.equal(g.addPlayer({ id: "e", name: "еж" }).name, "еж 2");
+});
+
+// ---------- T-W2-05: idx карты (перевод лота на телефоне) ----------
+test("lotRecord хранит idx карты, снимок отдаёт его в lots[]; карта без idx — поле не появляется", () => {
+  const withIdx = cards.map((c, i) => ({ ...c, idx: i }));
+  const g = Game.create({ kind: "test", cards: withIdx, settings: { intro: 0 }, rng });
+  g.addPlayer({ id: "p0", name: "P0" });
+  g.addPlayer({ id: "p1", name: "P1" });
+  g.start(0);
+  const lotIdx = g.s.lot.idx;
+  assert.ok(Number.isInteger(lotIdx));
+  g.bid("p0", 1, 100);
+  g.hostSkip(200); // немедленная продажа лидеру
+  const rec = g.player("p0").lots[0];
+  assert.equal(rec.idx, lotIdx);
+  assert.equal(g.snapshot(300).players[0].lots[0].idx, lotIdx);
+  const plain = setup(2);
+  plain.bid("p0", 1, 100);
+  plain.hostSkip(200);
+  assert.ok(!("idx" in plain.player("p0").lots[0]));
+});

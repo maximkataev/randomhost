@@ -425,7 +425,7 @@ function auctionMergeState(cache, st) {
 }
 /* merge:end */
 
-function openTransport({ code, onMessage, onClose, onOpen, onSendFail, onClock, onGone }) {
+function openTransport({ code, onMessage, onClose, onOpen, onSendFail, onClock, onGone, onQuiet, onAlive }) {
   // свой кэш у каждого транспорта: новое соединение начинается с полного hello
   const stateCache = {};
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -435,7 +435,10 @@ function openTransport({ code, onMessage, onClose, onOpen, onSendFail, onClock, 
   // так минуту, пока сервер не оборвёт его сам. Поэтому спрашиваем сами: раз в 20 с служебный
   // ping, и если за 45 с не пришло вообще ничего — считаем соединение мёртвым и переподключаемся.
   let lastSeen = 0, beat = null, notified = false, probeTimer = null;
-  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } clearTimeout(probeTimer); probeTimer = null; };
+  // MP.conn (mp-common.js, T-W2-42): ping 5 с в игре / 10 с в лобби, «нет связи» (onQuiet) после 10 с тишины, закрытие и
+  // переподключение после 22 с. Без mp-common.js (или при MP.off) — прежний цикл ниже (20 с / 45 с).
+  let mpConn = null, inGame = false;
+  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } if (mpConn) { mpConn.stop(); mpConn = null; } clearTimeout(probeTimer); probeTimer = null; };
   // Наверх onClose уходит ровно один раз на транспорт: и сторож, и штатное закрытие сокета ведут
   // в одну точку — иначе один обрыв запускал бы два переподключения сразу. Транспорт при этом
   // гасится целиком: раньше сторож в poll-режиме звал onClose, а старый цикл опроса жил дальше —
@@ -454,11 +457,18 @@ function openTransport({ code, onMessage, onClose, onOpen, onSendFail, onClock, 
   const deliver = (m) => {
     if (closed) return; // сообщения погашенного транспорта никому не нужны
     lastSeen = Date.now();
+    // сервер выключил каркас (MP_OFF=1): возвращаемся к прежнему циклу пингов
+    if (m && m.type === "hello" && window.MP && MP.applyHello && !MP.applyHello(m) && mpConn) startBeat();
+    if (mpConn) mpConn.seen(lastSeen);
     if (m && m.type === "pong") {
       if (typeof m.c === "number") { clockSample(m.t, m.c); if (onClock && auctionClock.offset != null) onClock(auctionClock.offset); }
+      if (onAlive) onAlive();
       return;
     }
-    if (m && (m.type === "state" || m.type === "hello") && m.state) auctionMergeState(stateCache, m.state);
+    if (m && (m.type === "state" || m.type === "hello") && m.state) {
+      auctionMergeState(stateCache, m.state);
+      inGame = !!m.state.phase && m.state.phase !== "lobby" && m.state.phase !== "finished";
+    }
     onMessage(m);
   };
   const startBeat = () => {
@@ -466,6 +476,17 @@ function openTransport({ code, onMessage, onClose, onOpen, onSendFail, onClock, 
     lastSeen = Date.now();
     // несколько быстрых замеров часов сразу после подключения — лучший из них и возьмём
     ping(); setTimeout(ping, 400); setTimeout(ping, 1500);
+    if (window.MP && typeof MP.conn === "function" && !MP.off) {
+      mpConn = MP.conn({
+        ping: () => { if (!closed) ping(); },
+        inGame: () => inGame,
+        onOffline: () => { if (onQuiet) onQuiet(true); },
+        onOnline: () => { if (onQuiet) onQuiet(false); },
+        onDead: () => fireClose(),
+      });
+      mpConn.start();
+      return;
+    }
     beat = setInterval(() => {
       if (closed) return stopBeat();
       if (Date.now() - lastSeen > 45000) { fireClose(); return; }
@@ -493,6 +514,8 @@ function openTransport({ code, onMessage, onClose, onOpen, onSendFail, onClock, 
         });
     },
     close() { closed = true; stopBeat(); try { if (ws) ws.close(); } catch (e) {} try { if (pollAbort) pollAbort.abort(); } catch (e) {} sid = null; },
+    // вкладка снова видна: тишину, пока она была скрыта, MP.conn не считает
+    visible() { if (mpConn) mpConn.visible(Date.now()); },
     // Проверка «жив ли транспорт» по событию устройства (сеть вернулась, экран включился): после
     // смены сети сокет формально открыт, но мёртв. Спрашиваем ping и ждём ответа PROBE_MS —
     // не дождались, значит соединение мертво, переподключаемся сразу, а не через 45 с.

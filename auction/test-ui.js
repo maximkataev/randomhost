@@ -88,6 +88,9 @@ async function typeText(page, text) {
     const gone = await cdp(`${BASE}/auction.html?r=ZZZZ&name=Тест`);
     await wait(5000);
     check(await evaluateSafe(gone, "!!document.querySelector('.expired')"), "закрытая комната: показан экран «комнаты нет», а не бесконечное переподключение");
+    // T-W2-04: неверный код (hello не приходил) — «Такой комнаты нет» и поле кода, а не «закрыта по неактивности»
+    check(hasFrag(await evaluateSafe(gone, "(document.querySelector('.expired h1') || {}).textContent || ''"), await i18nFrag(gone, "noroom_title")), "неверный код: заголовок «Такой комнаты нет»");
+    check(await evaluateSafe(gone, "!!document.getElementById('codein') && normCode('bear 74!') === 'BEAR74'"), "неверный код: поле кода есть, ввод нормализуется до отправки");
     await gone.shot("ui_room_gone");
     await gone.close();
 
@@ -121,6 +124,19 @@ async function typeText(page, text) {
     await remote.shot("ui_remote_lobby");
     await wait(500);
     check(await evaluateSafe(board, "document.body.innerText.includes('Макс')"), "доска: игрок появился в лобби");
+    // T-W2-07: ✕ на всех сидах лобби занимает место заранее — у онлайн скрыт, у офлайн виден; ширина сида не меняется
+    const kxProbe = await evaluateSafe(board, `(() => {
+      const seatOf = () => [...document.querySelectorAll("#seatrow .seat")].find((x) => x.querySelector(".kx"));
+      const was = state.players.map((p) => p.online);
+      const on = seatOf(); const w1 = on.offsetWidth; const vis1 = getComputedStyle(on.querySelector(".kx")).visibility;
+      state.players.forEach((p) => { p.online = false; }); render();
+      const off = seatOf(); const w2 = off.offsetWidth; const vis2 = getComputedStyle(off.querySelector(".kx")).visibility;
+      state.players.forEach((p, i) => { p.online = was[i]; }); render();
+      return JSON.stringify({ w1: w1, w2: w2, vis1: vis1, vis2: vis2 });
+    })()`);
+    const kxp = JSON.parse(kxProbe || "{}");
+    check(kxp.vis1 === "hidden" && kxp.vis2 === "visible", "доска: ✕ в лобби скрыт у онлайн-места и виден у офлайн (" + kxProbe + ")");
+    check(kxp.w1 > 0 && kxp.w1 === kxp.w2, "доска: ✕ не меняет ширину сида (место зарезервировано)");
 
     // --- перезагрузка пульта: вход по токену обязан вернуть того же игрока. Раньше join() на
     // верхнем уровне скрипта падал на TDZ (let lastName ниже) — пустой экран и авто-пауза партии.
@@ -131,6 +147,63 @@ async function typeText(page, text) {
     check((await evaluateSafe(remote, "me")) === meBefore, "пульт: после перезагрузки — тот же игрок");
     check(remote.errors.length === 0, "пульт: перезагрузка без JS-ошибок" + (remote.errors.length ? ": " + remote.errors[0] : ""));
     check((await evaluateSafe(board, "state.players.filter(p => p.name.startsWith('Макс')).length")) === 1, "доска: после перезагрузки пульта игрок один, без «Макс 2»");
+
+    // T-W2-09: вход по имени из чистого контекста — плашка «Ты в игре как…»; вытесненная вкладка — «Играть здесь» (E-05).
+    // Токен пульта на время прячем: вторая вкладка той же origin «чистая», а пульт остаётся на месте и сокет закрываем сами.
+    const tokKey = await evaluateSafe(remote, "'auction-token-' + CODE");
+    const savedTok = await evaluateSafe(remote, `localStorage.getItem(${JSON.stringify(tokKey)})`);
+    check(!!savedTok, "пульт: токен лежит в localStorage");
+    await evaluateSafe(remote, "halted = true; ws.close(); true");
+    await evaluateSafe(remote, `localStorage.removeItem(${JSON.stringify(tokKey)}); true`);
+    const clean = await cdp(`${BASE}/auction.html?r=${room.code}&name=${encodeURIComponent("макс")}`);
+    await wait(2500);
+    const plateOn = await evaluateSafe(clean, "document.getElementById('seatplate').classList.contains('on')");
+    const plateTxt = await evaluateSafe(clean, "document.getElementById('seatplate-t').textContent");
+    check(plateOn && /Макс/.test(plateTxt || ""), "пульт в чистом контексте: плашка «Ты в игре как: Макс…» после входа по имени (" + String(plateTxt).slice(0, 50) + ")");
+    check((await evaluateSafe(clean, "me")) === meBefore, "пульт в чистом контексте: то же место (имя без учёта регистра)");
+    // перезагрузка с токеном — плашки нет
+    await clean.call("Page.reload");
+    await wait(2500);
+    check(!(await evaluateSafe(clean, "document.getElementById('seatplate').classList.contains('on')")), "пульт: после перезагрузки с токеном плашки нет");
+    // «Играть здесь»: пульт возвращает место — чистая вкладка вытеснена и получает кнопку
+    await evaluateSafe(remote, `localStorage.setItem(${JSON.stringify(tokKey)}, ${JSON.stringify(savedTok)}); halted = false; join(lastName); true`);
+    check(await untilPage(clean, "!!document.getElementById('ovback')", 6000), "пульт: вытесненная вкладка показывает «Играть здесь»");
+    await evaluateSafe(clean, "document.getElementById('ovback').click(); true");
+    check(await untilPage(clean, "!document.getElementById('ovback') && me && state && state.players.some((p) => p.id === me)", 6000), "пульт: «Играть здесь» возвращает место");
+    check(await untilPage(remote, "!!document.getElementById('ovback')", 6000), "пульт: теперь вытеснена первая вкладка (кнопка есть и у неё)");
+    await evaluateSafe(remote, "document.getElementById('ovback').click(); true");
+    await untilPage(remote, "!document.getElementById('ovback') && state", 6000);
+    await clean.close();
+    check((await evaluateSafe(board, "state.players.filter(p => p.name.startsWith('Макс')).length")) === 1, "доска: после «Играть здесь» игрок по-прежнему один");
+
+    // T-W2-42: MP.conn в транспорте; событие «offline» устройства — «нет связи» через ~1 с без ожидания ping (E-17); «online» + pong снимает
+    check(await evaluateSafe(remote, "!!(window.MP && typeof MP.conn === 'function') && typeof ws.visible === 'function'"), "пульт: транспорт на MP.conn (visible() есть)");
+    await evaluateSafe(remote, "window.dispatchEvent(new Event('offline')); true");
+    await wait(1400);
+    check((await evaluateSafe(remote, "overlayKey")) === "ov_offline", "пульт: событие offline — оверлей «нет связи» без ожидания ping");
+    await evaluateSafe(remote, "window.dispatchEvent(new Event('online')); true");
+    check(await untilPage(remote, "overlayKey !== 'ov_offline'", 6000), "пульт: online и ответ сервера снимают оверлей");
+
+    // T-W2-05: подсказка языка комнаты («Язык комнаты: …. Переключить?») — класс A; без флага следования язык сам не меняется
+    const roomLangNow = await evaluateSafe(remote, "state.settings.lang");
+    const other = roomLangNow === "en" ? "ru" : "en";
+    await evaluateSafe(remote, `I18N.setLang(${JSON.stringify(other)}, { persist: false }); roomLang.check(); true`);
+    await wait(300);
+    check(await evaluateSafe(remote, "document.getElementById('langhint').classList.contains('on')"), "пульт: язык интерфейса ≠ языку комнаты — показана подсказка «Язык комнаты…»");
+    check((await evaluateSafe(remote, "I18N.lang")) === other, "пульт: язык сам не переключился (следование выключено)");
+    // перевод лота по idx: язык интерфейса ≠ язык комнаты, колода своего языка — название подменяется (за флагом следования; здесь — force)
+    const trOk = await evaluateSafe(remote, `(async () => {
+      await loadCards(state.kind, uiLang());
+      const cards = uiLang() === "ru" ? window.CARDS[state.kind] : window.CARDS_BY_LANG[uiLang()][state.kind];
+      const fake = Object.assign({}, rawState, { settings: Object.assign({}, rawState.settings, { lang: uiLang() === "ru" ? "en" : "ru" }), lot: { name: "X", idx: 3, meta: [], description: "", fact: "" },
+        players: rawState.players.map((p) => Object.assign({}, p, { lots: [{ name: "Y", emoji: "x", price: 1, round: 0, idx: 5 }] })) });
+      const out = localizeLots(fake, true);
+      return out.lot.name === cards[3].name && out.players[0].lots[0].name === cards[5].name;
+    })()`);
+    check(trOk === true, "пульт: лот и лоты игроков подменяются названием из колоды языка интерфейса по idx");
+    await evaluateSafe(remote, "document.getElementById('langhint-go').click(); true");
+    await wait(300);
+    check((await evaluateSafe(remote, "I18N.lang")) === roomLangNow && !(await evaluateSafe(remote, "document.getElementById('langhint').classList.contains('on')")), "пульт: «Переключить» ставит язык комнаты и убирает подсказку");
 
     // --- задание партии: клик по плитке должен дойти до сервера и до пульта
     await board.call("Runtime.evaluate", { expression: `[...document.querySelectorAll("#mode .tile")].find(x => x.dataset.v === "worst").click()` });
@@ -283,6 +356,21 @@ async function typeText(page, text) {
       return document.body.innerText;
     })()`);
     check(WORST_RE.test(remoteVote || ""), "пульт: задание подписано на экране голосования");
+    // T-W2-08: на доске при голосовании — крупный счётчик «Проголосовали N из M» (≥ 32 px) и кольцо таймера от voting.deadline;
+    // на пульте — «осталось N с»
+    await board.call("Page.bringToFront");
+    await wait(400);
+    const vprobe = JSON.parse(await evaluateSafe(board, `(() => {
+      state.voting = { deadline: Date.now() + 20000, total: 30000, more: 0 }; render();
+      const c = document.querySelector(".vcount"), r = document.getElementById("vringc");
+      return JSON.stringify({ fs: c ? parseFloat(getComputedStyle(c).fontSize) : 0, txt: c ? c.textContent : "", ring: !!r, more: !!document.getElementById("vmore") });
+    })()`) || "{}");
+    check(vprobe.ring && vprobe.fs >= 32 && /\d+/.test(vprobe.txt || "") && vprobe.more, "доска: на голосовании счётчик ≥ 32 px, кольцо и «+15 с» (" + vprobe.fs + "px)");
+    await wait(600);
+    const dash = await evaluateSafe(board, `document.getElementById("vringc") && document.getElementById("vringc").getAttribute("stroke-dashoffset")`);
+    check(dash != null && Number(dash) > 0 && Number(dash) < 176, "доска: кольцо голосования движется (" + dash + ")");
+    const vleft = await evaluateSafe(remote, `(() => { state.voting = { deadline: Date.now() + 20000, total: 30000, more: 0 }; render(); return (document.getElementById("vsub") || {}).textContent || ""; })()`);
+    check(/\d+\s*(с|s|δ)/.test(vleft || ""), "пульт: на голосовании «осталось N с» (" + String(vleft).slice(0, 60) + ")");
     // «Ещё раз» и «Другая категория» раньше слали одно и то же, и вторая кнопка просто врала.
     // Комната своя: кнопки живут только на экране итогов, а в общем прогоне доска к этому моменту
     // стоит на голосовании. Судья — голосование, чтобы итоги пришли без похода в OpenAI.

@@ -143,6 +143,25 @@
   @keyframes flash { 0%, 100% { filter: none; } 50% { filter: brightness(1.6) hue-rotate(-60deg); } }
   .mid { font: 700 14px/1 var(--display); text-transform: uppercase; letter-spacing: .05em; color: var(--text); background: none; border: 1px solid var(--glass-line); border-radius: 999px; padding: 15px; width: 100%; }
   .mid:active { background: rgba(255, 255, 255, .08); }
+  /* T-W2-09: плашка «Ты в игре как…» (вернули место по имени) и «Имя занято…» — поверх экрана, вёрстку не двигает */
+  /* подсказка «Язык комнаты: EN. Переключить?» — поверх экрана под строкой «← Все игры», вёрстку не двигает */
+  .langhint { position: fixed; left: 16px; right: 16px; top: 58px; z-index: 41; display: none; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 14px; background: rgba(20, 18, 34, .96); border: 1px solid var(--c1); box-shadow: 0 8px 28px rgba(0, 0, 0, .45); font: 600 14px/1.3 var(--body); color: var(--text); }
+  .langhint.on { display: flex; }
+  .langhint .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .langhint button { flex: none; border: 0; border-radius: 10px; padding: 8px 11px; font: 800 13px var(--body); background: rgba(255, 255, 255, .12); color: var(--text); }
+  .langhint button.go { background: var(--c1); color: #0a0a0f; }
+  .codeform { display: grid; gap: 10px; }
+  .codeform input { text-transform: uppercase; }
+  .seatplate { position: fixed; left: 16px; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 40; display: none; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 16px; background: rgba(20, 18, 34, .96); border: 1px solid var(--c1); box-shadow: 0 8px 28px rgba(0, 0, 0, .45); font: 600 14.5px/1.35 var(--body); color: var(--text); }
+  .seatplate.on { display: flex; }
+  .seatplate .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .seatplate .t small { display: block; margin-top: 4px; font-weight: 500; font-size: 13px; color: var(--muted); }
+  .seatplate button { flex: none; border: 0; border-radius: 12px; padding: 8px 12px; font: 800 13px var(--body); background: rgba(255, 255, 255, .12); color: var(--text); }
+  /* счётчик символов имени: место под него — внутри поля (без прыжков) */
+  .fld { position: relative; }
+  .fld input.field { padding-right: 58px; }
+  .fld .cnt { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font: 800 12px/1 var(--body); letter-spacing: .06em; color: var(--muted); pointer-events: none; font-style: normal; }
+  .fld .cnt[data-state="full"] { color: #ff8a8a; }
   .plate { text-align: center; padding: 18px; border: 1px dashed var(--glass-line); border-radius: 20px; font-size: 16px; color: rgba(244, 242, 255, .8); }
   .plate b { font: 900 20px/1.2 var(--display); letter-spacing: -.03em; color: var(--text); display: block; margin-bottom: 4px; }
   .plate.lead-me { border-style: solid; border-color: var(--c1); background: rgba(255, 255, 255, .08); background: color-mix(in srgb, var(--c1) 12%, transparent); }
@@ -521,12 +540,15 @@
 <div class="util"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
 <div class="screen" id="app"></div>
 <div class="overlay" id="overlay"></div>
+<div class="langhint" id="langhint" role="status"><div class="t" id="langhint-t"></div><button type="button" class="go" id="langhint-go"></button><button type="button" id="langhint-no"></button></div>
+<div class="seatplate" id="seatplate" role="status"><div class="t" id="seatplate-t"></div><button type="button" id="seatplate-ok"></button></div>
 <div class="sheetback" id="sheetback"></div>
 <div class="sheet" id="sheet"></div>
 <canvas class="confetti" id="confetti"></canvas>
 
 <script src="sound-toggle.js" defer></script>
 <script src="auction-modes.js"></script>
+<script src="mp-common.js"></script>
 <script src="auction-shared.js"></script>
 
 <!-- Словарь объявляем ДО i18n.js, а i18n.js — до основного скрипта (без defer):
@@ -580,10 +602,21 @@ window.I18N_DICT = {
     own_bid_go: `Ставлю`,
     own_bid_min: `Минимум {money}`,
     own_bid_max: `У тебя только {money}`,
+    noroom_title: `Такой комнаты нет`,
+    noroom_text: `Проверь код — в нём слово и две цифры`,
+    btn_go: `Перейти`,
     expired_title: `Комната закрыта`,
     expired_text: `В этой комнате полчаса ничего не происходило, и она закрылась. Попроси ведущего создать новую.`,
     expired_new: `Создать свою комнату`,
     ov_replaced: `Ты открыл игру на другом устройстве — играй там`,
+    play_here: `Играть здесь`,
+    lang_hint: `Язык комнаты: {lang}. Переключить?`,
+    lang_hint_go: `Переключить`,
+    lang_hint_no: `Нет`,
+    seat_plate: `Ты в игре как: {name} · {money}, лотов: {n}`,
+    seat_plate_hint: `Это не ты? Закрой страницу — настоящий игрок вернётся сам`,
+    name_taken_as: `Имя занято. Ты в игре как: {name}`,
+    plate_ok: `Понятно`,
     ov_kicked: `Ведущий убрал тебя из игры`,
     ov_offline: `Нет связи — переподключаемся…`,
     ov_paused: `Пауза — ждём ведущего`,
@@ -673,7 +706,9 @@ window.I18N_DICT = {
     /* финал и голосование */
     vote_h1_a: `Голо`,
     vote_h1_b: `суй`,
-    vote_sub: `Один голос, и не за себя. Проголосовали {n}/{total}.`,
+    vote_sub: `Один голос, и не за себя. Проголосовали {n} из {total}.`,
+    vote_left: `Осталось {n} с.`,
+    tied_votes: `Ничья по голосам`,
     vote_btn: `Голос`,
     judge_h1_a: `Судья `,
     judge_h1_b: `думает`,
@@ -746,10 +781,21 @@ window.I18N_DICT = {
     own_bid_go: `Bid`,
     own_bid_min: `At least {money}`,
     own_bid_max: `You only have {money}`,
+    noroom_title: `There is no such room`,
+    noroom_text: `Check the code: a word and two digits`,
+    btn_go: `Go`,
     expired_title: `Room closed`,
     expired_text: `Nothing happened in this room for half an hour, so it closed. Ask the host to start a new one.`,
     expired_new: `Create your own room`,
     ov_replaced: `You opened the game on another device — play there`,
+    play_here: `Play here`,
+    lang_hint: `Room language: {lang}. Switch?`,
+    lang_hint_go: `Switch`,
+    lang_hint_no: `No`,
+    seat_plate: `You're in as: {name} · {money}, lots: {n}`,
+    seat_plate_hint: `Not you? Close this page — the real player will come back on their own`,
+    name_taken_as: `That name is taken. You're in as: {name}`,
+    plate_ok: `Got it`,
     ov_kicked: `The host removed you from the game`,
     ov_offline: `Connection lost — reconnecting…`,
     ov_paused: `Paused — waiting for the host`,
@@ -835,7 +881,9 @@ window.I18N_DICT = {
 
     vote_h1_a: `Vo`,
     vote_h1_b: `te`,
-    vote_sub: `One vote each, and not for your own lineup. {n}/{total} have voted.`,
+    vote_sub: `One vote each, and not for your own lineup. {n} of {total} have voted.`,
+    vote_left: `{n} s left.`,
+    tied_votes: `Tied on votes`,
     vote_btn: `Vote`,
     judge_h1_a: `Judge is `,
     judge_h1_b: `thinking`,
@@ -906,10 +954,21 @@ window.I18N_DICT = {
     own_bid_go: `Δίνω`,
     own_bid_min: `Τουλάχιστον {money}`,
     own_bid_max: `Έχεις μόνο {money}`,
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, //EL:unverified
+    noroom_text: `Έλεγξε τον κωδικό: μια λέξη και δύο ψηφία`, //EL:unverified
+    btn_go: `Πήγαινε`, //EL:unverified
     expired_title: `Το δωμάτιο έκλεισε`,
     expired_text: `Μισή ώρα δεν έγινε τίποτα σε αυτό το δωμάτιο και έκλεισε. Ζήτα από τον host να φτιάξει καινούργιο.`,
     expired_new: `Φτιάξε δικό σου δωμάτιο`,
     ov_replaced: `Άνοιξες το παιχνίδι σε άλλη συσκευή — παίξε από εκεί`,
+    play_here: `Παίξε εδώ`, //EL:unverified
+    lang_hint: `Γλώσσα δωματίου: {lang}. Αλλαγή;`, //EL:unverified
+    lang_hint_go: `Αλλαγή`, //EL:unverified
+    lang_hint_no: `Όχι`, //EL:unverified
+    seat_plate: `Είσαι μέσα ως: {name} · {money}, λοτ: {n}`, //EL:unverified
+    seat_plate_hint: `Δεν είσαι εσύ; Κλείσε τη σελίδα — ο πραγματικός παίκτης θα επιστρέψει μόνος του`, //EL:unverified
+    name_taken_as: `Το όνομα είναι πιασμένο. Είσαι μέσα ως: {name}`, //EL:unverified
+    plate_ok: `Εντάξει`, //EL:unverified
     ov_kicked: `Ο host σε έβγαλε από το παιχνίδι`,
     ov_offline: `Χάθηκε η σύνδεση — επανασυνδεόμαστε…`,
     ov_paused: `Παύση — περιμένουμε τον host`,
@@ -995,7 +1054,9 @@ window.I18N_DICT = {
 
     vote_h1_a: `Ψήφι`,
     vote_h1_b: `σε`,
-    vote_sub: `Μία ψήφος ο καθένας, και όχι στο δικό σου λάιναπ. Ψήφισαν {n}/{total}.`,
+    vote_sub: `Μία ψήφος ο καθένας, και όχι στο δικό σου λάιναπ. Ψήφισαν {n} από {total}.`,
+    vote_left: `Απομένουν {n} δ.`, //EL:unverified
+    tied_votes: `Ισοψηφία`, //EL:unverified
     vote_btn: `Ψήφος`,
     judge_h1_a: `Ο κριτής `,
     judge_h1_b: `σκέφτεται`,
@@ -1096,8 +1157,37 @@ let overlayKey = null;
 // Терминальное состояние: комнаты больше нет. Флаг гасит переподключение — без него onClose
 // каждые 2 секунды заново дёргал бы join() к несуществующей комнате и перерисовывал экран.
 let dead = false;
+// Неверный код (E-08): hello не приходил ни разу — комнаты с таким кодом нет (или её давно убрали), а не «закрылась».
+// Серверного различителя нет (К-11), поэтому судим по клиенту: был hello (MP.roomGone) — закрыта, не было — «нет такой».
+const normCode = (raw) => (window.MP && MP.roomGone ? MP.roomGone.normalize(raw) : String(raw || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12));
+function codeFormHtml(value) {
+  return `<form class="codeform" id="codeform" autocomplete="off"><input type="text" id="codein" maxlength="24" value="${escapeHtml(value || "")}" placeholder="${escapeHtml(I18N.t("prompt_code"))}" aria-label="${escapeHtml(I18N.t("prompt_code"))}" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go"><button class="big" type="submit">${escapeHtml(I18N.t("btn_go"))}</button></form>`;
+}
+function bindCodeForm() {
+  const f = document.getElementById("codeform");
+  if (!f) return;
+  f.onsubmit = (e) => {
+    e.preventDefault();
+    const c = normCode(document.getElementById("codein").value); // уходим с кодом уже после фильтра
+    if (c) location.href = `auction.html?r=${encodeURIComponent(c)}`;
+  };
+}
+let deadScreen = "expired";
+function renderNoRoom() {
+  dead = true;
+  deadScreen = "noroom";
+  setOverlay(null);
+  screenMode("enter");
+  app.innerHTML = `<div class="center expired"><h1>${escapeHtml(I18N.t("noroom_title"))}</h1><p class="sub">${escapeHtml(I18N.t("noroom_text"))}</p>${codeFormHtml(CODE)}
+    <a class="link expired-new" href="auction.html">${escapeHtml(I18N.t("expired_new"))}</a></div>`;
+  bindCodeForm();
+}
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({ showForm: renderNoRoom, onClosed: () => renderExpired() }) : null;
+// комнаты нет: до первого hello — «Такой комнаты нет» + поле кода, после — «закрыта»; без mp-common — как раньше
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else renderExpired(); }
 function renderExpired() {
   dead = true;
+  deadScreen = "expired";
   try { localStorage.removeItem("auction-token-" + CODE); } catch (e) {}
   setOverlay(null);
   screenMode("enter");
@@ -1131,6 +1221,14 @@ function setOverlay(key, vars) {
       upd();
       overlayTimer = setInterval(() => { if (!overlay.contains(label)) { clearInterval(overlayTimer); overlayTimer = null; return; } upd(); }, 500);
     }
+  } else if (overlayKey === "ov_replaced") {
+    // E-05: вытесненная вкладка возвращается кнопкой; автовозврат НЕ делаем — две вкладки отбирали бы сессию друг у друга
+    const box = el("div", "ovbox");
+    const back = el("button", "big", I18N.t("play_here"));
+    back.id = "ovback";
+    back.onclick = () => { halted = false; retry = 0; clearTimeout(retryTimer); retryTimer = null; setOverlay(null); join(lastName); };
+    box.append(el("div", null, text), back);
+    overlay.replaceChildren(box);
   } else overlay.textContent = text;
   overlay.classList.toggle("on", !!overlayKey);
 }
@@ -1140,9 +1238,9 @@ function setOverlay(key, vars) {
 
 // Смена языка: статические узлы обновит сам i18n.js, но все экраны пульта строит JS — перерисовываем.
 window.addEventListener("langchange", () => {
-  if (dead) return renderExpired();
+  if (dead) return deadScreen === "noroom" ? renderNoRoom() : renderExpired();
   if (overlayKey) setOverlay(overlayKey, overlayVars);
-  if (state) { app.innerHTML = ""; lastLot = -1; introShown = null; render(); return; }
+  if (state) { if (rawState) state = localizeLots(rawState); app.innerHTML = ""; lastLot = -1; introShown = null; render(); return; }
   const input = document.getElementById("name");
   if (input) { const v = input.value; renderJoin(joinErrKey); const again = document.getElementById("name"); if (again) again.value = v; return; }
   if (document.querySelector(".start")) renderCreate();
@@ -1205,7 +1303,14 @@ async function renderCreate() {
       location.href = `auction-board.html?r=${data.code}&t=${data.hostToken}`;
     } catch (err) { btn.disabled = false; btn.textContent = I18N.t("btn_create"); alert(err.message); }
   };
-  document.getElementById("havecode").onclick = (e) => { e.preventDefault(); const c = prompt(I18N.t("prompt_code")); if (c) location.href = `auction.html?r=${encodeURIComponent(c.replace(/\s+/g, "").toUpperCase())}`; };
+  // поле кода прямо на экране (раньше prompt(): на телефоне он блокирует страницу и не переводится, E-36)
+  document.getElementById("havecode").onclick = (e) => {
+    e.preventDefault();
+    const sub = document.querySelector(".cta .sub2");
+    sub.innerHTML = codeFormHtml("");
+    bindCodeForm();
+    document.getElementById("codein").focus();
+  };
 }
 
 // ---------- живая лента лотов на стартовом экране ----------
@@ -1295,9 +1400,11 @@ function renderJoin(error) {
   joinErrKey = error || null;
   app.innerHTML = `<div class="center enter"><h1>${I18N.t("h1_a")}<em>${I18N.t("h1_b")}</em></h1><p class="sub">${tpl("join_room", { code: CODE })}</p>
     <label for="name" class="note" style="text-align:left;margin:0">${I18N.t("join_label")}</label>
-    <input type="text" id="name" maxlength="24" placeholder="${escapeHtml(I18N.t("ph_name"))}" autocomplete="nickname" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="go" inputmode="text">
+    <div class="fld"><input type="text" class="field" id="name" maxlength="24" placeholder="${escapeHtml(I18N.t("ph_name"))}" autocomplete="nickname" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="go" inputmode="text"><em class="cnt" id="namecnt"></em></div>
     <button class="big" id="go">${I18N.t("btn_go")}</button><div class="note" id="err">${error ? escapeHtml(I18N.t(error)) : ""}</div></div>`;
   const input = document.getElementById("name");
+  // «12/24» у поля, когда осталось ≤ 4 знака; срез по символам (эмодзи не рвётся) вместо молчаливого maxlength
+  if (window.MP && MP.nameCounter && !MP.off) { input.removeAttribute("maxlength"); MP.nameCounter(input, 24, { el: document.getElementById("namecnt") }); }
   const go = () => { const n = input.value.trim(); if (n) join(n); };
   document.getElementById("go").onclick = go;
   // Тело обязано быть блоком: стрелка вида `e.key === "Enter" && go()` возвращает false на любой
@@ -1341,7 +1448,16 @@ function rejoinNow() {
   join(lastName);
 }
 addEventListener("online", rejoinNow);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) rejoinNow(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (ws && ws.visible) ws.visible(); rejoinNow(); } });
+// Событие «offline» от устройства (E-17): оверлей «нет связи» через 0,8 с, не дожидаясь ping; параллельно — проверка сокета.
+// «online» снимает флаг: оверлей уйдёт, как только придёт любой ответ сервера (onAlive/onMessage).
+let offlineEvt = false;
+addEventListener("offline", () => {
+  offlineEvt = true;
+  setTimeout(() => { if (offlineEvt && !dead && !halted) setOverlay("ov_offline"); }, 800);
+  if (ws && ws.probe) ws.probe(1500);
+});
+addEventListener("online", () => { offlineEvt = false; });
 // bfcache: при уходе «назад» страница замораживается целиком, и браузер рвёт сокет — Chrome делает
 // это принудительно при попадании в bfcache. При восстановлении оттуда visibilitychange срабатывает
 // не всегда, надёжный хук — pageshow с persisted. А на pagehide закрываемся сами: уходя, честно
@@ -1385,9 +1501,18 @@ function join(name) {
       const ht = hostToken();
       if (ht) sendMsg({ type: "host", token: ht, remote: true });
     },
+    // тишина дольше 10 с (MP.conn): «нет связи» без ожидания закрытия сокета; любой ответ сервера снимает плашку
+    onQuiet: (q) => { if (q) { if (!overlayKey && !dead && !halted) setOverlay("ov_offline"); } else if (overlayKey === "ov_offline" && !offlineEvt) setOverlay(null); },
+    onAlive: () => { if (overlayKey === "ov_offline" && !offlineEvt) setOverlay(null); },
     onMessage: (msg) => {
       settle();
-      if (msg.type === "joined") { me = msg.playerId; token = msg.token; try { localStorage.setItem("auction-token-" + CODE, token); } catch {} }
+      if (overlayKey === "ov_offline" && !offlineEvt && msg.type !== "error") setOverlay(null);
+      if (msg.type === "joined") {
+        me = msg.playerId; token = msg.token; try { localStorage.setItem("auction-token-" + CODE, token); } catch {}
+        // плашка: вернули место по имени без токена (resumed) или имя было занято (renamed, E-06); по токену — молча
+        pendingPlate = msg.resumed ? { kind: "resumed", name: msg.name } : msg.renamed ? { kind: "renamed", name: msg.name } : null;
+      }
+      if (msg.type === "hello" && goneFlow) goneFlow.hello();
       if (msg.type === "hello" || msg.type === "state") setState(msg.state);
       if (msg.type === "event") onEvent(msg.event);
       if (msg.type === "host_ok" && msg.remote) { isHostRemote = true; if (overlayKey) setOverlay(overlayKey, overlayVars); render(); }
@@ -1400,7 +1525,7 @@ function join(name) {
         ws.close();
         // Комната закрылась по неактивности — переподключаться некуда: возвращать игрока на ввод
         // имени значит гонять его по кругу «нет связи → введи имя → нет связи».
-        if (msg.error === "room_expired") renderExpired();
+        if (msg.error === "room_expired") onRoomGone();
         // игрока по токену больше нет (выгнали в лобби, пока телефон был офлайн, или ведущий начал
         // новую игру без него) — забываем токен и спрашиваем имя, а не висим фантомом
         else if (msg.error === "token_gone") { token = null; me = null; state = null; try { localStorage.removeItem("auction-token-" + CODE); } catch {} setOverlay(null); renderJoin(); }
@@ -1427,7 +1552,7 @@ function join(name) {
       setNote(I18N.t(msg.type === "bid" && alive ? "note_send_fail" : "note_not_sent"));
     },
     // комнаты больше нет — показываем это прямо, вместо вечного «переподключаемся…»
-    onGone: () => renderExpired(),
+    onGone: () => onRoomGone(),
   });
 }
 const sendMsg = (m) => ws && ws.send(m);
@@ -1460,9 +1585,75 @@ function setNote(text) {
   noteAt = Date.now();
 }
 
+// плашка «Ты в игре как…» (T-W2-09): показывается один раз после входа, когда пришёл первый state
+let pendingPlate = null, plateTimer = null;
+function hideSeatPlate() { const b = document.getElementById("seatplate"); if (b) b.classList.remove("on"); clearTimeout(plateTimer); }
+function showSeatPlate() {
+  const info = pendingPlate; pendingPlate = null;
+  if (!info || !state) return;
+  const p = mine();
+  const t = document.getElementById("seatplate-t");
+  if (!t) return;
+  let text, hint = "";
+  if (info.kind === "resumed" && p) {
+    text = tpl("seat_plate", { name: info.name, money: money(p.money), n: p.lots.length });
+    hint = I18N.t("seat_plate_hint");
+  } else text = tpl("name_taken_as", { name: info.name });
+  t.textContent = "";
+  t.append(document.createTextNode(text));
+  if (hint) t.append(el("small", null, hint));
+  document.getElementById("seatplate-ok").textContent = I18N.t("plate_ok");
+  document.getElementById("seatplate").classList.add("on");
+  clearTimeout(plateTimer);
+  plateTimer = setTimeout(hideSeatPlate, 20000);
+}
+document.getElementById("seatplate-ok").onclick = hideSeatPlate;
+
+// ---- язык комнаты (T-W2-05, U-17) ----
+// Подсказка «Язык комнаты: EN. Переключить?» — класс A, показывается один раз на язык, пока человек сам язык не выбирал.
+// Автоматическое следование — только за флагом MP.rules.RULE_U17_LANG_FOLLOW (класс B, по умолчанию выкл.).
+const LANG_NAMES = { ru: "Русский", en: "English", el: "Ελληνικά" };
+const LANG_FOLLOW = !!(window.MP && MP.rules && MP.rules.RULE_U17_LANG_FOLLOW);
+const roomLang = window.MP && MP.followRoomLang && !MP.off ? MP.followRoomLang({
+  enabled: true,
+  auto: LANG_FOLLOW,
+  getRoomLang: () => state && state.settings && state.settings.lang,
+  onSuggest: (sug) => {
+    const box = document.getElementById("langhint");
+    if (!box) return;
+    document.getElementById("langhint-t").textContent = tpl("lang_hint", { lang: LANG_NAMES[sug.lang] || sug.lang });
+    const go = document.getElementById("langhint-go"), no = document.getElementById("langhint-no");
+    go.textContent = I18N.t("lang_hint_go");
+    no.textContent = I18N.t("lang_hint_no");
+    const close = () => box.classList.remove("on");
+    go.onclick = () => { close(); sug.accept(); };
+    no.onclick = () => { close(); sug.decline(); };
+    box.classList.add("on");
+  },
+}) : null;
+// перевод лотов: сервер шлёт номер карты (idx), у перевода порядок тот же. Подмена — только когда язык интерфейса
+// отличается от языка комнаты И включено следование (иначе лоты, как раньше, на языке комнаты).
+let rawState = null;
+function localizeLots(s, force) {
+  if (!(LANG_FOLLOW || force) || !s || !s.settings) return s;
+  const lang = uiLang(), room = s.settings.lang || "ru";
+  if (lang === room || CARD_LANGS.indexOf(lang) === -1 && lang !== "ru") return s;
+  const cards = (lang === "ru" ? window.CARDS || {} : (window.CARDS_BY_LANG || {})[lang] || {})[s.kind];
+  if (!cards) {
+    loadCards(s.kind, lang).then(() => { if (rawState === s && state) { state = localizeLots(s); render(); } }).catch(() => {});
+    return s;
+  }
+  const tr = (l) => { const c = l && Number.isInteger(l.idx) ? cards[l.idx] : null; return c ? Object.assign({}, l, { name: c.name, meta: c.meta, description: c.description, fact: c.fact }) : l; };
+  return Object.assign({}, s, { lot: s.lot ? tr(s.lot) : s.lot, players: s.players.map((p) => Object.assign({}, p, { lots: p.lots.map(tr) })) });
+}
+
 function setState(s) {
   if (!me) return;
-  state = s;
+  rawState = s;
+  state = localizeLots(s);
+  s = state;
+  if (pendingPlate) showSeatPlate();
+  if (roomLang) roomLang.check();
   // смещение часов — по лучшему замеру ping/pong, а не «как пришёл этот state» (§6.4)
   offset = serverOffset(s.serverNow);
   document.body.dataset.kind = s.kind;
@@ -1866,6 +2057,17 @@ function openSheet(lot) {
 
 // за кого я голосовал — сервер этого не рассказывает (счёт открывается после закрытия, §9)
 let myVote = null;
+// «Проголосовали N из M · осталось K с»: секунды тикает таймер ниже, разметка от них не зависит
+function voteSubText(s, players) {
+  const base = tpl("vote_sub", { n: s.votes, total: players.filter((x) => x.lots.length).length });
+  const left = s.voting && s.voting.deadline ? Math.max(0, Math.ceil((s.voting.deadline - (Date.now() + (typeof offset === "number" ? offset : 0))) / 1000)) : null;
+  return left == null ? base : base + " " + tpl("vote_left", { n: left });
+}
+setInterval(() => {
+  const el0 = document.getElementById("vsub");
+  if (!el0 || !state || !state.voting || state.results) return;
+  el0.innerHTML = voteSubText(state, state.players.filter((x) => !x.left));
+}, 1000);
 function renderFinal() {
   screenMode("final");
   const s = state, p = mine();
@@ -1880,7 +2082,7 @@ function renderFinal() {
       // раньше ✓ пропадал на первом же чужом голосе, и кнопки снова становились активными.
       const voted = (s.voted || []).indexOf(me) !== -1 || !!myVote;
       const canVote = !!(p && p.lots.length);
-      app.innerHTML = `<div class="final"><h1>${I18N.t("vote_h1_a")}<em>${I18N.t("vote_h1_b")}</em></h1>${vtask ? `<div class="taskbar on" style="justify-content:center"><b>${escapeHtml(vtask.icon + " " + vtask.title)}</b><span style="flex:none">${escapeHtml(vtask.short || "")}</span></div>` : ""}<p class="sub">${tpl("vote_sub", { n: s.votes, total: players.filter((x) => x.lots.length).length })}</p>${!canVote ? `<div class="plate">${escapeHtml(I18N.t("vote_no_lots"))}</div>` : voted ? `<div class="plate lead-me">${escapeHtml(I18N.t("vote_done"))}</div>` : ""}<div class="vote" id="vote"></div><div class="note" id="note"></div></div>`;
+      app.innerHTML = `<div class="final"><h1>${I18N.t("vote_h1_a")}<em>${I18N.t("vote_h1_b")}</em></h1>${vtask ? `<div class="taskbar on" style="justify-content:center"><b>${escapeHtml(vtask.icon + " " + vtask.title)}</b><span style="flex:none">${escapeHtml(vtask.short || "")}</span></div>` : ""}<p class="sub" id="vsub">${voteSubText(s, players)}</p>${!canVote ? `<div class="plate">${escapeHtml(I18N.t("vote_no_lots"))}</div>` : voted ? `<div class="plate lead-me">${escapeHtml(I18N.t("vote_done"))}</div>` : ""}<div class="vote" id="vote"></div><div class="note" id="note"></div></div>`;
       const box = document.getElementById("vote");
       players.filter((x) => x.id !== me && x.lots.length).forEach((x) => {
         const row = el("div", "row"); const n = el("div", "n", x.name); n.append(el("small", null, x.lots.map((l) => l.emoji + " " + l.name).join(" · ")));
@@ -1902,6 +2104,10 @@ function renderFinal() {
   const idx = s.results.ranking.findIndex((r) => r.playerId === me);
   const r = s.results.ranking[idx];
   const places = ["🥇", "🥈", "🥉"];
+  // равные голоса (r.tied, T-W2-08): «=N» без медали; при нуле голосов у всех — тоже «=1», без медалей
+  const tiedMe = !!(r && r.tied && s.results.mode === "vote");
+  let tieN = idx + 1;
+  if (tiedMe) while (tieN > 1 && s.results.ranking[tieN - 2].score === r.score) tieN--;
   const custom = taskNow();
   const ftask = custom ? `<div class="taskbar on" style="justify-content:center"><b>${escapeHtml(custom.icon + " " + custom.title)}</b></div>` : "";
   // single — лайнап собрал один: судить было не с кем, очков нет, вместо них пояснение сервера
@@ -1910,8 +2116,8 @@ function renderFinal() {
   const verdict = r ? (r.verdict || (mode === "single" ? s.results.summary || "" : "")) : "";
   // как решилась ничья и что значит «0 голосов» — то же пояснение, что на доске (§9)
   const tieKey = mode !== "vote" ? "" : s.results.votes === 0 ? "no_votes" : s.results.tieBreak === "spent" ? "tie_spent" : s.results.tieBreak === "coin" ? "tie_coin" : "";
-  const tie = tieKey ? `<p class="note tie" id="tie">${escapeHtml(I18N.t(tieKey))}</p>` : "";
-  app.innerHTML = `<div class="final">${ftask}<div class="place${idx >= 0 ? "" : " none"}">${idx >= 0 ? places[idx] || tpl("place_n", { n: idx + 1 }) : "—"}</div>${r ? `${score !== "" ? `<div class="score">${score}</div>` : ""}<div class="verdict">${escapeHtml(verdict)}</div>` : `<p class="sub" style="text-align:center">${I18N.t("final_no_judge")}</p>`}${tie}<div class="lots">${((p && p.lots) || []).map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("")}</div><p class="note" style="margin-top:18px">${I18N.t("final_foot")}</p></div>`;
+  const tie = tieKey ? `<p class="note tie" id="tie">${escapeHtml(I18N.t(tieKey))}</p>` : tiedMe ? `<p class="note tie" id="tie">${escapeHtml(I18N.t("tied_votes"))}</p>` : "";
+  app.innerHTML = `<div class="final">${ftask}<div class="place${idx >= 0 ? "" : " none"}">${idx >= 0 ? (tiedMe ? "=" + tieN : places[idx] || tpl("place_n", { n: idx + 1 })) : "—"}</div>${r ? `${score !== "" ? `<div class="score">${score}</div>` : ""}<div class="verdict">${escapeHtml(verdict)}</div>` : `<p class="sub" style="text-align:center">${I18N.t("final_no_judge")}</p>`}${tie}<div class="lots">${((p && p.lots) || []).map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("")}</div><p class="note" style="margin-top:18px">${I18N.t("final_foot")}</p></div>`;
 }
 
 function confetti() {
@@ -1933,7 +2139,7 @@ function escapeHtml(t) { return String(t).replace(/[&<>"']/g, (c) => ({ "&": "&a
 
 // Старт — последней строкой: к этому моменту объявлены все let/const, которые трогают join() и рендер.
 if (!CODE) renderCreate();
-else { try { token = localStorage.getItem("auction-token-" + CODE); } catch {} if (token) join(""); else if (params.get("name")) join(params.get("name")); else renderJoin(); }
+else { try { token = localStorage.getItem("auction-token-" + CODE); } catch {} if (token && goneFlow) goneFlow.hello(); if (token) join(""); else if (params.get("name")) join(params.get("name")); else renderJoin(); }
 </script>
 </body>
 </html>
