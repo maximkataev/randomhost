@@ -388,6 +388,28 @@ test('с RULE_U51_COUNTDOWN_LEAVE выход ПОСЛЕ «Плывём!» — п
   assert.strictEqual(g.host.id, 'p1');
   assert(g.host.dnf);
 });
+function spectatorGame(cfg) {
+  const g = race(2, 61, cfg);
+  g.addPlayer('s0', 'Зритель', 5);
+  assert(!g.byId.get('s0').inGame, 'вошедший в заплыве — зритель');
+  g.byId.get('s0').online = true;
+  return g;
+}
+test('рывок зрителя в заплыве: по умолчанию «как сейчас» — проходит', () => {
+  const g = spectatorGame();
+  assert.strictEqual(g.useTurbo('s0'), true);
+  assert(g.drainEvents().some(e => e.type === 'turbo' && e.id === 's0'));
+});
+test('RULE_U53_NO_SPECTATOR_DASH: зритель в заплыве не рвётся, игрок — да; в лобби зритель-флаг ничего не меняет', () => {
+  const g = spectatorGame({ RULE_U53_NO_SPECTATOR_DASH: true });
+  assert.strictEqual(g.useTurbo('s0'), false);
+  assert(!g.drainEvents().some(e => e.type === 'turbo' && e.id === 's0'));
+  assert.strictEqual(g.byId.get('s0').turbos, 0);
+  assert.strictEqual(g.useTurbo('p0'), true);
+  const l = createGame({ seed: 62, cfg: { RULE_U53_NO_SPECTATOR_DASH: true } });
+  l.addPlayer('p0', 'P0', 0);
+  assert.strictEqual(l.useTurbo('p0'), true, 'в лобби рывок остаётся');
+});
 test('двое: один доплыл — второй ведёт', () => {
   const g = race(2, 44);
   const a = P(g, 1);

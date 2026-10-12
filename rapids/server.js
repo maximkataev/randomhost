@@ -75,7 +75,8 @@ const LOG = "[rapids]";
 const DEV_CFG = DEV && process.env.RAPIDS_CFG ? JSON.parse(process.env.RAPIDS_CFG) : undefined;
 // правила-флаги движка (класс B, по умолчанию «как сейчас»; включает владелец после «да» — env, без пересборки)
 const RULE_U51_COUNTDOWN_LEAVE = process.env.RULE_U51_COUNTDOWN_LEAVE === "1";   // U-51: добровольный выход в отсчёте — не «неудачник»
-const GAME_CFG = Object.assign({ RULE_U51_COUNTDOWN_LEAVE }, DEV_CFG);
+const RULE_U53_NO_SPECTATOR_DASH = process.env.RULE_U53_NO_SPECTATOR_DASH === "1";   // U-53: рывок зрителя в идущем заплыве запрещён (в лобби остаётся)
+const GAME_CFG = Object.assign({ RULE_U51_COUNTDOWN_LEAVE, RULE_U53_NO_SPECTATOR_DASH }, DEV_CFG);
 // U-01, класс B: подхват места по имени посреди заплыва (>= 10 с офлайна, тот же IP, с подтверждением). Без флага в заплыве — только токен.
 const RULE_U01_CLAIM_IN_GAME = process.env.RULE_U01_CLAIM_IN_GAME === "1";
 

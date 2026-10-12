@@ -448,6 +448,8 @@
       const d = g.byId.get(id);
       if (!d || !d.online || d.st !== 'w' || d.cap) return false;
       if (g.phase !== 'lobby' && g.phase !== 'race') return false;
+      // зритель в заплыве (U-53, класс B): стоит в заводи и рывком ничего не решает, но событие уходило всем — за флагом
+      if (cfg.RULE_U53_NO_SPECTATOR_DASH && g.phase === 'race' && !d.inGame) return false;
       if (d.turbo > 0 || d.turboCd > 0.15) return false;
       d.turbo = cfg.TURBO_T;
       d.turboCd = cfg.TURBO_T + cfg.TURBO_CD;

@@ -154,6 +154,7 @@
   .noms div { display: flex; justify-content: space-between; gap: 8px; }
   .noms span { flex: none; }
   .noms b { color: var(--ink); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+  .res-fine { color: var(--muted); font-size: 11.5px; line-height: 1.4; }
   .finish-wait { text-align: center; font-weight: 800; font-size: 20px; padding: 24px 0; color: var(--muted); }
 
   /* ----- Во время заплыва ----- */
@@ -166,6 +167,8 @@
   .pos b { font-size: 18px; }
   .quit { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: calc(12px + env(safe-area-inset-left, 0px)); z-index: 6; display: none; width: 40px; height: 38px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 16px; }
   body.playing .quit { display: block; }
+  /* первый тап — «Сойти? ✕» на 3 с, второй — выход (вместо confirm(), который в WebView/PWA глушится) */
+  .quit[data-armed] { width: auto; padding: 0 12px; background: rgba(205, 48, 58, 0.96); border-color: transparent; color: #fff; font-weight: 800; font-size: 14px; white-space: nowrap; }
   .big { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 8; pointer-events: none; font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: min(22vw, 150px); color: #0b2a22; -webkit-text-stroke: 4px #fff; paint-order: stroke fill; text-shadow: 0 6px 0 rgba(8,36,29,0.25); opacity: 0; white-space: nowrap; }
   .big.show { animation: pop 0.9s ease-out forwards; }
   .big.word { font-size: min(11vw, 76px); }
@@ -265,7 +268,7 @@
     .noms { font-size: 12px; line-height: 1.4; display: grid; gap: 1px; }
     .table { gap: 0; }
     .table .r { padding: 3px 4px; font-size: 13px; }
-
+    .res-fine { font-size: 10.5px; }
     .hud { top: calc(6px + env(safe-area-inset-top, 0px)); }
     .pill { padding: 5px 11px; font-size: 12px; }
     .timer { font-size: 15px; min-width: 60px; }
@@ -338,7 +341,9 @@ window.I18N_DICT = {
     kicked: `Ведущий убрал вас из комнаты`, replaced: `Вы вошли с другой вкладки`, play_here: `Играть здесь`,
     room_full: `В комнате уже 12 уток`, busy: `Сервер занят — попробуйте через минуту`, bad_name: `Введите имя`,
     too_many_rooms: `Слишком много комнат — попробуйте позже`, server_error: `Что-то сломалось на сервере`, need_two_err: `Нужно хотя бы двое`,
-    quit_confirm: `Сойти с дистанции? Тогда ваша утка будет последней.`,
+    quit_confirm: `Сойти с дистанции? Тогда ваша утка будет последней.`, quit_arm: `Сойти? ✕`,
+    res_dnf_note: `сошедший всегда последний`, res_note_swim: `«Не на финише» — финиш не пройден до конца заплыва; ниже тот, кто дальше от него.`, res_note_dnf: `«Сход» — позади всех, даже если утка проплыла дальше других.`,
+    watching_resumed: `Вы были офлайн на старте — этот заплыв смотрите, в следующем плывёте`,
     ping_bad: `может подлагивать`, you: ` · вы`,
     made_room: `создатель комнаты`, finish_wait: `Финиш! Итог через секунду…`, quit_aria: `Сойти с дистанции`, code_empty: `Введите код комнаты`, demo_names: [`Кряква`, `Пух`, `Скрудж`, `Чирок`, `Гага`, `Нырок`], n_bumps: `{n} 💥`, n_whirls: `{n} 🌀`, change_color: `сменить`,
     out_pill: `Вы доплыли {place}-м — смотрим остальных`, out_pill_champ: `🏆 Первое место ваше — смотрим остальных`,
@@ -383,7 +388,9 @@ window.I18N_DICT = {
     kicked: `The host removed you from the room`, replaced: `You joined from another tab`, play_here: `Play here`,
     room_full: `The room already has 12 ducks`, busy: `Server is busy — try again in a minute`, bad_name: `Enter a name`,
     too_many_rooms: `Too many rooms — try later`, server_error: `Something broke on the server`, need_two_err: `Need at least two`,
-    quit_confirm: `Quit the race? Then you come in last.`,
+    quit_confirm: `Quit the race? Then you come in last.`, quit_arm: `Quit? ✕`,
+    res_dnf_note: `a quitter always comes last`, res_note_swim: `"Not finished" — the finish line was not crossed by the end of the race; the further from it, the lower.`, res_note_dnf: `"Quit" — behind everyone, even if that duck got further than the others.`,
+    watching_resumed: `You were offline at the start — you're watching this race and swim the next`,
     ping_bad: `may lag`, you: ` · you`,
     made_room: `created the room`, finish_wait: `Finish! Results in a second…`, quit_aria: `Quit the race`, code_empty: `Enter the room code`, demo_names: [`Quackers`, `Puddles`, `Waddles`, `Ducky`, `Drake`, `Feathers`], n_bumps: `{n} 💥`, n_whirls: `{n} 🌀`, change_color: `change`,
     out_pill: `You finished #{place} — watching the rest`, out_pill_champ: `🏆 You're first — watching the rest`,
@@ -429,7 +436,9 @@ window.I18N_DICT = {
     kicked: `Ο οικοδεσπότης σε έβγαλε`, replaced: `Μπήκες από άλλη καρτέλα`, play_here: `Παίξε εδώ`,
     room_full: `Το δωμάτιο έχει ήδη 12 πάπιες`, busy: `Ο διακομιστής είναι απασχολημένος — δοκίμασε σε ένα λεπτό`, bad_name: `Γράψε όνομα`,
     too_many_rooms: `Πάρα πολλά δωμάτια — δοκίμασε αργότερα`, server_error: `Κάτι χάλασε στον διακομιστή`, need_two_err: `Χρειάζονται τουλάχιστον δύο`,
-    quit_confirm: `Να εγκαταλείψεις; Τότε έρχεσαι τελευταίος.`,
+    quit_confirm: `Να εγκαταλείψεις; Τότε έρχεσαι τελευταίος.`, quit_arm: `Έξοδος; ✕`, //EL:unverified
+    res_dnf_note: `όποιος εγκαταλείπει έρχεται πάντα τελευταίος`, res_note_swim: `«Χωρίς τερματισμό» — ο τερματισμός δεν πέρασε μέχρι το τέλος του αγώνα· χαμηλότερα όσος είναι πιο μακριά.`, res_note_dnf: `«Εγκατάλειψη» — πίσω από όλους, ακόμα κι αν η πάπια έφτασε πιο μακριά.`, //EL:unverified
+    watching_resumed: `Ήσουν εκτός σύνδεσης στην εκκίνηση — παρακολουθείς αυτόν τον αγώνα, στον επόμενο παίζεις`, //EL:unverified
     ping_bad: `ίσως κολλάει`, you: ` · εσύ`,
     made_room: `έφτιαξε το δωμάτιο`, finish_wait: `Τερματισμός! Αποτελέσματα σε λίγο…`, quit_aria: `Εγκατάλειψη`, code_empty: `Γράψε τον κωδικό δωματίου`, demo_names: [`Κουάκ`, `Φτερού`, `Λιμνούλα`, `Βουτηχτής`, `Παπάκι`, `Πιτσιρίκος`], n_bumps: `{n} 💥`, n_whirls: `{n} 🌀`, change_color: `αλλαγή`,
     out_pill: `Θέση {place} — βλέπουμε τους υπόλοιπους`, out_pill_champ: `🏆 Πρώτη θέση — βλέπουμε τους υπόλοιπους`,
@@ -592,6 +601,7 @@ window.I18N_DICT = {
         Object.assign(net.cfg, m.cfg); course = null; render.setCfg(net.cfg); break;
       case "joined":
         net.me = m.playerId; net.token = m.token;
+        net.resumed = !!m.resumed;   // вернулся на своё место: в идущем заплыве скажем, что он был офлайн на старте (rapids-039)
         store.set(tokenKey(), m.token);
         render.setMe(net.me);
         ui.joinErr = null;
@@ -986,9 +996,9 @@ window.I18N_DICT = {
     else prompt("", url);
   }
 
-  const secs = (s) => (s == null ? "" : s.toFixed(1));
+  const secs = (s, fine) => (s == null ? "" : s.toFixed(fine ? 2 : 1));
   function hostNote(h, kind) {
-    if (h.dnf) return T(kind + "_dnf");
+    if (h.dnf) return kind === "res" ? T("res_dnf") + " — " + T("res_dnf_note") : T("host_dnf");
     if (h.timeUp) return kind === "res" ? tpl("res_time", { s: Math.round(net.cfg.RACE_T) }) : T("host_time");
     return T(kind === "res" ? "res_last" : "host_last");
   }
@@ -1001,9 +1011,14 @@ window.I18N_DICT = {
     // цвет — из итога (ci у игрока): после reload клиент мог не знать ушедших
     const colOf = (p) => (Number.isInteger(p.ci) ? COLORS[p.ci % COLORS.length][0] : colorOf(p.id));
     const champ = s.players.find((p) => p.id === ov.champion);
-    const rows = s.players.map((p) => `<div class="r${p.id === net.me ? " me" : ""}"><span class="pl-n">${p.place}</span><span class="d" style="--c:${colOf(p)}"></span><span class="nm">${esc(p.name)}${p.id === h.id ? " 😅" : ""}${p.id === ov.champion ? " 🏆" : ""}</span><span class="ex">${p.time != null ? esc(tpl("t_sec", { s: secs(p.time) })) : esc(p.dnf ? T("t_dnf") : T("t_swim"))}</span></div>`).join("");
+    // ничья до десятых (37.8 / 37.8) — показываем сотые, иначе порядок строк ничем не объяснён
+    const seen = {}, tied = new Set();
+    for (const p of s.players) if (p.time != null) { const k = p.time.toFixed(1); if (seen[k]) { tied.add(k); } seen[k] = 1; }
+    const timeStr = (p) => secs(p.time, tied.has(p.time.toFixed(1)));
+    const rows = s.players.map((p) => `<div class="r${p.id === net.me ? " me" : ""}"><span class="pl-n">${p.place}</span><span class="d" style="--c:${colOf(p)}"></span><span class="nm">${esc(p.name)}${p.id === h.id ? " 😅" : ""}${p.id === ov.champion && p.time != null ? " 🏆" : ""}</span><span class="ex">${p.time != null ? esc(tpl("t_sec", { s: timeStr(p) })) : esc(p.dnf ? T("t_dnf") : T("t_swim"))}</span></div>`).join("");
+    const notes = [s.players.some((p) => p.time == null && !p.dnf) ? T("res_note_swim") : "", s.players.some((p) => p.dnf) ? T("res_note_dnf") : ""].filter(Boolean);
     // ничья на троих и больше — не номинация
-    const nomLine = (key, ids, n) => { if (ids.length > 2) return ""; const [label] = String(T(key)).split(":"); return `<div><span>${esc(label)}</span><b>${esc(ids.length ? ids.map(nm).join(", ") + (n ? " · " + n : "") : "—")}</b></div>`; };
+    const nomLine = (key, ids, n) => { if (ids.length > 2 || !ids.length) return ""; const [label] = String(T(key)).split(":"); return `<div><span>${esc(label)}</span><b>${esc(ids.map(nm).join(", ") + (n ? " · " + n : ""))}</b></div>`; };
     const iAmHost = net.me === net.hostId;
     const host = net.roster.find((p) => p.id === net.hostId);
     ui.nextScreen = "results";
@@ -1011,8 +1026,9 @@ window.I18N_DICT = {
     const nmN = Array.from(hostName).length + 3;
     setPanel(`${brand().replace('class="brand"', 'class="brand nb"')}
       <div class="host-card" style="--n:${nmN}"><div class="lbl">${esc(T("res_host"))}</div><div class="nm">😅 ${esc(hostName)}</div><div class="note">${esc(hostNote(h, "res"))}</div></div>
-      ${champ && champ.time != null ? `<div class="champ-line">${esc(tpl("res_champ", { name: champ.name, s: secs(champ.time) }))}</div>` : ""}
+      ${champ && champ.time != null ? `<div class="champ-line">${esc(tpl("res_champ", { name: champ.name, s: secs(champ.time, tied.has(champ.time.toFixed(1))) }))}</div>` : ""}
       <div class="table">${rows}</div>
+      ${notes.length ? `<div class="res-fine">${notes.map(esc).join("<br>")}</div>` : ""}
       <div class="noms">${nomLine("nom_push", s.pusher, s.maxBumps && tpl("n_bumps", { n: s.maxBumps }))}${nomLine("nom_whirl", s.whirler, s.maxWhirls && tpl("n_whirls", { n: s.maxWhirls }))}</div>`,
       iAmHost
         ? `<button class="btn" id="again" type="button">${esc(T("again"))}</button><button class="btn ghost" id="lob" type="button">${esc(T("to_lobby"))}</button>`
@@ -1120,7 +1136,7 @@ window.I18N_DICT = {
     document.body.classList.toggle("watching", play && !inGame && !!net.me);
     document.body.classList.toggle("with-panel", !play);
     $("tag").classList.toggle("show", play && !inGame && !!net.me);
-    if (play && !inGame && net.me) $("tag").textContent = T("watching");
+    if (play && !inGame && net.me) $("tag").textContent = T(net.resumed ? "watching_resumed" : "watching");
     placeGaps();
   }
   // что перекрывает реку снизу: кнопки руля в заплыве или лист панели на телефоне в портрете
@@ -1312,7 +1328,11 @@ window.I18N_DICT = {
     requestAnimationFrame(frame);
   }
 
-  $("quit").onclick = () => { if (confirm(T("quit_confirm"))) { send({ type: "leave" }); store.set(tokenKey(), ""); location.href = "duck-rapids.html"; } };
+  const doQuit = () => { send({ type: "leave" }); store.set(tokenKey(), ""); location.href = "duck-rapids.html"; };
+  // двойной тап вместо confirm(): работает в WebView/PWA и в автотестах; без mp-common — прежний confirm
+  let quitTap = null;
+  if (window.MP && MP.twoTap) quitTap = MP.twoTap($("quit"), { armedMs: 3000, label: "✕", armedLabel: T("quit_arm"), onArm: () => toast(T("quit_confirm")), onConfirm: doQuit });
+  else $("quit").onclick = () => { if (confirm(T("quit_confirm"))) doQuit(); };
   addEventListener("popstate", () => location.reload());
   addEventListener("langchange", () => { render.setMe(net.me); applyStatic(); redraw(); });
   function applyStatic() {
@@ -1320,6 +1340,7 @@ window.I18N_DICT = {
     render.setWords(WORDS());
     render.setSuffix(T("you"));
     $("quit").setAttribute("aria-label", T("quit_aria"));
+    if (quitTap && !quitTap.isArmed()) $("quit").textContent = "✕";
     placeSound();
   }
   // кнопка звука — сразу слева от переключателя языка, ширина которого зависит от языка
