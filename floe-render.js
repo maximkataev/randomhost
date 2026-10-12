@@ -167,7 +167,7 @@
     // надписи над пингвинами — со страницы, на языке интерфейса
     let words = Object.assign({ bang: 'БАХ!', graze: 'вскользь', miss: 'мимо', ouch: 'ОЙ!', ko: '+1 в воду!', splash: 'ПЛЮХ!', clash: 'ЛОБ В ЛОБ!' }, opts.words || {});
     const WC = { good: '#ffd23f', bad: '#ff5a5a', dim: '#cfe3f0', water: '#8ee8ff', white: '#ffffff' };
-    // фокус камеры: ведущий дейлика на итоге (прожектор) или метка «смотрите сюда» в повторе
+    // фокус камеры: неудачник на итоге (прожектор) или метка «смотрите сюда» в повторе
     let focus = null, focusMode = null, camSnap = false;
     let floe = null, floeKey = '';
     let shardVis = [];
@@ -1036,7 +1036,7 @@
       ctx.globalAlpha = 1;
     }
 
-    // итог: сцена темнеет, ведущий дейлика — в луче
+    // итог: сцена темнеет, неудачник — в луче
     function drawSpotlight(t) {
       const fp = focus && focusMode === 'host' && snap && snap.players.find(p => p.id === focus);
       if (!fp) return;

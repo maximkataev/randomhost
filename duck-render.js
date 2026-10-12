@@ -2060,7 +2060,7 @@
       ctx.textAlign = 'center';
     }
 
-    // итог: сцена темнеет, ведущий дейлика — в пятне света
+    // итог: сцена темнеет, неудачник — в пятне света
     function drawSpotlight(t) {
       const fp = focus && focusKind === 'host' && byId.get(focus);
       if (!fp) return;
