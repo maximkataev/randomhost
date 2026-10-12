@@ -506,3 +506,48 @@ test("секреты не в кадрах: доска / игрок / сокет 
   b.send({ type: "end" });
   for (const c of [b, b2, anon, late, ...ps]) c.close();
 });
+
+// ---- T-W0-31: restore из дампа прошлой версии без новых полей (шаблон — tools/testkit/restore.js) ----
+// passN в состоянии не хранится: это passCount(b) по s.log (формат записи {b,from,to,at,held} не менялся с первого коммита),
+// поэтому «старый» дамп — тот же формат. Кейс проверяет именно это: после рестарта посреди live телефон получает верный
+// passN, бросок с {b,n} проходит, повтор с устаревшим n — rejected stale.
+test("restore-from-prev-dump: passN после рестарта считается по s.log; pass с b/n проходит, повтор — stale (T-W0-31)", async () => {
+  const restore = require("../tools/testkit/restore");
+  const { code, hostToken } = await createRoom();
+  let b = await board(code, hostToken);
+  const ps = [await player(code, "Аня"), await player(code, "Петя"), await player(code, "Оля")];
+  b.send({ type: "start" });
+  const live = await b.wait(statePred((s) => s.phase === "live"), 6000);
+  const holder = ps.find((p) => p.id === live.state.bombs[0].holder);
+  const to = await solveAndThrow(holder, ps.map((p) => p.id)); // бомба перешла один раз: s.log.length === 1
+  await b.wait(statePred((s) => s.bombs[0].holder === to && s.passes === 1));
+  const tokens = Object.fromEntries(ps.map((p) => [p.id, p.token]));
+  for (const c of [b, ...ps]) c.close();
+  await stopServer();
+  const dump = JSON.parse(fs.readFileSync(DUMP, "utf8"));
+  const rec = dump.find((r) => r.code === code);
+  assert.ok(rec, "комната в дампе");
+  assert.strictEqual(rec.state.log.length, 1);
+  assert.ok(!("passN" in rec.state), "passN в состоянии не хранится");
+  fs.writeFileSync(DUMP, JSON.stringify(restore.makeOldDump(dump, ["passN"])));
+  await startServer();
+  b = await board(code, hostToken);
+  const hb = await b.wait(statePred((s) => s.phase === "live"));
+  assert.strictEqual(hb.state.passes, 1);
+  const back = await player(code, "", tokens[to]);
+  const ch = await back.wait(statePred((s) => s.me && s.me.challenge));
+  const c = ch.state.me.challenge;
+  await sleep(minWait(c));
+  back.send({ type: "answer", cid: c.id, ans: solveView(c) });
+  const armed = await back.wait(statePred((s) => s.me && s.me.armed));
+  assert.strictEqual(armed.state.me.passN[0], 1, "passN восстановлен из log");
+  const target = ps.find((p) => p.id !== to).id;
+  back.send({ type: "pass", to: target, b: 0, n: 1 });
+  await b.wait(statePred((s) => s.bombs[0].holder === target && s.passes === 2));
+  // повтор с тем же n — устарел
+  back.send({ type: "pass", to: ps.find((p) => p.id !== to && p.id !== target).id, b: 0, n: 1 });
+  await back.wait((x) => x.type === "rejected" && x.action === "pass" && x.reason === "stale");
+  b.send({ type: "end" });
+  await b.wait(statePred((s) => s.phase === "finished"));
+  for (const x of [b, back]) x.close();
+});
