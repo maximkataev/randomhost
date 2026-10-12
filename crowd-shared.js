@@ -39,6 +39,21 @@ const wvSec = (ms) => String(Math.round(Math.max(0, ms) / 100) / 10).replace("."
 // имена через запятую — именительный падеж, не склоняем
 const wvNames = (ids, player) => ids.map((id) => (player(id) || {}).name || "?").join(", ");
 
+/*PLURAL-BEGIN*/
+// Склонение подписи по числу (crowd-021): ключ base + "_two" для 2 («twice»), затем base + "_" + категория
+// Intl.PluralRules(lang) (one / few / many / other), иначе сам base. RU: 1 раз, 2 раза, 5 раз, 21 раз.
+function wvPluralKey(base, n, lang, has) {
+  const k = [];
+  if (n === 2) k.push(base + "_two");
+  let cat = "other";
+  try { cat = new Intl.PluralRules(lang).select(n); } catch (e) {}
+  k.push(base + "_" + cat);
+  for (let i = 0; i < k.length; i++) if (has(k[i])) return k[i];
+  return base;
+}
+/*PLURAL-END*/
+const wvPluralTpl = (base, n, vars) => wvTpl(wvPluralKey(base, n, wvLang(), (k) => wvT(k) !== k), vars);
+
 
 // ---------- звуки: короткий синтез без файлов ----------
 // Всё идёт в ctx.destination — sound-toggle.js перехватывает это подключение и глушит общий выключатель.
