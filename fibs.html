@@ -206,6 +206,7 @@
   .table li .n { width: 22px; flex: none; color: var(--muted); }
   .table li b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
   .table li .s { flex: none; font-variant-numeric: tabular-nums; }
+  .table li.off { opacity: .55; }
   .table li.me { color: var(--red); }
   .howcard ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
 
@@ -772,13 +773,14 @@ function renderReveal() {
 }
 
 function standing() {
-  const list = state.players.filter((p) => !p.left).slice().sort((a, b) => b.score - a.score);
+  // `played === 0`: призрак и новичок без единого хода в таблице не нужны; старый сервер поле не шлёт — показываем всех
+  const list = state.players.filter((p) => !p.left && (p.id === me || p.played !== 0 || (p.online && state.phase !== "finished"))).slice().sort((a, b) => b.score - a.score);
   const p = mine();
   const place = 1 + list.filter((x) => x.score > p.score).length;
   return { list, place, p };
 }
 function tableHtml(list) {
-  return `<div class="card table"><div class="k">${T("table")}</div><ol>${list.map((x, i) => `<li class="${x.id === me ? "me" : ""}"><span class="n">${i + 1}</span>${avHtml(x)}<b>${escapeHtml(x.name)}</b><span class="s">${x.score}</span></li>`).join("")}</ol></div>`;
+  return `<div class="card table"><div class="k">${T("table")}</div><ol>${list.map((x, i) => `<li class="${x.id === me ? "me" : ""}${x.online ? "" : " off"}"><span class="n">${i + 1}</span>${avHtml(x)}<b>${escapeHtml(x.name)}</b><span class="s">${x.score}</span></li>`).join("")}</ol></div>`;
 }
 
 function renderScores() {

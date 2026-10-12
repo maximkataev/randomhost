@@ -392,3 +392,36 @@ test("перебор кодов: промахи считаются на сеть
   await sleep(100);
   assert.ok((await (await fetch(`${B}/health`)).json()).ok, "сервер жив");
 });
+
+test("дамп прошлой версии без `played`: после рестарта финал с наградами, призрак без очков не в счёт", async () => {
+  const { Game } = require("./game");
+  const content = { ru: [{ id: "x-1", topic: "animals", final: false, text: "Факт: ______", answer: "правда", alts: [], lies: ["а1", "а2", "а3", "а4", "а5", "а6"], source: "https://example.org" }] };
+  let seed = 7;
+  const rnd = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+  const g = Game.create({ settings: {}, code: "OLDDMP", rnd, content });
+  for (const id of ["a", "b", "c"]) g.addPlayer({ id, name: id.toUpperCase() });
+  g.start(0);
+  g.tick(g.s.phaseEnd);
+  g.pickTopic(g.s.chooser, g.s.topics[0], 1000);
+  g.lie("a", "ложь а", 1100); g.lie("b", "ложь б", 1100); g.lie("c", "ложь ц", 1100);
+  const i = g.s.options.findIndex((o) => o.authors.includes("a"));
+  g.choose("b", [i], 1200);
+  g.choose("c", [i], 1200);
+  g.tick(g.s.phaseEnd); // раскрытие
+  const state = JSON.parse(JSON.stringify(g.s));
+  state.players.push({ id: "z", name: "Призрак", color: "#000", avatar: "👻", online: false, left: false, score: 0, hintsUsed: 0, stats: { fooled: 0, truths: 0, traps: 0, likes: 0 }, lastReact: null });
+  for (const p of state.players) delete p.played;
+  assert.ok(state.players.every((p) => p.played === undefined));
+  await stopServer();
+  fs.writeFileSync(DUMP, JSON.stringify([{ code: "OLDDMP", ip: "", hostToken: "host-token-old-dump", tokens: {}, touched: Date.now(), state }]));
+  await startServer();
+  const b = await board("OLDDMP", "host-token-old-dump");
+  b.send({ type: "end" });
+  const s = await b.wait(statePred((x) => x.phase === "finished"));
+  const byId = Object.fromEntries(s.state.players.map((p) => [p.id, p]));
+  assert.strictEqual(byId.a.played, 1);
+  assert.strictEqual(byId.z.played, 0);
+  assert.ok(s.state.awards.liar && s.state.awards.liar.ids.includes("a"), "награда «Главный врун» посчитана по восстановленным игрокам");
+  assert.ok(![s.state.awards.liar, s.state.awards.detector, s.state.awards.gullible].filter(Boolean).some((x) => x.ids.includes("z")));
+  b.close();
+});

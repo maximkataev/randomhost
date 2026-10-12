@@ -582,3 +582,50 @@ test("RULE_U09B_CHOOSE_EXTEND: по умолчанию выкл — возвра
     if (saved === undefined) delete process.env[key]; else process.env[key] = saved;
   }
 });
+
+// ---------- T-W0-12: played ----------
+
+test("played: растёт от реальной лжи/выбора, не от 🐌; призрак и новичок после финала — без наград и в таблице", () => {
+  const g = ghostGame();
+  const s0 = g.snapshot(0, "board");
+  assert.strictEqual(s0.players.find((p) => p.id === "P3").played, 0, "🐌-автоложь — не ход");
+  assert.strictEqual(s0.players.find((p) => p.id === "P1").played, 1);
+  assert.strictEqual(s0.players.find((p) => p.id === "P4").played, 0);
+  const i = lieOf(g, "P1");
+  g.choose("P2", [i], g.s.phaseStart + 10);
+  g.choose("P3", [i], g.s.phaseStart + 10);
+  g.tick(g.s.phaseEnd);
+  g.abort(g.s.phaseEnd + 1);
+  assert.strictEqual(g.s.phase, "finished");
+  const late = g.addPlayer({ id: "N1", name: "Новичок" });
+  assert.ok(late.ok);
+  const snap = g.snapshot(0, "board");
+  assert.strictEqual(snap.players.find((p) => p.id === "N1").played, 0);
+  const aw = snap.awards;
+  const ids = [aw.liar, aw.detector, aw.gullible].filter(Boolean).flatMap((x) => x.ids);
+  assert.ok(ids.length && !ids.includes("P4") && !ids.includes("N1"));
+  // новая партия: счётчик обнуляется
+  g.start(g.s.phaseStart + 10);
+  assert.ok(g.s.players.every((p) => p.played === 0));
+});
+
+test("played: дамп прошлой версии без поля — присутствующим с очками 1, остальным 0; финал с наградами", () => {
+  const g = game(4);
+  toChoose(g);
+  const i = lieOf(g, "P1");
+  for (const id of ["P2", "P3", "P4"]) g.choose(id, [i], g.s.phaseStart + 10);
+  g.tick(g.s.phaseEnd);
+  g.abort(g.s.phaseEnd + 1);
+  const dump = JSON.parse(JSON.stringify(g.s));
+  g.addPlayer({ id: "G1", name: "Призрак" });
+  dump.players.push(JSON.parse(JSON.stringify(g.player("G1"))));
+  for (const p of dump.players) delete p.played; // как у дампа до этой версии
+  delete dump.awards;
+  const g2 = Game.from(dump, rig(3), fixture());
+  const pl = Object.fromEntries(g2.s.players.map((p) => [p.id, p.played]));
+  assert.strictEqual(pl.P1, 1);
+  assert.strictEqual(pl.G1, 0);
+  const a = g2.awards();
+  assert.ok(a.liar && a.liar.ids.includes("P1"), "награда «Главный врун» есть");
+  assert.ok(g2.snapshot(0, "board").players.every((p) => typeof p.played === "number"));
+});

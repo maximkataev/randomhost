@@ -184,6 +184,13 @@ class Game {
   }
 
   static from(state, rnd, content) {
+    // дамп прошлой версии без `played`: присутствующим с очками/ответами — 1, прочим 0 (иначе финал и награды пусты)
+    for (const p of state.players || []) {
+      if (p.played !== undefined) continue;
+      const st = p.stats || {};
+      const acted = (state.lies && state.lies[p.id]) || (state.picks && state.picks[p.id]) || p.hintsUsed > 0;
+      p.played = !p.left && (p.score > 0 || st.fooled > 0 || st.truths > 0 || st.traps > 0 || st.likes > 0 || acted) ? 1 : 0;
+    }
     return new Game(state, rnd, content);
   }
 
@@ -215,6 +222,7 @@ class Game {
       left: false,
       score: 0,
       hintsUsed: 0,
+      played: 0, // сколько раз реально соврал или выбрал в этой партии (автоложь 🐌 не в счёт)
       stats: { fooled: 0, truths: 0, traps: 0, likes: 0 },
       lastReact: null,
     };
@@ -305,7 +313,7 @@ class Game {
     s.playedTopics = [];
     s.bestLie = null;
     s.finishedReason = null;
-    for (const p of ps) { p.score = 0; p.hintsUsed = 0; p.stats = { fooled: 0, truths: 0, traps: 0, likes: 0 }; }
+    for (const p of ps) { p.score = 0; p.hintsUsed = 0; p.played = 0; p.stats = { fooled: 0, truths: 0, traps: 0, likes: 0 }; }
     // очередь выбора темы — по кругу в перемешанном порядке
     const ring = ps.map((p) => p.id);
     for (let i = ring.length - 1; i > 0; i--) { const j = this.rnd(i + 1); [ring[i], ring[j]] = [ring[j], ring[i]]; }
@@ -414,6 +422,11 @@ class Game {
     return [{ type: "fact" }];
   }
 
+  played(id) {
+    const p = this.player(id);
+    if (p) p.played = (p.played || 0) + 1;
+  }
+
   // ложь руками; правду не принимаем — «Это правда! Придумай ложь» (§4)
   lie(id, text, now) {
     const s = this.s;
@@ -426,6 +439,7 @@ class Game {
     // принимается как ложь, поэтому перебором нащупать ответ нельзя — лимит попыток не нужен.
     if (isTruth(t, s.fact)) return { ok: false, reason: "truth" };
     s.lies[id] = { text: displayText(t), key: normalize(t), hint: false, late: false, at: now };
+    this.played(id);
     return { ok: true, events: [{ type: "lied", playerId: id }, ...this.maybeAdvance(now)] };
   }
 
@@ -439,6 +453,7 @@ class Game {
     if (!p || p.hintsUsed >= s.settings.hints) return { ok: false, reason: "no_hints" };
     p.hintsUsed++;
     s.lies[id] = { ...this.pickCanned(), hint: true, late: false, at: now };
+    this.played(id);
     return { ok: true, events: [{ type: "lied", playerId: id }, ...this.maybeAdvance(now)] };
   }
 
@@ -527,6 +542,7 @@ class Game {
       if (s.options[i].authors.includes(id)) return { ok: false, reason: "own" };
     }
     s.picks[id] = list;
+    this.played(id);
     return { ok: true, events: [{ type: "chose", playerId: id }, ...this.maybeAdvance(now)] };
   }
 
@@ -643,7 +659,7 @@ class Game {
 
   // награды партии (§5): лучший по счётчику, ничьи — все
   awards() {
-    const ps = this.present();
+    const ps = this.present().filter((p) => p.played > 0); // призрак и новичок без единого хода наград не получают
     const top = (k) => {
       const max = Math.max(0, ...ps.map((p) => p.stats[k]));
       const ids = ps.filter((p) => p.stats[k] === max).map((p) => p.id);
@@ -785,6 +801,7 @@ class Game {
         online: p.online,
         left: p.left,
         score: p.score,
+        played: p.played || 0,
         // Сколько «Соври за меня» взял — только в итогах: посреди партии счётчик выдавал бы,
         // кто сейчас подал заготовку (§4: «подсказку от своей лжи не отличить»).
         ...(s.phase === "finished" ? { hintsUsed: p.hintsUsed } : {}),
