@@ -34,7 +34,7 @@ try:
         bc = br.new_context(viewport={"width": 1600, "height": 900})
         bc.add_init_script(f"try{{localStorage.setItem('crowd-host-{code}','{tok}')}}catch(e){{}}")
         board = bc.new_page()
-        board.goto(f"{BASE}/crowd-board.html?r={code}")
+        board.goto(f"{BASE}/crowd-board.html?r={code}", wait_until="domcontentloaded")
         board.wait_for_function("window.wvBoard && wvBoard.state")
         spy = "try{localStorage.setItem('site-lang','ru')}catch(e){};window.__sent=[];const _s=WebSocket.prototype.send;WebSocket.prototype.send=function(d){try{const m=JSON.parse(d);if(m.type!=='ping')window.__sent.push([Date.now(),m.type,m.side||m.on])}catch(e){};return _s.apply(this,arguments)};"
         ph = []
@@ -43,7 +43,7 @@ try:
             c.add_init_script(spy)
             p = c.new_page()
             p.on("pageerror", lambda e: errs.append(str(e)))
-            p.goto(f"{BASE}/crowd.html?r={code}")
+            p.goto(f"{BASE}/crowd.html?r={code}", wait_until="domcontentloaded")
             p.wait_for_selector("#name")
             p.fill("#name", f"Игрок{i+1}")
             p.evaluate("document.getElementById('enterform').requestSubmit()")
@@ -89,11 +89,22 @@ try:
         p1.wait_for_timeout(300)
         check(p1.evaluate("conn.pending()") >= 1, "действие в очереди")
         check("Отправляем" in p1.evaluate("document.getElementById('waittx') ? document.getElementById('waittx').textContent : ''"), "подпись «Отправляем…»")
+        # очередь живёт до 90 с (T-W2-36): после возврата связи действие уходит, а не «просрочено» через 6 с
         p1.wait_for_timeout(6300)
         p1.evaluate("flushQueued()")
-        p1.wait_for_timeout(400)
-        check(p1.evaluate("!!document.getElementById('done')"), "после дропа кнопка «Готово» снова на экране")
-        check("Нет связи" in p1.evaluate("document.getElementById('toast').textContent"), "тост про нет связи")
+        p1.wait_for_timeout(700)
+        check(p1.evaluate("wvPhone.state.me.confirmed === true"), "действие из очереди дошло после возврата связи (старше 6 с)")
+        # потолок возраста: действие, не ушедшее вовремя, не пропадает молча — кнопка возвращается, тост просит нажать ещё раз
+        p2 = ph[2]
+        p2.evaluate("conn.gated = true; conn.queue.setCeiling('*', 100)")
+        p2.click(".side[data-s=a]")
+        p2.wait_for_timeout(200)
+        p2.click("#done")
+        p2.wait_for_timeout(400)
+        p2.evaluate("flushQueued()")
+        p2.wait_for_timeout(400)
+        check(p2.evaluate("!!document.getElementById('done')"), "после дропа кнопка «Готово» снова на экране")
+        check("Нет связи" in p2.evaluate("document.getElementById('toast').textContent"), "тост про нет связи")
         check(not errs, "нет JS-ошибок " + str(errs[:2]))
         br.close()
 finally:

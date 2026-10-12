@@ -47,6 +47,13 @@
   .grow { flex: 1; }
   .top .sound-toggle-btn, .endbtn { flex: none; height: calc(var(--lsh, 44px) / var(--z)); width: calc(var(--lsh, 44px) / var(--z)); border: 2px solid var(--hair); border-radius: var(--r); background: transparent; color: var(--text); padding: 0; display: grid; place-items: center; font-size: 15px; transition: background .15s, border-color .15s; }
   .sound-toggle-btn svg { width: 20px; height: 20px; }
+  /* «Ссылка ведущего» / «Я ведущий» / «Забрать» (T-W2-36): плоские кнопки той же высоты, токен на экран не выводится */
+  .hostctl { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .hostctl button, .hostctl input { flex: none; box-sizing: border-box; height: calc(var(--lsh, 44px) / var(--z)); min-width: calc(var(--lsh, 44px) / var(--z)); border: 2px solid var(--hair); border-radius: var(--r); background: transparent; color: var(--text); font: 800 18px/1 var(--body); padding: 0 14px; }
+  .hostctl input { width: 280px; min-width: 0; background: var(--panel2); font-weight: 700; }
+  .hostctl button:hover { background: var(--panel2); border-color: var(--paper); }
+  .hostctl .note { font: 700 17px/1.15 var(--body); color: var(--muted); max-width: 360px; }
+  .ptr .hostctl .lt, .ptr .hostctl .note { display: none; }
   .endbtn:hover, .top .sound-toggle-btn:hover { background: var(--panel2); border-color: var(--paper); }
   .banner { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 50; background: var(--paper); color: var(--bg); padding: 10px 18px; font-weight: 800; border-radius: var(--r); }
   .conn { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 50; background: var(--bad); color: var(--bg); padding: 8px 16px; font-weight: 800; border-radius: var(--r); visibility: hidden; }
@@ -224,6 +231,10 @@
   .lp { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 0 14px; border-radius: var(--r); background: var(--panel2); border-left: 8px solid var(--pc, var(--paper)); animation: lpin .5s var(--pop) both; }
   .lp .av { font-size: 19px; width: 1.75em; height: 1.75em; }
   .lp b { min-width: 0; font: 800 22px/1.1 var(--body); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lp.off { opacity: .5; }
+  .lp .offt { display: none; flex: none; margin-left: auto; font: 700 14px/1 var(--body); color: var(--muted); }
+  .lp.off .offt { display: block; }
+  body.host.lobbyp .lp.off .x { display: block; }
   .lp.empty { background: transparent; border: 2px dashed rgba(244, 241, 232, .18); animation: none; }
   .lp.empty::before { content: ""; width: 38px; height: 38px; border-radius: 50%; border: 3px dashed rgba(244, 241, 232, .18); }
   .lp .x { display: none; position: absolute; right: 8px; top: 50%; margin-top: -11px; border: 0; background: var(--bad); color: #1a0509; font: 900 13px/1 var(--body); width: 22px; height: 22px; border-radius: 50%; padding: 0; }
@@ -297,6 +308,7 @@
   /* ---------- итоги ---------- */
   .fin { display: grid; padding: 0 50px 34px; gap: 18px 35px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto; grid-template-areas: "t t t" "rl pod rr" "aw aw aw" "bt bt bt"; }
   .fin h1 { grid-area: t; margin: 0; text-align: left; font: 900 68px/1 var(--display); text-transform: uppercase; letter-spacing: -.045em; padding: .04em 0; color: var(--paper); }
+  .fin h1 small.tie { color: var(--paper); font-weight: 800; }
   .fin h1 small { display: block; font: 700 24px/1.2 var(--body); letter-spacing: 0; text-transform: none; color: var(--bad); margin-top: 6px; }
   .podium { grid-area: pod; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 12px; min-height: 0; border-bottom: 8px solid var(--paper); align-self: stretch; width: 100%; }
   .step { display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0; height: 100%; justify-content: flex-end; }
@@ -369,6 +381,7 @@
   }
 </style>
 <script src="legacy-compat.js"></script>
+<script src="mp-common.js"></script>
 </head>
 <body>
 <div id="root">
@@ -376,6 +389,7 @@
   <div class="brand"><i aria-hidden="true"></i><span id="brand" data-i18n="game_name">Как все</span></div>
   <span class="chip hidden" id="codechip"></span>
   <span class="grow"></span>
+  <span class="hostctl" id="hostctl"></span>
   <button class="endbtn hidden" id="endbtn" type="button">■</button>
   <button class="sound-toggle-btn" type="button"></button>
 </div>
@@ -410,14 +424,14 @@ window.I18N_DICT = {
   ru: {
     out_title: `Мимо большинства`, votes_lbl: `голоса`, room_lbl: `Комната открыта`, await_votes: `ждём голоса`,
     _title: `Как все — общий экран`, game_name: `Как все`,
-    creating: `Открываем комнату…`, expired: `Комната закрылась — открой новую`, err_connect: `Связь потеряна — переподключаемся…`,
+    noroom: `Такой комнаты нет — проверь код в адресе`, creating: `Открываем комнату…`, expired: `Комната закрылась — открой новую`, err_connect: `Связь потеряна — переподключаемся…`, conn_lost: `Нет связи — проверяем…`,
     tagline: `Угадай, что скажет <b>большинство</b>`,
     q_of: `Вопрос {n} из {t}`, q_final: `Финал ×2`, q_extra: `Допвопрос ×2`, q_decider: `Решающий вопрос`,
     ready_of: `{r} из {n} готовы`, ab_a: `А`, ab_b: `Б`,
     op_ribbon: `Спрашиваем, кто что думает лично`, op_answered: `{a} из {n} ответили`, op_hint: `Только общей шкалой, без имён`,
     v_maj: `Большинство: {side}`, v_maj_d: `{k} из {n} голосов`,
-    v_tie: `Раскол!`, v_tie_d: `Поровну — всем по +50`,
-    v_one: `Как один!`, v_one_d: `Слишком просто — всем по +50`,
+    v_tie: `Раскол!`, v_tie_d: `Поровну — всем по +50`, v_tie_dec: `Победа не решена`,
+    v_one: `Как один!`, v_one_d: `Слишком просто — всем по +50`, v_one_dec: `Победа не решена`,
     v_void: `Мало голосов — вопрос заменят`, v_void_d: `Нужно хотя бы 3 голоса`, v_void_none: `Мало голосов — идём дальше`, void_note_none: `Замены кончились — идём дальше`, q_repl: `замена {k}`,
     ill_t: `ИЛЛЮЗИЯ!`, ill_d: `Все думали — большинство «{v}», а лично — «{o}»`,
     wolf_note: `🐺 Одиночка: {name}`, op_title: `Лично думают`,
@@ -427,30 +441,34 @@ window.I18N_DICT = {
     intro_decider: `Решающий вопрос`, intro_decider_d: `Первое место делят. Голосуют все, очки получают только они:`,
     pause_title: `Ждём игроков`, pause_d: `Нужно хотя бы {min} на связи, сейчас — {n}. Не вернутся — партия прервётся.`,
     pause_pt: `Мало голосов`, pause_pd: `Два вопроса подряд набрали меньше {min} голосов, хотя все на связи. Играем дальше — но если так будет и дальше, партия остановится.`, pause_idle: `Не голосовали: {names}`, pause_kick: `Ведущий может убрать игрока:`, final_idle: `Партия остановлена: голосов не хватало`, again_need: `Для новой партии нужно ещё {n}`,
-    lobby_free: `свободно мест: {n}`, lobby_scan: `Наведи камеру телефона на QR или открой ссылку и введи имя.`, lobby_players: `Игроки`,
+    lobby_free: `свободно мест: {n}`, lobby_off: `+{n} нет связи`, lp_off: `нет связи`, lobby_scan: `Наведи камеру телефона на QR или открой ссылку и введи имя.`, lobby_players: `Игроки`,
     r1: `На экране вопрос. Отвечай не за себя, а за всех: что выберет большинство?`,
     r2: `Угадал большинство — +100. Нет — 0. Поровну — всем по +50.`,
     r3: `×2: угадал +200, ошибся −200. Только два раза за игру.`,
     opt_short: `Короткая партия (6)`, opt_short_d: `6 вопросов вместо 10`,
     opt_opinion: `Мнение`, opt_opinion_d: `После голосов спросим, кто что думает лично`, opt_opinion_min: `включится от {n} игроков`,
     btn_start: `Старт`, need_more: `Нужно ещё {n}`, viewer: `Начать может только ведущий — тот, кто открыл этот экран`, kick: `Убрать`,
+    final_shared: `Победу делят: {names}`, final_tie2: `Делят 2-е место: {names}`,
     final_title: `Итоги`, final_paused: `Партия прервана`, final_few: `Осталось меньше трёх игроков`, final_host: `Ведущий закончил партию`,
     aw_crowd: `Чует толпу`, aw_crowd_d: `{n} раз в большинстве`, aw_crow: `Белая ворона`, aw_crow_d: `{n} раз в меньшинстве`,
     aw_risk: `Рискнул`, aw_risk_d: `+{n} на ва-банках`, aw_wolf: `Одиночка`, aw_wolf_d: `{n} раз один против всех`,
     btn_again: `Ещё партия`, btn_lobby: `В лобби`, btn_home: `Главная`, btn_end: `Закончить партию`,
+    host_link: `Ссылка ведущего`, link_copied: `Ссылка скопирована. Не показывай её игрокам`, link_shared: `Ссылка отправлена. Не показывай её игрокам`, link_none: `На этом экране нет ключа ведущего`,
+    link_prompt_hint: `Скопируй ссылку и не показывай её игрокам`,
+    btn_im_host: `Я ведущий`, host_paste_ph: `Вставь ссылку ведущего`, btn_ok: `OK`, host_bad: `Это не ссылка ведущего`, btn_take: `Забрать управление`, host_lost_msg: `Управление перешло к другому экрану`,
     tm_left: `Осталось секунд: {n}`,
   },
   en: {
     out_title: `Missed the crowd`, votes_lbl: `votes`, room_lbl: `Room is open`, await_votes: `waiting for votes`,
     _title: `Go With the Crowd — shared screen`, game_name: `Go With the Crowd`,
-    creating: `Opening a room…`, expired: `The room has closed — open a new one`, err_connect: `Connection lost — reconnecting…`,
+    noroom: `There is no such room — check the code in the address`, creating: `Opening a room…`, expired: `The room has closed — open a new one`, err_connect: `Connection lost — reconnecting…`, conn_lost: `No connection — checking…`,
     tagline: `Guess what the <b>majority</b> will say`,
     q_of: `Question {n} of {t}`, q_final: `Final ×2`, q_extra: `Bonus question ×2`, q_decider: `Deciding question`,
     ready_of: `{r} of {n} ready`, ab_a: `A`, ab_b: `B`,
     op_ribbon: `Now we ask what you personally think`, op_answered: `{a} of {n} answered`, op_hint: `One shared scale, no names`,
     v_maj: `Majority: {side}`, v_maj_d: `{k} of {n} votes`,
-    v_tie: `Split!`, v_tie_d: `Dead even — +50 for everyone`,
-    v_one: `As one!`, v_one_d: `Too easy — +50 for everyone`,
+    v_tie: `Split!`, v_tie_d: `Dead even — +50 for everyone`, v_tie_dec: `The win is not decided`,
+    v_one: `As one!`, v_one_d: `Too easy — +50 for everyone`, v_one_dec: `The win is not decided`,
     v_void: `Too few votes — the question will be replaced`, v_void_d: `At least 3 votes needed`, v_void_none: `Too few votes — moving on`, void_note_none: `No replacements left — moving on`, q_repl: `redo {k}`,
     ill_t: `ILLUSION!`, ill_d: `Everyone thought the majority says “{v}” — but personally it’s “{o}”`,
     wolf_note: `🐺 Lone wolf: {name}`, op_title: `Personally think`,
@@ -460,30 +478,38 @@ window.I18N_DICT = {
     intro_decider: `Deciding question`, intro_decider_d: `Tied for first. Everyone votes, only these players score:`,
     pause_title: `Waiting for players`, pause_d: `At least {min} must be online, now {n}. If they don’t return, the game stops.`,
     pause_pt: `Not enough votes`, pause_pd: `Two questions in a row got fewer than {min} votes, although everyone is online. We play on, but if it keeps happening the game stops.`, pause_idle: `Didn’t vote: {names}`, pause_kick: `The host can remove a player:`, final_idle: `Game stopped: not enough votes`, again_need: `{n} more needed for a new game`,
-    lobby_free: `{n} seats left`, lobby_scan: `Point your phone camera at the QR or open the link and type your name.`, lobby_players: `Players`,
+    lobby_free: `{n} seats left`, lobby_off: `+{n} offline`, lp_off: `offline`, lobby_scan: `Point your phone camera at the QR or open the link and type your name.`, lobby_players: `Players`,
     r1: `A question appears. Answer not for yourself but for everyone: what will the majority pick?`,
     r2: `Guessed the majority — +100. Missed — 0. A tie — +50 for all.`,
     r3: `×2: right +200, wrong −200. Only twice per game.`,
     opt_short: `Short game (6)`, opt_short_d: `6 questions instead of 10`,
     opt_opinion: `Opinion`, opt_opinion_d: `After the votes we ask what you personally think`, opt_opinion_min: `turns on from {n} players`,
     btn_start: `Start`, need_more: `{n} more needed`, viewer: `Only the host — whoever opened this screen — can start`, kick: `Remove`,
+    final_shared: `Shared win: {names}`, final_tie2: `Sharing 2nd place: {names}`,
     final_title: `Results`, final_paused: `Game interrupted`, final_few: `Fewer than three players left`, final_host: `The host ended the game`,
     aw_crowd: `Reads the crowd`, aw_crowd_d: `{n} times in the majority`, aw_crow: `Black sheep`, aw_crow_d: `{n} times in the minority`,
     aw_risk: `Risk taker`, aw_risk_d: `+{n} from all-ins`, aw_wolf: `Lone wolf`, aw_wolf_d: `{n} times alone against all`,
     btn_again: `Play again`, btn_lobby: `To lobby`, btn_home: `Home`, btn_end: `End the game`,
+    host_link: `Host link`, link_copied: `Link copied. Don't show it to players`, link_shared: `Link sent. Don't show it to players`, link_none: `This screen has no host key`,
+    link_prompt_hint: `Copy the link and keep it from the players`,
+    btn_im_host: `I'm the host`, host_paste_ph: `Paste the host link`, btn_ok: `OK`, host_bad: `That is not a host link`, btn_take: `Take control`, host_lost_msg: `Another screen took control`,
     tm_left: `Seconds left: {n}`,
   },
   el: {
     out_title: `Έχασαν την πλειοψηφία`, votes_lbl: `ψήφοι`, room_lbl: `Το δωμάτιο είναι ανοιχτό`, await_votes: `περιμένουμε ψήφους`,
     _title: `Όπως όλοι — κοινή οθόνη`, game_name: `Όπως όλοι`,
-    creating: `Άνοιγμα δωματίου…`, expired: `Το δωμάτιο έκλεισε — άνοιξε νέο`, err_connect: `Χάθηκε η σύνδεση — επανασύνδεση…`,
+    noroom: `Δεν υπάρχει τέτοιο δωμάτιο — έλεγξε τον κωδικό στη διεύθυνση`, //EL:unverified
+    creating: `Άνοιγμα δωματίου…`, expired: `Το δωμάτιο έκλεισε — άνοιξε νέο`, err_connect: `Χάθηκε η σύνδεση — επανασύνδεση…`, conn_lost: `Χωρίς σύνδεση — έλεγχος…`, //EL:unverified
+   
     tagline: `Μάντεψε τι θα πει η <b>πλειοψηφία</b>`,
     q_of: `Ερώτηση {n} από {t}`, q_final: `Τελικός ×2`, q_extra: `Έξτρα ερώτηση ×2`, q_decider: `Αποφασιστική ερώτηση`,
     ready_of: `{r} από {n} έτοιμοι`, ab_a: `Α`, ab_b: `Β`,
     op_ribbon: `Τώρα ρωτάμε τι πιστεύει ο καθένας προσωπικά`, op_answered: `{a} από {n} απάντησαν`, op_hint: `Μία κοινή κλίμακα, χωρίς ονόματα`,
     v_maj: `Πλειοψηφία: {side}`, v_maj_d: `{k} από {n} ψήφους`,
-    v_tie: `Χωρίστηκαν!`, v_tie_d: `Ισοπαλία — +50 σε όλους`,
-    v_one: `Ως ένας!`, v_one_d: `Πολύ εύκολο — +50 σε όλους`,
+    v_tie: `Χωρίστηκαν!`, v_tie_d: `Ισοπαλία — +50 σε όλους`, v_tie_dec: `Η νίκη δεν κρίθηκε`, //EL:unverified
+   
+    v_one: `Ως ένας!`, v_one_d: `Πολύ εύκολο — +50 σε όλους`, v_one_dec: `Η νίκη δεν κρίθηκε`, //EL:unverified
+   
     v_void: `Λίγες ψήφοι — η ερώτηση αντικαθίσταται`, v_void_d: `Χρειάζονται τουλάχιστον 3 ψήφοι`, v_void_none: `Λίγες ψήφοι — προχωράμε`, void_note_none: `Δεν υπάρχουν άλλες αντικαταστάσεις — προχωράμε`, q_repl: `αντικ. {k}`, // EL:unverified
     ill_t: `ΠΑΡΑΙΣΘΗΣΗ!`, ill_d: `Όλοι νόμιζαν ότι η πλειοψηφία λέει «{v}» — αλλά προσωπικά είναι «{o}»`,
     wolf_note: `🐺 Μοναχικός λύκος: {name}`, op_title: `Προσωπικά πιστεύουν`,
@@ -493,17 +519,22 @@ window.I18N_DICT = {
     intro_decider: `Αποφασιστική ερώτηση`, intro_decider_d: `Ισοπαλία στην κορυφή. Ψηφίζουν όλοι, βαθμούς παίρνουν μόνο:`,
     pause_title: `Περιμένουμε παίκτες`, pause_d: `Χρειάζονται τουλάχιστον {min} συνδεδεμένοι, τώρα {n}. Αν δεν γυρίσουν, η παρτίδα διακόπτεται.`,
     pause_pt: `Λίγες ψήφοι`, pause_pd: `Δύο ερωτήσεις στη σειρά πήραν λιγότερες από {min} ψήφους, αν και όλοι είναι συνδεδεμένοι. Συνεχίζουμε, αλλά αν επαναληφθεί η παρτίδα σταματά.`, pause_idle: `Δεν ψήφισαν: {names}`, pause_kick: `Ο οικοδεσπότης μπορεί να αφαιρέσει παίκτη:`, final_idle: `Η παρτίδα σταμάτησε: λίγες ψήφοι`, again_need: `Χρειάζονται ακόμα {n} για νέα παρτίδα`,
-    lobby_free: `ακόμα {n} θέσεις`, lobby_scan: `Στρέψε την κάμερα του κινητού στο QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.`, lobby_players: `Παίκτες`,
+    lobby_free: `ακόμα {n} θέσεις`, lobby_off: `+{n} χωρίς σύνδεση`, lp_off: `χωρίς σύνδεση`, //EL:unverified
+    lobby_scan: `Στρέψε την κάμερα του κινητού στο QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.`, lobby_players: `Παίκτες`,
     r1: `Εμφανίζεται μια ερώτηση. Απάντησε όχι για σένα αλλά για όλους: τι θα διαλέξει η πλειοψηφία;`,
     r2: `Βρήκες την πλειοψηφία — +100. Όχι — 0. Ισοπαλία — +50 σε όλους.`,
     r3: `×2: σωστά +200, λάθος −200. Μόνο δύο φορές ανά παιχνίδι.`,
     opt_short: `Σύντομη παρτίδα (6)`, opt_short_d: `6 ερωτήσεις αντί για 10`,
     opt_opinion: `Γνώμη`, opt_opinion_d: `Μετά τις ψήφους ρωτάμε τι πιστεύει ο καθένας`, opt_opinion_min: `ενεργοποιείται από {n} παίκτες`,
     btn_start: `Έναρξη`, need_more: `Χρειάζονται ακόμα {n}`, viewer: `Ξεκινά μόνο ο οικοδεσπότης — όποιος άνοιξε αυτή την οθόνη`, kick: `Αφαίρεση`,
+    final_shared: `Κοινή νίκη: {names}`, final_tie2: `Μοιράζονται τη 2η θέση: {names}`, //EL:unverified
     final_title: `Αποτελέσματα`, final_paused: `Η παρτίδα διακόπηκε`, final_few: `Έμειναν λιγότεροι από τρεις παίκτες`, final_host: `Ο οικοδεσπότης τερμάτισε την παρτίδα`,
     aw_crowd: `Διαβάζει το πλήθος`, aw_crowd_d: `{n} φορές στην πλειοψηφία`, aw_crow: `Μαύρο πρόβατο`, aw_crow_d: `{n} φορές στη μειοψηφία`,
     aw_risk: `Ρισκαδόρος`, aw_risk_d: `+{n} από ρίσκο`, aw_wolf: `Μοναχικός λύκος`, aw_wolf_d: `{n} φορές μόνος εναντίον όλων`,
     btn_again: `Νέα παρτίδα`, btn_lobby: `Στο λόμπι`, btn_home: `Αρχική`, btn_end: `Τέλος παρτίδας`,
+    host_link: `Σύνδεσμος οικοδεσπότη`, link_copied: `Ο σύνδεσμος αντιγράφηκε. Μην τον δείχνεις στους παίκτες`, link_shared: `Ο σύνδεσμος στάλθηκε. Μην τον δείχνεις στους παίκτες`, link_none: `Αυτή η οθόνη δεν έχει κλειδί οικοδεσπότη`, //EL:unverified
+    link_prompt_hint: `Αντίγραψε τον σύνδεσμο και μην τον δείχνεις στους παίκτες`, //EL:unverified
+    btn_im_host: `Είμαι ο οικοδεσπότης`, host_paste_ph: `Επικόλλησε τον σύνδεσμο οικοδεσπότη`, btn_ok: `OK`, host_bad: `Αυτός δεν είναι σύνδεσμος οικοδεσπότη`, btn_take: `Πάρε τον έλεγχο`, host_lost_msg: `Τον έλεγχο πήρε άλλη οθόνη`, //EL:unverified
     tm_left: `Δευτερόλεπτα: {n}`,
   },
 };
@@ -808,8 +839,77 @@ function springFrame(dt, now) {
   fl.style.transform = dir < 0 ? "scaleX(-1) translateX(-6px)" : "none";
 }
 
+// ---------- «🔑 Ссылка ведущего» (T-W2-36, crowd-004) ----------
+// Ключ ведущего живёт только в localStorage этого экрана; кнопка копирует …?r=КОД&h=ТОКЕН, токен на экран не рисуется.
+// Без mp-common.js (или при MP.off) блока нет — как раньше.
+let hostNote = "", hostNoteT = 0, pasteOpen = false, hostLost = false, hostCtlKey = "";
+const HL = window.MP && MP.hostLink ? MP.hostLink({
+  hostKeyFn: hostKey,
+  boardPath: "crowd-board.html",
+  getRoom: () => CODE,
+  sendHost: (t) => { if (conn) conn.send({ type: "host", token: t }); },
+  onToast: (kind) => {
+    if (kind === "copied") setHostNote(T("link_copied"));
+    else if (kind === "shared") setHostNote(T("link_shared"));
+    else if (kind === "none") setHostNote(T("link_none"));
+  },
+  prompt: (m, v) => window.prompt(T("link_prompt_hint"), v),
+}) : null;
+function setHostNote(text) {
+  hostNote = text;
+  clearTimeout(hostNoteT);
+  if (text) hostNoteT = setTimeout(() => { hostNote = ""; drawHostCtl(); }, 5000);
+  drawHostCtl();
+}
+const hasHostToken = () => { try { return !!localStorage.getItem(hostKey()); } catch (e) { return false; } };
+function drawHostCtl() {
+  const bar = $("hostctl");
+  if (!bar) return;
+  if (dead || !state || !HL || !CODE) { bar.innerHTML = ""; hostCtlKey = ""; return; }
+  const key = [isHost, hostLost, pasteOpen, hostNote, wvLang(), hasHostToken()].join("|");
+  if (key === hostCtlKey) return;
+  hostCtlKey = key;
+  const mk = (cls, txt) => { const b = document.createElement("button"); b.type = "button"; if (cls) b.className = cls; b.textContent = txt; return b; };
+  const nodes = [];
+  if (isHost) {
+    const lb = mk("linkbtn", "🔑");
+    const lt = document.createElement("span"); lt.className = "lt"; lt.textContent = " " + T("host_link"); lb.append(lt);
+    lb.title = T("host_link");
+    lb.setAttribute("aria-label", T("host_link"));
+    lb.onclick = () => { HL.copy(); };
+    nodes.push(lb);
+  } else if (hostLost && hasHostToken()) {
+    const note = document.createElement("span"); note.className = "note"; note.textContent = T("host_lost_msg");
+    const tk = mk("linkbtn", T("btn_take"));
+    tk.onclick = () => { HL.take(); };
+    nodes.push(note, tk);
+  } else if (pasteOpen) {
+    const inp = document.createElement("input");
+    inp.type = "text"; inp.placeholder = T("host_paste_ph"); inp.autocomplete = "off";
+    const ok = mk("linkbtn", T("btn_ok"));
+    const submit = () => {
+      if (!MP.hostLink.parseToken(inp.value)) { setHostNote(T("host_bad")); return; }
+      HL.take(Date.now(), inp.value);
+      pasteOpen = false;
+    };
+    ok.onclick = submit;
+    inp.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+    nodes.push(inp, ok);
+    setTimeout(() => inp.focus(), 0);
+  } else if (!hasHostToken() || hostLost) {
+    // ключа нет (экран открыт без ?h=) — «Я ведущий»; с ключом, но без host_ok, ждём ответа сервера молча
+    const im = mk("linkbtn", T("btn_im_host"));
+    im.onclick = () => { pasteOpen = true; drawHostCtl(); };
+    nodes.push(im);
+  }
+  if (hostNote) { const n = document.createElement("span"); n.className = "note"; n.textContent = hostNote; nodes.push(n); }
+  bar.innerHTML = "";
+  nodes.forEach((n) => bar.appendChild(n)); // без replaceChildren: проекторы на Chromium 80–83
+}
+
 // ---------- шапка ----------
 function topBar() {
+  drawHostCtl();
   $("brand").textContent = T("game_name");
   $("codechip").textContent = CODE;
   $("codechip").classList.toggle("hidden", state.phase === "lobby");
@@ -957,7 +1057,7 @@ function drawLobby() {
     let e = lobbyEls.get(p.id);
     if (!e) {
       e = document.createElement("div"); e.className = "lp";
-      e.innerHTML = `<i class="av"></i><b></b><button class="x" type="button">✕</button>`;
+      e.innerHTML = `<i class="av"></i><b></b><span class="offt"></span><button class="x" type="button">✕</button>`;
       e.querySelector(".x").onclick = (ev) => { ev.stopPropagation(); if (isHost) conn.send({ type: "kick", playerId: p.id }); };
       lobbyEls.set(p.id, e);
     }
@@ -965,22 +1065,26 @@ function drawLobby() {
     e.querySelector(".av").style.setProperty("--pc", p.color);
     e.querySelector(".av").textContent = p.avatar;
     e.querySelector("b").textContent = p.name;
+    e.querySelector(".offt").textContent = T("lp_off");
+    e.classList.toggle("off", p.online === false);
     e.title = p.name;
     nodes.push(e);
   }
   lps.replaceChildren(...nodes);
   nodes.forEach((n) => { const bb = n.querySelector && n.querySelector("b"); if (!bb) return; let f = 22, g = 0; bb.style.fontSize = f + "px"; while (f > 14 && bb.scrollWidth > bb.clientWidth + 1 && g++ < 12) { f -= 1; bb.style.fontSize = f + "px"; } });
-  $("pn").textContent = ps.length + " / 12";
+  // «N / 12» — по тем, кто на связи; офлайн-места не в счёте старта и подписаны «+K нет связи» (crowd-005)
+  const onl = ps.filter((p) => p.online !== false).length, offl = ps.length - onl;
+  $("pn").textContent = onl + " / 12";
   const free = 12 - ps.length;
-  $("free").textContent = free <= 4 ? tpl("lobby_free", { n: free }) : "";
+  $("free").textContent = offl ? tpl("lobby_off", { n: offl }) + (free <= 4 ? " · " + tpl("lobby_free", { n: free }) : "") : free <= 4 ? tpl("lobby_free", { n: free }) : "";
   $("tshort").setAttribute("aria-pressed", String(!!state.settings.short));
   $("tshort").disabled = !isHost;
   $("top").setAttribute("aria-pressed", String(!!state.settings.opinion));
   $("top").disabled = !isHost;
-  const lowOp = ps.length < state.opinionMin;
+  const lowOp = onl < state.opinionMin;
   $("opd").textContent = lowOp ? tpl("opt_opinion_min", { n: state.opinionMin }) : T("opt_opinion_d");
   $("opd").classList.toggle("warn", lowOp);
-  const need = Math.max(0, state.minPlayers - ps.length);
+  const need = Math.max(0, state.minPlayers - onl);
   $("startbtn").disabled = !isHost || need > 0;
   $("starthint").textContent = !isHost ? T("viewer") : need > 0 ? tpl("need_more", { n: need }) : "";
 }
@@ -1131,11 +1235,17 @@ function showVd(o) {
   vd.setAttribute("aria-hidden", "false");
   vd.classList.add("on");
 }
+// решающий вопрос без +50 (RULE_U47_CROWD_DECIDER v1/v2): единодушие/ничья очков не дают — подпись честная
+function undecidedDecider() {
+  const r = state.round, res = r && r.result;
+  return !!(r && r.only && res && !res.void && Object.keys(res.pts || {}).length && Object.values(res.pts).every((v) => v === 0));
+}
 function verdictOf(kind) {
   const res = state.round.result, q = state.round.q;
   if (kind === "void") return { w: T(res.replace === false ? "v_void_none" : "v_void"), cls: "void", bg: "#2a2a2f", fg: "#f4f1e8", s: esc(T("v_void_d")) };
-  if (kind === "tie") return { w: T("v_tie"), cls: "tie", s: esc(T("v_tie_d")) };
-  if (kind === "one") return { w: T("v_one"), bg: "#3ddc84", fg: "#06210f", s: esc(T("v_one_d")) };
+  const und = undecidedDecider();
+  if (kind === "tie") return { w: T("v_tie"), cls: "tie", s: esc(T(und ? "v_tie_dec" : "v_tie_d")) };
+  if (kind === "one") return { w: T("v_one"), bg: "#3ddc84", fg: "#06210f", s: esc(T(und ? "v_one_dec" : "v_one_d")) };
   const str = tpl("v_maj", { side: "\u0001" });
   const i = str.indexOf("\u0001");
   let k = str.slice(0, i).replace(/[:：]\s*$/, "").trim();
@@ -1145,8 +1255,9 @@ function verdictOf(kind) {
 function detailHtml(kind) {
   const res = state.round.result;
   if (kind === "void") return `<span class="ico">❓</span><span class="cap">${esc(T("v_void_d"))}</span>`;
-  if (kind === "tie") return `<span class="ico">⚖️</span><span class="cap">${esc(T("v_tie_d"))}</span>`;
-  if (kind === "one") return `<span class="ico">🤝</span><span class="cap">${esc(T("v_one_d"))}</span>`;
+  const und = undecidedDecider();
+  if (kind === "tie") return `<span class="ico">⚖️</span><span class="cap">${esc(T(und ? "v_tie_dec" : "v_tie_d"))}</span>`;
+  if (kind === "one") return `<span class="ico">🤝</span><span class="cap">${esc(T(und ? "v_one_dec" : "v_one_d"))}</span>`;
   let h = bigCap("v_maj_d", "k", { k: Math.max(res.a, res.b), n: res.cast });
   if (res.wolf) { const w = player(res.wolf); if (w) h += `<span class="cap">${esc(tpl("wolf_note", { name: w.name }))}</span>`; }
   return h;
@@ -1384,6 +1495,17 @@ function countUp(nodes, dur, delay) {
 }
 
 // ---------- итоги ----------
+// ничья на первом месте — «Победу делят», на втором — «Делят 2-е место» (T-W2-37, crowd-010/011; класс A)
+function tieLine(list, reason) {
+  if (reason !== "done" || list.length < 2) return null;
+  const sc = list.map((x) => x.score).sort((a, b) => b - a);
+  const names = (arr) => arr.map((x) => x.name).join(", ");
+  const w = list.filter((x) => x.score === sc[0]);
+  if (w.length >= 2) return { k: "final_shared", names: names(w) };
+  const s2 = sc.find((x) => x < sc[0]);
+  const w2 = s2 == null ? [] : list.filter((x) => x.score === s2);
+  return w2.length >= 2 ? { k: "final_tie2", names: names(w2) } : null;
+}
 function drawFinal() {
   const key = "final:" + state.game + wvLang() + isHost + L.sig + ":" + Math.max(0, state.minPlayers - present().length);
   if (viewKey === key) return;
@@ -1398,12 +1520,13 @@ function drawFinal() {
   add(aw.crowd, "👥", "crowd"); add(aw.crow, "🐑", "crow"); add(aw.risk, "🎲", "risk"); add(aw.wolf, "🐺", "wolf");
   const sub = state.finishedReason === "paused" ? T("final_paused") : state.finishedReason === "few" ? T("final_few") : state.finishedReason === "idle" ? T("final_idle") : state.finishedReason === "host" ? T("final_host") : "";
   const head = state.finishedReason === "paused" ? T("final_paused") : T("final_title");
+  const tie = tieLine(list, state.finishedReason);
   const againNeed = Math.max(0, state.minPlayers - present().length);
   const restL = list.slice(3);
   const rhalf = Math.ceil(restL.length / 2);
   const rowH = (p) => `<span><i class="rk">${wvRank(list, p)}</i>${avHtml(p)}<b>${esc(p.name)}</b><em>${p.score}</em></span>`;
   upper.innerHTML = `<div class="scr fin" id="fin">
-    <h1>${esc(head)}${sub && state.finishedReason !== "paused" ? `<small>${esc(sub)}</small>` : ""}</h1>
+    <h1>${esc(head)}${tie ? `<small class="tie">${esc(tpl(tie.k, { names: tie.names }))}</small>` : ""}${sub && state.finishedReason !== "paused" ? `<small>${esc(sub)}</small>` : ""}</h1>
     <div class="rest l">${restL.slice(0, rhalf).map(rowH).join("")}</div>
     <div class="podium" id="podium">${top.map((p, i) => p ? `<div class="step${wvRank(list, p) === 1 ? " first" : ""}"><div class="who" style="--d:${ds[i]}">${avHtml(p)}<span>${esc(p.name)}</span></div><div class="blk" style="--hf:${hsOf(p)};--d:${[0.4, 0.9, 0.1][i]}s">${wvRank(list, p)}<small>${p.score}</small></div></div>` : `<div class="step"></div>`).join("")}</div>
     <div class="rest r">${restL.slice(rhalf).map(rowH).join("")}</div>
@@ -1488,6 +1611,7 @@ function setState(s) { s.__at = performance.now(); state = s; }
 function onMessage(m) {
   switch (m.type) {
     case "hello":
+      if (goneFlow) goneFlow.hello();
       setState(m.state);
       if (!isHost) {
         let token = null;
@@ -1502,6 +1626,8 @@ function onMessage(m) {
       break;
     case "host_ok":
       isHost = true;
+      hostLost = false;
+      pasteOpen = false;
       document.body.classList.add("host");
       viewKey = "";
       if (state && state.phase === "lobby" && state.settings.lang !== wvLang()) conn.send({ type: "settings", settings: { lang: wvLang() } });
@@ -1509,12 +1635,20 @@ function onMessage(m) {
       break;
     case "host_lost":
       isHost = false;
+      hostLost = true;
       document.body.classList.remove("host");
       viewKey = "";
       render();
       break;
     case "error":
-      if (m.error === "room_expired") gone();
+      if (m.error === "room_expired") onRoomGone();
+      if (m.error === "bad host token") {
+        // чужой/протухший токен: убираем его и просим вставить ссылку ведущего
+        hostLost = false;
+        try { localStorage.removeItem(hostKey()); } catch (e) {}
+        pasteOpen = true;
+        setHostNote(T("host_bad"));
+      }
       break;
   }
 }
@@ -1523,6 +1657,12 @@ function gone() {
   upper.innerHTML = "";
   showBanner(T("expired"));
 }
+// hello не приходил ни разу — такой комнаты нет (опечатка в адресе), а не «закрылась» (MP.roomGone, T-W2-43)
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({
+  showForm: () => { dead = true; upper.innerHTML = ""; showBanner(T("noroom")); },
+  onClosed: () => gone(),
+}) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else gone(); }
 async function boot() {
   const h = params.get("h");
   if (h && CODE) {
@@ -1532,12 +1672,20 @@ async function boot() {
   measure();
   if (!(await ensureRoom())) return;
   const banner = $("conn");
+  let netLost = false, netQuiet = false;
+  const showNet = () => {
+    banner.textContent = T(netLost ? "err_connect" : "conn_lost");
+    banner.classList.toggle("on", netLost || netQuiet);
+  };
+  window.addEventListener("langchange", showNet);
   conn = wvConnect({
     code: CODE,
     onMessage,
-    onGone: gone,
+    onGone: onRoomGone,
     onOpen: () => { isHost = false; },
-    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+    // «lost» — сокет закрыт, переподключаемся; «quiet» — сокет жив, но молчит дольше 10 с (MP.conn)
+    onState: (st) => { netLost = st === "lost"; if (st === "open") netQuiet = false; showNet(); },
+    onQuiet: (q) => { netQuiet = !!q; showNet(); },
   });
   requestAnimationFrame(frame);
   window.wvBoard = { send: (m) => conn.send(m), get state() { return state; }, get code() { return CODE; } };

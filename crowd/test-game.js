@@ -226,6 +226,97 @@ test("равные очки на первом месте — решающий в
   assert.strictEqual(score(g, "p0"), 500 + 200 + 50);
 });
 
+// ---------- T-W2-37: RULE_U47_CROWD_DECIDER ----------
+function toDecider(rule) {
+  return withRule(rule, () => {
+    const ctx = mk(4, { short: true }); ctx.g.start(0);
+    for (let i = 0; i < 5; i++) round(ctx, ["a", "a", "a", "b"]);
+    skipIntro(ctx);
+    round(ctx, ["a", "a", "a", "b"]); // финал: p0,p1,p2 равны
+    skipIntro(ctx);
+    assert.strictEqual(ctx.g.s.round.kind, "decider");
+    return ctx;
+  });
+}
+function withRule(rule, fn) {
+  const old = process.env.RULE_U47_CROWD_DECIDER;
+  if (rule == null) delete process.env.RULE_U47_CROWD_DECIDER; else process.env.RULE_U47_CROWD_DECIDER = rule;
+  try { return fn(); } finally { if (old === undefined) delete process.env.RULE_U47_CROWD_DECIDER; else process.env.RULE_U47_CROWD_DECIDER = old; }
+}
+
+test("U-47 now (по умолчанию): единодушие в решающем даёт +50 и партия кончается, как раньше", () => {
+  const ctx = toDecider(null);
+  const res = withRule(null, () => round(ctx, ["a", "a", "a", "a"]));
+  assert.ok(res.unanimous);
+  assert.strictEqual(score(ctx.g, "p0"), 700 + 50);
+  assert.strictEqual(ctx.g.s.phase, "finished");
+});
+
+test("U-47 v1: единодушие и ничья в решающем — 0 очков, партия кончается, лидеры равны", () => {
+  for (const votes of [["a", "a", "a", "a"], ["a", "a", "b", "b"]]) {
+    const ctx = toDecider("v1");
+    const res = withRule("v1", () => round(ctx, votes));
+    assert.ok(res.unanimous || res.tie, "флаги раскрытия честные");
+    assert.deepStrictEqual(["p0", "p1", "p2"].map((id) => score(ctx.g, id)), [700, 700, 700]);
+    assert.strictEqual(ctx.g.s.phase, "finished");
+    assert.strictEqual(ctx.g.s.finishedReason, "done");
+  }
+});
+
+test("U-47 v1: решающий разделил лидеров — +100 большинству, партия окончена", () => {
+  const ctx = toDecider("v1");
+  withRule("v1", () => round(ctx, ["a", "b", "b", "b"])); // большинство b: p1, p2 +100, p0 — 0
+  assert.deepStrictEqual(["p0", "p1", "p2"].map((id) => score(ctx.g, id)), [700, 800, 800]);
+  assert.strictEqual(ctx.g.s.phase, "finished");
+});
+
+test("U-47 v2: лидеры равны после решающего — ещё один (не больше двух), потом finish done", () => {
+  const ctx = toDecider("v2");
+  withRule("v2", () => round(ctx, ["a", "a", "a", "a"]));
+  assert.strictEqual(ctx.g.s.phase, "intro", "второй решающий");
+  skipIntro(ctx);
+  assert.strictEqual(ctx.g.s.round.kind, "decider");
+  assert.strictEqual(ctx.g.deciderRuns(), 2);
+  withRule("v2", () => round(ctx, ["a", "a", "a", "a"]));
+  assert.strictEqual(ctx.g.s.phase, "finished");
+  assert.strictEqual(ctx.g.s.finishedReason, "done");
+  assert.deepStrictEqual(["p0", "p1", "p2"].map((id) => score(ctx.g, id)), [700, 700, 700]);
+});
+
+test("U-47 v2: второй решающий разделил лидеров — победитель один", () => {
+  const ctx = toDecider("v2");
+  withRule("v2", () => round(ctx, ["a", "a", "b", "b"]));
+  skipIntro(ctx);
+  withRule("v2", () => round(ctx, ["a", "b", "b", "b"]));
+  assert.strictEqual(ctx.g.s.phase, "finished");
+  assert.ok(score(ctx.g, "p1") === 800 && score(ctx.g, "p0") === 700);
+});
+
+test("deciderRuns: старый дамп с deciderDone: true считается одним решающим", () => {
+  const ctx = mk(3); ctx.g.start(0);
+  delete ctx.g.s.deciderRuns;
+  ctx.g.s.deciderDone = true;
+  assert.strictEqual(ctx.g.deciderRuns(), 1);
+  ctx.g.s.deciderDone = false;
+  assert.strictEqual(ctx.g.deciderRuns(), 0);
+});
+
+test("решающий и финальный вопросы не sensitive (3000 партий)", () => {
+  let sens = 0;
+  for (let seed = 1; seed <= 3000; seed++) {
+    const g = Game.create({ settings: { opinion: false, short: seed % 2 === 0 }, code: "T", rnd: rndFrom(seed), content: { ru: bank() } });
+    for (const id of ["a", "b", "c"]) g.addPlayer({ id, name: "И" + id, now: 0 });
+    g.start(0);
+    g.s.n = g.total() - 1; // последний основной вопрос
+    for (const kind of ["final", "decider", "extra"]) {
+      const q = g.takeQuestion(kind);
+      const src = bank().find((x) => x.id === q.id);
+      if (src.sensitive && kind !== "extra") sens++;
+    }
+  }
+  assert.strictEqual(sens, 0);
+});
+
 test("«Одиночка»: ровно один против всех (≥ 4 голосов) — значок, очки по общим правилам", () => {
   const ctx = mk(5); ctx.g.start(0);
   const res = round(ctx, ["b", "a", "a", "a", "a"]);
@@ -734,4 +825,67 @@ test("restore-from-prev-dump: без voidsUsed/replNext/round.repl/result.bankLa
   assert.ok(!Number.isNaN(g2.s.voidsUsed), "voidsUsed не NaN");
   const snap = g2.snapshot(c2.t, c2.ids[0]);
   assert.ok(snap.awards !== undefined);
+});
+
+// ---------- T-W2-35: призраки не в партии (RULE_U08_GHOST_OUT) и вытеснение офлайн-места ----------
+function withFlag(name, value, fn) {
+  const old = process.env[name];
+  if (value == null) delete process.env[name]; else process.env[name] = value;
+  try { return fn(); } finally { if (old === undefined) delete process.env[name]; else process.env[name] = old; }
+}
+
+test("RULE_U08_GHOST_OUT выкл: офлайн к старту — в партии с нулём, как раньше", () => {
+  withFlag("RULE_U08_GHOST_OUT", null, () => {
+    const { g } = mk(4);
+    g.setOnline("p3", false, 1000);
+    assert.ok(g.start(2000).ok);
+    assert.strictEqual(g.present().length, 4);
+    assert.ok(g.player("p3") && !g.player("p3").left);
+  });
+});
+
+test("RULE_U08_GHOST_OUT=1: офлайн к старту — left, не в партии; вернулся по имени — садится обратно без очков", () => {
+  withFlag("RULE_U08_GHOST_OUT", "1", () => {
+    const { g } = mk(4);
+    g.setOnline("p3", false, 1000);
+    assert.ok(g.start(2000).ok);
+    assert.strictEqual(g.present().length, 3);
+    assert.strictEqual(g.player("p3").left, true);
+    const r = g.addPlayer({ id: "новый", name: "Игрок3", now: 3000 });
+    assert.ok(r.ok && r.restored);
+    assert.strictEqual(r.player.id, "p3");
+    assert.strictEqual(r.player.left, false);
+    assert.strictEqual(r.player.score, 0);
+  });
+});
+
+test("RULE_U08_GHOST_OUT=1: 2 на связи + 1 призрак -> few_players; призраки не занимают места", () => {
+  withFlag("RULE_U08_GHOST_OUT", "1", () => {
+    const a = mk(3);
+    a.g.setOnline("p2", false, 0);
+    assert.strictEqual(a.g.start(1).reason, "few_players");
+    const b = mk(12);
+    for (const id of ["p9", "p10", "p11"]) b.g.setOnline(id, false, 0);
+    assert.ok(b.g.start(10).ok);
+    assert.strictEqual(b.g.present().length, 9);
+    assert.ok(b.g.addPlayer({ id: "x1", name: "Новый1", now: 20 }).ok);
+  });
+});
+
+test("лобби: полная комната вытесняет давнее офлайн-место (старше GHOST_TTL_MS), свежее не трогает", () => {
+  const { g } = mk(12);
+  g.setOnline("p5", false, 1000);
+  g.setOnline("p6", false, 50000);
+  assert.strictEqual(g.addPlayer({ id: "x", name: "Новый", now: 60000 }).reason, "room_full");
+  const r = g.addPlayer({ id: "x", name: "Новый", now: 130000 });
+  assert.ok(r.ok);
+  assert.ok(!g.player("p5"));
+  assert.ok(g.player("p6"));
+});
+
+test("посреди партии место офлайн не вытесняется (room_full)", () => {
+  const { g } = mk(12);
+  g.start(0);
+  g.setOnline("p5", false, 1000);
+  assert.strictEqual(g.addPlayer({ id: "x", name: "Новый", now: 900000 }).reason, "room_full");
 });
