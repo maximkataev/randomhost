@@ -221,8 +221,11 @@
   /* выбывшему управлять нечем — смотрит и в портрете, без просьбы повернуть */
   @media (orientation: portrait) and (max-width: 700px) { body.is-touch.playing:not(.out) .rotate { display: flex; } }
 
-  .conn { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: rgba(205, 48, 58, 0.95); color: #fff; font-weight: 800; font-size: 14px; padding: 9px 14px; border-radius: 12px; display: none; white-space: nowrap; }
+  /* плашка связи — вверху под панелью HUD и не ловит касания: внизу она закрывала кнопку рывка (floe-009 / rapids-024) */
+  .conn { position: fixed; left: 50%; bottom: auto; top: calc(52px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 30; pointer-events: none; background: rgba(205, 48, 58, 0.95); color: #fff; font-weight: 800; font-size: 14px; padding: 9px 14px; border-radius: 12px; display: none; white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; }
   .conn.on { display: block; }
+  @media (min-width: 900px) { body.with-panel .conn { margin-left: 170px; } }
+  @media (max-height: 500px) and (min-width: 600px) and (orientation: landscape) { body.with-panel .conn { margin-left: 150px; } }
   .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: #fff; color: #06182c; font-weight: 800; font-size: 14px; padding: 10px 16px; border-radius: 12px; max-width: calc(100% - 32px); display: none; }
   .toast.on { display: block; animation: toastIn 0.3s ease-out; }
   @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 10px); } }
@@ -487,6 +490,7 @@ window.I18N_DICT = {
     me: null, token: null, hostId: null, roster: [], cfg: Object.assign({}, DEFAULTS),
     snaps: [], sh: "", offset: null, rtt: 0, rtts: [], lastPingAt: 0,
     events: [], replay: null,
+    lastSnapAt: 0, openedAt: 0, silent: false,   // сторож «нет снимков»: сокет открыт, а кадров нет
   };
   const tokenKey = () => "floe-token-" + CODE;
   const hostKey = () => "floe-host-" + CODE;
@@ -498,6 +502,7 @@ window.I18N_DICT = {
     net.ws = ws;
     ws.onopen = () => {
       net.open = true; net.everOpen = true; net.retry = 0;
+      net.openedAt = performance.now(); net.lastSnapAt = 0; net.silent = false;
       $("conn").classList.remove("on");
       if (net.token || net.wantJoin) sendJoin();
     };
@@ -573,6 +578,7 @@ window.I18N_DICT = {
   const INTERP_MS = 100;
   const serverNow = () => (net.offset == null ? null : performance.timeOrigin + performance.now() + net.offset);
   function onSnap(m) {
+    net.lastSnapAt = performance.now();
     if (m.sh) net.sh = m.sh;
     if (net.offset == null) net.offset = m.t - (performance.timeOrigin + performance.now()) - 40;
     net.snaps.push(m);
@@ -1119,6 +1125,32 @@ window.I18N_DICT = {
   // ===================================================================
   // Цикл
   // ===================================================================
+  // Сторож: сокет открыт, но снимков нет (полуоткрытый TCP, сеть встала молча). 1,5 с — плашка «Связь пропала…» и
+  // предсказание выключено, 4 с — закрываем сокет, дальше обычное переподключение. Только у вошедшего (иначе тик не идёт
+  // и снимков нет по делу) и только пока вкладка видима (в фоне кадры и таймеры сами встают)
+  function watchSnaps(now) {
+    if (!net.open || !net.me || document.hidden) return;
+    const age = now - Math.max(net.lastSnapAt, net.openedAt);
+    const silent = age > 1500;
+    if (silent) pred.on = false;
+    if (silent !== net.silent) {
+      net.silent = silent;
+      if (silent) $("conn").textContent = T("conn_lost");
+      $("conn").classList.toggle("on", silent);
+    }
+    if (age > 4000) dropSocket(now);
+  }
+  // закрываем «мёртвый» сокет сами и не ждём onclose (у полуоткрытого TCP он приходит через минуты): отцепляем обработчики
+  // и идём в обычное переподключение с тем же токеном
+  function dropSocket(now) {
+    net.lastSnapAt = now; net.openedAt = now; net.silent = false;
+    const ws = net.ws;
+    if (ws) { ws.onclose = ws.onmessage = ws.onerror = null; try { ws.close(); } catch (e) {} }
+    net.open = false;
+    retryLater();
+  }
+  // вернулись во вкладку: счёт молчания начинаем заново, иначе баннер вспыхнет от времени, проведённого в фоне
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { net.lastSnapAt = performance.now(); } });
   let last = performance.now(), pingAt = 0;
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
@@ -1134,6 +1166,7 @@ window.I18N_DICT = {
       render.apply(demo.g.snapshot(), demo.g.drainEvents().filter((e) => e.type !== "fall" || true));
     } else if (CODE) {
       if (net.open && now - pingAt > 2000) { pingAt = now; send({ type: "ping", c: now, rtt: Math.round(net.rtt) }); }
+      watchSnaps(now);
       if (ui.replay) replayStep(dt);
       else {
         pushInput(dt);
