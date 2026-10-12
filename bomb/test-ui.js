@@ -176,7 +176,8 @@ const SOLVER = String.raw`(async () => {
   server.stderr.on("data", (d) => (slog += d));
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "bomb-ui-"));
   const chrome = spawn(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--autoplay-policy=no-user-gesture-required", `--user-data-dir=${profile}`, `--remote-debugging-port=${PORT}`, "--window-size=1440,900", "about:blank"], { stdio: "ignore" });
-  await wait(2500);
+  // Chrome на нагруженной машине поднимается дольше 2,5 с — ждём порт отладки до 30 с
+  for (let i = 0; i < 60; i++) { try { await fetch(`http://localhost:${PORT}/json/version`); break; } catch (e) { await wait(500); } }
   const pages = [];
   try {
     // --- 1. стартовый экран
@@ -302,6 +303,13 @@ const SOLVER = String.raw`(async () => {
     for (const [i, ph] of phones.entries()) check((await ph.evaluate("window.bmPhone.me")) != null, `телефон ${names[i]}: вошёл`);
     check((await board.evaluate("state.players.length")) === 3, "доска: трое в лобби");
     await board.shot("b_lobby");
+    // T-W3-14 (bomb-008): ✕ не меньше 36×36 и убирает со второго тапа; QR крупнее 136 css-px при высоте 900
+    const lobbyM = await board.evaluate(`(() => { const x = document.querySelector(".seat .x"); const q = document.getElementById("qr").getBoundingClientRect(); const r = x.getBoundingClientRect(); x.click(); return { w: Math.round(r.width), h: Math.round(r.height), qr: Math.round(q.width), armed: !!document.querySelector(".seat .x[data-armed]"), n: state.players.length }; })()`);
+    check(lobbyM && lobbyM.w >= 36 && lobbyM.h >= 36, `лобби: ✕ не меньше 36×36 (${lobbyM && lobbyM.w}×${lobbyM && lobbyM.h})`);
+    check(lobbyM && lobbyM.armed && lobbyM.n === 3, "лобби: первый тап по ✕ взводит «Убрать?», игрок остаётся");
+    check(lobbyM && lobbyM.qr >= 136, `лобби: QR не меньше 136 (${lobbyM && lobbyM.qr})`);
+    await wait(3300);
+    check((await board.evaluate("!document.querySelector('.seat .x[data-armed]') && state.players.length")) === 3, "лобби: без второго тапа ✕ сам снимается, игрок на месте");
     await phones[0].shot("p_lobby");
 
     // --- 3. галерея испытаний: подсовываем пульту каждое испытание и рисуем, ничего не отправляя
@@ -348,6 +356,63 @@ const SOLVER = String.raw`(async () => {
         await gallery.shot(`v_${phase}_${victimIsMe ? "me" : "other"}_${size[0]}`);
       }
     }
+    // --- 3б. T-W3-11: вёрстка телефона 320×568 (хеш 8 знаков, вердикт без разрыва слов, имена, «← Все игры», тост, «ты вне игры», «ты»)
+    await gallery.call("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+    const w311 = await gallery.evaluate(`(() => {
+      const real = window.bmPhone.state, me = window.bmPhone.me;
+      const mk = () => { const f = JSON.parse(JSON.stringify(real)); f.phase = "live"; f.startedAt = Date.now() - 38000; return f; };
+      const out = {};
+      // имена «Игорь🔥» и «Игорь🔥 2» в сетке целей различимы и не обрезаны
+      const f1 = mk();
+      f1.players = real.players.slice(0, 1).concat([{ id: "x1", name: "Игорь🔥", color: "#e8322b", online: true }, { id: "x2", name: "Игорь🔥 2", color: "#1e6fd9", online: true }, { id: "x3", name: "Alexandra-Lupita", color: "#16924a", online: true }]);
+      f1.players[0] = Object.assign({}, real.players.find((p) => p.id === me));
+      f1.bombs = [{ id: 0, holder: me, from: null, since: Date.now() - 3000, alive: true, commit: "ab12cd34" + "0".repeat(56), min: 30, max: 90 }];
+      f1.me = { id: me, challenge: null, armed: true, holding: [0], passN: {} };
+      screen = null; state = f1; renderTargets();
+      out.targets = [...document.querySelectorAll("#targets .target .nm")].map((n) => ({ t: n.textContent, clipped: n.scrollHeight > n.clientHeight + 1 }));
+      // красный экран: «← Все игры» не кликабельна, тост — под шапкой, не на кнопках
+      const a = document.querySelector(".util a");
+      out.backPE = getComputedStyle(a).pointerEvents; out.backAria = a.getAttribute("aria-disabled");
+      toast("Не успел — держи другое");
+      const tr = document.getElementById("toast").getBoundingClientRect(), tg = document.getElementById("targets").getBoundingClientRect();
+      out.toastBottom = Math.round(tr.bottom); out.targetsTop = Math.round(tg.top);
+      // отсчёт: 8 знаков, по тапу полный; часов с начала раунда на телефоне нет
+      const f2 = mk(); f2.phase = "countdown"; f2.phaseEnd = Date.now() + 3000;
+      f2.bombs = [{ id: 0, holder: null, from: null, since: 0, alive: true, commit: "ab12cd34" + "0".repeat(56), min: 30, max: 90 }];
+      f2.me = { id: me, challenge: null, armed: false, holding: [] };
+      screen = null; calmKey = ""; state = f2; render();
+      out.hashShort = (document.querySelector(".seal .hash") || {}).textContent;
+      out.long64 = /[0-9a-f]{40,}/i.test(document.getElementById("app").innerText);
+      document.querySelector(".seal .hash").click();
+      out.hashFull = (document.querySelector(".seal .hash") || {}).textContent.length;
+      // пассивный экран: метка «ты», нет часов «0:38», выбывший без «(а)»
+      const f3 = mk();
+      f3.bombs = [{ id: 0, holder: f3.players.find((p) => p.id !== me).id, from: null, since: Date.now() - 3000, alive: true, commit: "ab12cd34" + "0".repeat(56), min: 30, max: 90 }];
+      f3.me = { id: me, challenge: null, armed: false, holding: [] };
+      screen = null; calmKey = ""; state = f3; render();
+      out.you = document.querySelectorAll(".pl.me .you").length;
+      out.clock = /\\d+:\\d\\d/.test((document.querySelector(".mini .t") || {}).textContent || "");
+      f3.players.find((p) => p.id === me).out = true; screen = null; calmKey = ""; render();
+      out.outText = document.querySelector(".status").innerText;
+      f3.players.find((p) => p.id === me).out = false;
+      // итоги: вердикт печати переносится по словам
+      Object.assign(f3, { phase: "finished", loserId: f3.players[0].id, round: 7, seals: [{ round: 7, bomb: 0, commit: "ab".repeat(32), min: 30, max: 90, revealed: true, fuseMs: 47000, salt: "00", seal: "x" }], bombs: [] });
+      screen = null; boomKey = ""; render();
+      const ok = document.getElementById("sealok");
+      out.verdictBreak = getComputedStyle(ok).wordBreak + "/" + getComputedStyle(ok).overflowWrap;
+      out.finishedHash = (document.querySelector(".seal .hash") || {}).textContent;
+      out.gender = /\\([а-я]+\\)/.test(document.body.innerText);
+      return out;
+    })()`);
+    check(w311 && w311.targets && w311.targets.length === 3 && new Set(w311.targets.map((t) => t.t)).size === 3 && w311.targets.every((t) => !t.clipped), "320: «Игорь🔥» / «Игорь🔥 2» / «Alexandra-Lupita» в сетке целей различимы и не обрезаны" + (w311 && w311.__error ? " " + w311.__error : ""));
+    check(w311 && w311.backPE === "none" && w311.backAria === "true", "красный экран: «← Все игры» неактивна");
+    check(w311 && w311.toastBottom <= w311.targetsTop + 1, `красный экран: тост не перекрывает плитки (низ ${w311 && w311.toastBottom}, плитки с ${w311 && w311.targetsTop})`);
+    check(w311 && /^[0-9a-f]{8}…$/.test(w311.hashShort) && w311.long64 === false && w311.hashFull === 64, "отсчёт: хеш 8 знаков, по тапу полный 64");
+    check(w311 && w311.you === 1 && w311.clock === false, "пассивный экран: метка «ты», часов с начала раунда нет");
+    check(w311 && !/\([а-я]+\)/.test(w311.outText) && !w311.gender, "экран «ты вне игры» и итоги без «(а)»");
+    check(w311 && /^normal/.test(w311.verdictBreak) && /^[0-9a-f]{8}…$/.test(w311.finishedHash), "итоги: вердикт печати без разрыва внутри слова, хеш короткий");
+    await gallery.shot("w311_320");
+
     check(gallery.errors.length === 0, "галерея без JS-ошибок" + (gallery.errors[0] ? ": " + gallery.errors[0] : ""));
     // вернуть настоящее состояние
     await gallery.call("Emulation.setDeviceMetricsOverride", { width: 360, height: 640, deviceScaleFactor: 2, mobile: true });
@@ -437,6 +502,10 @@ const SOLVER = String.raw`(async () => {
     }
 
     // --- 5. ведущий останавливает раунд → итоги, печать сверяется в браузере
+    // T-W3-14 (bomb-005): «Остановить раунд» — два тапа; первый только взводит
+    await board.evaluate("document.querySelector('#hostbar button:not(.linkbtn)').click()");
+    await wait(300);
+    check((await board.evaluate("state.phase")) === "live" && (await board.evaluate("document.querySelector('#hostbar button[data-armed]') !== null")), "«Остановить раунд»: первый тап взводит, раунд идёт");
     await board.evaluate("document.querySelector('#hostbar button:not(.linkbtn)').click()");
     await wait(2000);
     check((await board.evaluate("state.phase")) === "finished", "раунд остановлен ведущим");
@@ -479,6 +548,8 @@ const SOLVER = String.raw`(async () => {
       check(armed, `«Зал» (${ch.view.where}): держатель ввёл код и может кидать`);
       if (armed) crowdDone++;
       await board.evaluate("document.querySelector('#hostbar button:not(.linkbtn)').click()");
+      await wait(150);
+      await board.evaluate("document.querySelector('#hostbar button:not(.linkbtn)').click()");
       await wait(1500);
     }
     check(crowdDone >= 1, "«Зал» пройден по-настоящему");
@@ -490,11 +561,32 @@ const SOLVER = String.raw`(async () => {
     await wait(400);
     await board.evaluate("document.getElementById('again').click()");
     await wait(3500);
+    await board.evaluate(`(() => {
+      window.__kap = null;
+      new MutationObserver((muts) => {
+        const arena = document.getElementById("arena");
+        for (const m of muts) for (const k of m.addedNodes) {
+          if (!k.classList || !k.classList.contains("kapow")) continue;
+          requestAnimationFrame(() => {
+            const ar = arena.getBoundingClientRect(), sc = ar.width / arena.clientWidth || 1;
+            const rg = document.createRange(); rg.selectNodeContents(document.getElementById("holder")); const nr = rg.getBoundingClientRect();
+            const cx = parseFloat(k.style.left), cy = parseFloat(k.style.top), hw = k.offsetWidth / 2, hh = k.offsetHeight / 2;
+            const x0 = (nr.left - ar.left) / sc, x1 = (nr.right - ar.left) / sc, y0 = (nr.top - ar.top) / sc, y1 = (nr.bottom - ar.top) / sc;
+            window.__kap = { over: !(cx + hw <= x0 || cx - hw >= x1 || cy + hh <= y0 || cy - hh >= y1), z: k.style.zIndex };
+          });
+        }
+      }).observe(document.getElementById("arena"), { childList: true });
+    })()`);
     const victimPhone = await board.evaluate("state.bombs[0].holder");
     const waitBoom = async () => { for (let i = 0; i < 100; i++) { if ((await board.evaluate("state.phase")) === "boom") return true; await wait(500); } return false; };
     check(await waitBoom(), "взрыв случился сам по фитилю");
     await wait(300);
     await board.shot("b_boom");
+    // T-W3-14 (bomb-006): «БУМ!» не лежит на имени проигравшего (наблюдатель в странице записал положение звезды сразу при появлении)
+    const kap = await board.evaluate("window.__kap || { none: true }");
+    check(kap && !kap.none && (!kap.over || kap.z === "2"), "взрыв: «БУМ!» не перекрывает имя проигравшего" + (kap && kap.none ? " (звезды нет)" : ""));
+    await wait(2000);
+    check((await board.evaluate("document.querySelectorAll('.kapow').length")) === 0, "взрыв: «БУМ!» исчезает за ~2 с, а не висит 4 с");
     const vIdx = (await Promise.all(phones.map((p) => p.evaluate("window.bmPhone.me")))).indexOf(victimPhone);
     if (vIdx >= 0) await phones[vIdx].shot("p_boom_victim");
     await phones[(vIdx + 1) % 3].shot("p_boom_other");

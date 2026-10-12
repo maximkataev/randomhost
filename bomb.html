@@ -67,13 +67,15 @@
   .util a { color: var(--ink-2); text-decoration: none; font-weight: 700; padding: 8px 0; white-space: nowrap; }
   /* длинная подпись (греческая) на узком экране — короткая, чтобы ссылка шла в одну строку */
   .util a .short { display: none; }
-  body.holding .util a { color: #fff; }
+  body.holding .util a { color: #fff; opacity: .45; pointer-events: none; }
   /* звук — такая же «таблетка», как переключатель языка: та же высота, та же рамка, на одной линии */
   .sound-toggle-btn { flex: none; width: calc(var(--lsh, 44px) * 1.25); height: var(--lsh, 44px); border: 1px solid var(--ink); border-radius: 999px; background: var(--paper); box-shadow: 0 4px 14px rgba(22, 18, 12, .12); font-size: 17px; display: grid; place-items: center; padding: 0; }
   .conn { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 30; background: var(--ink); color: #fff; font-weight: 700; padding: 6px 12px; visibility: hidden; white-space: nowrap; }
   .conn.on { visibility: visible; }
-  .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: var(--ink); color: var(--paper); font-weight: 700; padding: 10px 14px; max-width: calc(100% - 32px); visibility: hidden; }
+  .toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 30; background: var(--ink); color: var(--paper); font-weight: 700; padding: 10px 14px; max-width: calc(100% - 32px); visibility: hidden; }
   .toast.on { visibility: visible; animation: drop .3s var(--spring); }
+  /* bomb-036: на красном экране кнопки внизу — тост сверху, под полосой «Все игры»/языка */
+  body.holding .toast { top: calc(var(--lsc, 30px) * 2 - 8px); bottom: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 3px 12px; line-height: 1.2; }
   /* контент по центру экрана по вертикали; экран с бомбой (.hot) растягивается на всю высоту */
   #app { max-width: 520px; margin: 0 auto; padding: 0 16px 24px; min-height: calc(100vh - var(--lsc, 30px) * 2); min-height: calc(100dvh - var(--lsc, 30px) * 2); display: flex; flex-direction: column; justify-content: center; }
 
@@ -123,7 +125,11 @@
   .status .sub { font-size: 19px; font-weight: 700; min-height: 1.3em; }
   .plist { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .pl { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 10px; border: 2.5px solid var(--ink); background: #fff; min-width: 0; }
-  .pl b { font-weight: 700; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+  /* bomb-018/021: имя — до двух строк (суффикс « 2» не теряется), у себя — одна строка и метка «ты» под ней; плитка не растёт */
+  .pl b { font-weight: 700; font-size: 18px; min-width: 0; flex: 1; display: flex; flex-direction: column; justify-content: center; line-height: 1.05; }
+  .pl .nm { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+  .pl.me .nm { -webkit-line-clamp: 1; }
+  .pl .you { display: block; font: 900 11px/1.1 var(--font); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); }
   .pl.me { background: var(--paper-2); }
   .pl.hold { background: var(--yellow); }
   .pl.out { opacity: .4; }
@@ -139,9 +145,14 @@
   .mini .t { font-size: 17px; line-height: 1.25; }
   .mini .t b { font-size: 22px; display: block; }
   .count { font: italic 900 120px/1 var(--font); color: var(--yellow); -webkit-text-stroke: 3px var(--ink); text-shadow: 5px 5px 0 var(--ink); text-align: center; height: 120px; }
-  .seal { font: 600 14px/1.3 var(--mono); word-break: break-all; background: #fff; border: 2.5px solid var(--ink); padding: 8px 10px; }
-  .seal .ok { color: var(--green); font: 900 17px/1.2 var(--font); display: block; margin-top: 4px; }
-  .seal .bad { color: var(--red); font: 900 17px/1.2 var(--font); display: block; margin-top: 4px; }
+  /* T-W3-11 (bomb-007, bomb-020): печать — короткий хеш (8 знаков), по тапу полный; ломать посреди слова можно только хеш,
+     вердикт («Печать совпала…») переносится по словам */
+  .seal { font: 600 14px/1.3 var(--mono); background: #fff; border: 2.5px solid var(--ink); padding: 8px 10px; min-width: 0; overflow-wrap: break-word; }
+  .seal .hash { display: block; width: 100%; border: 0; background: none; padding: 4px 0; min-height: 32px; font: inherit; color: inherit; text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; word-break: break-all; overflow-wrap: anywhere; }
+  .seal .hash.full { text-decoration: none; }
+  .seal .ok, .seal .bad { font: 900 17px/1.2 var(--font); display: block; margin-top: 4px; word-break: normal; overflow-wrap: break-word; hyphens: manual; }
+  .seal .ok { color: var(--green); }
+  .seal .bad { color: var(--red); }
 
   /* ---------- бомба в руках: испытание ---------- */
   .hot { flex: 1; display: grid; grid-template-rows: auto auto 1fr; gap: 12px; padding-top: 2px; color: #fff; }
@@ -182,7 +193,8 @@
   .nopress { height: 220px; border: 4px solid var(--ink); border-radius: 50%; background: var(--red); color: #fff; font: italic 900 42px/1 var(--font); text-transform: uppercase; text-shadow: 3px 3px 0 var(--ink); box-shadow: 0 8px 0 #8a1510; width: 220px; justify-self: center; }
   .nowbtn { border: var(--line); background: var(--green); color: #fff; font: 900 20px/1 var(--font); padding: 12px 18px; justify-self: center; visibility: hidden; }
   .nowbtn.on { visibility: visible; animation: pop .3s var(--spring); }
-  .word { font: 900 min(58px, 12vw)/1 var(--font); text-align: center; letter-spacing: .02em; }
+  /* контур вокруг слова: жёлтый (#e2a400) на бумаге давал ~2:1 — с чернильным контуром читается, а цвет заливки остаётся ответом */
+  .word { font: 900 min(58px, 12vw)/1 var(--font); text-align: center; letter-spacing: .02em; -webkit-text-stroke: 1.5px var(--ink); paint-order: stroke fill; }
   .digits { font: 900 84px/1 var(--mono); text-align: center; letter-spacing: .12em; height: 90px; }
   .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .keypad button { height: 56px; border: 2.5px solid var(--ink); background: #fff; font: 900 26px/1 var(--font); }
@@ -200,7 +212,9 @@
   .targets { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; grid-auto-rows: minmax(76px, 1fr); padding-bottom: 6px; }
   .targets.few { grid-template-columns: 1fr; }
   .target { min-height: 76px; color: var(--ink); border: var(--line); background: #fff; box-shadow: 4px 4px 0 var(--ink); display: flex; align-items: center; gap: 10px; padding: 0 10px; font-weight: 900; font-size: 22px; min-width: 0; text-align: left; }
-  .target span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .target > span { min-width: 0; display: flex; flex-direction: column; justify-content: center; line-height: 1.1; }
+  /* bomb-018: имя в плитке — до двух строк с переносом по символам; «Игорь🔥 2» не превращается в «Игорь…» */
+  .target .nm { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
   .target.off { opacity: .6; }
   .target small { display: block; font-size: 13px; font-weight: 700; color: var(--ink-2); }
   .target:not(:disabled):active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--ink); background: var(--yellow); }
@@ -279,7 +293,7 @@
     .opt { font-size: 19px; min-height: 58px; }
     .qtext { font-size: 24px; }
     .sud div { width: 50px; height: 50px; }
-    .target { font-size: 19px; height: 68px; }
+    .target { font-size: 18px; height: 68px; }
     .pl { padding: 0 6px; gap: 6px; }
     .pl .av { width: 22px; height: 22px; font-size: 10px; }
     .pl b { font-size: 16px; }
@@ -339,6 +353,8 @@
     .calm { gap: 8px; }
     .status .sub { font-size: 16px; }
     .pl { height: 36px; }
+    .pl b { font-size: 14px; }
+    .pl .you { font-size: 9px; }
     .reacts button { height: 40px; }
     .count { font-size: 64px; height: 64px; }
     .hot { gap: 6px; }
@@ -418,6 +434,8 @@
     .target { min-height: 48px; font-size: 19px; }
     .targets:not(.few) { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(44px, 1fr); }
     .targets:not(.few) .target { min-height: 44px; font-size: 17px; padding: 0 8px; gap: 6px; }
+    /* в три колонки имя важнее кружка: без аватара «Alexandra-Lupita» умещается в две строки */
+    .targets:not(.few) .target .av { display: none; }
     /* клавиатура кода — в два ряда по шесть */
     .keypad { grid-template-columns: repeat(6, 1fr); }
     .mwire { height: 30px; }
@@ -479,20 +497,21 @@ window.I18N_DICT = {
     claim_title: `Это ты?`, claim_text: `Вернуться как {name}?`, btn_claim_yes: `Да, это я`, btn_claim_no: `Я другой`, renamed_toast: `Имя занято — теперь ты {name}`, ghosts_k: `Это я:`, err_name_taken: `Это имя уже занято — возьми другое`,
     wait_title: `Подключаемся…`,
     lobby_in: `Ты в игре`, lobby_wait: `Ждём, пока ведущий подожжёт фитиль`,
+    mini_t: `Фитиль горит`, you_tag: `ты`, hash_tap: `Тап — показать полный хеш`,
     spectator: `Раунд уже идёт`, spectator_sub: `Смотри на общий экран — войдёшь в следующий`,
     cd_k: `Печать раунда`, cd_sub: `Приготовься: бомба сейчас у кого-то появится`,
     holds_k: `Бомбу держит`, holds_you: `ты!`,
     calm_sub: `Держи телефон под рукой — она может прилететь`,
     you_have: `Бомба у тебя!`, held_for: `{s} с`,
-    pick_target: `Кидай! Кому?`, just_threw: `только что кинул(а)`, throwing: `Летит…`,
+    pick_target: `Кидай! Кому?`, just_threw: `вернуть нельзя`, throwing: `Летит…`,
     wrong: `Мимо! Держи другое`, swap: `Не успел — держи другое`,
-    boom: `БУМ!`, boom_you: `Рвануло у тебя в руках`, boom_you_out: `Ты выбыл(а) — смотри на экран`, boom_other: `Не повезло`,
-    out_title: `Ты выбыл(а)`, out_sub: `Смотри на общий экран и болей`,
+    boom: `БУМ!`, boom_you: `Рвануло у тебя в руках`, boom_you_out: `Ты вне игры — смотри на экран`, boom_other: `Не повезло`,
+    out_title: `Ты вне игры`, out_sub: `Смотри на общий экран и болей`,
     fin_loser: `Не повезло`, fin_winner: `Последний выживший`, fin_you: `Это ты!`, fin_stop: `Раунд остановлен`,
     fin_wait: `Ждём ведущего: ещё раунд или лобби`,
     expired_title: `Комната закрылась`, expired_text: `Попроси ведущего создать новую.`, expired_new: `Новая комната`,
     kicked_title: `Ведущий убрал тебя из комнаты`,
-    replaced_title: `Ты открыл(а) игру на другом устройстве`, replaced_text: `Здесь управлять больше нельзя.`, btn_back_here: `Играть здесь`,
+    replaced_title: `Игра открыта на другом устройстве`, replaced_text: `Здесь управлять больше нельзя.`, btn_back_here: `Играть здесь`,
     rj_no_return: `Сразу вернуть нельзя — выбери другого`, rj_not_live: `Раунд уже закончился`, rj_bad_target: `Этот игрок уже не в игре`, send_lost: `Не дошло — нажми ещё раз`,
     rj_offline: `У этого игрока нет связи — выбери другого`, no_link: `нет связи`,
     // испытания
@@ -543,6 +562,7 @@ window.I18N_DICT = {
     claim_title: `Is this you?`, claim_text: `Come back as {name}?`, btn_claim_yes: `Yes, it's me`, btn_claim_no: `I'm someone else`, renamed_toast: `That name is taken — you're now {name}`, ghosts_k: `That's me:`, err_name_taken: `That name is already taken — pick another`,
     wait_title: `Connecting…`,
     lobby_in: `You're in`, lobby_wait: `Waiting for the host to light the fuse`,
+    mini_t: `The fuse is burning`, you_tag: `you`, hash_tap: `Tap to show the full hash`,
     spectator: `A round is on`, spectator_sub: `Watch the shared screen — you'll join the next one`,
     cd_k: `Round seal`, cd_sub: `Get ready: the bomb is about to land on someone`,
     holds_k: `Holding the bomb`, holds_you: `you!`,
@@ -606,6 +626,7 @@ window.I18N_DICT = {
     claim_title: `Είσαι εσύ;`, claim_text: `Να γυρίσεις ως {name};`, btn_claim_yes: `Ναι, εγώ είμαι`, btn_claim_no: `Είμαι άλλος`, renamed_toast: `Το όνομα είναι πιασμένο — τώρα είσαι {name}`, ghosts_k: `Εγώ είμαι:`, err_name_taken: `Το όνομα είναι ήδη πιασμένο — διάλεξε άλλο`, //EL:unverified
     wait_title: `Σύνδεση…`,
     lobby_in: `Είσαι μέσα`, lobby_wait: `Περιμένουμε να ανάψει το φιτίλι`,
+    mini_t: `Το φυτίλι καίει`, you_tag: `εσύ`, hash_tap: `Πάτα για ολόκληρο το hash`, //EL:unverified
     spectator: `Ο γύρος τρέχει`, spectator_sub: `Δες την κοινή οθόνη — θα μπεις στον επόμενο`,
     cd_k: `Σφραγίδα γύρου`, cd_sub: `Ετοιμάσου: η βόμβα θα εμφανιστεί σε κάποιον`,
     holds_k: `Τη βόμβα κρατά`, holds_you: `εσύ!`,
@@ -706,7 +727,18 @@ function toast(text) {
 function bodyMode(mode) {
   document.body.classList.toggle("holding", mode === "hot");
   document.body.classList.toggle("blown", mode === "blown");
+  const back = document.querySelector(".util a");
+  if (back) { if (mode === "hot") { back.setAttribute("aria-disabled", "true"); back.tabIndex = -1; } else { back.removeAttribute("aria-disabled"); back.removeAttribute("tabindex"); } }
+  if (mode === "hot" && !holdGuard) { holdGuard = true; try { history.pushState({ bomb: 1 }, ""); } catch (e) {} }
 }
+// bomb-022: с красного экрана случайно не выйти — ни ссылкой «← Все игры» (в CSS pointer-events:none), ни системным «Назад»:
+// пока бомба в руках, popstate возвращает запись на место. Вне «бомбы в руках» «Назад» работает как обычно.
+let holdGuard = false;
+window.addEventListener("popstate", () => {
+  if (document.body.classList.contains("holding")) { try { history.pushState({ bomb: 1 }, ""); } catch (e) {} }
+  else if (holdGuard) { holdGuard = false; history.back(); } // бомбы в руках нет: наша запись отработала, «Назад» идёт дальше
+});
+document.querySelector(".util a").addEventListener("click", (e) => { if (document.body.classList.contains("holding")) e.preventDefault(); });
 
 // экран не гаснет, пока идёт игра (где поддерживается)
 let wakeLock = null;
@@ -862,13 +894,26 @@ function renderExpired() {
   renderCenter("expired_title", "expired_text", `<a class="btn" href="bomb.html">${T("expired_new")}</a>`);
 }
 
+// Хеш печати: 8 знаков и «…», по тапу — полный (спека §2; bomb-007). Полный лежит в data-full, не в тексте.
+function hashHtml(h) {
+  const full = String(h || "");
+  return `<button type="button" class="hash" data-full="${escapeHtml(full)}" data-short="${escapeHtml(full.slice(0, 8) + "…")}" aria-label="${escapeHtml(T("hash_tap"))}">${escapeHtml(full.slice(0, 8))}…</button>`;
+}
+app.addEventListener("click", (e) => {
+  const h = e.target && e.target.closest ? e.target.closest(".hash") : null;
+  if (!h) return;
+  const open = h.classList.toggle("full");
+  h.textContent = open ? h.dataset.full : h.dataset.short;
+});
+
 // ---------- спокойные экраны: лобби, отсчёт, бомба у другого ----------
 function playersList(holders) {
   // «нет связи» — серая плитка и 📵 в уже существующей метке: размер плитки не меняется
   return state.players.filter((p) => !p.left).map((p) => {
     const off = p.online === false && !p.out;
     const tag = holders.includes(p.id) ? (off ? "💣📵" : "💣") : p.out ? "💥" : off ? "📵" : "";
-    return `<div class="pl${p.id === me ? " me" : ""}${holders.includes(p.id) ? " hold" : ""}${p.out ? " out" : ""}${off ? " off" : ""}"${off ? ` title="${escapeHtml(T("no_link"))}"` : ""}>${avHtml(p)}<b>${escapeHtml(p.name)}</b><span class="tag">${tag}</span></div>`;
+    const you = p.id === me ? `<small class="you">${escapeHtml(T("you_tag"))}</small>` : "";
+    return `<div class="pl${p.id === me ? " me" : ""}${holders.includes(p.id) ? " hold" : ""}${p.out ? " out" : ""}${off ? " off" : ""}"${off ? ` title="${escapeHtml(T("no_link"))}"` : ` title="${escapeHtml(p.name)}"`}>${avHtml(p)}<b><span class="nm">${escapeHtml(p.name)}</span>${you}</b><span class="tag">${tag}</span></div>`;
   }).join("");
 }
 function reactsHtml() {
@@ -907,7 +952,7 @@ function renderCalm() {
   if (ph === "lobby" || (ph === "finished" && !p)) { k = T("lobby_in"); big = p ? p.name : ""; sub = T("lobby_wait"); color = p ? p.color : ""; }
   else if (ph === "countdown") {
     k = T("cd_k"); sub = T("cd_sub");
-    extra = `<div class="seal">${state.bombs.map((b) => escapeHtml(b.commit)).join("<br>")}</div><div class="count" id="count"></div>`;
+    extra = `<div class="seal">${state.bombs.map((b) => hashHtml(b.commit)).join("")}</div><div class="count" id="count"></div>`;
   } else if (ph === "live") {
     const names = holders.map((id) => (id === me ? T("holds_you") : (player(id) || {}).name || "?"));
     k = T("holds_k"); big = names.join(" + "); sub = T("calm_sub"); color = holders.length === 1 ? (player(holders[0]) || {}).color : "";
@@ -921,7 +966,7 @@ function renderCalm() {
   app.innerHTML = `<div class="calm">
     <div class="status"><div class="k">${escapeHtml(k)}</div>${big ? `<div class="big" id="big" style="--bc:${color || "var(--ink)"}">${escapeHtml(big)}</div>` : ""}<div class="sub">${escapeHtml(sub)}</div></div>
     ${extra}
-    ${showBomb ? `<div class="mini"><div class="bombbox"><div class="shake">${bmBombSvg()}</div></div><div class="t" id="minit"></div></div>` : ""}
+    ${showBomb ? `<div class="mini"><div class="bombbox"><div class="shake">${bmBombSvg()}</div></div><div class="t"><b>${T("mini_t")}</b></div></div>` : ""}
     <div class="plist">${playersList(holders)}</div>
     ${ph === "live" || ph === "countdown" ? reactsHtml() : ""}
   </div>`;
@@ -1571,8 +1616,9 @@ function renderTargets() {
     const t = el("button", "target");
     t.type = "button";
     const noLink = p.online === false;
-    // метка — в той же <small>, что и «только что кинул(а)»: плитка не растёт
-    t.innerHTML = `${avHtml(p)}<span>${escapeHtml(p.name)}${p.id === blockFrom ? `<small>${T("just_threw")}</small>` : noLink ? `<small>${T("no_link")}</small>` : ""}</span>`;
+    // метка — в той же <small>, что и «вернуть нельзя»: плитка не растёт
+    t.title = p.name;
+    t.innerHTML = `${avHtml(p)}<span><span class="nm">${escapeHtml(p.name)}</span>${p.id === blockFrom ? `<small>${T("just_threw")}</small>` : noLink ? `<small>${T("no_link")}</small>` : ""}</span>`;
     if (noLink) t.classList.add("off");
     t.disabled = p.id === blockFrom || (noLink && onlineOnly);
     t.onclick = () => {
@@ -1643,7 +1689,7 @@ function renderBoom() {
   app.innerHTML = `<div class="calm">
     <div class="status"><div class="k">${escapeHtml(k)}</div>${who ? `<div class="big" id="big" style="--bc:${wp.color || "var(--red)"}">${escapeHtml(wp.name || "?")}</div>` : ""}
       <div class="sub">${who === me ? T("fin_you") : elim && state.loserId ? escapeHtml(bmTpl("first_out", { name: (player(state.loserId) || {}).name || "?" })) : ""}</div></div>
-    ${seal ? `<div class="seal">${escapeHtml(bmTpl("seal_fuse", { n: seal.revealed ? seal.fuseMs / 1000 : "?" }))}<br>${escapeHtml(seal.commit)}<span id="sealok" class="ok">${T("seal_check")}</span></div>` : ""}
+    ${seal ? `<div class="seal">${escapeHtml(bmTpl("seal_fuse", { n: seal.revealed ? seal.fuseMs / 1000 : "?" }))}${hashHtml(seal.commit)}<span id="sealok" class="ok">${T("seal_check")}</span></div>` : ""}
     <div class="card" style="text-align:center">${T("fin_wait")}</div>
   </div>`;
   const big = document.getElementById("big");
@@ -1723,11 +1769,7 @@ function frame() {
   if (ttl && c) ttl.style.transform = `scaleX(${Math.min(1, Math.max(0, 1 - (now - c.at) / c.ttl))})`;
   const svg = app.querySelector(".mini .bomb");
   if (svg) bmSetFuse(svg, bmFuseLeft(state, now));
-  const minit = document.getElementById("minit");
-  if (minit && state.phase === "live" && state.startedAt) {
-    const el2 = now - state.startedAt;
-    minit.innerHTML = `<b>${Math.floor(el2 / 60000)}:${String(Math.floor(el2 / 1000) % 60).padStart(2, "0")}</b>`;
-  }
+  // «0:38» на телефоне убрано (T-W3-14, D3): часы с начала раунда подсказывали нижнюю границу фитиля; на доске они остались
   const cnt = document.getElementById("count");
   if (cnt && state.phase === "countdown" && state.phaseEnd) {
     const n = Math.max(1, Math.ceil((state.phaseEnd - now) / 1000));
