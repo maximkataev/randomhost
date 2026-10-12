@@ -311,9 +311,9 @@ test("секреты не в кадрах: доска / игрок / сокет 
   for (const c of [b, a, z, anon, again]) try { c.close(); } catch {}
 });
 
-// События (type:"event") рассылаются всем сокетам одной строкой: {type:"answered", playerId} уходит и телефонам,
-// хотя T-W0-06 убрал state.answered. Найдено при T-W0-05 — чинится отдельно; кейс остаётся красным (todo).
-test("секреты не в кадрах: событие «answered» с playerId не уходит телефонам и сокету без токена", { todo: "T-W0-05: найдена утечка — broadcastEvent шлёт answered{playerId} всем" }, async () => {
+// События (type:"event") рассылаются сокетам одной строкой: {type:"answered", playerId} раньше уходил и телефонам,
+// хотя T-W0-06 убрал state.answered. Найдено при T-W0-05; исправлено в broadcastEvent — только доске.
+test("секреты не в кадрах: событие «answered» с playerId не уходит телефонам и сокету без токена", async () => {
   const { code, hostToken } = await createRoom({}, 8);
   const b = await board(code, hostToken);
   const a = await player(code, "Аня");

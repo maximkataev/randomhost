@@ -246,7 +246,14 @@ function broadcastState(room) {
 
 function broadcastEvent(room, e) {
   const data = JSON.stringify({ type: "event", event: e });
-  for (const c of room.sockets) if (c.ws.readyState === 1) c.ws.send(data);
+  // «кто уже ответил» — только доске: телефонам и сокетам без токена имя ответившего не уходит
+  // (тот же секрет, что state.answered; T-W0-05 — найдено сканером кадров)
+  const hostOnly = e.type === "answered" && e.playerId != null;
+  for (const c of room.sockets) {
+    if (c.ws.readyState !== 1) continue;
+    if (hostOnly && !c.host) continue;
+    c.ws.send(data);
+  }
 }
 
 function sendHello(room, c) {
