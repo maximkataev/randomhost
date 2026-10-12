@@ -292,7 +292,8 @@
   /* сегмент-переключатель */
   .seg { align-self: flex-start; display: inline-flex; padding: 4px; gap: 4px; border-radius: 999px; border: 1px solid var(--glass-line); background: rgba(255, 255, 255, .045); }
   .setup .btn.ghost { align-self: flex-start; }
-  .seg button { font: 700 11.5px/1 var(--display); text-transform: uppercase; letter-spacing: .04em; color: rgba(244, 242, 255, .8); background: none; border: 0; border-radius: 999px; padding: 10px 16px; cursor: pointer; transition: color .2s, background .25s, box-shadow .3s; }
+  .seg button { font: 700 13px/1 var(--display); text-transform: uppercase; letter-spacing: .04em; color: rgba(244, 242, 255, .8); background: none; border: 0; border-radius: 999px; padding: 10px 16px; cursor: pointer; transition: color .2s, background .25s, box-shadow .3s; }
+  .seg button:disabled, .seg button.nokey { opacity: .4; cursor: not-allowed; }
   .seg button.on { color: #0a0a0f; background: linear-gradient(100deg, var(--c1), var(--c2) 80%); box-shadow: 0 10px 26px -14px var(--c1), inset 0 1px 0 rgba(255, 255, 255, .4); }
   .seg button:not(.on):hover { color: var(--text); background: rgba(255, 255, 255, .07); }
 
@@ -846,6 +847,7 @@ window.I18N_DICT = {
     auction: `Аукцион`,
     intro_judge_vote: `Победителя выберете вы голосованием`,
     intro_judge_ai: `Победителя выберет ChatGPT — он {judge}`,
+    judge_nokey: `На сервере нет ключа ChatGPT — судит голосование`,
     /* игра */
     lot_of: `Лот {n}`,
     ph_lot: `Лот`,
@@ -999,6 +1001,7 @@ window.I18N_DICT = {
     auction: `Auction`,
     intro_judge_vote: `You pick the winner by vote`,
     intro_judge_ai: `ChatGPT picks the winner — it {judge}`,
+    judge_nokey: `No ChatGPT key on the server — players vote instead`,
     lot_of: `Lot {n}`,
     ph_lot: `Lot`,
     ph_bidding: `Bidding`,
@@ -1149,6 +1152,7 @@ window.I18N_DICT = {
     auction: `Δημοπρασία`,
     intro_judge_vote: `Τον νικητή τον ψηφίζετε εσείς`,
     intro_judge_ai: `Τον νικητή τον διαλέγει το ChatGPT — {judge}`,
+    judge_nokey: `Δεν υπάρχει κλειδί ChatGPT στον διακομιστή — ψηφίζουν οι παίκτες`, //EL:unverified
     lot_of: `Λοτ {n}`,
     ph_lot: `Λοτ`,
     ph_bidding: `Προσφορές`,
@@ -1390,7 +1394,7 @@ function connect() {
       if (!hostLost) sendMsg({ type: "host", token: TOKEN });
     },
     onMessage: (msg) => {
-      if (msg.type === "hello") { kinds = msg.kinds; setState(msg.state); }
+      if (msg.type === "hello") { kinds = msg.kinds; applyRules(msg.rules); setState(msg.state); }
       if (msg.type === "state") setState(msg.state);
       if (msg.type === "event") onEvent(msg.event);
       if (msg.type === "host_lost") setHostLost(true);
@@ -1722,6 +1726,9 @@ function syncLobby() {
     hint.replaceChildren(...tn("hint_ai", { b: el("b", null, "ChatGPT"), judge: current.judge || "" }));
   }
   markOn("judge", s.settings.judge);
+  // U-22: нет ключа ChatGPT на сервере — кнопка серая, судит голосование
+  const gptBtn = document.querySelector("#judge [data-v=chatgpt]");
+  if (gptBtn) { gptBtn.disabled = !!window.NO_JUDGE_KEY; gptBtn.title = window.NO_JUDGE_KEY ? T("judge_nokey") : ""; gptBtn.classList.toggle("nokey", !!window.NO_JUDGE_KEY); }
   syncPills("budget", budget, BUDGETS, (v) => "$" + v);
   syncPills("slots", slots, SLOTS, (v) => String(v));
   document.getElementById("budgetVal").textContent = money(budget);
@@ -1855,6 +1862,17 @@ function tickIntro() {
 // подпись фазы в топбаре: ключ словаря на каждую фазу сервера
 const PHASE_KEY = { lot: "ph_lot", bidding: "ph_bidding", pickup: "ph_pickup", draft: "ph_draft", sold: "ph_sold", taken: "ph_taken", unsold: "ph_unsold" };
 
+// U-21 (RULE_U21_PASS_LABEL, класс B): в русском интерфейсе «скип» → «пас»; флаг приходит в hello.rules
+function applyRules(rules) {
+  if (rules && rules.judgeKey === false) window.NO_JUDGE_KEY = true;
+  if (!rules || !rules.RULE_U21_PASS_LABEL) return;
+  const d = (window.I18N_DICT || {}).ru;
+  if (!d || d.tag_skip === "пас") return;
+  Object.assign(d, {
+    draft_line: `{who} · слот {n} из {total} · пасов {k}`, draft_line_must: `{who} · слот {n} из {total} · пасы кончились`,
+    draft_bar: `Взять за $1 или пасануть`, draft_bar_must: `Пасы кончились — лот забирает {who}`, tag_skip: `пас`,
+  });
+}
 // «Аня · слот 4 из 5 · скипов 3» — вторая строка верхней полосы в соло-доборе (§10.2).
 // Номер слота считаем по лайнапу: добирают как раз тот слот, который сейчас свободен.
 function draftLine(s) {

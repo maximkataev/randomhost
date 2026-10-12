@@ -88,6 +88,8 @@ const VOTE_MORE_MAX = 2;
 const RULE_U08_GHOST_OUT = process.env.RULE_U08_GHOST_OUT === "1";
 // U-20 (класс B): после 2 пустых лотов подряд T1 лота — 10 с; по умолчанию выкл. (как раньше)
 const RULE_U20_DRY_T1 = process.env.RULE_U20_DRY_T1 === "1";
+// U-21 (класс B): «Скип» → «Пас» в русском интерфейсе; клиенты узнают из hello.rules; по умолчанию выкл.
+const RULE_U21_PASS_LABEL = process.env.RULE_U21_PASS_LABEL === "1";
 // T-W2-07 (U-07, класс A): офлайн-место в ЛОББИ живёт GHOST_TTL_MS (lib/presence, по умолч. 120 с) и уходит само;
 // в партии место не освобождается никогда. Проверка — в обходе SWEEP (≤ 25 с), поэтому точность до SWEEP.
 const GHOST_TTL_MS = presence.GHOST_TTL_MS;
@@ -246,7 +248,8 @@ function createRoom({ kind = "artist", settings = {}, speed = 1, ip = "" } = {})
     code,
     ip,
     hostToken: crypto.randomBytes(12).toString("base64url"),
-    game: Game.create({ kind, cards: cardsFor(kind, clampSettings(settings, kind).lang), settings }),
+    // U-22: без ключа ChatGPT судья по умолчанию — голосование (иначе доска обещала бы ChatGPT, а судило голосование)
+    game: Game.create({ kind, cards: cardsFor(kind, clampSettings(settings, kind).lang), settings: !OPENAI_API_KEY && !(settings && settings.judge) ? { ...(settings || {}), judge: "vote" } : settings }),
     tokens: {}, // playerToken → playerId
     sockets: new Set(), // {ws, playerId?, host?}
     offlineTimers: new Map(), // playerId → таймер «ещё ждём, не объявляем выпавшим»
@@ -383,6 +386,8 @@ function sendHello(room, c) {
   const snap = snapshotWithVoting(room);
   if (c.delta) c.sent = packState(snap).parts;
   const hello = { type: "hello", code: room.code, state: snap, kinds: Object.keys(KINDS), limits: { name: 24 } };
+  // правила клиента, включаемые на сервере (класс B); judgeKey — есть ли ключ ChatGPT (U-22: переключатель серым)
+  hello.rules = { RULE_U21_PASS_LABEL, judgeKey: !!OPENAI_API_KEY };
   if (MP_OFF) hello.mp = false;
   send(c.ws, hello);
 }

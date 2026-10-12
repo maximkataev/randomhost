@@ -142,6 +142,7 @@
   .skipbtn { flex: none; margin-left: auto; min-width: 88px; min-height: 44px; padding: 0 16px; font: 700 13px/1 var(--display); text-transform: uppercase; letter-spacing: .05em; color: var(--text); background: none; border: 1px solid var(--glass-line); border-radius: 999px; visibility: hidden; }
   .skipbtn.on { visibility: visible; }
   .skipbtn.done { color: var(--muted); border-style: dashed; }
+  .big.dim { opacity: .75; }
   .skipbtn:active { background: rgba(255, 255, 255, .08); }
   /* без :has() — старые iPhone его не знают: кнопка «Скип» в ряду есть всегда (см. renderGame) */
   .bidinfo { justify-content: flex-start; }
@@ -754,6 +755,7 @@ window.I18N_DICT = {
     skip_btn: `Скип`,
     lone_none: `Скипов нет`,
     skip_done: `Скип ✓`,
+    skip_hint: `Ты в скипе — ставка отменит скип`,
     hot_tag: `🔥 самый популярный`,
     draft_must: `Скипы кончились — этот лот твой`,
     draft_broke: `Денег нет — забираешь всё подряд, без скипов`,
@@ -941,6 +943,7 @@ window.I18N_DICT = {
     skip_btn: `Skip`,
     lone_none: `No skips left`,
     skip_done: `Skipped ✓`,
+    skip_hint: `You skipped — a bid cancels the skip`,
     hot_tag: `🔥 most popular`,
     draft_must: `No skips left — this lot is yours`,
     draft_broke: `Out of money — you take every lot, no skips`,
@@ -1125,6 +1128,7 @@ window.I18N_DICT = {
     skip_btn: `Πάσο`,
     lone_none: `Δεν έχεις πάσο`,
     skip_done: `Πάσο ✓`,
+    skip_hint: `Έκανες πάσο — μια προσφορά το ακυρώνει`, //EL:unverified
     hot_tag: `🔥 το πιο δημοφιλές`,
     draft_must: `Τα πάσα τελείωσαν — αυτό το λοτ είναι δικό σου`,
     draft_broke: `Τέλος τα λεφτά — παίρνεις ό,τι έρθει, χωρίς πάσο`,
@@ -1618,6 +1622,7 @@ function join(name) {
         pendingPlate = msg.resumed ? { kind: "resumed", name: msg.name } : msg.renamed ? { kind: "renamed", name: msg.name } : null;
       }
       if (msg.type === "hello" && goneFlow) goneFlow.hello();
+      if (msg.type === "hello" && msg.rules) applyRules(msg.rules);
       if (msg.type === "hello" || msg.type === "state") setState(msg.state);
       if (msg.type === "event") onEvent(msg.event);
       if (msg.type === "host_ok" && msg.remote) { isHostRemote = true; if (overlayKey) setOverlay(overlayKey, overlayVars); render(); }
@@ -1789,6 +1794,19 @@ const taskNow = () => { const m = modeNow(); return m && m.id !== "base" ? m : n
 const nameOf = (id) => (state.players.find(function (p) { return p.id === id; }) || {}).name || "?";
 // соло-добор мой: сервер прислал фазу ДОБОР и в ней указан я (§6.5)
 const drafting = (p) => !!(state && state.solo && p && state.solo.playerId === p.id);
+
+// U-21 (RULE_U21_PASS_LABEL, класс B): в русском интерфейсе «Скип» → «Пас»; сервер присылает флаг в hello.rules
+function applyRules(rules) {
+  if (!rules || !rules.RULE_U21_PASS_LABEL) return;
+  const d = (window.I18N_DICT || {}).ru;
+  if (!d || d.skip_btn === "Пас") return;
+  Object.assign(d, {
+    draft_skip: `Пас · {n}`, skip_btn: `Пас`, lone_none: `Пасов нет`, skip_done: `Пас ✓`,
+    draft_must: `Пасы кончились — этот лот твой`, draft_broke: `Денег нет — забираешь всё подряд, без пасов`,
+    rej_cannot_skip: `Пасовать сейчас нечего`, rej_must_take: `Пасы кончились — лот придётся взять`,
+    skip_hint: `Ты в пасе — ставка отменит пас`,
+  });
+}
 
 // ---------- звук ----------
 let actx;
@@ -2149,6 +2167,8 @@ function renderActions(p) {
   // и кнопка «Перебить $1» врала бы игроку про то, что происходит.
   const big = el("button", "big", tpl(s.leaderId ? "bid_btn" : "bid_first_btn", { money: money(next) })); big.id = "bid";
   big.onclick = () => { unlockAudio(); act({ type: "bid", amount: next, expectedPrice: s.price, round: s.round }, big); };
+  // E-15: после «Скипа» ставка снимает скип (game.js) — говорим об этом, кнопка приглушена
+  if (p.skipped) { big.classList.add("dim"); box.append(el("div", "note", I18N.t("skip_hint"))); }
   // страховка позднего тапа (E-23): первые 350 мс нового лота кнопка серая и не шлёт ставку
   const g = lotGuardLeft();
   if (g > 0) { big.disabled = true; setTimeout(() => { if (big.isConnected && !big.classList.contains("busy")) big.disabled = false; }, g + 20); }

@@ -73,7 +73,8 @@ async function typeText(page, text) {
   const chrome = spawn(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--autoplay-policy=no-user-gesture-required", `--user-data-dir=${profile}`, `--remote-debugging-port=${PORT}`, "--window-size=1440,900", "about:blank"], { stdio: "ignore" });
   await wait(2500);
   try {
-    const room = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "film" }) })).json();
+    // judge задан явно: без ключа ChatGPT комната по умолчанию судит голосованием (T-W3-24, U-22), а тест проверяет подсказку про ИИ
+    const room = await (await fetch(BASE + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "film", settings: { judge: "chatgpt" } }) })).json();
     console.log("room", room.code);
 
     // --- стартовый экран пульта
