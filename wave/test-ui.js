@@ -296,6 +296,22 @@ async function playGame(board, phones, label, silentRound2) {
     check(!!(await waitFor(ps[0], "!!document.querySelector('.pick button')", 6000)), "clue: после reload снова выбор шкалы");
     await dropAndWait(ps[1]);
     check(!!(await waitFor(ps[1], "!!document.querySelector('.pick button')", 6000)), "clue: после ws.close() снова выбор шкалы");
+    // черновик подсказки переживает reload (MP.draft), в localStorage нет сектора
+    await ps[2].evaluate("window.wvPhone.send({ type: 'pick', i: 0 })");
+    await waitFor(ps[2], "!!document.getElementById('clue')", 6000);
+    await ps[2].evaluate("(() => { const i = document.getElementById('clue'); i.value = 'морской бриз'; i.dispatchEvent(new Event('input')); })()");
+    const dk = await ps[2].evaluate("Object.keys(localStorage).filter((k) => k.startsWith('mp:draft:'))");
+    check(dk.length === 1 && dk[0] === `mp:draft:wave:${r2.code}`, `draft: ключ в localStorage ${JSON.stringify(dk)}`);
+    const dv = await ps[2].evaluate("localStorage.getItem(Object.keys(localStorage).find((k) => k.startsWith('mp:draft:')))");
+    check(Object.keys(JSON.parse(dv)).sort().join() === "at,k,t" && JSON.parse(dv).t === "морской бриз" && !/target/.test(dv), `draft: в записи только {k,t,at} ${dv}`);
+    check(!(await ps[2].evaluate("JSON.stringify(Object.assign({}, localStorage))")).includes('"target"'), "draft: в localStorage нет target");
+    await reloadAndWait(ps[2]);
+    await waitFor(ps[2], "!!document.getElementById('clue')", 6000);
+    check((await ps[2].evaluate("document.getElementById('clue').value")) === "морской бриз", "draft: после reload подсказка на месте");
+    await ps[2].evaluate("localStorage.setItem(Object.keys(localStorage).find((k) => k.startsWith('mp:draft:')), JSON.stringify({ k: window.wvPhone.state.game + ':' + window.wvPhone.state.ri, t: 'старое', at: Date.now() - 2 * 3600e3 - 1000 }))");
+    await reloadAndWait(ps[2]);
+    await waitFor(ps[2], "!!document.getElementById('clue')", 6000);
+    check((await ps[2].evaluate("document.getElementById('clue').value")) === "", "draft: старше 2 ч — не восстанавливается");
     await clueRound(ps, 0, "rc", null);
     // guess: угол переживает reload; «Зафиксировать»+reload доходит до сервера
     await waitFor(ps[0], "window.wvPhone.state.phase === 'guess'", 15000);
@@ -307,8 +323,9 @@ async function playGame(board, phones, label, silentRound2) {
     if (await gs[0].evaluate("window.wvPhone.state.phase === 'guess' && window.wvPhone.state.me.guess == null")) {
       await wait(4500); // страховочный таймер входа по токену (4 с после onOpen) уже отработал
       await gs[0].evaluate("conn.gated = true");
+      await gs[0].evaluate("conn.queue.setCeiling('lock', 1000)"); // потолок по типу: у этого стенда «Зафиксировать» стареет за 1 с
       await click(gs[0], "#lock");
-      await wait(6500);
+      await wait(1500);
       await gs[0].evaluate("flushQueued()");
       const toastTxt = await gs[0].evaluate("document.getElementById('toast').classList.contains('on') ? document.getElementById('toast').textContent : ''");
       check(toastTxt === (await gs[0].evaluate("T('lost_tap')")), `guess: просроченный «Зафиксировать» не пропал молча: «${toastTxt}»`);
@@ -332,8 +349,16 @@ async function playGame(board, phones, label, silentRound2) {
     const got = await waitFor(gs[1], "window.wvPhone.state.me.guess != null || window.wvPhone.state.phase !== 'guess'", 8000);
     check(!!got, "guess: «Зафиксировать»+reload — действие дошло до сервера");
     if (await gs[1].evaluate("window.wvPhone.state.phase === 'guess' && window.wvPhone.state.me.guess != null")) check(Math.abs((await gs[1].evaluate("window.wvPhone.state.me.guess")) - a2) < 0.2, `guess: зафиксирован тот же угол ${a2}°`);
-    // reveal: обрыв при раскрытии
+    // потерянный тап, который ещё нужен: «Зафиксировать» ждёт в очереди дольше прежних 6 с и всё равно доходит (wave-014, потолок 90 с)
+    await wait(4500); // страховочные таймеры входа по токену после прошлого обрыва уже отработали
+    await gs[0].evaluate("conn.queue.setCeiling('lock', 90000)");
+    await gs[0].evaluate("conn.gated = true");
     await click(gs[0], "#lock");
+    await wait(7000);
+    check((await gs[0].evaluate("window.wvPhone.state.me.guess")) == null, "guess: пока связи нет, «Зафиксировать» ждёт в очереди");
+    await gs[0].evaluate("flushQueued()");
+    check(!!(await waitFor(gs[0], "window.wvPhone.state.me.guess != null || window.wvPhone.state.phase !== 'guess'", 6000)), "guess: «Зафиксировать» из очереди через 7 с дошло (не «просрочено»)");
+    // reveal: обрыв при раскрытии
     await waitFor(ps[0], "window.wvPhone.state.phase === 'reveal'", 10000);
     await dropAndWait(ps[2]);
     await reloadAndWait(ps[0]);

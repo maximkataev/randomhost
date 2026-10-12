@@ -270,5 +270,173 @@ test("авто-возврат: выключен по умолчанию; ≥ 5 �
   assert.equal(rt.canAutoReturn(1e6 + 66000), true);
 });
 
+console.log("draft");
+test("draft: save/load по ключу фазы, один слот на комнату, регистр кода не важен", () => {
+  const st = {};
+  const w = load({ storage: st });
+  const d = w.MP.draft({ game: "wave", room: "tiger42" });
+  assert.equal(d.key(), "mp:draft:wave:TIGER42");
+  assert.equal(d.load("g:0"), null);
+  assert.equal(d.save("g:0", "морской бриз"), true);
+  assert.equal(d.load("g:0"), "морской бриз");
+  assert.deepEqual(Object.keys(JSON.parse(st[d.key()])).sort(), ["at", "k", "t"]);
+  assert.equal(d.load("g:1"), null, "другая фаза — не показываем");
+  assert.equal(st[d.key()], undefined, "чужой слот удалён");
+});
+test("draft: пустой текст удаляет, clear удаляет, срез по символам", () => {
+  const st = {};
+  const w = load({ storage: st });
+  const d = w.MP.draft({ game: "wave", room: "A1", max: 3 });
+  d.save("k", "😀😀😀😀😀");
+  assert.equal(d.load("k"), "😀😀😀");
+  d.save("k", "   ");
+  assert.equal(st[d.key()], undefined);
+  d.save("k", "x"); d.clear();
+  assert.equal(d.load("k"), null);
+});
+test("draft: TTL 2 ч (по часам now) и обновление at при новом вводе", () => {
+  let t = 1e9;
+  const w = load();
+  const d = w.MP.draft({ game: "wave", room: "A1", now: () => t });
+  d.save("k", "один");
+  t += 2 * 3600e3 - 1;
+  assert.equal(d.load("k"), "один");
+  d.save("k", "один два");
+  t += 2 * 3600e3 - 1;
+  assert.equal(d.load("k"), "один два");
+  t += 2;
+  assert.equal(d.load("k"), null);
+});
+test("draft: хранилище бросает/нет -> не падает; битый JSON -> null", () => {
+  for (const o of [{ storageThrows: true }, { noStorage: true }]) {
+    const d = load(o).MP.draft({ game: "wave", room: "A1" });
+    assert.equal(d.save("k", "x"), false);
+    assert.equal(d.load("k"), null);
+    d.clear();
+  }
+  const st = { "mp:draft:wave:A1": "{не json" };
+  assert.equal(load({ storage: st }).MP.draft({ game: "wave", room: "A1" }).load("k"), null);
+});
+test("draft: mp.off -> пусто", () => {
+  const w = load();
+  const d = w.MP.draft({ game: "wave", room: "A1" });
+  w.MP.applyHello({ mp: false });
+  assert.equal(d.save("k", "x"), false);
+  assert.equal(d.load("k"), null);
+});
+
+console.log("sendQueue");
+function qEnv(extra) {
+  const w = load();
+  const clock = { now: 1000, timers: [] };
+  const log = { sent: [], dropped: [], probes: [] };
+  const q = w.MP.sendQueue(Object.assign({
+    now: () => clock.now,
+    setTimeout: (fn, ms) => { clock.timers.push({ fn, at: clock.now + ms, live: true }); return clock.timers.length - 1; },
+    clearTimeout: (id) => { if (clock.timers[id]) clock.timers[id].live = false; },
+    send: (m) => log.sent.push(m.type + (m.n != null ? m.n : "")),
+    onDrop: (m, why) => log.dropped.push(m.type + (m.n != null ? m.n : "") + ":" + why),
+    probe: (ms) => log.probes.push(ms),
+    replace: ["lock", "clue"],
+  }, extra));
+  // продвинуть время, выполняя таймеры по порядку
+  const advance = (ms) => {
+    const end = clock.now + ms;
+    for (;;) {
+      const next = clock.timers.filter((x) => x.live && x.at <= end).sort((a, b) => a.at - b.at)[0];
+      if (!next) break;
+      next.live = false; clock.now = Math.max(clock.now, next.at); next.fn();
+    }
+    clock.now = end;
+  };
+  return { w, q, clock, log, advance };
+}
+test("sendQueue: flush отправляет по порядку, не быстрее 4/с", () => {
+  const e = qEnv();
+  for (let i = 0; i < 4; i++) e.q.push({ type: "vote", n: i });
+  e.q.flush();
+  assert.equal(JSON.stringify(e.log.sent), '["vote0"]');
+  e.advance(250); assert.equal(e.log.sent.length, 2);
+  e.advance(500); assert.equal(e.log.sent.length, 4);
+  assert.equal(e.q.size(), 0);
+  assert.equal(e.q.isFlushing(), false);
+});
+test("sendQueue: replace — свежее заменяет старое без onDrop", () => {
+  const e = qEnv();
+  e.q.push({ type: "lock", n: 1 }); e.q.push({ type: "pick", n: 5 }); e.q.push({ type: "lock", n: 2 });
+  assert.equal(e.q.size(), 2);
+  e.q.flush();
+  e.advance(1000);
+  assert.equal(JSON.stringify(e.log.sent), '["pick5","lock2"]');
+  assert.equal(e.log.dropped.length, 0);
+});
+test("sendQueue: keep проверяется в момент отправки; ненужное — onDrop(unwanted)", () => {
+  let alive = true;
+  const e = qEnv({ keep: (m) => m.type !== "pick" || alive });
+  e.q.push({ type: "pick", n: 1 }); e.q.push({ type: "lock", n: 2 });
+  alive = false;
+  e.q.flush();
+  e.advance(1000);
+  assert.equal(JSON.stringify(e.log.sent), '["lock2"]');
+  assert.equal(JSON.stringify(e.log.dropped), '["pick1:unwanted"]');
+});
+test("sendQueue: потолок по типу действия, а не общий (бросок 4 с, lock 90 с)", () => {
+  const e = qEnv({ ceilingMs: { throw: 4000, "*": 90000 } });
+  e.q.push({ type: "throw", n: 1 }); e.q.push({ type: "lock", n: 2 });
+  e.clock.now += 5000;
+  e.q.flush();
+  e.advance(1000);
+  assert.equal(JSON.stringify(e.log.sent), '["lock2"]');
+  assert.equal(JSON.stringify(e.log.dropped), '["throw1:expired"]');
+  e.q.push({ type: "lock", n: 3 });
+  e.clock.now += 91000;
+  e.q.flush(); e.advance(1000);
+  assert.equal(JSON.stringify(e.log.dropped), '["throw1:expired","lock3:expired"]');
+});
+test("sendQueue: переполнение вытесняет старейшее через onDrop(overflow)", () => {
+  const e = qEnv({ max: 2 });
+  e.q.push({ type: "a", n: 1 }); e.q.push({ type: "b", n: 2 }); e.q.push({ type: "c", n: 3 });
+  assert.equal(JSON.stringify(e.log.dropped), '["a1:overflow"]');
+  assert.equal(e.q.size(), 2);
+});
+test("sendQueue: flush(()=>false, onDrop) выбрасывает всё через переданный onDrop", () => {
+  const e = qEnv();
+  const mine = [];
+  e.q.push({ type: "a", n: 1 }); e.q.push({ type: "b", n: 2 });
+  e.q.flush(() => false, (m, why) => mine.push(m.type + ":" + why));
+  assert.equal(JSON.stringify(mine), '["a:unwanted","b:unwanted"]');
+  assert.equal(e.log.dropped.length, 0);
+  assert.equal(e.log.sent.length, 0);
+});
+test("sendQueue: probe(1500) при тишине > 8 с, не чаще раза в 8 с; heard сбрасывает тишину", () => {
+  const e = qEnv();
+  e.q.push({ type: "lock", n: 1 });
+  e.advance(7000);
+  assert.equal(e.log.probes.length, 0);
+  e.advance(2000);
+  assert.equal(JSON.stringify(e.log.probes), "[1500]");
+  e.advance(5000);
+  assert.equal(e.log.probes.length, 1);
+  e.advance(4000);
+  assert.equal(e.log.probes.length, 2);
+  e.q.heard();
+  e.advance(7000);
+  assert.equal(e.log.probes.length, 2);
+});
+test("sendQueue: push во время flush уходит с тем же шагом; clear без onDrop; MP.off -> push=false + onDrop(off)", () => {
+  const e = qEnv();
+  e.q.push({ type: "a", n: 1 }); e.q.push({ type: "b", n: 2 });
+  e.q.flush();
+  e.q.push({ type: "c", n: 3 });
+  assert.equal(JSON.stringify(e.log.sent), '["a1"]');
+  e.advance(600);
+  assert.equal(JSON.stringify(e.log.sent), '["a1","b2","c3"]');
+  e.q.push({ type: "d", n: 4 }); e.q.clear();
+  assert.equal(e.q.size(), 0);
+  e.w.MP.applyHello({ mp: false });
+  assert.equal(e.q.push({ type: "e", n: 5 }), false);
+  assert.equal(e.log.dropped[e.log.dropped.length - 1], "e5:off");
+});
+
 console.log("\n" + passed + " пройдено, " + failed + " провалено");
 process.exit(failed ? 1 : 0);

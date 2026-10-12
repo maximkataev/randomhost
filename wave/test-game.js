@@ -137,6 +137,18 @@ test("«Другие шкалы»: новые варианты, не больш�
   assert.strictEqual(g.pickScale("P3", 4, 1).reason, "bad_pick");
 });
 
+test("повтор «Другие шкалы» с тем же остатком (left) — stale, второй перетасовки не тратит (T-W1-09)", () => {
+  const g = game(3);
+  const c = g.s.cards.P1;
+  assert.ok(g.reroll("P1", 1, REROLLS).ok);
+  const opts = c.options.map((o) => o.id);
+  assert.strictEqual(g.reroll("P1", 1, REROLLS).reason, "stale", "повтор того же нажатия");
+  assert.deepStrictEqual(c.options.map((o) => o.id), opts, "варианты не подменены");
+  assert.strictEqual(c.rerolls, 1);
+  assert.ok(g.reroll("P1", 1, REROLLS - 1).ok, "актуальный остаток проходит");
+  assert.ok(g.reroll("P2", 1).ok, "старый клиент без left работает как раньше");
+});
+
 test("подсказка требует выбранной шкалы, выбор не меняется", () => {
   const g = game();
   assert.strictEqual(g.clue("P1", "что-то", 1).reason, "pick_first");

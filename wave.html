@@ -369,6 +369,7 @@ window.I18N_DICT = {
   },
 };
 </script>
+<script src="mp-common.js"></script>
 <script src="wave-shared.js"></script>
 <script src="i18n.js"></script>
 <script src="sound-toggle.js" defer></script>
@@ -387,6 +388,9 @@ let screen = null, screenKey = "";
 let joinErr = null;
 let draft = ""; // черновик подсказки: переживает перерисовки
 let draftKey = null; // к какому раунду черновик
+// и перезагрузку страницы: MP.draft хранит в localStorage только {раунд, текст игрока, время}, TTL 2 ч; сектор не пишется
+const draftStore = window.MP && MP.draft ? MP.draft({ game: "wave", room: CODE, max: 120 }) : null;
+const draftClear = () => { if (draftStore) draftStore.clear(); };
 let clueErr = null;
 let needle = 90; // стрелка на экране угадывания, пока не зафиксирована
 let needleKey = null;
@@ -414,10 +418,12 @@ const tokenKey = () => "wave-token-" + CODE;
 // отправка действия с привязкой к раунду/карточке: после обрыва связи старое действие в очереди не отправляем
 const sendCtx = new WeakMap();
 function csend(m) { sendCtx.set(m, { r: roundKey(), c: cardKey() }); conn.send(m); }
+// «Зафиксировать»/подсказка не ушли и кнопку вот-вот отпустим — проверить, жив ли сокет, не дожидаясь 45 с тишины
+const probeLink = () => { if (conn && conn.probe) conn.probe(1500); };
 // кнопка заблокирована после отправки, а подтверждения (нового состояния или отказа) нет — через 3 с отпускаем её
-function unlockLater(fn) {
+function unlockLater(fn, probe) {
   const k = screenKey;
-  setTimeout(() => { if (screenKey === k && !dead) fn(); }, 3000);
+  setTimeout(() => { if (screenKey === k && !dead) { if (probe) probeLink(); fn(); } }, 3000);
 }
 try { token = localStorage.getItem(tokenKey()); } catch (e) {}
 
@@ -621,6 +627,7 @@ function renderExpired() {
   dead = true;
   screen = "expired";
   try { localStorage.removeItem(tokenKey()); } catch (e) {}
+  draftClear();
   renderCenter("expired_title", "expired_text", `<a class="btn" href="wave.html">${T("expired_new")}</a>`);
 }
 
@@ -702,13 +709,14 @@ function renderClue() {
       <div class="pick">${c.options.map((o, i) => `<button type="button" data-i="${i}" lang="${wvLang()}"><span>${wvPole(o.l)}</span><i>↔</i><span>${wvPole(o.r)}</span></button>`).join("")}</div>
       <button class="btn ghost" type="button" id="reroll"${c.rerollsLeft > 0 ? "" : " disabled"}>🔄 ${escapeHtml(c.rerollsLeft > 0 ? tpl("btn_reroll", { n: c.rerollsLeft }) : T("btn_reroll_none"))}</button>`, key);
     app.querySelectorAll(".pick button").forEach((b) => {
-      b.onclick = () => { wvSfx.tap(); wvVibrate(10); app.querySelectorAll(".pick button, #reroll").forEach((x) => (x.disabled = true)); csend({ type: "pick", i: Number(b.dataset.i) }); unlockLater(() => { screenKey = ""; render(); }); };
+      b.onclick = () => { wvSfx.tap(); wvVibrate(10); app.querySelectorAll(".pick button, #reroll").forEach((x) => (x.disabled = true)); csend({ type: "pick", i: Number(b.dataset.i), left: c.rerollsLeft }); unlockLater(() => { screenKey = ""; render(); }); };
     });
     const rr = document.getElementById("reroll");
-    rr.onclick = () => { if (rr.disabled) return; wvSfx.whoosh(); wvVibrate(8); rr.disabled = true; csend({ type: "reroll" }); unlockLater(() => { screenKey = ""; render(); }); };
+    rr.onclick = () => { if (rr.disabled) return; wvSfx.whoosh(); wvVibrate(8); rr.disabled = true; csend({ type: "reroll", left: c.rerollsLeft }); unlockLater(() => { screenKey = ""; render(); }); };
     return;
   }
   if (c.clue) {
+    draftClear(); // подсказка принята сервером — черновик не нужен
     const key = "clued:" + roundKey() + wvLang();
     if (screenKey !== key) {
       show(`${headHtml(roundLabel())}<span class="stamp" style="justify-self:start;align-self:flex-start">✓ ${T("clue_sent")}</span>
@@ -717,7 +725,7 @@ function renderClue() {
     document.getElementById("cw").textContent = waitLine();
     return;
   }
-  if (draftKey !== roundKey()) { draft = ""; draftKey = roundKey(); clueErr = null; }
+  if (draftKey !== roundKey()) { draft = (draftStore && draftStore.load(roundKey())) || ""; draftKey = roundKey(); clueErr = null; }
   const key = "write:" + roundKey() + wvLang();
   if (screenKey === key) { document.getElementById("err").textContent = clueErr ? T("rj_" + clueErr) : ""; return; }
   show(`${headHtml(roundLabel())}<h2 class="shout">${T("clue_title")}</h2>${dialHtml({ target: c.target, anim: true }, c.l, c.r)}
@@ -728,7 +736,7 @@ function renderClue() {
       <p class="fine">${escapeHtml(tpl("clue_help", { a: 400 * state.mult, b: 300 * state.mult, c: 200 * state.mult }))}</p>
     </form>`, key);
   const input = document.getElementById("clue");
-  input.oninput = () => { draft = input.value; if (clueErr) { clueErr = null; document.getElementById("err").textContent = ""; } };
+  input.oninput = () => { draft = input.value; if (draftStore) draftStore.save(roundKey(), draft); if (clueErr) { clueErr = null; document.getElementById("err").textContent = ""; } };
   document.getElementById("write").onsubmit = (e) => {
     e.preventDefault();
     const text = input.value.trim();
@@ -738,7 +746,7 @@ function renderClue() {
     document.getElementById("sendbtn").disabled = true;
     wvSfx.send();
     csend({ type: "clue", text });
-    unlockLater(() => { const b = document.getElementById("sendbtn"); if (b) b.disabled = false; });
+    unlockLater(() => { const b = document.getElementById("sendbtn"); if (b) b.disabled = false; }, true);
   };
 }
 
@@ -821,7 +829,7 @@ function renderGuess() {
     wvVibrate(35);
     needleSave(true);
     csend({ type: "lock", angle: needle });
-    unlockLater(() => { sentLock = false; const b = document.getElementById("lock"); if (b) b.disabled = false; });
+    unlockLater(() => { sentLock = false; const b = document.getElementById("lock"); if (b) b.disabled = false; }, true);
   };
 }
 
@@ -942,7 +950,8 @@ function queuedWanted(q) {
   const cx = sendCtx.get(q) || {};
   const c = mc.card;
   switch (q.type) {
-    case "pick": case "reroll": return state.phase === "clue" && cx.r === roundKey() && !!c && c.pick == null;
+    // варианты шкал меняются перетасовкой: действие нажато на других вариантах (или reroll уже сработал, пока связи не было) — не шлём
+    case "pick": case "reroll": return state.phase === "clue" && cx.r === roundKey() && !!c && c.pick == null && (typeof q.left !== "number" || q.left === c.rerollsLeft);
     case "clue": return state.phase === "clue" && cx.r === roundKey() && !!c && c.pick != null && !c.clue;
     case "lock": return state.phase === "guess" && cx.c === cardKey() && mc.guess == null && !mc.myCard;
     default: return true;
@@ -971,7 +980,7 @@ function resumeLock() {
   sentLock = true;
   const b = document.getElementById("lock"); if (b) b.disabled = true;
   csend({ type: "lock", angle: sv.a });
-  unlockLater(() => { sentLock = false; const bb = document.getElementById("lock"); if (bb) bb.disabled = false; });
+  unlockLater(() => { sentLock = false; const bb = document.getElementById("lock"); if (bb) bb.disabled = false; }, true);
 }
 function onMessage(m) {
   switch (m.type) {
@@ -1032,6 +1041,7 @@ function onMessage(m) {
       conn.flush(() => false);
       me = null;
       try { localStorage.removeItem(tokenKey()); } catch (e) {}
+      draftClear();
       token = null;
       screen = "kicked";
       renderCenter("kicked_title");
