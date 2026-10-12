@@ -50,6 +50,19 @@
  *     api.canAutoReturn(now) -> bool   auto && ≥ autoMinMs с прошлого авто-возврата && за claimQuietMs не было
  *                                      claim с другого устройства (api.noteClaimElsewhere(now))
  *     api.isReplaced()
+ *
+ *   MP.rules.RULE_U17_LANG_FOLLOW (false по умолчанию; U-17, класс B) — «телефон следует языку комнаты».
+ *   MP.followRoomLang({getRoomLang, onSuggest, auto = false, enabled, getLang, setLang, storageKey}) -> api
+ *     Флаг выкл. (и enabled не задан) -> api инертен (check() всегда false), ничего не слушает.
+ *     api.check(roomLang?)  язык комнаты берётся из аргумента или getRoomLang(); если он ru|en|el, отличается от
+ *                           текущего и игрок ещё не выбирал язык вручную:
+ *                             auto:true  -> setLang(room, {persist:false}) (site-lang не трогаем); возвращает "switched"
+ *                             иначе      -> onSuggest({lang, accept(), decline()}) — «Язык комнаты: EN. Переключить?»;
+ *                                           один раз на язык; возвращает "suggested"
+ *     api.markManual()      ручной выбор: запоминается в sessionStorage (ключ mp-lang-manual) — дальше не следуем;
+ *                           вызывается сам по событию 'langchange' с detail.persist !== false (клик по переключателю)
+ *     api.isManual()
+ *   getLang/setLang по умолчанию — window.I18N.lang / I18N.setLang. Подключение к играм — отдельными задачами.
  */
 (function (root) {
   'use strict';
@@ -284,6 +297,78 @@
         return true;
       }
     };
+    return api;
+  };
+
+  // ── followRoomLang (U-17, за флагом) ────────────────────────────────────────────────────────────
+  MP.rules = { RULE_U17_LANG_FOLLOW: false };
+
+  var LANGS = ['ru', 'en', 'el'];
+
+  MP.followRoomLang = function (opts) {
+    var o = opts || {};
+    var enabled = typeof o.enabled === 'boolean' ? o.enabled : !!MP.rules.RULE_U17_LANG_FOLLOW;
+    var key = o.storageKey || 'mp-lang-manual';
+    var memManual = false;
+    var suggested = {};
+    var applying = false;
+
+    function ss() { try { return root.sessionStorage || null; } catch (e) { return null; } }
+    function isManual() {
+      var s = ss();
+      try { if (s && s.getItem(key) === '1') return true; } catch (e) { /* ignore */ }
+      return memManual;
+    }
+    function markManual() {
+      memManual = true;
+      var s = ss();
+      try { if (s) s.setItem(key, '1'); } catch (e) { /* ignore */ }
+    }
+    function curLang() {
+      if (typeof o.getLang === 'function') return o.getLang();
+      return root.I18N ? root.I18N.lang : null;
+    }
+    function applyLang(lang, persist) {
+      if (typeof o.setLang === 'function') return o.setLang(lang, { persist: persist });
+      if (root.I18N && typeof root.I18N.setLang === 'function') return root.I18N.setLang(lang, { persist: persist });
+    }
+
+    var api = {
+      enabled: enabled,
+      isManual: isManual,
+      markManual: markManual,
+      check: function (roomLang) {
+        if (MP.off || !enabled) return false;
+        var room = roomLang;
+        if (room == null && typeof o.getRoomLang === 'function') room = o.getRoomLang();
+        room = String(room == null ? '' : room).toLowerCase().slice(0, 2);
+        if (LANGS.indexOf(room) === -1) return false;
+        if (isManual() || room === curLang()) return false;
+        if (o.auto) {
+          applying = true;
+          try { applyLang(room, false); } finally { applying = false; }
+          return 'switched';
+        }
+        if (suggested[room] || typeof o.onSuggest !== 'function') return false;
+        suggested[room] = true;
+        o.onSuggest({
+          lang: room,
+          accept: function () { markManual(); applying = true; try { applyLang(room, true); } finally { applying = false; } },
+          decline: function () { markManual(); }
+        });
+        return 'suggested';
+      }
+    };
+
+    // ручное переключение (клик по .lang-switch) = persist !== false; наши собственные вызовы отсекаем флагом applying
+    if (enabled && typeof root.addEventListener === 'function') {
+      root.addEventListener('langchange', function (ev) {
+        var d = ev && ev.detail;
+        if (applying || !d || d.persist === false) return;
+        if (d.initial) return; // стартовое объявление языка, не выбор
+        markManual();
+      });
+    }
     return api;
   };
 

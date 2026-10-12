@@ -23,7 +23,7 @@
   'use strict';
 
   var SUPPORTED = ['ru', 'en', 'el'];
-  var LABELS = { ru: 'RU', en: 'EN', el: 'GR' };
+  var LABELS = { ru: 'RU', en: 'EN', el: 'EL' };
   var STORAGE_KEY = 'site-lang';
 
   function detect() {
@@ -95,17 +95,22 @@
     }
   }
 
-  function setLang(lang) {
+  // setLang(lang)                    - как раньше: сменить язык и запомнить выбор в localStorage['site-lang'].
+  // setLang(lang, {persist:false})   - сменить язык только на этой странице, ничего не записывая
+  //                                    (телефон следует языку комнаты; выбор игрока не затирается).
+  function setLang(lang, opts) {
     if (SUPPORTED.indexOf(lang) === -1 || lang === current) {
       if (lang === current) updateSwitcher();
       return;
     }
     current = lang;
-    try { localStorage.setItem(STORAGE_KEY, lang); } catch (e) {}
+    if (!(opts && opts.persist === false)) {
+      try { localStorage.setItem(STORAGE_KEY, lang); } catch (e) {}
+    }
     applyDom();
     updateSwitcher();
     // Let page JS re-render dynamically generated strings.
-    window.dispatchEvent(new CustomEvent('langchange', { detail: { lang: lang } }));
+    window.dispatchEvent(new CustomEvent('langchange', { detail: { lang: lang, persist: !(opts && opts.persist === false) } }));
   }
 
   /* ---------- Switcher UI ---------- */
@@ -194,7 +199,7 @@
     applyDom();
     buildSwitcher();
     // Announce the initial language so page JS can build dynamic text.
-    window.dispatchEvent(new CustomEvent('langchange', { detail: { lang: current } }));
+    window.dispatchEvent(new CustomEvent('langchange', { detail: { lang: current, initial: true } }));
   }
 
   if (document.readyState === 'loading') {

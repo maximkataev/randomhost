@@ -74,6 +74,7 @@ function load(opts) {
     console,
     Date,
     Array, String, Object,
+    sessionStorage: o.noSession ? undefined : (function () { const m = {}; return { getItem: (k) => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: (k) => { delete m[k]; } }; })(),
     localStorage: o.noStorage ? undefined : {
       getItem: (k) => { if (o.storageThrows) throw new Error("denied"); return Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null; },
       setItem: (k, v) => { if (o.storageThrows) throw new Error("denied"); store[k] = String(v); },
@@ -84,6 +85,9 @@ function load(opts) {
   sandbox.clearTimeout = () => {};
   sandbox.__timers = [];
   sandbox.window = sandbox;
+  sandbox.__listeners = [];
+  sandbox.addEventListener = (t, fn) => { sandbox.__listeners.push({ t, fn }); };
+  sandbox.__fire = (t, detail) => sandbox.__listeners.filter((l) => l.t === t).forEach((l) => l.fn({ detail }));
   vm.runInNewContext(SRC, sandbox, { filename: "mp-common.js" });
   return sandbox;
 }
@@ -268,6 +272,72 @@ test("авто-возврат: выключен по умолчанию; ≥ 5 �
   rt.noteClaimElsewhere(1e6 + 6000);
   assert.equal(rt.canAutoReturn(1e6 + 30000), false);
   assert.equal(rt.canAutoReturn(1e6 + 66000), true);
+});
+
+console.log("followRoomLang (U-17, за флагом)");
+function i18nStub(lang) {
+  const st = { lang, calls: [] };
+  st.api = { get lang() { return st.lang; }, setLang(l, o) { st.calls.push([l, o]); st.lang = l; } };
+  return st;
+}
+test("флаг RULE_U17_LANG_FOLLOW по умолчанию выключен -> check() ничего не делает", () => {
+  const w = load();
+  assert.equal(w.MP.rules.RULE_U17_LANG_FOLLOW, false);
+  const i = i18nStub("en"); w.I18N = i.api;
+  const f = w.MP.followRoomLang({ getRoomLang: () => "ru", auto: true });
+  assert.equal(f.check(), false);
+  assert.equal(i.calls.length, 0);
+});
+test("auto: следует языку комнаты через setLang(.., {persist:false}); совпадение — без вызова", () => {
+  const w = load();
+  const i = i18nStub("en"); w.I18N = i.api;
+  const f = w.MP.followRoomLang({ enabled: true, auto: true, getRoomLang: () => "ru" });
+  assert.equal(f.check(), "switched");
+  assert.deepEqual(i.calls, [["ru", { persist: false }]]);
+  assert.equal(f.check(), false);
+  assert.equal(f.check("xx"), false);
+});
+test("ручной выбор (langchange с persist) останавливает следование; стартовый langchange — нет", () => {
+  const w = load();
+  const i = i18nStub("en"); w.I18N = i.api;
+  const f = w.MP.followRoomLang({ enabled: true, auto: true });
+  w.__fire("langchange", { lang: "en", initial: true });
+  assert.equal(f.isManual(), false);
+  assert.equal(f.check("ru"), "switched");        // наш же setLang(persist:false) не считается ручным
+  w.__fire("langchange", { lang: "ru", persist: false });
+  assert.equal(f.isManual(), false);
+  w.__fire("langchange", { lang: "el", persist: true });
+  assert.equal(f.isManual(), true);
+  i.lang = "el";
+  assert.equal(f.check("ru"), false);
+  assert.equal(w.sessionStorage.getItem("mp-lang-manual"), "1");
+});
+test("подсказка: onSuggest один раз на язык; accept запоминает выбор, decline — тоже", () => {
+  const w = load();
+  const i = i18nStub("ru"); w.I18N = i.api;
+  const seen = [];
+  const f = w.MP.followRoomLang({ enabled: true, onSuggest: (s) => seen.push(s) });
+  assert.equal(f.check("en"), "suggested");
+  assert.equal(f.check("en"), false);
+  assert.equal(seen[0].lang, "en");
+  seen[0].accept();
+  assert.deepEqual(i.calls, [["en", { persist: true }]]);
+  assert.equal(f.isManual(), true);
+  const w2 = load(); w2.I18N = i18nStub("ru").api;
+  const f2 = w2.MP.followRoomLang({ enabled: true, onSuggest: (s) => s.decline() });
+  assert.equal(f2.check("el"), "suggested");
+  assert.equal(f2.isManual(), true);
+  assert.equal(f2.check("en"), false);
+});
+test("MP_OFF: followRoomLang инертен; без sessionStorage не падает", () => {
+  const w = load({ noSession: true });
+  const i = i18nStub("en"); w.I18N = i.api;
+  const f = w.MP.followRoomLang({ enabled: true, auto: true });
+  assert.equal(f.check("ru"), "switched");
+  f.markManual();
+  assert.equal(f.isManual(), true);
+  w.MP.applyHello({ mp: false });
+  assert.equal(f.check("el"), false);
 });
 
 console.log("\n" + passed + " пройдено, " + failed + " провалено");
