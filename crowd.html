@@ -517,6 +517,49 @@ async function keepAwake() {
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden && me) keepAwake(); });
 
+// ---------- единый коалесцер тапов: vote и bank уходят не чаще 4 раз в секунду (лимит сервера CMD_RATE = 5) ----------
+// Последнее значение по типу не теряется; «Готово» не режется (сервер её не считает) и перед отправкой сбрасывает хвост коалесцера.
+const CO_GAP_MS = 250;
+const co = { last: 0, timer: null, pend: {} };
+const want = { key: null, vote: null, bank: null }; // что игрок хочет: по нему повторяем после отказа по частоте
+let rateTries = 0, rateTimer = null;
+function coSend(msg) {
+  co.pend[msg.type] = msg;
+  coPump();
+}
+function coPump() {
+  clearTimeout(co.timer); co.timer = null;
+  const types = Object.keys(co.pend);
+  if (!types.length) return;
+  const wait = co.last + CO_GAP_MS - Date.now();
+  if (wait > 0) { co.timer = setTimeout(coPump, wait); return; }
+  const t = types[0];
+  const m = co.pend[t];
+  delete co.pend[t];
+  co.last = Date.now();
+  conn.send(m);
+  if (types.length > 1) co.timer = setTimeout(coPump, CO_GAP_MS);
+}
+function coFlushNow() {
+  clearTimeout(co.timer); co.timer = null;
+  for (const t of Object.keys(co.pend)) { const m = co.pend[t]; delete co.pend[t]; conn.send(m); }
+  co.last = Date.now();
+}
+function noteWant(field, v) {
+  if (want.key !== roundKey()) { want.key = roundKey(); want.vote = null; want.bank = null; rateTries = 0; }
+  want[field] = v;
+}
+// после «rejected rate»: повторяем актуальное желание, если сервер его ещё не принял
+function retryWant() {
+  rateTimer = null;
+  const mc = state && state.me;
+  if (!mc || state.phase !== "vote" || mc.confirmed || want.key !== roundKey()) { rateTries = 0; return; }
+  let sent = false;
+  if (want.vote && mc.vote !== want.vote) { coSend({ type: "vote", side: want.vote }); sent = true; }
+  if (want.bank != null && !!mc.bank !== want.bank) { coSend({ type: "bank", on: want.bank }); sent = true; }
+  if (!sent) rateTries = 0;
+}
+
 // ---------- то, что игрок нажал, пока снимок в пути ----------
 function setOv(field, v) {
   if (!ov || ov.key !== roundKey()) ov = { key: roundKey() };
@@ -524,6 +567,8 @@ function setOv(field, v) {
 }
 function eff(field) {
   const p = state && state.me;
+  // идёт повтор после отказа по частоте: показываем желание игрока, а не прежнюю сторону сервера — иначе кнопка «перескакивает»
+  if (rateTries > 0 && (field === "vote" || field === "bank") && want.key === roundKey() && want[field] != null) return want[field];
   if (ov && ov.key === roundKey() && ov[field] && performance.now() - ov[field].t < 1200) return ov[field].v;
   return p ? p[field] : null;
 }
@@ -713,7 +758,7 @@ function bindVote() {
   app.querySelectorAll(".side").forEach((b) => {
     b.onclick = () => {
       const s = b.dataset.s;
-      if (eff("vote") !== s) { setOv("vote", s); wvSfx.tap(); try { navigator.vibrate && navigator.vibrate(15); } catch (e) {} conn.send({ type: "vote", side: s }); }
+      if (eff("vote") !== s) { setOv("vote", s); noteWant("vote", s); wvSfx.tap(); try { navigator.vibrate && navigator.vibrate(15); } catch (e) {} coSend({ type: "vote", side: s }); }
       patchVote("play");
     };
   });
@@ -721,8 +766,9 @@ function bindVote() {
   if (bank) bank.onclick = () => {
     const on = !eff("bank");
     setOv("bank", on);
+    noteWant("bank", on);
     (on ? wvSfx.bank : wvSfx.tap)();
-    conn.send({ type: "bank", on });
+    coSend({ type: "bank", on });
     patchVote("play");
   };
   document.getElementById("done").onclick = () => {
@@ -730,6 +776,7 @@ function bindVote() {
     setOv("confirmed", true);
     wvSfx.lock();
     wvVibrate(25);
+    coFlushNow(); // хвост голоса/ва-банка уходит раньше «Готово»: порядок на сервере важен
     conn.send({ type: "confirm" });
     renderVote();
   };
@@ -996,6 +1043,7 @@ function onMessage(m) {
     case "hello":
     case "state":
       state = m.state;
+      if (rateTries && state.me && (want.vote == null || state.me.vote === want.vote) && (want.bank == null || !!state.me.bank === want.bank)) rateTries = 0;
       if (m.type === "hello" && token && needJoin) { needJoin = false; conn.send({ type: "join", token }); }
       if (state.phase !== prevPhase) {
         prevPhase = state.phase;
@@ -1021,6 +1069,14 @@ function onMessage(m) {
       break;
     }
     case "rejected":
+      if (m.reason === "rate" && (m.action === "vote" || m.action === "bank") && state && state.phase === "vote" && rateTries < 3) {
+        // тихий повтор через 800 мс; выбор игрока на экране не сбрасываем, тост — только если и повтор не прошёл
+        rateTries++;
+        clearTimeout(rateTimer);
+        rateTimer = setTimeout(retryWant, 800);
+        break;
+      }
+      rateTries = 0;
       ov = null;
       if (T("rj_" + m.reason) !== "rj_" + m.reason) toast(T("rj_" + m.reason));
       screenKey = "";
