@@ -564,11 +564,50 @@ function wvDialSvg(o) {
       for (let j = k - 1; j >= 0 && Math.abs(bySide[j].g.a - x.g.a) < 8; j--) lift++;
       len[x.i] = R - 70 - lift * 70;
     });
+    // Плашки очков ставим жадно (T-W3-16, wave-031): сначала самые важные (больше очков, ближе к центру), каждая — в
+    // первое место, где не пересекает аватары, ступицу и уже поставленные плашки: от точки у острия вовнутрь по 64 ед.
+    // (до 4 раз), затем сдвиг по дуге на ±12°/±24°. Стрелки и аватары остаются на своих `len`.
+    const taken = [{ x: WV.cx, y: WV.cy, w: 90, h: 90 }];
+    o.guesses.forEach((g, i) => { const pa = wvPt(g.a, len[i]); taken.push({ x: pa[0], y: pa[1], w: 76, h: 76 }); });
+    const badgeAt = new Array(o.guesses.length), badgeSc = new Array(o.guesses.length);
+    const badgeW = (g) => { const t = g.pts ? "+" + g.pts : (o.missText || "0"); return Math.max(96, Array.from(t).length * (g.pts ? 30 : 24) + 28); };
+    const hit = (b, t) => Math.max(0, Math.min(b.x + b.w / 2, t.x + t.w / 2) - Math.max(b.x - b.w / 2, t.x - t.w / 2)) * Math.max(0, Math.min(b.y + b.h / 2, t.y + t.h / 2) - Math.max(b.y - b.h / 2, t.y - t.h / 2));
+    o.guesses.map((g, i) => i).filter((i) => o.guesses[i].pts != null)
+      .sort((i, j) => (o.guesses[j].pts || 0) - (o.guesses[i].pts || 0) || j - i)
+      .forEach((i) => {
+        const g = o.guesses[i], w0 = badgeW(g);
+        // кандидаты: кольца 120…372 ед. через 16 и дуга ±120° через 4°; цена — «отойти от своего острия» (кольцо в 64 ед. = 1,
+        // 4° дуги ≈ 0,7), так что сначала вовнутрь/наружу на своём луче, потом вбок
+        const home = Math.min(372, Math.max(120, len[i] - 84));
+        const cands = [];
+        for (let r = 120; r <= 372; r += 16) for (let da = -30; da <= 30; da++) cands.push({ r, da: da * 4, cost: Math.abs(r - home) / 64 + Math.abs(da) * 0.18 });
+        cands.push({ r: home, da: 0, cost: -1 });
+        cands.sort((x, y) => x.cost - y.cost);
+        let best = null;
+        // не нашлось свободного места при полном размере — плашка уменьшается (0,8 → 0,65), только тогда
+        for (const sc of [1, 0.8, 0.65]) {
+          const w = w0 * sc;
+          best = null;
+          for (const c of cands) {
+            const a = Math.max(3, Math.min(177, g.a + c.da));
+            const q = wvPt(a, c.r);
+            const cx = Math.max(w / 2 + 6, Math.min(WV.W - w / 2 - 6, q[0])), cy = Math.max(36, q[1] - 2);
+            const box = { x: cx, y: cy, w: w + 8, h: 56 * sc + 8 };
+            const area = taken.reduce((m, t) => m + hit(box, t), 0);
+            if (!best || area < best.area) best = { box, area, q: [cx, cy + 2], sc };
+            if (area === 0) break;
+          }
+          if (best.area === 0) break;
+        }
+        taken.push(best.box);
+        badgeSc[i] = best.sc;
+        badgeAt[i] = best.q;
+      });
     let lines = "", avs = "", badges = "";
     o.guesses.forEach((g, i) => {
       const L = len[i];
       const p = wvPt(g.a, L);
-      const q = wvPt(g.a, L - 84);
+      const q = badgeAt[i] || wvPt(g.a, L - 84);
       const d = plan ? plan.drop + i * plan.dropStep : 0;
       const bd = plan ? plan.badgeAt(i) : 0;
       lines += `<g class="gneedle" style="--a:${g.a};--d:${d}ms"><line x1="${WV.cx}" y1="${WV.cy}" x2="${WV.cx - L}" y2="${WV.cy}" stroke="#111" stroke-width="20" stroke-linecap="round"/><line x1="${WV.cx}" y1="${WV.cy}" x2="${WV.cx - L}" y2="${WV.cy}" stroke="${g.color}" stroke-width="11" stroke-linecap="round"/></g>`;
@@ -576,7 +615,9 @@ function wvDialSvg(o) {
       if (g.pts != null) {
         const txt = g.pts ? "+" + g.pts : (o.missText || "0");
         const w = Math.max(96, Array.from(txt).length * (g.pts ? 30 : 24) + 28);
-        badges += `<g class="badge${g.pts ? "" : " zero"}${g.best ? " best" : ""}" style="--bd:${bd}ms"><rect x="${(q[0] - w / 2).toFixed(1)}" y="${(q[1] - 30).toFixed(1)}" width="${w}" height="56" fill="#111"/><text x="${q[0].toFixed(1)}" y="${(q[1] + 1).toFixed(1)}" class="btxt">${escapeHtml(txt)}</text></g>`;
+        const sc = badgeSc[i] || 1;
+        const inner = `<rect x="${(q[0] - w / 2).toFixed(1)}" y="${(q[1] - 30).toFixed(1)}" width="${w}" height="56" fill="#111"/><text x="${q[0].toFixed(1)}" y="${(q[1] + 1).toFixed(1)}" class="btxt">${escapeHtml(txt)}</text>`;
+        badges += `<g class="badge${g.pts ? "" : " zero"}${g.best ? " best" : ""}" style="--bd:${bd}ms">${sc < 1 ? `<g transform="translate(${q[0].toFixed(1)} ${q[1].toFixed(1)}) scale(${sc}) translate(${(-q[0]).toFixed(1)} ${(-q[1]).toFixed(1)})">${inner}</g>` : inner}</g>`;
       }
     });
     parts.push(`<g class="guesses">${lines}</g><g class="gavs">${avs}</g><g class="badges">${badges}</g>`);

@@ -220,6 +220,19 @@
   .step .col { width: 100%; background: var(--ink); color: var(--card); display: grid; place-items: start center; align-content: start; gap: .6vh; padding-top: 1.4vh; font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; font-size: clamp(40px, 7vh, 90px); line-height: 1; animation: up .8s var(--press) both; transform-origin: bottom; }
   .step .col small { font-size: .5em; color: var(--paper); font-stretch: 100%; font-variation-settings: "wdth" 100; font-variant-numeric: tabular-nums; }
   @keyframes up { from { transform: scaleY(0); } }
+  .lcol { display: flex; flex-direction: column; gap: 1.6vh; min-height: 0; }
+  .lcol .podium { flex: 1; }
+  .final.many { --pod: 22vh; }
+  .final.many .step:nth-child(1) .col { height: calc(var(--pod) * .78) !important; }
+  .final.many .step:nth-child(2) .col { height: var(--pod) !important; }
+  .final.many .step:nth-child(3) .col { height: calc(var(--pod) * .58) !important; }
+  /* 4-е место и ниже: компактный список в две колонки, имя не режется «…» раньше времени */
+  .rest { list-style: none; margin: 0; padding: 0; flex: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows, 5), auto); grid-auto-flow: column; gap: .6vh 1.6vw; font-weight: 900; font-size: clamp(16px, 2.6vh, 30px); }
+  .rest li { display: grid; grid-template-columns: 1.6em 1.8em minmax(0, 1fr) auto auto; align-items: center; gap: 8px; background: var(--paper); border: 3px solid var(--ink); padding: 1px 10px 1px 6px; }
+  .rest .av { width: 1.7em; height: 1.7em; font-size: .85em; border-width: 2px; }
+  .rest b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rest .s { font-variant-numeric: tabular-nums; font-weight: 1000; }
+  .rest .n { font-stretch: 151%; font-variation-settings: "wdth" 151; }
   .awards { display: flex; flex-direction: column; gap: 1.6vh; min-height: 0; }
   .aw { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; }
   .aw .av { width: 60px; height: 60px; font-size: 32px; }
@@ -454,6 +467,23 @@
     .cluehead h1 { font-size: clamp(26px, 9vh, 44px); }
     .cluehead .fine { font-size: 15px; }
   }
+
+  /* ТВ с трёх метров: мелкие подписи лобби и счётчики — не меньше 24 px (T-W3-16, wave-036) */
+  @media (min-width: 1600px) {
+    .url { font-size: 28px; }
+    .scan { font-size: 26px; }
+    .opt b { font-size: 26px; }
+    .opt span { font-size: 24px; }
+    .count small { font-size: 24px; }
+    .free { font-size: 24px; }
+    #qr { width: clamp(180px, 32vh, 320px); height: clamp(180px, 32vh, 320px); }
+    .aw b { font-size: 44px; }
+    .aw p { font-size: 34px; }
+    .aw .eyebrow { font-size: 26px; }
+    .rest { font-size: 28px; }
+  }
+  @media (max-aspect-ratio: 1/1) { .rest { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-flow: row; } }
+  @media (max-width: 760px), (max-height: 500px) { .rest { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-flow: row; font-size: 16px; } .final.many { --pod: 17vh; } }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; transition: none !important; }
@@ -749,6 +779,8 @@ function jolt() {
 }
 
 // ---------- лобби ----------
+// код комнаты на большом экране — до 100 px (с трёх метров), на телефоне/ноутбуке — 76
+const codeMax = () => (window.innerWidth >= 1600 ? 100 : 76);
 let qrDrawn = false;
 let demoTimer = null;
 function drawLobby() {
@@ -771,7 +803,7 @@ function drawLobby() {
     $("startbtn").onclick = () => conn.send({ type: "start" });
     $("tshort").onclick = () => { if (isHost) conn.send({ type: "settings", settings: { short: !state.settings.short } }); };
     const bc = $("bigcode");
-    fit(bc, bc.parentNode, "--code-fs", 76, 28);
+    fit(bc, bc.parentNode, "--code-fs", codeMax(), 28);
     runDemo();
   }
   if (!qrDrawn && window.QRCode) {
@@ -859,7 +891,8 @@ function drawGuess() {
   const sig = state.guessers.join(",") + "|" + state.locked.join(",") + "|" + present().filter((p) => p.online === false).map((p) => p.id).join(",") + "|" + isHost;
   const box = $("chips");
   if (box.dataset.sig !== sig) {
-    const before = new Set((box.dataset.sig || "").split("|")[1]?.split(",").filter(Boolean) || []);
+    const sigParts = (box.dataset.sig || "").split("|");
+    const before = new Set((sigParts[1] || "").split(",").filter(Boolean));
     box.innerHTML = chips.join("");
     box.querySelectorAll(".pc.on").forEach((c) => { if (before.has(c.dataset.id)) c.style.animation = "none"; });
     box.dataset.sig = sig;
@@ -911,7 +944,7 @@ function drawReveal() {
   later(plan.open, () => wvSfx.whoosh());
   guesses.forEach((g, i) => later(plan.badgeAt(i), () => { wvSfx.drop(1 - Math.min(1, g.dist / 60)); bumpWave(g.pts ? 6 : 2); }));
   later(plan.done, () => {
-    if (flash) $("cluebar")?.classList.add("flashed");
+    if (flash && $("cluebar")) $("cluebar").classList.add("flashed");
     if (card.wave) { wvSfx.wave(); calmWave(1800); }
     else if (bulls.length) wvSfx.bull();
     else if (!guesses.some((g) => g.pts)) wvSfx.womp();
@@ -961,6 +994,7 @@ function drawFinal() {
   if (!pl.length) pl = present();
   const list = pl.slice().sort((a, b) => b.score - a.score);
   const top = [list[1], list[0], list[2]];
+  const rest = list.slice(3); // 4-е место и дальше — списком под пьедесталом: на ТВ видны все (T-W3-16, wave-033)
   const heights = ["max(15vh, calc(var(--pod) * .75))", "max(18vh, var(--pod))", "max(13vh, calc(var(--pod) * .54))"];
   const places = top.map((p) => (p ? wvRank(list, p) : 0));
   const aw = state.awards || {};
@@ -986,7 +1020,7 @@ function drawFinal() {
   }
   const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : "";
   main.innerHTML = `<div class="screen"><h1 class="shout" style="font-size:clamp(44px,9vh,120px)">${T("final_title")}</h1>${sub ? `<div class="fine">${escapeHtml(sub)}</div>` : ""}
-    <div class="final"><div class="podium">${top.map((p, i) => p ? `<div class="step"><div class="who">${avHtml(p)}${escapeHtml(p.name)}${snail(p)}</div><div class="col" style="height:${heights[i]};animation-delay:${[0.5, 1, 0][i]}s">${places[i]}<small>${p.score}</small></div></div>` : `<div class="step"></div>`).join("")}</div>
+    <div class="final${rest.length ? " many" : ""}"><div class="lcol"><div class="podium">${top.map((p, i) => p ? `<div class="step"><div class="who">${avHtml(p)}${escapeHtml(p.name)}${snail(p)}</div><div class="col" style="height:${heights[i]};animation-delay:${[0.5, 1, 0][i]}s">${places[i]}<small>${p.score}</small></div></div>` : `<div class="step"></div>`).join("")}</div>${rest.length ? `<ol class="rest" start="4" style="--rows:${Math.ceil(rest.length / 2)}">${rest.map((p) => `<li><span class="n">${wvRank(list, p)}</span>${avHtml(p)}<b>${escapeHtml(p.name)}</b>${snail(p)}<span class="s">${p.score}</span></li>`).join("")}</ol>` : ""}</div>
     <div class="awards">${rows.join("")}${replay}<div class="hostbtns">${isHost ? `<button class="start" id="again" type="button">${T("btn_again")}</button><button class="ghostbtn" id="tolobby" type="button">${T("btn_lobby")}</button>` : ""}<a class="ghostbtn" href="index.html">${T("btn_home")}</a></div></div></div></div>`;
   fitShout(main.querySelector(".screen > h1"));
   // на низком экране шкала повтора схлопывается в ноль, а полюса вылезают из рамки — оставляем одну строку с подсказкой
@@ -1250,6 +1284,24 @@ function noRoom() {
     const c = MP.roomGone.normalize($("gonecode").value);
     if (c) location.href = `wave-board.html?r=${encodeURIComponent(c)}`;
   };
+}
+
+// Холодная загрузка: подсказка, полюса и заголовки подгоняются по запасному шрифту, а Roboto Flex шире (wdth 151) —
+// после загрузки шрифта пересчитываем всё, что подгонялось (T-W3-16, wave-035)
+function refitAll() {
+  if (!state || dead) return;
+  fitClue();
+  fitPoles();
+  fixDials();
+  fitShout(main.querySelector(".screen > h1"));
+  fitShout(main.querySelector(".intro h1"));
+  fitShout(main.querySelector(".cluehead h1"));
+  const bc = $("bigcode");
+  if (bc) fit(bc, bc.parentNode, "--code-fs", codeMax(), 28);
+}
+if (document.fonts) {
+  if (document.fonts.ready) document.fonts.ready.then(refitAll);
+  if ("onloadingdone" in document.fonts) document.fonts.onloadingdone = refitAll;
 }
 
 async function boot() {
