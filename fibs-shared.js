@@ -120,6 +120,8 @@ function qpRoundName(key) { return qpT("r_" + key); }
 function qpRoundDesc(key) { return qpT("r_" + key + "_d"); }
 // имена через запятую — именительный падеж, не склоняем
 const qpNames = (ids, player) => ids.map((id) => (player(id) || {}).name || "?").join(", ");
+// авторы варианта с меткой у каждого имени: «Маша 🎲, Игорь 🐌» — метка принадлежит тому, перед кем стоит (fibs-042)
+const qpNamesMarked = (o, player) => o.authors.map((id, k) => ((player(id) || {}).name || "?") + (o.late && o.late[k] ? " 🐌" : o.hint && o.hint[k] ? " 🎲" : "")).join(", ");
 // домен источника для подписи под правдой
 function qpSourceHost(url) { try { return new URL(url).hostname.replace(/^www\./, ""); } catch (e) { return ""; } }
 

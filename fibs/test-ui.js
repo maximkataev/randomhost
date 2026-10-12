@@ -88,6 +88,13 @@ const NO_HSCROLL = "document.documentElement.scrollWidth <= innerWidth";
 const OVERLAP = `(() => { const a = document.querySelector(".sound-toggle-btn").getBoundingClientRect(), b = document.querySelector(".lang-switch").getBoundingClientRect();
   return a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom; })()`;
 // вырезки на доске влезают: текст не обрезан, карточки не за экраном
+// ярлычок «ЛОЖЬ/ПРАВДА» не закрывает текст вырезки (T-W3-15, fibs-005); подписи раскрытия ≥ 24 px от ширины 1600
+const STAMPS_OK = `(() => { const cards = [...document.querySelectorAll(".clip.shown")]; if (!cards.length) return "no shown";
+  const bad = cards.filter((c) => { const st = c.querySelector(".stamp").getBoundingClientRect(); const r = document.createRange(); r.selectNodeContents(c.querySelector(".t")); const t = r.getBoundingClientRect();
+    return !(st.bottom <= t.top + 1 || st.top >= t.bottom || st.right <= t.left || st.left >= t.right); }).length;
+  const fs = (s) => { const e = document.querySelector(s); return e ? parseFloat(getComputedStyle(e).fontSize) : 99; };
+  const small = innerWidth >= 1600 ? [".clip .who", ".clip .pts", ".headline .kicker", ".votebar"].filter((s) => fs(s) < 23.9) : [];
+  return bad === 0 && !small.length ? true : "штамп на тексте: " + bad + "; мелкие подписи: " + small.join(","); })()`;
 const WALL_FITS = `(() => { const cards = [...document.querySelectorAll(".clip")]; if (!cards.length) return "no cards";
   const bad = cards.filter((c) => { const t = c.querySelector(".t"); return t.scrollHeight > t.clientHeight + 2; }).length;
   const out = cards.filter((c) => { const r = c.getBoundingClientRect(); return r.bottom > innerHeight + 1 || r.right > innerWidth + 1; }).length;
@@ -113,7 +120,11 @@ async function joinPhones(code, names, sizes) {
     await click(ph, "#enterform button[type=submit]");
     phones.push(ph);
   }
-  for (const ph of phones) check(!!(await waitFor(ph, "window.qpPhone.me", 5000)), `телефон ${ph.name}: вошёл`);
+  for (const ph of phones) {
+    check(!!(await waitFor(ph, "window.qpPhone.me", 5000)), `телефон ${ph.name}: вошёл`);
+    // на ускорении сервер спешит — телефон считает шаги раскрытия в том же темпе (только для стенда)
+    await ph.evaluate(`window.qpRevealSpeed = ${SPEED}`);
+  }
   return phones;
 }
 
@@ -185,6 +196,7 @@ async function chooseRound(phones, opts, label) {
 }
 
 async function playGame(board, phones, label, plan) {
+  let stampsChecked = false;
   let facts = 0, sawLate = false, sawHint = false, sawTrap = false, sawTruthInHeadline = false, sawStamp = false;
   const seenFacts = new Set();
   const shotOnce = new Set();
@@ -243,6 +255,11 @@ async function playGame(board, phones, label, plan) {
       const t0 = Date.now();
       while (Date.now() - t0 < 40000 && (await board.evaluate("state.phase")) === "reveal") {
         if (!sawStamp) sawStamp = (await board.evaluate("document.querySelectorAll('.clip.shown .stamp').length")) > 0;
+        if (!stampsChecked && (await board.evaluate("document.querySelectorAll('.clip.shown').length === document.querySelectorAll('.clip').length && document.querySelectorAll('.clip').length > 0"))) {
+          stampsChecked = true;
+          const so = await board.evaluate(STAMPS_OK);
+          check(so === true, `tv-matrix: раскрытие — штамп не закрывает вариант, подписи ≥ 24 px (${so})`);
+        }
         // на ускорении (SPEED > 1) сервер спешит, а доска считает шаги по настоящим часам и до правды не доходит — правду смотрим на телефоне
         if (!sawTruthInHeadline && (await (SPEED > 1 ? phones[0] : board).evaluate("!!document.querySelector('mark.ans')"))) { sawTruthInHeadline = true; await once(board, `${label}_b_reveal_truth`); }
         await wait(200);
@@ -501,6 +518,82 @@ async function main() {
         check((await en.evaluate("window.I18N.lang")) === "en", "язык комнаты: сам не переключается");
         await en.evaluate("document.querySelector('#langhint [data-y]').click()");
         check((await waitFor(en, "window.I18N.lang === 'ru'", 3000)) === true, "язык комнаты: «Переключить» — русский");
+      }
+    }
+
+
+    // ---------- 6. W3: tv-matrix / phone-matrix (T-W3-02, T-W3-15) ----------
+    {
+      const { tvSizes, phoneSizes } = require("../tools/testkit/sizes");
+      const r6 = await (await fetch(BASE + "/fibs/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: "ru" }, speed: SPEED }) })).json();
+      const b6 = await cdp(`${BASE}/fibs-board.html?r=${r6.code}&h=${r6.hostToken}`);
+      b6.name = "доска W3";
+      pages.push(b6);
+      await waitFor(b6, "!!document.getElementById('startbtn') && document.body.classList.contains('host')", 8000);
+      const nm = ["Alexandra-Long-N", "Маша", "Гоша", "Даша", "Егор", "Зоя"];
+      const p6 = await joinPhones(r6.code, nm, [[320, 568]]);
+      pages.push(...p6);
+      await wait(500);
+      // tv-matrix: лобби — без вертикальной прокрутки, «В печать!» в экране, длинное имя не рвётся посреди слова
+      for (const sz of tvSizes()) {
+        await b6.call("Emulation.setDeviceMetricsOverride", { width: sz.width, height: sz.height, deviceScaleFactor: 1, mobile: false });
+        await wait(350);
+        const lob = await b6.evaluate(`(() => { const l = document.querySelector(".screen.lobby"), sb = document.getElementById("startbtn").getBoundingClientRect();
+          const brk = [...document.querySelectorAll(".seat b")].filter((b) => b.textContent.indexOf("Alexandra") === 0 && b.scrollHeight > b.clientHeight + 1).length;
+          const url = parseFloat(getComputedStyle(document.querySelector(".url")).fontSize);
+          return { scroll: l.scrollHeight - l.clientHeight, startOk: sb.bottom <= innerHeight, brk, url, w: innerWidth }; })()`);
+        check(lob.scroll <= 1 && lob.startOk, `tv-matrix ${sz.name}: лобби без вертикальной прокрутки, «В печать!» в экране (scroll ${lob.scroll})`);
+        check(lob.brk === 0, `tv-matrix ${sz.name}: «Alexandra-Long-N» целиком в карточке`);
+        if (sz.width >= 1600) check(lob.url >= 24, `tv-matrix ${sz.name}: адрес комнаты ≥ 24 px (${lob.url})`);
+        check((await b6.evaluate(NO_HSCROLL)) === true, `tv-matrix ${sz.name}: лобби без прокрутки вбок`);
+      }
+      await b6.call("Emulation.setDeviceMetricsOverride", { width: 1600, height: 900, deviceScaleFactor: 1, mobile: false });
+      await b6.evaluate("document.querySelector('#startbtn').click()");
+      // телефон: до выбора — ложь с клавиатурой, потом выбор в каждом размере
+      const driveTo = async (want) => {
+        for (let i = 0; i < 120; i++) {
+          const ph = await p6[0].evaluate("window.qpPhone.state && window.qpPhone.state.phase");
+          if (ph === want) return true;
+          for (const p of p6) {
+            const st = await p.evaluate("(() => { const s = window.qpPhone.state; return s ? { phase: s.phase, chooser: !!(s.me && s.me.chooser), topic: s.topics && s.topics[0], lied: !!(s.me && s.me.lie), inRound: !!(s.me && s.me.inRound), picked: !!(s.me && s.me.picks) } : null; })()");
+            if (!st) continue;
+            if (st.phase === "topic" && st.chooser && !p.sentTopic6) { p.sentTopic6 = true; await p.evaluate(`window.qpPhone.send({ type: "topic", topic: ${JSON.stringify(st.topic)} })`); }
+            if (want === "choose" && st.phase === "lie" && st.inRound && !st.lied && p !== p6[0]) await p.evaluate(`window.qpPhone.send({ type: "lie", text: "враки ${Math.random().toString(36).slice(2, 6)}" })`);
+          }
+          await wait(300);
+        }
+        return false;
+      };
+      check(await driveTo("lie"), "phone-matrix: партия дошла до лжи");
+      await waitFor(p6[0], "!!document.getElementById('lie')", 5000);
+      const lieMatrix = [[320, 568], [360, 740], [390, 844], [568, 320], [844, 390]];
+      for (const [w, h] of lieMatrix) {
+        await p6[0].call("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
+        await wait(250);
+        const m = await p6[0].evaluate(`(() => { const b = document.getElementById("hintbtn").getBoundingClientRect(); return { hscroll: document.documentElement.scrollWidth > innerWidth, hintBottom: b.bottom, ih: innerHeight, tap: b.height >= 44 }; })()`);
+        check(!m.hscroll && m.hintBottom <= m.ih + 40 && m.tap, `phone-matrix ${w}x${h}: ложь — «Соври за меня» рядом с экраном, ≥ 44 px, без прокрутки вбок (${Math.round(m.hintBottom)}/${m.ih})`);
+      }
+      // клавиатура: окно ужимается (320×568 → 320×268), «Соври за меня» остаётся в видимой области
+      await p6[0].call("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+      await wait(300);
+      await p6[0].evaluate("document.getElementById('lie').focus()");
+      await p6[0].call("Emulation.setDeviceMetricsOverride", { width: 320, height: 268, deviceScaleFactor: 2, mobile: true });
+      await wait(900);
+      const kb = await p6[0].evaluate(`(() => { const b = document.getElementById("hintbtn").getBoundingClientRect(), i = document.getElementById("lie").getBoundingClientRect();
+        return { kb: document.documentElement.classList.contains("kb"), hint: b.bottom, input: i.top, ih: innerHeight }; })()`);
+      check(kb.kb && kb.hint <= kb.ih + 1 && kb.input >= 0, `phone-matrix 320x268 с клавиатурой: «Соври за меня» и поле в видимой области (${Math.round(kb.hint)}/${kb.ih})`);
+      await p6[0].evaluate("document.activeElement.blur()");
+      await p6[0].call("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+      await wait(300);
+      await p6[0].evaluate("window.qpPhone.send({ type: 'lie', text: 'мой обман' })");
+      check(await driveTo("choose"), "phone-matrix: дошли до выбора");
+      await waitFor(p6[0], "document.querySelectorAll('.opt').length > 1", 4000);
+      for (const [w, h] of [[320, 568], [375, 667], [390, 844], [412, 915], [568, 320], [667, 375], [844, 390], [915, 412]]) {
+        await p6[0].call("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
+        await wait(250);
+        const m = await p6[0].evaluate(`(() => { const hb = document.getElementById("hedge").getBoundingClientRect(); const o = document.querySelector(".opt").getBoundingClientRect();
+          return { hscroll: document.documentElement.scrollWidth > innerWidth, hedgeBottom: hb.bottom, ih: innerHeight, optTap: o.height >= 40, hedgeAbove: hb.top < o.top || hb.left < o.left }; })()`);
+        check(!m.hscroll && m.hedgeBottom <= m.ih && m.optTap && m.hedgeAbove, `phone-matrix ${w}x${h}: выбор — «Подстраховка» в первом экране над списком (${Math.round(m.hedgeBottom)}/${m.ih})`);
       }
     }
 

@@ -431,6 +431,7 @@ test("варианты на экране — строчными и без зна
   assert.strictEqual(displayText("THE MOON?!"), "the moon");
   assert.strictEqual(displayText("ΓΑΤΑ!"), "γατα");
   assert.strictEqual(displayText("..."), "...");
+  // регистр не зависит от флага: displayText всегда строчный (в заголовке факта), заглавную даёт optText за RULE_U33_CAPITALIZE
 });
 
 test("записей об игроках не больше MAX_PLAYER_RECORDS: вход/выход посреди партии не раздувает список", () => {
@@ -581,6 +582,93 @@ test("RULE_U09B_CHOOSE_EXTEND: по умолчанию выкл — возвра
   } finally {
     if (saved === undefined) delete process.env[key]; else process.env[key] = saved;
   }
+});
+
+// ---------- T-W3-25: лайки на правду/ловушку, окно лайков 5 с, регистр вариантов ----------
+
+function withEnv(key, val, fn) {
+  const saved = process.env[key];
+  try {
+    if (val == null) delete process.env[key]; else process.env[key] = val;
+    return fn();
+  } finally {
+    if (saved === undefined) delete process.env[key]; else process.env[key] = saved;
+  }
+}
+
+test("likes/wasted: 👍 на правду и ловушку принимается и сгорает; счётчик 👍 у не-лжи в снимке скрыт", () => {
+  const g = game(4);
+  g.keepGrace = true;
+  toChoose(g);
+  const t0 = g.s.phaseStart + 1000;
+  const lie = lieOf(g, "P1");
+  const trap = g.s.options.findIndex((o) => o.kind === "trap");
+  const truth = truthIdx(g);
+  for (const id of ["P1", "P2", "P3", "P4"]) assert.ok(g.choose(id, [id === "P1" ? truth : lie], t0).ok);
+  assert.ok(g.like("P2", truth, t0 + 100).ok, "лайк на правду принят сервером (отказ стал бы оракулом)");
+  assert.ok(g.like("P2", trap, t0 + 100).ok, "лайк на ловушку принят");
+  assert.strictEqual(g.like("P2", lie, t0 + 100).reason, "no_likes", "оба лайка потрачены");
+  assert.ok(g.like("P3", lie, t0 + 100).ok);
+  g.tick(g.s.phaseEnd);
+  assert.strictEqual(g.s.phase, "reveal");
+  const snap = g.snapshot(g.s.phaseStart, "board");
+  assert.strictEqual(snap.options[truth].likes, 0, "у правды счётчик 👍 скрыт");
+  assert.strictEqual(snap.options[trap].likes, 0, "у ловушки счётчик 👍 скрыт");
+  assert.strictEqual(snap.options[lie].likes, 1, "у лжи — виден");
+});
+
+test("grace: окно лайков 2,5 с; RULE_U31_LIKE_GRACE — 5 с и раскрытие сразу, когда у всех потрачены оба лайка", () => {
+  const { LIKE_GRACE_LONG } = require("./game");
+  for (const on of [false, true]) {
+    withEnv("RULE_U31_LIKE_GRACE", on ? "1" : null, () => {
+      const g = game(3);
+      g.keepGrace = true;
+      toChoose(g);
+      const t0 = g.s.phaseStart + 1000;
+      const ids = ["P1", "P2", "P3"];
+      const truth = truthIdx(g);
+      for (const id of ids) assert.ok(g.choose(id, [truth], t0).ok);
+      assert.strictEqual(g.s.phase, "choose");
+      assert.strictEqual(g.s.phaseEnd, t0 + (on ? LIKE_GRACE_LONG : LIKE_GRACE), "окно лайков");
+      // каждый лайкает две чужие лжи (в партии троих у каждого есть минимум две чужие варианта-«не свои»)
+      let fin = null;
+      for (const id of ids) {
+        const others = g.s.options.map((o, i) => i).filter((i) => !g.s.options[i].authors.includes(id)).slice(0, 2);
+        for (const i of others) { const r = g.like(id, i, t0 + 200); assert.ok(r.ok); if (r.events.some((e) => e.type === "reveal")) fin = r; }
+      }
+      if (on) {
+        assert.ok(fin, "оба лайка у всех потрачены — раскрытие сразу");
+        assert.strictEqual(g.s.phase, "reveal");
+      } else {
+        assert.strictEqual(fin, null, "флаг выкл: ждём конца окна");
+        assert.strictEqual(g.s.phase, "choose");
+        g.tick(g.s.phaseEnd);
+        assert.strictEqual(g.s.phase, "reveal");
+      }
+    });
+  }
+});
+
+test("регистр вариантов: по умолчанию строчные; RULE_U33_CAPITALIZE — первая заглавная у правды, лжи и ловушек, правда в факте строчная", () => {
+  const { optText } = require("./game");
+  withEnv("RULE_U33_CAPITALIZE", null, () => {
+    assert.strictEqual(optText("Японии!"), "японии");
+    const g = game(3);
+    toChoose(g);
+    for (const o of g.s.options) assert.strictEqual(o.text, o.text.toLowerCase());
+  });
+  withEnv("RULE_U33_CAPITALIZE", "1", () => {
+    assert.strictEqual(optText("японии!"), "Японии");
+    assert.strictEqual(optText("ΓΑΤΑ!"), "Γατα");
+    assert.strictEqual(optText("..."), "...");
+    const g = game(3);
+    toChoose(g);
+    for (const o of g.s.options) assert.strictEqual(o.text.charAt(0), o.text.charAt(0).toUpperCase(), o.kind + ": " + o.text);
+    assert.ok(g.s.options.some((o) => o.kind === "truth" && /^[А-ЯЁA-Z]/.test(o.text)), "правда тоже с заглавной");
+    g.tick(g.s.phaseEnd);
+    const snap = g.snapshot(g.s.phaseStart, "board");
+    assert.strictEqual(snap.truth.answer, snap.truth.answer.toLowerCase(), "в заголовке факта правда строчная");
+  });
 });
 
 // ---------- T-W0-12: played ----------

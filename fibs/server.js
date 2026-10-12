@@ -633,6 +633,8 @@ function handle(room, client, msg) {
       if (!me) return;
       const r = g.like(me, msg.opt, t);
       if (!r.ok) return reply({ type: "rejected", action: "like", reason: r.reason });
+      // «все лайки потрачены» (RULE_U31_LIKE_GRACE) раскрывает факт сразу — тогда нужен и таймер, и события
+      if (r.events && r.events.some((e) => e.type === "reveal")) return afterChange(room, r.events);
       // лайк меняет только свой снимок и счётчики после раскрытия — всем не рассылаем
       return broadcastState(room);
     }
