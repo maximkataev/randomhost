@@ -451,3 +451,58 @@ test("pass с b/n по сокету: повтор после потерянно�
   assert.strictEqual(b.state.passes, 1);
   for (const x of [b, ...ps]) x.close();
 });
+
+// ---- T-W0-05: сканер секретов (tools/testkit/scan.js) по трём видам: доска, игрок, сокет без токена ----
+const { scanFrames } = require("../tools/testkit/scan");
+
+test("секреты не в кадрах: доска / игрок / сокет без токена — до взрыва нет fuse/min/max/fuseMs/salt/explodeAt/answer и чужих токенов", async () => {
+  const { code, hostToken } = await createRoom();
+  const b = await board(code, hostToken);
+  const ps = [await player(code, "Аня"), await player(code, "Петя"), await player(code, "Оля")];
+  const anon = client(code); // сокет без join/host: только то, что отдают всем
+  await anon.open;
+  b.send({ type: "start" });
+  const live = await b.wait(statePred((s) => s.phase === "live"), 6000);
+  const holder = ps.find((p) => p.id === live.state.bombs[0].holder);
+  await solveAndThrow(holder, ps.map((p) => p.id));
+  await b.wait(statePred((s) => s.passes === 1));
+  // вторая доска посреди live: hello с полным снимком
+  const b2 = await board(code, hostToken);
+  await b2.wait(statePred((s) => s.phase === "live"));
+  const late = await player(code, "", ps[0].token); // возврат по токену посреди live
+  await sleep(300);
+
+  // граница «до взрыва/итогов»: после неё печать вскрывается (fuseMs/salt — штатно)
+  const cut = (c) => {
+    const i = c.raw.findIndex((r) => r.includes('"type":"boom"') || r.includes('"phase":"boom"') || r.includes('"phase":"finished"'));
+    return (i < 0 ? c.raw : c.raw.slice(0, i)).map((r) => JSON.parse(r));
+  };
+  // fuse — режим фитиля: в лобби/итогах его видят все, вне них — только доска (settings.fuse); верхнего state.fuse нет ни у кого
+  const FORBIDDEN = ["fuseMs", "salt", "explodeAt", "min", "max", "answer", "hostToken",
+    (p, k) => k === "fuse" && !/(^|\.)settings\.fuse$/.test(p) && "state.fuse"];
+  const clients = [["board", b], ["board", b2], ["player", ps[0]], ["player", ps[1]], ["player", ps[2]], ["player", late], ["anon", anon]];
+  let scanned = 0;
+  for (const [view, c] of clients) {
+    const frames = cut(c);
+    scanned += frames.length;
+    const foreign = ps.map((p) => p.token).filter((t) => t && t !== c.token);
+    const subs = view === "board" ? foreign : foreign.concat(hostToken); // чужие токены игроков никому, токен ведущего — не-доске
+    const v = scanFrames(frames.map((f) => ({ view, frame: f })), {
+      forbiddenKeys: FORBIDDEN,
+      forbiddenSubstrings: subs,
+      phases: ["lobby", "countdown", "live"],
+    });
+    assert.deepStrictEqual(v, [], `${view}: ${JSON.stringify(v.slice(0, 3))}`);
+    // фитиль-режим: вне лобби/итогов у не-доски settings.fuse отсутствует (правило владельца 04.10)
+    if (view !== "board") {
+      const inGame = frames.map((f) => f.state || (f.type === "state" ? f : null)).filter((s) => s && (s.phase === "countdown" || s.phase === "live"));
+      for (const s of inGame) assert.strictEqual(s.settings && s.settings.fuse, undefined, `${view}: settings.fuse ушёл в фазе ${s.phase}`);
+    }
+  }
+  assert.ok(scanned > 10, "кадров мало — проверка пустая: " + scanned);
+  assert.ok(cut(b2).some((m) => m.type === "hello" && m.state && m.state.phase === "live"), "hello посреди live не получен");
+  // сам сканер ловит подмену (защита от «слепого» теста)
+  assert.ok(scanFrames([{ state: { phase: "live", bombs: [{ min: 20 }] } }], { forbiddenKeys: ["min"] }).length === 1);
+  b.send({ type: "end" });
+  for (const c of [b, b2, anon, late, ...ps]) c.close();
+});
