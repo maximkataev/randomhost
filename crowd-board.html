@@ -373,6 +373,7 @@
   }
 </style>
 <script src="legacy-compat.js"></script>
+<script src="mp-common.js"></script>
 </head>
 <body>
 <div id="root">
@@ -414,7 +415,7 @@ window.I18N_DICT = {
   ru: {
     out_title: `Мимо большинства`, votes_lbl: `голоса`, room_lbl: `Комната открыта`, await_votes: `ждём голоса`,
     _title: `Как все — общий экран`, game_name: `Как все`,
-    creating: `Открываем комнату…`, expired: `Комната закрылась — открой новую`, err_connect: `Связь потеряна — переподключаемся…`,
+    creating: `Открываем комнату…`, expired: `Комната закрылась — открой новую`, err_connect: `Связь потеряна — переподключаемся…`, conn_lost: `Нет связи — проверяем…`,
     tagline: `Угадай, что скажет <b>большинство</b>`,
     q_of: `Вопрос {n} из {t}`, q_final: `Финал ×2`, q_extra: `Допвопрос ×2`, q_decider: `Решающий вопрос`,
     ready_of: `{r} из {n} готовы`, ab_a: `А`, ab_b: `Б`,
@@ -447,7 +448,7 @@ window.I18N_DICT = {
   en: {
     out_title: `Missed the crowd`, votes_lbl: `votes`, room_lbl: `Room is open`, await_votes: `waiting for votes`,
     _title: `Go With the Crowd — shared screen`, game_name: `Go With the Crowd`,
-    creating: `Opening a room…`, expired: `The room has closed — open a new one`, err_connect: `Connection lost — reconnecting…`,
+    creating: `Opening a room…`, expired: `The room has closed — open a new one`, err_connect: `Connection lost — reconnecting…`, conn_lost: `No connection — checking…`,
     tagline: `Guess what the <b>majority</b> will say`,
     q_of: `Question {n} of {t}`, q_final: `Final ×2`, q_extra: `Bonus question ×2`, q_decider: `Deciding question`,
     ready_of: `{r} of {n} ready`, ab_a: `A`, ab_b: `B`,
@@ -480,7 +481,8 @@ window.I18N_DICT = {
   el: {
     out_title: `Έχασαν την πλειοψηφία`, votes_lbl: `ψήφοι`, room_lbl: `Το δωμάτιο είναι ανοιχτό`, await_votes: `περιμένουμε ψήφους`,
     _title: `Όπως όλοι — κοινή οθόνη`, game_name: `Όπως όλοι`,
-    creating: `Άνοιγμα δωματίου…`, expired: `Το δωμάτιο έκλεισε — άνοιξε νέο`, err_connect: `Χάθηκε η σύνδεση — επανασύνδεση…`,
+    creating: `Άνοιγμα δωματίου…`, expired: `Το δωμάτιο έκλεισε — άνοιξε νέο`, err_connect: `Χάθηκε η σύνδεση — επανασύνδεση…`, conn_lost: `Χωρίς σύνδεση — έλεγχος…`, //EL:unverified
+   
     tagline: `Μάντεψε τι θα πει η <b>πλειοψηφία</b>`,
     q_of: `Ερώτηση {n} από {t}`, q_final: `Τελικός ×2`, q_extra: `Έξτρα ερώτηση ×2`, q_decider: `Αποφασιστική ερώτηση`,
     ready_of: `{r} από {n} έτοιμοι`, ab_a: `Α`, ab_b: `Β`,
@@ -1541,12 +1543,20 @@ async function boot() {
   measure();
   if (!(await ensureRoom())) return;
   const banner = $("conn");
+  let netLost = false, netQuiet = false;
+  const showNet = () => {
+    banner.textContent = T(netLost ? "err_connect" : "conn_lost");
+    banner.classList.toggle("on", netLost || netQuiet);
+  };
+  window.addEventListener("langchange", showNet);
   conn = wvConnect({
     code: CODE,
     onMessage,
     onGone: gone,
     onOpen: () => { isHost = false; },
-    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+    // «lost» — сокет закрыт, переподключаемся; «quiet» — сокет жив, но молчит дольше 10 с (MP.conn)
+    onState: (st) => { netLost = st === "lost"; if (st === "open") netQuiet = false; showNet(); },
+    onQuiet: (q) => { netQuiet = !!q; showNet(); },
   });
   requestAnimationFrame(frame);
   window.wvBoard = { send: (m) => conn.send(m), get state() { return state; }, get code() { return CODE; } };

@@ -300,7 +300,7 @@ window.I18N_DICT = {
     err_name_wait: `Идёт вопрос — это имя сейчас занято. Зайдём сразу после голосования`,
     claim_title: `Это ты?`, claim_text: `Вернуться как {name} ({n})?`, claim_text0: `Вернуться как {name}?`, btn_claim_yes: `Да, это я`, btn_claim_no: `Я другой`,
     renamed_toast: `Имя занято — теперь ты {name}`,
-    err_connect: `Нет связи, подключаемся…`,
+    err_connect: `Нет связи, подключаемся…`, conn_lost: `Нет связи — проверяем…`,
     wait_title: `Подключаемся…`,
     watch_title: `Смотри на экран`, watch_sub: `Сейчас откроется, кто как проголосовал`,
     lobby_in: `Ты в игре`, av_pick: `Нажми на аватарку, чтобы сменить`, rj_avatar_taken: `Эту аватарку уже взяли`, rj_game_started: `Сменить можно до начала игры`, lobby_wait: `Ждём старта`, lobby_need: `Нужно ещё {n}: зови друзей`, lobby_look: `Вопросы будут на большом экране`, btn_leave: `Выйти`,
@@ -358,7 +358,7 @@ window.I18N_DICT = {
     err_name_wait: `A question is on and that name is busy. We'll let you in right after the vote`,
     claim_title: `Is this you?`, claim_text: `Come back as {name} ({n})?`, claim_text0: `Come back as {name}?`, btn_claim_yes: `Yes, it's me`, btn_claim_no: `I'm someone else`,
     renamed_toast: `That name is taken — you're now {name}`,
-    err_connect: `No connection, reconnecting…`,
+    err_connect: `No connection, reconnecting…`, conn_lost: `No connection — checking…`,
     wait_title: `Connecting…`,
     watch_title: `Watch the screen`, watch_sub: `The votes are about to be revealed`,
     lobby_in: `You're in`, av_pick: `Tap your avatar to change it`, rj_avatar_taken: `That avatar is taken`, rj_game_started: `You can change it before the game starts`, lobby_wait: `Waiting for the start`, lobby_need: `{n} more needed: call your friends`, lobby_look: `Questions appear on the big screen`, btn_leave: `Leave`,
@@ -417,7 +417,8 @@ window.I18N_DICT = {
     err_name_wait: `Τρέχει ερώτηση και το όνομα είναι πιασμένο. Θα μπεις αμέσως μετά την ψηφοφορία`,
     claim_title: `Είσαι εσύ;`, claim_text: `Να γυρίσεις ως {name} ({n});`, claim_text0: `Να γυρίσεις ως {name};`, btn_claim_yes: `Ναι, εγώ είμαι`, btn_claim_no: `Είμαι άλλος`,
     renamed_toast: `Το όνομα είναι πιασμένο — τώρα είσαι {name}`,
-    err_connect: `Χωρίς σύνδεση, ξανασυνδεόμαστε…`,
+    err_connect: `Χωρίς σύνδεση, ξανασυνδεόμαστε…`, conn_lost: `Χωρίς σύνδεση — έλεγχος…`, //EL:unverified
+   
     wait_title: `Σύνδεση…`,
     watch_title: `Κοίτα την οθόνη`, watch_sub: `Σε λίγο φαίνονται οι ψήφοι`,
     lobby_in: `Είσαι μέσα`, av_pick: `Πάτα την εικόνα σου για να την αλλάξεις`, rj_avatar_taken: `Αυτή η εικόνα είναι πιασμένη`, rj_game_started: `Αλλάζει μόνο πριν ξεκινήσει το παιχνίδι`, lobby_wait: `Περιμένουμε την έναρξη`, lobby_need: `Χρειάζονται ακόμα {n}: φώναξε φίλους`, lobby_look: `Οι ερωτήσεις θα είναι στη μεγάλη οθόνη`, btn_leave: `Έξοδος`,
@@ -1233,6 +1234,12 @@ function start() {
   if (!CODE) return renderEnter();
   renderCenter("wait_title");
   const banner = document.getElementById("conn");
+  let netLost = false, netQuiet = false;
+  const showNet = () => {
+    banner.textContent = T(netLost ? "err_connect" : "conn_lost");
+    banner.classList.toggle("on", netLost || netQuiet);
+  };
+  window.addEventListener("langchange", showNet);
   conn = wvConnect({
     code: CODE,
     onMessage,
@@ -1240,7 +1247,9 @@ function start() {
     // переподключились — снова входим своим токеном (hello придёт первым)
     onOpen: () => { needJoin = true; if (token) conn.gated = true; },
     onSendFail: () => { setTimeout(() => { if (state && state.me) flushQueued(); }, 1200); },
-    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+    // «lost» — сокет закрыт, переподключаемся; «quiet» — сокет жив, но молчит дольше 10 с (MP.conn): только предупреждение
+    onState: (st) => { netLost = st === "lost"; if (st === "open") netQuiet = false; showNet(); },
+    onQuiet: (q) => { netQuiet = !!q; showNet(); },
   });
   requestAnimationFrame(frame);
   // ручка для стенда: состояние и отправка

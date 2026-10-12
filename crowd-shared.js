@@ -165,11 +165,14 @@ const BM_WS_HANDSHAKE_MS = 5000;
 const BM_POLL_FETCH_MS = 28000;
 const BM_PROBE_MS = 3000;
 
-function wvOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone }) {
+function wvOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone, onQuiet }) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   let closed = false, opened = false, sid = null, ws = null, polling = false, pollAbort = null;
   let lastSeen = 0, beat = null, notified = false, probeTimer = null;
-  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } clearTimeout(probeTimer); probeTimer = null; };
+  // MP.conn (mp-common.js, T-W2-41): пинг 5 с в игре / 10 с в лобби, баннер «нет связи» после 10 с тишины,
+  // закрытие и переподключение после 22 с. Без mp-common.js (или при MP.off) — прежний цикл ниже (20 с / 45 с).
+  let mpConn = null, inGame = false;
+  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } if (mpConn) { mpConn.stop(); mpConn = null; } clearTimeout(probeTimer); probeTimer = null; };
   const fireClose = () => {
     if (closed || notified) return;
     notified = true;
@@ -184,14 +187,31 @@ function wvOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
   const deliver = (m) => {
     if (closed) return;
     lastSeen = Date.now();
+    // сервер выключил каркас (MP_OFF=1): возвращаемся к прежнему циклу пингов
+    if (m && m.type === "hello" && window.MP && MP.applyHello && !MP.applyHello(m) && mpConn) { startBeat(); }
+    if (mpConn) mpConn.seen(lastSeen);
     if (m && m.type === "pong") { if (typeof m.c === "number") wvClockSample(m.t, m.c); return; }
-    if (m && (m.type === "state" || m.type === "hello") && m.state) wvStateSample(m.state.serverNow);
+    if (m && (m.type === "state" || m.type === "hello") && m.state) {
+      wvStateSample(m.state.serverNow);
+      inGame = !!m.state.phase && m.state.phase !== "lobby" && m.state.phase !== "finished";
+    }
     onMessage(m);
   };
   const startBeat = () => {
     stopBeat();
     lastSeen = Date.now();
     ping(); setTimeout(ping, 400); setTimeout(ping, 1500);
+    if (window.MP && typeof MP.conn === "function" && !MP.off) {
+      mpConn = MP.conn({
+        ping: () => { if (!closed) ping(); },
+        inGame: () => inGame,
+        onOffline: () => { if (onQuiet) onQuiet(true); },
+        onOnline: () => { if (onQuiet) onQuiet(false); },
+        onDead: () => fireClose(),
+      });
+      mpConn.start();
+      return;
+    }
     beat = setInterval(() => {
       if (closed) return stopBeat();
       if (Date.now() - lastSeen > 45000) { fireClose(); return; }
@@ -216,6 +236,8 @@ function wvOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
         });
     },
     close() { closed = true; stopBeat(); try { if (ws) ws.close(); } catch (e) {} try { if (pollAbort) pollAbort.abort(); } catch (e) {} sid = null; },
+    // вкладка снова видна: тишину, пока вкладка была скрыта, MP.conn не считает
+    visible() { if (mpConn) mpConn.visible(Date.now()); },
     probe(ms) {
       if (closed || !opened) return;
       clearTimeout(probeTimer);
@@ -284,7 +306,7 @@ function wvOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
 }
 
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
-function wvConnect({ code, onMessage, onOpen, onGone, onState, onSendFail }) {
+function wvConnect({ code, onMessage, onOpen, onGone, onState, onSendFail, onQuiet }) {
   let t = null, delay = 500, stopped = false;
   // Действие, нажатое между обрывом и возвращением связи, раньше терялось молча (а кнопка уже горела «ушло»).
   // Теперь оно ждёт в очереди и уходит после входа по токену: сокет без игрока действие бы отбросил.
@@ -327,6 +349,7 @@ function wvConnect({ code, onMessage, onOpen, onGone, onState, onSendFail }) {
     holder.api = wvOpenTransport({
       code,
       onMessage,
+      onQuiet,
       onOpen: () => { delay = 500; if (onState) onState("open"); if (onOpen) onOpen(); },
       onClose: () => { if (stopped) return; if (onState) onState("lost"); t = setTimeout(open, delay); delay = Math.min(delay * 2, 8000); },
       onGone: () => { stopped = true; if (onGone) onGone(); },
@@ -336,7 +359,7 @@ function wvConnect({ code, onMessage, onOpen, onGone, onState, onSendFail }) {
   open();
   // вернулись в вкладку или сеть появилась — проверяем, жив ли сокет, не дожидаясь 45 с тишины
   const wake = () => { if (holder.api && holder.api.mode !== "none") holder.api.probe(); };
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (holder.api && holder.api.visible) holder.api.visible(); wake(); } });
   window.addEventListener("online", wake);
   return holder;
 }

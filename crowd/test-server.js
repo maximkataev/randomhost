@@ -791,5 +791,27 @@ function ghostSuite(rule) {
     });
   };
 }
+test("пинг комнат «в игре»: ping-кадры каждые PING_MS; в лобби быстрого пинга нет (T-W2-41)", async (t) => {
+  startServer.env = { PING_MS: "1000" };
+  await startServer();
+  t.after(async () => { await stopServer(); startServer.env = null; for (const f of [DUMP, STATS]) { try { fs.unlinkSync(f); } catch {} } });
+  const room = await createRoom({ lang: "ru", opinion: false });
+  const b = await board(room.code, room.hostToken);
+  const ps = [];
+  for (const n of ["Аня", "Боря", "Вика"]) ps.push(await player(room.code, n));
+  const pings = { lobby: 0, game: 0 };
+  let phase = "lobby";
+  b.ws.on("ping", () => { pings[phase]++; });
+  await sleep(2500);
+  assert.strictEqual(pings.lobby, 0, "быстрый пинг не должен идти в лобби");
+  phase = "game";
+  b.send({ type: "start" });
+  await b.wait(statePred((s) => s.phase !== "lobby"));
+  await sleep(3500);
+  assert.ok(pings.game >= 2, "в игре ping-кадров мало: " + pings.game);
+  assert.strictEqual(b.ws.readyState, 1, "порог тишины ≥ 20 с — живой сокет не закрыт");
+  for (const c of [b, ...ps]) c.close();
+});
+
 test("призраки: без флага (T-W2-35)", ghostSuite(false));
 test("призраки: RULE_U08_GHOST_OUT=1 (T-W2-35)", ghostSuite(true));

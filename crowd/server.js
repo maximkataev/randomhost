@@ -41,6 +41,12 @@ const MAX_SOCKETS_PER_IP = Number(process.env.MAX_SOCKETS_PER_IP || 300);
 const EVICT_GRACE_MS = Number(process.env.EVICT_GRACE_MS || 10000);
 const OFFLINE_GRACE_MS = Number(process.env.OFFLINE_GRACE_MS || 8000);
 const PONG_MISSES = Number(process.env.PONG_MISSES || 3);
+// Быстрый пинг только для комнат «в игре» (T-W2-41, crowd-036): общий цикл SWEEP — 25 с × 3 промаха, тихий обрыв
+// виден через 25–100 с. Свой цикл: PING_MS (8 с), GAME_PONG_MISSES промахов подряд И не меньше GAME_DEAD_MS тишины
+// (≥ 20 с: ложный офлайн по тишине стоил бы игроку раунда). Лобби и итоги этот цикл не трогает.
+const PING_MS = Math.max(1000, Number(process.env.PING_MS || 8000));
+const GAME_PONG_MISSES = Math.max(1, Number(process.env.GAME_PONG_MISSES || 2));
+const GAME_DEAD_MS = Math.max(20000, Number(process.env.GAME_DEAD_MS || 20000));
 const SEND_BUFFER_LIMIT = Number(process.env.SEND_BUFFER_LIMIT || 1048576);
 const MSG_RATE = Number(process.env.MSG_RATE || 40);
 // игровые команды (голос, ва-банк, «Готово», мнение) — отдельный, более строгий лимит: каждая успешная рассылает снимки всем (§10)
@@ -535,11 +541,13 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 function onConnection(room, ws, opts = {}) {
-  const client = { ws, playerId: null, host: false, misses: 0, ip: opts.ip || "", opened: now() };
+  const client = { ws, playerId: null, host: false, misses: 0, gameMisses: 0, alive: now(), ip: opts.ip || "", opened: now() };
   room.sockets.add(client);
-  ws.on("pong", () => (client.misses = 0));
+  ws.on("pong", () => { client.misses = 0; client.gameMisses = 0; client.alive = now(); });
   sendHello(room, client);
   ws.on("message", (raw) => {
+    client.alive = now(); // любое сообщение — признак жизни (приложение шлёт свой ping раз в 5 с)
+    client.gameMisses = 0;
     if (!rateOk(client)) return notifyRate(client, "flood");
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
@@ -792,6 +800,25 @@ setInterval(() => {
   statBlips = statBack = statDrops = 0;
   if (rssMb > 100) console.warn(`${LOG} ВНИМАНИЕ: RSS ${rssMb} МБ при лимите контейнера 128 МБ, комнат ${rooms.size}`);
 }, SWEEP);
+
+// Быстрый пинг комнат «в игре». SWEEP (TTL комнат, RSS-лог, медленный пинг) не трогаем.
+setInterval(() => {
+  const t = now();
+  for (const room of rooms.values()) {
+    const ph = room.game.s.phase;
+    if (ph === "lobby" || ph === "finished" || !room.sockets.size) continue;
+    for (const c of room.sockets) {
+      if (c.poll || !c.ws || c.ws.readyState !== 1) continue;
+      if (c.gameMisses >= GAME_PONG_MISSES && t - (c.alive || t) >= GAME_DEAD_MS) {
+        console.log(`${LOG} ${room.code}: сокет молчит ${Math.round((t - c.alive) / 1000)} с — закрываем`);
+        c.ws.terminate();
+        continue;
+      }
+      c.gameMisses = (c.gameMisses || 0) + 1;
+      try { c.ws.ping(); } catch {}
+    }
+  }
+}, PING_MS).unref();
 
 setInterval(() => {
   const t = now();
