@@ -645,9 +645,13 @@ class Game {
     return this.pause(now, true);
   }
 
-  resume(now) {
+  // manual: «Продолжить» руками (ведущий/игрок без доски). Пока ждём конкретного человека
+  // (waitFor), ручной resume игнорируется: иначе nextLot снова звал бы waitFor и каждое нажатие
+  // сдвигало waitUntil на минуту — партия висела бы на одном офлайн-игроке. Выход — skipWait.
+  resume(now, manual = false) {
     const s = this.s;
     if (!s.paused) return [];
+    if (manual && s.paused.waitFor) return [];
     let remaining = Math.max(0, s.paused.remaining);
     // после паузы нельзя оставлять 0,4 с на реакцию: в активных фазах даём минимум 3 с
     if (s.phase === "lot" || s.phase === "bidding" || s.phase === "pickup" || s.phase === "draft") remaining = Math.max(remaining, 3000);
@@ -655,6 +659,14 @@ class Game {
     s.lotCapAt = now + Math.max(remaining, Math.max(0, s.paused.capRemaining));
     s.paused = null;
     return [{ type: "resumed" }];
+  }
+
+  // «Играть без него»: ведущий не хочет ждать вернувшегося минуту — партия заканчивается сразу,
+  // с пустыми слотами ожидаемого; лоты, уже купленные игроками, сохраняются (как при solo_gone по таймеру).
+  skipWait(now) {
+    const s = this.s;
+    if (!s.paused || !s.paused.waitFor) return [];
+    return this.finish("solo_gone");
   }
 
   finish(reason) {
@@ -744,6 +756,7 @@ class Game {
       phase: s.phase,
       paused: !!s.paused,
       pausedAuto: !!(s.paused && s.paused.auto), // «ждём игроков», а не пауза ведущего
+      pausedUntil: (s.paused && s.paused.waitFor && s.paused.waitUntil) || null, // серверное время конца ожидания
       pausedFor: (s.paused && s.paused.waitFor) || null, // «ждём Аню»: минута соло-добора (§7.4)
       round: s.round,
       rounds: s.rounds,

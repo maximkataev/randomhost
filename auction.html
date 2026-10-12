@@ -589,6 +589,8 @@ window.I18N_DICT = {
     ov_paused: `Пауза — ждём ведущего`,
     connecting: `Подключаемся…`,
     ov_wait_player: `Пауза — ждём: {name}`,
+    ov_wait_secs: `Пауза — ждём: {name}, ещё {n} с`,
+    host_play_without: `Играть без него`,
     ov_wait_players: `Пауза — ждём, пока вернутся игроки. Продолжим сами`,
     own_bid_int: `Только целые доллары`,
     note_not_sent: `Нет связи — не отправлено. Нажми ещё раз`,
@@ -753,6 +755,8 @@ window.I18N_DICT = {
     ov_paused: `Paused — waiting for the host`,
     connecting: `Connecting…`,
     ov_wait_player: `Paused — waiting for {name}`,
+    ov_wait_secs: `Paused — waiting for {name}, {n} s left`,
+    host_play_without: `Play without them`,
     ov_wait_players: `Paused — waiting for players to come back. We'll resume automatically`,
     own_bid_int: `Whole dollars only`,
     note_not_sent: `No connection — not sent. Tap again`,
@@ -911,6 +915,8 @@ window.I18N_DICT = {
     ov_paused: `Παύση — περιμένουμε τον host`,
     connecting: `Σύνδεση…`,
     ov_wait_player: `Παύση — περιμένουμε: {name}`,
+    ov_wait_secs: `Παύση — περιμένουμε: {name}, ακόμα {n} δ`,
+    host_play_without: `Παίξτε χωρίς αυτόν`,
     ov_wait_players: `Παύση — περιμένουμε να γυρίσουν οι παίκτες. Συνεχίζουμε αυτόματα`,
     own_bid_int: `Μόνο ακέραια δολάρια`,
     note_not_sent: `Δεν υπάρχει σύνδεση — δεν στάλθηκε. Πάτα ξανά`,
@@ -1099,22 +1105,32 @@ function renderExpired() {
     <a class="big expired-new" href="auction.html">${escapeHtml(I18N.t("expired_new"))}</a></div>`;
 }
 
-let overlayVars = null;
+let overlayVars = null, overlayTimer = null;
 function setOverlay(key, vars) {
   overlayKey = key || null;
   overlayVars = vars || null;
+  if (overlayTimer) { clearInterval(overlayTimer); overlayTimer = null; }
   const text = overlayKey ? (overlayVars ? tpl(overlayKey, overlayVars) : I18N.t(overlayKey)) : "";
   // Пауза закрывает весь экран — у ведущего с телефона на ней должны остаться «Продолжить» и
   // управление, иначе снять паузу можно было бы только с доски (§10.4)
   if (isHostRemote && /^ov_(paused|wait_players|wait_player)$/.test(overlayKey || "")) {
     const box = el("div", "ovbox");
-    const resume = el("button", "big", I18N.t("host_resume"));
+    // ждём конкретного человека: «Продолжить» сервер игнорирует — вместо неё «Играть без него»
+    const waiting = overlayKey === "ov_wait_player";
+    const resume = el("button", "big", I18N.t(waiting ? "host_play_without" : "host_resume"));
     resume.id = "ovresume";
-    resume.onclick = () => sendMsg({ type: "resume" });
+    resume.onclick = () => sendMsg({ type: waiting ? "skip_wait" : "resume" });
     const more = el("button", "mid", I18N.t("host_title"));
     more.onclick = openHostSheet;
-    box.append(el("div", null, text), resume, more);
+    const label = el("div", null, text);
+    box.append(label, resume, more);
     overlay.replaceChildren(box);
+    if (waiting && state && state.pausedUntil) {
+      const until = state.pausedUntil;
+      const upd = () => { label.textContent = tpl("ov_wait_secs", { name: overlayVars.name, n: Math.max(0, Math.ceil((until - (Date.now() + offset)) / 1000)) }); };
+      upd();
+      overlayTimer = setInterval(() => { if (!overlay.contains(label)) { clearInterval(overlayTimer); overlayTimer = null; return; } upd(); }, 500);
+    }
   } else overlay.textContent = text;
   overlay.classList.toggle("on", !!overlayKey);
 }

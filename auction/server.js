@@ -905,6 +905,8 @@ function handle(room, client, msg) {
     // пропуск ведущим тоже привязан к лоту: запоздавшее нажатие не должно продать следующий лот
     case "skip_lot": return isHost(client) && !stale(msg) ? afterChange(room, g.hostSkip(t)) : undefined;
     case "pause": return isHost(client) ? afterChange(room, g.pause(t)) : undefined;
+    // «Играть без него»: только ведущий, и только пока партия ждёт конкретного игрока
+    case "skip_wait": return isHost(client) ? afterChange(room, g.skipWait(t)) : undefined;
     case "resume": {
       // Управляет партией ведущий, и это правильно. Но если доска умерла — ноутбук уснул, вкладку
       // закрыли, браузер убил страницу — снять паузу становится некому, и живые игроки сидят перед
@@ -913,7 +915,7 @@ function handle(room, client, msg) {
       // они меняют исход, а «Продолжить» лишь возвращает то, что и так шло.
       const noBoard = ![...room.sockets].some((c) => c.host);
       if (!isHost(client) && !noBoard) return;
-      const ev = g.resume(t);
+      const ev = g.resume(t, true);
       // Не на паузе — ничего не рассылаем: иначе любой подключённый слал бы resume 40 раз в секунду,
       // и каждый превращался в рассылку полного состояния всем сокетам комнаты
       if (!ev.length && !isHost(client)) return;
