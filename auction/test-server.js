@@ -546,6 +546,7 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
   // переподключения, и что трафик действительно меньше.
   await deltaSuite(make);
   await secretsSuite(make);
+  await restoreSuite();
 
   // health и неизвестная комната
   const h = await (await fetch(BASE + "/auction/api/health")).json();
@@ -1267,4 +1268,69 @@ async function secretsSuite(make) {
   check(!raw.includes(`"${vs[0].me}":"${vs[1].me}"`) && !raw.includes(`"for":"${vs[1].me}"`), "секреты не в кадрах: чужой голос (за кого) телефону не виден до итогов");
   for (const x of [h, ...vs]) x.ws.close();
   anon.ws.close();
+}
+
+// ---------- T-W0-31: restore из дампа прошлой версии без новых полей (шаблон — tools/testkit/restore.js) ----------
+// pausedUntil — производное поле снимка (paused.waitUntil), в состоянии не хранится; manual у resume — параметр команды.
+// Дамп прежней версии: paused {at, remaining, capRemaining, auto, waitFor, waitUntil} без новых полей. Партия должна
+// восстановиться «ждём игрока»: снимок отдаёт pausedFor/pausedUntil, ручной resume не сдвигает ожидание, skip_wait завершает.
+async function restoreSuite() {
+  const { spawn } = require("child_process");
+  const fs = require("fs");
+  const path = require("path");
+  const os = require("os");
+  const restore = require("../tools/testkit/restore");
+  const PORT = 3950 + Math.floor(Math.random() * 40);
+  const B = `http://127.0.0.1:${PORT}`;
+  const DUMP = path.join(os.tmpdir(), `restore-suite-${PORT}.json`);
+  fs.rmSync(DUMP, { force: true });
+  const boot = () => spawn(process.execPath, [path.join(__dirname, "server.js")], {
+    env: { ...process.env, PORT: String(PORT), NODE_ENV: "production", DUMP_FILE: DUMP }, stdio: "ignore",
+  });
+  const up = async () => { for (let i = 0; i < 60; i++) { try { if ((await fetch(B + "/auction/api/health")).ok) return true; } catch {} await wait(100); } return false; };
+  const stop = (c) => new Promise((res) => { if (c.exitCode !== null) return res(); c.once("exit", res); c.kill("SIGTERM"); setTimeout(res, 3000); });
+  let child = boot();
+  const mkWs = (code, first) => new Promise((resolve, reject) => {
+    const ws = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + code);
+    const c = { ws, state: null, msgs: [] };
+    ws.on("open", () => ws.send(JSON.stringify(first)));
+    ws.on("message", (raw) => { const m = JSON.parse(raw); c.msgs.push(m); if (m.type === "state" || m.type === "hello") c.state = m.state; if (m.type === "joined") { c.me = m.playerId; c.token = m.token; } if (m.type === "joined" || m.type === "host_ok") resolve(c); });
+    ws.on("error", reject);
+    setTimeout(() => reject(new Error("connect timeout")), 5000);
+  });
+  try {
+    if (!(await up())) return check(false, "restore: сервер поднялся");
+    const room = await (await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings: { intro: 0, judge: "vote" } }) })).json();
+    const h = await mkWs(room.code, { type: "host", token: room.hostToken });
+    const p1 = await mkWs(room.code, { type: "join", name: "Ждун" });
+    const p2 = await mkWs(room.code, { type: "join", name: "Второй" });
+    await until(() => h.state?.players.length === 2);
+    h.ws.send(JSON.stringify({ type: "start" }));
+    await until(() => h.state.phase === "lot" || h.state.phase === "bidding");
+    for (const c of [h, p1, p2]) c.ws.close();
+    await wait(200);
+    await stop(child);
+    const dump = JSON.parse(fs.readFileSync(DUMP, "utf8"));
+    const rec = dump.find((r) => r.code === room.code);
+    check(!!rec && !rec.state.paused, "restore: в дампе комната в торгах без паузы");
+    // состояние «ждём игрока» в формате прошлой версии (поля waitFor/waitUntil уже были; pausedUntil — только в снимке)
+    const waitUntil = Date.now() + 60000;
+    rec.state.paused = { at: Date.now(), remaining: 5000, capRemaining: 20000, auto: true, waitFor: p1.me, waitUntil };
+    const old = restore.makeOldDump(dump, ["pausedUntil", "paused.manual"]);
+    fs.writeFileSync(DUMP, JSON.stringify(old));
+    child = boot();
+    if (!(await up())) return check(false, "restore: сервер поднялся на дампе прошлой версии");
+    const h2 = await mkWs(room.code, { type: "host", token: room.hostToken });
+    await until(() => h2.state && h2.state.paused, 3000);
+    check(h2.state.paused === true && h2.state.pausedFor === p1.me && h2.state.pausedUntil === waitUntil, "restore-from-prev-dump: снимок «ждём игрока» из дампа — pausedFor/pausedUntil на месте");
+    h2.ws.send(JSON.stringify({ type: "resume" })); // ручной resume при waitFor игнорируется
+    await wait(400);
+    check(h2.state.paused === true && h2.state.pausedUntil === waitUntil, "restore-from-prev-dump: ручной resume не снимает ожидание и не сдвигает waitUntil");
+    h2.ws.send(JSON.stringify({ type: "skip_wait" }));
+    check(await until(() => h2.state.phase === "finished", 3000) && h2.state.finishedReason === "solo_gone", "restore-from-prev-dump: «Играть без него» завершает партию (solo_gone)");
+    h2.ws.close();
+  } finally {
+    child.kill("SIGKILL");
+    try { fs.rmSync(DUMP, { force: true }); } catch {}
+  }
 }
