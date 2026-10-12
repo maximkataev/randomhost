@@ -673,7 +673,9 @@ window.I18N_DICT = {
     /* финал и голосование */
     vote_h1_a: `Голо`,
     vote_h1_b: `суй`,
-    vote_sub: `Один голос, и не за себя. Проголосовали {n}/{total}.`,
+    vote_sub: `Один голос, и не за себя. Проголосовали {n} из {total}.`,
+    vote_left: `Осталось {n} с.`,
+    tied_votes: `Ничья по голосам`,
     vote_btn: `Голос`,
     judge_h1_a: `Судья `,
     judge_h1_b: `думает`,
@@ -835,7 +837,9 @@ window.I18N_DICT = {
 
     vote_h1_a: `Vo`,
     vote_h1_b: `te`,
-    vote_sub: `One vote each, and not for your own lineup. {n}/{total} have voted.`,
+    vote_sub: `One vote each, and not for your own lineup. {n} of {total} have voted.`,
+    vote_left: `{n} s left.`,
+    tied_votes: `Tied on votes`,
     vote_btn: `Vote`,
     judge_h1_a: `Judge is `,
     judge_h1_b: `thinking`,
@@ -995,7 +999,9 @@ window.I18N_DICT = {
 
     vote_h1_a: `Ψήφι`,
     vote_h1_b: `σε`,
-    vote_sub: `Μία ψήφος ο καθένας, και όχι στο δικό σου λάιναπ. Ψήφισαν {n}/{total}.`,
+    vote_sub: `Μία ψήφος ο καθένας, και όχι στο δικό σου λάιναπ. Ψήφισαν {n} από {total}.`,
+    vote_left: `Απομένουν {n} δ.`, //EL:unverified
+    tied_votes: `Ισοψηφία`, //EL:unverified
     vote_btn: `Ψήφος`,
     judge_h1_a: `Ο κριτής `,
     judge_h1_b: `σκέφτεται`,
@@ -1866,6 +1872,17 @@ function openSheet(lot) {
 
 // за кого я голосовал — сервер этого не рассказывает (счёт открывается после закрытия, §9)
 let myVote = null;
+// «Проголосовали N из M · осталось K с»: секунды тикает таймер ниже, разметка от них не зависит
+function voteSubText(s, players) {
+  const base = tpl("vote_sub", { n: s.votes, total: players.filter((x) => x.lots.length).length });
+  const left = s.voting && s.voting.deadline ? Math.max(0, Math.ceil((s.voting.deadline - (Date.now() + (typeof offset === "number" ? offset : 0))) / 1000)) : null;
+  return left == null ? base : base + " " + tpl("vote_left", { n: left });
+}
+setInterval(() => {
+  const el0 = document.getElementById("vsub");
+  if (!el0 || !state || !state.voting || state.results) return;
+  el0.innerHTML = voteSubText(state, state.players.filter((x) => !x.left));
+}, 1000);
 function renderFinal() {
   screenMode("final");
   const s = state, p = mine();
@@ -1880,7 +1897,7 @@ function renderFinal() {
       // раньше ✓ пропадал на первом же чужом голосе, и кнопки снова становились активными.
       const voted = (s.voted || []).indexOf(me) !== -1 || !!myVote;
       const canVote = !!(p && p.lots.length);
-      app.innerHTML = `<div class="final"><h1>${I18N.t("vote_h1_a")}<em>${I18N.t("vote_h1_b")}</em></h1>${vtask ? `<div class="taskbar on" style="justify-content:center"><b>${escapeHtml(vtask.icon + " " + vtask.title)}</b><span style="flex:none">${escapeHtml(vtask.short || "")}</span></div>` : ""}<p class="sub">${tpl("vote_sub", { n: s.votes, total: players.filter((x) => x.lots.length).length })}</p>${!canVote ? `<div class="plate">${escapeHtml(I18N.t("vote_no_lots"))}</div>` : voted ? `<div class="plate lead-me">${escapeHtml(I18N.t("vote_done"))}</div>` : ""}<div class="vote" id="vote"></div><div class="note" id="note"></div></div>`;
+      app.innerHTML = `<div class="final"><h1>${I18N.t("vote_h1_a")}<em>${I18N.t("vote_h1_b")}</em></h1>${vtask ? `<div class="taskbar on" style="justify-content:center"><b>${escapeHtml(vtask.icon + " " + vtask.title)}</b><span style="flex:none">${escapeHtml(vtask.short || "")}</span></div>` : ""}<p class="sub" id="vsub">${voteSubText(s, players)}</p>${!canVote ? `<div class="plate">${escapeHtml(I18N.t("vote_no_lots"))}</div>` : voted ? `<div class="plate lead-me">${escapeHtml(I18N.t("vote_done"))}</div>` : ""}<div class="vote" id="vote"></div><div class="note" id="note"></div></div>`;
       const box = document.getElementById("vote");
       players.filter((x) => x.id !== me && x.lots.length).forEach((x) => {
         const row = el("div", "row"); const n = el("div", "n", x.name); n.append(el("small", null, x.lots.map((l) => l.emoji + " " + l.name).join(" · ")));
@@ -1902,6 +1919,10 @@ function renderFinal() {
   const idx = s.results.ranking.findIndex((r) => r.playerId === me);
   const r = s.results.ranking[idx];
   const places = ["🥇", "🥈", "🥉"];
+  // равные голоса (r.tied, T-W2-08): «=N» без медали; при нуле голосов у всех — тоже «=1», без медалей
+  const tiedMe = !!(r && r.tied && s.results.mode === "vote");
+  let tieN = idx + 1;
+  if (tiedMe) while (tieN > 1 && s.results.ranking[tieN - 2].score === r.score) tieN--;
   const custom = taskNow();
   const ftask = custom ? `<div class="taskbar on" style="justify-content:center"><b>${escapeHtml(custom.icon + " " + custom.title)}</b></div>` : "";
   // single — лайнап собрал один: судить было не с кем, очков нет, вместо них пояснение сервера
@@ -1910,8 +1931,8 @@ function renderFinal() {
   const verdict = r ? (r.verdict || (mode === "single" ? s.results.summary || "" : "")) : "";
   // как решилась ничья и что значит «0 голосов» — то же пояснение, что на доске (§9)
   const tieKey = mode !== "vote" ? "" : s.results.votes === 0 ? "no_votes" : s.results.tieBreak === "spent" ? "tie_spent" : s.results.tieBreak === "coin" ? "tie_coin" : "";
-  const tie = tieKey ? `<p class="note tie" id="tie">${escapeHtml(I18N.t(tieKey))}</p>` : "";
-  app.innerHTML = `<div class="final">${ftask}<div class="place${idx >= 0 ? "" : " none"}">${idx >= 0 ? places[idx] || tpl("place_n", { n: idx + 1 }) : "—"}</div>${r ? `${score !== "" ? `<div class="score">${score}</div>` : ""}<div class="verdict">${escapeHtml(verdict)}</div>` : `<p class="sub" style="text-align:center">${I18N.t("final_no_judge")}</p>`}${tie}<div class="lots">${((p && p.lots) || []).map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("")}</div><p class="note" style="margin-top:18px">${I18N.t("final_foot")}</p></div>`;
+  const tie = tieKey ? `<p class="note tie" id="tie">${escapeHtml(I18N.t(tieKey))}</p>` : tiedMe ? `<p class="note tie" id="tie">${escapeHtml(I18N.t("tied_votes"))}</p>` : "";
+  app.innerHTML = `<div class="final">${ftask}<div class="place${idx >= 0 ? "" : " none"}">${idx >= 0 ? (tiedMe ? "=" + tieN : places[idx] || tpl("place_n", { n: idx + 1 })) : "—"}</div>${r ? `${score !== "" ? `<div class="score">${score}</div>` : ""}<div class="verdict">${escapeHtml(verdict)}</div>` : `<p class="sub" style="text-align:center">${I18N.t("final_no_judge")}</p>`}${tie}<div class="lots">${((p && p.lots) || []).map((l) => `<span class="chip">${l.emoji} ${escapeHtml(l.name)}</span>`).join("")}</div><p class="note" style="margin-top:18px">${I18N.t("final_foot")}</p></div>`;
 }
 
 function confetti() {

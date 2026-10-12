@@ -68,6 +68,12 @@ const ANON_TTL_MS = Number(process.env.ANON_TTL_MS || 30000);
 // Сколько ждём следующий опрос после ответа на предыдущий, прежде чем считать poll-клиента ушедшим
 const POLL_GAP_MS = Number(process.env.POLL_GAP_MS || 12000);
 const MAX_MSG_BYTES = 8192; // максимум на одно входящее сообщение
+// Окно голосования (T-W2-08, auction-002): 20 с + 8 с × число вправе голосовать, потолок 60 с; «+15 с» у ведущего — не больше VOTE_MORE_MAX раз.
+const VOTE_BASE_MS = Number(process.env.VOTE_BASE_MS || 20000);
+const VOTE_PER_VOTER_MS = Number(process.env.VOTE_PER_VOTER_MS || 8000);
+const VOTE_MAX_MS = Number(process.env.VOTE_MAX_MS || 60000);
+const VOTE_MORE_MS = 15000;
+const VOTE_MORE_MAX = 2;
 // T-W2-07 (U-08, класс B): офлайн к старту не берём в партию (away) — по умолчанию ВЫКЛ., «как сейчас».
 const RULE_U08_GHOST_OUT = process.env.RULE_U08_GHOST_OUT === "1";
 // T-W2-07 (U-07, класс A): офлайн-место в ЛОББИ живёт GHOST_TTL_MS (lib/presence, по умолч. 120 с) и уходит само;
@@ -439,9 +445,10 @@ async function startJudging(room) {
       broadcast(room, { type: "event", event: { type: "judge_failed" } });
     }
   }
-  // голосование: 30 с, потом подсчёт
+  // голосование: 20 с + 8 с на каждого, кто вправе голосовать, но не больше 60 с (U-19, класс A); ведущий — «+15 с» ≤ 2 раз
   s.results = null;
-  s.voting = { deadline: clock(room) + 30000 };
+  const total = Math.min(VOTE_MAX_MS, VOTE_BASE_MS + VOTE_PER_VOTER_MS * g.voters().length);
+  s.voting = { deadline: clock(room) + total, total, more: 0 };
   room.judging = false;
   armVoting(room);
   broadcast(room, { type: "state", state: snapshotWithVoting(room) });
@@ -919,6 +926,16 @@ function handle(room, client, msg) {
     // пропуск ведущим тоже привязан к лоту: запоздавшее нажатие не должно продать следующий лот
     case "skip_lot": return isHost(client) && !stale(msg) ? afterChange(room, g.hostSkip(t)) : undefined;
     case "pause": return isHost(client) ? afterChange(room, g.pause(t)) : undefined;
+    // «+15 с» к голосованию: ведущий, пока итогов нет, не больше двух раз за партию
+    case "vote_more": {
+      const v = g.s.voting;
+      if (!isHost(client) || g.s.phase !== "finished" || g.s.results || !v || (v.more || 0) >= VOTE_MORE_MAX) return;
+      v.deadline += VOTE_MORE_MS;
+      v.total = (v.total || VOTE_BASE_MS) + VOTE_MORE_MS;
+      v.more = (v.more || 0) + 1;
+      armVoting(room);
+      return afterChange(room, []);
+    }
     // «Играть без него»: только ведущий, и только пока партия ждёт конкретного игрока
     case "skip_wait": return isHost(client) ? afterChange(room, g.skipWait(t)) : undefined;
     case "resume": {

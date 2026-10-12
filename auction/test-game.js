@@ -1125,3 +1125,44 @@ test("away: tooManyOffline не считает away (иначе лишняя п�
   delete old.s.players[3].away;
   assert.equal(old.snapshot(0).players[3].away, false);
 });
+
+// ---------- T-W2-08: tied в closeVotes ----------
+function votingRoom(n) {
+  const g = setup(n, { slots: 1 });
+  g.s.players.forEach((p, i) => { p.lots.push({ name: "L" + i, emoji: "x", price: 1, round: i }); p.spent = i + 1; });
+  g.finish("all_full");
+  return g;
+}
+
+test("tied: голоса 1/0/0/0 — у первого нет, у мест 2–4 tied (по тратам)", () => {
+  const g = votingRoom(4);
+  g.vote("p1", "p0");
+  g.closeVotes(rng);
+  const r = g.s.results.ranking;
+  assert.equal(r[0].playerId, "p0");
+  assert.ok(!r[0].tied);
+  assert.ok(r.slice(1).every((x) => x.tied === true && x.tieKind === "spent"));
+  assert.deepEqual(r.slice(1).map((x) => x.playerId), ["p1", "p2", "p3"], "порядок «меньше потратил — выше» не меняется");
+  assert.equal(g.s.results.tieBreak, null, "до первого места дело не дошло");
+});
+
+test("tied: ноль голосов у всех — все tied; равные траты — tieKind coin", () => {
+  const g = votingRoom(3);
+  g.s.players.forEach((p) => { p.spent = 5; });
+  g.closeVotes(rng);
+  const r = g.s.results.ranking;
+  assert.ok(r.every((x) => x.tied === true && x.tieKind === "coin"));
+  assert.equal(g.s.results.votes, 0);
+});
+
+test("tied: все разные счета — поля tied нет; results.tieBreak сохранён для первого места", () => {
+  const g = votingRoom(3);
+  g.vote("p1", "p0"); g.vote("p2", "p0"); g.vote("p0", "p1");
+  g.closeVotes(rng);
+  assert.ok(g.s.results.ranking.every((x) => x.tied === undefined));
+  const h = votingRoom(2);
+  h.vote("p0", "p1"); h.vote("p1", "p0");
+  h.closeVotes(rng);
+  assert.equal(h.s.results.tieBreak, "spent");
+  assert.ok(h.s.results.ranking.every((x) => x.tied === true));
+});

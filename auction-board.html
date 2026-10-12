@@ -475,6 +475,19 @@
   /* --- голосование: сетка лайнапов (как было) --- */
   .final.voting { justify-content: center; justify-content: safe center; } /* safe — Chrome 115+, старый движок проектора роняет декларацию и прижимает вправо-влево */
   .final.voting .ftask { margin: -8px 0 8px; }
+  /* T-W2-08: счётчик «Проголосовали N из M» и кольцо до конца окна (как кольцо лота) */
+  .vbar { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 0 0 4px; }
+  .vring { position: relative; width: 72px; height: 72px; flex: none; }
+  .vring svg { position: absolute; top: 0; right: 0; bottom: 0; left: 0; transform: rotate(-90deg); }
+  .vring circle { fill: none; stroke-width: 5; }
+  .vring .track { stroke: rgba(255, 255, 255, .1); }
+  .vring .ring { stroke: var(--c1); stroke-linecap: round; }
+  .vring.urgent .ring { stroke: #ff6b6b; }
+  .vring .num { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: grid; place-items: center; font: 900 24px/1 var(--display); font-variant-numeric: tabular-nums; }
+  .vcount { font: 900 clamp(36px, 4.2vw, 72px)/1.05 var(--body); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .vcount small { display: block; margin-top: 4px; font: 500 clamp(14px, 1.2vw, 18px)/1.35 var(--body); letter-spacing: 0; color: var(--muted); }
+  .vmore { flex: none; min-width: 96px; }
+  .score small { display: block; margin-top: .25em; font: 600 .3em/1.15 var(--body); letter-spacing: 0; color: var(--muted); }
   .podium { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 460px)); align-items: start; gap: 14px; }
   .pl { background: rgba(255, 255, 255, .05); border: 1px solid var(--glass-line); border-radius: 22px; padding: 18px; backdrop-filter: blur(14px); box-shadow: 0 18px 40px -30px #000; animation: settle .55s cubic-bezier(.2, .9, .3, 1) both; min-width: 0; }
   /* появление без сдвига: scale(<1) не выходит за рамку карточки, translateY выходил — и давал полосу прокрутки */
@@ -852,6 +865,10 @@ window.I18N_DICT = {
     slot_title: `{name} — {price}`,
     /* итоги */
     vote_title: `Голосование`,
+    vote_count: `Проголосовали {done} из {total}`,
+    vote_expl_short: `Каждый голосует за чужой лайнап — за себя нельзя`,
+    vote_more: `+15 с`,
+    tied_votes: `ничья по голосам`,
     vote_expl: `Победителя выбираете вы. Каждый берёт телефон и голосует за чужой лайнап — за себя нельзя. Проголосовали: {done}/{total}`,
     judging: `ChatGPT выбирает победителя`,
     home: `Главная`,
@@ -999,6 +1016,10 @@ window.I18N_DICT = {
     free: `free`,
     slot_title: `{name} — {price}`,
     vote_title: `Voting`,
+    vote_count: `{done} of {total} voted`,
+    vote_expl_short: `Everyone votes for someone else's lineup — not your own`,
+    vote_more: `+15 s`,
+    tied_votes: `tied on votes`,
     vote_expl: `You pick the winner. Everyone grabs their phone and votes for someone else's lineup — no voting for yourself. Voted: {done}/{total}`,
     judging: `ChatGPT is picking the winner`,
     home: `Home`,
@@ -1145,6 +1166,10 @@ window.I18N_DICT = {
     free: `τσάμπα`,
     slot_title: `{name} — {price}`,
     vote_title: `Ψηφοφορία`,
+    vote_count: `Ψήφισαν {done} από {total}`, //EL:unverified
+    vote_expl_short: `Ο καθένας ψηφίζει ξένο λάιναπ — όχι το δικό του`, //EL:unverified
+    vote_more: `+15 δ`, //EL:unverified
+    tied_votes: `ισοψηφία`, //EL:unverified
     vote_expl: `Τον νικητή τον διαλέγετε εσείς. Ο καθένας παίρνει το κινητό και ψηφίζει ένα ξένο λάιναπ — όχι το δικό του. Ψήφισαν: {done}/{total}`,
     judging: `Το ChatGPT διαλέγει τον νικητή`,
     home: `Αρχική`,
@@ -2081,6 +2106,33 @@ function tickTimer() {
   requestAnimationFrame(tickTimer);
 }
 
+// Экран голосования (T-W2-08): крупный счётчик «Проголосовали N из M», кольцо до конца окна, у ведущего «+15 с» (не больше двух раз).
+// Кольцо двигает tickVote по rAF; разметка от секунд не зависит, поэтому putFinal её не пересобирает.
+function voteBar(s, players) {
+  const total = players.filter((p) => p.lots.length).length;
+  const more = s.voting ? s.voting.more || 0 : 0;
+  return `<div class="vbar"><div class="vring" id="vring"><svg viewBox="0 0 64 64"><circle class="track" cx="32" cy="32" r="28"/><circle class="ring" id="vringc" cx="32" cy="32" r="28" stroke-dasharray="176" stroke-dashoffset="0"/></svg><div class="num" id="vnum"></div></div>` +
+    `<div class="vcount">${escapeHtml(tf("vote_count", { done: s.votes, total: total }))}<small>${escapeHtml(T("vote_expl_short"))}</small></div>` +
+    `<button class="btn ghost vmore" id="vmore" type="button"${more >= 2 ? " disabled" : ""}>${escapeHtml(T("vote_more"))}</button></div>`;
+}
+let voteTicking = false;
+function tickVote() {
+  const s = state, ring = document.getElementById("vringc");
+  if (ring && s && s.phase === "finished" && s.voting && !s.results) {
+    const total = s.voting.total || 30000;
+    const left = Math.max(0, s.voting.deadline - (Date.now() + offset));
+    ring.setAttribute("stroke-dashoffset", String(176 * (1 - Math.min(1, left / total))));
+    document.getElementById("vnum").textContent = String(Math.ceil(left / 1000));
+    document.getElementById("vring").classList.toggle("urgent", left < 5000);
+  }
+  requestAnimationFrame(tickVote);
+}
+document.addEventListener("click", (e) => {
+  const b = e.target && e.target.closest ? e.target.closest("#vmore") : null;
+  if (b && !b.disabled) sendMsg({ type: "vote_more" });
+});
+if (!voteTicking) { voteTicking = true; requestAnimationFrame(tickVote); }
+
 // Финал перерисовывается на каждом state (кто-то вышел, переподключился), а разметка при этом
 // та же. Пересобирать её незачем: каждая пересборка заново проигрывала появление карточек и
 // сбрасывала анимацию надписи судьи. Сравниваем готовую разметку с прошлой и выходим, если не менялась.
@@ -2105,7 +2157,7 @@ function renderFinal() {
       // напоминания критерия «побеждает самый нелепый набор» игроки голосуют за лучший.
       const vmode = modeT(s.settings.mode, s.kind);
       const vtask = vmode && vmode.id !== "base" ? `<div class="ftask"><b>${escapeHtml(vmode.icon + " " + vmode.title)}</b> — ${escapeHtml(vmode.short || "")}</div>` : "";
-      if (putFinal(`<div class="final voting"><h2>${T("vote_title")}</h2>${vtask}<p style="color:var(--muted);margin:0">${escapeHtml(tf("vote_expl", { done: s.votes, total: players.filter((p) => p.lots.length).length }))}</p><div class="podium">${players.map((p) => lineupCard(p, null)).join("")}</div></div>`)) fitFinal();
+      if (putFinal(`<div class="final voting"><h2>${T("vote_title")}</h2>${vtask}${voteBar(s, players)}<div class="podium">${players.map((p) => lineupCard(p, null)).join("")}</div></div>`)) fitFinal();
     } else {
       // ChatGPT думает: одна крупная надпись и больше ничего. Лайнапы здесь были —
       // но они же давали пустые панели и мерцающую полосу прокрутки (см. .judging в стилях).
@@ -2131,7 +2183,9 @@ function renderFinal() {
   const n = ranking.length, rest = Math.max(0, n - 1);
   const lay = n <= 2 ? "duo" + (n <= 1 ? " one" : "") : n <= 4 ? "stack" : "grid";
   const rows = n <= 2 ? 1 : n <= 4 ? rest : Math.ceil(rest / 2);
-  const cards = ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: places[i] || String(i + 1), score: x.score, verdict: x.verdict, first: i === 0, minor: i >= 4, mode: r.mode, delay: Math.min(1.2, (n - 1 - i) * .14) })).join("");
+  // равные голоса (x.tied, T-W2-08): общее «=N» без медали и подпись «ничья по голосам»; порядок строк прежний
+  const placeOf = (i) => { if (!ranking[i].tied) return places[i] || String(i + 1); let j = i; while (j > 0 && ranking[j - 1].score === ranking[i].score) j--; return "=" + (j + 1); };
+  const cards = ranking.map((x, i) => lineupCard(s.players.find((p) => p.id === x.playerId), { place: placeOf(i), tied: !!x.tied && r.mode === "vote", score: x.score, verdict: x.verdict, first: i === 0, minor: i >= 4, mode: r.mode, delay: Math.min(1.2, (n - 1 - i) * .14) })).join("");
   const html = `<div class="final res n${n}">` +
     `<div class="fhead"><a class="homebtn" href="index.html">${HOME_ICON}<span>${escapeHtml(T("home"))}</span></a><h2>${T("results_title")}</h2>${ftask}</div>` +
     // мест нет (лоты никто не собрал) — вывод судьи встаёт крупно на место карточек, а не пустое стекло над ним
@@ -2284,12 +2338,12 @@ addEventListener("resize", () => { if (state && state.phase === "finished") fitF
 function lineupCard(p, res) {
   if (!p) return "";
   const lots = (p.lots.map((l) => `<span class="chip"><span class="cn">${l.emoji} ${escapeHtml(l.name)}</span></span>`).join("") + (p.lots.length > 2 ? `<span class="chip more">+${p.lots.length - 2}</span>` : "")) || `<span style="color:var(--muted)">${T("empty")}</span>`;
-  const score = res && res.score != null ? `<div class="score">${res.mode === "vote" ? escapeHtml(tf("votes_score", { n: res.score, w: pluralWord(Number(res.score), "plural_vote") })) : escapeHtml(res.score)}</div>` : "";
+  const score = res && res.score != null ? `<div class="score">${res.mode === "vote" ? escapeHtml(tf("votes_score", { n: res.score, w: pluralWord(Number(res.score), "plural_vote") })) : escapeHtml(res.score)}${res.tied ? `<small>${escapeHtml(T("tied_votes"))}</small>` : ""}</div>` : "";
   // .plhead — место, имя и очки одним блоком: в полосах и плитках итогов они встают в строку/колонку
   // эмодзи в начале имени («🤖 aggressive») держим неразрывно с самим именем: иначе он висел отдельной строкой
   // и короткий хвост («aggressive 2», «Team A») тоже неразрывно — одна цифра не висит на второй строке
   const who = escapeHtml(p.name).replace(/^(\S+) /u, "$1\u00a0").replace(/ (\S{1,3})$/u, "\u00a0$1");
-  const head = `<div class="plhead">${res ? `<div class="place${/^\d+$/.test(res.place) ? " num" : ""}">${res.place}</div>` : ""}<div class="who">${who}</div>${score}</div>`;
+  const head = `<div class="plhead">${res ? `<div class="place${/^=?\d+$/.test(res.place) ? " num" : ""}">${res.place}</div>` : ""}<div class="who">${who}</div>${score}</div>`;
   return `<div class="pl ${res && res.first ? "first" : ""}${res && res.minor ? " minor" : ""}" style="animation-delay:${(res && res.delay) || 0}s">${head}${res && res.verdict ? `<div class="verdict">${escapeHtml(res.verdict)}</div>` : ""}<div class="lots">${lots}</div><div class="spent">${escapeHtml(tf("spent", { sum: money(p.spent) }))}</div></div>`;
 }
 function escapeHtml(t) { return String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }

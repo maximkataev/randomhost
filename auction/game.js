@@ -740,6 +740,16 @@ class Game {
       tieBreak = this.player(rows[0].playerId).spent !== this.player(rows[1].playerId).spent ? "spent" : "coin";
     }
     const ranking = rows.map(({ tie, ...r }) => r);
+    // Равные голоса на ЛЮБОМ месте подписываются (T-W2-08, D2 (a)): порядок «меньше потратил — выше» не меняем,
+    // но у равных голосов пометка tied (+ tieKind: "spent" — разошлись по тратам, "coin" — траты тоже равны).
+    // Аддитивно: старые клиенты поле игнорируют. Нулевой счёт у всех — все tied.
+    for (let i = 0; i < ranking.length; i++) {
+      const group = ranking.filter((x) => x.score === ranking[i].score);
+      if (group.length < 2) continue;
+      ranking[i].tied = true;
+      const spents = new Set(group.map((x) => this.player(x.playerId).spent));
+      ranking[i].tieKind = spents.size > 1 ? "spent" : "coin";
+    }
     const total = Object.keys(this.validVotes()).length;
     s.results = { mode: "vote", ranking, summary: "", tieBreak, votes: total };
     return [{ type: "results" }];

@@ -268,6 +268,13 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
     h4.send({ type: "end" });
     await until(() => h4.state.phase === "finished");
     check(await until(() => h4.state.voting, 5000), "судья = голосование → открылось голосование");
+    // T-W2-08: окно = 20 с + 8 с × число вправе голосовать (двое → 36 с); «+15 с» — только ведущий, не больше двух раз
+    check(h4.state.voting.total === 36000 && (h4.state.voting.more || 0) === 0, `голосование: окно 20+8×2 = 36 с (${h4.state.voting.total})`);
+    v1.send({ type: "vote_more" });
+    await wait(300);
+    check((h4.state.voting.more || 0) === 0, "«+15 с»: игрок не может продлить голосование");
+    for (let i = 0; i < 3; i++) { h4.send({ type: "vote_more" }); await wait(150); }
+    check(await until(() => h4.state.voting && h4.state.voting.more === 2, 2000) && h4.state.voting.total === 36000 + 30000, "«+15 с»: ведущий продлевает не больше двух раз (третий отклонён)");
     v1.send({ type: "vote", for: v2.me });
     await until(() => h4.state.votes === 1, 4000);
     const closed = await until(() => h4.state.results, 40000); // 30 с голосования (при speed=1 — без ускорения)
@@ -280,6 +287,32 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
       check(has(v2, "rejected", (m) => m.reason === "closed"), "голос после подсчёта отклоняется");
     }
     v1.ws.close(); v2.ws.close(); h4.ws.close();
+  }
+
+  // ---------- T-W2-08: окно голосования упирается в 60 с (6 человек: 20+48 = 68 → 60) ----------
+  {
+    const r6 = await make({ slots: 3, budget: 30, t1: 4000, t2: 3000, judge: "vote" }, 10);
+    const h6 = await connect(r6.code, { type: "host", token: r6.hostToken });
+    const ps = [];
+    for (let i = 0; i < 6; i++) ps.push(await connect(r6.code, { type: "join", name: "П" + i }));
+    await until(() => h6.state?.players.length === 6);
+    h6.send({ type: "start" });
+    for (const c of ps) {
+      const mine = () => h6.state.players.find((p) => p.id === c.me);
+      await until(() => (h6.state.phase === "lot" || h6.state.phase === "bidding") && mine().canBid && !mine().lots.length, 40000);
+      c.send({ type: "bid", amount: h6.state.price + 1 });
+      await until(() => mine().lots.length >= 1, 40000);
+    }
+    h6.send({ type: "end" });
+    await until(() => h6.state.phase === "finished");
+    check(await until(() => h6.state.voting, 5000) && h6.state.voting.total === 60000, `голосование: окно не больше 60 с (${h6.state.voting && h6.state.voting.total})`);
+    check(h6.state.voted.length === 0 && h6.state.votes === 0, "голосование: «проголосовали 0 из 6» в снимке");
+    // все шесть голосуют по кругу — закрытие досрочно, у всех по голосу: все «ничья по голосам»
+    ps.forEach((c, i) => c.send({ type: "vote", for: ps[(i + 1) % 6].me }));
+    check(await until(() => h6.state.results, 5000), "голосование: проголосовали все — закрылось досрочно");
+    check(h6.state.results.ranking.length === 6 && h6.state.results.ranking.every((r) => r.tied === true), "итоги: у равных голосов (по 1 у всех) tied");
+    for (const c of ps) c.ws.close();
+    h6.ws.close();
   }
 
   // ---------- заставка перед первым лотом ----------

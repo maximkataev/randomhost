@@ -296,6 +296,21 @@ async function typeText(page, text) {
       return document.body.innerText;
     })()`);
     check(WORST_RE.test(remoteVote || ""), "пульт: задание подписано на экране голосования");
+    // T-W2-08: на доске при голосовании — крупный счётчик «Проголосовали N из M» (≥ 32 px) и кольцо таймера от voting.deadline;
+    // на пульте — «осталось N с»
+    await board.call("Page.bringToFront");
+    await wait(400);
+    const vprobe = JSON.parse(await evaluateSafe(board, `(() => {
+      state.voting = { deadline: Date.now() + 20000, total: 30000, more: 0 }; render();
+      const c = document.querySelector(".vcount"), r = document.getElementById("vringc");
+      return JSON.stringify({ fs: c ? parseFloat(getComputedStyle(c).fontSize) : 0, txt: c ? c.textContent : "", ring: !!r, more: !!document.getElementById("vmore") });
+    })()`) || "{}");
+    check(vprobe.ring && vprobe.fs >= 32 && /\d+/.test(vprobe.txt || "") && vprobe.more, "доска: на голосовании счётчик ≥ 32 px, кольцо и «+15 с» (" + vprobe.fs + "px)");
+    await wait(600);
+    const dash = await evaluateSafe(board, `document.getElementById("vringc") && document.getElementById("vringc").getAttribute("stroke-dashoffset")`);
+    check(dash != null && Number(dash) > 0 && Number(dash) < 176, "доска: кольцо голосования движется (" + dash + ")");
+    const vleft = await evaluateSafe(remote, `(() => { state.voting = { deadline: Date.now() + 20000, total: 30000, more: 0 }; render(); return (document.getElementById("vsub") || {}).textContent || ""; })()`);
+    check(/\d+\s*(с|s|δ)/.test(vleft || ""), "пульт: на голосовании «осталось N с» (" + String(vleft).slice(0, 60) + ")");
     // «Ещё раз» и «Другая категория» раньше слали одно и то же, и вторая кнопка просто врала.
     // Комната своя: кнопки живут только на экране итогов, а в общем прогоне доска к этому моменту
     // стоит на голосовании. Судья — голосование, чтобы итоги пришли без похода в OpenAI.
