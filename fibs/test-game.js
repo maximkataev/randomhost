@@ -466,3 +466,51 @@ test("аватар: меняется в лобби, чужой занять не
   assert.strictEqual(g.setAvatar("b", "🌮").reason, "game_started");
   assert.strictEqual(g.snapshot(0, {}).avatarChoices, null);
 });
+
+// ---------- T-W0-10: isTruth ----------
+
+test("isTruth: однословный alt не объявляет правдой ложь «чужое слово + alt» (fibs-049)", () => {
+  const rhino = { answer: "шерстистого носорога", alts: ["носорога"] };
+  assert.ok(!isTruth("белого носорога", rhino));
+  assert.ok(!isTruth("чёрного носорога", rhino));
+  assert.ok(isTruth("шерстистого носорога", rhino));
+  assert.ok(isTruth("носорога", rhino)); // сам alt — правда
+  assert.ok(isTruth("Носорога!", rhino));
+  const lungs = { answer: "человеческих лёгких", alts: ["лёгких"] };
+  assert.ok(!isTruth("куриных лёгких", lungs));
+  // alt из двух слов «правду внутри» сохраняет
+  const sin = { answer: "Фрэнк Синатра", alts: ["фрэнк синатра", "Френк Синатра"] };
+  assert.ok(isTruth("великий Френк Синатра", sin));
+  assert.ok(!isTruth("Нэнси Синатра", sin));
+  // ответ из одного слова — «правда внутри» как раньше (спека §4: «бобровой железы»)
+  assert.ok(isTruth("бобровой железы", { answer: "бобров", alts: [] }));
+});
+
+test("isTruth: сдвиг пробела и две опечатки в длинном ответе — правда (fibs-047)", () => {
+  const f = { answer: "шерстистого носорога", alts: [] };
+  assert.ok(isTruth("шерстистог оносорога", f));
+  assert.ok(isTruth("шерстистого  но сорога", f));
+  assert.ok(isTruth("шерстистго носорга", f)); // две пропущенные буквы, ответ от 12 букв
+  assert.ok(!isTruth("шерстистго носрга", f)); // три
+  // ответы короче 12 букв — одна опечатка, как раньше
+  const g = { answer: "единорог", alts: [] };
+  assert.ok(isTruth("еденорог", g));
+  assert.ok(!isTruth("еденарог", g));
+  // совсем короткие — только буквально
+  assert.ok(isTruth("лук", { answer: "лук", alts: [] }));
+  assert.ok(!isTruth("лок", { answer: "лук", alts: [] }));
+  // числа: опечатки в цифрах — другое число
+  assert.ok(!isTruth("1913 год основания компании", { answer: "1912 год основания компании", alts: [] }));
+});
+
+test("«один выстрел на факт»: отказ «правда» не даёт нащупывать ответ — первая же неправда принимается и закрывает приём (fibs-046)", () => {
+  const g = game(3);
+  g.pickTopic(g.s.chooser, g.s.topics[0], 5000);
+  const f = g.s.fact;
+  for (let i = 0; i < 20; i++) assert.strictEqual(g.lie("P1", i % 2 ? f.answer : f.alts[0], 6000).reason, "truth");
+  assert.strictEqual(g.s.lies.P1, undefined, "отказ ничего не записал");
+  assert.ok(g.lie("P1", "первая неправда", 6000).ok);
+  // дальше приём закрыт: ни правду, ни другую ложь «проверить» нельзя — ответ всегда «уже отправлено»
+  for (const t of [f.answer, "ещё ложь", f.alts[0]]) assert.strictEqual(g.lie("P1", t, 6000).reason, "done");
+  assert.strictEqual(g.s.tries, undefined, "мёртвого счётчика попыток нет");
+});

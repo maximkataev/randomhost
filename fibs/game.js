@@ -109,27 +109,35 @@ function literal(text) {
 }
 
 /*
- * Вписал правду? (§4) Буквальное совпадение с ответом или alts — всегда. Для ответов от 5 букв ещё и
- * совпадение по основам слов и опечатка в одну букву (кроме чисел). Короткие ответы стеммером не сравниваем:
- * «эмо» и «эму» дают одну основу, и отказ «Это правда!» подсказал бы ответ.
+ * Вписал правду? (§4) Буквальное совпадение с ответом или alts (пробелы не важны) — всегда. Для эталонов от 5 букв ещё
+ * совпадение по основам слов, «правда внутри» и опечатка (1 буква; у эталонов от 12 букв — 2; кроме чисел). Короткие
+ * эталоны стеммером не сравниваем: «эмо» и «эму» дают одну основу, и отказ «Это правда!» подсказал бы ответ.
+ * «Правда внутри» («бобровой железы» при ответе «бобров») — только для ответа и alts из двух слов и больше:
+ * однословный alt («носорога» при «шерстистого носорога») — часть ответа, а не он сам, и «белого носорога» — ложь.
  */
 function isTruth(text, fact) {
   const lit = literal(text);
   if (!lit) return false;
+  const lc = lit.replace(/ /g, "");
   const key = normalize(text);
+  const have = key.split(" ");
+  const answerLit = literal(fact.answer);
   for (const t of [fact.answer, ...(fact.alts || [])]) {
     const tl = literal(t);
     if (!tl) continue;
-    if (lit === tl) return true;
-    if (Array.from(tl).length < 5) continue;
+    const tc = tl.replace(/ /g, "");
+    if (lit === tl || lc === tc) return true; // «шерстистог оносорога» — сдвиг пробела, а не другой ответ
+    const len = Array.from(tc).length;
+    if (len < 5) continue;
     if (key && key === normalize(t)) return true;
-    // перефраз с правдой внутри: «бобровой железы» при ответе «бобров» — каждая основа ответа начинает слово лжи
-    const need = normalize(t).split(" ").filter(Boolean);
-    const have = key.split(" ");
-    if (need.length && need.every((w) => w.length >= 4 && have.some((h) => h.startsWith(w)))) return true;
+    // перефраз с правдой внутри: каждая основа эталона начинает слово лжи
+    if (tl === answerLit || tl.indexOf(" ") >= 0) {
+      const need = normalize(t).split(" ").filter(Boolean);
+      if (need.length && need.every((w) => w.length >= 4 && have.some((h) => h.startsWith(w)))) return true;
+    }
     // в числах опечаток не бывает: «14 часов» — не опечатка в «11 часов», а другое число
     if (lit.replace(/\D/g, "") !== tl.replace(/\D/g, "")) continue;
-    if (levenshtein(lit, tl) <= 1) return true;
+    if (levenshtein(lc, tc) <= (len >= 12 ? 2 : 1)) return true;
   }
   return false;
 }
@@ -159,7 +167,6 @@ class Game {
       fact: null, // разыгрываемый факт: {id, topic, text, answer, alts, source, pool, poolUsed}
       roster: [], // кто врёт в этом факте
       lies: {}, // playerId → {text, key, hint, late, at}
-      tries: {}, // playerId → сколько раз ложь отклонена как правда
       options: null, // варианты на экране: [{text, kind: lie|trap|truth, authors, key}]
       picks: {}, // playerId → [индексы вариантов]
       likes: {}, // playerId → [индексы вариантов]
@@ -327,7 +334,6 @@ class Game {
     s.topic = null;
     s.chooser = null;
     s.lies = {};
-    s.tries = {};
     s.options = null;
     s.picks = {};
     s.likes = {};
@@ -389,7 +395,6 @@ class Game {
     const s = this.s;
     s.roster = this.present().map((p) => p.id);
     s.lies = {};
-    s.tries = {};
     s.phase = "lie";
     s.phaseStart = now;
     s.phaseEnd = now + T.lie;
