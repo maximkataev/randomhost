@@ -204,7 +204,36 @@
   .res .r .t { font: 700 18px/1.25 var(--mono); overflow-wrap: anywhere; }
   .res .r .who { grid-column: 1 / -1; color: var(--ink-2); font-size: 14px; }
   .res .r .p { font: 700 16px/1.2 var(--mono); color: var(--red); white-space: nowrap; }
+  .res .r[hidden] { display: none; }
+  .res .r.picked { box-shadow: inset 0 0 0 2px var(--ink); }
+  .res .r .tagme { display: inline-block; margin-left: 6px; padding: 1px 5px; background: var(--ink); color: var(--sheet); font: 700 11px/1.3 var(--mono); text-transform: uppercase; letter-spacing: .05em; vertical-align: 2px; }
+  @media (prefers-reduced-motion: no-preference) { .res .r.in { animation: rowin .35s var(--press) both; } }
+  @keyframes rowin { from { transform: translateY(-8px); opacity: 0; } }
+  .res .r.focus { background: #fff; }
+  /* итог факта: пока идёт раскрытие, место держит «смотри на экран», потом на нём проступает результат — без прыжков */
+  .resbox { position: relative; }
+  .resbox .resfinal { visibility: hidden; }
+  .resbox.done .resfinal { visibility: visible; }
+  .resbox .reswait { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--ink-2); font: 700 16px/1.3 var(--mono); padding: 0 8px; }
+  .resbox.done .reswait { display: none; }
+  .bd { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; text-align: left; }
+  .bd li { display: flex; justify-content: space-between; gap: 10px; font: 700 15px/1.3 var(--mono); border-bottom: 1px dotted var(--rule); padding: 3px 0; }
+  .bd li b { color: var(--red); white-space: nowrap; }
+  .bd .note { display: block; border: 0; color: var(--muted); font-weight: 400; font-size: 13px; }
+  .marks { margin: 8px 0 0; text-align: center; }
   .big { font: 900 clamp(40px, 13vw, 64px)/1.05 var(--head); color: var(--ink); }
+  .big.sm { font-size: clamp(26px, 8vw, 36px); }
+  /* награды партии на телефоне (fibs-029) */
+  .awards { display: grid; gap: 10px; }
+  .aw { background: var(--sheet); border: 1px solid var(--rule); border-left: 5px solid var(--red); padding: 10px 12px; box-shadow: 0 1px 0 var(--rule); }
+  .aw.me { background: #f1e3d9; background: color-mix(in srgb, var(--red) 9%, var(--sheet)); }
+  .aw .k { font: 700 12px/1.2 var(--mono); color: var(--red); text-transform: uppercase; letter-spacing: .1em; }
+  .aw .a { font: 900 20px/1.2 var(--head); overflow-wrap: anywhere; margin-top: 3px; }
+  .aw .by { font: 400 14px/1.3 var(--mono); color: var(--ink-2); margin-top: 2px; }
+  .aw .q { font: italic 400 14px/1.3 var(--font); color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+  .aw .you { display: inline-block; margin-left: 6px; padding: 1px 6px; background: var(--red); color: #fff; font: 700 11px/1.4 var(--mono); text-transform: uppercase; vertical-align: 3px; }
+  .final-home { position: sticky; bottom: 10px; z-index: 5; background: var(--sheet); }
+  .progress { margin: 0; text-align: center; font: 700 15px/1.3 var(--mono); color: var(--ink-2); min-height: 20px; }
   .big.red { color: var(--red); }
   /* штемпель */
   .stamp { display: inline-block; font: 900 26px/1 var(--head); letter-spacing: .08em; color: var(--red); border: 4px solid var(--red); padding: 6px 12px 4px; transform: rotate(-6deg); mix-blend-mode: multiply; }
@@ -368,9 +397,13 @@ window.I18N_DICT = {
     late_title: `Ты со следующего факта`, late_sub: `Пока смотри на экран`,
     choose_title: `Где правда?`, choose_one: `Тапни вариант, который считаешь правдой`, choose_two: `Подстраховка: выбери два — всё за полцены`,
     btn_hedge: `🛟 Подстраховка`, btn_hedge_on: `🛟 Два варианта · ×½`, btn_pick: `Это правда · {n}`,
-    own: `твоя`,
+    own: `твоя`, picked_mark: `твой выбор`,
     chose_title: `Ставка сделана`, chose_sub: `Понравилась чужая ложь? Лайкни — автору +100`, likes_left: `Лайков осталось: {n}`,
     reveal_title: `Разоблачение`, you_got: `+{n}`, you_zero: `Мимо`,
+    reveal_wait: `Раскрываем варианты — смотри на общий экран`, you_nopick: `Выбор не сделан`,
+    bd_truth: `Правда найдена`, bd_truth_half: `Правда найдена (подстраховка: половина)`, bd_likes: `Лайки твоей лжи: {n}`,
+    bd_half_note: `Кто подстраховался, приносит половину очков`, legend_marks: `🎲 {h} · 🐌 {l}`,
+    aw_you: `это ты`, no_awards: `Наград нет — все играли честно`, no_awards_stopped: `Партию остановили до наград`, final_stopped: `Игра остановлена — мест нет`,
     you_found: `Правда найдена`, you_fooled: `Поверили тебе: {n}`,
     scores_title: `Счёт`, place: `{n} место`,
     final_title: `Номер сдан`, final_sub: `Ведущий может начать ещё партию`,
@@ -418,9 +451,13 @@ window.I18N_DICT = {
     late_title: `You're in from the next fact`, late_sub: `Watch the screen for now`,
     choose_title: `Where's the truth?`, choose_one: `Tap the answer you think is true`, choose_two: `Safety net: pick two — everything at half price`,
     btn_hedge: `🛟 Safety net`, btn_hedge_on: `🛟 Two picks · ×½`, btn_pick: `That's true · {n}`,
-    own: `yours`,
+    own: `yours`, picked_mark: `your pick`,
     chose_title: `Bet placed`, chose_sub: `Liked someone's lie? Like it — +100 to the author`, likes_left: `Likes left: {n}`,
     reveal_title: `Exposed`, you_got: `+{n}`, you_zero: `Missed`,
+    reveal_wait: `Revealing the options — watch the shared screen`, you_nopick: `You didn't pick in time`,
+    bd_truth: `Truth found`, bd_truth_half: `Truth found (safety net: half)`, bd_likes: `Likes on your lie: {n}`,
+    bd_half_note: `Safety-net picks bring half the points`, legend_marks: `🎲 {h} · 🐌 {l}`,
+    aw_you: `that's you`, no_awards: `No awards — everyone played it straight`, no_awards_stopped: `The game was stopped before any awards`, final_stopped: `Game stopped — no places`,
     you_found: `You found the truth`, you_fooled: `Fooled: {n}`,
     scores_title: `Scores`, place: `{n} place`,
     final_title: `That's a wrap`, final_sub: `The host can start another game`,
@@ -468,9 +505,13 @@ window.I18N_DICT = {
     late_title: `Παίζεις από το επόμενο γεγονός`, late_sub: `Μέχρι τότε κοίτα την οθόνη`,
     choose_title: `Πού είναι η αλήθεια;`, choose_one: `Πάτα αυτό που πιστεύεις ότι είναι αληθινό`, choose_two: `Δίχτυ ασφαλείας: διάλεξε δύο — όλα στη μισή τιμή`,
     btn_hedge: `🛟 Δίχτυ ασφαλείας`, btn_hedge_on: `🛟 Δύο επιλογές · ×½`, btn_pick: `Αυτό είναι αλήθεια · {n}`,
-    own: `δικό σου`,
+    own: `δικό σου`, picked_mark: `η επιλογή σου`,
     chose_title: `Η επιλογή έγινε`, chose_sub: `Σου άρεσε ένα ψέμα; Κάνε like — +100 στον δημιουργό`, likes_left: `Like που απομένουν: {n}`,
     reveal_title: `Αποκάλυψη`, you_got: `+{n}`, you_zero: `Άστοχο`,
+    reveal_wait: `Αποκαλύπτουμε τις επιλογές — κοίτα την κοινή οθόνη`, you_nopick: `Δεν έγινε επιλογή`, //EL:unverified
+    bd_truth: `Βρήκες την αλήθεια`, bd_truth_half: `Βρήκες την αλήθεια (δίχτυ: μισό)`, bd_likes: `Like στο ψέμα σου: {n}`, //EL:unverified
+    bd_half_note: `Με δίχτυ ασφαλείας παίρνεις τους μισούς πόντους`, legend_marks: `🎲 {h} · 🐌 {l}`, //EL:unverified
+    aw_you: `εσύ`, no_awards: `Χωρίς βραβεία — όλοι έπαιξαν τίμια`, no_awards_stopped: `Το παιχνίδι σταμάτησε πριν τα βραβεία`, final_stopped: `Το παιχνίδι σταμάτησε — χωρίς θέσεις`, //EL:unverified
     you_found: `Βρήκες την αλήθεια`, you_fooled: `Σε πίστεψαν: {n}`,
     scores_title: `Σκορ`, place: `{n}η θέση`,
     final_title: `Το φύλλο κλείνει`, final_sub: `Ο οικοδεσπότης μπορεί να ξεκινήσει νέα παρτίδα`,
@@ -523,6 +564,35 @@ const placeTxt = (n) => {
   const m = n % 100, k = n % 10;
   return n + (m >= 11 && m <= 13 ? "th" : k === 1 ? "st" : k === 2 ? "nd" : k === 3 ? "rd" : "th") + " place";
 };
+// дробные очки: «5,5» в ru/el, «5.5» в en
+const fmtNum = (n) => (qpLang() === "en" ? String(n) : String(n).replace(".", ","));
+// «Ответили 4 из 6 · ~40 с» (MP.progress, U-29): знаменатель — онлайн + уже ответившие, чтобы «4 из 3» не бывало
+function progressText() {
+  if (!state) return "";
+  let done, total, kind;
+  if (state.phase === "lie" && state.roster) {
+    const lied = state.lied || [];
+    done = lied.length;
+    total = state.roster.filter((id) => lied.indexOf(id) >= 0 || (player(id) && player(id).online && !player(id).left)).length;
+    kind = "answered";
+  } else if (state.phase === "choose") {
+    const chose = state.chose || [];
+    done = chose.length;
+    total = state.players.filter((p) => !p.left && (p.online || chose.indexOf(p.id) >= 0)).length;
+    kind = "voted";
+  } else return "";
+  const secs = state.phaseEnd ? (state.phaseEnd - qpNow()) / 1000 : null;
+  if (window.MP && MP.progress && !MP.off) return MP.progress.text(done, total, secs, { kind });
+  return done + " / " + Math.max(done, total);
+}
+let progAt = 0;
+function updateProgress() {
+  const n = document.getElementById("prog");
+  if (!n) return;
+  const t = progressText();
+  if (n.textContent !== t) n.textContent = t;
+}
+const progHtml = () => `<p class="progress" id="prog" role="status">${escapeHtml(progressText())}</p>`;
 const factId = () => (state ? state.game + ":" + state.ri + ":" + state.fi : "");
 
 function toast(text) {
@@ -811,7 +881,7 @@ function renderLie() {
   if (!s || !s.inRound) {
     const key = "late:" + factId() + qpLang();
     if (screenKey === key) return;
-    show(`${factCard()}<div class="card status"><h2>${T("late_title")}</h2><p>${T("late_sub")}</p></div>${reactsHtml()}`, key, true);
+    show(`${factCard()}<div class="card status"><h2>${T("late_title")}</h2><p>${T("late_sub")}</p></div>${progHtml()}${reactsHtml()}`, key, true);
     return bindReacts();
   }
   if (draftFact !== factId()) {
@@ -827,7 +897,7 @@ function renderLie() {
     if (screenKey === key) return;
     show(`${factHead()}${timerHtml()}${factCard()}
       <div class="${justHinted ? "flip go" : ""}"><div class="card"><div class="k">${T("got_hint")}</div><div class="gotit">${escapeHtml(s.lie.text)} ${s.lie.hint ? `<span class="tag">🎲</span>` : ""}</div></div></div>
-      <div class="status center"><h2>${T("done_title")}</h2><p>${T("done_sub")}</p></div>${reactsHtml()}`, key, true);
+      <div class="status center"><h2>${T("done_title")}</h2><p>${T("done_sub")}</p></div>${progHtml()}${reactsHtml()}`, key, true);
     if (justHinted) { qpSfx.flip(); justHinted = false; }
     return bindReacts();
   }
@@ -890,7 +960,7 @@ function renderChoose() {
   if (chose) {
     const mineIdx = s.picks || picks;
     const left = 2 - s.likes.length;
-    show(`${timerHtml()}<div class="status"><h2>${T("chose_title")}</h2><p>${T("chose_sub")}</p></div>
+    show(`${timerHtml()}<div class="status"><h2>${T("chose_title")}</h2><p>${T("chose_sub")}</p></div>${progHtml()}
       <div class="eyebrow">${escapeHtml(tpl("likes_left", { n: left }))}</div>
       <div class="opts">${state.options.map((o, i) => {
         const liked = s.likes.includes(i);
@@ -935,32 +1005,113 @@ function sendPick() {
   watchAction(() => state.phase === "choose" && factId() === f && !(state.me && state.me.picks), () => { sentPick = false; });
 }
 
+// Раскрытие на телефоне — по шагам расписания сервера (state.steps), как на доске: сначала никем не выбранные,
+// правда последней, итог своего факта — после правды (fibs-032, U-32). window.qpRevealSpeed — только для стенда (SPEED > 1).
+let revShown = -1, revFactKey = "";
 function renderReveal() {
   const s = state.me;
   if (!state.options || !s) return;
   const key = "rev:" + factId() + qpLang();
   if (screenKey === key) return;
   const opts = state.options;
+  const R = state.points || { truth: 0, fool: 0 };
   const truthI = opts.findIndex((o) => o.kind === "truth");
-  const found = (s.picks || []).includes(truthI);
-  const fooled = opts.filter((o) => o.kind === "lie" && o.authors.includes(me)).reduce((n, o) => n + o.choosers.length, 0);
+  const picks = s.picks || [];
+  const found = picks.indexOf(truthI) >= 0;
+  const likedMine = s.likes || [];
+  // порядок строк — порядок шагов; без steps (старый сервер) — как раньше: правда последней
+  const order = state.steps && state.steps.length === opts.length
+    ? state.steps.map((st) => st.opt)
+    : opts.map((_, i) => i).filter((i) => i !== truthI).concat(truthI);
+  // разбивка очков (fibs-040): правда + поверившие + лайки (остаток до итога)
   const gain = s.gain || 0;
-  const rows = opts.map((o, i) => {
-    const authorsTxt = o.kind === "lie" ? tpl("lie_of", { names: qpNames(o.authors, player) }) : o.kind === "trap" ? T("trap") : T("truth");
-    const p = o.kind === "lie" ? player(o.authors[0]) : null;
-    const ch = o.choosers.map((c) => (player(c.playerId) || {}).avatar || "").join(" ");
-    const tags = o.kind === "lie" ? o.authors.map((a, k) => (o.late[k] ? "🐌" : o.hint[k] ? "🎲" : "")).filter(Boolean).join(" ") : "";
-    return `<div class="r${o.kind === "truth" ? " truth" : ""}" style="--pc:${p ? p.color : "var(--muted)"}"><div class="t">${escapeHtml(o.text)}</div><div class="p">${o.likes ? escapeHtml(tpl("likes_n", { n: o.likes })) : ""}</div>
-      <div class="who">${escapeHtml(authorsTxt)}${tags ? " " + tags : ""}${ch ? " · " + escapeHtml(ch) : ""}</div></div>`;
+  let foolPart = 0, foolN = 0, anyHalf = false, likesN = 0;
+  opts.forEach((o) => {
+    if (o.kind !== "lie" || o.authors.indexOf(me) < 0) return;
+    likesN += o.likes || 0;
+    o.choosers.forEach((c) => { foolN++; foolPart += c.half ? R.fool / 2 : R.fool; if (c.half) anyHalf = true; });
   });
-  // правда последней, как на доске
-  const order = opts.map((_, i) => i).filter((i) => i !== truthI).concat(truthI);
-  show(`${factCard(state.truth ? state.truth.answer : null)}
-    <div class="center"><div class="big${gain ? " red" : ""}">${escapeHtml(gain ? tpl("you_got", { n: gain }) : T("you_zero"))}</div>
-      <p class="lede">${found ? `<span class="stamp ok in">${T("truth")}</span> ` : ""}${fooled ? escapeHtml(tpl("you_fooled", { n: fooled })) : ""}</p></div>
-    <div class="eyebrow">${T("reveal_title")}</div><div class="res">${order.map((i) => rows[i]).join("")}</div>${reactsHtml()}`, key, true);
+  const truthPart = found ? (picks.length === 2 ? R.truth / 2 : R.truth) : 0;
+  const likesPart = Math.max(0, gain - truthPart - foolPart);
+  const bd = [];
+  if (found) bd.push(`<li><span>${escapeHtml(T(picks.length === 2 ? "bd_truth_half" : "bd_truth"))}</span><b>+${truthPart}</b></li>`);
+  if (foolN) bd.push(`<li><span>${escapeHtml(tpl("you_fooled", { n: foolN }))}</span><b>+${foolPart}</b></li>`);
+  if (likesPart) bd.push(`<li><span>${escapeHtml(tpl("bd_likes", { n: likesN || likesPart / 100 }))}</span><b>+${likesPart}</b></li>`);
+  if (anyHalf && foolN) bd.push(`<li class="note">${escapeHtml(T("bd_half_note"))}</li>`);
+  let anyMark = false;
+  const rowHtml = (i, k) => {
+    const o = opts[i];
+    const marks = o.kind === "lie" ? (o.late || []).concat(o.hint || []).some(Boolean) : false;
+    if (marks) anyMark = true;
+    const authorsTxt = o.kind === "lie" ? tpl("lie_of", { names: qpNamesMarked(o, player) }) : o.kind === "trap" ? T("trap") : T("truth");
+    const p = o.kind === "lie" ? player(o.authors[0]) : null;
+    const ch = o.choosers.map((c) => ((player(c.playerId) || {}).avatar || "") + (c.half ? "½" : "")).join(" ");
+    const isMine = o.kind === "lie" && o.authors.indexOf(me) >= 0;
+    return `<div class="r${o.kind === "truth" ? " truth" : ""}${isMine ? " mine" : ""}${picks.indexOf(i) >= 0 ? " picked" : ""}" data-k="${k}" hidden style="--pc:${p ? p.color : "var(--muted)"}"><div class="t">${escapeHtml(o.text)}</div><div class="p">${o.likes ? escapeHtml(tpl("likes_n", { n: o.likes })) : ""}</div>
+      <div class="who">${escapeHtml(authorsTxt)}${ch ? " · " + escapeHtml(ch) : ""}${isMine ? `<span class="tagme">${escapeHtml(T("own"))}</span>` : ""}${picks.indexOf(i) >= 0 ? `<span class="tagme">${escapeHtml(T("picked_mark"))}</span>` : ""}</div></div>`;
+  };
+  const rows = order.map((i, k) => rowHtml(i, k)).join("");
+  const resTitle = !s.inRound ? T("late_title") : !s.picks ? T("you_nopick") : gain ? tpl("you_got", { n: gain }) : T("you_zero");
+  const small = !s.inRound || !s.picks;
+  revShown = -1;
+  revFactKey = factId();
+  show(`<div id="factbox">${factCard(null)}</div>
+    <div class="resbox" id="resbox"><div class="resfinal center"><div class="big${gain ? " red" : ""}${small ? " sm" : ""}">${escapeHtml(resTitle)}</div>
+      <p class="lede">${found ? `<span class="stamp ok in">${T("truth")}</span> ` : ""}</p>${bd.length && s.inRound ? `<ul class="bd">${bd.join("")}</ul>` : ""}</div>
+      <div class="reswait">${escapeHtml(T("reveal_wait"))}</div></div>
+    <div class="eyebrow">${T("reveal_title")}</div><div class="res" id="revlist">${rows}</div>
+    <p class="fine marks hidden" id="marks">${escapeHtml(tpl("legend_marks", { h: T("hint_mark"), l: T("late_mark") }))}</p>${reactsHtml()}`, key, true);
   bindReacts();
-  if (found) qpVibrate([40, 40, 80]);
+  revealTick();
+}
+function revealTick() {
+  if (!state || state.phase !== "reveal" || !state.options || !state.me) return;
+  const list = document.getElementById("revlist");
+  if (!list || revFactKey !== factId()) return;
+  const steps = state.steps;
+  const rows = list.children;
+  let cur = rows.length - 1; // нет расписания — показываем всё сразу
+  if (steps && steps.length === rows.length) {
+    const elapsed = (qpNow() - state.phaseStart) * (window.qpRevealSpeed || 1);
+    cur = -1;
+    steps.forEach((st, i) => { if (st.at <= elapsed) cur = i; });
+  }
+  if (cur === revShown) return;
+  const truthI = state.options.findIndex((o) => o.kind === "truth");
+  let sawTruth = false;
+  for (let k = revShown + 1; k <= cur; k++) {
+    const row = rows[k];
+    if (!row) continue;
+    row.hidden = false;
+    row.classList.add("in");
+    const opt = steps && steps[k] ? steps[k].opt : k;
+    if (opt === truthI) sawTruth = true;
+  }
+  for (let k = 0; k < rows.length; k++) rows[k].classList.toggle("focus", k === cur && cur < rows.length - 1);
+  const live = revShown >= 0;
+  revShown = cur;
+  const mk = document.getElementById("marks");
+  if (mk && state.options.some((o) => o.kind === "lie" && (o.late || []).concat(o.hint || []).some(Boolean))) mk.classList.remove("hidden");
+  const last = cur >= rows.length - 1;
+  if (sawTruth || last) {
+    const fb = document.getElementById("factbox");
+    if (fb && state.truth && !fb.dataset.ans) { fb.dataset.ans = "1"; fb.innerHTML = factCard(state.truth.answer); }
+  }
+  if (last) {
+    const rb = document.getElementById("resbox");
+    if (rb && !rb.classList.contains("done")) {
+      rb.classList.add("done");
+      const s = state.me;
+      if (live && s && (s.picks || []).indexOf(truthI) >= 0) qpVibrate([40, 40, 80]);
+    }
+  }
+  // последний показанный ряд — в область видимости (список длиннее экрана)
+  const fr = rows[cur];
+  if (fr && live && cur >= 0) {
+    const r = fr.getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    if (r.bottom > vh - 8) window.scrollBy(0, Math.min(r.bottom - vh + 16, r.top - 60));
+  }
 }
 
 function standing() {
@@ -983,16 +1134,37 @@ function renderScores() {
   bindReacts();
 }
 
+function awardsHtml() {
+  const a = state.awards || {};
+  const nameOf = (id) => { const p = player(id); return p ? `${p.avatar} ${p.name}` : "?"; };
+  const card = (label, x, dKey) => {
+    if (!x) return "";
+    const mineAw = x.ids.indexOf(me) >= 0;
+    return `<div class="aw${mineAw ? " me" : ""}"><div class="k">${escapeHtml(label)}${mineAw ? `<span class="you">${escapeHtml(T("aw_you"))}</span>` : ""}</div><div class="a">${escapeHtml(x.ids.map(nameOf).join(", "))}</div><div class="by">${escapeHtml(tpl(dKey, { n: fmtNum(x.n) }))}</div></div>`;
+  };
+  let best = "";
+  if (a.bestLie) {
+    const mineAw = a.bestLie.authors.indexOf(me) >= 0;
+    best = `<div class="aw${mineAw ? " me" : ""}"><div class="k">${escapeHtml(T("aw_best"))}${mineAw ? `<span class="you">${escapeHtml(T("aw_you"))}</span>` : ""}</div><div class="a">«${escapeHtml(a.bestLie.text)}»</div><div class="by">${escapeHtml(qpNames(a.bestLie.authors, player))} · ${escapeHtml(tpl("likes_n", { n: a.bestLie.likes }))}</div><div class="q">${qpFactHtml(a.bestLie.fact)}</div></div>`;
+  }
+  const cards = [best, card(T("aw_liar"), a.liar, "aw_liar_d"), card(T("aw_detector"), a.detector, "aw_detector_d"), card(T("aw_gullible"), a.gullible, "aw_gullible_d")].filter(Boolean).join("");
+  const stopped = state.finishedReason === "host" || state.finishedReason === "few";
+  return `<div class="awards">${cards || `<div class="aw"><div class="a" style="font-size:17px">${escapeHtml(T(stopped ? "no_awards_stopped" : "no_awards"))}</div></div>`}</div>`;
+}
+
 function renderFinal() {
   const key = "final:" + state.game + ":" + state.finishedReason + qpLang();
   if (screenKey === key) return;
   const { list, place, p } = standing();
   const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : T("final_sub");
+  // партию оборвали с нулями: «N место» было бы произвольным (fibs-004)
+  const noPlaces = !list.length || list[0].score <= 0;
   show(`<div class="center"><h1 class="headline">${T("final_title")}</h1>
-    <div class="big${place === 1 ? " red" : ""}" style="margin:14px 0 6px">${escapeHtml(placeTxt(place))}</div>
-    <div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div>
-    <p class="fine">${escapeHtml(sub)}</p></div>${tableHtml(list)}${reactsHtml()}
-    <a class="btn ghost" id="homebtn" href="index.html">${T("btn_home")}</a>`, key, true);
+    ${noPlaces ? `<div class="big sm" style="margin:12px 0 6px">${escapeHtml(T("final_stopped"))}</div>`
+      : `<div class="big${place === 1 ? " red" : ""}" style="margin:14px 0 6px">${escapeHtml(placeTxt(place))}</div>
+    <div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div>`}
+    <p class="fine">${escapeHtml(sub)}</p></div>${awardsHtml()}${tableHtml(list)}${reactsHtml()}
+    <a class="btn ghost final-home" id="homebtn" href="index.html">${T("btn_home")}</a>`, key, true);
   bindReacts();
 }
 
@@ -1033,6 +1205,8 @@ function frame() {
   }
   const tl = document.getElementById("tleft");
   if (tl) tl.textContent = tpl("sec", { s: Math.max(0, Math.ceil(left / 1000)) });
+  if (state.phase === "reveal") revealTick();
+  if (now - progAt > 400) { progAt = now; updateProgress(); }
   if ((state.phase === "lie" || state.phase === "choose") && left < 5000 && left > 0) {
     const sec = Math.ceil(left / 1000);
     if (sec !== lastTickSec) { lastTickSec = sec; qpSfx.tick(true); }
