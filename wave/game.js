@@ -20,6 +20,13 @@ const ROUNDS = [{ mult: 1 }, { mult: 2 }];
 // переменной окружения ROUND_EXTRA_SEC (0…60), по умолчанию +15 с; голосования и раскрытия не трогает.
 const EXTRA_MS = Math.round(Math.max(0, Math.min(60, Number(process.env.ROUND_EXTRA_SEC ?? 15) || 0)) * 1000);
 
+// Порог «однокоренных» в подсказке (V3, wave-001/003): основы длиной от CLASH_MIN_LEN, общий префикс не короче
+// (меньшая основа − CLASH_PREFIX_SLACK) и разница длин ≤ CLASH_LEN_DELTA — «arrogance» при «Arrogant»;
+// либо одна правка Левенштейна при разнице длин ≤ 1 — «arogant». Короче CLASH_MIN_LEN: «passion» при «Passive» можно.
+const CLASH_MIN_LEN = 7;
+const CLASH_PREFIX_SLACK = 1;
+const CLASH_LEN_DELTA = 3;
+
 const T = {
   intro: 3000, // заставка раунда
   clue: 45000 + EXTRA_MS, // выбор шкалы + подсказка (§3) + добавка
@@ -94,6 +101,32 @@ const STOP = new Set(("все всё это как для что так там �
   "the and for not you are was but with very too all any can get its has have your our their from that this than " +
   "και για που από στο στη στην στον στα τον την του της των δεν μην πολύ όλα ένα μια είναι σαν").split(" ").map((w) => normalize(w)));
 
+function lcp(a, b) {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return i;
+}
+function lev(a, b) {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
+}
+// основа слова w «та же» или «однокоренная» основе полюса p (обе уже после normalize)
+function stemClash(p, w) {
+  if (p === w) return true;
+  const m = Math.min(p.length, w.length);
+  // та же основа или одна продолжает другую («горяч» → «горячительн»); короткие основы — только целиком, иначе «кот» запретил бы «котлету»
+  if (m >= 4 && (w.startsWith(p) || p.startsWith(w))) return true;
+  if (m < CLASH_MIN_LEN) return false;
+  const d = Math.abs(p.length - w.length);
+  if (lcp(p, w) >= m - CLASH_PREFIX_SLACK && d <= CLASH_LEN_DELTA) return true;
+  return d <= 1 && lev(p, w) <= 1;
+}
+
 /*
  * Подсказка по правилам (§4): без цифр и без слов полюсов. Слова сравниваем по основам (normalize):
  * «горячий» при полюсе «Горячее» — нельзя. Основы короче трёх букв («не», «в») и служебные слова не считаются.
@@ -111,8 +144,7 @@ function checkClue(text, scale) {
     // двойники из другого алфавита («Живoe», «Hоt», «κρύo»): слово из смеси алфавитов не принимаем
     if (t.split(/\s+/).some((w) => scripts(w.replace(/[^\p{L}]/gu, "")) > 1)) return { ok: false, reason: "mixed" };
     const words = normalize(t.replace(/\u200D/g, "")).split(" ");
-    // та же основа или одна продолжает другую («горяч» → «горячительн»); короткие основы — только целиком, иначе «кот» запретил бы «котлету»
-    const clash = (w) => poles.has(w) || [...poles].some((p) => Math.min(p.length, w.length) >= 4 && (w.startsWith(p) || p.startsWith(w)));
+    const clash = (w) => poles.has(w) || [...poles].some((p) => stemClash(p, w));
     if (words.some(clash)) return { ok: false, reason: "pole" };
   }
   return { ok: true, text: t };
@@ -640,4 +672,4 @@ class Game {
   }
 }
 
-module.exports = { Game, EXTRA_MS, ROUNDS, T, REVEAL_STEP, DEFAULTS, OPTIONS, REROLLS, MAX_PLAYERS, MIN_PLAYERS, CLUE_MAX, BANDS, WAVE_BONUS, REACTIONS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText, checkClue, points, nameKey };
+module.exports = { Game, EXTRA_MS, ROUNDS, T, REVEAL_STEP, DEFAULTS, OPTIONS, REROLLS, MAX_PLAYERS, MIN_PLAYERS, CLUE_MAX, BANDS, WAVE_BONUS, REACTIONS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText, checkClue, stemClash, points, nameKey };

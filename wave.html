@@ -391,6 +391,7 @@ let clueErr = null;
 let needle = 90; // стрелка на экране угадывания, пока не зафиксирована
 let needleKey = null;
 let sentLock = false;
+let waitJoin = true; // холодная загрузка с токеном: до подтверждения входа форму не показываем (≤ 4 с)
 let onKeys = null; // клавиатура на экране угадывания
 document.addEventListener("keydown", (e) => { if (onKeys && screenKey.startsWith("guess:")) onKeys(e); });
 const tokenKey = () => "wave-token-" + CODE;
@@ -862,9 +863,13 @@ function render() {
   if (dead || !state) return;
   if (!me) {
     if (screen === "kicked" || screen === "replaced" || screen === "enter") return;
+    // с токеном ждём подтверждения входа, а не мигаем формой имени
+    if (waitJoin && token) return renderCenter("wait_title");
     return renderEnter();
   }
   if (!mine()) return renderEnter();
+  // вошли (joined), а состояние с «me» ещё не пришло: renderClue/Guess/Reveal читают state.me (wave-015)
+  if (!state.me && ["clue", "guess", "reveal"].includes(state.phase)) return;
   screen = "game";
   paint(phaseColor());
   switch (state.phase) {
@@ -973,7 +978,7 @@ function onMessage(m) {
       if (["room_full", "token_gone", "bad_name", "name_taken"].includes(m.error)) {
         if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
         joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
-        me = null;
+        me = null; waitJoin = false;
         renderEnter();
       }
       break;
@@ -997,6 +1002,8 @@ function onMessage(m) {
 function start() {
   if (!CODE) return renderLanding();
   renderCenter("wait_title");
+  if (token) setTimeout(() => { waitJoin = false; if (!me && !dead) render(); }, 4000);
+  else waitJoin = false;
   const banner = document.getElementById("conn");
   conn = wvConnect({
     code: CODE,
