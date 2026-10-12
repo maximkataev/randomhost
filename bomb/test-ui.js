@@ -561,6 +561,74 @@ const SOLVER = String.raw`(async () => {
       for (const pg of [p1, p2, p3]) check(pg.errors.length === 0, "вход по имени без JS-ошибок" + (pg.errors[0] ? ": " + pg.errors[0] : ""));
     }
 
+    // --- 6б. потерянный тап (T-W2-16, S-12): сокет закрылся, тап по цели в первые 100 мс — бросок доходит после возврата связи
+    {
+      const r3 = await (await fetch(BASE + "/bomb/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { fuse: "long", groups: { hands: true, eyes: false, head: false, crowd: false } } }) })).json();
+      const conn3 = (extra) => new Promise((resolve, reject) => {
+        const ws = new WebSocket(`ws://localhost:${SRV}/bomb/ws?r=${r3.code}`);
+        const c = { ws, state: null };
+        ws.on("message", (raw) => { const m = JSON.parse(raw); if (m.state) c.state = m.state; if (m.type === "hello" || m.type === "joined" || m.type === "host_ok") c.ready = true; });
+        ws.on("open", () => { ws.send(JSON.stringify(extra)); resolve(c); });
+        ws.on("error", reject);
+      });
+      const hostC = await conn3({ type: "host", token: r3.hostToken });
+      const mate = await conn3({ type: "join", name: "Напарник" });
+      const tap = await cdp(`${BASE}/bomb.html`, [390, 844]);
+      pages.push(tap);
+      await wait(600);
+      await tap.evaluate("localStorage.clear()");
+      // перехват сокетов страницы: закрыть «связь» можно только изнутри страницы
+      await tap.call("Page.addScriptToEvaluateOnNewDocument", { source: "(() => { const W = window.WebSocket; window.__ws = []; window.WebSocket = function (u, p) { const w = p ? new W(u, p) : new W(u); window.__ws.push(w); return w; }; window.WebSocket.prototype = W.prototype; ['CONNECTING','OPEN','CLOSING','CLOSED'].forEach((k) => { window.WebSocket[k] = W[k]; }); })();" });
+      await tap.call("Page.navigate", { url: `${BASE}/bomb.html?r=${r3.code}` });
+      await wait(1800);
+      await tap.call("Page.bringToFront");
+      await tap.call("Runtime.evaluate", { expression: "document.getElementById('name').focus()" });
+      await typeText(tap, "Тап");
+      await tap.evaluate("document.querySelector('#enterform button[type=submit]').click()");
+      await wait(1000);
+      const myId = await tap.evaluate("window.bmPhone.me");
+      check(!!myId, "S-12: телефон вошёл в комнату");
+      // раундов, пока бомба не окажется у телефона (до 8 попыток)
+      let got = false;
+      for (let round = 0; round < 8 && !got; round++) {
+        hostC.ws.send(JSON.stringify({ type: round === 0 ? "start" : "end" }));
+        if (round) { await wait(500); hostC.ws.send(JSON.stringify({ type: "start" })); }
+        await wait(3800);
+        got = (await tap.evaluate("(window.bmPhone.state.bombs[0] || {}).holder")) === myId;
+      }
+      check(got, "S-12: бомба у телефона для проверки броска");
+      if (got) {
+        // решаем испытание по-настоящему, ждём экран целей
+        for (let i = 0; i < 20 && !(await tap.evaluate("!!document.getElementById('targets')")); i++) {
+          await tap.evaluate(SOLVER);
+          await wait(600);
+        }
+        check((await tap.evaluate("!!document.getElementById('targets')")) === true, "S-12: экран целей открыт");
+        const before = hostC.state ? hostC.state.passes : 0;
+        // обрыв и тап сразу: сокет закрыт, переподключение ещё не началось
+        const res = await tap.evaluate(`(() => {
+          window.__ws.forEach((w) => { try { w.close(); } catch (e) {} });
+          const t = [...document.querySelectorAll('#targets .target')].find((b) => !b.disabled);
+          t.click();
+          return conn.api ? conn.api.mode : "?";
+        })()`);
+        console.log("   режим транспорта в момент тапа:", res);
+        let passed = false;
+        for (let i = 0; i < 40 && !passed; i++) { await wait(250); passed = hostC.state && hostC.state.passes > before; }
+        check(passed, "S-12: тап после ws.close() дошёл после возврата связи (бомба передана)");
+        const toastText = await tap.evaluate("document.getElementById('toast').textContent");
+        check(!/Не дошло/.test(toastText), "S-12: тоста «Не дошло» нет (" + toastText + ")");
+        check((await tap.evaluate("document.body.innerText")).length > 0 && (await tap.evaluate("!document.querySelector('.throwing')")), "S-12: кнопки целей не остались мёртвыми (.throwing снят)");
+      }
+      // bomb-030: событие offline браузера — баннер «нет связи» сразу, не через 45 с
+      await tap.evaluate("window.dispatchEvent(new Event('offline'))");
+      await wait(200);
+      check((await tap.evaluate("document.getElementById('conn').classList.contains('on')")) === true, "bomb-030: событие offline — баннер «нет связи» виден сразу");
+      check(tap.errors.length === 0, "S-12: без JS-ошибок" + (tap.errors[0] ? ": " + tap.errors[0] : ""));
+      hostC.ws.close();
+      mate.ws.close();
+    }
+
     // --- 7. телефоны и доска без JS-ошибок, без горизонтальной прокрутки
     for (const [i, ph] of phones.entries()) {
       check(ph.errors.length === 0, `телефон ${names[i]} без JS-ошибок` + (ph.errors[0] ? ": " + ph.errors[0] : ""));

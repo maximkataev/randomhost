@@ -803,3 +803,30 @@ test("в игре: без RULE_U01_CLAIM_IN_GAME офлайн-место воз�
     });
   }
 });
+
+// ---- T-W2-16: быстрый пинг комнат «в игре» ----
+test("быстрый пинг в игре: сокет, не отвечающий на ping, закрывается за ~20–35 с, живой остаётся; лобби не трогаем", async () => {
+  await withServerEnv({ PING_MS: "1000", GAME_DEAD_MS: "20000", GAME_PONG_MISSES: "2" }, async () => {
+    const { code, hostToken } = await createRoom({ fuse: "long" });
+    const b = await board(code, hostToken);
+    const live = [await player(code, "Аня"), await player(code, "Петя")];
+    // «мёртвый» телефон: сокет открыт, но на ping протокола не отвечает
+    const dead = new WebSocket(`ws://127.0.0.1:${port}/bomb/ws?r=${code}`, { autoPong: false });
+    await new Promise((res, rej) => { dead.once("open", res); dead.once("error", rej); });
+    dead.send(JSON.stringify({ type: "join", name: "Тишина" }));
+    await new Promise((res) => dead.on("message", (raw) => { if (JSON.parse(raw).type === "joined") res(); }));
+    const closed = new Promise((res) => dead.once("close", () => res(Date.now())));
+    // в лобби пока не рвём: даём ему «провисеть» 3 с без пингов игры
+    await sleep(3000);
+    assert.strictEqual(dead.readyState, 1, "в лобби быстрый пинг молчит");
+    const t0 = Date.now();
+    b.send({ type: "start" });
+    await b.wait(statePred((s) => s.phase === "live"), 6000);
+    const at = await Promise.race([closed, sleep(40000).then(() => null)]);
+    assert.ok(at, "мёртвый сокет закрыт сервером");
+    const secs = (at - t0) / 1000;
+    assert.ok(secs >= 14 && secs <= 36, "закрыт за " + secs + " с");
+    assert.ok(live.every((p) => p.ws.readyState === 1), "живые сокеты на месте");
+    for (const x of [b, ...live]) x.close();
+  });
+});

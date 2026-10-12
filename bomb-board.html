@@ -1217,6 +1217,8 @@ function onMessage(m) {
         try { token = localStorage.getItem(hostKey()); } catch (e) {}
         if (token) conn.send({ type: "host", token });
       }
+      // команды ведущего, нажатые при обрыве, уходят после host-токена: раньше они молча пропадали (T-W2-16)
+      if (conn.queue && conn.queue.size()) conn.flush();
       render();
       break;
     case "state":
@@ -1292,13 +1294,21 @@ async function boot() {
   }
   if (!(await ensureRoom())) return;
   const banner = $("conn");
+  let netLost = false, netQuiet = false;
+  const showNet = () => {
+    banner.textContent = T("err_connect");
+    banner.classList.toggle("on", netLost || netQuiet);
+  };
   conn = bmConnect({
     code: CODE,
     onMessage,
     onGone: gone,
     onOpen: () => { isHost = false; },
-    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+    // «lost» — сокет закрыт; «quiet» — сокет жив, но молчит > 10 с (MP.conn) либо браузер сообщил offline
+    onState: (st) => { netLost = st === "lost"; if (st === "open") netQuiet = false; showNet(); },
+    onQuiet: (q) => { netQuiet = !!q; showNet(); },
   });
+  window.addEventListener("langchange", showNet);
   requestAnimationFrame(frame);
   // ручка для отладки и стенда: те же сообщения, что шлют кнопки доски
   window.bmBoard = { send: (m) => conn.send(m), get state() { return state; }, get code() { return CODE; } };
