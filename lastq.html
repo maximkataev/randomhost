@@ -237,6 +237,10 @@
   .bet .done { grid-column: 1 / -1; font: 800 19px/1 var(--font); text-transform: uppercase; }
   .bet .done.y { color: var(--ok); } .bet .done.n { color: var(--bad); }
   .bet.off { opacity: .6; border-left-color: var(--edge); }
+  /* пропущенная ставка = 0: последние 3 с подпись под кнопкой становится красной плашкой (то же место, без прыжка) */
+  .stakewarn { font-weight: 800; }
+  .stakewarn.hot { background: var(--bad); color: var(--night); padding: 5px 8px; }
+  .stake0 { margin-top: 6px; font: 700 15px/1.2 var(--font); color: var(--gold); text-align: center; }
   .bet .done.off { color: var(--chalk-2); font-size: 16px; }
 
   /* своя дорожка на приговоре */
@@ -414,6 +418,7 @@ window.I18N_DICT = {
     expired_title: `Комната закрыта`, expired_text: `Она пустовала полчаса или ведущий её закрыл.`, expired_new: `Создать новую`,
     paused: `Все отключились — ждём`,
     rj_not_now: `Уже поздно`, rj_closed: `Ставки уже закрыты`, rj_already: `Уже выбрано`, rj_not_in_question: `Ты со следующего вопроса`,
+    stake_skip: `Не нажмёшь «Ставлю» — ставка 0`, stake_none_0: `Ты не поставил — ставка 0`, fr_stake0: `Без ставки`,
     claim_title: `Это ты?`, claim_text: `Игрок «{name}» без связи. Очки: {n}`, claim_text0: `Игрок «{name}» без связи`, btn_claim_yes: `Это я`, btn_claim_no: `Нет, я другой`,
     welcome_back: `С возвращением`, err_name_taken: `Это имя сейчас занято. Возьми другое`,
     lobby_wait_n: `Ждём, пока ведущий начнёт. В сети: {n}`,
@@ -473,6 +478,7 @@ window.I18N_DICT = {
     expired_title: `Room closed`, expired_text: `It sat empty for half an hour or the host closed it.`, expired_new: `Create a new one`,
     paused: `Everyone dropped — waiting`,
     rj_not_now: `Too late`, rj_closed: `Betting is closed`, rj_already: `Already picked`, rj_not_in_question: `You're in from the next question`,
+    stake_skip: `If you don't tap “Bet”, your bet is 0`, stake_none_0: `You didn't bet — your bet is 0`, fr_stake0: `No bet`,
     claim_title: `Is this you?`, claim_text: `Player “{name}” is offline. Score: {n}`, claim_text0: `Player “{name}” is offline`, btn_claim_yes: `That's me`, btn_claim_no: `No, someone else`,
     welcome_back: `Welcome back`, err_name_taken: `That name is taken right now. Pick another`,
     lobby_wait_n: `Waiting for the host to start. Online: {n}`,
@@ -532,6 +538,7 @@ window.I18N_DICT = {
     expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης.`, expired_new: `Φτιάξε καινούργιο`,
     paused: `Όλοι αποσυνδέθηκαν — περιμένουμε`,
     rj_not_now: `Πολύ αργά`, rj_closed: `Τα στοιχήματα έκλεισαν`, rj_already: `Έχει ήδη επιλεγεί`, rj_not_in_question: `Παίζεις από την επόμενη ερώτηση`,
+    stake_skip: `Αν δεν πατήσεις «Ποντάρω», το ποντάρισμα είναι 0`, stake_none_0: `Δεν πόνταρες — ποντάρισμα 0`, fr_stake0: `Χωρίς ποντάρισμα`, //EL:unverified
     claim_title: `Είσαι εσύ;`, claim_text: `Ο παίκτης «{name}» είναι εκτός σύνδεσης. Πόντοι: {n}`, claim_text0: `Ο παίκτης «{name}» είναι εκτός σύνδεσης`, btn_claim_yes: `Εγώ είμαι`, btn_claim_no: `Όχι, είμαι άλλος`, //EL:unverified
     welcome_back: `Καλώς ξαναήρθες`, err_name_taken: `Το όνομα είναι πιασμένο αυτή τη στιγμή. Διάλεξε άλλο`, //EL:unverified
     lobby_wait_n: `Περιμένουμε να ξεκινήσει ο οικοδεσπότης. Συνδεδεμένοι: {n}`, //EL:unverified
@@ -811,7 +818,9 @@ function renderQuestion() {
   const open = state.phase === "answer" || state.phase === "fanswer";
   const late = !s.inQuestion;
   const mineA = s.answer;
-  const key = "q:" + qid() + ":" + open + ":" + mineA + ":" + late + lqLang();
+  // финал: ставку не нажал — на экране вопроса одна строка «Ты не поставил — ставка 0» (lastq-019)
+  const noStake = isFinal() && s.inQuestion && s.stake == null;
+  const key = "q:" + qid() + ":" + open + ":" + mineA + ":" + late + ":" + noStake + lqLang();
   if (screenKey === key) return;
   const btns = q.options.map((o, i) => {
     const cls = !open ? " closed" : mineA != null ? (mineA === i ? " sel" : " dim") : late ? " dim" : "";
@@ -819,7 +828,7 @@ function renderQuestion() {
   }).join("");
   const note = late ? `<b>${isFinal() ? T("watch_t") : T("late_title")}</b>` : mineA != null ? T("answered") : open ? "" : `<span id="readwait"></span>`;
   const bonus = !isFinal() && state.points ? `<div class="bonus" id="bonus"><span>${T("bonus")}</span><span class="bb"><i></i></span><b></b></div>` : "";
-  show(`${headHtml()}${bonus}${qCardHtml()}<div class="answers">${btns}</div><div class="note" id="note">${note}</div>`, key, true);
+  show(`${headHtml()}${bonus}${qCardHtml()}<div class="answers">${btns}</div><div class="note" id="note">${note}${noStake ? `<div class="stake0">${escapeHtml(T("stake_none_0"))}</div>` : ""}</div>`, key, true);
   app.querySelectorAll(".ans:not(:disabled)").forEach((b) => {
     b.onclick = () => {
       const i = Number(b.dataset.i);
@@ -1150,13 +1159,15 @@ function renderStake() {
     document.getElementById("chg").onclick = () => { stakeEdit = true; stakeDraft = s.stake; render(); };
     return;
   }
-  if (stakeDraft == null || stakeDraft > max) stakeDraft = Math.min(max, Math.round(max / 2 / 10) * 10);
+  // по умолчанию 0: «Ставлю» — осознанное действие; экран не обещает ставку, которой не будет (lastq-019, lastq-056)
+  if (stakeDraft == null || stakeDraft > max) stakeDraft = 0;
   show(`${headHtml()}${themeHtml}
     <div class="stakev" id="sv">${stakeDraft}</div>
     <input type="range" id="sr" min="0" max="${max}" step="10" value="${stakeDraft}" aria-label="${escapeHtml(T("stake_label"))}" aria-valuetext="${escapeHtml(tpl("stake_vt", { n: stakeDraft }))}">
     <div class="quick"><button type="button" data-k="all">${T("q_all")}</button><button type="button" data-k="half">${T("q_half")}</button><button type="button" data-k="zero">${T("q_zero")}</button></div>
     <button class="btn" type="button" id="stakebtn">${escapeHtml(tpl("btn_stake", { n: stakeDraft }))}</button>
-    <p class="fine center" style="margin:0">${T("stake_hint")}</p>`, key, true);
+    <p class="fine center" style="margin:0">${T("stake_hint")}</p>
+    <p class="fine center stakewarn" id="stakewarn" style="margin:0">${T("stake_skip")}</p>`, key, true);
   const sr = document.getElementById("sr");
   const setV = (v) => { stakeDraft = Math.max(0, Math.min(max, Math.round(v))); sr.value = stakeDraft; sr.setAttribute("aria-valuetext", tpl("stake_vt", { n: stakeDraft })); document.getElementById("sv").textContent = stakeDraft; document.getElementById("stakebtn").textContent = tpl("btn_stake", { n: stakeDraft }); };
   sr.oninput = () => setV(Number(sr.value));
@@ -1178,6 +1189,8 @@ function renderStake() {
 
 // раскрытие финала: доска идёт по одному снизу вверх, каждый шаг — 3 с; свой итог телефон показывает в свой черёд
 const FSTEP_MS = 3000;
+// ставка 0 — «Без ставки» (а не «Ставка 0»): человек не нажимал «Ставлю» или поставил ноль
+const stakeLabel = (n) => (n > 0 ? tpl("fr_stake", { n }) : T("fr_stake0"));
 function myFstep() {
   // телефону сервер шлёт только свой шаг + fpos (его место в очереди); старый сервер — полный список
   const st = state.fsteps || [];
@@ -1193,13 +1206,13 @@ function renderFreveal() {
   if (screenKey === key) return;
   const p = mine();
   if (!f || !shown) {
-    show(`<div class="center"><div class="kicker">${T("fq")}</div><div class="sub" style="margin-top:10px">${T("fr_wait")}</div>${f ? `<p class="fine" style="margin-top:10px">${escapeHtml(tpl("fr_stake", { n: f.x.stake }))}</p>` : ""}</div>`, key);
+    show(`<div class="center"><div class="kicker">${T("fq")}</div><div class="sub" style="margin-top:10px">${T("fr_wait")}</div>${f ? `<p class="fine" style="margin-top:10px">${escapeHtml(stakeLabel(f.x.stake))}</p>` : ""}</div>`, key);
     return;
   }
   const x = f.x;
   const head = x.right ? `<div class="big ok">${escapeHtml(tpl("fr_right", { n: x.stake }))}</div>`
     : `<div class="big bad" style="font-size:40px">${escapeHtml(tpl(x.escaped ? "fr_half" : "fr_burn", { n: lqNum(x.delta) }))}</div>`;
-  show(`<div class="center"><div class="kicker">${escapeHtml(tpl("fr_stake", { n: x.stake }))}</div><div style="margin-top:10px">${head}</div>
+  show(`<div class="center"><div class="kicker">${escapeHtml(stakeLabel(x.stake))}</div><div style="margin-top:10px">${head}</div>
     <p class="lede" style="margin-top:12px;font-weight:700">${escapeHtml(tpl("fr_now", { n: lqNum(x.after) }))}</p><p class="fine">${emo(p)} ${escapeHtml(p.name)}</p></div>`, key);
   if (x.right) lqSfx.gong(); else lqSfx.whoosh();
 }
@@ -1288,6 +1301,13 @@ function frame() {
   }
   const tl = document.getElementById("tleft");
   if (tl) { tl.textContent = Math.max(0, Math.ceil(left / 1000)); tl.classList.toggle("hot", hot); }
+  const sw = document.getElementById("stakewarn");
+  if (sw) {
+    const none = ph === "stake" && state.me && state.me.stake == null && left < 3000;
+    sw.classList.toggle("hot", none);
+    const txt = T(none ? "stake_none_0" : "stake_skip");
+    if (sw.textContent !== txt) sw.textContent = txt;
+  }
   const bl = document.getElementById("betleft");
   if (bl && state.betUntil) { const l = state.betUntil - now; if (l <= 0) render(); else bl.textContent = tpl("betleft", { s: Math.ceil(l / 1000) }); }
   const rw = document.getElementById("readwait");

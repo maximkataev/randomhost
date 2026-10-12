@@ -323,9 +323,14 @@ async function run() {
     check(!!(await waitFor(board, "!!document.getElementById('startbtn') && document.body.classList.contains('host')", 8000)), "доска: лобби, ведущий");
     check((await board.evaluate("document.getElementById('seats').getBoundingClientRect().left < document.getElementById('qr').getBoundingClientRect().left")) === true, "доска: игроки слева от QR");
     // галочки: «Короткая партия» включаем настоящим нажатием, «Финал» проверяем, что включён
-    await wait(500); // после host_ok приходит снимок и галочки перерисовываются: нажатие между press и release терялось (мигало)
-    await mustTap(board, ".tog[data-k=short]", 0, "галочка «Короткая партия»");
-    check(!!(await waitFor(board, "window.lqBoard.state.settings.short === true", 3000)), "доска: «Короткая партия» включилась");
+    // после host_ok приходит снимок и галочки перерисовываются: нажатие между press и release терялось (мигало) — до трёх попыток
+    let shortOn = null;
+    for (let i = 0; i < 3 && !shortOn; i++) {
+      await wait(500);
+      await mustTap(board, ".tog[data-k=short]", 0, "галочка «Короткая партия»");
+      shortOn = await waitFor(board, "window.lqBoard.state.settings.short === true", 2500);
+    }
+    check(!!shortOn, "доска: «Короткая партия» включилась");
     check((await board.evaluate("window.lqBoard.state.settings.final")) === true, "доска: «Финал со ставками» включён по умолчанию");
     check((await board.evaluate("document.getElementById('startbtn').disabled")) === true, "доска: «Старт» закрыт, пока игроков меньше двух");
 
@@ -448,6 +453,9 @@ async function run() {
         await wait(500);
         await board.shot("b_stake");
         for (const p of phones) check(!!(await waitFor(p, "!!document.getElementById('stakebtn')", 4000)), `${p.name}: ползунок ставки`);
+        // T-W2-34 (lastq-019/056): ползунок стоит на 0, под кнопкой честная подпись «Не нажмёшь … — ставка 0»
+        check((await A.evaluate("document.getElementById('sv').textContent")) === "0" && (await A.evaluate("document.getElementById('sr').value")) === "0", "Аня: ползунок ставки стоит на 0");
+        check((await A.evaluate("/0/.test((document.getElementById('stakewarn') || {}).textContent || '')")) === true, "Аня: подпись «ставка 0» под кнопкой");
         await layout(phones, "ставка финала", true);
         await mustTap(A, ".quick button[data-k=all]", 0, "«Всё»");
         await mustTap(P, ".quick button[data-k=half]", 0, "«Половина»");
