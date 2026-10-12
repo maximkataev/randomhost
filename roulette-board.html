@@ -664,6 +664,7 @@ window.I18N_DICT = {
     purge_off: `Убрать офлайн ({n})`, purge_sure: `Точно убрать ({n})?`, offline_tip: `Нет связи`,
     mute: `Выключить чат`, unmute: `Включить чат`,
     fin_title: `{name} забирает всё`,
+    fin_draw: `Ничья: {names}`,
     fin_sub: `Последний с фишками`,
     fin_host: `Партию закончил ведущий`,
     st_bigwin: `Самый крупный выигрыш`, st_bigwin_v: `{name}: +{n} на {num}`,
@@ -722,6 +723,7 @@ window.I18N_DICT = {
     purge_off: `Remove offline ({n})`, purge_sure: `Sure? Remove ({n})`, offline_tip: `No connection`,
     mute: `Mute chat`, unmute: `Unmute chat`,
     fin_title: `{name} takes it all`,
+    fin_draw: `Draw: {names}`,
     fin_sub: `Last one with chips`,
     fin_host: `The host ended the game`,
     st_bigwin: `Biggest win`, st_bigwin_v: `{name}: +{n} on {num}`,
@@ -780,6 +782,7 @@ window.I18N_DICT = {
     purge_off: `Αφαίρεση χωρίς σύνδεση ({n})`, purge_sure: `Σίγουρα; ({n})`, offline_tip: `Χωρίς σύνδεση`, // EL:unverified
     mute: `Κλείσιμο chat`, unmute: `Άνοιγμα chat`,
     fin_title: `{name} τα παίρνει όλα`,
+    fin_draw: `Ισοπαλία: {names}`, // EL:unverified
     fin_sub: `Ο τελευταίος με μάρκες`,
     fin_host: `Ο οικοδεσπότης τερμάτισε το παιχνίδι`,
     st_bigwin: `Μεγαλύτερο κέρδος`, st_bigwin_v: `{name}: +{n} στο {num}`,
@@ -1346,7 +1349,9 @@ function drawFinal() {
   // число последнего спина и баннеры не должны просвечивать из-под итогов
   clearLater();
   $("center").replaceChildren();
-  const key = state.spin + ":" + state.winnerId + ":" + ((window.I18N && I18N.lang) || "");
+  const wIds = state.winnerIds && state.winnerIds.length ? state.winnerIds : [state.winnerId];
+  const draw = !!state.draw;
+  const key = state.spin + ":" + state.winnerId + ":" + (draw ? wIds.join(",") : "") + ":" + ((window.I18N && I18N.lang) || "");
   if (f.dataset.spin === key) return;
   const firstTime = !f.dataset.spin;
   f.dataset.spin = key;
@@ -1361,10 +1366,12 @@ function drawFinal() {
   if (breath) stats.push([T("st_breath"), tpl(breath[1] === 1 ? "st_breath_v1" : "st_breath_v", { name: nm(breath[0]), n: breath[1] })]);
   stats.push([T("st_casino"), tpl("st_casino_v", { won: rlNum(state.casino.won), paid: rlNum(state.casino.paid) })]);
   const places = state.players.filter((p) => !p.left && !p.spectator).sort((a, b) => (a.place || 99) - (b.place || 99));
-  // пьедестал: 2 — 1 — 3; остальные — строкой ниже
-  const podium = [places[1], places[0], places[2]].map((p, i) => {
+  // пьедестал: 2 — 1 — 3; остальные — строкой ниже. Ничья: все делящие — на равных ступенях «первый» (до трёх, остальные — строкой ниже)
+  const tied = draw ? places.filter((p) => wIds.includes(p.id)) : [];
+  const onPodium = draw ? tied.slice(0, 3) : [places[1], places[0], places[2]];
+  const podium = onPodium.map((p, i) => {
     if (!p) return "";
-    const cls = ["second", "first", "third"][i];
+    const cls = draw ? "first" : ["second", "first", "third"][i];
     return `<div class="p ${cls}">${cls === "first" ? `<div class="crown">👑</div>` : ""}${chipHtml(p.color, initials(p.name))}<div class="nm">${escapeHtml(p.name)}</div><div class="st">${rlNum(p.stack)}</div><div class="step">${p.place || "–"}</div></div>`;
   }).join("");
   let rain = "";
@@ -1374,9 +1381,9 @@ function drawFinal() {
   }
   f.innerHTML = `<div class="rain">${rain}</div>
     <div class="sub">${T(state.finishedReason === "host" ? "fin_host" : "fin_sub")}</div>
-    <h2>${w ? escapeHtml(tpl("fin_title", { name: w.name })) : ""}</h2>
+    <h2>${draw ? escapeHtml(tpl("fin_draw", { names: tied.slice(0, 3).map((p) => p.name).join(", ") + (tied.length > 3 ? " +" + (tied.length - 3) : "") })) : w ? escapeHtml(tpl("fin_title", { name: w.name })) : ""}</h2>
     <div class="podium">${podium}</div>
-    ${places.length > 3 ? `<div class="places">${places.slice(3).map((p) => `<span>${chipHtml(p.color, "")}#${p.place || "–"} ${escapeHtml(p.name)}</span>`).join("")}</div>` : ""}
+    ${(draw ? places.filter((p) => onPodium.indexOf(p) === -1) : places.slice(3)).length ? `<div class="places">${(draw ? places.filter((p) => onPodium.indexOf(p) === -1) : places.slice(3)).map((p) => `<span>${chipHtml(p.color, "")}#${p.place || "–"} ${escapeHtml(p.name)}</span>`).join("")}</div>` : ""}
     <div class="stats">${stats.map(([k, v]) => `<div><small>${escapeHtml(k)}</small><b>${v}</b></div>`).join("")}</div>
     ${isHost ? `<button class="btn shine" id="again">${T("btn_again")}</button>` : ""}`;
   if (isHost) $("again").onclick = () => conn.send({ type: "next_game" });

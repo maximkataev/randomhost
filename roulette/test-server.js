@@ -490,3 +490,18 @@ test("T-W2-10: RULE_U01_CLAIM_IN_GAME=1 — посреди партии офла
     try { fs.unlinkSync(DUMP + ".rule"); } catch {}
   }
 });
+
+test("T-W2-12: «Закончить» при равных стеках — draw и winnerIds у доски и телефонов", async () => {
+  const { code, hostToken } = await createRoom();
+  const b = await board(code, hostToken);
+  const a = await player(code, "Аня");
+  const p = await player(code, "Петя");
+  b.send({ type: "start" });
+  await a.wait(statePred((s) => s.phase === "betting"));
+  b.send({ type: "end" });
+  const fin = await a.wait(statePred((s) => s.phase === "finished"));
+  assert.strictEqual(fin.state.draw, true);
+  assert.deepStrictEqual(fin.state.winnerIds.slice().sort(), [a.id, p.id].sort());
+  assert.ok(fin.state.players.every((x) => x.place === 1));
+  for (const c of [a, p, b]) c.close();
+});

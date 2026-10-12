@@ -170,6 +170,8 @@ class Game {
       casino: { won: 0, paid: 0 }, // сколько казино забрало и выплатило за партию
       stats: { biggestWin: null, cruelCard: null, biggestPenalty: null, lastBreath: {} },
       winnerId: null,
+      winnerIds: [], // ничья при «Закончить»: все с верхним стеком (winnerId — первый из них)
+      draw: false,
       finishedReason: null, // last | host | all_out
       specialsAt: [], // номера спинов с «особым» сюжетом — не чаще одного на три спина (§7.4)
     }, rnd);
@@ -677,6 +679,12 @@ class Game {
     }
     s.winnerId = winner ? winner.id : null;
     s.finishedReason = reason;
+    // «Закончить» при равных верхних стеках — ничья: «забирает всё» тут было бы враньём, а тай-брейка у ведущего нет (U-15).
+    // В остальных финалах (последний/все обнулились) победитель по спеке единственный.
+    const ties = [];
+    if (reason === "host" && winner) for (const p of alive) if (p.stack === winner.stack) ties.push(p);
+    s.draw = ties.length > 1;
+    s.winnerIds = s.draw ? ties.map((p) => p.id) : s.winnerId ? [s.winnerId] : [];
     // места: победитель, затем живые по фишкам, затем выбывшие — кто позже вылетел, тот выше
     const order = s.players.filter((p) => !p.spectator).sort((a, b) => {
       if (a === winner) return -1;
@@ -686,11 +694,12 @@ class Game {
       if (!b.out) return 1;
       return (b.outSpin || 0) - (a.outSpin || 0);
     });
-    order.forEach((p, i) => { p.place = i + 1; });
+    // у ничьей общее 1-е место, следующий — по числу стоящих выше (1, 1, 1, 4)
+    order.forEach((p, i) => { p.place = s.draw && s.winnerIds.includes(p.id) ? 1 : i + 1; });
     // в финале после последнего спина доска ещё доигрывает выплаты — фазу меняем, когда они покажутся
     if (s.phase === "payout") s.finishAfterPayout = true;
     else { s.phase = "finished"; s.deadline = null; }
-    return [{ type: "finished", winnerId: s.winnerId, reason }];
+    return [{ type: "finished", winnerId: s.winnerId, winnerIds: s.winnerIds, draw: s.draw, reason }];
   }
 
   // ---------- таймер ----------
@@ -863,6 +872,9 @@ class Game {
       played: s.played.map((x) => (cardsOpen ? x : { by: x.by })),
       result,
       winnerId: s.phase === "finished" ? s.winnerId : null,
+      // ничья при «Закончить»: все, у кого верхний стек; winnerId — первый из них (совместимость и ключи кэша)
+      winnerIds: s.phase === "finished" ? s.winnerIds || (s.winnerId ? [s.winnerId] : []) : [],
+      draw: s.phase === "finished" ? !!s.draw : false,
       finishedReason: s.phase === "finished" ? s.finishedReason : null,
       stats: s.phase === "finished" ? s.stats : null,
       casino: s.casino,

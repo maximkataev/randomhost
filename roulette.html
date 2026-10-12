@@ -670,6 +670,7 @@ window.I18N_DICT = {
     fin_win: `Победа!`,
     fin_place: `{n}-е место`,
     fin_winner: `Победитель — {name}`,
+    fin_draw: `Ничья: {names}`, fin_draw_win: `Ничья за 1-е место!`,
     fin_wait: `Ждём, запустит ли ведущий ещё партию`,
     cards_title: `Твои карты`,
     cards_hint: `Одна карта за спин. Кладётся рубашкой вверх — все узнают, что это, только когда ставки закроются.`,
@@ -801,6 +802,7 @@ window.I18N_DICT = {
     fin_win: `You won!`,
     fin_place: `You finished #{n}`,
     fin_winner: `Winner — {name}`,
+    fin_draw: `Draw: {names}`, fin_draw_win: `A draw for 1st place!`,
     fin_wait: `Waiting to see if the host starts another game`,
     cards_title: `Your cards`,
     cards_hint: `One card per spin. It goes face down — everyone finds out what it is when betting closes.`,
@@ -932,6 +934,7 @@ window.I18N_DICT = {
     fin_win: `Κέρδισες!`,
     fin_place: `{n}η θέση`,
     fin_winner: `Νικητής — {name}`,
+    fin_draw: `Ισοπαλία: {names}`, fin_draw_win: `Ισοπαλία για την 1η θέση!`, // EL:unverified
     fin_wait: `Περιμένουμε αν ο οικοδεσπότης ξεκινήσει νέο παιχνίδι`,
     cards_title: `Οι κάρτες σου`,
     cards_hint: `Μία κάρτα ανά γύρισμα. Μπαίνει ανάποδα — όλοι μαθαίνουν τι είναι όταν κλείσουν τα πονταρίσματα.`,
@@ -2326,14 +2329,17 @@ function render() {
   }
   if (state.phase === "briefing") { stopSuspense(); renderBriefing(p); return; }
   if (state.phase === "finished") {
-    const key = "final:" + state.spin + ":" + state.winnerId + ":" + ((window.I18N && I18N.lang) || "");
+    // «Закончить» при равных стеках — ничья: победителей несколько (winnerIds), winnerId — первый из них
+    const wIds = state.winnerIds && state.winnerIds.length ? state.winnerIds : [state.winnerId];
+    const draw = !!state.draw;
+    const key = "final:" + state.spin + ":" + state.winnerId + ":" + (draw ? wIds.join(",") : "") + ":" + ((window.I18N && I18N.lang) || "");
     if (screen === "final" && app.dataset.key === key) return;
     stopSuspense();
     screen = "final";
     screenMode(null);
     app.dataset.key = key;
     const w = player(state.winnerId);
-    const won = state.winnerId === me;
+    const won = wIds.includes(me);
     const place = p.place || "–";
     const medal = won ? "cup" : place === 2 ? "silver" : place === 3 ? "bronze" : "plain";
     let rain = "";
@@ -2343,8 +2349,8 @@ function render() {
     }
     app.innerHTML = `<div class="final">${rain ? `<div class="rain">${rain}</div>` : ""}
       <div class="medal ${medal}">${won ? "🏆" : place}</div>
-      <h2>${won ? T("fin_win") : escapeHtml(tpl("fin_place", { n: place }))}</h2>
-      ${won ? `<p class="winner">${chipHtml(p.color, initials(p.name))}<b>${rlNum(p.stack)}</b></p>` : w ? `<p class="winner">${chipHtml(w.color, initials(w.name))}<span>${escapeHtml(tpl("fin_winner", { name: w.name }))}</span></p>` : ""}
+      <h2>${won ? T(draw ? "fin_draw_win" : "fin_win") : escapeHtml(tpl("fin_place", { n: place }))}</h2>
+      ${won ? `<p class="winner">${chipHtml(p.color, initials(p.name))}<b>${rlNum(p.stack)}</b></p>` : draw ? `<p class="winner"><span>${escapeHtml(tpl("fin_draw", { names: wIds.map((id) => (player(id) || {}).name || "?").join(", ") }))}</span></p>` : w ? `<p class="winner">${chipHtml(w.color, initials(w.name))}<span>${escapeHtml(tpl("fin_winner", { name: w.name }))}</span></p>` : ""}
       <p class="quip">${T("fin_quip")}</p>
       <div class="top3">${state.players.filter((x) => !x.left && x.place && x.place <= 3).sort((x, y) => x.place - y.place).map((x) => `<div class="${x.id === me ? "me" : ""}"><span class="pl">${x.place}</span>${chipHtml(x.color, initials(x.name))}<b>${escapeHtml(x.name)}</b><span class="st">${rlNum(x.stack)}</span></div>`).join("")}</div>
       <p class="fwait" style="color:var(--muted);margin-top:8px">${T("fin_wait")}</p></div>`;

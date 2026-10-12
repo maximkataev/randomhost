@@ -420,7 +420,8 @@ test("опоздавший — зритель: без ставок и мест, 
   assert.ok(g.chat("L", "привет", 0).ok);
   g.finishNow(10);
   assert.strictEqual(l.place, null);
-  assert.deepStrictEqual(g.s.players.filter((p) => !p.spectator).map((p) => p.place).sort(), [1, 2]);
+  // A и B с равными стеками на «Закончить» — ничья (roulette-003): общее первое место; зритель в местах не участвует
+  assert.deepStrictEqual(g.s.players.filter((p) => !p.spectator).map((p) => p.place).sort(), [1, 1]);
   g.reset();
   assert.ok(!g.player("L").spectator && !g.player("L").out && g.player("L").stack === 1000);
   const e = Game.create({});
@@ -458,6 +459,41 @@ test("ведущий заканчивает посреди вращения: с�
   assert.strictEqual(g.player("A").stack, 1000, "ставка несыгранного спина не списана");
   assert.deepStrictEqual(g.s.players.map((p) => p.place), [2, 1, 3]);
   assert.strictEqual(g.snapshot(0, "A").result, null);
+});
+
+test("«Закончить» при равных верхних стеках — ничья: winnerIds, места 1/1/1/4; при неравных — как раньше (roulette-003)", () => {
+  const g = game(["A", "B", "C", "D"]);
+  g.player("D").out = true;
+  g.player("D").outSpin = 1;
+  g.finishNow(10);
+  const s = g.snapshot(0, "A");
+  assert.strictEqual(g.s.finishedReason, "host");
+  assert.strictEqual(s.draw, true);
+  assert.deepStrictEqual(s.winnerIds, ["A", "B", "C"]);
+  assert.strictEqual(s.winnerId, "A", "winnerId остаётся первым из ничьих");
+  assert.deepStrictEqual(g.s.players.map((p) => p.place), [1, 1, 1, 4]);
+
+  // двое делят первое, третий — третий
+  const g2 = game(["A", "B", "C"]);
+  g2.player("A").stack = 1500;
+  g2.player("B").stack = 1500;
+  g2.finishNow(10);
+  assert.deepStrictEqual(g2.snapshot(0, "C").winnerIds, ["A", "B"]);
+  assert.deepStrictEqual(g2.s.players.map((p) => p.place), [1, 1, 3]);
+
+  // единственный лидер — не ничья
+  const g3 = game(["A", "B", "C"]);
+  g3.player("B").stack = 1500;
+  g3.finishNow(10);
+  const s3 = g3.snapshot(0, "A");
+  assert.strictEqual(s3.draw, false);
+  assert.deepStrictEqual(s3.winnerIds, ["B"]);
+  assert.deepStrictEqual(g3.s.players.map((p) => p.place), [2, 1, 3]);
+
+  // до итогов поля пусты — чужого результата не видно
+  const g4 = game(["A", "B"]);
+  assert.deepStrictEqual(g4.snapshot(0, "A").winnerIds, []);
+  assert.strictEqual(g4.snapshot(0, "A").draw, false);
 });
 
 test("новая партия: те же игроки, стеки и карты с нуля", () => {
