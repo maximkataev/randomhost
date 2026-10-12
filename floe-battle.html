@@ -655,6 +655,16 @@ window.I18N_DICT = {
   addEventListener("keyup", (e) => down.delete(e.code));
   addEventListener("blur", () => down.clear());
   const touch = { id: null, ox: 0, oy: 0, x: 0, y: 0 };
+  // вкладка ушла в фон / страница закрывается: rAF встаёт, keyup/touchend могут не прийти — ввод сбрасываем сами и сразу
+  // говорим серверу «0,0» (иначе пингвин бежал бы к краю до «мёртвой руки» сервера)
+  function releaseInput() {
+    down.clear(); touch.id = null; touch.x = touch.y = 0; input.dash = false;
+    input.ix = input.iy = 0;
+    $("stick").classList.remove("on");
+    if (net.me) { send({ type: "i", mx: 0, my: 0, d: 0, s: ++input.seq }); input.sentX = 0; input.sentY = 0; input.sentAt = performance.now(); }
+  }
+  document.addEventListener("visibilitychange", () => { if (document.hidden) releaseInput(); });
+  addEventListener("pagehide", releaseInput);
   const STICK_R = 50;
   $("arena").addEventListener("touchstart", (e) => {
     if (!net.me) return;

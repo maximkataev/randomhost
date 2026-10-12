@@ -294,6 +294,37 @@ function rawWs(code) {
       } finally { s2.kill("SIGTERM"); }
     });
 
+    await test("«мёртвая рука»: ввод замолчал дольше INPUT_STALE_MS (env, прод) — пингвин останавливается, а не бежит к краю", async () => {
+      // raw-клиент шлёт один `i {mx:1}` и молчит (замороженная вкладка); сервер в production с разными INPUT_STALE_MS
+      async function run(stale, off) {
+        const port2 = PORT + off;
+        const base2 = `http://localhost:${port2}`;
+        const env2 = Object.assign({}, process.env, { PORT: String(port2), NODE_ENV: "production", DUMP_FILE: path.join(require("os").tmpdir(), `floe-test-${port2}.json`), INPUT_STALE_MS: String(stale) });
+        const s2 = spawn(process.execPath, [path.join(__dirname, "server.js")], { env: env2, stdio: ["ignore", "pipe", "pipe"] });
+        try {
+          for (let i = 0; i < 50; i++) { try { if ((await fetch(base2 + "/floe/api/health")).ok) break; } catch {} await wait(100); }
+          const r = await NetBot.createRoom(base2);
+          const ws = await new Promise((res, rej) => { const w = new WebSocket(`ws://localhost:${port2}/floe/ws?r=${r.code}`); w.msgs = []; w.on("message", (m) => w.msgs.push(JSON.parse(m))); w.on("open", () => res(w)); w.on("error", rej); });
+          ws.send(JSON.stringify({ type: "join", name: "Заморожен", hostToken: r.hostToken }));
+          const other = await NetBot.connect({ base: base2, code: r.code, name: "Второй", think: false });
+          await wait(300);
+          const me = ws.msgs.find((m) => m.type === "joined").playerId;
+          ws.send(JSON.stringify({ type: "start" }));
+          for (let i = 0; i < 100 && !ws.msgs.some((m) => m.type === "s" && m.ph === "fight"); i++) await wait(50);
+          ws.send(JSON.stringify({ type: "i", mx: 1, my: 0, d: 0, s: 1 }));
+          await wait(3500);
+          const row = ws.msgs.filter((m) => m.type === "s").pop().p.find((p) => p[0] === me);
+          ws.close(); other.close();
+          return { st: row[6], speed: Math.hypot(row[3], row[4]) };
+        } finally { s2.kill("SIGTERM"); }
+      }
+      const stopped = await run(300, 301);
+      assert.strictEqual(stopped.st, "ice", "остался на льду: " + stopped.st);
+      assert(stopped.speed < 5, "скорость погашена: " + stopped.speed);
+      const runaway = await run(60000, 302);
+      assert.notStrictEqual(runaway.st, "ice", "контроль (потолок 60 с): без «мёртвой руки» пингвин добегает до края");
+    });
+
     await test("рестарт сервера: комната и токены живы, партия отменена", async () => {
       const r4 = await NetBot.createRoom(BASE);
       const a = await NetBot.connect({ base: BASE, code: r4.code, name: "Ася", hostToken: r4.hostToken, think: false });

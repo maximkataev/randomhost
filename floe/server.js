@@ -286,6 +286,13 @@ function onOver(room) {
 // ведущий комнаты и призраки лобби
 function maintain(room, t) {
   const g = room.game;
+  // «мёртвая рука»: клиент шлёт пульс ввода каждые 0,5 с; нет ничего дольше INPUT_STALE_MS — вкладка заморожена или сеть встала
+  // молча, а последний ввод держал бы пингвина бегущим к краю (floe-008). Ввод в ноль; рывок не трогаем (он разовый)
+  for (const p of g.players) {
+    if (!p.online || (!p.ix && !p.iy)) continue;
+    const m = room.meta.get(p.id);
+    if (m && t - (m.inputAt || 0) > INPUT_STALE_MS) g.setInput(p.id, 0, 0, false);
+  }
   const host = room.hostId && g.byId.get(room.hostId);
   const hostMeta = host && room.meta.get(host.id);
   if (!host || hostMeta.left || (!host.online && t - (hostMeta.offlineAt || t) > HOST_HANDOFF_MS)) {
@@ -458,6 +465,7 @@ function handle(room, client, msg) {
       if (!me) return;
       g.setInput(me, msg.mx, msg.my, msg.d === 1);
       const m = room.meta.get(me);
+      if (m) m.inputAt = now();
       if (m && Number.isInteger(msg.s) && msg.s > m.lastSeq && msg.s < 2 ** 31) m.lastSeq = msg.s;
       return;
     }
@@ -498,7 +506,7 @@ function handle(room, client, msg) {
       client.playerId = id;
       client.token = msg.token;
       const m = room.meta.get(id);
-      if (m) { m.offlineAt = 0; m.lastSeq = 0; }
+      if (m) { m.offlineAt = 0; m.lastSeq = 0; m.inputAt = now(); }
       g.setOnline(id, true);
       reply({ type: "joined", playerId: id, token: msg.token });
       sendRoster(room);
