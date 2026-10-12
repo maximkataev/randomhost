@@ -173,6 +173,15 @@ async function typeText(page, text) {
     await clean.close();
     check((await evaluateSafe(board, "state.players.filter(p => p.name.startsWith('Макс')).length")) === 1, "доска: после «Играть здесь» игрок по-прежнему один");
 
+    // T-W2-42: MP.conn в транспорте; событие «offline» устройства — «нет связи» через ~1 с без ожидания ping (E-17); «online» + pong снимает
+    check(await evaluateSafe(remote, "!!(window.MP && typeof MP.conn === 'function') && typeof ws.visible === 'function'"), "пульт: транспорт на MP.conn (visible() есть)");
+    await evaluateSafe(remote, "window.dispatchEvent(new Event('offline')); true");
+    await wait(1400);
+    check((await evaluateSafe(remote, "overlayKey")) === "ov_offline", "пульт: событие offline — оверлей «нет связи» без ожидания ping");
+    await evaluateSafe(remote, "window.dispatchEvent(new Event('online')); true");
+    check(await untilPage(remote, "overlayKey !== 'ov_offline'", 6000), "пульт: online и ответ сервера снимают оверлей");
+
+
     // --- задание партии: клик по плитке должен дойти до сервера и до пульта
     await board.call("Runtime.evaluate", { expression: `[...document.querySelectorAll("#mode .tile")].find(x => x.dataset.v === "worst").click()` });
     await wait(1200);

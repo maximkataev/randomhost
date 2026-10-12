@@ -54,6 +54,14 @@ const PONG_MISSES = Number(process.env.PONG_MISSES || 3);
 // целиком, поэтому терять тут нечего — в отличие от систем, где клиент доигрывает пропущенное.
 const SEND_BUFFER_LIMIT = Number(process.env.SEND_BUFFER_LIMIT || 1048576);
 const MSG_RATE = Number(process.env.MSG_RATE || 40); // сообщений в секунду на один сокет
+// Быстрый пинг только для комнат «в игре» (T-W2-42, auction-031): общий цикл SWEEP — до 25 с × 3 промаха, тихий обрыв
+// виден через 25–100 с. Свой цикл: PING_MS (8 с), GAME_PONG_MISSES промахов подряд И не меньше GAME_DEAD_MS тишины
+// (≥ 20 с: ложный офлайн по тишине стоил бы игроку лота). Лобби и итоги этот цикл не трогает; SWEEP/TTL — как раньше.
+const PING_MS = Math.max(1000, Number(process.env.PING_MS || 8000));
+const GAME_PONG_MISSES = Math.max(1, Number(process.env.GAME_PONG_MISSES || 2));
+const GAME_DEAD_MS = Math.max(20000, Number(process.env.GAME_DEAD_MS || 20000));
+// MP_OFF=1 — аварийный выключатель клиентского каркаса mp-common.js: hello.mp === false, страницы возвращаются к прежнему коду
+const MP_OFF = process.env.MP_OFF === "1";
 // Соединения без игрока и без доски. Честный клиент шлёт join/host сразу после открытия, так что
 // «анонимов» в комнате единицы; сотня анонимных poll-сессий забивала лимит комнаты, и живые игроки
 // получали 503. Свой маленький потолок и короткий срок жизни (poll-аноним без join дольше
@@ -369,7 +377,9 @@ function stateData(packed, c) {
 function sendHello(room, c) {
   const snap = snapshotWithVoting(room);
   if (c.delta) c.sent = packState(snap).parts;
-  send(c.ws, { type: "hello", code: room.code, state: snap, kinds: Object.keys(KINDS) });
+  const hello = { type: "hello", code: room.code, state: snap, kinds: Object.keys(KINDS), limits: { name: 24 } };
+  if (MP_OFF) hello.mp = false;
+  send(c.ws, hello);
 }
 
 function broadcast(room, msg) {
@@ -724,12 +734,14 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 function onConnection(room, ws, opts = {}) {
-  const client = { ws, playerId: null, host: false, misses: 0, ip: opts.ip || "", delta: !!opts.delta };
+  const client = { ws, playerId: null, host: false, misses: 0, gameMisses: 0, alive: now(), ip: opts.ip || "", delta: !!opts.delta };
   room.sockets.add(client);
-  ws.on("pong", () => (client.misses = 0));
+  ws.on("pong", () => { client.misses = 0; client.gameMisses = 0; client.alive = now(); });
   sendHello(room, client);
 
   ws.on("message", (raw) => {
+    client.alive = now(); // любое сообщение — признак жизни (клиент шлёт свой ping раз в 5 с)
+    client.gameMisses = 0;
     if (!rateOk(client)) return; // флуд по одному сокету не тратит CPU всей комнаты
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
@@ -1059,6 +1071,25 @@ setInterval(() => {
   statBlips = statBack = statDrops = 0;
   if (rssMb > 180) console.warn(`[auction] ВНИМАНИЕ: RSS ${rssMb} МБ при лимите контейнера 256 МБ, комнат ${rooms.size}`);
 }, SWEEP);
+
+// Быстрый пинг комнат «в игре» (T-W2-42). SWEEP (TTL комнат, RSS-лог, медленный пинг) не трогаем.
+setInterval(() => {
+  const t = now();
+  for (const room of rooms.values()) {
+    const ph = room.game.s.phase;
+    if (ph === "lobby" || ph === "finished" || !room.sockets.size) continue;
+    for (const c of room.sockets) {
+      if (c.poll || !c.ws || c.ws.readyState !== 1) continue;
+      if (c.gameMisses >= GAME_PONG_MISSES && t - (c.alive || t) >= GAME_DEAD_MS) {
+        console.log(`[auction] ${room.code}: сокет (${room.game.player(c.playerId)?.name || "без игрока"}) молчит ${Math.round((t - c.alive) / 1000)} с — закрываем`);
+        c.ws.terminate();
+        continue;
+      }
+      c.gameMisses = (c.gameMisses || 0) + 1;
+      try { c.ws.ping(); } catch {}
+    }
+  }
+}, PING_MS).unref();
 
 // Poll-сессии проверяем чаще общего обхода: ушедший с long-polling игрок должен выпадать так же
 // быстро, как с WebSocket (закрытие сокета видно сразу), а не через минуту.

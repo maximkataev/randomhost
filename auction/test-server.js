@@ -600,6 +600,7 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
   await graceSuite();
   await ghostSuite();
   await seatsSuite();
+  await gamePingSuite();
   await pingTtlSuite();
   await shutdownSuite();
 
@@ -1156,6 +1157,61 @@ async function seatsSuite() {
     await until(() => frozen.msgs.some((x) => x.type === "replaced"), 2000);
     check(frozen.msgs.some((x) => x.type === "replaced"), "«зависший» получает replaced");
     for (const c of [h, m3, taker, frozen, b2, m2]) { try { c.ws.close(); } catch {} }
+  } finally {
+    child.kill("SIGKILL");
+  }
+}
+
+// ---------- T-W2-42: быстрый серверный ping комнат «в игре» (PING_MS), лобби не трогаем, MP_OFF ----------
+// Свой инстанс: PING_MS=1 с, GAME_PONG_MISSES=2; тишина ≥ GAME_DEAD_MS (минимум 20 с) — только тогда сокет закрывается.
+async function gamePingSuite() {
+  const { spawn } = require("child_process");
+  const path = require("path");
+  const os = require("os");
+  const PORT = 3800 + Math.floor(Math.random() * 90);
+  const B = `http://127.0.0.1:${PORT}`;
+  const child = spawn(process.execPath, [path.join(__dirname, "server.js")], {
+    env: { ...process.env, PORT: String(PORT), NODE_ENV: "production", PING_MS: "1000", GAME_PONG_MISSES: "2", GAME_DEAD_MS: "20000",
+      PONG_MISSES: "50", ROOM_TTL_MS: "600000", MP_OFF: "1", DUMP_FILE: path.join(os.tmpdir(), `gping-${PORT}.json`) },
+    stdio: "ignore",
+  });
+  const sock = (code, first, opts) => new Promise((res) => {
+    const ws = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + code, opts);
+    const c = { ws, msgs: [], closed: false, send: (m) => ws.send(JSON.stringify(m)) };
+    ws.on("message", (raw) => { const m = JSON.parse(raw); c.msgs.push(m); if (m.state) c.state = m.state; if (m.type === "joined") { c.me = m.playerId; c.token = m.token; } });
+    ws.on("close", () => (c.closed = true));
+    ws.on("error", () => {});
+    ws.on("open", () => { ws.send(JSON.stringify(first)); setTimeout(() => res(c), 300); });
+  });
+  const mkRoom = async () => (await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings: { intro: 0, judge: "vote" } }) })).json();
+  try {
+    let up = false;
+    for (let i = 0; i < 60 && !up; i++) { try { up = (await fetch(B + "/auction/api/health")).ok; } catch { await wait(100); } }
+    if (!up) return check(false, "сервер ping поднялся");
+    // комната в игре: молчащий клиент (не отвечает на ping и ничего не шлёт) закрывается, живой — остаётся
+    const r1 = await mkRoom();
+    const h1 = await sock(r1.code, { type: "host", token: r1.hostToken });
+    check(h1.msgs.some((m) => m.type === "hello" && m.mp === false && m.limits && m.limits.name === 24), "hello: MP_OFF=1 → mp:false, limits.name 24");
+    const live = await sock(r1.code, { type: "join", name: "Живой" });
+    const frozen = await sock(r1.code, { type: "join", name: "Немой" }, { autoPong: false });
+    await until(() => h1.state?.players.length === 2);
+    h1.send({ type: "start" });
+    await until(() => h1.state.phase === "lot");
+    // живой шлёт app-ping раз в 4 с (как MP.conn), немой молчит
+    const beat = setInterval(() => { try { live.send({ type: "ping", c: Date.now() }); } catch {} }, 4000);
+    const t0 = Date.now();
+    const cut = await until(() => frozen.closed, 40000);
+    clearInterval(beat);
+    const dt = Date.now() - t0;
+    check(cut && dt >= 15000, `ping в игре: молчащий сокет закрыт сервером (за ${Math.round(dt / 1000)} с, не раньше ~20 с тишины)`);
+    check(!live.closed && live.ws.readyState === 1, "ping в игре: живой сокет остаётся");
+    // лобби: тишина не карается этим циклом
+    const r2 = await mkRoom();
+    const h2 = await sock(r2.code, { type: "host", token: r2.hostToken });
+    const quiet = await sock(r2.code, { type: "join", name: "Тихий" }, { autoPong: false });
+    await wait(3500);
+    check(!quiet.closed && quiet.ws.readyState === 1, "ping: в лобби быстрый цикл сокет не трогает");
+    for (const c of [h1, live, h2, quiet]) { try { c.ws.close(); } catch {} }
   } finally {
     child.kill("SIGKILL");
   }

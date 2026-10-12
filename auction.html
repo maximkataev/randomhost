@@ -1385,7 +1385,16 @@ function rejoinNow() {
   join(lastName);
 }
 addEventListener("online", rejoinNow);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) rejoinNow(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (ws && ws.visible) ws.visible(); rejoinNow(); } });
+// Событие «offline» от устройства (E-17): оверлей «нет связи» через 0,8 с, не дожидаясь ping; параллельно — проверка сокета.
+// «online» снимает флаг: оверлей уйдёт, как только придёт любой ответ сервера (onAlive/onMessage).
+let offlineEvt = false;
+addEventListener("offline", () => {
+  offlineEvt = true;
+  setTimeout(() => { if (offlineEvt && !dead && !halted) setOverlay("ov_offline"); }, 800);
+  if (ws && ws.probe) ws.probe(1500);
+});
+addEventListener("online", () => { offlineEvt = false; });
 // bfcache: при уходе «назад» страница замораживается целиком, и браузер рвёт сокет — Chrome делает
 // это принудительно при попадании в bfcache. При восстановлении оттуда visibilitychange срабатывает
 // не всегда, надёжный хук — pageshow с persisted. А на pagehide закрываемся сами: уходя, честно
@@ -1429,8 +1438,12 @@ function join(name) {
       const ht = hostToken();
       if (ht) sendMsg({ type: "host", token: ht, remote: true });
     },
+    // тишина дольше 10 с (MP.conn): «нет связи» без ожидания закрытия сокета; любой ответ сервера снимает плашку
+    onQuiet: (q) => { if (q) { if (!overlayKey && !dead && !halted) setOverlay("ov_offline"); } else if (overlayKey === "ov_offline" && !offlineEvt) setOverlay(null); },
+    onAlive: () => { if (overlayKey === "ov_offline" && !offlineEvt) setOverlay(null); },
     onMessage: (msg) => {
       settle();
+      if (overlayKey === "ov_offline" && !offlineEvt && msg.type !== "error") setOverlay(null);
       if (msg.type === "joined") {
         me = msg.playerId; token = msg.token; try { localStorage.setItem("auction-token-" + CODE, token); } catch {}
         // плашка: вернули место по имени без токена (resumed) или имя было занято (renamed, E-06); по токену — молча
