@@ -87,6 +87,27 @@ def run(pw, code, token):
     board.wait_for_function(f"wvBoard.state.players.length === {N}")
     check(True, f"{N} телефонов вошли в комнату")
 
+    # T-W1-06: «Это ты?» — первый телефон закрыт, тот же человек заходит из чистого контекста (без токена) под тем же именем
+    old_id = phones[0].evaluate("wvPhone.me")
+    phones[0].context.close()
+    board.wait_for_function(f"wvBoard.state.players.some(p => p.id === '{old_id}' && !p.online)", timeout=15000)
+    time.sleep(2.5)  # CLAIM_GRACE_MS: сокет места закрыт достаточно давно
+    ctx, p0 = mk_page(browser, WIDTHS[0], 460, True, lang_script, errs, "phone0b")
+    p0.goto(f"{BASE}/crowd.html?r={code}")
+    p0.wait_for_selector("#name")
+    p0.fill("#name", "Игрок1")
+    p0.evaluate("document.getElementById('enterform').requestSubmit()")
+    p0.wait_for_selector("#claimyes", timeout=10000)
+    claim_txt = p0.inner_text(".note")
+    check("Игрок1" in claim_txt, "«Это ты?» показывает имя места")
+    ov = p0.evaluate("({sw: document.documentElement.scrollWidth, iw: innerWidth, sh: document.documentElement.scrollHeight, ih: innerHeight})")
+    check(ov["sw"] <= ov["iw"] + 1 and ov["sh"] <= ov["ih"] + 1, "экран «Это ты?» без прокрутки на 390×460")
+    p0.click("#claimyes")
+    p0.wait_for_function("window.wvPhone && wvPhone.me", timeout=10000)
+    check(p0.evaluate("wvPhone.me") == old_id, "claim вернул то же место (тот же playerId)")
+    phones[0] = p0
+    board.wait_for_function(f"wvBoard.state.players.length === {N}")
+
     board.evaluate("wvBoard.send({type:'settings',settings:{short:true,opinion:true}})")
     board.evaluate("wvBoard.send({type:'start'})")
     deadline = time.time() + 420

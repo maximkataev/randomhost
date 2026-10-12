@@ -155,6 +155,11 @@
   input.field::placeholder { color: rgba(244, 241, 232, .32); font-weight: 600; }
   input.field:focus { background: var(--panel2); border-bottom-color: var(--a); }
   input.field.code { text-transform: uppercase; letter-spacing: .1em; }
+  .fld.cnt-on { position: relative; }
+  .fld.cnt-on input.field { padding-right: 58px; }
+  .fld .cnt { position: absolute; right: 12px; bottom: 15px; font: 800 12px/1 var(--body); letter-spacing: .06em; color: var(--muted); pointer-events: none; }
+  .fld .cnt[data-state="full"] { color: var(--bad); }
+  .claimbtns { display: grid; gap: 10px; align-self: stretch; margin-top: 6px; }
   .signcode { align-self: stretch; font: 900 clamp(28px, 11vw, 44px)/1 var(--display); letter-spacing: .06em; padding: 12px 14px; background: var(--paper); color: var(--bg); max-width: 100%; white-space: nowrap; }
   .err { min-height: 18px; margin: -6px 0; font-weight: 800; font-size: 14px; color: var(--bad); }
   .or { display: flex; align-items: center; gap: 12px; font: 800 12px/1 var(--body); text-transform: uppercase; letter-spacing: .16em; color: var(--muted); }
@@ -292,6 +297,9 @@ window.I18N_DICT = {
     err_name: `Напиши имя`, err_code: `Напиши код комнаты`,
     err_name_taken: `Это имя уже в игре. Если это ты — вернись с того же телефона, или возьми другое имя`,
     err_room_full: `В комнате уже 12 игроков`, err_token_gone: `Тебя нет в этой партии — войди заново`,
+    err_name_wait: `Идёт вопрос — это имя сейчас занято. Зайдём сразу после голосования`,
+    claim_title: `Это ты?`, claim_text: `Вернуться как {name} ({n})?`, claim_text0: `Вернуться как {name}?`, btn_claim_yes: `Да, это я`, btn_claim_no: `Я другой`,
+    renamed_toast: `Имя занято — теперь ты {name}`,
     err_connect: `Нет связи, подключаемся…`,
     wait_title: `Подключаемся…`,
     watch_title: `Смотри на экран`, watch_sub: `Сейчас откроется, кто как проголосовал`,
@@ -347,6 +355,9 @@ window.I18N_DICT = {
     err_name: `Enter a name`, err_code: `Enter the room code`,
     err_name_taken: `That name is already in the game. If it's you, come back from the same phone, or pick another name`,
     err_room_full: `The room already has 12 players`, err_token_gone: `You're not in this game — join again`,
+    err_name_wait: `A question is on and that name is busy. We'll let you in right after the vote`,
+    claim_title: `Is this you?`, claim_text: `Come back as {name} ({n})?`, claim_text0: `Come back as {name}?`, btn_claim_yes: `Yes, it's me`, btn_claim_no: `I'm someone else`,
+    renamed_toast: `That name is taken — you're now {name}`,
     err_connect: `No connection, reconnecting…`,
     wait_title: `Connecting…`,
     watch_title: `Watch the screen`, watch_sub: `The votes are about to be revealed`,
@@ -402,6 +413,10 @@ window.I18N_DICT = {
     err_name: `Γράψε όνομα`, err_code: `Γράψε τον κωδικό δωματίου`,
     err_name_taken: `Το όνομα υπάρχει ήδη στο παιχνίδι. Αν είσαι εσύ, γύρνα από το ίδιο κινητό ή διάλεξε άλλο όνομα`,
     err_room_full: `Το δωμάτιο έχει ήδη 12 παίκτες`, err_token_gone: `Δεν είσαι σε αυτή την παρτίδα — μπες ξανά`,
+    // EL:unverified
+    err_name_wait: `Τρέχει ερώτηση και το όνομα είναι πιασμένο. Θα μπεις αμέσως μετά την ψηφοφορία`,
+    claim_title: `Είσαι εσύ;`, claim_text: `Να γυρίσεις ως {name} ({n});`, claim_text0: `Να γυρίσεις ως {name};`, btn_claim_yes: `Ναι, εγώ είμαι`, btn_claim_no: `Είμαι άλλος`,
+    renamed_toast: `Το όνομα είναι πιασμένο — τώρα είσαι {name}`,
     err_connect: `Χωρίς σύνδεση, ξανασυνδεόμαστε…`,
     wait_title: `Σύνδεση…`,
     watch_title: `Κοίτα την οθόνη`, watch_sub: `Σε λίγο φαίνονται οι ψήφοι`,
@@ -447,6 +462,7 @@ window.I18N_DICT = {
   },
 };
 </script>
+<script src="mp-common.js"></script>
 <script src="crowd-shared.js"></script>
 <script src="i18n.js"></script>
 <script src="sound-toggle.js" defer></script>
@@ -464,6 +480,26 @@ const tokenKey = () => "crowd_token_" + CODE;
 let conn = null, state = null, me = null, token = null, dead = false;
 let screen = null, screenKey = "";
 let joinErr = null;
+// вход по имени (T-W1-06): MP.joinFlow («Это ты?», тихие повторы), счётчик имени, «ты открыл игру в другой вкладке»
+let flow = null, tab = null;
+let joinName = ""; // имя, с которым входим: из формы либо сохранённое — уходит вместе с токеном
+let claimPrompt = null; // {name, summary, accept, decline}: открытый экран «Это ты?»
+let waitPhase = null; // «имя занято в секретной фазе»: повторим вход, когда фаза сменится
+const NAME_LIMIT = () => (window.MP && MP.limits && MP.limits.name) || 15;
+const mpOn = () => !!(window.MP && !MP.off);
+function buildJoin() {
+  const m = { type: "join" };
+  if (joinName) m.name = joinName;
+  if (token) m.token = token;
+  return m;
+}
+// все входы идут одним путём; без mp-common (или при MP_OFF) — прежнее сообщение без caps
+function doJoin(extra) {
+  if (flow && flow.join(extra)) return;
+  const m = buildJoin();
+  if (extra) for (const k in extra) m[k] = extra[k];
+  conn.send(m);
+}
 let blockUntil = 0; // кнопки «Мнения» молчат 400 мс после смены фазы
 let prevPhase = null;
 let ov = null; // то, что игрок только что нажал: показываем сразу, не дожидаясь снимка
@@ -595,7 +631,7 @@ function renderEnter() {
     : `<label class="fld"><span>${escapeHtml(T("code_ph"))}</span><input class="field code" id="code" maxlength="12" autocapitalize="characters" autocomplete="off" aria-label="${escapeHtml(T("code_ph"))}"></label>`;
   const html = `<form id="enterform" class="enter" autocomplete="off">
     <header class="enter-h"><div class="gname">${escapeHtml(T("game_name"))}</div><h1>${escapeHtml(T("enter_title"))}</h1></header>
-    <label class="fld"><span>${escapeHtml(T("enter_ph"))}</span><input class="field" id="name" maxlength="15" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}"></label>
+    <label class="fld"><span>${escapeHtml(T("enter_ph"))}</span><input class="field" id="name"${mpOn() ? "" : ' maxlength="15"'} value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}"></label>
     ${codeBlock}
     <div class="err" id="err" role="alert">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
     <button class="btn" type="submit">${escapeHtml(T("btn_join"))}</button>
@@ -605,6 +641,14 @@ function renderEnter() {
   screenKey = "";
   show(html, "enter", true);
   const input = document.getElementById("name");
+  if (mpOn() && input) {
+    // «12/15» у поля, когда осталось ≤ 4 знака; срез по символам (эмодзи не рвётся) — вместо молчаливого maxlength
+    const fld = input.closest(".fld"), cnt = document.createElement("em");
+    cnt.className = "cnt";
+    fld.classList.add("cnt-on");
+    fld.appendChild(cnt);
+    MP.nameCounter(input, NAME_LIMIT(), { el: cnt });
+  }
   const createBtn = document.getElementById("create");
   if (createBtn) createBtn.onclick = async () => {
     const err = document.getElementById("err");
@@ -636,7 +680,9 @@ function renderEnter() {
     if (!name) { err.textContent = T("err_name"); return; }
     try { localStorage.setItem("crowd-name", name); } catch (e2) {}
     joinErr = null;
-    conn.send({ type: "join", name });
+    waitPhase = null;
+    joinName = name;
+    doJoin();
     keepAwake();
   };
 }
@@ -645,6 +691,30 @@ function renderCenter(titleKey, textKey, extra, key) {
   setScene("day");
   setFrame(false);
   show(`<div class="note"><h2>${escapeHtml(T(titleKey))}</h2>${textKey ? `<p class="lede">${escapeHtml(T(textKey))}</p>` : ""}${extra || ""}</div>`, key || "c:" + titleKey, true);
+}
+// «Это ты?»: офлайн-место с таким именем можно вернуть одним тапом; «Я другой» — новое место «Имя (2)»
+function renderClaim() {
+  if (!claimPrompt) return;
+  screen = "claim";
+  setScene("day");
+  setFrame(false);
+  const c = claimPrompt;
+  const sc = c.summary && typeof c.summary.score === "number" ? c.summary.score : null;
+  const text = sc == null ? tpl("claim_text0", { name: c.name }) : tpl("claim_text", { name: c.name, n: sc + " " + T("pts") });
+  const html = `<div class="note"><h2>${escapeHtml(T("claim_title"))}</h2><p class="lede">${escapeHtml(text)}</p>
+    <div class="claimbtns"><button class="btn" id="claimyes" type="button">${escapeHtml(T("btn_claim_yes"))}</button>
+    <button class="btn ghost" id="claimno" type="button">${escapeHtml(T("btn_claim_no"))}</button></div></div>`;
+  screenKey = "";
+  show(html, "claim", true);
+  document.getElementById("claimyes").onclick = () => { const p = claimPrompt; claimPrompt = null; screen = null; if (p) p.accept(); };
+  document.getElementById("claimno").onclick = () => { const p = claimPrompt; claimPrompt = null; screen = null; if (p) p.decline(); };
+}
+// «Ты зашёл с другой вкладки»: здесь игра на паузе, «Играть здесь» возвращает место (токен + имя)
+function showReplaced() {
+  me = null;
+  screen = "replaced";
+  renderCenter("replaced_title", "replaced_text", `<button class="btn" id="here" type="button">${escapeHtml(T("btn_back_here"))}</button>`);
+  document.getElementById("here").onclick = () => { if (tab && tab.back()) return; doJoin(); };
 }
 function renderExpired() {
   dead = true;
@@ -978,7 +1048,7 @@ function render() {
   if (dead || !state) return;
   if (!me) {
     if (token) return; // входим по токену — не мигаем экраном входа
-    if (screen === "kicked" || screen === "replaced" || screen === "left") return;
+    if (screen === "kicked" || screen === "replaced" || screen === "left" || screen === "claim") return;
     if (screen === "enter") return;
     return renderEnter();
   }
@@ -1039,6 +1109,7 @@ window.addEventListener("langchange", () => {
   if (screen === "enter") return renderEnter();
   screenKey = "";
   if (screen === "expired") return renderExpired();
+  if (screen === "claim") return renderClaim();
   if (screen === "kicked" || screen === "replaced" || screen === "left") return;
   if (!state) return renderCenter("wait_title");
   render();
@@ -1069,12 +1140,24 @@ function flushQueued() {
   conn.flush(stillWanted, onDrop);
 }
 function onMessage(m) {
+  if (mpOn()) {
+    if (m.type === "hello" && MP.applyHello(m) === false) { flow = tab = null; } // MP_OFF на сервере: старый протокол
+    else if (tab && tab.handle(m)) return;
+    else if (flow && flow.handle(m)) return;
+  }
   switch (m.type) {
     case "hello":
     case "state":
       state = m.state;
+      // сервер сказал «имя занято, пока идёт секретная фаза» — входим сами, как только фаза сменилась
+      if (waitPhase && !me && state.phase !== waitPhase) { waitPhase = null; joinErr = null; doJoin(); }
       if (rateTries && state.me && (want.vote == null || state.me.vote === want.vote) && (want.bank == null || !!state.me.bank === want.bank)) rateTries = 0;
-      if (m.type === "hello" && token && needJoin) { needJoin = false; conn.send({ type: "join", token }); }
+      if (m.type === "hello" && needJoin) {
+        // вошли по токену — и с именем: если токен протух, сервер найдёт место по имени, а не заведёт безымянного
+        if (token) { needJoin = false; joinName = joinName || savedName(); doJoin(); }
+        // обрыв на экране «Это ты?»: повторяем join (без claim) — сервер продлевает ожидание, экран не пропадает
+        else if (flow && flow.state().prompting) { needJoin = false; flow.resume(); }
+      }
       if (state.phase !== prevPhase) {
         prevPhase = state.phase;
         blockUntil = performance.now() + 400;
@@ -1090,6 +1173,13 @@ function onMessage(m) {
       me = m.playerId;
       token = m.token;
       joinErr = null;
+      waitPhase = null;
+      claimPrompt = null;
+      if (m.name) {
+        joinName = m.name;
+        try { localStorage.setItem("crowd-name", m.name); } catch (e) {}
+        if (m.renamed) toast(tpl("renamed_toast", { name: m.name }));
+      }
       try { localStorage.setItem(tokenKey(), token); } catch (e) {}
       keepAwake();
       if (was !== me) { screen = null; screenKey = ""; } // повторный вход после обрыва экран не пересобирает — иначе кнопки пропадают из-под пальца
@@ -1118,6 +1208,9 @@ function onMessage(m) {
       if (["room_full", "token_gone", "bad_name", "name_taken"].includes(m.error)) {
         if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
         joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
+        // секретная фаза: имя освободится со сменой фазы — ждём и входим сами
+        waitPhase = m.error === "name_taken" && m.retry === true && state ? state.phase : null;
+        if (waitPhase) joinErr = "err_name_wait";
         me = null;
         renderEnter();
       }
@@ -1131,10 +1224,7 @@ function onMessage(m) {
       renderCenter("kicked_title");
       break;
     case "replaced":
-      me = null;
-      screen = "replaced";
-      renderCenter("replaced_title", "replaced_text", `<button class="btn" id="here" type="button">${escapeHtml(T("btn_back_here"))}</button>`);
-      document.getElementById("here").onclick = () => { conn.send({ type: "join", token }); };
+      showReplaced();
       break;
   }
 }
@@ -1155,6 +1245,22 @@ function start() {
   requestAnimationFrame(frame);
   // ручка для стенда: состояние и отправка
   window.wvPhone = { send: (msg) => conn.send(msg), get state() { return state; }, get me() { return me; } };
+}
+function savedName() { try { return localStorage.getItem("crowd-name") || ""; } catch (e) { return ""; } }
+if (window.MP) {
+  flow = MP.joinFlow({
+    send: (m) => conn.send(m),
+    buildJoin,
+    onClaimPrompt: (c) => { claimPrompt = c; renderClaim(); },
+    // «подождите» не бесконечно: после повторов — обычное «имя занято»
+    onGiveUp: () => { joinErr = "err_name_taken"; me = null; renderEnter(); },
+  });
+  tab = MP.replacedTab({
+    rejoin: () => doJoin(),
+    onReplaced: () => showReplaced(),
+    // токен отозван (место вернули с другого устройства): обычный вход по имени
+    onTokenGone: () => { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; me = null; joinErr = null; if (savedName()) { joinName = savedName(); doJoin(); } else renderEnter(); },
+  });
 }
 start();
 </script>
