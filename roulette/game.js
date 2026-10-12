@@ -170,6 +170,8 @@ class Game {
       casino: { won: 0, paid: 0 }, // сколько казино забрало и выплатило за партию
       stats: { biggestWin: null, cruelCard: null, biggestPenalty: null, lastBreath: {} },
       winnerId: null,
+      winnerIds: [], // ничья при «Закончить»: все с верхним стеком (winnerId — первый из них)
+      draw: false,
       finishedReason: null, // last | host | all_out
       specialsAt: [], // номера спинов с «особым» сюжетом — не чаще одного на три спина (§7.4)
     }, rnd);
@@ -198,7 +200,9 @@ class Game {
     const have = this.player(id);
     if (have) return { ok: true, player: have };
     const spectator = s.phase !== "lobby";
-    if (s.players.filter((p) => !p.left).length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
+    // Зрители посреди партии мест не занимают (N1): иначе «стол полон» для 13-го наблюдателя; их предел — общий
+    // потолок списка ниже, а на «Ещё партию» в игроки пройдут первые 12 (reset)
+    if (!spectator && s.players.filter((p) => !p.left && !p.spectator).length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
     name = cleanName(name);
     if (!name) return { ok: false, reason: "bad_name" };
     const used = new Set(s.players.map((p) => p.color));
@@ -251,7 +255,12 @@ class Game {
 
   setOnline(id, online, now) {
     const p = this.player(id);
-    if (p) p.online = online;
+    if (p) {
+      // offSince — когда место ушло в офлайн (мс, настенные часы): по нему лобби/итоги отпускают призрака (lib/presence)
+      if (!online) { if (p.online !== false || !Number.isFinite(p.offSince)) p.offSince = Date.now(); }
+      else delete p.offSince;
+      p.online = online;
+    }
     // ушёл последний, кого ждали на знакомстве с картами, — начинаем без него
     return !online && now != null ? this.briefingDone(now) : [];
   }
@@ -615,6 +624,13 @@ class Game {
       if (!x) continue;
       p.stack = Math.max(0, p.stack + x.net + x.share + x.eye);
       p.lastBets = { ...p.bets };
+      // штраф за спин, пока игрока не было на связи: он узнает о нём при возврате (roulette-019)
+      if (x.penalty && p.online === false) {
+        const a = p.away || { spins: 0, lost: 0 };
+        a.spins += 1;
+        a.lost += x.penalty;
+        p.away = a;
+      }
       s.casino.won += x.wager + x.penalty; // всё, что легло на стол и в штраф
       s.casino.paid += x.win + x.eye; // выигрыши вместе с возвратом ставки и «Сглаз»
       // статистика финала
@@ -663,6 +679,12 @@ class Game {
     }
     s.winnerId = winner ? winner.id : null;
     s.finishedReason = reason;
+    // «Закончить» при равных верхних стеках — ничья: «забирает всё» тут было бы враньём, а тай-брейка у ведущего нет (U-15).
+    // В остальных финалах (последний/все обнулились) победитель по спеке единственный.
+    const ties = [];
+    if (reason === "host" && winner) for (const p of alive) if (p.stack === winner.stack) ties.push(p);
+    s.draw = ties.length > 1;
+    s.winnerIds = s.draw ? ties.map((p) => p.id) : s.winnerId ? [s.winnerId] : [];
     // места: победитель, затем живые по фишкам, затем выбывшие — кто позже вылетел, тот выше
     const order = s.players.filter((p) => !p.spectator).sort((a, b) => {
       if (a === winner) return -1;
@@ -672,11 +694,12 @@ class Game {
       if (!b.out) return 1;
       return (b.outSpin || 0) - (a.outSpin || 0);
     });
-    order.forEach((p, i) => { p.place = i + 1; });
+    // у ничьей общее 1-е место, следующий — по числу стоящих выше (1, 1, 1, 4)
+    order.forEach((p, i) => { p.place = s.draw && s.winnerIds.includes(p.id) ? 1 : i + 1; });
     // в финале после последнего спина доска ещё доигрывает выплаты — фазу меняем, когда они покажутся
     if (s.phase === "payout") s.finishAfterPayout = true;
     else { s.phase = "finished"; s.deadline = null; }
-    return [{ type: "finished", winnerId: s.winnerId, reason }];
+    return [{ type: "finished", winnerId: s.winnerId, winnerIds: s.winnerIds, draw: s.draw, reason }];
   }
 
   // ---------- таймер ----------
@@ -745,9 +768,23 @@ class Game {
     const fresh = Game.create({ settings: s.settings, rnd: this.rnd }).s;
     fresh.chat = s.chat;
     fresh.chatSeq = s.chatSeq;
-    fresh.players = players.map((p) => ({ ...p, spectator: false, stack: s.settings.stack, bets: {}, lastBets: {}, ready: false, hand: [], frozen: false, freezeNext: false, out: false, outSpin: null, place: null }));
+    // Мест 12: бывшие игроки идут первыми, зрители — следом; кто не поместился, остаётся зрителем (roulette-002, N1)
+    const ordered = players.filter((p) => !p.spectator).concat(players.filter((p) => p.spectator));
+    fresh.players = ordered.map((p, i) => {
+      const seat = i < MAX_PLAYERS;
+      const q = { ...p, spectator: !seat, stack: seat ? s.settings.stack : 0, bets: {}, lastBets: {}, ready: false, hand: [], frozen: false, freezeNext: false, out: !seat, outSpin: null, place: null };
+      delete q.away;
+      return q;
+    });
     this.s = fresh;
     return [{ type: "new_game" }];
+  }
+
+  // игрок увидел «пропущено спинов» — больше не показываем
+  ackAway(id) {
+    const p = this.player(id);
+    if (p) delete p.away;
+    return [];
   }
 
   // ---------- чат и реакции ----------
@@ -835,11 +872,14 @@ class Game {
       played: s.played.map((x) => (cardsOpen ? x : { by: x.by })),
       result,
       winnerId: s.phase === "finished" ? s.winnerId : null,
+      // ничья при «Закончить»: все, у кого верхний стек; winnerId — первый из них (совместимость и ключи кэша)
+      winnerIds: s.phase === "finished" ? s.winnerIds || (s.winnerId ? [s.winnerId] : []) : [],
+      draw: s.phase === "finished" ? !!s.draw : false,
       finishedReason: s.phase === "finished" ? s.finishedReason : null,
       stats: s.phase === "finished" ? s.stats : null,
       casino: s.casino,
       chat: board ? s.chat.filter((m) => !m.hidden).slice(-12) : [],
-      me: me ? { id: me.id, hand: me.hand, muted: me.muted, lastBets: me.lastBets } : null,
+      me: me ? { id: me.id, hand: me.hand, muted: me.muted, lastBets: me.lastBets, away: me.away || null } : null,
       players: s.players.map((p) => ({
         id: p.id,
         name: p.name,

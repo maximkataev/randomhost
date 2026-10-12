@@ -170,6 +170,23 @@
   .placecard input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(255, 192, 67, .18); }
   .placecard input::placeholder { color: #4d535c; }
   .enter .err { color: var(--warn); min-height: 20px; font-size: 14px; font-weight: 600; }
+  /* «12/16» у поля имени: появляется, когда осталось ≤ 4 знака; внутри поля — размер и положение поля не меняются */
+  .placecard .fld { position: relative; }
+  .placecard .fld input { padding-right: 62px; }
+  .placecard .fld .cnt { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); font: 800 12px/1 var(--cond); letter-spacing: .06em; color: var(--muted); pointer-events: none; }
+  .placecard .fld .cnt:empty { display: none; }
+  .placecard .fld .cnt[data-state="full"] { color: var(--warn); }
+  /* подсказка «Язык комнаты: EN. Переключить?» — полоса под верхней панелью, сама уходит через 12 с */
+  .langhint { position: fixed; left: 50%; top: calc(64px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 52; display: none; align-items: center; gap: 8px; width: calc(100vw - 20px); max-width: 380px; padding: 6px 6px 6px 14px; border-radius: 14px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line-2), 0 12px 30px rgba(0, 0, 0, .5); font: 700 14px/1.2 var(--cond); }
+  .langhint.on { display: flex; }
+  .langhint span { flex: 1 1 auto; min-width: 0; }
+  .langhint button { min-height: 40px; padding: 0 12px; border-radius: 10px; border: 0; background: var(--accent); color: var(--accent-ink); font: 800 14px/1 var(--cond); }
+  .langhint button.no { background: transparent; color: var(--muted); }
+  .codeform { display: grid; gap: 10px; width: 100%; max-width: 320px; }
+  .codeform input { width: 100%; font: 800 24px/1.1 var(--cond); letter-spacing: .04em; text-transform: uppercase; text-align: center; padding: 14px 16px; border: 1px solid var(--line-2); background: var(--surface); color: var(--text); outline: none; border-radius: 16px; }
+  .codeform input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(255, 192, 67, .18); }
+  .claimbtns { display: grid; gap: 10px; align-self: stretch; width: 100%; max-width: 360px; margin-top: 6px; }
+  .claimbtns .link { min-height: 48px; font-size: 16px; }
   .center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 70px 20px 26px; gap: 12px; }
   .center h2 { font: 900 34px/1.05 var(--cond); letter-spacing: -.04em; margin: 0; }
   .center p { color: #c5cad2; margin: 0; max-width: 360px; }
@@ -603,6 +620,7 @@
 <div id="app"></div>
 <div class="sheet-bg" id="sheetbg"></div>
 <div class="sheet" id="sheet"></div>
+<div class="langhint" id="langhint" role="status"></div>
 <div class="toast" id="toast" aria-live="polite"></div>
 
 <script>
@@ -618,6 +636,8 @@ window.I18N_DICT = {
     cta_sub: `Открывай на ноутбуке или ТВ — там будет колесо`,
     have_code: `У меня есть код`,
     prompt_code: `Код комнаты`,
+    noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код: слово и две цифры`, btn_go: `Перейти`,
+    lang_hint: `Язык комнаты: {lang}. Переключить?`, lang_hint_yes: `Переключить`, lang_hint_no: `Нет`,
     rule1: `<b>Полный европейский стол</b>: числа, сплиты, каре, дюжины, цвета — как за настоящим столом.`,
     rule2: `<b>Ставки открыты</b>: все видят, куда поставили соседи, и могут поставить так же.`,
     rule3: `<b>Карты-пакости</b>: удвоить соседу риск, заморозить, забрать долю выигрыша.`,
@@ -629,6 +649,12 @@ window.I18N_DICT = {
     err_game_started: `Партия уже идёт — дождись следующей или войди со своего телефона`,
     err_room_full: `За столом нет мест (максимум 12)`,
     err_token_gone: `Тебя больше нет за этим столом — войди заново`,
+    err_name_taken: `Это имя сейчас занято — выбери другое`,
+    seat_wait: `Твоё место ещё закрепляется — секунду…`,
+    claim_title: `Это ты?`, claim_text: `Вернуться как {name}? Фишек: {n}`, claim_text0: `Вернуться как {name}?`, btn_claim_yes: `Да, это я`, btn_claim_no: `Я другой`,
+    renamed_toast: `Это имя занято. Теперь ты: {name}`,
+    away_toast: `Без связи: пропущено спинов {n}, штраф −{lost}`,
+    spec_text_renamed: `Имя занято. Теперь ты: {name}. Партия уже идёт — сядешь за стол в следующей. А пока смотри, пиши в чат и реагируй.`,
     wait_title: `Ты за столом`,
     wait_text: `Ждём, пока ведущий начнёт партию на общем экране.`,
     wait_players: `За столом`,
@@ -656,6 +682,7 @@ window.I18N_DICT = {
     fin_win: `Победа!`,
     fin_place: `{n}-е место`,
     fin_winner: `Победитель — {name}`,
+    fin_draw: `Ничья: {names}`, fin_draw_win: `Ничья за 1-е место!`,
     fin_wait: `Ждём, запустит ли ведущий ещё партию`,
     cards_title: `Твои карты`,
     cards_hint: `Одна карта за спин. Кладётся рубашкой вверх — все узнают, что это, только когда ставки закроются.`,
@@ -700,6 +727,7 @@ window.I18N_DICT = {
     my_card: `Твоя карта {icon} {card} → {name}: {out}`, on_me: `{name} → тебе: {icon} {card} — {out}`, card_ok: `сработала`,
     repeat_cut: `Фишек меньше, чем в прошлый раз — повтор урезан до {n}`,
     conn_queued: `Нет связи — отправим, когда связь вернётся`,
+    conn_resend: `Не дошло — отправляю ещё раз`, conn_dropped: `Не отправлено — нажми ещё раз`,
     cards_out: `Ты вне игры — карты больше не нужны.`,
     spec_title: `Ты зритель`, spec_text: `Партия уже идёт — сядешь за стол в следующей. А пока смотри, пиши в чат и реагируй.`, spec_strip: `👀 Ты зритель — сядешь в следующей партии`,
     kicked_again: `Сесть снова`,
@@ -743,6 +771,8 @@ window.I18N_DICT = {
     cta_sub: `Open it on a laptop or TV — the wheel goes there`,
     have_code: `I have a code`,
     prompt_code: `Room code`,
+    noroom_title: `There is no such room`, noroom_text: `Check the code: a word and two digits`, btn_go: `Go`,
+    lang_hint: `Room language: {lang}. Switch?`, lang_hint_yes: `Switch`, lang_hint_no: `No`,
     rule1: `<b>Full European table</b>: numbers, splits, corners, dozens, colours — just like at a real table.`,
     rule2: `<b>Open bets</b>: everyone sees where the others bet and can copy them.`,
     rule3: `<b>Dirty-trick cards</b>: double a rival's risk, freeze them, take a cut of their win.`,
@@ -754,6 +784,12 @@ window.I18N_DICT = {
     err_game_started: `A game is already running — wait for the next one or rejoin from your own phone`,
     err_room_full: `The table is full (12 max)`,
     err_token_gone: `You're no longer at this table — join again`,
+    err_name_taken: `That name is taken right now — pick another`,
+    seat_wait: `Your seat is still settling — one second…`,
+    claim_title: `Is this you?`, claim_text: `Come back as {name}? Chips: {n}`, claim_text0: `Come back as {name}?`, btn_claim_yes: `Yes, it's me`, btn_claim_no: `I'm someone else`,
+    renamed_toast: `That name is taken. You are now: {name}`,
+    away_toast: `Offline: {n} spins missed, penalty −{lost}`,
+    spec_text_renamed: `That name is taken. You are now: {name}. The game is already on — you'll get a seat next game. Meanwhile watch, chat and react.`,
     wait_title: `You're at the table`,
     wait_text: `Waiting for the host to start the game on the shared screen.`,
     wait_players: `At the table`,
@@ -781,6 +817,7 @@ window.I18N_DICT = {
     fin_win: `You won!`,
     fin_place: `You finished #{n}`,
     fin_winner: `Winner — {name}`,
+    fin_draw: `Draw: {names}`, fin_draw_win: `A draw for 1st place!`,
     fin_wait: `Waiting to see if the host starts another game`,
     cards_title: `Your cards`,
     cards_hint: `One card per spin. It goes face down — everyone finds out what it is when betting closes.`,
@@ -825,6 +862,7 @@ window.I18N_DICT = {
     my_card: `Your card {icon} {card} → {name}: {out}`, on_me: `{name} → you: {icon} {card} — {out}`, card_ok: `worked`,
     repeat_cut: `Fewer chips than last time — repeat cut to {n}`,
     conn_queued: `No connection — we'll send it when it's back`,
+    conn_resend: `Didn't go through — sending again`, conn_dropped: `Not sent — tap again`,
     cards_out: `You're out — no more cards.`,
     spec_title: `You're watching`, spec_text: `The game was already on when you joined. You'll get a seat next game — meanwhile watch, chat and react.`, spec_strip: `👀 Watching — you'll play next game`,
     kicked_again: `Sit down again`,
@@ -868,6 +906,8 @@ window.I18N_DICT = {
     cta_sub: `Άνοιξέ το σε laptop ή τηλεόραση — εκεί θα είναι ο τροχός`,
     have_code: `Έχω κωδικό`,
     prompt_code: `Κωδικός δωματίου`,
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό: μια λέξη και δύο ψηφία`, btn_go: `Πήγαινε`, // EL:unverified
+    lang_hint: `Γλώσσα δωματίου: {lang}. Αλλαγή;`, lang_hint_yes: `Αλλαγή`, lang_hint_no: `Όχι`, // EL:unverified
     rule1: `<b>Πλήρες ευρωπαϊκό τραπέζι</b>: αριθμοί, σπλιτ, καρέ, δωδεκάδες, χρώματα — όπως σε αληθινό τραπέζι.`,
     rule2: `<b>Ανοιχτά πονταρίσματα</b>: όλοι βλέπουν πού πόνταραν οι άλλοι και μπορούν να τους αντιγράψουν.`,
     rule3: `<b>Κάρτες-κόλπα</b>: διπλό ρίσκο στον αντίπαλο, πάγωμα, μερίδιο από τα κέρδη του.`,
@@ -879,6 +919,12 @@ window.I18N_DICT = {
     err_game_started: `Το παιχνίδι έχει ήδη αρχίσει — περίμενε το επόμενο ή μπες από το δικό σου κινητό`,
     err_room_full: `Το τραπέζι είναι γεμάτο (έως 12)`,
     err_token_gone: `Δεν είσαι πια σε αυτό το τραπέζι — μπες ξανά`,
+    err_name_taken: `Το όνομα χρησιμοποιείται αυτή τη στιγμή — διάλεξε άλλο`, // EL:unverified
+    seat_wait: `Η θέση σου κλειδώνει ακόμα — ένα δευτερόλεπτο…`, // EL:unverified
+    claim_title: `Είσαι εσύ;`, claim_text: `Να γυρίσεις ως {name}; Μάρκες: {n}`, claim_text0: `Να γυρίσεις ως {name};`, btn_claim_yes: `Ναι, εγώ είμαι`, btn_claim_no: `Είμαι άλλος`, // EL:unverified
+    renamed_toast: `Το όνομα χρησιμοποιείται. Τώρα είσαι: {name}`, // EL:unverified
+    away_toast: `Χωρίς σύνδεση: {n} γύρισματα χαμένα, ποινή −{lost}`, // EL:unverified
+    spec_text_renamed: `Το όνομα χρησιμοποιείται. Τώρα είσαι: {name}. Το παιχνίδι έχει ήδη ξεκινήσει — θα κάτσεις στο επόμενο. Ως τότε βλέπεις, γράφεις και αντιδράς.`, // EL:unverified
     wait_title: `Είσαι στο τραπέζι`,
     wait_text: `Περιμένουμε τον οικοδεσπότη να ξεκινήσει στην κοινή οθόνη.`,
     wait_players: `Στο τραπέζι`,
@@ -906,6 +952,7 @@ window.I18N_DICT = {
     fin_win: `Κέρδισες!`,
     fin_place: `{n}η θέση`,
     fin_winner: `Νικητής — {name}`,
+    fin_draw: `Ισοπαλία: {names}`, fin_draw_win: `Ισοπαλία για την 1η θέση!`, // EL:unverified
     fin_wait: `Περιμένουμε αν ο οικοδεσπότης ξεκινήσει νέο παιχνίδι`,
     cards_title: `Οι κάρτες σου`,
     cards_hint: `Μία κάρτα ανά γύρισμα. Μπαίνει ανάποδα — όλοι μαθαίνουν τι είναι όταν κλείσουν τα πονταρίσματα.`,
@@ -950,6 +997,7 @@ window.I18N_DICT = {
     my_card: `Η κάρτα σου {icon} {card} → {name}: {out}`, on_me: `{name} → εσένα: {icon} {card} — {out}`, card_ok: `έπιασε`,
     repeat_cut: `Λιγότερες μάρκες από πριν — η επανάληψη κόπηκε στο {n}`,
     conn_queued: `Χωρίς σύνδεση — θα σταλεί όταν επανέλθει`,
+    conn_resend: `Δεν έφτασε — στέλνω ξανά`, conn_dropped: `Δεν στάλθηκε — πάτα ξανά`, // EL:unverified
     cards_out: `Αποκλείστηκες — δεν χρειάζεσαι πια κάρτες.`,
     spec_title: `Είσαι θεατής`, spec_text: `Το παιχνίδι είχε ήδη ξεκινήσει. Θα κάτσεις στο επόμενο — ως τότε βλέπεις, γράφεις και αντιδράς.`, spec_strip: `👀 Θεατής — παίζεις στο επόμενο`,
     kicked_again: `Κάτσε ξανά`,
@@ -984,6 +1032,7 @@ window.I18N_DICT = {
   },
 };
 </script>
+<script src="mp-common.js"></script>
 <script src="roulette-shared.js"></script>
 <script src="i18n.js"></script>
 <script src="sound-toggle.js" defer></script>
@@ -1202,13 +1251,66 @@ function renderLanding() {
       toast(String(err.message || err));
     }
   };
+  // поле кода прямо на экране (раньше prompt(): на телефоне блокирует страницу и не переводится)
   document.getElementById("havecode").onclick = () => {
-    const c = prompt(T("prompt_code"));
-    if (c) location.href = `roulette.html?r=${encodeURIComponent(c.trim().toUpperCase())}`;
+    const sub = document.querySelector(".landing .sub2");
+    sub.innerHTML = codeFormHtml("");
+    bindCodeForm();
+    document.getElementById("codein").focus();
+  };
+}
+
+// ---------- ввод кода комнаты ----------
+function normCode(raw) {
+  if (window.MP && MP.roomGone) return MP.roomGone.normalize(raw);
+  return String(raw || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+}
+function codeFormHtml(value) {
+  return `<form class="codeform" id="codeform" autocomplete="off"><input id="codein" maxlength="24" value="${escapeHtml(value)}" placeholder="${escapeHtml(T("prompt_code"))}" aria-label="${escapeHtml(T("prompt_code"))}" autocapitalize="characters" enterkeyhint="go"><button class="btn" type="submit">${T("btn_go")}</button></form>`;
+}
+function bindCodeForm() {
+  document.getElementById("codeform").onsubmit = (e) => {
+    e.preventDefault();
+    const c = normCode(document.getElementById("codein").value); // уходим с кодом уже после фильтра
+    if (c) location.href = `roulette.html?r=${encodeURIComponent(c)}`;
   };
 }
 
 // ---------- вход ----------
+
+// вход по имени (T-W2-10): MP.joinFlow — «Это ты?» и тихие повторы, пока у места идёт грация; MP.replacedTab — «Играть здесь»
+let flow = null, tab = null;
+let joinName = ""; // имя, с которым входим: из формы либо сохранённое — уходит вместе с токеном
+let claimPrompt = null; // {name, summary, accept, decline}: открытый экран «Это ты?»
+let renamedTo = null; // выданное имя, если своё оказалось занято: объясняем зрителю в игре
+const mpOn = () => !!(window.MP && !MP.off);
+const NAME_LIMIT = () => (window.MP && MP.limits && MP.limits.name) || 16;
+function savedName() { try { return localStorage.getItem("roulette-name") || ""; } catch (e) { return ""; } }
+function buildJoin() {
+  const m = { type: "join" };
+  if (joinName) m.name = joinName;
+  if (token) m.token = token;
+  return m;
+}
+// все входы идут одним путём; без mp-common (или при MP_OFF) — прежнее сообщение без caps
+function doJoin(extra) {
+  if (flow && flow.join(extra)) return;
+  const m = buildJoin();
+  if (extra) for (const k in extra) m[k] = extra[k];
+  conn.send(m);
+}
+
+// «Это ты?»: офлайн-место с таким именем возвращается одним тапом; «Я другой» — новое место «Имя (2)»
+function renderClaim() {
+  if (!claimPrompt) return;
+  screen = "claim";
+  const c = claimPrompt;
+  const st = c.summary && typeof c.summary.stack === "number" ? c.summary.stack : null;
+  const text = st == null ? tpl("claim_text0", { name: c.name }) : tpl("claim_text", { name: c.name, n: rlNum(st) });
+  renderCenter("claim_title", null, `<p>${escapeHtml(text)}</p><div class="claimbtns"><button class="btn" id="claimyes" type="button">${T("btn_claim_yes")}</button><button class="link" id="claimno" type="button">${T("btn_claim_no")}</button></div>`);
+  document.getElementById("claimyes").onclick = () => { const p = claimPrompt; claimPrompt = null; screen = null; if (p) p.accept(); };
+  document.getElementById("claimno").onclick = () => { const p = claimPrompt; claimPrompt = null; screen = null; if (p) p.decline(); };
+}
 
 function renderEnter() {
   screen = "enter";
@@ -1219,19 +1321,22 @@ function renderEnter() {
     <div class="placecard">
       <div class="room">${escapeHtml(CODE)}</div>
       <h2>${T("enter_title")}</h2>
-      <input id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}">
+      <div class="fld"><input id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}"><em class="cnt" id="namecnt"></em></div>
     </div>
     <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
     <button class="btn" type="submit">${T("btn_join")}</button>
   </form>`;
   const input = document.getElementById("name");
+  // «12/16» у поля, когда осталось ≤ 4 знака; срез по символам (эмодзи не рвётся)
+  if (mpOn()) MP.nameCounter(input, NAME_LIMIT(), { el: document.getElementById("namecnt") });
   document.getElementById("enterform").onsubmit = (e) => {
     e.preventDefault();
     const name = input.value.trim();
     if (!name) { document.getElementById("err").textContent = T("err_name"); return; }
     try { localStorage.setItem("roulette-name", name); } catch (e2) {}
     joinErr = null;
-    conn.send({ type: "join", name });
+    joinName = name;
+    doJoin();
   };
 }
 
@@ -1240,6 +1345,15 @@ function renderCenter(titleKey, textKey, extra) {
   app.innerHTML = `<div class="center"><h2>${T(titleKey)}</h2>${textKey ? `<p>${T(textKey)}</p>` : ""}${extra || ""}</div>`;
 }
 
+// Неверный код: hello не приходил ни разу — комнаты с таким кодом нет (или её давно убрали), а не «закрылась» (roulette-046)
+function renderNoRoom() {
+  dead = true;
+  screen = "noroom";
+  renderCenter("noroom_title", "noroom_text", codeFormHtml(CODE) + `<a class="link" href="roulette.html">${T("expired_new")}</a>`);
+  bindCodeForm();
+}
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({ showForm: renderNoRoom, onClosed: () => renderExpired() }) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else renderExpired(); }
 function renderExpired() {
   dead = true;
   screen = "expired";
@@ -1295,21 +1409,92 @@ function addChip(key) {
 }
 let lastAdded = null;
 
-// Ставки и «Готово» без связи не теряем: последнее такое сообщение ждёт переподключения
-// и уходит сразу после повторного входа за стол (иначе игрок молча получал штраф).
-let queued = {};
-function sendQ(m) { conn.send(m); }
+// Действия игрока — ставки, «Готово», карта, чат — без связи не теряем (иначе игрок молча получал штраф, roulette-016, N2, 026).
+//  1) не ушло (сокет закрыт, POST не прошёл): ждёт в очереди MP.sendQueue и уходит после повторного входа за стол;
+//  2) «ушло, а в снимке не появилось» (мёртвый Wi-Fi без FIN: send() не падает): через 1,5 с — «Не дошло — отправляю ещё раз»,
+//     до трёх раз, потом в очередь до возвращения связи. Подтверждение — сам снимок: мои ставки/«Готово»/карта.
+let queued = {}; // запасной вариант без mp-common: последнее сообщение каждого типа
+const QUEUED_TYPES = ["set_bets", "ready", "card", "chat"];
+function qKeep(m) {
+  if (!state) return false;
+  const ph = state.phase;
+  if (m.type === "set_bets" || m.type === "card") return ph === "betting";
+  if (m.type === "ready") return ph === "betting" || ph === "briefing";
+  if (m.type === "chat") return !!(state.settings && state.settings.chat);
+  return false;
+}
+function qDrop(m, reason) {
+  // «ненужное» (фаза сменилась) молча; не успели за потолок возраста — говорим, чтобы нажали ещё раз
+  if (reason === "expired" || reason === "overflow") toast(T("conn_dropped"));
+}
+const outq = window.MP && MP.sendQueue ? MP.sendQueue({
+  send: (m) => conn.send(m),
+  keep: qKeep,
+  onDrop: qDrop,
+  // быстрые действия (ставка, карта, чат) не должны выстрелить через минуту, когда стол уже ушёл вперёд
+  ceilingMs: { set_bets: 25000, ready: 25000, card: 20000, chat: 15000, "*": 20000 },
+  replace: ["set_bets", "ready", "chat"],
+  max: 6,
+  probe: (ms) => { if (conn && conn.api) conn.api.probe(ms); },
+}) : null;
+
+const ackWatch = {}; // type → {m, at, tries}
+let ackTimer = null;
+function sameBets(a, b) {
+  const ka = Object.keys(a || {}), kb = Object.keys(b || {});
+  if (ka.length !== kb.length) return false;
+  return ka.every((k) => (a[k] || 0) === (b[k] || 0));
+}
+function isAcked(k, w, p) {
+  if (k === "set_bets") return sameBets(p.bets, myBets);
+  if (k === "ready") return !!p.ready === (w.m.ready !== false);
+  if (k === "card") return (state.played || []).some((x) => x.by === me);
+  return true;
+}
+function ackTick() {
+  const keys = Object.keys(ackWatch);
+  if (!keys.length) { clearInterval(ackTimer); ackTimer = null; return; }
+  const p = mine();
+  const now = Date.now();
+  for (const k of keys) {
+    const w = ackWatch[k];
+    const live = state && p && (state.phase === "betting" || (k === "ready" && state.phase === "briefing"));
+    if (!live || isAcked(k, w, p)) { delete ackWatch[k]; continue; }
+    if (outq && outq.has(k)) { delete ackWatch[k]; continue; } // уже в очереди на возвращение связи
+    if (now - w.at < 1500) continue;
+    const m = k === "set_bets" ? { type: "set_bets", bets: myBets } : w.m;
+    if (w.tries >= 3) {
+      delete ackWatch[k];
+      if (outq) outq.push(m); // связь «жива», но молчит: пусть уйдёт сразу после повторного входа
+      continue;
+    }
+    w.tries++;
+    w.at = now;
+    toast(T("conn_resend"));
+    conn.send(m);
+  }
+}
+function sendQ(m) {
+  conn.send(m);
+  if (m.type === "set_bets" || m.type === "ready" || m.type === "card") {
+    ackWatch[m.type] = { m, at: Date.now(), tries: 0 };
+    if (!ackTimer) ackTimer = setInterval(ackTick, 500);
+  }
+}
 function onSendFail(m) {
-  if (m.type !== "set_bets" && m.type !== "ready") return;
-  queued[m.type] = m;
+  if (!m || QUEUED_TYPES.indexOf(m.type) === -1) return;
+  delete ackWatch[m.type];
+  if (!(outq && outq.push(m))) queued[m.type] = m; // MP.off: очередь отказалась — запасная карта
   toast(T("conn_queued"));
 }
 function flushQueued() {
+  if (outq && outq.size()) outq.flush(qKeep, qDrop);
   if (!state || state.phase !== "betting") { queued = {}; return; }
   const q = queued;
   queued = {};
   if (q.set_bets) conn.send(q.set_bets);
   if (q.ready) conn.send(q.ready);
+  if (q.card) conn.send(q.card);
 }
 
 function canBet() {
@@ -2059,13 +2244,26 @@ function openTargets(card) {
     const b = el("button", "target");
     b.innerHTML = `${chipHtml(p.color, initials(p.name))}<b>${escapeHtml(p.name)}</b><span class="s">${rlNum(p.stack)}</span>`;
     b.onclick = () => {
-      conn.send({ type: "card", card, target: p.id });
+      sendQ({ type: "card", card, target: p.id });
       closeSheet();
       toast(tpl("card_sent", { icon: RL_CARDS[card].icon, card: T("card_" + card), name: p.name }));
     };
     list.append(b);
   }
   openSheet([h, list]);
+}
+
+// Чат: клиентский троттлинг 3 с (как на сервере) — слишком рано: подсказка, поле не трогаем; шторка закрывается через
+// 400 мс, если сервер не отказал; отказ возвращает текст и оставляет шторку (roulette-026)
+let lastChatAt = 0, chatPending = null, chatCloseT = 0;
+function sendChat(text, input) {
+  if (Date.now() - lastChatAt < 3000) { toast(T("rj_too_fast")); return false; }
+  lastChatAt = Date.now();
+  chatPending = text;
+  conn.send({ type: "chat", text }); // сбой отправки уйдёт в очередь через onSendFail
+  clearTimeout(chatCloseT);
+  chatCloseT = setTimeout(() => { chatPending = null; if (input) input.value = ""; closeSheet(); }, 400);
+  return true;
 }
 
 function openChat() {
@@ -2085,16 +2283,14 @@ function openChat() {
     e.preventDefault();
     const text = input.value.trim();
     if (!text) return;
-    conn.send({ type: "chat", text });
-    input.value = "";
-    closeSheet();
+    sendChat(text, input);
   };
   // готовые фразы — одним тапом, без клавиатуры
   const quick = el("div", "quick");
   for (const q of T("quick").split("|")) {
     const b = el("button", null, q);
     b.type = "button";
-    b.onclick = () => { conn.send({ type: "chat", text: q }); closeSheet(); };
+    b.onclick = () => { sendChat(q, input); };
     quick.append(b);
   }
   openSheet([h, hint, form, quick]);
@@ -2165,7 +2361,7 @@ function renderBriefing(p) {
     </div>`;
     // раздача: карты влетают по одной со щелчком
     app.querySelectorAll(".bcard").forEach((_, i) => setTimeout(() => rlSfx.flip(), 200 + i * 150));
-    document.getElementById("bready").onclick = () => conn.send({ type: "ready", ready: !mine().ready });
+    document.getElementById("bready").onclick = () => sendQ({ type: "ready", ready: !mine().ready });
   }
   const rb = document.getElementById("bready");
   rb.textContent = T(p.ready ? "br_ready_on" : "br_ready");
@@ -2220,12 +2416,14 @@ function render() {
   if (screen === "kicked") return renderKicked();
   const p = mine();
   if (!p) {
+    if (claimPrompt) return; // открыт экран «Это ты?»
     // есть токен — ждём ответа на join, а не показываем форму имени на полсекунды
     if (!token && screen !== "enter") renderEnter();
     return;
   }
   if (state.phase === "lobby") {
     screen = "wait";
+    renamedTo = null;
     screenMode(null);
     const seated = state.players.filter((x) => !x.left);
     // новенькие падают на сукно со щелчком, старые лежат спокойно
@@ -2255,19 +2453,22 @@ function render() {
   watchHand();
   noteFreeze();
   if (state.phase === "briefing" && p.spectator) {
-    if (screen !== "spec") { screen = "spec"; renderCenter("spec_title", "spec_text"); }
+    if (screen !== "spec") { screen = "spec"; renderCenter("spec_title", renamedTo ? null : "spec_text", renamedTo ? `<p>${escapeHtml(tpl("spec_text_renamed", { name: renamedTo }))}</p>` : ""); }
     return;
   }
   if (state.phase === "briefing") { stopSuspense(); renderBriefing(p); return; }
   if (state.phase === "finished") {
-    const key = "final:" + state.spin + ":" + state.winnerId + ":" + ((window.I18N && I18N.lang) || "");
+    // «Закончить» при равных стеках — ничья: победителей несколько (winnerIds), winnerId — первый из них
+    const wIds = state.winnerIds && state.winnerIds.length ? state.winnerIds : [state.winnerId];
+    const draw = !!state.draw;
+    const key = "final:" + state.spin + ":" + state.winnerId + ":" + (draw ? wIds.join(",") : "") + ":" + ((window.I18N && I18N.lang) || "");
     if (screen === "final" && app.dataset.key === key) return;
     stopSuspense();
     screen = "final";
     screenMode(null);
     app.dataset.key = key;
     const w = player(state.winnerId);
-    const won = state.winnerId === me;
+    const won = wIds.includes(me);
     const place = p.place || "–";
     const medal = won ? "cup" : place === 2 ? "silver" : place === 3 ? "bronze" : "plain";
     let rain = "";
@@ -2277,8 +2478,8 @@ function render() {
     }
     app.innerHTML = `<div class="final">${rain ? `<div class="rain">${rain}</div>` : ""}
       <div class="medal ${medal}">${won ? "🏆" : place}</div>
-      <h2>${won ? T("fin_win") : escapeHtml(tpl("fin_place", { n: place }))}</h2>
-      ${won ? `<p class="winner">${chipHtml(p.color, initials(p.name))}<b>${rlNum(p.stack)}</b></p>` : w ? `<p class="winner">${chipHtml(w.color, initials(w.name))}<span>${escapeHtml(tpl("fin_winner", { name: w.name }))}</span></p>` : ""}
+      <h2>${won ? T(draw ? "fin_draw_win" : "fin_win") : escapeHtml(tpl("fin_place", { n: place }))}</h2>
+      ${won ? `<p class="winner">${chipHtml(p.color, initials(p.name))}<b>${rlNum(p.stack)}</b></p>` : draw ? `<p class="winner"><span>${escapeHtml(tpl("fin_draw", { names: wIds.map((id) => (player(id) || {}).name || "?").join(", ") }))}</span></p>` : w ? `<p class="winner">${chipHtml(w.color, initials(w.name))}<span>${escapeHtml(tpl("fin_winner", { name: w.name }))}</span></p>` : ""}
       <p class="quip">${T("fin_quip")}</p>
       <div class="top3">${state.players.filter((x) => !x.left && x.place && x.place <= 3).sort((x, y) => x.place - y.place).map((x) => `<div class="${x.id === me ? "me" : ""}"><span class="pl">${x.place}</span>${chipHtml(x.color, initials(x.name))}<b>${escapeHtml(x.name)}</b><span class="st">${rlNum(x.stack)}</span></div>`).join("")}</div>
       <p class="fwait" style="color:var(--muted);margin-top:8px">${T("fin_wait")}</p></div>`;
@@ -2317,6 +2518,8 @@ window.addEventListener("resize", () => { if (screen === "game") drawChips(); })
 window.addEventListener("langchange", () => {
   if (!CODE) return renderLanding();
   if (screen === "enter") return renderEnter();
+  if (screen === "claim") return renderClaim();
+  if (screen === "noroom") return renderNoRoom();
   if (screen === "kicked") { app.dataset.key = ""; return renderKicked(); }
   if (screen === "game") { buildGame(); }
   screen === "expired" ? renderExpired() : render();
@@ -2324,31 +2527,66 @@ window.addEventListener("langchange", () => {
 
 // ---------- связь ----------
 
+// Пока тебя не было, за пропущенные спины списан штраф: один раз сообщаем и просим сервер больше не показывать (roulette-019)
+let awayShown = "";
+function noteAway() {
+  const a = state && state.me && state.me.away;
+  if (!a || !me) return;
+  const k = a.spins + ":" + a.lost;
+  if (k === awayShown) return;
+  awayShown = k;
+  toast(tpl("away_toast", { n: a.spins, lost: rlNum(a.lost) }));
+  conn.send({ type: "ack_away" });
+}
+
 function onMessage(m) {
+  if (mpOn()) {
+    if (m.type === "hello" && goneFlow) goneFlow.hello();
+    if (m.type === "hello" && MP.applyHello(m) === false) { flow = tab = null; } // MP_OFF на сервере: старый протокол
+    else if (tab && tab.handle(m)) return;
+    else if (flow && flow.handle(m)) return;
+  }
   switch (m.type) {
     case "hello":
     case "state":
       state = m.state;
       if (m.type === "hello") knownHand = null;
-      if (m.type === "hello" && token && !me) conn.send({ type: "join", token });
+      if (m.type === "hello" && token && !me) {
+        // и с именем: если токен протух, сервер найдёт место по имени, а не отдаст «тебя нет за столом»
+        joinName = joinName || savedName();
+        doJoin();
+      } else if (m.type === "hello" && !me && flow && flow.state().prompting) {
+        flow.resume(); // обрыв на экране «Это ты?»: сервер продлевает ожидание, экран не пропадает
+      }
       render();
+      noteAway();
+      if (langFollow && screen !== "game") langFollow.check();
       break;
     case "joined":
       me = m.playerId;
       token = m.token;
+      claimPrompt = null;
+      if (m.name) {
+        joinName = m.name;
+        try { localStorage.setItem("roulette-name", m.name); } catch (e) {}
+        if (m.renamed) { renamedTo = m.name; toast(tpl("renamed_toast", { name: m.name })); }
+      }
       try { localStorage.setItem(tokenKey(), token); } catch (e) {}
       render();
       flushQueued();
       break;
     case "rejected":
       toast(T("rj_" + m.reason) !== "rj_" + m.reason ? T("rj_" + m.reason) : m.reason);
-      if (m.action === "set_bets" || m.action === "bet" || m.action === "ready") queued = {};
+      if (m.action === "set_bets" || m.action === "bet" || m.action === "ready") { queued = {}; if (outq) outq.clear(); }
+      delete ackWatch[m.action];
+      // чат не принят (слишком часто, заглушен): текст остаётся в поле, шторка не закрывается (roulette-026)
+      if (m.action === "chat" && chatPending !== null) { clearTimeout(chatCloseT); chatPending = null; }
       if (m.action === "set_bets" || m.action === "bet") { pendingUntil = 0; const p = mine(); if (p) myBets = Object.assign({}, p.bets); drawChips(); drawHud(); }
       break;
     case "error":
-      if (m.error === "room_expired") return renderExpired();
+      if (m.error === "room_expired") return onRoomGone();
       if (m.error === "too_fast") { toast(T("rj_too_fast")); break; }
-      if (["game_started", "room_full", "token_gone", "bad_name"].includes(m.error)) {
+      if (["game_started", "room_full", "token_gone", "bad_name", "name_taken"].includes(m.error)) {
         if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
         joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
         me = null;
@@ -2367,7 +2605,7 @@ function onMessage(m) {
       me = null;
       screen = "replaced";
       renderCenter("replaced_title", "replaced_text", `<button class="btn" id="here">${T("btn_back_here")}</button>`);
-      document.getElementById("here").onclick = () => { conn.send({ type: "join", token }); };
+      document.getElementById("here").onclick = () => { if (tab && tab.back()) return; doJoin(); };
       break;
     case "event":
       break;
@@ -2381,11 +2619,66 @@ function start() {
   conn = rlConnect({
     code: CODE,
     onMessage,
-    onGone: renderExpired,
+    onGone: onRoomGone,
     // переподключились — снова садимся за стол своим токеном (hello придёт первым)
     onOpen: () => { me = null; },
+    // тишина > 10 с (сокет не закрыт: мёртвый Wi-Fi без FIN) — баннер сразу, не дожидаясь закрытия
+    onQuiet: (q) => { banner.textContent = T("conn_quiet"); banner.classList.toggle("on", q); },
     onState: (st) => { banner.textContent = T("conn_lost"); banner.classList.toggle("on", st === "lost"); },
+    // связь отвечает, а в очереди лежит то, что не ушло: досылаем (без повторного входа за стол сокет не переоткрывался)
+    onHeard: () => { if (outq && outq.size() && me && !outq.isFlushing()) flushQueued(); },
     onSendFail,
+  });
+}
+// Язык комнаты (U-17, класс A): подсказка «Язык комнаты: EN. Переключить?» — один раз на язык, ручной выбор не сбивается.
+// Автоматическое следование — только при MP.rules.RULE_U17_LANG_FOLLOW (класс B, по умолчанию выкл.).
+let langFollow = null;
+function showLangHint(h) {
+  const box = document.getElementById("langhint");
+  if (!box) return;
+  const done = () => { box.classList.remove("on"); box.textContent = ""; clearTimeout(showLangHint.t); };
+  box.textContent = "";
+  const txt = document.createElement("span");
+  txt.textContent = tpl("lang_hint", { lang: String(h.lang).toUpperCase() });
+  const yes = document.createElement("button");
+  yes.type = "button"; yes.textContent = T("lang_hint_yes");
+  yes.onclick = () => { done(); h.accept(); };
+  const no = document.createElement("button");
+  no.type = "button"; no.className = "no"; no.textContent = T("lang_hint_no");
+  no.onclick = () => { done(); h.decline(); };
+  box.append(txt, yes, no);
+  box.classList.add("on");
+  clearTimeout(showLangHint.t);
+  showLangHint.t = setTimeout(done, 12000);
+}
+if (window.MP && MP.followRoomLang) {
+  langFollow = MP.followRoomLang({
+    enabled: true,
+    auto: !!(MP.rules && MP.rules.RULE_U17_LANG_FOLLOW),
+    getRoomLang: () => (state && state.settings ? state.settings.lang : null),
+    onSuggest: showLangHint,
+  });
+}
+if (window.MP) {
+  flow = MP.joinFlow({
+    send: (m) => conn.send(m),
+    buildJoin,
+    onClaimPrompt: (c) => { claimPrompt = c; renderClaim(); },
+    // «секунду…» пока у места идёт грация: молчаливые повторы раз в 2 с, до шести
+    onRetry: () => { const e = document.getElementById("err"); if (e && screen === "enter") e.textContent = T("seat_wait"); },
+    // не бесконечно: после повторов — обычное «имя занято»
+    onGiveUp: () => { joinErr = "err_name_taken"; me = null; renderEnter(); },
+  });
+  tab = MP.replacedTab({
+    rejoin: () => doJoin(),
+    onReplaced: () => {
+      me = null;
+      screen = "replaced";
+      renderCenter("replaced_title", "replaced_text", `<button class="btn" id="here">${T("btn_back_here")}</button>`);
+      document.getElementById("here").onclick = () => { if (tab && tab.back()) return; doJoin(); };
+    },
+    // токен отозван (место вернули с другого устройства): обычный вход по имени
+    onTokenGone: () => { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; me = null; joinErr = null; if (savedName()) { joinName = savedName(); doJoin(); } else renderEnter(); },
   });
 }
 start();

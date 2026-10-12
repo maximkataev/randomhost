@@ -54,6 +54,10 @@ test("initials: слова, эмодзи бота, кодовые точки", (
   assert.strictEqual(ev(`initials("😀 Emoji Cat")`), "😀E");
   assert.strictEqual(ev(`initials("")`), "?");
   assert.strictEqual(ev(`initials("a b c d")`), "AB");
+  // тёзки «База (N)»: буква и номер, а не «М(»
+  assert.strictEqual(ev(`initials("Маша (2)")`), "М2");
+  assert.strictEqual(ev(`initials("Маша Иванова (3)")`), "М3");
+  assert.strictEqual(ev(`initials("Agent 7")`), "A7");
 });
 
 test("rlAmount: разделители по языку", () => {

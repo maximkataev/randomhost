@@ -108,7 +108,9 @@ const RL_SHARED_I18N = {
     ev_card: "{by} → {target}: {card}",
     ev_penalty: "{name}: штраф {n}",
     ev_frozen: "{name}: заморозка на следующий спин",
+    ev_rejoin: "{name}: с другого устройства",
     err_connect: "Нет связи с сервером, переподключаемся…",
+    conn_quiet: "Нет связи — проверяем…",
   },
   en: {
     card_double: "Double Risk", card_double_d: "All the target's bets this spin are doubled from their own chips.",
@@ -129,7 +131,9 @@ const RL_SHARED_I18N = {
     ev_card: "{by} → {target}: {card}",
     ev_penalty: "{name}: penalty {n}",
     ev_frozen: "{name} is frozen next spin",
+    ev_rejoin: "{name}: from another device",
     err_connect: "No connection, reconnecting…",
+    conn_quiet: "No connection — checking…",
   },
   el: {
     card_double: "Διπλό ρίσκο", card_double_d: "Όλα τα πονταρίσματα του στόχου σε αυτό το γύρισμα διπλασιάζονται από τις μάρκες του.",
@@ -150,7 +154,9 @@ const RL_SHARED_I18N = {
     ev_card: "{by} → {target}: {card}",
     ev_penalty: "{name}: ποινή {n}",
     ev_frozen: "{name} παγώνει στο επόμενο γύρισμα",
+    ev_rejoin: "{name}: από άλλη συσκευή", //EL:unverified
     err_connect: "Χωρίς σύνδεση, επανασύνδεση…",
+    conn_quiet: "Χωρίς σύνδεση — έλεγχος…", //EL:unverified
   },
 };
 (function mergeSharedDict() {
@@ -188,7 +194,14 @@ function rlAmount(n, lang) {
 }
 
 // по кодовым точкам, а не по UTF-16: у «😀 Emoji Cat» аватар был «�E»
-function initials(name) { return Array.from(String(name || "?").replace(/^🤖\s*/, "").split(/\s+/).map((w) => Array.from(w)[0] || "").join("")).slice(0, 2).join("").toUpperCase(); }
+// «Маша (2)» — буква базового имени и номер («М2»), а не «М(»: тёзки различимы на фишке (roulette-009)
+function initials(name) {
+  let n = String(name || "?").replace(/^🤖\s*/, "");
+  let idx = "";
+  const m = n.match(/^(.*\S)\s+\((\d{1,2})\)$/);
+  if (m) { n = m[1]; idx = m[2]; }
+  return Array.from(n.split(/\s+/).map((w) => Array.from(w)[0] || "").join("")).slice(0, idx ? 1 : 2).join("").toUpperCase() + idx;
+}
 
 // Геометрия стола: зона чисел — 3 колонки × 13 строк (строка 0 — зеро). Координаты в долях зоны.
 // w, h — размер зоны в px: тап в табличку номера — всегда ставка на число, сплит/каре — только у самой линии.
@@ -275,11 +288,15 @@ const RL_WS_HANDSHAKE_MS = 5000;
 const RL_POLL_FETCH_MS = 28000;
 const RL_PROBE_MS = 3000;
 
-function rlOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone }) {
+function rlOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone, onQuiet, onHeard }) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   let closed = false, opened = false, sid = null, ws = null, polling = false, pollAbort = null;
   let lastSeen = 0, beat = null, notified = false, probeTimer = null;
-  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } clearTimeout(probeTimer); probeTimer = null; };
+  // MP.conn (mp-common.js, T-W1-08): пинг 5 с в игре / 10 с в лобби, баннер «нет связи» после 10 с тишины (сокет не трогаем),
+  // закрытие и переподключение после 22 с. «Тихий» обрыв (Wi-Fi без FIN) раньше ждал 45 с и не показывал ничего.
+  // Без mp-common.js (или при MP.off) — прежний цикл 20 с / 45 с.
+  let mpConn = null, inGame = false, quiet = false;
+  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } if (mpConn) { mpConn.stop(); mpConn = null; } clearTimeout(probeTimer); probeTimer = null; };
   const fireClose = () => {
     if (closed || notified) return;
     notified = true;
@@ -294,14 +311,33 @@ function rlOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
   const deliver = (m) => {
     if (closed) return;
     lastSeen = Date.now();
+    if (onHeard) onHeard(); // любое сообщение сервера, включая pong: страница досылает то, что ждёт в очереди
+    // сервер выключил каркас (MP_OFF=1): прежний цикл пингов
+    if (m && m.type === "hello" && window.MP && MP.applyHello && !MP.applyHello(m) && mpConn) { startBeat(); }
+    if (mpConn) mpConn.seen(lastSeen);
+    if (quiet) { quiet = false; if (onQuiet) onQuiet(false); } // любое сообщение сервера снимает баннер (в т.ч. поставленный по window.offline)
     if (m && m.type === "pong") { if (typeof m.c === "number") rlClockSample(m.t, m.c); return; }
-    if (m && (m.type === "state" || m.type === "hello") && m.state) rlStateSample(m.state.serverNow);
+    if (m && (m.type === "state" || m.type === "hello") && m.state) {
+      rlStateSample(m.state.serverNow);
+      inGame = !!m.state.phase && m.state.phase !== "lobby" && m.state.phase !== "finished";
+    }
     onMessage(m);
   };
   const startBeat = () => {
     stopBeat();
     lastSeen = Date.now();
     ping(); setTimeout(ping, 400); setTimeout(ping, 1500);
+    if (window.MP && typeof MP.conn === "function" && !MP.off) {
+      mpConn = MP.conn({
+        ping: () => { if (!closed) ping(); },
+        inGame: () => inGame,
+        onOffline: () => { quiet = true; if (onQuiet) onQuiet(true); },
+        onOnline: () => { quiet = false; if (onQuiet) onQuiet(false); },
+        onDead: () => fireClose(),
+      });
+      mpConn.start();
+      return;
+    }
     beat = setInterval(() => {
       if (closed) return stopBeat();
       if (Date.now() - lastSeen > 45000) { fireClose(); return; }
@@ -326,6 +362,10 @@ function rlOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
         });
     },
     close() { closed = true; stopBeat(); try { if (ws) ws.close(); } catch (e) {} try { if (pollAbort) pollAbort.abort(); } catch (e) {} sid = null; },
+    // вкладка снова видна: тишину, пока она была скрыта, MP.conn не считает
+    visible() { if (mpConn) mpConn.visible(Date.now()); },
+    // сеть пропала по сообщению браузера (window.offline) — баннер сразу, не дожидаясь тишины
+    netOffline() { if (!closed && opened && onQuiet) { quiet = true; onQuiet(true); } },
     probe(ms) {
       if (closed || !opened) return;
       clearTimeout(probeTimer);
@@ -394,7 +434,7 @@ function rlOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
 }
 
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
-function rlConnect({ code, onMessage, onOpen, onGone, onState, onSendFail }) {
+function rlConnect({ code, onMessage, onOpen, onGone, onState, onSendFail, onQuiet, onHeard }) {
   let t = null, delay = 500, stopped = false;
   const holder = { api: null, send: (m) => holder.api && holder.api.send(m), stop() { stopped = true; clearTimeout(t); if (holder.api) holder.api.close(); } };
   const open = () => {
@@ -403,6 +443,8 @@ function rlConnect({ code, onMessage, onOpen, onGone, onState, onSendFail }) {
     holder.api = rlOpenTransport({
       code,
       onMessage,
+      onQuiet,
+      onHeard,
       onOpen: () => { delay = 500; if (onState) onState("open"); if (onOpen) onOpen(); },
       onClose: () => { if (stopped) return; if (onState) onState("lost"); t = setTimeout(open, delay); delay = Math.min(delay * 2, 8000); },
       onGone: () => { stopped = true; if (onGone) onGone(); },
@@ -412,8 +454,9 @@ function rlConnect({ code, onMessage, onOpen, onGone, onState, onSendFail }) {
   open();
   // вернулись в вкладку или сеть появилась — проверяем, жив ли сокет, не дожидаясь 45 с тишины
   const wake = () => { if (holder.api && holder.api.mode !== "none") holder.api.probe(); };
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (holder.api && holder.api.visible) holder.api.visible(); wake(); } });
   window.addEventListener("online", wake);
+  window.addEventListener("offline", () => { if (holder.api && holder.api.netOffline) holder.api.netOffline(); });
   return holder;
 }
 

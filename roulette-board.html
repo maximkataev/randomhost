@@ -288,6 +288,12 @@
   @keyframes drop { 0% { transform: translateY(-40px) scale(1.6); opacity: 0; } 60% { transform: translateY(0) scale(.9); opacity: 1; } }
   .lobby .who > span b { font: 700 12.5px/1.1 var(--cond); max-width: 68px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lobby .who > span.empty { opacity: .45; }
+  /* офлайн: серая фишка и «⏻» в углу — размер и положение места не меняются */
+  .lobby .who > span.off .rchip { filter: grayscale(1); opacity: .5; }
+  .lobby .who > span.off b { color: var(--muted); }
+  .lobby .who > span.off::after { content: "⏻"; position: absolute; left: 50%; top: 28px; margin-left: 8px; width: 18px; height: 18px; border-radius: 50%; background: var(--bg); color: var(--warn); font: 700 11px/18px var(--cond); text-align: center; }
+  .seats .cap .purge { position: relative; background: none; border: 0; padding: 0 0 0 12px; font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--gold-hi, #ffd57a); text-decoration: underline; cursor: pointer; }
+  .seats .cap .purge::before { content: ""; position: absolute; top: -12px; bottom: -12px; left: 0; right: -8px; }
   .lobby .who > span.empty i { width: 44px; height: 44px; border-radius: 50%; border: 2px dashed rgba(255, 255, 255, .55); }
   .lobby .who .x { position: absolute; right: 4px; top: -4px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--bg); color: var(--muted); padding: 0; font-size: 11px; }
   .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
@@ -309,6 +315,10 @@
   .ctrl { right: 18px; bottom: var(--rail-h, 110px); margin-bottom: 10px; display: flex; gap: 8px; }
   .ctrl .sound-toggle-btn { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--panel); color: var(--text); display: grid; place-items: center; }
   body.m-lobby .ctrl { right: auto; left: 18px; }
+  .ctrl .linkbtn { min-height: 44px; min-width: 44px; }
+  .ctrl input { font: 700 16px/1 var(--cond); border: 1px solid var(--line-2); background: var(--panel); color: var(--text); padding: 6px 10px; min-height: 44px; width: 190px; min-width: 0; border-radius: 12px; outline: none; }
+  .ctrl .note { align-self: center; font: 700 14px/1.2 var(--cond); color: var(--muted); max-width: 240px; }
+  @media (max-width: 640px) { .ctrl .lt, .ctrl .note { display: none; } .ctrl input { width: 130px; } }
   .viewer { left: 18px; bottom: var(--rail-h, 110px); margin-bottom: 12px; color: var(--muted); font-size: 13px; }
 
   /* ---------- финал ---------- */
@@ -586,6 +596,7 @@
   }
 </style>
 <script src="legacy-compat.js"></script>
+<script src="mp-common.js"></script>
 </head>
 <body>
 <div id="stage"></div>
@@ -654,8 +665,13 @@ window.I18N_DICT = {
     btn_pause: `Пауза`, btn_resume: `Продолжить`, btn_end: `Закончить`, btn_again: `Ещё партию`,
     end_confirm: `Закончить партию сейчас? Победит тот, у кого больше фишек.`,
     kick: `Убрать из-за стола`, kick_confirm: `Убрать {name} из-за стола?`,
+    purge_off: `Убрать офлайн ({n})`, purge_sure: `Точно убрать ({n})?`, offline_tip: `Нет связи`,
+    host_link: `Ссылка ведущего`, link_copied: `Ссылка скопирована. Не показывай её игрокам`, link_shared: `Ссылка отправлена. Не показывай её игрокам`, link_none: `На этом экране нет ключа ведущего`,
+    link_prompt_hint: `Скопируй ссылку и не показывай её игрокам`,
+    btn_im_host: `Я ведущий`, host_paste_ph: `Вставь ссылку ведущего`, btn_ok: `OK`, host_bad: `Это не ссылка ведущего`, btn_take: `Забрать управление`, host_lost_msg: `Управление перешло к другому экрану`,
     mute: `Выключить чат`, unmute: `Включить чат`,
     fin_title: `{name} забирает всё`,
+    fin_draw: `Ничья: {names}`,
     fin_sub: `Последний с фишками`,
     fin_host: `Партию закончил ведущий`,
     st_bigwin: `Самый крупный выигрыш`, st_bigwin_v: `{name}: +{n} на {num}`,
@@ -665,6 +681,7 @@ window.I18N_DICT = {
     st_casino: `Казино за вечер`, st_casino_v: `забрало {won}, выплатило {paid}`,
     viewer: `Только просмотр — управляет другая доска`,
     expired: `Комнаты больше нет — её закрыли или она долго простояла.`,
+    noroom: `Такой комнаты нет — проверь код в адресе или создай новую на странице игры.`,
     creating: `Создаём комнату…`,
     wheel_fail: `Колесо не загрузилось — игра идёт, число видно на экране`,
     frozen_next: `❄️`,
@@ -711,8 +728,13 @@ window.I18N_DICT = {
     btn_pause: `Pause`, btn_resume: `Resume`, btn_end: `End`, btn_again: `Play again`,
     end_confirm: `End the game now? The player with the most chips wins.`,
     kick: `Remove from table`, kick_confirm: `Remove {name} from the table?`,
+    purge_off: `Remove offline ({n})`, purge_sure: `Sure? Remove ({n})`, offline_tip: `No connection`,
+    host_link: `Host link`, link_copied: `Link copied. Don't show it to players`, link_shared: `Link sent. Don't show it to players`, link_none: `This screen has no host key`,
+    link_prompt_hint: `Copy the link and keep it from the players`,
+    btn_im_host: `I'm the host`, host_paste_ph: `Paste the host link`, btn_ok: `OK`, host_bad: `That is not a host link`, btn_take: `Take control`, host_lost_msg: `Another screen took control`,
     mute: `Mute chat`, unmute: `Unmute chat`,
     fin_title: `{name} takes it all`,
+    fin_draw: `Draw: {names}`,
     fin_sub: `Last one with chips`,
     fin_host: `The host ended the game`,
     st_bigwin: `Biggest win`, st_bigwin_v: `{name}: +{n} on {num}`,
@@ -722,6 +744,7 @@ window.I18N_DICT = {
     st_casino: `The casino tonight`, st_casino_v: `took {won}, paid {paid}`,
     viewer: `View only — another screen is in control`,
     expired: `This room is gone — it was closed or sat idle too long.`,
+    noroom: `There is no such room — check the code in the address or create a new one on the game page.`,
     creating: `Creating a room…`,
     wheel_fail: `The wheel failed to load — the game goes on, the number is shown on screen`,
     frozen_next: `❄️`,
@@ -768,8 +791,13 @@ window.I18N_DICT = {
     btn_pause: `Παύση`, btn_resume: `Συνέχεια`, btn_end: `Τέλος`, btn_again: `Ξανά`,
     end_confirm: `Τέλος παιχνιδιού τώρα; Κερδίζει όποιος έχει τις περισσότερες μάρκες.`,
     kick: `Αφαίρεση`, kick_confirm: `Να αφαιρεθεί ο/η {name};`,
+    purge_off: `Αφαίρεση χωρίς σύνδεση ({n})`, purge_sure: `Σίγουρα; ({n})`, offline_tip: `Χωρίς σύνδεση`, // EL:unverified
+    host_link: `Σύνδεσμος οικοδεσπότη`, link_copied: `Ο σύνδεσμος αντιγράφηκε. Μην τον δείχνεις στους παίκτες`, link_shared: `Ο σύνδεσμος στάλθηκε. Μην τον δείχνεις στους παίκτες`, link_none: `Αυτή η οθόνη δεν έχει κλειδί οικοδεσπότη`, // EL:unverified
+    link_prompt_hint: `Αντίγραψε τον σύνδεσμο και μην τον δείχνεις στους παίκτες`, // EL:unverified
+    btn_im_host: `Είμαι ο οικοδεσπότης`, host_paste_ph: `Επικόλλησε τον σύνδεσμο οικοδεσπότη`, btn_ok: `OK`, host_bad: `Αυτός δεν είναι σύνδεσμος οικοδεσπότη`, btn_take: `Πάρε τον έλεγχο`, host_lost_msg: `Τον έλεγχο πήρε άλλη οθόνη`, // EL:unverified
     mute: `Κλείσιμο chat`, unmute: `Άνοιγμα chat`,
     fin_title: `{name} τα παίρνει όλα`,
+    fin_draw: `Ισοπαλία: {names}`, // EL:unverified
     fin_sub: `Ο τελευταίος με μάρκες`,
     fin_host: `Ο οικοδεσπότης τερμάτισε το παιχνίδι`,
     st_bigwin: `Μεγαλύτερο κέρδος`, st_bigwin_v: `{name}: +{n} στο {num}`,
@@ -779,6 +807,7 @@ window.I18N_DICT = {
     st_casino: `Το καζίνο απόψε`, st_casino_v: `πήρε {won}, πλήρωσε {paid}`,
     viewer: `Μόνο προβολή — ελέγχει άλλη οθόνη`,
     expired: `Το δωμάτιο δεν υπάρχει πια — έκλεισε ή έμεινε ανενεργό.`,
+    noroom: `Δεν υπάρχει τέτοιο δωμάτιο — έλεγξε τον κωδικό στη διεύθυνση ή φτιάξε νέο στη σελίδα του παιχνιδιού.`, // EL:unverified
     creating: `Δημιουργία δωματίου…`,
     wheel_fail: `Ο τροχός δεν φορτώθηκε — το παιχνίδι συνεχίζεται, ο αριθμός φαίνεται στην οθόνη`,
     frozen_next: `❄️`,
@@ -898,6 +927,8 @@ function syncChat() {
 
 // ---------- рельс ----------
 const player = (id) => state && state.players.find((p) => p.id === id);
+// двухтактная «Убрать офлайн»: без mp-common — один тап, как обычное действие ведущего
+const purge = window.MP && MP.twoTap && MP.twoTap.create ? MP.twoTap.create({ armedMs: 3000, onChange: () => { if (state && state.phase === "lobby") drawLobby(); } }) : null;
 const seatNodes = new Map();
 const chipHtml = (color, text, extra) => `<i class="rchip" style="${rlChipVars(color)}${extra || ""}">${text == null ? "" : escapeHtml(text)}</i>`;
 const CARD_INK = { double: "#7d0f19", freeze: "#1f5f8f", share: "#4a5560", eye: "#0f6b73", shield: "#8a6420" };
@@ -1045,7 +1076,8 @@ function drawLobby() {
   const fresh = players.filter((p) => !lobbySeen.has(p.id));
   if (fresh.length && lobbySeen.size) rlSfx.chip();
   const nodes = players.map((p) => {
-    const sp = el("span", lobbySeen.has(p.id) ? "" : "new");
+    const sp = el("span", (lobbySeen.has(p.id) ? "" : "new") + (p.online === false ? " off" : ""));
+    if (p.online === false) sp.title = T("offline_tip");
     sp.innerHTML = chipHtml(p.color, initials(p.name));
     sp.append(el("b", null, p.name));
     if (isHost) { const x = el("button", "x", "✕"); x.title = T("kick"); x.onclick = () => conn.send({ type: "kick", playerId: p.id }); sp.append(x); }
@@ -1055,7 +1087,20 @@ function drawLobby() {
   const free = Math.max(0, Math.min(12, Math.max(4, players.length + 1)) - players.length);
   for (let i = 0; i < free; i++) { const sp = el("span", "empty"); sp.append(el("i"), el("b", null, T("lobby_free"))); nodes.push(sp); }
   who.replaceChildren(...nodes);
-  $("seatn").textContent = tpl("lobby_seats", { n: players.length });
+  const sn = $("seatn");
+  sn.textContent = tpl("lobby_seats", { n: players.length });
+  // «Убрать офлайн (N)»: тем же кеглем в той же строке; двухтактно, чтобы не снести стол одним тапом
+  const offIds = players.filter((p) => p.online === false).map((p) => p.id);
+  if (isHost && offIds.length) {
+    const armed = purge && purge.isArmed("off");
+    const pb = el("button", "purge", tpl(armed ? "purge_sure" : "purge_off", { n: offIds.length }));
+    pb.type = "button";
+    pb.onclick = () => {
+      if (purge && !purge.tap("off")) return;
+      for (const id of offIds) conn.send({ type: "kick", playerId: id });
+    };
+    sn.append(pb);
+  }
   drawOpts();
   const enough = players.filter((p) => p.online).length >= 2;
   $("startbtn").disabled = !isHost || !enough;
@@ -1157,20 +1202,88 @@ function tickRing() {
 setInterval(tickRing, 200);
 
 // ---------- управление ведущего ----------
+// «🔑 Ссылка ведущего» (U-03, вариант A): ключ ведущего живёт только в localStorage этой доски; кнопка копирует
+// …?r=КОД&h=ТОКЕН в буфер, токен на экране не рисуется. Авто-перехват без токена не делаем (К-5).
+let hostNote = "", hostNoteT = 0, pasteOpen = false, hostLost = false, ctrlKey = "";
+const HL = window.MP && MP.hostLink ? MP.hostLink({
+  hostKeyFn: hostKey,
+  boardPath: "roulette-board.html",
+  getRoom: () => CODE,
+  sendHost: (t) => { if (conn) conn.send({ type: "host", token: t }); },
+  onToast: (kind) => {
+    if (kind === "copied") setHostNote(T("link_copied"));
+    else if (kind === "shared") setHostNote(T("link_shared"));
+    else if (kind === "none") setHostNote(T("link_none"));
+  },
+  prompt: (m, v) => window.prompt(T("link_prompt_hint"), v),
+}) : null;
+function setHostNote(text) {
+  hostNote = text;
+  clearTimeout(hostNoteT);
+  if (text) hostNoteT = setTimeout(() => { hostNote = ""; drawCtrl(); }, 5000);
+  drawCtrl();
+}
+function hasHostToken() {
+  try { return !!localStorage.getItem(hostKey()); } catch (e) { return false; }
+}
 function drawCtrl() {
   const c = $("ctrl");
   const sound = c.querySelector(".sound-toggle-btn");
+  const inGame = !!(state && state.phase !== "lobby" && state.phase !== "finished" && state.phase !== "briefing");
+  const paused = !!(state && (state.paused || state.pauseNext));
+  const claim = !isHost && HL && state && (hostLost || !hasHostToken());
+  const key = [isHost, inGame, paused, hostLost, claim, pasteOpen, hostNote, (window.I18N && I18N.lang) || "", !!state].join("|");
+  $("viewer").classList.toggle("hidden", isHost || !state);
+  if (key === ctrlKey) return;
+  ctrlKey = key;
   const btns = [];
-  if (isHost && state && state.phase !== "lobby" && state.phase !== "finished" && state.phase !== "briefing") {
-    const paused = state.paused || state.pauseNext;
+  if (isHost && HL) {
+    const lb = el("button", "btn small ghost linkbtn");
+    lb.type = "button";
+    lb.title = T("host_link");
+    lb.setAttribute("aria-label", T("host_link"));
+    lb.append("🔑", el("span", "lt", " " + T("host_link")));
+    lb.onclick = () => { HL.copy(); };
+    btns.push(lb);
+  }
+  if (isHost && inGame) {
     const pb = el("button", "btn small ghost", T(paused ? "btn_resume" : "btn_pause"));
     pb.onclick = () => conn.send({ type: paused ? "resume" : "pause" });
     const eb = el("button", "btn small ghost", T("btn_end"));
     eb.onclick = () => { if (confirm(T("end_confirm"))) conn.send({ type: "end" }); };
     btns.push(pb, eb);
   }
+  if (claim && hostLost && hasHostToken()) {
+    const tk = el("button", "btn small ghost linkbtn", T("btn_take"));
+    tk.type = "button";
+    tk.onclick = () => { HL.take(); };
+    btns.push(el("span", "note", T("host_lost_msg")), tk);
+  } else if (claim) {
+    if (pasteOpen) {
+      const inp = el("input");
+      inp.type = "text";
+      inp.placeholder = T("host_paste_ph");
+      inp.autocomplete = "off";
+      const ok = el("button", "btn small ghost linkbtn", T("btn_ok"));
+      ok.type = "button";
+      const submit = () => {
+        if (!MP.hostLink.parseToken(inp.value)) { setHostNote(T("host_bad")); return; }
+        HL.take(Date.now(), inp.value);
+        pasteOpen = false;
+      };
+      ok.onclick = submit;
+      inp.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+      btns.push(inp, ok);
+      setTimeout(() => inp.focus(), 0);
+    } else {
+      const im = el("button", "btn small ghost linkbtn", T("btn_im_host"));
+      im.type = "button";
+      im.onclick = () => { pasteOpen = true; drawCtrl(); };
+      btns.push(im);
+    }
+  }
+  if (hostNote) btns.push(el("span", "note", hostNote));
   c.replaceChildren(...btns, sound);
-  $("viewer").classList.toggle("hidden", isHost || !state);
 }
 
 // ---------- центр: фазы спина ----------
@@ -1320,7 +1433,9 @@ function drawFinal() {
   // число последнего спина и баннеры не должны просвечивать из-под итогов
   clearLater();
   $("center").replaceChildren();
-  const key = state.spin + ":" + state.winnerId + ":" + ((window.I18N && I18N.lang) || "");
+  const wIds = state.winnerIds && state.winnerIds.length ? state.winnerIds : [state.winnerId];
+  const draw = !!state.draw;
+  const key = state.spin + ":" + state.winnerId + ":" + (draw ? wIds.join(",") : "") + ":" + ((window.I18N && I18N.lang) || "");
   if (f.dataset.spin === key) return;
   const firstTime = !f.dataset.spin;
   f.dataset.spin = key;
@@ -1335,10 +1450,12 @@ function drawFinal() {
   if (breath) stats.push([T("st_breath"), tpl(breath[1] === 1 ? "st_breath_v1" : "st_breath_v", { name: nm(breath[0]), n: breath[1] })]);
   stats.push([T("st_casino"), tpl("st_casino_v", { won: rlNum(state.casino.won), paid: rlNum(state.casino.paid) })]);
   const places = state.players.filter((p) => !p.left && !p.spectator).sort((a, b) => (a.place || 99) - (b.place || 99));
-  // пьедестал: 2 — 1 — 3; остальные — строкой ниже
-  const podium = [places[1], places[0], places[2]].map((p, i) => {
+  // пьедестал: 2 — 1 — 3; остальные — строкой ниже. Ничья: все делящие — на равных ступенях «первый» (до трёх, остальные — строкой ниже)
+  const tied = draw ? places.filter((p) => wIds.includes(p.id)) : [];
+  const onPodium = draw ? tied.slice(0, 3) : [places[1], places[0], places[2]];
+  const podium = onPodium.map((p, i) => {
     if (!p) return "";
-    const cls = ["second", "first", "third"][i];
+    const cls = draw ? "first" : ["second", "first", "third"][i];
     return `<div class="p ${cls}">${cls === "first" ? `<div class="crown">👑</div>` : ""}${chipHtml(p.color, initials(p.name))}<div class="nm">${escapeHtml(p.name)}</div><div class="st">${rlNum(p.stack)}</div><div class="step">${p.place || "–"}</div></div>`;
   }).join("");
   let rain = "";
@@ -1348,9 +1465,9 @@ function drawFinal() {
   }
   f.innerHTML = `<div class="rain">${rain}</div>
     <div class="sub">${T(state.finishedReason === "host" ? "fin_host" : "fin_sub")}</div>
-    <h2>${w ? escapeHtml(tpl("fin_title", { name: w.name })) : ""}</h2>
+    <h2>${draw ? escapeHtml(tpl("fin_draw", { names: tied.slice(0, 3).map((p) => p.name).join(", ") + (tied.length > 3 ? " +" + (tied.length - 3) : "") })) : w ? escapeHtml(tpl("fin_title", { name: w.name })) : ""}</h2>
     <div class="podium">${podium}</div>
-    ${places.length > 3 ? `<div class="places">${places.slice(3).map((p) => `<span>${chipHtml(p.color, "")}#${p.place || "–"} ${escapeHtml(p.name)}</span>`).join("")}</div>` : ""}
+    ${(draw ? places.filter((p) => onPodium.indexOf(p) === -1) : places.slice(3)).length ? `<div class="places">${(draw ? places.filter((p) => onPodium.indexOf(p) === -1) : places.slice(3)).map((p) => `<span>${chipHtml(p.color, "")}#${p.place || "–"} ${escapeHtml(p.name)}</span>`).join("")}</div>` : ""}
     <div class="stats">${stats.map(([k, v]) => `<div><small>${escapeHtml(k)}</small><b>${v}</b></div>`).join("")}</div>
     ${isHost ? `<button class="btn shine" id="again">${T("btn_again")}</button>` : ""}`;
   if (isHost) $("again").onclick = () => conn.send({ type: "next_game" });
@@ -1459,6 +1576,7 @@ function onMessage(m) {
   switch (m.type) {
     case "hello":
       state = m.state;
+      if (goneFlow) goneFlow.hello();
       if (m.state && !isHost) {
         let token = null;
         try { token = localStorage.getItem(hostKey()); } catch (e) {}
@@ -1475,28 +1593,42 @@ function onMessage(m) {
       break;
     case "host_ok":
       isHost = true;
+      hostLost = false;
+      pasteOpen = false;
       document.body.classList.add("host");
       $("lobby").dataset.built = "";
       render();
       break;
     case "host_lost":
       isHost = false;
+      hostLost = true;
       document.body.classList.remove("host");
       render();
       break;
     case "event":
       if (m.event.type === "react") floatAt(m.event.playerId, m.event.emoji, "react");
+      // место возвращено по имени, без токена: строка в ленте — игроки видят, кто «подхватил» чужое имя (roulette-047)
+      else if (m.event.type === "rejoin") { const rp = player(m.event.playerId); if (rp) feedSys(tpl("ev_rejoin", { name: rp.name })); }
       break;
     case "error":
-      if (m.error === "room_expired") gone();
+      if (m.error === "room_expired") onRoomGone();
+      if (m.error === "bad host token") {
+        hostLost = false;
+        try { localStorage.removeItem(hostKey()); } catch (e) {}
+        pasteOpen = true;
+        setHostNote(T("host_bad"));
+      }
       break;
   }
 }
 
-function gone() {
+// hello не приходил ни разу — такого кода нет; приходил — комната закрылась (roulette-046, K-11: сервер различителя не даёт)
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({ showForm: () => gone("noroom"), onClosed: () => gone("expired") }) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else gone("expired"); }
+function gone(key) {
   dead = true;
   $("lobby").classList.add("hidden");
-  $("center").innerHTML = `<div class="banner">${escapeHtml(T("expired"))}</div>`;
+  $("center").innerHTML = `<div class="banner">${escapeHtml(T(key === "noroom" ? "noroom" : "expired"))}</div>`;
 }
 
 window.addEventListener("langchange", () => { $("lobby").dataset.built = ""; centerSpin = -1; render(); });
@@ -1513,8 +1645,10 @@ async function boot() {
   conn = rlConnect({
     code: CODE,
     onMessage,
-    onGone: gone,
+    onGone: onRoomGone,
     onOpen: () => { isHost = false; },
+    // тишина > 10 с (сокет не закрыт: мёртвый Wi-Fi без FIN) — баннер сразу, не дожидаясь закрытия
+    onQuiet: (q) => { banner.textContent = T("conn_quiet"); banner.classList.toggle("on", q); },
     onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
   });
   loadScene();
