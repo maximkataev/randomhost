@@ -328,5 +328,20 @@ test("MP.off — conn молчит", () => {
   assert.equal(c.start(), false);
 });
 
+console.log("progress");
+test("MP.progress.text: «Ответили 4 из 6 · ~40 с», done не больше total, три языка", () => {
+  const w = load();
+  const P = w.MP.progress;
+  assert.equal(P.text(4, 6, 40), "Ответили 4 из 6 · ~40 с");
+  assert.equal(P.text(4, 6, 42), "Ответили 4 из 6 · ~40 с");
+  assert.equal(P.text(4, 6, 7.2), "Ответили 4 из 6 · ~8 с");
+  assert.equal(P.text(4, 3, null), "Ответили 4 из 4");
+  assert.equal(P.text(2, 5, 0), "Ответили 2 из 5");
+  assert.equal(P.text(2, 5, 20, { lang: "en" }), "2 of 5 answered · ~20 s");
+  assert.equal(P.text(2, 5, 20, { lang: "en", kind: "voted" }), "2 of 5 voted · ~20 s");
+  assert.equal(P.text(2, 5, null, { lang: "el" }), "Απάντησαν 2 από 5");
+  assert.equal(P.text(1, 2, null, { lang: "xx", kind: "voted" }), "Проголосовали 1 из 2");
+});
+
 console.log("\n" + passed + " пройдено, " + failed + " провалено");
 process.exit(failed ? 1 : 0);

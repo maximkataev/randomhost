@@ -421,6 +421,19 @@ class Game {
     return true;
   }
 
+  // сколько игроков раунда сдали все свои ответы и из скольких (на связи + уже сдавшие; ушедшие не в счёт)
+  answerProgress() {
+    let done = 0, total = 0;
+    for (const id of this.s.roster) {
+      const p = this.player(id);
+      if (!p || p.left) continue;
+      const mine = this.mine(id);
+      if (!mine.length) continue;
+      if (mine.every((m) => m.answers[id])) { done++; total++; } else if (p.online) total++;
+    }
+    return { done, total };
+  }
+
   closeAnswers(now) {
     const s = this.s;
     // не успел — случайная подсказка, лимит не тратит (§3)
@@ -652,7 +665,10 @@ class Game {
         return x;
       });
       out.votedN = Object.keys(m.votes).length;
-      out.votersN = this.voters(m).length;
+      // знаменатель — те, кто на связи, плюс уже проголосовавшие (ушёл в офлайн после голоса — «4 из 3» не бывает)
+      const counted = new Set(this.voters(m).map((p) => p.id));
+      for (const id of Object.keys(m.votes)) counted.add(id);
+      out.votersN = counted.size;
       if (revealed) out.result = m.result;
     }
     return out;
@@ -708,7 +724,10 @@ class Game {
       sharedPrompts: s.phase === "answer" && s.matchups.length > 1 && s.matchups.every((m) => m.kind === "grid") ? s.matchups.map((m) => m.prompt) : null,
       // мало игроков: дуэлей нет, раунды дуэлей идут «на всех» (подписи на экранах другие)
       small: this.dealPool().length <= SMALL,
-      progress: s.phase === "answer" ? Object.fromEntries(s.roster.map((id) => [id, this.mine(id).filter((m) => m.answers[id]).length + "/" + this.mine(id).length])) : null,
+      // кто сколько ответил — только доске: на телефонах имена не ответивших были бы позором (T-W1-14)
+      progress: board && s.phase === "answer" ? Object.fromEntries(s.roster.map((id) => [id, this.mine(id).filter((m) => m.answers[id]).length + "/" + this.mine(id).length])) : null,
+      // «Ответили N из M» для всех: знаменатель — на связи плюс уже ответившие (U-29)
+      answerProgress: s.phase === "answer" ? this.answerProgress() : null,
       history: s.phase === "scores" ? s.matchups.map((m, i) => (i <= revealedUpTo ? { id: m.id, result: m.result } : null)).filter(Boolean) : null,
       best: s.phase === "finished" ? s.best : null,
       hintStar: s.phase === "finished" ? s.hintStar : null,

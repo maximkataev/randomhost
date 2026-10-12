@@ -174,7 +174,7 @@ async function voteRound(phones) {
 }
 
 async function playGame(board, phones, label, plan) {
-  let rounds = 0, sawJinx = false, sawLate = false, sawHint = false;
+  let rounds = 0, sawJinx = false, sawLate = false, sawHint = false, progAnswerChecked = false, progVoteChecked = false;
   const revealed = new Set();
   const shotOnce = new Set();
   const once = async (page, name) => { if (shotOnce.has(name)) return; shotOnce.add(name); await page.shot(name); };
@@ -207,6 +207,15 @@ async function playGame(board, phones, label, plan) {
         }
       }
       await answerRound(phones, { ...key, jinx });
+      // «Ответили N из M» (T-W1-14): телефон и доска показывают одно и то же, N не больше M, M — все на связи
+      if (!progAnswerChecked && key.silent) {
+        progAnswerChecked = true;
+        const ap = await board.evaluate("JSON.stringify(state.phase === 'answer' ? state.answerProgress : null)");
+        const txt = await waitFor(phones[0], "(document.getElementById('prog') || {}).textContent", 2000);
+        const mm = /^Ответили (\d+) из (\d+)/.exec(String(txt || ""));
+        const want = JSON.parse(ap || "null");
+        check(!!mm && Number(mm[1]) <= Number(mm[2]) && (!want || Number(mm[2]) === want.total) && Number(mm[2]) === phones.length, `${label}: на телефоне «${String(txt || "").trim()}» (всего ${phones.length} на связи)`);
+      }
       const moved = await waitFor(board, "state.phase !== 'answer'", key.silent ? (45000 + EXTRA_MS) / SPEED + 5000 : 8000);
       check(!!moved, `${label}: раунд ${Number(ri) + 1} — ответы собраны`);
       rounds++;
@@ -219,6 +228,14 @@ async function playGame(board, phones, label, plan) {
       const fits = await board.evaluate(WALL_FITS);
       check(fits === true, `${label}: доска, голосование раунда ${Number(ri) + 1} — ответы влезают (${fits})`);
       for (const p of phones) { const h = await p.evaluate(NO_HSCROLL); if (h !== true) check(false, `${p.name}: голосование без прокрутки вбок`); }
+      // «Проголосовали N из M» (T-W1-14): знаменатель совпадает с числом голосующих на доске, строка есть и у автора дуэли
+      if (!progVoteChecked) {
+        progVoteChecked = true;
+        const want = await board.evaluate("state.current && state.current.votersN");
+        const txt = await waitFor(phones[0], "(document.getElementById('prog') || {}).textContent", 3000);
+        const mm = /^Проголосовали (\d+) из (\d+)/.exec(String(txt || ""));
+        check(!!mm && Number(mm[1]) <= Number(mm[2]) && Number(mm[2]) === want, `${label}: на телефоне «${String(txt || "").trim()}» — знаменатель = голосующих на доске (${want})`);
+      }
       await voteRound(phones);
       await wait(200);
       await once(phones[0], `${label}_p_voted_${ri}`);

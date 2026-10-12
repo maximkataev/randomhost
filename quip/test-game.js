@@ -618,6 +618,39 @@ test("аватарка: свою можно сменить в лобби и ме
   assert.strictEqual(g.snapshot(0, "P1").avatarChoices, null);
 });
 
+// ---------- T-W1-14: «Ответили N из M» ----------
+
+test("answerProgress: знаменатель — на связи плюс уже ответившие; «4 из 3» не бывает; имена только доске", () => {
+  const g = game(5);
+  assert.deepStrictEqual(g.snapshot(1, "board").answerProgress, { done: 0, total: 5 });
+  assert.deepStrictEqual(g.snapshot(1, "P1").answerProgress, { done: 0, total: 5 });
+  assert.strictEqual(g.snapshot(1, "P1").progress, null, "карта «кто сколько» — только доске");
+  assert.ok(g.snapshot(1, "board").progress && g.snapshot(1, "board").progress.P1);
+  // P1 сдал все свои ответы
+  for (const m of g.mine("P1")) g.answer("P1", m.id, "ответ P1 " + m.id, 2000);
+  assert.deepStrictEqual(g.snapshot(2000, "P2").answerProgress, { done: 1, total: 5 });
+  // P2 не сдал и ушёл в офлайн — из знаменателя выпал; P1 ушёл в офлайн после сдачи — остался
+  g.setOnline("P2", false, 2100);
+  g.setOnline("P1", false, 2100);
+  assert.deepStrictEqual(g.snapshot(2200, "P3").answerProgress, { done: 1, total: 4 });
+  assert.strictEqual(g.snapshot(2200, "board").answerProgress.done <= g.snapshot(2200, "board").answerProgress.total, true);
+  assert.strictEqual(g.snapshot(1, "board").phase, "answer");
+});
+
+test("голосование: votersN включает уже проголосовавших, ушедших в офлайн", () => {
+  const g = game(5);
+  answerAll(g);
+  assert.strictEqual(g.s.phase, "vote");
+  const m = g.s.matchups[g.s.mi];
+  const voter = g.voters(m)[0];
+  const pick = m.order.findIndex((id) => id !== voter.id);
+  assert.ok(g.vote(voter.id, m.id, [pick], 9000).ok);
+  g.setOnline(voter.id, false, 9100);
+  const c = g.snapshot(9100, "board").current;
+  assert.ok(c.votedN <= c.votersN, `${c.votedN} из ${c.votersN}`);
+  assert.strictEqual(c.votedN, 1);
+});
+
 // ---------- T-W1-07: призрак и RULE_U08_GHOST_OUT ----------
 
 // RULE_U08_GHOST_OUT читается при каждом вызове — переключаем в самом тесте и всегда возвращаем

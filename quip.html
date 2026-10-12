@@ -229,6 +229,9 @@
   .write .three .icnt { position: absolute; right: 8px; top: -8px; font: 700 11px/1 var(--font); color: var(--bulb); background: var(--deep); padding: 3px 6px; border-radius: 999px; pointer-events: none; }
   .write .three .icnt:empty { display: none; }
   .write .cnt { text-align: right; color: var(--ink); font-size: 13px; font-weight: 700; height: 18px; margin-top: 4px; }
+  /* «Ответили N из M»: высота занята всегда — текст появляется без сдвига соседей */
+  .prog { margin: 6px 0 0; min-height: 20px; font: 700 14px/20px var(--font); color: var(--tile-muted); font-variant-numeric: tabular-nums; }
+  .status.center .prog, .stage > .prog { color: var(--ink); }
   .num { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--deep); color: var(--bulb); font: var(--show-w) 16px/1 var(--show); font-variation-settings: var(--show-fvs); }
   .row2 { display: grid; gap: 10px; margin-top: 4px; }
   .dice { display: inline-block; letter-spacing: .1em; }
@@ -690,6 +693,17 @@ function bindAvatars() {
   });
 }
 const timerHtml = () => `<div class="timer" id="timer"><i></i></div>`;
+// «Ответили N из M · ~40 с» / «Проголосовали N из M»: строка постоянной высоты, текст обновляет frame().
+// Имена не ответивших — только на доске (на телефоне это позор), здесь только числа.
+const progHtml = () => `<p class="prog" id="prog" aria-live="off"></p>`;
+function progText() {
+  if (!state || !window.MP || !MP.progress || MP.off) return "";
+  const left = state.phaseEnd ? (state.phaseEnd - qpNow()) / 1000 : null;
+  if (state.phase === "answer" && state.answerProgress) return MP.progress.text(state.answerProgress.done, state.answerProgress.total, left, { kind: "answered", lang: qpLang() });
+  const c = state.current;
+  if (state.phase === "vote" && c && typeof c.votersN === "number") return MP.progress.text(c.votedN || 0, c.votersN, left, { kind: "voted", lang: qpLang() });
+  return "";
+}
 
 // ---------- экраны по фазам ----------
 function renderLobby() {
@@ -717,7 +731,7 @@ function renderAnswer() {
   if (!s || !s.inRound) {
     const key = "late:" + state.ri + qpLang();
     if (screenKey === key) return;
-    show(`<div class="card status"><h2>${T("late_title")}</h2><p style="margin:0;color:var(--tile-muted)">${T("late_sub")}</p></div>`, key, false, { reacts: true });
+    show(`<div class="card status"><h2>${T("late_title")}</h2><p style="margin:0;color:var(--tile-muted)">${T("late_sub")}</p>${progHtml()}</div>`, key, false, { reacts: true });
     return;
   }
   const list = s.prompts;
@@ -740,7 +754,7 @@ function renderAnswer() {
   if (!cur) {
     const key = "done:" + state.ri + qpLang();
     if (screenKey === key) return;
-    show(`<div class="status center"><h2>${T("done_title")}</h2><p>${T("done_sub")}</p></div>
+    show(`<div class="status center"><h2>${T("done_title")}</h2><p>${T("done_sub")}</p>${progHtml()}</div>
       <div class="opts">${list.map((p) => `<div class="card"><div class="k">${qpPromptHtml(p.prompt.e ? { q: p.prompt.e } : p.prompt)}</div><div class="gotit">${qpAnswerHtml(p.answer)} ${p.hint ? `<span class="tag">🎲</span>` : ""}</div></div>`).join("")}</div>`, key, true, { reacts: true });
     return;
   }
@@ -822,20 +836,20 @@ function renderVote() {
   const promptSm = `<div class="card qcard sm"><div class="q">${qpPromptHtml(c.prompt)}</div></div>`;
   const mineCard = (label, list) => (list.length ? `<div class="card mine"><div class="k">${escapeHtml(label)}</div>${list.map((a) => `<div class="gotit">${qpAnswerHtml(a)}</div>`).join("")}</div>` : "");
   if (s && s.author && c.kind === "duel") {
-    show(`${timerHtml()}<div class="card status">${qpHostSvg()}<h2>${T("author_title")}</h2><p style="margin:0;color:var(--tile-muted)">${T("author_sub")}</p></div>
+    show(`${timerHtml()}<div class="card status">${qpHostSvg()}<h2>${T("author_title")}</h2><p style="margin:0;color:var(--tile-muted)">${T("author_sub")}</p>${progHtml()}</div>
       ${promptSm}${mineCard(T("your_answer"), c.answers.filter((a) => a.mine))}`, key, true, { reacts: true });
     return;
   }
   if (voted || !s || !s.canVote) {
     const picked = voted ? picks.map((i) => c.answers[i]).filter(Boolean) : [];
-    show(`${timerHtml()}<div class="card status">${qpHostSvg()}<h2>${T(voted ? "voted_title" : "novote_title")}</h2><p style="margin:0;color:var(--tile-muted)">${T(voted ? "voted_sub" : "novote_sub")}</p></div>
+    show(`${timerHtml()}<div class="card status">${qpHostSvg()}<h2>${T(voted ? "voted_title" : "novote_title")}</h2><p style="margin:0;color:var(--tile-muted)">${T(voted ? "voted_sub" : "novote_sub")}</p>${progHtml()}</div>
       ${promptSm}${mineCard(T("your_vote"), picked)}`, key, true, { reacts: true });
     return;
   }
   const n = s.votesFor;
   // отмеченное до перезагрузки/переподключения — с сервера
   if (!picks.length && s.myDraft) picks = s.myDraft.slice();
-  show(`${timerHtml()}${s.inRound ? "" : `<div class="eyebrow">${escapeHtml(T("late_vote"))}</div>`}<div class="card qcard"><div class="k">${T("vote_title")}</div><div class="q" style="font-size:19px">${qpPromptHtml(c.prompt)}</div></div>
+  show(`${timerHtml()}${progHtml()}${s.inRound ? "" : `<div class="eyebrow">${escapeHtml(T("late_vote"))}</div>`}<div class="card qcard"><div class="k">${T("vote_title")}</div><div class="q" style="font-size:19px">${qpPromptHtml(c.prompt)}</div></div>
     <div class="eyebrow">${escapeHtml(n > 1 ? tpl("vote_many", { n }) : T("vote_one"))}</div>
     <div class="opts">${c.answers.map((a, i) => `<button type="button" class="opt${a.mine ? " own" : ""}${picks.includes(i) ? " sel" : ""}" data-i="${i}" data-own="${escapeHtml(T("own"))}"${a.mine ? " disabled" : ""}><span class="l">${String.fromCharCode(65 + i)}</span>${qpAnswerHtml(a)}</button>`).join("")}</div>
     ${n > 1 ? `<button class="btn" type="button" id="votebtn"${picks.length ? "" : " disabled"}>${escapeHtml(tpl("btn_vote", { n: `${picks.length}/${n}` }))}</button>` : ""}`, key, true);
@@ -955,6 +969,8 @@ function frame() {
   }
   const tl = document.getElementById("tleft");
   if (tl) tl.textContent = tpl("sec", { s: Math.max(0, Math.ceil(left / 1000)) });
+  const pe = document.getElementById("prog");
+  if (pe) { const pt = progText(); if (pe.textContent !== pt) pe.textContent = pt; }
   if ((state.phase === "answer" || state.phase === "vote") && left < 5000 && left > 0) {
     const sec = Math.ceil(left / 1000);
     if (sec !== lastTickSec) { lastTickSec = sec; qpSfx.tick(true); }
