@@ -549,7 +549,10 @@ class Game {
 
   lotRecord(price) {
     const c = this.s.lot;
-    return { name: c.name, emoji: c.emoji, meta: c.meta, price, round: this.s.round };
+    const rec = { name: c.name, emoji: c.emoji, meta: c.meta, price, round: this.s.round };
+    // номер карты в колоде категории: у переводов он тот же (T-W2-05, E-22) — телефон подставит название на своём языке
+    if (Number.isInteger(c.idx)) rec.idx = c.idx;
+    return rec;
   }
 
   // ---------- время ----------
@@ -807,7 +810,7 @@ class Game {
         spent: p.spent,
         // meta лотов в снимок не кладём: клиентам она не нужна, а состояние уходит всем на каждое
         // событие и на слабой сети каждый килобайт — это задержка (у судьи лоты свои, полные)
-        lots: p.lots.map((l) => ({ name: l.name, emoji: l.emoji, price: l.price, round: l.round })),
+        lots: p.lots.map((l) => ({ name: l.name, emoji: l.emoji, price: l.price, round: l.round, idx: l.idx })),
         online: p.online,
         away: !!p.away, // не взят в партию на старте (T-W2-07): доска красит приглушённо
         left: p.left,

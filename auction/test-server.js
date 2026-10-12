@@ -43,6 +43,7 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
   host.send({ type: "start" });
   await until(() => host.state.phase === "lot");
   check(host.state.phase === "lot", "старт");
+  check(Number.isInteger(host.state.lot && host.state.lot.idx), "лот несёт idx карты (перевод на телефоне)");
   host.send({ type: "settings", settings: { budget: 10 } });
   await wait(200);
   check(host.state.settings.budget === 50, "настройки после старта не меняются");

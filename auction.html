@@ -144,6 +144,12 @@
   .mid { font: 700 14px/1 var(--display); text-transform: uppercase; letter-spacing: .05em; color: var(--text); background: none; border: 1px solid var(--glass-line); border-radius: 999px; padding: 15px; width: 100%; }
   .mid:active { background: rgba(255, 255, 255, .08); }
   /* T-W2-09: плашка «Ты в игре как…» (вернули место по имени) и «Имя занято…» — поверх экрана, вёрстку не двигает */
+  /* подсказка «Язык комнаты: EN. Переключить?» — поверх экрана под строкой «← Все игры», вёрстку не двигает */
+  .langhint { position: fixed; left: 16px; right: 16px; top: 58px; z-index: 41; display: none; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 14px; background: rgba(20, 18, 34, .96); border: 1px solid var(--c1); box-shadow: 0 8px 28px rgba(0, 0, 0, .45); font: 600 14px/1.3 var(--body); color: var(--text); }
+  .langhint.on { display: flex; }
+  .langhint .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .langhint button { flex: none; border: 0; border-radius: 10px; padding: 8px 11px; font: 800 13px var(--body); background: rgba(255, 255, 255, .12); color: var(--text); }
+  .langhint button.go { background: var(--c1); color: #0a0a0f; }
   .codeform { display: grid; gap: 10px; }
   .codeform input { text-transform: uppercase; }
   .seatplate { position: fixed; left: 16px; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 40; display: none; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 16px; background: rgba(20, 18, 34, .96); border: 1px solid var(--c1); box-shadow: 0 8px 28px rgba(0, 0, 0, .45); font: 600 14.5px/1.35 var(--body); color: var(--text); }
@@ -534,6 +540,7 @@
 <div class="util"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
 <div class="screen" id="app"></div>
 <div class="overlay" id="overlay"></div>
+<div class="langhint" id="langhint" role="status"><div class="t" id="langhint-t"></div><button type="button" class="go" id="langhint-go"></button><button type="button" id="langhint-no"></button></div>
 <div class="seatplate" id="seatplate" role="status"><div class="t" id="seatplate-t"></div><button type="button" id="seatplate-ok"></button></div>
 <div class="sheetback" id="sheetback"></div>
 <div class="sheet" id="sheet"></div>
@@ -603,6 +610,9 @@ window.I18N_DICT = {
     expired_new: `Создать свою комнату`,
     ov_replaced: `Ты открыл игру на другом устройстве — играй там`,
     play_here: `Играть здесь`,
+    lang_hint: `Язык комнаты: {lang}. Переключить?`,
+    lang_hint_go: `Переключить`,
+    lang_hint_no: `Нет`,
     seat_plate: `Ты в игре как: {name} · {money}, лотов: {n}`,
     seat_plate_hint: `Это не ты? Закрой страницу — настоящий игрок вернётся сам`,
     name_taken_as: `Имя занято. Ты в игре как: {name}`,
@@ -779,6 +789,9 @@ window.I18N_DICT = {
     expired_new: `Create your own room`,
     ov_replaced: `You opened the game on another device — play there`,
     play_here: `Play here`,
+    lang_hint: `Room language: {lang}. Switch?`,
+    lang_hint_go: `Switch`,
+    lang_hint_no: `No`,
     seat_plate: `You're in as: {name} · {money}, lots: {n}`,
     seat_plate_hint: `Not you? Close this page — the real player will come back on their own`,
     name_taken_as: `That name is taken. You're in as: {name}`,
@@ -949,6 +962,9 @@ window.I18N_DICT = {
     expired_new: `Φτιάξε δικό σου δωμάτιο`,
     ov_replaced: `Άνοιξες το παιχνίδι σε άλλη συσκευή — παίξε από εκεί`,
     play_here: `Παίξε εδώ`, //EL:unverified
+    lang_hint: `Γλώσσα δωματίου: {lang}. Αλλαγή;`, //EL:unverified
+    lang_hint_go: `Αλλαγή`, //EL:unverified
+    lang_hint_no: `Όχι`, //EL:unverified
     seat_plate: `Είσαι μέσα ως: {name} · {money}, λοτ: {n}`, //EL:unverified
     seat_plate_hint: `Δεν είσαι εσύ; Κλείσε τη σελίδα — ο πραγματικός παίκτης θα επιστρέψει μόνος του`, //EL:unverified
     name_taken_as: `Το όνομα είναι πιασμένο. Είσαι μέσα ως: {name}`, //EL:unverified
@@ -1224,7 +1240,7 @@ function setOverlay(key, vars) {
 window.addEventListener("langchange", () => {
   if (dead) return deadScreen === "noroom" ? renderNoRoom() : renderExpired();
   if (overlayKey) setOverlay(overlayKey, overlayVars);
-  if (state) { app.innerHTML = ""; lastLot = -1; introShown = null; render(); return; }
+  if (state) { if (rawState) state = localizeLots(rawState); app.innerHTML = ""; lastLot = -1; introShown = null; render(); return; }
   const input = document.getElementById("name");
   if (input) { const v = input.value; renderJoin(joinErrKey); const again = document.getElementById("name"); if (again) again.value = v; return; }
   if (document.querySelector(".start")) renderCreate();
@@ -1593,10 +1609,51 @@ function showSeatPlate() {
 }
 document.getElementById("seatplate-ok").onclick = hideSeatPlate;
 
+// ---- язык комнаты (T-W2-05, U-17) ----
+// Подсказка «Язык комнаты: EN. Переключить?» — класс A, показывается один раз на язык, пока человек сам язык не выбирал.
+// Автоматическое следование — только за флагом MP.rules.RULE_U17_LANG_FOLLOW (класс B, по умолчанию выкл.).
+const LANG_NAMES = { ru: "Русский", en: "English", el: "Ελληνικά" };
+const LANG_FOLLOW = !!(window.MP && MP.rules && MP.rules.RULE_U17_LANG_FOLLOW);
+const roomLang = window.MP && MP.followRoomLang && !MP.off ? MP.followRoomLang({
+  enabled: true,
+  auto: LANG_FOLLOW,
+  getRoomLang: () => state && state.settings && state.settings.lang,
+  onSuggest: (sug) => {
+    const box = document.getElementById("langhint");
+    if (!box) return;
+    document.getElementById("langhint-t").textContent = tpl("lang_hint", { lang: LANG_NAMES[sug.lang] || sug.lang });
+    const go = document.getElementById("langhint-go"), no = document.getElementById("langhint-no");
+    go.textContent = I18N.t("lang_hint_go");
+    no.textContent = I18N.t("lang_hint_no");
+    const close = () => box.classList.remove("on");
+    go.onclick = () => { close(); sug.accept(); };
+    no.onclick = () => { close(); sug.decline(); };
+    box.classList.add("on");
+  },
+}) : null;
+// перевод лотов: сервер шлёт номер карты (idx), у перевода порядок тот же. Подмена — только когда язык интерфейса
+// отличается от языка комнаты И включено следование (иначе лоты, как раньше, на языке комнаты).
+let rawState = null;
+function localizeLots(s, force) {
+  if (!(LANG_FOLLOW || force) || !s || !s.settings) return s;
+  const lang = uiLang(), room = s.settings.lang || "ru";
+  if (lang === room || CARD_LANGS.indexOf(lang) === -1 && lang !== "ru") return s;
+  const cards = (lang === "ru" ? window.CARDS || {} : (window.CARDS_BY_LANG || {})[lang] || {})[s.kind];
+  if (!cards) {
+    loadCards(s.kind, lang).then(() => { if (rawState === s && state) { state = localizeLots(s); render(); } }).catch(() => {});
+    return s;
+  }
+  const tr = (l) => { const c = l && Number.isInteger(l.idx) ? cards[l.idx] : null; return c ? Object.assign({}, l, { name: c.name, meta: c.meta, description: c.description, fact: c.fact }) : l; };
+  return Object.assign({}, s, { lot: s.lot ? tr(s.lot) : s.lot, players: s.players.map((p) => Object.assign({}, p, { lots: p.lots.map(tr) })) });
+}
+
 function setState(s) {
   if (!me) return;
-  state = s;
+  rawState = s;
+  state = localizeLots(s);
+  s = state;
   if (pendingPlate) showSeatPlate();
+  if (roomLang) roomLang.check();
   // смещение часов — по лучшему замеру ping/pong, а не «как пришёл этот state» (§6.4)
   offset = serverOffset(s.serverNow);
   document.body.dataset.kind = s.kind;

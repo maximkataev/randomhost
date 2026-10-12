@@ -1176,3 +1176,23 @@ test("имя: тёзка определяется по ключу (регист�
   assert.equal(g.addPlayer({ id: "d", name: "Ёж" }).name, "Ёж");
   assert.equal(g.addPlayer({ id: "e", name: "еж" }).name, "еж 2");
 });
+
+// ---------- T-W2-05: idx карты (перевод лота на телефоне) ----------
+test("lotRecord хранит idx карты, снимок отдаёт его в lots[]; карта без idx — поле не появляется", () => {
+  const withIdx = cards.map((c, i) => ({ ...c, idx: i }));
+  const g = Game.create({ kind: "test", cards: withIdx, settings: { intro: 0 }, rng });
+  g.addPlayer({ id: "p0", name: "P0" });
+  g.addPlayer({ id: "p1", name: "P1" });
+  g.start(0);
+  const lotIdx = g.s.lot.idx;
+  assert.ok(Number.isInteger(lotIdx));
+  g.bid("p0", 1, 100);
+  g.hostSkip(200); // немедленная продажа лидеру
+  const rec = g.player("p0").lots[0];
+  assert.equal(rec.idx, lotIdx);
+  assert.equal(g.snapshot(300).players[0].lots[0].idx, lotIdx);
+  const plain = setup(2);
+  plain.bid("p0", 1, 100);
+  plain.hostSkip(200);
+  assert.ok(!("idx" in plain.player("p0").lots[0]));
+});

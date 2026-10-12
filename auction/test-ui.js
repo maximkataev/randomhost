@@ -184,6 +184,26 @@ async function typeText(page, text) {
     await evaluateSafe(remote, "window.dispatchEvent(new Event('online')); true");
     check(await untilPage(remote, "overlayKey !== 'ov_offline'", 6000), "пульт: online и ответ сервера снимают оверлей");
 
+    // T-W2-05: подсказка языка комнаты («Язык комнаты: …. Переключить?») — класс A; без флага следования язык сам не меняется
+    const roomLangNow = await evaluateSafe(remote, "state.settings.lang");
+    const other = roomLangNow === "en" ? "ru" : "en";
+    await evaluateSafe(remote, `I18N.setLang(${JSON.stringify(other)}, { persist: false }); roomLang.check(); true`);
+    await wait(300);
+    check(await evaluateSafe(remote, "document.getElementById('langhint').classList.contains('on')"), "пульт: язык интерфейса ≠ языку комнаты — показана подсказка «Язык комнаты…»");
+    check((await evaluateSafe(remote, "I18N.lang")) === other, "пульт: язык сам не переключился (следование выключено)");
+    // перевод лота по idx: язык интерфейса ≠ язык комнаты, колода своего языка — название подменяется (за флагом следования; здесь — force)
+    const trOk = await evaluateSafe(remote, `(async () => {
+      await loadCards(state.kind, uiLang());
+      const cards = uiLang() === "ru" ? window.CARDS[state.kind] : window.CARDS_BY_LANG[uiLang()][state.kind];
+      const fake = Object.assign({}, rawState, { settings: Object.assign({}, rawState.settings, { lang: uiLang() === "ru" ? "en" : "ru" }), lot: { name: "X", idx: 3, meta: [], description: "", fact: "" },
+        players: rawState.players.map((p) => Object.assign({}, p, { lots: [{ name: "Y", emoji: "x", price: 1, round: 0, idx: 5 }] })) });
+      const out = localizeLots(fake, true);
+      return out.lot.name === cards[3].name && out.players[0].lots[0].name === cards[5].name;
+    })()`);
+    check(trOk === true, "пульт: лот и лоты игроков подменяются названием из колоды языка интерфейса по idx");
+    await evaluateSafe(remote, "document.getElementById('langhint-go').click(); true");
+    await wait(300);
+    check((await evaluateSafe(remote, "I18N.lang")) === roomLangNow && !(await evaluateSafe(remote, "document.getElementById('langhint').classList.contains('on')")), "пульт: «Переключить» ставит язык комнаты и убирает подсказку");
 
     // --- задание партии: клик по плитке должен дойти до сервера и до пульта
     await board.call("Runtime.evaluate", { expression: `[...document.querySelectorAll("#mode .tile")].find(x => x.dataset.v === "worst").click()` });
