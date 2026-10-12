@@ -352,6 +352,14 @@ async function main() {
     check((await board.evaluate("!!document.getElementById('homebtn')")) === true, "доска: кнопка «Главная» на итогах");
     for (const p of phones) check((await p.evaluate("(document.getElementById('homebtn') || {}).getAttribute && document.getElementById('homebtn').getAttribute('href')")) === "index.html", `${p.name}: кнопка «Главная» на итогах`);
 
+    // вошёл после финала (T-W1-15, U-11): места не получает, в таблице доски его нет, на телефоне — «играем со следующей партии»
+    const tableN = await board.evaluate("document.querySelectorAll('#setlist li').length");
+    const [lateP] = await joinPhones(room.code, ["Опоздун"], [[390, 844]]);
+    pages.push(lateP);
+    check(!!(await waitFor(lateP, "/Играем со следующей/.test((document.querySelector('.big') || {}).textContent || '')", 5000)), "вошедший после финала: «Играем со следующей партии» вместо места");
+    check((await board.evaluate("document.querySelectorAll('#setlist li').length")) === tableN, `вошедший после финала: в таблице доски не появился (${tableN})`);
+    check((await lateP.evaluate(NO_HSCROLL)) === true, "вошедший после финала: без прокрутки вбок");
+
     // ---------- 3. короткая партия втроём ----------
     await click(board, "#tolobby");
     await waitFor(board, "state.phase === 'lobby'", 5000);

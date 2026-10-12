@@ -286,7 +286,8 @@
   .setlist li b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .setlist li .dots { flex: 1; min-width: 10px; border-bottom: 3px dotted rgba(255, 225, 77, .35); margin-top: 10px; }
   .setlist li .s { font: var(--show-w) 16px/1 var(--show); font-variation-settings: var(--show-fvs); font-variant-numeric: tabular-nums; }
-  .setlist li.me { background: var(--bulb); color: var(--ink); }
+  .setlist li.me { background: var(--bulb); color: var(--ink); position: sticky; top: 6px; bottom: 6px; z-index: 1; }
+  .big.sm { font-size: clamp(26px, 8vw, 38px); }
   .setlist li.me .n { color: var(--ink); }
   .setlist li.me .dots { border-color: rgba(42, 8, 16, .35); }
   .howcard ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-weight: 600; }
@@ -905,12 +906,14 @@ function renderReveal() {
 // места с ничьими и порядок — как на доске (qpRanked)
 function standing() {
   const list = qpRanked(state.players);
-  const p = list.find((x) => x.id === me) || mine();
-  return { list, place: p.place || 1, p };
+  const inList = list.find((x) => x.id === me);
+  const p = inList || mine();
+  // вошёл после финала: в таблице его нет, места не получает (T-W1-15, U-11)
+  return { list, place: inList ? p.place : 0, p, out: !inList && state.phase === "finished" };
 }
 
 function setlistHtml(list) {
-  return `<div class="card setlist"><div class="k">${T("setlist")}</div><ol>${list.map((x) => `<li class="${x.id === me ? "me" : ""}"><span class="n">${x.place}</span>${avHtml(x)}<b>${escapeHtml(x.name)}</b><span class="dots"></span><span class="s">${x.score}</span></li>`).join("")}</ol></div>`;
+  return `<div class="card setlist"><div class="k">${T("setlist")}</div><ol>${list.map((x) => `<li class="${x.id === me ? "me" : ""}"><span class="n">${escapeHtml(qpPlaceLabel(x))}</span>${avHtml(x)}<b>${escapeHtml(x.name)}</b><span class="dots"></span><span class="s">${x.score}</span></li>`).join("")}</ol></div>`;
 }
 
 function renderScores() {
@@ -918,20 +921,20 @@ function renderScores() {
   if (screenKey === key) return;
   const { list, place, p } = standing();
   show(`<div class="center"><div class="eyebrow">${escapeHtml(tpl("scores_title", { n: state.ri + 1 }))}</div>
-    <div class="big" style="margin:10px 0">${escapeHtml(qpPlace(place))}</div><div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div></div>${setlistHtml(list)}`, key, true, { reacts: true });
+    <div class="big" style="margin:10px 0">${escapeHtml(qpPlaceTie(p))}</div><div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div></div>${setlistHtml(list)}`, key, true, { reacts: true });
 }
 
 function renderFinal() {
   const key = "final:" + state.game + ":" + state.finishedReason + qpLang();
   if (screenKey === key) return;
-  const { list, place, p } = standing();
+  const { list, place, p, out } = standing();
   const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : T("final_sub");
   show(`<div class="center"><h1 class="sign sm">${T("final_title")}</h1>
-    <div class="big" style="margin:14px 0 6px">${escapeHtml(qpPlace(place))}</div>
+    <div class="big${out ? " sm" : ""}" style="margin:14px 0 6px">${escapeHtml(out ? T("final_late") : qpPlaceTie(p))}</div>
     <div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div>
     <p class="fine">${escapeHtml(sub)}</p></div>${setlistHtml(list)}
     <a class="btn ghost" id="homebtn" href="index.html">${T("btn_home")}</a>`, key, true, { reacts: true });
-  if (place === 1 && state.finishedReason === "done") setTimeout(() => qpConfetti({ mode: "rain", n: 120 }), 300);
+  if (!out && place === 1 && state.finishedReason === "done") setTimeout(() => qpConfetti({ mode: "rain", n: 120 }), 300);
 }
 
 // ---------- выбор экрана ----------

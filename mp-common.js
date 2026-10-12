@@ -60,6 +60,9 @@
  *
  *   MP.progress.text(done, total, secsLeft?, {kind = 'answered' | 'voted', lang?}) -> "Ответили 4 из 6 · ~40 с"  (T-W1-14)
  *     done ограничен total; секунды с «~» (шагом 5 с выше 10); язык: opts.lang | I18N.lang | ru (ru/en/el).
+ *
+ *   MP.rank(players, {score = 'score' | fn, tiebreak(a, b), exclude(p), fallbackAll = true})  (T-W1-15)
+ *     -> {list: [{id, player, score, place, tie}], winnerIds, byId, excluded}  ранг 1,1,3; не участвуют left и played === false
  */
 (function (root) {
   'use strict';
@@ -407,6 +410,44 @@
       }
       return s;
     }
+  };
+
+  // ── rank ───────────────────────────────────────────────────────────────────────────────────────
+  // «Соревновательный» ранг (T-W1-15, пакет P8, U-11/U-15): равные очки — одно место, следующее пропускается
+  // (1, 1, 3). Порядок внутри ничьей — только для показа (tiebreak), на место не влияет.
+  //   MP.rank(players, {score = 'score' | fn(p), tiebreak(a, b), exclude(p), fallbackAll = true})
+  //     -> {list: [{id, player, score, place, tie}], winnerIds, byId: {id: entry}, excluded: [id]}
+  //   Не участвуют: left === true и played === false («вошёл после финала»; поле нет = участвует).
+  //   Если не играл никто (партия оборвалась в самом начале) — таблица строится по всем не ушедшим.
+  //   winnerIds — все с place 1 (ничья за первое место); игры сохраняют и свой winnerId для статистики.
+  MP.rank = function (players, opts) {
+    var o = opts || {};
+    var scoreOf = typeof o.score === 'function' ? o.score : function (p) {
+      var v = p[o.score || 'score'];
+      return typeof v === 'number' && isFinite(v) ? v : 0;
+    };
+    var skip = typeof o.exclude === 'function' ? o.exclude : function (p) { return p.left === true || p.played === false; };
+    var tb = typeof o.tiebreak === 'function' ? o.tiebreak : function (a, b) {
+      var an = String(a.name == null ? '' : a.name), bn = String(b.name == null ? '' : b.name);
+      var c = an.localeCompare(bn);
+      return c || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    };
+    var all = (players || []).filter(function (p) { return p && typeof p === 'object'; });
+    var kept = all.filter(function (p) { return !skip(p); });
+    if (!kept.length && o.fallbackAll !== false) kept = all.filter(function (p) { return p.left !== true; });
+    var entries = kept.map(function (p) { return { id: p.id, player: p, score: scoreOf(p), place: 0, tie: false }; });
+    entries.sort(function (a, b) { return b.score - a.score || tb(a.player, b.player); });
+    for (var i = 0; i < entries.length; i++) {
+      entries[i].place = i > 0 && entries[i - 1].score === entries[i].score ? entries[i - 1].place : i + 1;
+    }
+    for (var j = 0; j < entries.length; j++) {
+      var same = (j > 0 && entries[j - 1].place === entries[j].place) || (j + 1 < entries.length && entries[j + 1].place === entries[j].place);
+      entries[j].tie = same;
+    }
+    var byId = {}, winnerIds = [], excluded = [];
+    entries.forEach(function (e) { byId[e.id] = e; if (e.place === 1) winnerIds.push(e.id); });
+    all.forEach(function (p) { if (!byId[p.id]) excluded.push(p.id); });
+    return { list: entries, winnerIds: winnerIds, byId: byId, excluded: excluded };
   };
 
   root.MP = MP;

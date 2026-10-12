@@ -618,6 +618,19 @@ test("аватарка: свою можно сменить в лобби и ме
   assert.strictEqual(g.snapshot(0, "P1").avatarChoices, null);
 });
 
+// ---------- T-W1-15: played в итогах ----------
+
+test("played в снимке итогов: вошедший после финала — false; посреди партии поля нет", () => {
+  const g = game(3, { short: true });
+  assert.ok(!("played" in g.snapshot(1, "board").players[0]), "посреди партии поле не нужно");
+  g.abort(100);
+  assert.strictEqual(g.s.phase, "finished");
+  assert.ok(g.addPlayer({ id: "late", name: "late" }).ok);
+  const ps = g.snapshot(200, "board").players;
+  assert.strictEqual(ps.find((p) => p.id === "late").played, false);
+  assert.ok(ps.filter((p) => p.id !== "late").every((p) => p.played === true));
+});
+
 // ---------- T-W1-14: «Ответили N из M» ----------
 
 test("answerProgress: знаменатель — на связи плюс уже ответившие; «4 из 3» не бывает; имена только доске", () => {

@@ -343,5 +343,37 @@ test("MP.progress.text: «Ответили 4 из 6 · ~40 с», done не бо�
   assert.equal(P.text(1, 2, null, { lang: "xx", kind: "voted" }), "Проголосовали 1 из 2");
 });
 
+console.log("rank");
+test("MP.rank: ничья 1,1,3; порядок внутри ничьей — по имени; winnerIds — все первые", () => {
+  const w = load();
+  const r = w.MP.rank([
+    { id: "a", name: "Яна", score: 100 }, { id: "b", name: "Аня", score: 100 },
+    { id: "c", name: "Боря", score: 70 }, { id: "d", name: "Вика", score: 70 }, { id: "e", name: "Глеб", score: 10 },
+  ]);
+  assert.deepEqual(r.list.map((e) => e.id), ["b", "a", "c", "d", "e"]);
+  assert.deepEqual(r.list.map((e) => e.place), [1, 1, 3, 3, 5]);
+  assert.deepEqual(r.list.map((e) => e.tie), [true, true, true, true, false]);
+  assert.deepEqual(r.winnerIds, ["b", "a"]);
+  assert.equal(r.byId.e.place, 5);
+});
+test("MP.rank: ушедшие и played === false (вошёл после финала) не получают места; нет поля — участвует", () => {
+  const w = load();
+  const r = w.MP.rank([
+    { id: "a", name: "A", score: 50, played: true }, { id: "b", name: "B", score: 0, played: false },
+    { id: "c", name: "C", score: 40, left: true }, { id: "d", name: "D", score: 30 },
+  ]);
+  assert.deepEqual(r.list.map((e) => e.id), ["a", "d"]);
+  assert.deepEqual(r.excluded.sort(), ["b", "c"]);
+  assert.deepEqual(r.list.map((e) => e.place), [1, 2]);
+});
+test("MP.rank: не играл никто — таблица по всем не ушедшим; свой tiebreak и ключ очков", () => {
+  const w = load();
+  const r = w.MP.rank([{ id: "a", name: "A", score: 0, played: false }, { id: "b", name: "B", score: 0, played: false, left: true }]);
+  assert.deepEqual(r.list.map((e) => e.id), ["a"]);
+  const q = w.MP.rank([{ id: "x", pts: 5 }, { id: "y", pts: 5 }, { id: "z", pts: 9 }], { score: "pts", tiebreak: (a, b) => (a.id < b.id ? 1 : -1) });
+  assert.deepEqual(q.list.map((e) => e.id), ["z", "y", "x"]);
+  assert.deepEqual(q.list.map((e) => e.place), [1, 2, 2]);
+});
+
 console.log("\n" + passed + " пройдено, " + failed + " провалено");
 process.exit(failed ? 1 : 0);

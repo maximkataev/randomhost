@@ -747,7 +747,8 @@ class Game {
         score: p.score,
         // Сколько подсказок взял и сколько написал руками — только в итогах: посреди партии эти
         // счётчики выдавали бы, кто сейчас ответил подсказкой (§4: «при голосовании не отличить»).
-        ...(s.phase === "finished" ? { hintsUsed: p.hintsUsed, answered: p.answered, avgMs: p.answered >= 2 ? Math.round(p.answerMs / p.answered) : null } : {}),
+        // «играл ли в этой партии» — только в итогах: вошедший после финала места не получает (U-11)
+        ...(s.phase === "finished" ? { played: p.played === s.game, hintsUsed: p.hintsUsed, answered: p.answered, avgMs: p.answered >= 2 ? Math.round(p.answerMs / p.answered) : null } : {}),
       })),
     };
   }
