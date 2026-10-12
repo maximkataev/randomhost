@@ -56,6 +56,9 @@ const LAST_BID_DELAY = 1500; // ставку перебить некому — �
 // которые никому не нужны, а хит провоцирует драку. Владелец назвал 3–5, взяли нижнюю границу:
 // три пустых лота подряд — это уже минута тишины на экране.
 const HOT_AFTER = 3;
+// U-20 (RULE_U20_DRY_T1): после стольких пустых лотов подряд T1 лота сокращается до DRY_SHORT_T1
+const DRY_SHORT_AFTER = 2;
+const DRY_SHORT_T1 = 10000;
 
 // `kind` обязателен всюду, где категория известна: задание живёт не во всех категориях,
 // и проверка id без категории пропускала «лигу суперзлодеев» в блюда (POST /rooms, next_game).
@@ -309,6 +312,9 @@ class Game {
     // считаем тех, кто на связи: иначе старт с одним живым игроком сразу уводил в соло-добор
     if (this.activePlayers().filter((p) => p.online).length < 2) throw new Error("need at least 2 players");
     if (opts.ghostOut) for (const p of this.activePlayers()) if (p.online === false) p.away = true;
+    // opts.dryShort (класс B, RULE_U20_DRY_T1; по умолчанию выкл.): после DRY_SHORT_AFTER пустых лотов подряд
+    // лот живёт не больше DRY_SHORT_T1 — игроки с полным лайнапом не ждут по 20 с «мимо» (U-20, auction-021)
+    s.dryShort = !!opts.dryShort;
     const n = this.activePlayers().filter((p) => !p.away).length;
     s.rounds = Math.min(s.deck.length, Math.ceil(n * s.settings.slots * 1.25));
     s.round = -1;
@@ -369,9 +375,18 @@ class Game {
     s.solo = null;
     s.phase = "lot";
     // торговаться некому — не держим лот 10 секунд
-    const t1 = this.bidders().length ? s.settings.t1 : 3000;
+    const full = this.lotT1();
+    const t1 = this.bidders().length ? full : 3000;
+    s.lotT1 = full;
     s.deadline = now + t1;
     return [{ type: "lot", round: s.round, hot: s.hot }];
+  }
+
+  // T1 текущего лота: полный, а при включённом dryShort после серии пустых — не больше DRY_SHORT_T1.
+  // Хит (HOT_AFTER = 3 > DRY_SHORT_AFTER) обнуляет серию, поэтому получает полный T1.
+  lotT1() {
+    const s = this.s, t1 = s.settings.t1;
+    return s.dryShort && (s.dry || 0) >= DRY_SHORT_AFTER ? Math.min(t1, DRY_SHORT_T1) : t1;
   }
 
   // Самый популярный из ещё не показанных лотов встаёт на текущее место колоды (обмен, а не вставка:
@@ -400,7 +415,8 @@ class Game {
     s.skips = [];
     s.lotStartedAt = now;
     s.lotCapAt = now + s.settings.lotCap;
-    s.deadline = now + (this.bidders().length ? s.settings.t1 : 3000);
+    s.lotT1 = this.lotT1();
+    s.deadline = now + (this.bidders().length ? s.lotT1 : 3000);
     return [{ type: "lot", round: s.round }];
   }
 
@@ -787,6 +803,7 @@ class Game {
       // но клиентам нужно знать длину фазы, чтобы нарисовать кольцо таймера.
       solo: s.phase === "draft" && s.solo ? { playerId: s.solo.playerId, skips: s.solo.skips, price: (this.player(s.solo.playerId)?.money || 0) >= SOLO_PRICE ? SOLO_PRICE : 0 } : null,
       t4: SOLO_T4,
+      lotT1: s.lotT1 || null, // длина фазы ЛОТ у этого лота (может быть короче settings.t1 при dryShort)
       // одинокий с деньгами (loneBidder): сколько скипов осталось; 0 — по таймеру лот уйдёт ему за $1
       lone: lone ? { playerId: lone.id, skips: loneLeft } : null,
       hot: !!s.hot && !!s.lot, // лот выставлен как хит после серии пустых (HOT_AFTER)
@@ -826,4 +843,4 @@ class Game {
   }
 }
 
-module.exports = { Game, DEFAULTS, PHASES, clampSettings, cleanName, SOLO_T4, SOLO_SKIPS, SOLO_PRICE, SOLO_WAIT, HOT_AFTER, LAST_BID_DELAY };
+module.exports = { Game, DEFAULTS, PHASES, clampSettings, cleanName, SOLO_T4, SOLO_SKIPS, SOLO_PRICE, SOLO_WAIT, HOT_AFTER, DRY_SHORT_AFTER, DRY_SHORT_T1, LAST_BID_DELAY };

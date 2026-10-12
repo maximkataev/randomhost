@@ -1196,3 +1196,48 @@ test("lotRecord хранит idx карты, снимок отдаёт его в
   plain.hostSkip(200);
   assert.ok(!("idx" in plain.player("p0").lots[0]));
 });
+
+// ---------- T-W3-20: U-20 — T1 после пустых лотов подряд (RULE_U20_DRY_T1, класс B) ----------
+
+function dryGame(on, t1) {
+  const g = Game.create({ kind: "test", cards, settings: { intro: 0, ...(t1 ? { t1 } : {}) }, rng });
+  for (let i = 0; i < 3; i++) g.addPlayer({ id: `p${i}`, name: `P${i}` });
+  g.start(0, on ? { dryShort: true } : {});
+  return g;
+}
+function emptyLot(g) { allSkip(g, g.s.lotStartedAt + 1); g.tick(g.s.deadline); } // «мимо» + следующий лот
+
+test("U-20: по умолчанию (флаг выкл.) лот после пустых живёт полный T1", () => {
+  const g = dryGame(false);
+  emptyLot(g); emptyLot(g);
+  assert.equal(g.s.dry, 2);
+  assert.equal(g.s.deadline - g.s.lotStartedAt, 20000);
+  assert.equal(g.snapshot(0).lotT1, 20000);
+});
+
+test("U-20: флаг вкл. — после 2 пустых подряд T1 лота ≤ 10 с; rounds не меняется; хит получает полный", () => {
+  const g = dryGame(true);
+  const rounds = g.s.rounds;
+  assert.equal(g.s.deadline - g.s.lotStartedAt, 20000, "первый лот — полный T1");
+  emptyLot(g);
+  assert.equal(g.s.deadline - g.s.lotStartedAt, 20000, "после одного пустого — ещё полный");
+  emptyLot(g);
+  assert.equal(g.s.dry, 2);
+  assert.equal(g.s.deadline - g.s.lotStartedAt, 10000, "после двух подряд — 10 с");
+  assert.equal(g.snapshot(0).lotT1, 10000);
+  assert.equal(g.s.rounds, rounds);
+  emptyLot(g);
+  assert.equal(g.s.deadline - g.s.lotStartedAt, 20000, "после третьего пустого серия обнулена хитом");
+});
+
+test("U-20: продажа обрывает серию; settings.t1 < 10 с не удлиняется", () => {
+  const g = dryGame(true);
+  emptyLot(g); emptyLot(g);
+  g.bid("p0", 1, g.s.lotStartedAt + 10);
+  g.tick(g.s.deadline); g.tick(g.s.deadline);
+  assert.equal(g.s.dry, 0);
+  assert.equal(g.s.deadline - g.s.lotStartedAt, 20000);
+  const h = dryGame(true, 6000);
+  emptyLot(h); emptyLot(h);
+  assert.equal(h.s.deadline - h.s.lotStartedAt, 6000);
+});

@@ -86,6 +86,8 @@ const VOTE_MORE_MS = 15000;
 const VOTE_MORE_MAX = 2;
 // T-W2-07 (U-08, класс B): офлайн к старту не берём в партию (away) — по умолчанию ВЫКЛ., «как сейчас».
 const RULE_U08_GHOST_OUT = process.env.RULE_U08_GHOST_OUT === "1";
+// U-20 (класс B): после 2 пустых лотов подряд T1 лота — 10 с; по умолчанию выкл. (как раньше)
+const RULE_U20_DRY_T1 = process.env.RULE_U20_DRY_T1 === "1";
 // T-W2-07 (U-07, класс A): офлайн-место в ЛОББИ живёт GHOST_TTL_MS (lib/presence, по умолч. 120 с) и уходит само;
 // в партии место не освобождается никогда. Проверка — в обходе SWEEP (≤ 25 с), поэтому точность до SWEEP.
 const GHOST_TTL_MS = presence.GHOST_TTL_MS;
@@ -958,7 +960,7 @@ function handle(room, client, msg) {
     }
     case "start": {
       if (!isHost(client)) return;
-      return afterChange(room, g.start(t, { ghostOut: RULE_U08_GHOST_OUT }));
+      return afterChange(room, g.start(t, { ghostOut: RULE_U08_GHOST_OUT, dryShort: RULE_U20_DRY_T1 }));
     }
     // пропуск ведущим тоже привязан к лоту: запоздавшее нажатие не должно продать следующий лот
     case "skip_lot": return isHost(client) && !stale(msg) ? afterChange(room, g.hostSkip(t)) : undefined;
