@@ -395,3 +395,53 @@ test("перебор кодов: промахи считаются на сеть
   await sleep(100);
   assert.ok((await (await fetch(`${B}/health`)).json()).ok, "сервер жив");
 });
+
+// ---- T-W0-05: сканер секретов (tools/testkit/scan.js) по трём видам: доска, игрок, сокет без токена ----
+const { scanFrames } = require("../tools/testkit/scan");
+
+test("секреты не в кадрах: авторство и подсказки до раскрытия, чужие тексты в фазе answer, токены — доска / игрок / сокет без токена", async () => {
+  const room = await createRoom({ short: true }, 20);
+  const b = await board(room.code, room.hostToken);
+  const ps = [await player(room.code, "Аня"), await player(room.code, "Боря"), await player(room.code, "Вика")];
+  const anon = client(room.code); // сокет без join/host
+  await anon.open;
+  b.send({ type: "start" });
+  const m = await ps[0].wait(statePred((s) => s.phase === "answer" && s.me && s.me.prompts.length));
+  const first = m.state.me.prompts[0];
+  ps[0].send({ type: "hint", mid: first.id });
+  const hinted = await ps[0].wait(statePred((s) => s.me && s.me.prompts.some((p) => p.id === first.id && p.done)));
+  const hintText = hinted.state.me.prompts.find((p) => p.id === first.id).answer.text;
+  assert.ok(hintText, "подсказка пришла владельцу");
+  await answerAll(ps);
+  await b.wait(statePred((s) => s.phase === "vote"));
+  await sleep(400);
+
+  const frames = (c) => c.raw.map((r) => JSON.parse(r));
+  const clients = [["board", b], ["player", ps[0]], ["player", ps[1]], ["player", ps[2]], ["anon", anon]];
+  let scanned = 0, votes = 0;
+  for (const [view, c] of clients) {
+    const fs_ = frames(c).map((f) => ({ view, frame: f }));
+    scanned += fs_.length;
+    votes += fs_.filter((x) => x.frame.state && x.frame.state.phase === "vote").length;
+    const foreign = ps.map((p) => p.token).filter((t) => t && t !== c.token);
+    // пока ответы не раскрыты (фазы vote и раньше): автор/подсказка/«опоздал» у ответов нет ни у кого, пула подсказок и ключа сравнения нет
+    const v = scanFrames(fs_, {
+      phases: ["lobby", "intro", "answer", "vote"],
+      forbiddenKeys: ["pool", "key", "hostToken", "authors", "votes",
+        (p, k) => /^state\.current\.answers\[\d+\]$/.test(p.replace(/\.[^.\[]+$/, "")) && /^(playerId|hint|late)$/.test(k) && "авторство ответа"],
+      forbiddenSubstrings: view === "board" ? foreign : foreign.concat(room.hostToken),
+    });
+    assert.deepStrictEqual(v, [], `${view}: ${JSON.stringify(v.slice(0, 3))}`);
+    // в фазе answer чужие тексты ответов и подсказка Ани никому, кроме автора, не уходят (доска — только progress без текстов)
+    const mineIdx = ps.indexOf(c);
+    const others = ps.filter((p) => p !== c).map((p) => `ответ ${p.id} `);
+    const subs = others.concat(mineIdx === 0 ? [] : hintText.length >= 3 ? [hintText] : []);
+    const a = scanFrames(fs_, { phases: ["answer"], forbiddenSubstrings: view === "player" ? subs : ps.map((p) => `ответ ${p.id} `).concat(hintText.length >= 3 ? [hintText] : []) });
+    assert.deepStrictEqual(a, [], `${view}: чужой текст в фазе answer ${JSON.stringify(a.slice(0, 2))}`);
+  }
+  assert.ok(scanned > 15 && votes > 3, `кадров мало — проверка пустая: ${scanned}/${votes}`);
+  // положительный контроль: в vote ответы есть без авторов, у автора — отметка mine
+  const vf = frames(b).filter((f) => f.state && f.state.phase === "vote" && f.state.current && f.state.current.answers);
+  assert.ok(vf.length > 0 && vf[0].state.current.answers.length >= 2, "в фазе vote ответов нет — проверка пустая");
+  for (const c of [b, anon, ...ps]) c.close();
+});
