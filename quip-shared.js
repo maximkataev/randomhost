@@ -611,6 +611,8 @@ function qpConnect({ code, onMessage, onOpen, onGone, onState, onDrop, onQuiet }
   const queue = [];
   const drop = (m, cb) => { const f = cb || onDrop; if (f) f(m); };
   const enqueue = (m, at) => {
+    // черновик ответа — страховка, а не действие: в обрыв не копим (иначе он вытеснил бы настоящий «answer» той же схватки)
+    if (m && m.draft === true) return;
     // то же действие (тип + схватка) — одно: сервер идемпотентен, но очередь не раздуваем
     if (queue.some((it) => it.m.type === m.type && it.m.mid === m.mid)) return;
     queue.push({ m, at: at || Date.now() });

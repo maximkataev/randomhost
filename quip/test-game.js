@@ -737,3 +737,139 @@ test("🐌-ответ не становится «Ответом вечера» 
     assert.strictEqual(m.result.points[pick], Math.round(m.result.tally[pick] * POINTS * ROUNDS.duel.mult * 0.5));
   });
 });
+
+// ---- T-W2-18 (quip-018, U-28): серверный черновик ответа — только за RULE_U28_SERVER_DRAFT ----
+function withDraftRule(on, fn) {
+  const was = process.env.RULE_U28_SERVER_DRAFT;
+  if (on) process.env.RULE_U28_SERVER_DRAFT = "1"; else delete process.env.RULE_U28_SERVER_DRAFT;
+  try { fn(); } finally { if (was === undefined) delete process.env.RULE_U28_SERVER_DRAFT; else process.env.RULE_U28_SERVER_DRAFT = was; }
+}
+
+test("RULE_U28_SERVER_DRAFT выкл (по умолчанию): черновик отклонён, не успел — 🐌, в снимке draft нет", () => {
+  withDraftRule(false, () => {
+    const g = game(5);
+    const m = g.s.matchups[0];
+    const id = m.authors[0];
+    const r = g.answerDraft(id, m.id, "почти готово");
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.reason, "off");
+    assert.ok(!g.snapshot(T.intro + 1, id).serverDraft);
+    g.tick(g.s.phaseEnd);
+    assert.strictEqual(g.s.phase === "answer", false);
+    const a = m.answers[id];
+    assert.strictEqual(a.hint, true);
+    assert.strictEqual(a.late, true);
+  });
+});
+
+test("RULE_U28_SERVER_DRAFT=1: набранное, но не отправленное засчитывается вместо 🐌 как рукописный ответ", () => {
+  withDraftRule(true, () => {
+    const g = game(5);
+    const m = g.s.matchups[0];
+    const [a, b] = m.authors;
+    assert.strictEqual(g.snapshot(T.intro + 1, a).serverDraft, true);
+    assert.ok(g.answerDraft(a, m.id, "  Кот   в мешке  ").ok);
+    // черновик виден только владельцу и только пока не отправил; другим и доске — нет
+    const mineP = g.snapshot(T.intro + 1, a).me.prompts.find((p) => p.id === m.id);
+    assert.deepStrictEqual(mineP.draft, { text: "Кот в мешке" });
+    assert.strictEqual(g.snapshot(T.intro + 1, b).me.prompts.find((p) => p.id === m.id).draft, null);
+    assert.ok(!JSON.stringify(g.snapshot(T.intro + 1, "board")).includes("Кот в мешке"));
+    assert.ok(!JSON.stringify(g.snapshot(T.intro + 1, b)).includes("Кот в мешке"));
+    // отправка не нужна: фаза не двигалась и «answered» не ставился
+    assert.strictEqual(g.s.phase, "answer");
+    assert.ok(!m.answers[a]);
+    g.answer(b, m.id, "второй ответ", T.intro + 2000);
+    g.tick(g.s.phaseEnd);
+    const got = m.answers[a];
+    assert.strictEqual(got.text, "Кот в мешке");
+    assert.strictEqual(got.hint, false);
+    assert.strictEqual(got.late, false);
+    // полный балл: поздней пометки нет
+    assert.strictEqual(g.s.matchups[0].answers[a].late, false);
+  });
+});
+
+test("RULE_U28_SERVER_DRAFT=1: финал — черновик засчитывается только при трёх пунктах, иначе 🐌; пустой черновик стирает прежний", () => {
+  withDraftRule(true, () => {
+    const g = game(3, { short: true });
+    // пропускаем дуэли до финала
+    while (g.s.plan[g.s.ri] !== "final" || g.s.phase !== "answer") { if (g.s.phase === "answer") answerAll(g, g.s.phaseStart + 1); else g.tick(g.s.phaseEnd); }
+    const m = g.s.matchups[0];
+    const [full, part, none] = m.authors;
+    assert.ok(g.answerDraft(full, m.id, ["раз", "два", "три"]).ok);
+    assert.ok(g.answerDraft(part, m.id, ["раз", "", "три"]).ok);
+    g.answerDraft(none, m.id, ["x", "y", "z"]);
+    g.answerDraft(none, m.id, []); // стёр всё — черновика нет
+    g.tick(g.s.phaseEnd);
+    assert.deepStrictEqual(m.answers[full].items, ["раз", "два", "три"]);
+    assert.strictEqual(m.answers[full].late, false);
+    assert.strictEqual(m.answers[part].late, true, "два пункта из трёх — не черновик, а 🐌");
+    assert.strictEqual(m.answers[part].hint, true);
+    assert.strictEqual(m.answers[none].late, true);
+  });
+});
+
+test("RULE_U28_SERVER_DRAFT=1: чужая схватка, уже отправленный ответ и чужая фаза — отказ; повторный черновик заменяет", () => {
+  withDraftRule(true, () => {
+    const g = game(5);
+    const m = g.s.matchups[0];
+    const other = g.s.matchups.find((x) => !x.authors.includes(m.authors[0]));
+    const id = m.authors[0];
+    if (other) assert.strictEqual(g.answerDraft(id, other.id, "не моё").reason, "not_yours");
+    assert.ok(g.answerDraft(id, m.id, "первый").ok);
+    assert.ok(g.answerDraft(id, m.id, "второй").ok);
+    assert.strictEqual(m.adrafts[id].text, "второй");
+    g.answer(id, m.id, "отправил", T.intro + 1000);
+    assert.strictEqual(g.answerDraft(id, m.id, "поздно").reason, "answered");
+    assert.strictEqual(g.snapshot(T.intro + 1, id).me.prompts.find((p) => p.id === m.id).draft, null);
+    // не-фаза ответов
+    const h = game(5);
+    const mm = h.s.matchups[0];
+    answerAll(h);
+    assert.strictEqual(h.answerDraft(mm.authors[0], mm.id, "x").reason, "not_answer");
+  });
+});
+
+// ---- T-W2-19 (quip-003, К-9): «Дальше» ведущего ----
+test("skipPhase: заставка, ответы, голосование, раскрытие, табло закрываются как таймаут; не раньше 800 мс; лобби и итоги — отказ", () => {
+  const lobby = Game.create({ settings: {}, code: "SKIP22", rnd: rig(), content: fixture() });
+  assert.strictEqual(lobby.skipPhase(1000).reason, "bad_phase");
+  const g = Game.create({ settings: {}, code: "SKIP22", rnd: rig(), content: fixture() });
+  names(5).forEach((id) => g.addPlayer({ id, name: id }));
+  g.start(0);
+  assert.strictEqual(g.s.phase, "intro");
+  // слишком рано: тап в миг смены фазы не перепрыгивает следующую
+  assert.strictEqual(g.skipPhase(100).reason, "too_early");
+  assert.strictEqual(g.s.phase, "intro");
+  assert.ok(g.skipPhase(900).ok);
+  assert.strictEqual(g.s.phase, "answer");
+  // фаза ответов (К-9): как таймаут — не успевшим 🐌, ответившие остаются
+  const m = g.s.matchups[0];
+  const [a, b] = m.authors;
+  g.answer(a, m.id, "мой ответ", 1000);
+  assert.strictEqual(g.skipPhase(1100).reason, "too_early");
+  const r = g.skipPhase(900 + 800);
+  assert.ok(r.ok);
+  assert.strictEqual(g.s.phase, "vote");
+  assert.strictEqual(m.answers[a].text, "мой ответ");
+  assert.strictEqual(m.answers[a].late, false);
+  assert.strictEqual(m.answers[b].late, true, "не успевший получил 🐌, как по таймауту");
+  // голосование: не проголосовавшие теряют голос, схватка раскрывается
+  const t0 = g.s.phaseStart;
+  const voter = g.present().find((p) => !m.authors.includes(p.id));
+  g.vote(voter.id, m.id, [m.order.findIndex((id) => id === a)], t0 + 10);
+  assert.ok(g.skipPhase(t0 + 900).ok);
+  assert.strictEqual(g.s.phase, "reveal");
+  assert.ok(m.result && m.result.tally.reduce((x, y) => x + y, 0) === 1, "считается только поданный голос");
+  // раскрытие → следующая схватка (или табло), табло → следующий раунд
+  let guard = 0;
+  while (g.s.phase !== "scores" && guard++ < 50) {
+    if (g.s.phase === "answer" || g.s.phase === "vote" || g.s.phase === "reveal") assert.ok(g.skipPhase(g.s.phaseStart + 900).ok);
+  }
+  assert.strictEqual(g.s.phase, "scores");
+  assert.ok(g.skipPhase(g.s.phaseStart + 900).ok);
+  assert.ok(g.s.phase === "intro" || g.s.phase === "finished");
+  // итоги: пропускать нечего
+  g.abort(1e6);
+  assert.strictEqual(g.skipPhase(1e6 + 5000).reason, "bad_phase");
+});

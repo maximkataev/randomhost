@@ -62,6 +62,9 @@ const SMALL = 4; // до стольких игроков дуэли идут «�
 const ANSWER_MAX = 80;
 const ITEM_MAX = 50; // греческие слова длинные: на 40 пункт резался посреди слова
 const REACT_GAP = 2000;
+// «Дальше» ведущего не раньше, чем через столько после начала фазы: тап в тот миг, когда фаза сменилась сама,
+// иначе проскакивал бы следующую (T-W2-19, quip-003; как SKIP_MIN_MS в fibs)
+const SKIP_MIN_MS = 800;
 const REACTIONS = ["😂", "🔥", "😱", "👏", "💀"];
 const POINTS = 100;
 const WIN_BONUS = 100;
@@ -89,12 +92,17 @@ const CTRL = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u115f\u1160\u180e\u200b-\u
 function cleanText(text, max) {
   return Array.from(String(text == null ? "" : text).replace(CTRL, "").replace(/\s+/g, " ").trim()).slice(0, max).join("").trim();
 }
-const cleanName = (name) => cleanText(name, 16);
+const NAME_MAX = 16;
+const cleanName = (name) => cleanText(name, NAME_MAX);
 
 // RULE_U08_GHOST_OUT (класс B, T-W1-07): игрок без связи к началу раунда пар не получает. По умолчанию выкл —
 // как в спеке §112 («вышедший остаётся в партии, за него работают автоподсказки 🐌»). Читаем при каждом вызове
 // (а не при загрузке модуля): флаг видно и в тестах, и после смены env без перепаковки.
 const ghostOut = () => process.env.RULE_U08_GHOST_OUT === "1";
+
+// RULE_U28_SERVER_DRAFT (класс B, T-W2-18, quip-018): черновик ответа живёт на сервере и, если игрок не успел отправить,
+// засчитывается вместо 🐌-подсказки. По умолчанию выкл. — как в спеке §3: «не успел — случайная подсказка за полцены».
+const serverDraft = () => process.env.RULE_U28_SERVER_DRAFT === "1";
 
 class Game {
   constructor(state, rnd, content) {
@@ -320,6 +328,7 @@ class Game {
       votesPer: votes,
       votes: {}, // voterId → [индексы в order]
       drafts: {}, // выбранное, но не подтверждённое кнопкой: засчитывается, когда голосование закроется
+      adrafts: {}, // playerId → {text | items}: набранный, но не отправленный ответ (RULE_U28_SERVER_DRAFT)
       result: null,
     });
     let ms = [];
@@ -371,6 +380,39 @@ class Game {
     const p = this.player(id);
     if (p) { p.answerMs += now - s.phaseStart; p.answered++; }
     return { ok: true, events: [{ type: "answered", playerId: id }, ...this.maybeAdvance(now)] };
+  }
+
+  // Черновик ответа с телефона (RULE_U28_SERVER_DRAFT): только запоминаем. Ответом он становится, лишь если время
+  // вышло (closeAnswers). Снимок всем не рассылается и фазу не двигает; «answered» не ставится.
+  answerDraft(id, mid, ans) {
+    const s = this.s;
+    if (!serverDraft()) return { ok: false, reason: "off" };
+    if (s.phase !== "answer") return { ok: false, reason: "not_answer" };
+    const m = s.matchups.find((x) => x.id === mid);
+    if (!m || !m.authors.includes(id)) return { ok: false, reason: "not_yours" };
+    if (m.answers[id]) return { ok: false, reason: "answered" };
+    if (!m.adrafts) m.adrafts = {};
+    let a = null;
+    if (m.deck === "final") {
+      const items = (Array.isArray(ans) ? ans : [ans]).slice(0, 3).map((x) => cleanText(x, ITEM_MAX));
+      if (items.some(Boolean)) a = { items };
+    } else {
+      const text = cleanText(ans, ANSWER_MAX);
+      if (text) a = { text };
+    }
+    if (a) m.adrafts[id] = a; else delete m.adrafts[id];
+    return { ok: true, events: [] };
+  }
+
+  // годный черновик: текст непустой; в финале — все три пункта (иначе 🐌, как и без черновика)
+  validDraft(m, id) {
+    const d = m.adrafts && m.adrafts[id];
+    if (!d || !serverDraft()) return null;
+    if (m.deck === "final") {
+      const items = (d.items || []).filter(Boolean);
+      return items.length === 3 ? { items, key: normalizeList(items) } : null;
+    }
+    return d.text ? { text: d.text, key: normalize(d.text) } : null;
   }
 
   // Подсказка вслепую (§4): случайная из неразыгранных в этой схватке, сменить нельзя
@@ -438,7 +480,13 @@ class Game {
     const s = this.s;
     // не успел — случайная подсказка, лимит не тратит (§3)
     for (const m of s.matchups) {
-      for (const id of m.authors) if (!m.answers[id]) m.answers[id] = { ...this.pickHint(m), hint: true, late: true, at: now };
+      for (const id of m.authors) {
+        if (m.answers[id]) continue;
+        // не успел отправить, но набрал (RULE_U28_SERVER_DRAFT) — засчитываем набранное вместо 🐌
+        const d = this.validDraft(m, id);
+        m.answers[id] = d ? { ...d, hint: false, late: false, at: now } : { ...this.pickHint(m), hint: true, late: true, at: now };
+      }
+      m.adrafts = {};
       // порядок показа перемешан: авторство не угадывается по месту
       const order = m.authors.slice();
       for (let i = order.length - 1; i > 0; i--) { const j = this.rnd(i + 1); [order[i], order[j]] = [order[j], order[i]]; }
@@ -612,6 +660,18 @@ class Game {
     return ev.concat([{ type: "lobby" }]);
   }
 
+  // «Дальше» ведущего (T-W2-19, quip-003): фаза закрывается как «время вышло» — то же состояние, что даёт таймаут,
+  // без новых правил. В фазе ответов (К-9) не успевшим ставится 🐌 (или черновик при RULE_U28_SERVER_DRAFT), в голосовании
+  // не проголосовавшие теряют голос — как по таймеру. Не раньше SKIP_MIN_MS от начала фазы.
+  skipPhase(now) {
+    const s = this.s;
+    if (!["intro", "answer", "vote", "reveal", "scores"].includes(s.phase)) return { ok: false, reason: "bad_phase", events: [] };
+    if (s.phaseEnd == null) return { ok: false, reason: "bad_phase", events: [] };
+    if (s.phaseStart != null && now - s.phaseStart < SKIP_MIN_MS) return { ok: false, reason: "too_early", events: [] };
+    s.phaseEnd = now;
+    return { ok: true, events: this.tick(now) };
+  }
+
   abort(now) {
     const s = this.s;
     if (s.phase === "lobby" || s.phase === "finished") return [];
@@ -684,7 +744,9 @@ class Game {
     if (me) {
       const mine = s.phase === "answer" ? this.mine(me.id).map((m) => {
         const a = m.answers[me.id];
-        return { id: m.id, deck: m.deck, prompt: m.prompt, done: !!a, answer: a ? (a.items ? { items: a.items } : { text: a.text }) : null, hint: a ? a.hint : false };
+        // draft — только свой и только при включённом правиле: восстановление после reload или со второго телефона
+        const dr = !a && serverDraft() && m.adrafts ? m.adrafts[me.id] || null : null;
+        return { id: m.id, deck: m.deck, prompt: m.prompt, done: !!a, answer: a ? (a.items ? { items: a.items } : { text: a.text }) : null, hint: a ? a.hint : false, draft: dr };
       }) : [];
       mePart = {
         id: me.id,
@@ -735,6 +797,8 @@ class Game {
       minPlayers: MIN_PLAYERS,
       // правило «без связи пар не получает» включено: лобби считает «нужно ещё N на связи» (T-W1-07)
       ghostOut: ghostOut(),
+      // телефон шлёт черновик ответа на сервер только если правило включено (иначе трафик впустую)
+      serverDraft: serverDraft(),
       avatarChoices: s.phase === "lobby" || s.phase === "finished" ? AVATAR_CHOICES : null,
       me: mePart,
       players: s.players.map((p) => ({
@@ -754,4 +818,4 @@ class Game {
   }
 }
 
-module.exports = { Game, EXTRA_MS, ROUNDS, PLAIN_MIDDLE, PLAN_SHORT, LATE_SHARE, T, DEFAULTS, DECKS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, SMALL, ANSWER_MAX, ITEM_MAX, REACTIONS, POINTS, WIN_BONUS, SWEEP_BONUS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText };
+module.exports = { Game, EXTRA_MS, ROUNDS, PLAIN_MIDDLE, PLAN_SHORT, LATE_SHARE, T, DEFAULTS, DECKS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, SMALL, ANSWER_MAX, ITEM_MAX, REACTIONS, POINTS, WIN_BONUS, SWEEP_BONUS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText, NAME_MAX };
