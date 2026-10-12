@@ -35,6 +35,16 @@ const DEFAULTS = {
 const ghostOut = () => process.env.RULE_U08_GHOST_OUT === "1";
 const presence = require("../lib/presence");
 
+// RULE_U47_CROWD_DECIDER = now | v1 | v2 (класс B, T-W2-37; U-47). now (по умолчанию) — как раньше: единодушие/ничья в
+// решающем вопросе дают всем +50 и партия кончается («Раскол» = +50). v1 — в решающем +50 нет: очки только за
+// «угадал большинство» (+100/0), единодушие/ничья — 0 всем; v2 — v1 и при равенстве лидеров ещё один решающий (≤ 2).
+// Читаем при каждом вызове: флаг виден и в тестах. Имя без суффикса (RULE_U47_DECIDER) — как в плане, тоже принимается.
+const deciderRule = () => {
+  const v = String(process.env.RULE_U47_CROWD_DECIDER || process.env.RULE_U47_DECIDER || "now").toLowerCase();
+  return v === "v2" ? 2 : v === "v1" || v === "1" ? 1 : 0;
+};
+const MAX_DECIDERS = 2;
+
 const MAX_PLAYERS = 12;
 const MIN_PLAYERS = 3;
 const MIN_CAST = 3; // меньше голосов — раунд аннулируется
@@ -150,6 +160,7 @@ class Game {
       voidStreak: 0,
       extraDone: false,
       deciderDone: false,
+      deciderRuns: 0, // решающих вопросов в партии (старые дампы: deciderDone => 1, см. deciderRuns())
       sensUsed: 0,
       leanB: 0,
       drawn: 0,
@@ -336,7 +347,8 @@ class Game {
       let pool = list, miss = false;
       // forced: условие обязательное — если в свободных нет подходящего, это «промах» (тогда банк забываем и пробуем снова)
       const take = (f, forced) => { const sub = pool.filter(f); if (sub.length) pool = sub; else if (forced) miss = true; };
-      const sensBlocked = (s.sensUsed || 0) >= 1 || (main && (s.drawn || 0) < 2);
+      // «чувствительный» вопрос — не больше одного за партию, не в первых двух, не в финал и не в решающий (T-W2-37)
+      const sensBlocked = (s.sensUsed || 0) >= 1 || (main && (s.drawn || 0) < 2) || kind === "final" || kind === "decider";
       if (sensBlocked) take((x) => !x.sensitive);
       const tu = s.tagUsed || {};
       take((x) => !((x.tag === "pick" || x.tag === "edge") && (tu[x.tag] || 0) >= CAP_TAG));
@@ -391,6 +403,7 @@ class Game {
     s.voidStreak = 0;
     s.extraDone = false;
     s.deciderDone = false;
+    s.deciderRuns = 0;
     s.sensUsed = 0;
     s.leanB = 0;
     s.drawn = 0;
@@ -584,13 +597,15 @@ class Game {
     res.side = res.tie ? null : res.a > res.b ? "a" : "b";
     res.unanimous = cast.length >= UNANIMOUS_MIN && (res.a === 0 || res.b === 0);
     const m = this.mult();
+    const decides = !!r.only && deciderRule() >= 1;
     for (const id of cast) {
       const vote = r.votes[id];
       res.votes[id] = vote;
       const p = this.player(id);
       let base;
       let decisive = false;
-      if (res.tie || res.unanimous) base = POINTS.flat;
+      if (decides && (res.tie || res.unanimous)) base = 0; // решающий (v1/v2): «Раскол»/«Как один!» очков не дают, лидеры остаются равными
+      else if (res.tie || res.unanimous) base = POINTS.flat;
       else { base = vote === res.side ? POINTS.win : 0; decisive = true; }
       let pts = base;
       const wantsBank = r.bank[id] && r.confirmed[id] && this.bankAllowed() && p.banks > 0;
@@ -710,9 +725,10 @@ class Game {
     const s = this.s;
     if (kind === "normal") return { to: "round" };
     if (kind === "final" && res.tie && !s.extraDone) return { to: "extra" };
-    if (kind === "decider") return { to: "finish" };
-    // финал / допвопрос закончены: лидеры с равным счётом решают отдельным вопросом
-    if (!s.deciderDone) {
+    // лидеры с равным счётом решают отдельным вопросом; при v2 после решающего, не разделившего лидеров, — ещё один
+    const runs = this.deciderRuns();
+    const again = kind === "decider" ? deciderRule() >= 2 && runs < MAX_DECIDERS : runs === 0;
+    if (again) {
       const ps = this.present();
       const top = Math.max(...ps.map((p) => p.score));
       const tied = ps.filter((p) => p.score === top).map((p) => p.id);
@@ -721,11 +737,17 @@ class Game {
     return { to: "finish" };
   }
 
+  // сколько решающих вопросов уже было; дамп прежней версии помнил только deciderDone
+  deciderRuns() {
+    const s = this.s;
+    return typeof s.deciderRuns === "number" ? s.deciderRuns : s.deciderDone ? 1 : 0;
+  }
+
   run(plan, now) {
     const s = this.s;
     if (plan.to === "round") return this.startRound("normal", now);
     if (plan.to === "extra") { s.extraDone = true; return this.startRound("extra", now); }
-    if (plan.to === "decider") { s.deciderDone = true; return this.startRound("decider", now, plan.only); }
+    if (plan.to === "decider") { s.deciderRuns = this.deciderRuns() + 1; s.deciderDone = true; return this.startRound("decider", now, plan.only); }
     return this.finish("done", now);
   }
 
