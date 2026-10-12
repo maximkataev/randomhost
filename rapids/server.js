@@ -66,7 +66,9 @@ const MAX_MSG_BYTES = 1024;
 const LOG = "[rapids]";
 // только в разработке: RAPIDS_CFG='{"LEN":800}' — короткие заплывы для тестов
 const DEV_CFG = DEV && process.env.RAPIDS_CFG ? JSON.parse(process.env.RAPIDS_CFG) : undefined;
-const GAME_CFG = Object.assign({}, DEV_CFG);   // правил-флагов движка в rapids пока нет; сюда лягут RULE_* (W2)
+// правила-флаги движка (класс B, по умолчанию «как сейчас»; включает владелец после «да» — env, без пересборки)
+const RULE_U51_COUNTDOWN_LEAVE = process.env.RULE_U51_COUNTDOWN_LEAVE === "1";   // U-51: добровольный выход в отсчёте — не «неудачник»
+const GAME_CFG = Object.assign({ RULE_U51_COUNTDOWN_LEAVE }, DEV_CFG);
 
 // ---------- комнаты ----------
 
@@ -217,7 +219,7 @@ function snapMsg(room, t) {
   return JSON.stringify(msg);
 }
 
-const EVENT_TYPES = new Set(["go", "phase", "course", "bump", "rock", "log", "whirl", "whirlOut", "turbo", "finish", "champion", "host", "over", "removed", "offline", "online"]);
+const EVENT_TYPES = new Set(["go", "phase", "course", "bump", "rock", "log", "whirl", "whirlOut", "turbo", "finish", "champion", "host", "over", "removed", "aborted", "offline", "online"]);
 
 // ---------- игровой цикл ----------
 
@@ -310,10 +312,11 @@ function maintain(room, t) {
   }
 }
 
-function dropPlayer(room, id) {
+// opts.kick — убрал ведущий: в отсчёте это не наказание (U-51, класс A); добровольный выход решает RULE_U51_COUNTDOWN_LEAVE
+function dropPlayer(room, id, opts) {
   const m = room.meta.get(id);
   if (m) m.left = true;
-  room.game.removePlayer(id);
+  room.game.removePlayer(id, opts);
   if (!room.game.byId.has(id)) room.meta.delete(id);
   for (const [tok, pid] of Object.entries(room.tokens)) if (pid === id) delete room.tokens[tok];
 }
@@ -563,7 +566,7 @@ function handle(room, client, msg) {
     case "kick": {
       if (!isHost() || msg.playerId === me || !g.byId.has(msg.playerId)) return;
       for (const c of room.sockets) if (c.playerId === msg.playerId) { c.playerId = null; send(c.ws, { type: "kicked" }); }
-      dropPlayer(room, msg.playerId);
+      dropPlayer(room, msg.playerId, { kick: true });
       sendRoster(room);
       return;
     }

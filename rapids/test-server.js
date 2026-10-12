@@ -402,6 +402,22 @@ function rawWs(code) {
       ws.close(); host.close();
     });
 
+    await test("кик в отсчёте: кикнутый не «неудачник», при одной утке — aborted и лобби, ведущий дейлика не назначен (U-51 A)", async () => {
+      const r = await NetBot.createRoom(BASE);
+      const host = await NetBot.connect({ base: BASE, code: r.code, name: "Хост", hostToken: r.hostToken, think: false });
+      const b = await NetBot.connect({ base: BASE, code: r.code, name: "Боб", think: false });
+      host.send({ type: "start" });
+      await host.until((x) => x.phase === "countdown", 3000);
+      host.send({ type: "kick", playerId: b.id });
+      await host.until((x) => x.events.some((e) => e.type === "aborted"), 3000);
+      await host.until((x) => x.phase === "lobby", 3000);
+      assert(!host.events.some((e) => e.type === "host" || e.type === "over"), "дейлика нет");
+      assert(!host.events.some((e) => e.type === "removed" && !e.early), "наказания нет");
+      await wait(300);
+      assert.strictEqual(host.roster.length, 1);
+      host.close(); b.close();
+    });
+
     await test("рестарт сервера: комната и токены живы, партия отменена", async () => {
       const r4 = await NetBot.createRoom(BASE);
       const a = await NetBot.connect({ base: BASE, code: r4.code, name: "Ася", hostToken: r4.hostToken, think: false });

@@ -405,9 +405,22 @@
       spotInPool(d);
       return d;
     }
-    function removePlayer(id) {
+    // opts.kick — убрал ведущий (U-51, класс A: в отсчёте без наказания всегда); без kick — добровольный выход:
+    // в отсчёте «как сейчас» (сошёл — последний), если не включён cfg.RULE_U51_COUNTDOWN_LEAVE (класс B)
+    function removePlayer(id, opts) {
       const d = g.byId.get(id);
       if (!d) return;
+      // до «Плывём!» (отсчёт 3 с) никто ещё не плывёт: снимаем с заплыва без наказания; осталась одна утка — заплыв отменён
+      if (d.inGame && g.phase === 'countdown' && ((opts && opts.kick) || cfg.RULE_U51_COUNTDOWN_LEAVE)) {
+        g.players.splice(g.players.indexOf(d), 1);
+        g.byId.delete(id);
+        emit('removed', { id, name: d.name, early: true });
+        if (inPlay().length < 2) {
+          emit('aborted', { reason: 'alone' });
+          toLobby();
+        }
+        return;
+      }
       // ушёл посреди заплыва — сошёл с дистанции, место за ним остаётся
       if (d.inGame && (g.phase === 'countdown' || g.phase === 'race')) {
         d.online = false;
