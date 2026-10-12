@@ -479,3 +479,45 @@ test("секреты не в кадрах: какая плитка — прав�
   assert.ok(scanned > 30 && chooseFrames > 3 && lieFrames > 3, `кадров мало — проверка пустая: ${scanned}/${chooseFrames}/${lieFrames}`);
   for (const c of [b, anon, ...ps]) c.close();
 });
+
+// ---- T-W0-31: restore из дампа прошлой версии без новых полей (шаблон — tools/testkit/restore.js) ----
+test("restore-from-prev-dump: без `chooseExtended` (и `played`) — фаза выбора идёт, возврат по токену не ломает её, партия доходит до финала с наградами (T-W0-31)", async () => {
+  const restore = require("../tools/testkit/restore");
+  const { Game } = require("./game");
+  const content = { ru: [{ id: "x-2", topic: "animals", final: false, text: "Факт: ______", answer: "правда", alts: [], lies: ["а1", "а2", "а3", "а4", "а5", "а6"], source: "https://example.org" }] };
+  let seed = 11;
+  const rnd = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+  const g = Game.create({ settings: {}, code: "OLDCHX", rnd, content });
+  for (const id of ["a", "b", "c"]) g.addPlayer({ id, name: id.toUpperCase() });
+  g.start(0);
+  g.tick(g.s.phaseEnd);
+  g.pickTopic(g.s.chooser, g.s.topics[0], 1000);
+  g.lie("a", "ложь а", 1100); g.lie("b", "ложь б", 1100); g.lie("c", "ложь ц", 1100);
+  assert.strictEqual(g.s.phase, "choose");
+  const i = g.s.options.findIndex((o) => o.authors.includes("a"));
+  g.choose("b", [i], 1200); // a и c ещё выбирают — дамп посреди фазы
+  assert.ok("chooseExtended" in g.s, "текущая версия пишет chooseExtended");
+  const room = restore.roomEntry({ code: "OLDCHX", hostToken: "host-token-chx", state: JSON.parse(JSON.stringify(g.s)), tokens: { tokA: "a", tokB: "b", tokC: "c" } });
+  const old = restore.makeOldDump([room], ["chooseExtended", "players[].played"]);
+  assert.ok(!("chooseExtended" in old[0].state) && old[0].state.players.every((p) => !("played" in p)));
+  await stopServer();
+  fs.writeFileSync(DUMP, JSON.stringify(old));
+  const prevRule = process.env.RULE_U09B_CHOOSE_EXTEND;
+  process.env.RULE_U09B_CHOOSE_EXTEND = "1"; // флаг «возврат продлевает выбор» читает отсутствующее поле как «ещё не продлевали»
+  try { await startServer(); } finally { if (prevRule === undefined) delete process.env.RULE_U09B_CHOOSE_EXTEND; else process.env.RULE_U09B_CHOOSE_EXTEND = prevRule; }
+  const b = await board("OLDCHX", "host-token-chx");
+  const a = await player("OLDCHX", "", "tokA"); // возврат без выбора: setOnline(true) читает s.chooseExtended
+  const c = await player("OLDCHX", "", "tokC");
+  assert.strictEqual(a.id, "a");
+  const st = await a.wait(statePred((s) => s.phase === "choose" || s.phase === "reveal"));
+  assert.ok(st.state.players.length >= 3, "игроки на месте");
+  const j = st.state.options ? st.state.options.findIndex((o) => !o.mine) : -1;
+  if (st.state.phase === "choose" && j >= 0) { a.send({ type: "choose", picks: [j] }); c.send({ type: "choose", picks: [st.state.options.findIndex((o) => !o.mine)] }); }
+  await b.wait(statePred((s) => s.phase === "reveal" || s.phase === "scores"), 15000);
+  b.send({ type: "end" });
+  const fin = await b.wait(statePred((s) => s.phase === "finished"));
+  const byId = Object.fromEntries(fin.state.players.map((p) => [p.id, p]));
+  assert.ok(byId.a.played >= 1 && byId.b.played >= 1, "played восстановлен присутствующим с ходами");
+  assert.ok(fin.state.awards, "награды посчитаны");
+  for (const x of [b, a, c]) x.close();
+});
