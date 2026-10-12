@@ -79,8 +79,10 @@
   #app { min-height: 100dvh; display: flex; flex-direction: column; }
   .util { position: fixed; top: calc(8px + env(safe-area-inset-top)); left: 10px; z-index: 30; display: flex; gap: 8px; align-items: center; }
   .util a { font-size: 13px; font-weight: 600; color: var(--muted); text-decoration: none; padding: 10px 4px; }
-  .sound-toggle-btn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--text); display: grid; place-items: center; }
-  .lang-switch button { min-width: 40px; min-height: 40px; font-weight: 700 !important; }
+  .sound-toggle-btn { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--text); display: grid; place-items: center; }
+  /* roulette-032/007: тап-цель языка 44 px (i18n.js на ≤520 ставит 36 с !important — перебиваем) */
+  body .lang-switch { top: calc(4px + env(safe-area-inset-top)); }
+  body .lang-switch button { min-width: 44px !important; min-height: 44px !important; font-weight: 700 !important; }
 
   /* ---------- фишка: игровой предмет, остаётся тактильной ---------- */
   .rchip {
@@ -209,7 +211,7 @@
   .howto i { font-style: normal; font-size: 18px; width: 36px; height: 36px; border-radius: 10px; background: var(--surface-2); display: grid; place-items: center; }
 
   /* ---------- игра ---------- */
-  .game { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 100dvh; padding: calc(56px + env(safe-area-inset-top)) 8px calc(6px + env(safe-area-inset-bottom)); gap: 6px; }
+  .game { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 100dvh; padding: calc(60px + env(safe-area-inset-top)) 8px calc(6px + env(safe-area-inset-bottom)); gap: 6px; }
   body.m-game { overflow: hidden; }
   /* clip, а не hidden: body не становится прокручиваемым контейнером, и sticky-кнопка «Готов» липнет к экрану */
   @supports (overflow: clip) { body, body.m-game { overflow-x: clip; overflow-y: visible; } }
@@ -246,7 +248,7 @@
   .felt {
     position: absolute; inset: 5px; border-radius: 15px;
     background: radial-gradient(100% 70% at 50% 30%, var(--felt-hi), var(--felt) 55%, var(--felt-lo));
-    display: grid; grid-template-columns: 38px 30px 1fr 1fr 1fr; grid-template-rows: minmax(26px, 1fr) repeat(12, minmax(22px, 1fr)) minmax(24px, 1fr);
+    display: grid; grid-template-columns: 40px 40px 1fr 1fr 1fr; /* roulette-032: дюжины и равные шансы ≥40 px в ширину (было 30) */ grid-template-rows: minmax(26px, 1fr) repeat(12, minmax(22px, 1fr)) minmax(24px, 1fr);
     overflow: hidden; touch-action: manipulation; user-select: none; -webkit-user-select: none;
   }
   .cell { position: relative; border-right: 1px solid rgba(255, 255, 255, .13); border-bottom: 1px solid rgba(255, 255, 255, .13); display: grid; place-items: center; font: 700 15px/1 var(--cond); min-width: 0; min-height: 0; }
@@ -272,7 +274,10 @@
   @keyframes dolly { from { transform: translateY(-30px) scale(1.4); opacity: 0; } }
   .hitlayer { grid-column: 3 / 6; grid-row: 1 / 14; position: relative; z-index: 3; }
   .chips { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
-  .chip { position: absolute; transform: translate(-50%, -50%); width: 30px; height: 30px; font-size: 10.5px; }
+  /* размер фишки считает drawChips по высоте строки (--cs/--cf): на строке 22 px фишка 44 px закрывала числа (roulette-021) */
+  .chip { position: absolute; transform: translate(-50%, -50%); width: var(--cs, 30px); height: var(--cs, 30px); font-size: var(--cf, 10.5px); }
+  .num.mine span { box-shadow: 0 0 0 2px #fff; }
+  .cell.mine:not(.num) { background: rgba(255, 255, 255, .14); }
   .chip.pop { animation: drop .4s var(--spring); }
   .chip.pop::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid #fff; animation: ripple .45s ease-out forwards; }
   @keyframes drop { 0% { transform: translate(-50%, -140%) scale(1.6); opacity: .2; } 55% { transform: translate(-50%, -50%) scale(.9); opacity: 1; } 75% { transform: translate(-50%, -58%) scale(1.04); } }
@@ -302,6 +307,20 @@
   .veil .slip .net { font-size: 38px; }
   .veil .slip .lines { font-size: 13px; line-height: 1.3; max-width: 280px; }
   .veil .frz { color: #cfeaff; font-weight: 700; }
+  /* низкий экран / ландшафт: плашка итога ужата и прокручивается, а не вылезает за сукно (число и подсказка не режутся) */
+  @media (max-height: 500px) {
+    .veil { padding: 8px; gap: 6px; }
+    .veil .slip { gap: 4px; padding: 8px 10px; max-height: 100%; overflow-y: auto; border-radius: 16px; }
+    .veil .slip .numball { width: 48px; height: 48px; font-size: 24px; flex: none; }
+    .veil .slip .net { font-size: 28px; }
+    .veil .slip .lines { font-size: 12px; line-height: 1.25; gap: 2px; }
+    .veil .quip { font-size: 12.5px; }
+    .veil .big { font-size: 24px; }
+    .veil .nomore { font-size: 28px; }
+    .spinbox { width: 96px; height: 96px; }
+    .veil .look { font-size: 22px; }
+    .veil .icon { font-size: 34px; }
+  }
   .chip.won { z-index: 2; box-shadow: inset 0 0 0 1.5px var(--cd), 0 0 0 3px #fff, 0 0 18px 6px rgba(61, 220, 132, .85) !important; animation: wonchip .8s ease-in-out infinite alternate; }
   @keyframes wonchip { to { transform: translate(-50%, -50%) scale(1.15); } }
   .chip.lost { opacity: .3; }
@@ -349,6 +368,16 @@
   .splash .win { font: 900 72px/1 var(--cond); letter-spacing: -.06em; color: var(--text); font-variant-numeric: tabular-nums; position: relative; white-space: nowrap; }
   .splash .sub { color: var(--muted); font-size: 15px; font-weight: 600; position: relative; }
   .splash .tapx { position: absolute; bottom: calc(18px + env(safe-area-inset-bottom)); color: var(--muted); font-size: 13px; }
+  /* низкий экран (ландшафт 568×320): шар, штамп, сумма и строки умещаются, подсказка «тапни» не налезает на строки (roulette-043) */
+  @media (max-height: 500px) {
+    .splash { gap: 5px; padding: 8px 16px 34px; }
+    .splash > * { flex: none; }
+    .splash .numball { width: 62px; height: 62px; font-size: 30px; box-shadow: inset 0 0 0 3px #fff, 0 10px 24px -8px rgba(0, 0, 0, .9); }
+    .splash .stamp { font-size: 15px; padding: 5px 14px; }
+    .splash .win { font-size: 42px; }
+    .splash .sub { font-size: 13px; line-height: 1.25; }
+    .splash .tapx { bottom: calc(8px + env(safe-area-inset-bottom)); font-size: 12px; }
+  }
   /* 008: у кириллицы и греческого плотный минус склеивает буквы и пробелы — для заголовков с текстом мягче (цифровые табло не трогаем) */
   :lang(ru) .placecard h2, :lang(el) .placecard h2, :lang(ru) .center h2, :lang(el) .center h2, :lang(ru) .veil .big, :lang(el) .veil .big,
   :lang(ru) .veil .nomore, :lang(el) .veil .nomore, :lang(ru) .veil .look, :lang(el) .veil .look, :lang(ru) .sheet h3, :lang(el) .sheet h3,
@@ -431,8 +460,11 @@
   .exact button { display: flex; justify-content: space-between; align-items: center; border: 0; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); border-radius: 14px; padding: 12px 14px; min-height: 46px; font-weight: 600; }
   .exact button .p { color: var(--accent); font-weight: 800; }
 
+  /* roulette-029: в игре тост ложится на полосу дока (JS кладёт left/bottom/width по .dock) — стол и фишки не закрыты;
+     без дока (вход, брифинг, итог) — прежнее место над кнопками */
   .toast { position: fixed; left: 50%; bottom: calc(150px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--text); color: var(--ink); font-weight: 700; padding: 11px 16px; border-radius: 14px; z-index: 60; font-size: 14px; max-width: calc(100vw - 32px); opacity: 0; transition: opacity .2s; pointer-events: none; text-align: center; box-shadow: 0 12px 30px rgba(0, 0, 0, .5); }
   .toast.on { opacity: 1; }
+  .toast.dockd { padding: 0 12px; display: flex; align-items: center; justify-content: center; font-size: 12.5px; line-height: 1.15; white-space: normal; overflow: hidden; border-radius: 12px; box-shadow: 0 6px 18px rgba(0, 0, 0, .5); }
   .conn { position: fixed; top: calc(56px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 50; white-space: nowrap; max-width: calc(100vw - 20px); overflow: hidden; text-overflow: ellipsis; background: var(--warn); color: #fff; font-weight: 700; padding: 7px 12px; border-radius: 10px; font-size: 13px; display: none; }
   .conn.on { display: block; }
 
@@ -461,7 +493,7 @@
 
 
   /* ---------- знакомство с картами перед первым спином ---------- */
-  .brief { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 100dvh; padding: calc(60px + env(safe-area-inset-top)) 16px calc(12px + env(safe-area-inset-bottom)); gap: 12px; max-width: 520px; margin: 0 auto; width: 100%; }
+  .brief { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 100dvh; padding: calc(64px + env(safe-area-inset-top)) 16px calc(12px + env(safe-area-inset-bottom)); gap: 12px; max-width: 520px; margin: 0 auto; width: 100%; }
   .brief .bh .eyebrow { font: 700 11px/1 var(--cond); letter-spacing: .08em; text-transform: uppercase; color: var(--green); }
   .brief .bh h2 { font: 900 32px/1 var(--cond); letter-spacing: -.045em; margin: 6px 0 6px; }
   .brief .bh p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.35; }
@@ -480,9 +512,15 @@
   .bcard .body .d { font: 600 15px/1.3 var(--cond); color: var(--text); }
   .bcard .body .ex { font: 500 13.5px/1.3 var(--cond); color: var(--muted); padding-left: 10px; border-left: 2px solid var(--k, #9b1424); }
   .bcard.passive .top::after { content: "auto"; margin-left: auto; font: 800 10px/1 var(--cond); letter-spacing: .08em; text-transform: uppercase; background: rgba(0, 0, 0, .3); padding: 5px 8px; border-radius: 999px; }
-  .brules { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 12px 14px; display: grid; gap: 7px; }
-  .brules .cap { font: 700 11px/1 var(--cond); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
-  .brules > div:not(.cap) { display: grid; grid-template-columns: 20px 1fr; gap: 8px; align-items: baseline; font: 600 13px/1.3 var(--cond); color: #d3d7de; }
+  .brules { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 12px 14px; display: block; flex: none; }
+  .brules:not([open]) { padding-top: 6px; padding-bottom: 6px; }
+  /* roulette-022: на низком экране правила свёрнуты в одну строку (details), «Ждём…» и «Готов» не упираются в список */
+  .brules .cap { font: 700 11px/1 var(--cond); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; display: flex; align-items: center; justify-content: space-between; min-height: 32px; cursor: pointer; list-style: none; }
+  .brules .cap::-webkit-details-marker { display: none; }
+  .brules .cap::after { content: "▾"; font-size: 13px; transition: transform .2s; }
+  .brules[open] .cap::after { transform: rotate(180deg); }
+  .brules:not([open]) .cap { margin-bottom: 0; }
+  .brules > div:not(.cap) { margin-top: 7px; display: grid; grid-template-columns: 20px 1fr; gap: 8px; align-items: baseline; font: 600 13px/1.3 var(--cond); color: #d3d7de; }
   .brules div i { font-style: normal; font: 900 12px/1 var(--cond); color: var(--green); text-align: center; }
   .bfoot { display: flex; flex-direction: column; gap: 8px; }
   .bfoot .wait { min-height: 18px; text-align: center; font: 600 13px/1.3 var(--cond); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -490,40 +528,40 @@
   .bfoot .btn.on { background: var(--green); color: #04210f; box-shadow: 0 10px 30px -10px rgba(34, 199, 127, .6); }
   .bfoot .btn.stamp { animation: stamp .45s var(--spring); }
   @media (max-height: 700px) {
-    .brief { gap: 8px; padding-top: calc(54px + env(safe-area-inset-top)); }
+    .brief { gap: 8px; padding-top: calc(62px + env(safe-area-inset-top)); }
     .brief .bh h2 { font-size: 26px; margin: 4px 0; }
     .brief .bh p { font-size: 12.5px; }
-    .brules { padding: 9px 12px; gap: 4px; }
-    .brules > div:not(.cap) { font-size: 12px; }
+    .brules { padding: 9px 12px; }
+    .brules > div:not(.cap) { font-size: 12px; margin-top: 4px; }
     .bcard .top { padding: 10px 14px; } .bcard .top .ic { font-size: 28px; } .bcard .top b { font-size: 19px; }
     .bcard .body { padding: 9px 14px 10px; gap: 6px; } .bcard .body .d { font-size: 14px; } .bcard .body .ex { font-size: 12.5px; }
     .bfoot .btn { min-height: 54px; }
   }
   /* новая карта посреди игры: карта выезжает снизу над доком */
   .cardtoast { position: fixed; left: 50%; bottom: calc(118px + env(safe-area-inset-bottom)); z-index: 55; display: flex; align-items: center; gap: 12px; padding: 8px 16px 8px 8px; border-radius: 18px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line-2), 0 20px 40px -10px rgba(0, 0, 0, .9); font: 800 16px/1.1 var(--cond); white-space: nowrap; max-width: calc(100vw - 24px); pointer-events: none; animation: ctoast 3s var(--spring) forwards; }
-  .cardtoast .ic { width: 40px; height: 54px; border-radius: 8px; display: grid; place-items: center; font-size: 22px; background: var(--k, #9b1424); animation: cflip .7s .15s var(--spring) both; }
+  .cardtoast .ic { width: 34px; height: 44px; border-radius: 8px; display: grid; place-items: center; font-size: 22px; background: var(--k, #9b1424); animation: cflip .7s .15s var(--spring) both; }
   @keyframes ctoast { 0% { transform: translate(-50%, 80px); opacity: 0; } 12% { transform: translate(-50%, 0); opacity: 1; } 85% { transform: translate(-50%, 0); opacity: 1; } 100% { transform: translate(-50%, 20px); opacity: 0; } }
   @keyframes cflip { from { transform: rotateY(180deg); background: var(--red); } }
   @media (max-height: 700px) {
-    .game { gap: 4px; padding-top: calc(54px + env(safe-area-inset-top)); }
+    .game { gap: 4px; padding-top: calc(58px + env(safe-area-inset-top)); }
     .hud { height: 42px; }
     .hud .stack { font-size: 26px; }
     .timer { width: 42px; height: 42px; }
     .timer .v { font-size: 17px; }
-    .rack { height: 52px; }
-    .rack .den { width: 40px; height: 40px; font-size: 11px; }
+    .rack { height: 52px; padding-top: 3px; padding-bottom: 3px; }
+    .rack .den { width: 44px; height: 44px; font-size: 11.5px; }
     .controls { gap: 4px; }
-    .act { height: 42px; }
-    .dock .tab, .dock .reacts button { height: 40px; }
+    .act { height: 44px; }
+    .dock .tab, .dock .reacts button { height: 44px; }
     .num span { font-size: 14px; }
-    .chip { width: 26px; height: 26px; font-size: 9.5px; }
     .spinbox { width: 120px; height: 120px; }
   }
   @media (max-width: 370px) {
-    .rack .den { width: 40px; height: 40px; font-size: 11px; }
+    .rack .den { width: 44px; height: 44px; font-size: 11px; }
     .dock .tab { padding: 0 8px; }
     .dock .reacts button { font-size: 17px; }
     .hud { grid-template-columns: minmax(0, 1fr) 124px 44px; gap: 8px; }
+    .actions { grid-template-columns: repeat(5, minmax(0, 1fr)) 1.5fr; } /* roulette-032: пять кнопок ≥43 px в ширину */
     /* на 320px под баланс ~80px: «12.000» при 32px обрезалось в «1.0…» */
     .hud .me { gap: 5px; }
     .mystack { zoom: .75; }
@@ -553,17 +591,18 @@
     .table-wrap { min-height: 284px; }
     .felt { grid-template-rows: minmax(22px, 1fr) repeat(12, minmax(19px, 1fr)) minmax(22px, 1fr); }
     .hud { height: 40px; }
-    .rack { height: 50px; }
-    .rack .den { width: 38px; height: 38px; }
-    .act { height: 40px; }
-    .dock .tab, .dock .reacts button { height: 38px; }
-    .dock .reacts button { max-width: 38px; }
+    /* roulette-032: тап-цели 44 px (было 38–40) — ценой ~1 px строки стола; рядов не меньше minmax(19px) */
+    .rack { height: 50px; padding-top: 2px; padding-bottom: 2px; }
+    .rack .den { width: 44px; height: 44px; }
+    .act { height: 44px; }
+    .dock .tab, .dock .reacts button { height: 44px; }
+    .dock .reacts button { max-width: 44px; }
     /* брифинг: одна прокрутка страницы вместо карт в крошечном окошке, «Готов» всегда под пальцем */
     .brief { height: auto; min-height: 100dvh; }
     .bcards { flex: 1 0 auto; overflow: visible; }
     .bfoot { position: sticky; bottom: 0; z-index: 2; padding: 10px 0 8px; background: linear-gradient(rgba(10, 11, 13, 0), var(--bg) 14px); }
     /* финал: медаль поменьше, чтобы тройка и «ждём ведущего» влезали без прокрутки */
-    .final { padding: 60px 18px 18px; gap: 8px; }
+    .final { padding: 64px 18px 18px; gap: 8px; }
     .medal { width: 92px; height: 92px; font-size: 44px; }
     .medal.cup { font-size: 46px; }
     .final h2 { font-size: 30px; }
@@ -586,7 +625,7 @@
     .medal { width: 76px; height: 76px; font-size: 36px; }
     .medal.cup { font-size: 38px; }
     /* финал целиком в 460px и с длинными именами: «Ждём ведущего» в две строки уже не вылезает за экран */
-    .final { padding: calc(52px + env(safe-area-inset-top)) 14px 10px; gap: 6px; }
+    .final { padding: calc(60px + env(safe-area-inset-top)) 14px 10px; gap: 6px; }
     .final h2 { font-size: 26px; margin-top: 2px; }
     .final .winner { max-width: 100%; }
     .final .winner span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -597,14 +636,16 @@
   }
   /* телефон боком (740×360): стол в столбик сжимался до рядов по 16px и уезжал в прокрутку вместе с фишками.
      Стол — слева на всю высоту, баланс, фишки, кнопки и док — колонкой справа; страница не прокручивается */
-  @media (orientation: landscape) and (max-height: 500px) and (min-width: 600px) {
+  @media (orientation: landscape) and (max-height: 500px) and (min-width: 540px) {
     .game { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 46%); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "table hud" "table controls" "table dock"; column-gap: 10px; row-gap: 6px; height: 100dvh; min-height: 0; padding: calc(6px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left)); }
     .hud { grid-area: hud; }
     .table-wrap { grid-area: table; min-height: 0; }
     .controls { grid-area: controls; align-self: center; }
-    .dock { grid-area: dock; }
+    /* roulette-043: все шесть реакций — вторым рядом дока (справа места хватает), а не четыре из шести */
+    .dock { grid-area: dock; flex-wrap: wrap; }
+    .dock .reacts { flex: 1 1 100%; order: 9; }
+    .dock .reacts button { max-width: none; }
     .felt { grid-template-rows: minmax(18px, 1fr) repeat(12, minmax(0, 1fr)) minmax(18px, 1fr); }
-    .dock .reacts button:nth-child(n+5) { display: none; }
     .dock .tab { min-width: 40px; padding: 0; justify-content: center; }
     .dock .tab .tl { display: none; }
   }
@@ -1066,9 +1107,26 @@ function screenMode(m) {
 }
 
 let toastT = null;
+// Полоса дока — самое малоценное место экрана: тост и «новая карта» ложатся туда, а не на стол и фишки (roulette-029)
+function dockStrip() {
+  const d = document.querySelector(".dock");
+  if (!d || screen !== "game") return null;
+  // в ландшафте док двухрядный (кнопки + реакции): тост ложится на ряд реакций
+  let r = d.getBoundingClientRect();
+  if (r.height > 60) { const rc = d.querySelector(".reacts"); if (rc) r = rc.getBoundingClientRect(); }
+  return r.width > 0 && r.height > 0 ? r : null;
+}
 function toast(text) {
   const t = document.getElementById("toast");
   t.textContent = text;
+  const dr = dockStrip();
+  t.classList.toggle("dockd", !!dr);
+  if (dr) {
+    t.style.left = dr.left + dr.width / 2 + "px";
+    t.style.bottom = Math.max(0, window.innerHeight - dr.bottom) + "px";
+    t.style.height = dr.height + "px";
+    t.style.maxWidth = Math.max(160, dr.width) + "px";
+  } else { t.style.left = t.style.bottom = t.style.height = t.style.maxWidth = ""; }
   t.classList.add("on");
   clearTimeout(toastT);
   toastT = setTimeout(() => { t.classList.remove("on"); t.textContent = ""; }, 2200);
@@ -1691,7 +1749,23 @@ function drawChips(animate) {
   const layer = document.getElementById("chips");
   if (!layer || !state) return;
   const out = [];
-  const place = (key) => chipAt(key);
+  // размер фишки — по высоте строки: на 22 px (320×568) фишка 30 закрывала число и подпись; на ≥32 px — прежние 30
+  const e = rowEdges();
+  const rowH = e[2] - e[1];
+  const S = rowH >= 32 ? 30 : Math.max(17, Math.floor(rowH * 0.9));
+  layer.style.setProperty("--cs", S + "px");
+  layer.style.setProperty("--cf", Math.max(8, Math.min(10.5, S * 0.4)).toFixed(1) + "px");
+  // сдвиг фишки, чтобы не лежать на подписи: число — к правому краю таблички (цифры видны), дюжина — к верху,
+  // равные шансы — вправо (roulette-021/044)
+  const nudge = (key, at) => {
+    const b = RL_BETS[key];
+    if (!b) return at;
+    if (b.type === "n" && rowH < 32) return { x: at.x + 12, y: at.y };
+    if (b.type === "dz") return { x: at.x, y: at.y - Math.max(0, els.felt.querySelector(`[data-key="${key}"]`).offsetHeight / 2 - S / 2 - 4) };
+    if (["red", "black", "even", "odd", "low", "high"].includes(key)) return { x: at.x + 9, y: at.y };
+    return at;
+  };
+  const place = (key) => { const at = chipAt(key); return at && nudge(key, at); };
   // чужие — маленькие метки цвета игрока, веером вокруг позиции
   const others = state.players.filter((p) => p.id !== me && !p.out && Object.keys(p.bets || {}).length);
   others.forEach((p, i) => {
@@ -1707,6 +1781,15 @@ function drawChips(animate) {
     }
   });
   const my = mine();
+  // клетки, куда я поставил, подсвечены — видно «куда» и когда фишку закрывает подпись
+  els.felt.querySelectorAll(".mine").forEach((c) => c.classList.remove("mine"));
+  for (const key of Object.keys(myBets)) {
+    const b = RL_BETS[key];
+    let c = null;
+    if (b && b.type === "n") c = els.felt.querySelector(`.num[data-n="${b.numbers[0]}"]`);
+    else c = els.felt.querySelector(`[data-key="${key}"]`);
+    if (c) c.classList.add("mine");
+  }
   for (const [key, amount] of Object.entries(myBets)) {
     const at = place(key);
     if (!at) continue;
@@ -2356,7 +2439,7 @@ function renderBriefing(p) {
     app.innerHTML = `<div class="brief">
       <div class="bh"><div class="eyebrow">${T("br_eyebrow")}</div><h2>${T("br_title")}</h2><p>${T("br_sub")}</p></div>
       <div class="bcards${hand.length === 1 ? " one" : ""}" id="bcards">${cards || `<p class="fine">${T("br_none")}</p>`}</div>
-      <div class="brules"><div class="cap">${T("br_how")}</div>${[1, 2, 3, 4, 5].map((i) => `<div><i>${i}</i><span>${T("br_r" + i)}</span></div>`).join("")}</div>
+      <details class="brules"${window.innerHeight > 600 ? " open" : ""}><summary class="cap">${T("br_how")}</summary>${[1, 2, 3, 4, 5].map((i) => `<div><i>${i}</i><span>${T("br_r" + i)}</span></div>`).join("")}</details>
       <div class="bfoot"><div class="wait" id="bwait"></div><button class="btn" id="bready"></button></div>
     </div>`;
     // раздача: карты влетают по одной со щелчком
@@ -2392,6 +2475,14 @@ function cardToast(c) {
   const t = el("div", "cardtoast");
   t.style.setProperty("--k", CARD_INK[c] || "#9b1424");
   t.innerHTML = `<span class="ic">${RL_CARDS[c].icon}</span><span>${escapeHtml(tpl("new_card", { name: T("card_" + c) }))}</span>`;
+  // над доком (поверх ряда кнопок, не поверх стола): тост текста лежит на самом доке — они не накладываются
+  const dr = dockStrip();
+  if (dr) {
+    let up = 0;
+    document.querySelectorAll(".cardtoast").forEach((o) => { up += o.offsetHeight + 6; });
+    t.style.left = dr.left + dr.width / 2 + "px";
+    t.style.bottom = Math.max(0, window.innerHeight - dr.top + 6) + up + "px";
+  }
   document.body.append(t);
   rlSfx.flip();
   rlBuzz(12);
