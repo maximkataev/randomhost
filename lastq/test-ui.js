@@ -313,6 +313,17 @@ async function run() {
       check((await land.evaluate(NO_HSCROLL)) === true, `стартовый экран ${w}px: без прокрутки вбок`);
     }
     await land.shot("landing");
+    // T-W2-43 (lastq-037): «У меня есть код» — поле на экране (не prompt()); неверный код — «Такой комнаты нет» с полем и без ретраев
+    await land.evaluate("document.getElementById('havecode').click()");
+    check(!!(await waitFor(land, "!!document.getElementById('codein')", 3000)), "стартовый экран: поле кода вместо prompt()");
+    {
+      // 404 в консоли здесь ожидаем (комнаты нет) — страницу в проверку «без ошибок консоли» не берём
+      const bad = await cdp(`${BASE}/lastq.html?r=NOPE77`, [390, 844], "неверный код");
+      check(!!(await waitFor(bad, "!!document.getElementById('codein') && !!document.getElementById('codeform')", 8000)), "неверный код: «Такой комнаты нет» и поле кода");
+      check((await bad.evaluate("!/закрыта|closed|έκλεισε/i.test(document.body.innerText)")) === true, "неверный код: не «Комната закрыта»");
+      check((await bad.evaluate("document.documentElement.scrollWidth <= innerWidth")) === true, "неверный код: без прокрутки вбок");
+      await bad.shot("p_noroom");
+    }
 
     // ---------- комната и доска ----------
     const res = await (await fetch(BASE + "/lastq/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: LANG }, speed: SPEED }) })).json();

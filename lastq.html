@@ -109,6 +109,9 @@
   .enter input:focus { outline: none; border-bottom-color: var(--gold); }
   /* счётчик имени «12/16» (MP.nameCounter): в поле, когда осталось ≤ 4 знаков; место под него занято всегда — поле не прыгает */
   .claimbtns { display: grid; gap: 10px; margin-top: 14px; }
+  .codeform { display: grid; gap: 10px; margin-top: 14px; }
+  .codeform input { width: 100%; border: 0; border-bottom: 3px solid var(--chalk); background: transparent; color: var(--chalk); font: 700 26px/1.2 var(--font); padding: 4px 0; border-radius: 0; text-transform: uppercase; }
+  .codeform input:focus { outline: none; border-bottom-color: var(--gold); }
   .fld { position: relative; }
   .fld.cnt-on input { padding-right: 56px; }
   .fld .cnt { position: absolute; right: 0; bottom: 8px; font: 800 13px/1 var(--mono); letter-spacing: .04em; color: var(--chalk-2); pointer-events: none; font-style: normal; }
@@ -419,6 +422,7 @@ window.I18N_DICT = {
     expired_title: `Комната закрыта`, expired_text: `Она пустовала полчаса или ведущий её закрыл.`, expired_new: `Создать новую`,
     paused: `Все отключились — ждём`,
     rj_not_now: `Уже поздно`, rj_closed: `Ставки уже закрыты`, rj_already: `Уже выбрано`, rj_not_in_question: `Ты со следующего вопроса`,
+    noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код — в нём слово и две цифры`, btn_go: `Перейти`,
     stake_skip: `Не нажмёшь «Ставлю» — ставка 0`, stake_none_0: `Ты не поставил — ставка 0`, fr_stake0: `Без ставки`,
     claim_title: `Это ты?`, claim_text: `Игрок «{name}» без связи. Очки: {n}`, claim_text0: `Игрок «{name}» без связи`, btn_claim_yes: `Это я`, btn_claim_no: `Нет, я другой`,
     welcome_back: `С возвращением`, err_name_taken: `Это имя сейчас занято. Возьми другое`,
@@ -479,6 +483,7 @@ window.I18N_DICT = {
     expired_title: `Room closed`, expired_text: `It sat empty for half an hour or the host closed it.`, expired_new: `Create a new one`,
     paused: `Everyone dropped — waiting`,
     rj_not_now: `Too late`, rj_closed: `Betting is closed`, rj_already: `Already picked`, rj_not_in_question: `You're in from the next question`,
+    noroom_title: `There is no such room`, noroom_text: `Check the code: a word and two digits`, btn_go: `Go`,
     stake_skip: `If you don't tap “Bet”, your bet is 0`, stake_none_0: `You didn't bet — your bet is 0`, fr_stake0: `No bet`,
     claim_title: `Is this you?`, claim_text: `Player “{name}” is offline. Score: {n}`, claim_text0: `Player “{name}” is offline`, btn_claim_yes: `That's me`, btn_claim_no: `No, someone else`,
     welcome_back: `Welcome back`, err_name_taken: `That name is taken right now. Pick another`,
@@ -539,6 +544,7 @@ window.I18N_DICT = {
     expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης.`, expired_new: `Φτιάξε καινούργιο`,
     paused: `Όλοι αποσυνδέθηκαν — περιμένουμε`,
     rj_not_now: `Πολύ αργά`, rj_closed: `Τα στοιχήματα έκλεισαν`, rj_already: `Έχει ήδη επιλεγεί`, rj_not_in_question: `Παίζεις από την επόμενη ερώτηση`,
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό: μια λέξη και δύο ψηφία`, btn_go: `Πήγαινε`, //EL:unverified
     stake_skip: `Αν δεν πατήσεις «Ποντάρω», το ποντάρισμα είναι 0`, stake_none_0: `Δεν πόνταρες — ποντάρισμα 0`, fr_stake0: `Χωρίς ποντάρισμα`, //EL:unverified
     claim_title: `Είσαι εσύ;`, claim_text: `Ο παίκτης «{name}» είναι εκτός σύνδεσης. Πόντοι: {n}`, claim_text0: `Ο παίκτης «{name}» είναι εκτός σύνδεσης`, btn_claim_yes: `Εγώ είμαι`, btn_claim_no: `Όχι, είμαι άλλος`, //EL:unverified
     welcome_back: `Καλώς ξαναήρθες`, err_name_taken: `Το όνομα είναι πιασμένο αυτή τη στιγμή. Διάλεξε άλλο`, //EL:unverified
@@ -655,9 +661,13 @@ function renderLanding() {
       toast(String(err.message || err));
     }
   };
+  // поле кода прямо на экране (prompt() на телефоне блокирует страницу и не переводится)
   document.getElementById("havecode").onclick = () => {
-    const c = prompt(T("prompt_code"));
-    if (c) location.href = `lastq.html?r=${encodeURIComponent(c.trim().toUpperCase())}`;
+    const btn = document.getElementById("havecode");
+    btn.insertAdjacentHTML("afterend", codeFormHtml(""));
+    btn.classList.add("hidden");
+    bindCodeForm();
+    document.getElementById("codein").focus();
   };
 }
 
@@ -711,6 +721,31 @@ function renderClaim() {
 function renderCenter(titleKey, textKey, extra, key) {
   show(`<div class="card status"><h2>${T(titleKey)}</h2>${textKey ? `<p>${T(textKey)}</p>` : ""}${extra || ""}</div>`, key || "c:" + titleKey);
 }
+// ---------- ввод кода комнаты (T-W2-43, lastq-037) ----------
+function normCode(raw) {
+  if (window.MP && MP.roomGone) return MP.roomGone.normalize(raw);
+  return String(raw || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+}
+function codeFormHtml(value) {
+  return `<form class="codeform" id="codeform" autocomplete="off"><input id="codein" maxlength="24" value="${escapeHtml(value)}" placeholder="${escapeHtml(T("prompt_code"))}" aria-label="${escapeHtml(T("prompt_code"))}" autocapitalize="characters" enterkeyhint="go"><button class="btn" type="submit">${escapeHtml(T("btn_go"))}</button></form>`;
+}
+function bindCodeForm() {
+  document.getElementById("codeform").onsubmit = (e) => {
+    e.preventDefault();
+    const c = normCode(document.getElementById("codein").value); // уходим с кодом уже после фильтра
+    if (c) location.href = `lastq.html?r=${encodeURIComponent(c)}`;
+  };
+}
+// Неверный код: hello не приходил ни разу — комнаты с таким кодом нет (или её давно убрали), а не «закрылась».
+// Серверного различителя нет (К-11): 404 и «закрыта по TTL» до hello неразличимы.
+function renderNoRoom() {
+  dead = true;
+  screen = "noroom";
+  renderCenter("noroom_title", "noroom_text", codeFormHtml(CODE));
+  bindCodeForm();
+}
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({ showForm: renderNoRoom, onClosed: () => renderExpired() }) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else renderExpired(); }
 function renderExpired() {
   dead = true;
   screen = "expired";
@@ -1335,6 +1370,7 @@ window.addEventListener("langchange", () => {
   if (!CODE) return renderLanding();
   if (screen === "enter") return renderEnter();
   screenKey = "";
+  if (screen === "noroom") return renderNoRoom();
   screen === "expired" ? renderExpired() : render();
 });
 
@@ -1391,6 +1427,7 @@ function onMessage(m) {
     case "hello":
     case "state":
       state = m.state;
+      if (m.type === "hello" && goneFlow) goneFlow.hello();
       if (m.type === "hello" && token && !replacedHere && screen !== "kicked") { rejoining = !!me; conn.send({ type: "join", token }); }
       if (state.phase !== prevPhase) {
         if (state.phase === "stake") { stakeDraft = null; stakeEdit = false; }
@@ -1446,7 +1483,7 @@ function onMessage(m) {
       break;
     case "error":
       conn.flush(() => false);
-      if (m.error === "room_expired") return renderExpired();
+      if (m.error === "room_expired") return onRoomGone();
       if (["room_full", "token_gone", "bad_name"].includes(m.error)) {
         rejoining = false;
         if (m.error === "token_gone") {
@@ -1554,7 +1591,7 @@ function start() {
   conn = lqConnect({
     code: CODE,
     onMessage,
-    onGone: renderExpired,
+    onGone: onRoomGone,
     // переподключились — снова входим своим токеном (hello придёт первым); me не обнуляем: экран и Камера остаются
     // нажатое до входа по токену ждёт в очереди; если вход не случится (выбит, вытеснен) — через 4 с очередь уходит в отбой
     onOpen: () => {
