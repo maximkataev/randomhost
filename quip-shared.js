@@ -423,7 +423,12 @@ function qpHostSvg(cls) {
 })();
 
 // ---------- вибрация: не везде есть, а где есть — может бросить исключение ----------
-function qpVibrate(p) { if (navigator.vibrate) try { navigator.vibrate(p); } catch (e) {} }
+// MP.vibrate (mp-common.js) вибрирует только после жеста — без него Chrome пишет «Blocked call to navigator.vibrate»
+function qpVibrate(p) {
+  if (window.MP && typeof MP.vibrate === "function" && !MP.off) { MP.vibrate(p); return; }
+  const ua = navigator.userActivation;
+  if (navigator.vibrate && !(ua && ua.hasBeenActive === false)) try { navigator.vibrate(p); } catch (e) {}
+}
 
 // ---------- часы сервера ----------
 // Смещение «сервер − устройство» по самому быстрому ping/pong (RTT/2); пока замера нет —

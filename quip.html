@@ -2,8 +2,9 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<!-- maximum-scale=1: iOS не приближает страницу при фокусе в поле и не оставляет её «растянутой»; щипок в новых iOS работает -->
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<!-- без maximum-scale: масштаб щипком нужен слабовидящим; поля ввода ≥ 16px, iOS при фокусе их не приближает.
+     interactive-widget=resizes-content: клавиатура ужимает страницу (Chrome 108+), кнопки не уезжают под неё -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#3d0b16">
 <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f3a4.svg" type="image/svg+xml">
@@ -254,6 +255,8 @@
   .opt.own { opacity: .55; box-shadow: 0 6px 0 #9c7a70; }
   /* «Голосую» всегда под пальцем: при 8–9 ответах по три пункта кнопка уезжала на 2–3 экрана вниз */
   #votebtn { position: sticky; bottom: 12px; z-index: 5; }
+  /* запас под липкую кнопку: последний пункт при прокрутке не прячется под ней (quip-020) */
+  .opts:has(+ #votebtn) { padding-bottom: 76px; }
   /* ярлык «твой» — на кромке таблички, а не поверх первой строки ответа */
   .opt.own::after { content: attr(data-own); position: absolute; right: 10px; top: -9px; font: 700 11px/1 var(--font); text-transform: uppercase; background: var(--deep); color: #fff; padding: 4px 7px; border-radius: 999px; }
   .opt:not(:disabled):active { transform: translateY(4px); box-shadow: 0 2px 0 var(--teal-edge); }
@@ -366,6 +369,52 @@
     .sign.sm { font-size: 26px; }
     .center > .fine { margin: 6px 0 0; }
   }
+  /* Низкие окна без привязки к ширине (T-W1-16, quip-017): ландшафт телефона 915×412, 844×390, 667×375 не попадал
+     под правила выше (там max-width: 899px) — «Отправить» и «Подсказка» уезжали за край. «Голосую» — в потоке, а не
+     поверх пунктов (quip-020): на 375 px высоты липкая кнопка закрывала половину списка */
+  @media (max-height: 520px) {
+    .stage { gap: 10px; }
+    .ahead + .timer { margin-top: -2px; }
+    .card.qcard { padding: 12px 18px; }
+    .card.qcard::before { inset: 4px; }
+    .card .q { font-size: 20px; line-height: 1.18; }
+    .card .q .scene { font-size: 44px; padding: 0; }
+    .write textarea { height: clamp(56px, 17svh, 96px); }
+    .write .cnt { height: 0; margin: 0; padding-right: 14px; transform: translateY(-26px); pointer-events: none; }
+    .write .three { gap: 7px; }
+    .write .three input { padding: 8px 12px; }
+    .btn { padding: 11px 14px 12px; font-size: 20px; }
+    .row2 { grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .btn.ghost { font-size: 16px; }
+    #votebtn { position: static; }
+    .opts:has(+ #votebtn) { padding-bottom: 0; }
+    .introrow .rebrik { width: 88px; }
+    .burst { width: 96px; height: 96px; font-size: 36px; }
+  }
+  /* ландшафт: на экранах ввода две колонки — слева вопрос и таймер, справа поле и кнопки; варианты ответов — в два столбца */
+  @media (orientation: landscape) and (max-height: 520px) and (min-width: 560px) {
+    #app { max-width: none; }
+    .stage:has(> .write) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto 1fr; column-gap: 18px; row-gap: 10px; align-content: start; justify-content: stretch; }
+    .stage:has(> .write) > .ahead { grid-column: 1; grid-row: 1; }
+    .stage:has(> .write) > .timer { grid-column: 1; grid-row: 2; }
+    .stage:has(> .write) > .card.qcard { grid-column: 1; grid-row: 3; align-self: start; }
+    .stage:has(> .write) > .write { grid-column: 2; grid-row: 1 / span 3; }
+    .opts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  }
+  /* клавиатура открыта (MP.keyboardClass ставит html.kb; разметка не пересобирается — фокус поля жив):
+     шапка и стойка прячутся, кнопки «Отправить» и «Подсказка» — в ряд и прижаты к низу видимой области */
+  .kb .util, .kb .console { display: none; }
+  .kb #app { min-height: 0; padding-bottom: 8px; }
+  .kb .stage { gap: 8px; justify-content: flex-start; padding-top: 6px; }
+  .kb .card.qcard { padding: 8px 14px; }
+  .kb .card.qcard::before { inset: 3px; }
+  .kb .card .q { font-size: 18px; }
+  .kb .write textarea { height: 56px; }
+  .kb .write .three { gap: 6px; }
+  .kb .write .three input { padding: 7px 12px; }
+  .kb .row2 { position: sticky; bottom: var(--kb-h, 0px); z-index: 4; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; padding: 8px 0 4px; background: linear-gradient(to bottom, rgba(255, 122, 47, 0), var(--or-2) 10px); }
+  .kb .row2 .btn { margin-bottom: 0; padding: 10px 8px 11px; font-size: 18px; }
+  .kb .row2 .btn.ghost { font-size: 15px; }
   /* стартовый экран на ноутбуке: две колонки — слева вывеска и кнопка, справа пример схватки. Не узкая лента посередине */
   @media (min-width: 900px) {
     #app:has(.landing) { max-width: 1060px; }
@@ -549,7 +598,7 @@ const limAnswer = () => (state && state.limits && state.limits.answer) || 80;
 const limItem = () => (state && state.limits && state.limits.item) || 50;
 
 let conn = null, state = null, me = null, token = null, dead = false;
-let screen = null, screenKey = "";
+let screen = null, screenKey = "", screenFam = null;
 let joinErr = null;
 const drafts = {}; // mid → черновик (строка или три строки): переживает перерисовки
 let hintArmed = null; // mid, для которого кнопка подсказки ждёт второго нажатия
@@ -576,6 +625,11 @@ function toast(text) {
 // o.reacts — на стойке кнопки реакций; o.cls — класс сцены. Стойка есть только у вошедшего в идущую игру
 function show(html, key, top, o) {
   o = o || {};
+  // другой экран (голосование → раскрытие → итоги) открывается сверху: прокрутка прежнего не должна прятать заголовок
+  // (quip-021). Тот же экран с новым ключом (отметка варианта, смена языка) позицию не трогает
+  const fam = String(key).split(":")[0];
+  if (screenFam !== null && fam !== screenFam) window.scrollTo(0, 0);
+  screenFam = fam;
   screenKey = key;
   app.classList.toggle("top", !!top);
   const p = state && me && state.phase !== "lobby" ? mine() : null;
@@ -1119,6 +1173,8 @@ function start() {
     onQuiet: (q) => { netQuiet = !!q; showNet(); },
   });
   requestAnimationFrame(frame);
+  // клавиатура открыта → html.kb (только CSS, форма не пересобирается)
+  if (window.MP && MP.keyboardClass && !MP.off) MP.keyboardClass();
   // ручка для стенда: состояние и отправка
   window.qpPhone = { send: (msg) => conn.send(msg), get state() { return state; }, get me() { return me; } };
 }

@@ -63,6 +63,10 @@
  *
  *   MP.rank(players, {score = 'score' | fn, tiebreak(a, b), exclude(p), fallbackAll = true})  (T-W1-15)
  *     -> {list: [{id, player, score, place, tie}], winnerIds, byId, excluded}  ранг 1,1,3; не участвуют left и played === false
+ *
+ *   MP.vibrate(pattern) -> bool       только после жеста (userActivation.hasBeenActive | первое касание); без исключений  (T-W1-16)
+ *   MP.keyboardClass({className = 'kb', threshold = 120, element, onChange}) -> {active(), update(), stop()}
+ *     visualViewport.resize -> html.kb, когда клавиатура съела > threshold px; CSS-переменная --kb-h; разметку не трогает
  */
 (function (root) {
   'use strict';
@@ -448,6 +452,79 @@
     entries.forEach(function (e) { byId[e.id] = e; if (e.place === 1) winnerIds.push(e.id); });
     all.forEach(function (p) { if (!byId[p.id]) excluded.push(p.id); });
     return { list: entries, winnerIds: winnerIds, byId: byId, excluded: excluded };
+  };
+
+  // ── vibrate ────────────────────────────────────────────────────────────────────────────────────
+  // Вибрация только после жеста (T-W1-16, пакет P11, quip-027): без него Chrome пишет в консоль «Blocked call to
+  // navigator.vibrate». Жест: navigator.userActivation.hasBeenActive, а где его нет — наш флаг по первому касанию.
+  var gestured = false;
+  (function listenGesture() {
+    var d = root.document;
+    if (!d || !d.addEventListener) return;
+    var mark = function () { gestured = true; };
+    ['pointerdown', 'touchend', 'keydown', 'click'].forEach(function (t) {
+      try { d.addEventListener(t, mark, { capture: true, passive: true }); } catch (e) { /* старый движок */ }
+    });
+  })();
+  MP.vibrate = function (pattern) {
+    if (MP.off) return false;
+    var nav = root.navigator;
+    if (!nav || typeof nav.vibrate !== 'function') return false;
+    var ua = nav.userActivation;
+    var active = ua && typeof ua.hasBeenActive === 'boolean' ? ua.hasBeenActive : gestured;
+    if (!active) return false;
+    try { return !!nav.vibrate(pattern); } catch (e) { return false; }
+  };
+
+  // ── keyboardClass ──────────────────────────────────────────────────────────────────────────────
+  // html.kb, пока экранная клавиатура съела > 120 px высоты (T-W1-16). Меряем от «полной» высоты окна:
+  // Chrome с interactive-widget=resizes-content ужимает и layout viewport (innerHeight − vv.height = 0),
+  // iOS — только visual viewport. Только класс и CSS-переменная --kb-h (px, на сколько клавиатура ЗАКРЫЛА
+  // layout viewport; 0, если он ужался сам) — разметка не пересобирается, фокус поля не теряется.
+  MP.keyboardClass = function (opts) {
+    var o = opts || {};
+    var cls = o.className || 'kb';
+    var threshold = typeof o.threshold === 'number' ? o.threshold : 120;
+    var vv = root.visualViewport || null;
+    var doc = root.document;
+    var el = o.element || (doc && doc.documentElement) || null;
+    var base = 0, baseW = 0, on = false, stopped = false;
+
+    function update() {
+      if (MP.off || stopped) return on;
+      var ih = root.innerHeight || 0;
+      var vh = vv ? vv.height : ih;
+      var off = vv && typeof vv.offsetTop === 'number' ? vv.offsetTop : 0;
+      var w = root.innerWidth || 0;
+      if (vv && typeof vv.scale === 'number' && vv.scale > 1.05) return on; // щипок-масштаб — не клавиатура
+      var seen = Math.max(ih, vh);
+      if (!base || w !== baseW) { base = seen; baseW = w; } else if (seen > base) { base = seen; }
+      var next = base - vh > threshold;
+      var obscured = Math.max(0, ih - (vh + off));
+      if (el && el.style && el.style.setProperty) el.style.setProperty('--kb-h', (next ? Math.round(obscured) : 0) + 'px');
+      if (next !== on) {
+        on = next;
+        if (el && el.classList) { if (on) el.classList.add(cls); else el.classList.remove(cls); }
+        if (typeof o.onChange === 'function') o.onChange(on);
+      }
+      return on;
+    }
+    var api = {
+      active: function () { return on; },
+      update: update,
+      stop: function () {
+        stopped = true;
+        if (vv && vv.removeEventListener) { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); }
+        if (root.removeEventListener) root.removeEventListener('resize', update);
+        if (on && el && el.classList) el.classList.remove(cls);
+        on = false;
+      }
+    };
+    if (MP.off) return api;
+    if (vv && vv.addEventListener) { vv.addEventListener('resize', update); vv.addEventListener('scroll', update); }
+    if (root.addEventListener) root.addEventListener('resize', update);
+    update();
+    return api;
   };
 
   root.MP = MP;

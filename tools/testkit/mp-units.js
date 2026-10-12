@@ -375,5 +375,74 @@ test("MP.rank: не играл никто — таблица по всем не 
   assert.deepEqual(q.list.map((e) => e.place), [1, 2, 2]);
 });
 
+console.log("vibrate / keyboardClass");
+test("MP.vibrate: без жеста не вызывает; после жеста вызывает; нет API или исключение — false", () => {
+  const w = load();
+  let calls = 0;
+  w.navigator = { userActivation: { hasBeenActive: false }, vibrate: () => { calls++; return true; } };
+  assert.equal(w.MP.vibrate(30), false);
+  assert.equal(calls, 0);
+  w.navigator.userActivation.hasBeenActive = true;
+  assert.equal(w.MP.vibrate([10, 30, 10]), true);
+  assert.equal(calls, 1);
+  w.navigator = { vibrate: () => { throw new Error("blocked"); } }; // нет userActivation, жеста не было
+  assert.equal(w.MP.vibrate(5), false);
+  w.navigator = {};
+  assert.equal(w.MP.vibrate(5), false);
+  w.navigator = undefined;
+  assert.equal(w.MP.vibrate(5), false);
+});
+test("MP.vibrate: нет userActivation — решает первое касание", () => {
+  const listeners = {};
+  const w = load();
+  // перезагружаем каркас с документом, чтобы поймать подписку на жест
+  const vm2 = require("vm");
+  const sb = { console, Date, Array, String, Object, setTimeout, clearTimeout, localStorage: undefined };
+  sb.window = sb;
+  sb.document = { addEventListener: (t, fn) => { listeners[t] = fn; } };
+  sb.navigator = { vibrate: () => true };
+  vm2.runInNewContext(SRC, sb, { filename: "mp-common.js" });
+  assert.equal(sb.MP.vibrate(5), false);
+  listeners.pointerdown();
+  assert.equal(sb.MP.vibrate(5), true);
+  void w;
+});
+test("MP.keyboardClass: kb при потере > 120 px высоты; Chrome с resizes-content (innerHeight тоже ужался) — тоже; щипок-масштаб не клавиатура", () => {
+  const w = load();
+  const classes = new Set();
+  const vars = {};
+  const el = { classList: { add: (c) => classes.add(c), remove: (c) => classes.delete(c) }, style: { setProperty: (k, v) => { vars[k] = v; } } };
+  const vvL = {};
+  w.innerHeight = 800; w.innerWidth = 400;
+  w.visualViewport = { height: 800, offsetTop: 0, scale: 1, addEventListener: (t, fn) => { vvL[t] = fn; }, removeEventListener() {} };
+  w.addEventListener = () => {};
+  const kb = w.MP.keyboardClass({ element: el });
+  assert.equal(kb.active(), false);
+  // iOS: layout viewport не меняется, visual — ужат на 300
+  w.visualViewport.height = 500; vvL.resize();
+  assert.equal(kb.active(), true);
+  assert.ok(classes.has("kb"));
+  assert.equal(vars["--kb-h"], "300px");
+  w.visualViewport.height = 800; vvL.resize();
+  assert.equal(kb.active(), false);
+  assert.ok(!classes.has("kb"));
+  assert.equal(vars["--kb-h"], "0px");
+  // Android Chrome: ужаты оба
+  w.innerHeight = 520; w.visualViewport.height = 520; vvL.resize();
+  assert.equal(kb.active(), true);
+  assert.equal(vars["--kb-h"], "0px");
+  // небольшое изменение (панель браузера) — не клавиатура
+  w.innerHeight = 800; w.visualViewport.height = 800; vvL.resize();
+  w.visualViewport.height = 720; vvL.resize();
+  assert.equal(kb.active(), false);
+  // щипок: scale > 1 — состояние не меняется
+  w.visualViewport.height = 300; w.visualViewport.scale = 2; vvL.resize();
+  assert.equal(kb.active(), false);
+  // поворот (ширина другая) — база пересчитывается
+  w.visualViewport.scale = 1; w.innerWidth = 800; w.innerHeight = 360; w.visualViewport.height = 360; vvL.resize();
+  assert.equal(kb.active(), false);
+  kb.stop();
+});
+
 console.log("\n" + passed + " пройдено, " + failed + " провалено");
 process.exit(failed ? 1 : 0);
