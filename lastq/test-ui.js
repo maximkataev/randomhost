@@ -481,6 +481,8 @@ async function run() {
         const shown = await waitFor(board, "document.querySelectorAll('.frow .d.plus, .frow .d.minus').length >= 3", 15000);
         check(!!shown, "доска: ставки раскрыты по одному");
         await A.shot("p_freveal_Аня");
+        // T-W0-06: телефон получает только свой шаг (+fpos), чужие итоги и список ответивших не уходят
+        check((await A.evaluate("(() => { const s = window.lqPhone.state; return (s.fsteps || []).length <= 1 && (s.fsteps || []).every((x) => x.id === window.lqPhone.me) && s.answered == null; })()")) === true, "телефон (freveal): в fsteps только свой шаг, answered не приходит");
         continue;
       }
       if (s.phase === "verdict" || s.phase === "reveal" || s.phase === "cell") { await wait(200); continue; }
@@ -499,6 +501,20 @@ async function run() {
     for (const p of phones) { await p.shot(`p_final_${p.name}`); await layout([p], "итоги", false); }
     const rk = S().ranking;
     check(rk && rk[0].id === A.id, "победила Аня (верно везде и всё на финал)");
+
+    // ---------- T-W0-07: вошёл после финала — без «N место», с пояснением ----------
+    {
+      const L = await cdp(`${BASE}/lastq.html?r=${CODE}`, [390, 844], "Поздний");
+      pages.push(L);
+      check(!!(await waitFor(L, "!!document.getElementById('name')", 8000)), "поздний: экран входа");
+      await L.evaluate(`document.getElementById('name').value = ""`);
+      await L.evaluate(`document.getElementById('name').focus()`);
+      await L.call("Input.insertText", { text: "Поздний" });
+      await mustTap(L, "#enterform button[type=submit]", 0, "кнопка «Войти» (поздний)");
+      check(!!(await waitFor(L, "window.lqPhone.me && window.lqPhone.state && window.lqPhone.state.phase === 'finished' && !!document.querySelector('.center')", 6000)), "поздний: попал на итоги");
+      check((await L.evaluate("!document.querySelector('.center .big') && /следующей партии|next game|επόμενη/.test(document.querySelector('.center').textContent)")) === true, "поздний: нет «N место», есть пояснение");
+      await L.shot("p_final_late");
+    }
 
     // ---------- перезагрузка телефона: возвращается по токену ----------
     await P.call("Page.reload");
