@@ -103,6 +103,31 @@ function rawWs(code) {
       assert(perSnap < 1200, `средний размер сообщения ${perSnap.toFixed(0)} Б`);
     });
 
+    await test("reload в фазе over: join по токену сразу получает итог (ev over, late:true), с именами и цветами", async () => {
+      const tok = bots[4].token, id = bots[4].id;
+      const ws = await rawWs(room.code);
+      ws.send(JSON.stringify({ type: "join", token: tok }));
+      await wait(300);
+      const joined = ws.msgs.find((m) => m.type === "joined");
+      assert.strictEqual(joined.playerId, id);
+      const evs = ws.msgs.filter((m) => m.type === "ev").flatMap((m) => m.list).filter((e) => e.type === "over");
+      assert.strictEqual(evs.length, 1, "over-событий " + evs.length);
+      const e = evs[0];
+      assert.strictEqual(e.late, true);
+      assert(e.host && e.host.id && e.host.name, "имя ведущего в событии");
+      assert(e.champion && e.championName, "имя чемпиона в событии");
+      assert.strictEqual(e.stats.players.length, 6);
+      assert(e.stats.players.every((p) => p.name && Number.isInteger(p.ci)), "имя и цвет у каждого");
+      // новый игрок без токена в фазе over тоже получает итог
+      const ws2 = await rawWs(room.code);
+      ws2.send(JSON.stringify({ type: "join", name: "Поздний" }));
+      await wait(300);
+      const late = ws2.msgs.filter((m) => m.type === "ev").flatMap((m) => m.list).find((x) => x.type === "over" && x.late);
+      assert(late, "новый игрок получил итог");
+      ws.close(); ws2.close();
+      await wait(100);
+    });
+
     await test("реванш и возврат в лобби — только ведущий", async () => {
       bots[2].send({ type: "lobby" });
       await wait(200);

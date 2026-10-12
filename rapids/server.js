@@ -401,6 +401,14 @@ function releasePlayer(room, client, id) {
 
 const rateOk = (client) => netRateOk(client, MSG_RATE);
 
+// вход/reload в фазе «итог»: событие over было один раз при финише — повторяем его вошедшему (late), иначе итог не нарисовать
+function sendLateOver(room, client) {
+  const g = room.game;
+  if (g.phase !== "over" || !g.stats) return;
+  const e = { type: "over", host: g.host, champion: g.champion, championName: (g.byId.get(g.champion) || {}).name || "", stats: g.stats, late: true };
+  send(client.ws, { type: "ev", list: [slimEvent(e)] });
+}
+
 function handle(room, client, msg) {
   if (!msg || typeof msg !== "object") return;
   const g = room.game;
@@ -433,7 +441,7 @@ function handle(room, client, msg) {
       if (id && !g.byId.has(id)) { delete room.tokens[msg.token]; id = null; }
       // один сокет — один игрок: новый вход без токена с уже вошедшего сокета новых уток не плодит
       // (иначе один сокет набивал комнату «вечно онлайн» фантомами — ревью безопасности 29.09)
-      if (!id && me && g.byId.has(me) && !room.meta.get(me)?.left) return reply({ type: "joined", playerId: me, token: client.token });
+      if (!id && me && g.byId.has(me) && !room.meta.get(me)?.left) { reply({ type: "joined", playerId: me, token: client.token }); return sendLateOver(room, client); }
       if (id && me && id !== me) releasePlayer(room, client, me);
       if (!id) {
         if (client.joinedAt && now() - client.joinedAt < 2000) return;
@@ -464,6 +472,7 @@ function handle(room, client, msg) {
       g.setOnline(id, true);
       reply({ type: "joined", playerId: id, token: msg.token });
       sendRoster(room);
+      sendLateOver(room, client);
       return;
     }
     case "color": {
