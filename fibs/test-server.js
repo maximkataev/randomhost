@@ -563,3 +563,112 @@ test("skip: только ведущему, не раньше 800 мс, как «
   await b.wait(statePred((s) => s.phase === "reveal"));
   for (const c of [b, ...ps]) c.close();
 });
+
+// ---------- T-W2-20: вход по имени (lib/seats): name_taken / name_claim / claim / fresh, joined.name ----------
+async function rawJoin(code, msg) {
+  const c = client(code);
+  await c.open;
+  c.send({ type: "join", ...msg });
+  return c;
+}
+const isErr = (e) => (m) => m.type === "error" && m.error === e;
+
+test("hello несёт limits.name; имя без «<» и «>» (fibs-054)", async () => {
+  const room = await createRoom({}, 1);
+  const c = client(room.code);
+  await c.open;
+  const h = await c.wait((m) => m.type === "hello");
+  assert.equal(h.limits.name, 16);
+  c.send({ type: "join", name: "<b>Маша</b>", caps: ["claim"] });
+  const j = await c.wait((m) => m.type === "joined");
+  assert.ok(!/[<>]/.test(j.name), j.name);
+  assert.equal(j.renamed, false);
+});
+
+test("лобби: тёзка онлайн — «Имя (2)» с joined.name и renamed; старый клиент (без caps) — то же", async () => {
+  const room = await createRoom({}, 1);
+  const a = await player(room.code, "Маша");
+  const c = await rawJoin(room.code, { name: "Маша ", caps: ["claim"] });
+  const j = await c.wait((m) => m.type === "joined");
+  assert.equal(j.renamed, true);
+  assert.notEqual(j.playerId, a.id);
+  assert.equal(j.name, "Маша (2)");
+  const old = await rawJoin(room.code, { name: "Маша" });
+  const j2 = await old.wait((m) => m.type === "joined");
+  assert.equal(j2.renamed, true);
+  assert.equal(j2.name, "Маша (3)");
+  assert.notEqual(j2.playerId, a.id);
+});
+
+test("лобби: офлайн-тёзка — «Это ты?» (name_claim, retry в первые 2 с), claim — тот же игрок, старый токен отозван; fresh — «Имя (2)»", async () => {
+  const room = await createRoom({}, 1);
+  const a = await player(room.code, "Маша");
+  const oldToken = a.token;
+  a.close();
+  await a.closed;
+  const early = await rawJoin(room.code, { name: "Маша", caps: ["claim"] });
+  const r1 = await early.wait(isErr("name_claim"));
+  assert.equal(r1.retry, true);
+  assert.ok(r1.retryInMs > 0);
+  await sleep(2300);
+  const c = await rawJoin(room.code, { name: "Маша", caps: ["claim"] });
+  const q = await c.wait(isErr("name_claim"));
+  assert.equal(q.name, "Маша");
+  assert.equal(q.summary.score, 0);
+  assert.ok(!q.retry);
+  // «Я другой»
+  const f = await rawJoin(room.code, { name: "Маша", caps: ["claim"], fresh: true });
+  const jf = await f.wait((m) => m.type === "joined");
+  assert.equal(jf.renamed, true);
+  assert.notEqual(jf.playerId, a.id);
+  // «Занять место»
+  await sleep(1100);
+  c.send({ type: "join", name: "Маша", caps: ["claim"], claim: true });
+  const jc = await c.wait((m) => m.type === "joined");
+  assert.equal(jc.playerId, a.id);
+  assert.equal(jc.resumed, true);
+  assert.notEqual(jc.token, oldToken);
+  // прежний токен больше не открывает место
+  const stale = await rawJoin(room.code, { token: oldToken });
+  await stale.wait(isErr("token_gone"));
+});
+
+test("лобби: старый клиент без caps подхватывает офлайн-место молча, как раньше", async () => {
+  const room = await createRoom({}, 1);
+  const a = await player(room.code, "Витя");
+  a.close();
+  await a.closed;
+  await sleep(2300);
+  const c = await rawJoin(room.code, { name: "Витя" });
+  const j = await c.wait((m) => m.type === "joined");
+  assert.equal(j.playerId, a.id);
+});
+
+test("в игре: тёзка онлайн — name_taken{online, suggested}; fresh — «Имя (2)»; старый клиент — «Имя (N)»; офлайн — молча (флаг выкл.)", async () => {
+  const room = await createRoom({ short: true }, 1);
+  const b = await board(room.code, room.hostToken);
+  const ps = [await player(room.code, "Аня"), await player(room.code, "Боря"), await player(room.code, "Вика")];
+  b.send({ type: "start" });
+  await b.wait(statePred((s) => s.phase !== "lobby"));
+  const c = await rawJoin(room.code, { name: "Аня", caps: ["claim"] });
+  const t = await c.wait(isErr("name_taken"));
+  assert.equal(t.online, true);
+  assert.equal(t.suggested, "Аня (2)");
+  await sleep(1100);
+  c.send({ type: "join", name: "Аня", caps: ["claim"], fresh: true });
+  const j = await c.wait((m) => m.type === "joined");
+  assert.equal(j.name, "Аня (2)");
+  assert.equal(j.renamed, true);
+  const old = await rawJoin(room.code, { name: "Боря" });
+  const jo = await old.wait((m) => m.type === "joined");
+  assert.equal(jo.renamed, true);
+  assert.match(jo.name, /^Боря \(\d\)$/);
+  // офлайн Вика: без RULE_U01_CLAIM_IN_GAME подхват молча (как до правки)
+  const vid = ps[2].id;
+  ps[2].close();
+  await ps[2].closed;
+  const v = await rawJoin(room.code, { name: "Вика", caps: ["claim"] });
+  const jv = await v.wait((m) => m.type === "joined");
+  assert.equal(jv.playerId, vid);
+  assert.equal(jv.resumed, true);
+});

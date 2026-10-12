@@ -53,6 +53,37 @@ for (const lang of LANGS) {
   });
 }
 
+// alts (T-W2-40, fibs-048): варианты написания правды — калька, транслит, формы короткого слова
+for (const lang of LANGS) {
+  test(`${lang}: alts — непустые строки без дублей, не равны ответу и не совпадают ни с одной ложью факта`, () => {
+    const lit = (s) => String(s).toLowerCase().replace(/ё/g, "е").replace(/[^\p{L}\p{N}]+/gu, "");
+    for (const f of C[lang]) {
+      if (f.alts === undefined) continue;
+      assert.ok(Array.isArray(f.alts), `${f.id}: alts не массив`);
+      const seen = new Set([lit(f.answer)]);
+      for (const a of f.alts) {
+        assert.ok(typeof a === "string" && lit(a), `${f.id}: пустой alt`);
+        assert.ok(!seen.has(lit(a)), `${f.id}: alt «${a}» дублирует ответ или другой alt`);
+        seen.add(lit(a));
+        for (const l of f.lies) assert.notStrictEqual(lit(l), lit(a), `${f.id}: alt «${a}» совпадает с ложью`);
+      }
+    }
+  });
+}
+
+test("alts закрывают транслит и формы короткого слова: «фелт-тип пен», «мох» при «мха»", () => {
+  const ru = C.ru;
+  const pen = ru.find((f) => f.id === "space-aldrin-felt-pen");
+  assert.ok(isTruth("фелт-тип пен", pen), "фелт-тип пен");
+  assert.ok(isTruth("фетровый маркер", pen), "фетровый маркер");
+  assert.ok(!isTruth("карандаш", pen), "карандаш — ложь");
+  const moss = ru.find((f) => f.id === "nature-glacier-mice-moss");
+  assert.ok(isTruth("мох", moss) && isTruth("мхом", moss), "формы «мха»");
+  assert.ok(!isTruth("лишайник", moss), "лишайник — ложь");
+  const bear = C.en.find((f) => f.id === "food-toblerone-bear");
+  assert.ok(isTruth("a bear", bear) && isTruth("bears", bear), "a bear / bears");
+});
+
 test("id совпадают во всех языках", () => {
   const ru = C.ru.map((f) => f.id).sort().join();
   for (const lang of LANGS) assert.strictEqual(C[lang].map((f) => f.id).sort().join(), ru, lang);

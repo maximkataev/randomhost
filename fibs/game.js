@@ -13,6 +13,7 @@
  */
 
 const { normalize } = require("./normalize");
+const { cleanName: cleanNameLib } = require("../lib/names");
 
 // Раунды (§2): очки за правду и за каждого обманутого
 const ROUNDS = {
@@ -77,7 +78,9 @@ const CTRL = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g;
 function cleanText(text, max) {
   return Array.from(String(text == null ? "" : text).replace(CTRL, "").replace(/\s+/g, " ").trim()).slice(0, max).join("").trim();
 }
-const cleanName = (name) => cleanText(name, 16);
+// Имя: общий lib/names — вырезает ещё и «<» «>» (fibs-054) и режет по символам. Тексты лжи идут через cleanText:
+// «<3», «5 > 3» в них остаются как есть, вывод экранирует escapeHtml.
+const cleanName = (name) => cleanNameLib(typeof name === "string" ? name : name == null ? "" : String(name), 16);
 
 // Вид варианта на экране: все строчными, без точки/«!»/«?» в конце и без кавычек вокруг.
 // Правда в банке написана строчными и без знаков, а игроки пишут «Акулы!» — по заглавной букве
