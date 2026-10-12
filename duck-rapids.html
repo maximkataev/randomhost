@@ -204,8 +204,13 @@
   .toast { pointer-events: none; }
   body.is-touch.playing .toast { bottom: calc(130px + env(safe-area-inset-bottom, 0px)); }
 
-  .conn { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: rgba(205, 48, 58, 0.95); color: #fff; font-weight: 800; font-size: 14px; padding: 9px 14px; border-radius: 12px; display: none; white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; }
+  /* плашка связи — вверху и не ловит касания: внизу она закрывала кнопку ⚡ и футер панели (rapids-024) */
+  @media (min-width: 900px) { body.with-panel .conn { margin-left: 170px; } }
+  @media (max-height: 500px) and (min-width: 600px) { body.with-panel .conn { margin-left: 150px; } }
+  .conn { position: fixed; left: 50%; bottom: auto; top: calc(52px + env(safe-area-inset-top, 0px)); pointer-events: none; transform: translateX(-50%); z-index: 30; background: rgba(205, 48, 58, 0.95); color: #fff; font-weight: 800; font-size: 14px; padding: 9px 14px; border-radius: 12px; display: none; white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; }
   .conn.on { display: block; }
+  /* reload посреди заплыва: до первого снимка панель скрыта без анимации, иначе она «уезжала» поверх реки (rapids-018/019) */
+  body.booting .panel { visibility: hidden; transition: none; }
   .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: #fff; color: #0b2a22; font-weight: 800; font-size: 14px; padding: 10px 16px; border-radius: 12px; max-width: calc(100% - 32px); display: none; }
   .toast.on { display: block; animation: toastIn 0.3s ease-out; }
   @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 10px); } }
@@ -475,6 +480,7 @@ window.I18N_DICT = {
     net.ws = ws;
     ws.onopen = () => {
       net.open = true; net.everOpen = true; net.retry = 0;
+      net.openedAt = performance.now(); net.lastSnapAt = 0;
       $("conn").classList.remove("on");
       if (net.token || net.wantJoin) sendJoin();
     };
@@ -519,7 +525,18 @@ window.I18N_DICT = {
         applyMode(); if (!document.body.classList.contains("playing")) redraw(); break;
       case "s": onSnap(m); break;
       // события приходят вместе со снимком своего тика — показываем их тогда же, когда этот снимок
-      case "ev": net.events.push({ at: performance.now() + INTERP_MS + Math.max(0, (net.lastD ?? 0) - (net.offset ?? 0)), list: m.list }); break;
+      case "ev": {
+        // late: итог, повторённый вошедшему/перезашедшему в фазе «итог» — показываем сразу, без звуков и баннеров
+        const late = m.list.filter((e) => e.type === "over" && e.late);
+        if (late.length) {
+          for (const e of late) { ui.over = e; ui.showResults = true; ui.resultsAt = 0; }
+          document.body.classList.remove("out");
+          if (ui.phase === "over") redraw();
+        }
+        const rest = late.length ? m.list.filter((e) => !(e.type === "over" && e.late)) : m.list;
+        if (rest.length) net.events.push({ at: performance.now() + INTERP_MS + Math.max(0, (net.lastD ?? 0) - (net.offset ?? 0)), list: rest });
+        break;
+      }
       case "pong": {
         const rtt = performance.now() - m.c;
         // понги, застрявшие в сетевой паузе, приносят rtt в десятки секунд — такие не считаем
@@ -531,6 +548,7 @@ window.I18N_DICT = {
         break;
       }
       case "error":
+        unboot();
         if (m.error === "room_expired") return showDead("no_room");
         if (!net.me) { ui.joinErr = m.error; net.wantJoin = false; redraw(); }
         else toast(T(m.error === "need_two" ? "need_two_err" : m.error));
@@ -546,6 +564,7 @@ window.I18N_DICT = {
   // всегда есть следующий — чужие утки плывут плавно, а не ступеньками (плейтест 04.10)
   const INTERP_MS = 70;
   const showTime = () => (net.offset == null ? null : performance.now() + net.offset - INTERP_MS);
+  const unboot = () => document.body.classList.remove("booting");
   function onSnap(m) {
     const now = performance.now();
     net.lastSnapAt = now;
@@ -562,10 +581,13 @@ window.I18N_DICT = {
     const mine = net.me && m.p.find((p) => p[0] === net.me);
     if (mine) reconcile(mine, m); else pred.on = false;
     if (m.ph !== ui.phase) onPhase(m.ph, ui.phase, m);
+    if (net.me) unboot();
   }
   const lerpAng = (a, b, t) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * t; };
   // ушедшие из комнаты пропадают из списка игроков, но в заплыве и итоге остаются — имя и цвет помним
   const nameOf = (id) => { const p = net.roster.find((x) => x.id === id) || net.known.get(id); return p ? p.name : "?"; };
+  // имя из самого события (сервер кладёт name): ушедшего, которого клиент не знает, иначе показывали «?»
+  const evName = (e) => (e.name ? e.name : nameOf(e.id));
   const ciOf = (id) => { const p = net.roster.find((x) => x.id === id) || net.known.get(id); return p ? p.ci : 0; };
   const colorOf = (id) => COLORS[ciOf(id) % COLORS.length][0];
 
@@ -705,13 +727,19 @@ window.I18N_DICT = {
   function sendInput() {
     readInput();
     const t = performance.now();
-    if (net.me && (input.st !== input.sent || t - input.sentAt > 500)) {
+    // руль — не чаще раза в 33 мс (кадры 120 Гц иначе шлют до 120/с и сервер молча съедал хвост, rapids-036);
+    // обнуление уходит сразу; таймер 100 мс доставит последнее значение; пульс раз в 0,5 с
+    const changed = input.st !== input.sent;
+    if (net.me && ((changed && t - input.sentAt >= 33) || (changed && input.st === 0) || t - input.sentAt > 500)) {
       send({ type: "i", st: input.st, s: ++input.seq });
       input.sent = input.st; input.sentAt = t;
     }
   }
   setInterval(sendInput, 100);
   addEventListener("visibilitychange", () => { if (document.hidden) { down.clear(); touches.clear(); sendInput(); } });
+  addEventListener("pagehide", () => { down.clear(); touches.clear(); sendInput(); });
+  // вернулись во вкладку: счёт молчания начинаем заново (иначе баннер вспыхнет от времени в фоне)
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) net.lastSnapAt = performance.now(); });
   addEventListener("blur", sendInput);
   function pushInput(dt) {
     sendInput();
@@ -866,9 +894,11 @@ window.I18N_DICT = {
     const ov = ui.over;
     if (!ov || !ov.stats || !ov.host) return drawLobby();
     const s = ov.stats, h = ov.host;
-    const nm = (id) => { const p = s.players.find((x) => x.id === id); return p ? p.name : nameOf(id); };
+    const nm = (id) => { const p = s.players.find((x) => x.id === id); return p ? p.name : (id === h.id && h.name) || nameOf(id); };
+    // цвет — из итога (ci у игрока): после reload клиент мог не знать ушедших
+    const colOf = (p) => (Number.isInteger(p.ci) ? COLORS[p.ci % COLORS.length][0] : colorOf(p.id));
     const champ = s.players.find((p) => p.id === ov.champion);
-    const rows = s.players.map((p) => `<div class="r${p.id === net.me ? " me" : ""}"><span class="pl-n">${p.place}</span><span class="d" style="--c:${colorOf(p.id)}"></span><span class="nm">${esc(p.name)}${p.id === h.id ? " 😅" : ""}${p.id === ov.champion ? " 🏆" : ""}</span><span class="ex">${p.time != null ? esc(tpl("t_sec", { s: secs(p.time) })) : esc(p.dnf ? T("t_dnf") : T("t_swim"))}</span></div>`).join("");
+    const rows = s.players.map((p) => `<div class="r${p.id === net.me ? " me" : ""}"><span class="pl-n">${p.place}</span><span class="d" style="--c:${colOf(p)}"></span><span class="nm">${esc(p.name)}${p.id === h.id ? " 😅" : ""}${p.id === ov.champion ? " 🏆" : ""}</span><span class="ex">${p.time != null ? esc(tpl("t_sec", { s: secs(p.time) })) : esc(p.dnf ? T("t_dnf") : T("t_swim"))}</span></div>`).join("");
     // ничья на троих и больше — не номинация
     const nomLine = (key, ids, n) => { if (ids.length > 2) return ""; const [label] = String(T(key)).split(":"); return `<div><span>${esc(label)}</span><b>${esc(ids.length ? ids.map(nm).join(", ") + (n ? " · " + n : "") : "—")}</b></div>`; };
     const iAmHost = net.me === net.hostId;
@@ -893,9 +923,11 @@ window.I18N_DICT = {
   function clearResultsScene() {
     render.setFocus(null);
     $("verdict").classList.remove("show");
+    $("verdict").textContent = "";
   }
 
   function showDead(kind) {
+    unboot();
     net.dead = true;
     try { net.ws && net.ws.close(); } catch (e) {}
     $("conn").classList.remove("on");
@@ -905,7 +937,7 @@ window.I18N_DICT = {
     const [title, text] = map[kind] || [kind, ""];
     setPanel(`<a class="back" href="index.html">${esc(T("back"))}</a>${brand()}<h2 style="font-size:20px">${esc(T(title))}</h2>${text ? `<p class="lede">${esc(T(text))}</p>` : ""}`,
       kind === "replaced" ? `<button class="btn" id="here" type="button">${esc(T("play_here"))}</button>` : `<a class="btn" href="duck-rapids.html">${esc(T("new_game"))}</a>`);
-    if ($("here")) $("here").onclick = () => { net.dead = false; net.retry = 0; net.everOpen = false; connect(); redraw(); };
+    if ($("here")) $("here").onclick = () => { net.dead = false; net.retry = 0; net.everOpen = false; net.lastSnapAt = 0; $("conn").classList.remove("on"); $("conn").textContent = ""; connect(); redraw(); };
   }
 
   async function createRoom() {
@@ -935,8 +967,22 @@ window.I18N_DICT = {
   }
 
   // ----- фазы -----
+  // остатки прошлого заплыва в DOM (скрыты классом, но читаются скринридером и ботами) — чистим при смене заплыва/фазы (rapids-018)
+  function clearTransient(all) {
+    const big = $("big"); big.textContent = ""; big.classList.remove("show", "word");
+    $("outpill").textContent = "";
+    if (all) {
+      clearTimeout(bannerT);
+      const b = $("banner"); b.innerHTML = ""; b.classList.remove("show", "gold");
+      if (!document.body.classList.contains("watching")) $("tag").textContent = "";
+      if (!$("conn").classList.contains("on")) $("conn").textContent = "";
+    }
+  }
   function onPhase(ph, prev) {
     ui.phase = ph;
+    if (ph === "countdown" || ph === "lobby") clearTransient(true);
+    else if (ph === "over") clearTransient(false);
+    ui.overAt = ph === "over" ? performance.now() : 0; ui.overAsked = false;
     if (ph === "countdown" || ph === "lobby") {
       ui.showResults = false; ui.over = null; clearResultsScene();
       $("feed").innerHTML = "";
@@ -973,7 +1019,7 @@ window.I18N_DICT = {
       if (e.type === "go") { big(T("go_word"), true); Sound.go(); }
       if (e.type === "finish") {
         const mine = e.id === net.me;
-        pushFeed(`${tag(e.id)} ${esc(tpl("feed_fin", { place: e.place, s: secs(e.time) }))}`, mine);
+        pushFeed(`${tag(e.id, e.name)} ${esc(tpl("feed_fin", { place: e.place, s: secs(e.time) }))}`, mine);
         if (mine) {
           document.body.classList.add("out");
           placeGaps();
@@ -981,19 +1027,19 @@ window.I18N_DICT = {
         }
       }
       if (e.type === "champion") {
-        banner(e.id === net.me ? T("you_champ_banner") : tpl("champ_banner", { name: nameOf(e.id) }), tpl("t_sec", { s: secs(e.time) }), true);
+        banner(e.id === net.me ? T("you_champ_banner") : tpl("champ_banner", { name: evName(e) }), tpl("t_sec", { s: secs(e.time) }), true);
       }
       if (e.type === "bump" && (e.id === net.me || e.by === net.me)) pushFeed(`${tag(e.by)} 💥 ${tag(e.id)}`, true);
-      if (e.type === "removed") pushFeed(`📡 ${tag(e.id)} ${esc(T("feed_off"))}`);
+      if (e.type === "removed") pushFeed(`📡 ${tag(e.id, e.name)} ${esc(T("feed_off"))}`);
       if (e.type === "host") {
         $("feed").innerHTML = "";
-        banner(e.id === net.me ? T("you_host_banner") : tpl("host_banner", { name: nameOf(e.id) }), hostNote(e, "host"));
+        banner(e.id === net.me ? T("you_host_banner") : tpl("host_banner", { name: evName(e) }), hostNote(e, "host"));
         Sound.host();
       }
       if (e.type === "over") { ui.over = e; ui.resultsAt = performance.now() + 2200; document.body.classList.remove("out"); }
     }
   }
-  function tag(id) { return `<span class="dot" style="background:${colorOf(id)}"></span>${esc(nameOf(id))}`; }
+  function tag(id, name) { return `<span class="dot" style="background:${colorOf(id)}"></span>${esc(name || nameOf(id))}`; }
   // одна и та же пара толкается раз за разом — одна строка «×3», а не столбик одинаковых
   function pushFeed(html, mine) {
     const feed = $("feed");
@@ -1096,9 +1142,21 @@ window.I18N_DICT = {
       else if (CODE) {
         if (net.open && now - pingAt > 2000) { pingAt = now; send({ type: "ping", c: now, rtt: Math.round(net.rtt) }); }
         // сокет открыт, но снимков нет — сеть встала молча: плашка, а своя утка больше не едет по предсказанию
-        const silent = net.open && net.lastSnapAt && now - net.lastSnapAt > 1500;
+        // сторож: 1,5 с без снимков — плашка и предсказание выключено, 4 с — закрываем сокет (дальше обычный реконнект);
+        // только у вошедшего и пока вкладка видима
+        const watch = net.open && net.me && !document.hidden;
+        const age = now - Math.max(net.lastSnapAt, net.openedAt || 0);
+        const silent = watch && age > 1500;
         if (silent) { pred.on = false; $("conn").textContent = T("conn_lost"); }
-        if (net.open) $("conn").classList.toggle("on", !!silent);
+        if (net.open && !document.hidden) $("conn").classList.toggle("on", !!silent);
+        if (watch && age > 4000) {
+          // не ждём onclose: у полуоткрытого TCP он приходит через минуты — отцепляем сокет и переподключаемся с тем же токеном
+          net.lastSnapAt = now; net.openedAt = now;
+          const ws = net.ws;
+          if (ws) { ws.onclose = ws.onmessage = ws.onerror = null; try { ws.close(); } catch (e) {} }
+          net.open = false;
+          retryLater();
+        }
         pushInput(dt);
         const snap = sampled();
         if (snap) {
@@ -1119,6 +1177,15 @@ window.I18N_DICT = {
           onEvents(ready);
           hud(snap);
           if (ui.phase === "over" && ui.resultsAt && now >= ui.resultsAt) { ui.resultsAt = 0; ui.showResults = true; redraw(); }
+          // страховка: в фазе «итог» события over нет уже 1,5 с (потеряно в сети) — просим повторить и рисуем итог из снимка
+          // (ведущий, чемпион, кнопки), чтобы комната не стояла на «Итог через секунду…»
+          if (ui.phase === "over" && !ui.over && !ui.resultsAt && ui.overAt && now - ui.overAt > 1500 && net.me && net.open) {
+            if (!ui.overAsked) { ui.overAsked = true; sendJoin(); }
+            if (snap.host) {
+              ui.over = { type: "over", host: snap.host, champion: snap.champion, stats: { players: [], pusher: [], whirler: [], maxBumps: 0, maxWhirls: 0 }, synth: true };
+              ui.showResults = true; redraw();
+            }
+          }
         }
       }
     } catch (err) { console.error(err); }
@@ -1153,6 +1220,7 @@ window.I18N_DICT = {
   if (CODE) {
     net.token = store.get(tokenKey()) || null;
     net.wantJoin = !!net.token;
+    if (net.token) { document.body.classList.add("booting"); setTimeout(unboot, 1200); }
     connect();
     redraw();
   } else {

@@ -411,7 +411,7 @@
       // ушёл посреди заплыва — сошёл с дистанции, место за ним остаётся
       if (d.inGame && (g.phase === 'countdown' || g.phase === 'race')) {
         d.online = false;
-        if (d.st !== 'f') { d.dnf = true; d.st = 'f'; d.left = true; emit('removed', { id }); checkEnd(); }
+        if (d.st !== 'f') { d.dnf = true; d.st = 'f'; d.left = true; emit('removed', { id, name: d.name }); checkEnd(); }
         return;
       }
       g.players.splice(g.players.indexOf(d), 1);
@@ -649,8 +649,8 @@
         d.st = 'f'; d.cap = null;
         d.place = ++g.finishCount;
         d.finT = g.clock;
-        emit('finish', { id: d.id, place: d.place, time: +g.clock.toFixed(2), x: d.x });
-        if (d.place === 1) { g.champion = d.id; emit('champion', { id: d.id, time: +g.clock.toFixed(2) }); }
+        emit('finish', { id: d.id, name: d.name, place: d.place, time: +g.clock.toFixed(2), x: d.x });
+        if (d.place === 1) { g.champion = d.id; emit('champion', { id: d.id, name: d.name, time: +g.clock.toFixed(2) }); }
       }
     }
 
@@ -669,18 +669,20 @@
       const order = fin.concat(swim, dnf);
       order.forEach((d, i) => { d.place = i + 1; });
       const last = order[order.length - 1];
-      g.host = { id: last.id, dnf: !!last.dnf, timeUp: timeUp && swim.length > 1 };
+      g.host = { id: last.id, name: last.name, dnf: !!last.dnf, timeUp: timeUp && swim.length > 1 };
       if (!g.champion && order[0]) g.champion = order[0].id;
       emit('host', g.host);
       const stats = statsOf(order);
       g.stats = stats;
       setPhase('over');
-      emit('over', { host: g.host, champion: g.champion, stats });
+      emit('over', { host: g.host, champion: g.champion, championName: nameOfId(g.champion), stats });
     }
+
+    function nameOfId(id) { const d = id && g.byId.get(id); return d ? d.name : ''; }
 
     function statsOf(order) {
       const players = order.map(d => ({
-        id: d.id, name: d.name, place: d.place, time: d.st === 'f' && !d.dnf && d.finT ? +d.finT.toFixed(2) : null,
+        id: d.id, name: d.name, ci: d.ci, place: d.place, time: d.st === 'f' && !d.dnf && d.finT ? +d.finT.toFixed(2) : null,
         dnf: !!d.dnf, bumps: d.bumps, whirls: d.whirls, rocks: d.rocks, turbos: d.turbos,
         progress: +clamp((d.y - GATE_Y) / (g.course.FINISH_Y - GATE_Y), 0, 1).toFixed(3),
       }));

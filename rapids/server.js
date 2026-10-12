@@ -33,19 +33,40 @@ const MAX_PLAYERS = 12;
 const MAX_SOCKETS_PER_ROOM = Number(process.env.MAX_SOCKETS_PER_ROOM || 24);
 const MAX_TOTAL_SOCKETS = Number(process.env.MAX_TOTAL_SOCKETS || 1500);
 const MAX_ANON_PER_ROOM = 12;
-const MAX_ANON_PER_IP = Number(process.env.MAX_ANON_PER_IP || 10);
 const MAX_SOCKETS_PER_IP = Number(process.env.MAX_SOCKETS_PER_IP || 60);
-const ANON_TTL_MS = 30000;
 const HOST_HANDOFF_MS = 10000;                                   // ведущий комнаты пропал на 10 с — права следующему
-const LOBBY_GHOST_MS = 60000;                                    // офлайн в лобби дольше минуты — убираем из списка
-const PONG_MISSES = 3;
-const STEER_TTL = 1200;
+// Числа правил и защит из env С ПРОВЕРКОЙ ДИАПАЗОНА. FLOE_CFG/RAPIDS_CFG читаются только при NODE_ENV=development,
+// поэтому в проде откат правила без пересборки кода — только эти переменные (compose environment). Мусор → значение по умолчанию.
+function envNum(name, def, min, max) {
+  const raw = process.env[name];
+  if (raw == null || raw === "") return def;
+  const v = Number(raw);
+  if (Number.isFinite(v) && v >= min && v <= max) return v;
+  console.warn(`[rapids] ${name}=${JSON.stringify(raw)} вне диапазона ${min}…${max} — беру ${def}`);
+  return def;
+}
+
+// Блок PROD_ENV (T-W0-21): всё, чем откатывают правило в проде. Значения по умолчанию = поведение «как сейчас».
+const PROD_ENV = {
+  INPUT_STALE_MS: envNum("INPUT_STALE_MS", 1200, 200, 60000),      // нет руля дольше — руль в ноль (раньше константа STEER_TTL)
+  GHOST_TTL_MS: envNum("GHOST_TTL_MS", 60000, 5000, 3600000),      // офлайн в лобби дольше — убираем из списка
+  PONG_MISSES: envNum("PONG_MISSES", 3, 1, 30),                    // пропущенных пингов (по 20 с) до разрыва сокета
+  ANON_TTL_MS: envNum("ANON_TTL_MS", 30000, 3000, 600000),         // не вошёл за это время — не держит место
+  CLAIM_WAIT_MS: envNum("CLAIM_WAIT_MS", 120000, 1000, 3600000),   // ожидание подтверждения «Это ты?» (потребитель — W1)
+  MAX_ANON_PER_IP: envNum("MAX_ANON_PER_IP", 10, 1, 100),
+};
+const { INPUT_STALE_MS: STEER_TTL, GHOST_TTL_MS, PONG_MISSES, ANON_TTL_MS, MAX_ANON_PER_IP } = PROD_ENV;
 const SEND_BUFFER_LIMIT = Number(process.env.SEND_BUFFER_LIMIT || 262144);
-const MSG_RATE = Number(process.env.MSG_RATE || 70);             // руль до 30/с + пинги
+const MSG_RATE = Number(process.env.MSG_RATE || 70);
+// Сверх общего MSG_RATE ввод `i` не выбрасывается молча (иначе пропадали рывок и финальный «0» — floe-014/rapids-036), а
+// запоминается: последнее значение применится в ближайшем тике. Разбирать JSON разрешено только до жёсткого потолка в секунду;
+// дальше — отбрасываем, как и раньше (защита от флуда не ослаблена, общий лимитер не отключён)
+const MSG_HARD = Math.max(MSG_RATE, Number(process.env.MSG_HARD || 120));             // руль до 30/с + пинги
 const MAX_MSG_BYTES = 1024;
 const LOG = "[rapids]";
 // только в разработке: RAPIDS_CFG='{"LEN":800}' — короткие заплывы для тестов
 const DEV_CFG = DEV && process.env.RAPIDS_CFG ? JSON.parse(process.env.RAPIDS_CFG) : undefined;
+const GAME_CFG = Object.assign({}, DEV_CFG);   // правил-флагов движка в rapids пока нет; сюда лягут RULE_* (W2)
 
 // ---------- комнаты ----------
 
@@ -72,12 +93,13 @@ const isActive = (room) => room.game.phase === "countdown" || room.game.phase ==
 function newRoom({ code, ip = "", hostToken, seed }) {
   const room = {
     code, ip, hostToken,
-    game: createGame({ rng: rngFor(seed), cfg: DEV_CFG }),
+    game: createGame({ rng: rngFor(seed), cfg: GAME_CFG }),
     tokens: {},              // token → playerId
     meta: new Map(),         // playerId → { joinedAt, ping, lastSeq, offlineAt, left }
     hostId: null,
     sockets: new Set(),
     touched: now(),
+    lastTickAt: 0,           // стенное время прошлого тика комнаты: игровое время идёт по часам, а не по числу тиков
     tickN: 0,
   };
   return room;
@@ -199,7 +221,9 @@ const EVENT_TYPES = new Set(["go", "phase", "course", "bump", "rock", "log", "wh
 
 // ---------- игровой цикл ----------
 
-let tickCost = 0, tickMax = 0, tickCount = 0;
+const MIN_DT = 0.02, MAX_DT = 0.15;
+// по секциям тика (шаг движка / обслуживание / рассылка) — чтобы «ВНИМАНИЕ: тик» говорило, где время
+let tickCost = 0, tickMax = 0, tickCount = 0, secStep = 0, secMaintain = 0, secSend = 0, secStepMax = 0;
 function loop() {
   const t0 = process.hrtime.bigint();
   const t = now();
@@ -217,11 +241,20 @@ function loop() {
 function tickRoom(room, t) {
   const g = room.game;
   const online = g.players.some((p) => p.online);
-  // пустое лобби и законченная партия без игроков не тикают
-  if (!online && !isActive(room)) return flushRoster(room);
+  // пустое лобби и законченная партия без игроков не тикают; в простое счёт часов сбрасывается
+  if (!online && !isActive(room)) { room.lastTickAt = 0; return flushRoster(room); }
   room.tickN++;
-  g.step(TICK_MS / 1000);
+  // игровое время — по часам: задержанный тик (GC, нагрузка) не растягивает заплыв (rapids-020). Потолок 0,15 с — после
+  // паузы процесса игра не прыгает; пол 0,02 с — два тика подряд не удваивают время
+  const dt = room.lastTickAt ? Math.min(MAX_DT, Math.max(MIN_DT, (t - room.lastTickAt) / 1000)) : TICK_MS / 1000;
+  room.lastTickAt = t;
+  flushPendingInput(room);
+  const s0 = performance.now();
+  g.step(dt);
+  const s1 = performance.now();
   maintain(room, t);
+  const s2 = performance.now();
+  secStep += s1 - s0; secMaintain += s2 - s1; secStepMax = Math.max(secStepMax, s1 - s0);
   const events = g.drainEvents().filter((e) => EVENT_TYPES.has(e.type));
   // список игроков — раньше снимка: клиент по нему решает, играет он в этой партии или смотрит
   if (events.some((e) => e.type === "phase" || e.type === "removed" || e.type === "offline" || e.type === "online")) sendRoster(room);
@@ -229,6 +262,7 @@ function tickRoom(room, t) {
   if (events.length) broadcast(room, JSON.stringify({ type: "ev", list: events.map(slimEvent) }));
   broadcast(room, snapMsg(room, t));
   if (events.some((e) => e.type === "over")) console.log(`${LOG} ${room.code}: заплыв окончен за ${g.clock.toFixed(1)} с`);
+  secSend += performance.now() - s2;
 }
 
 function slimEvent(e) {
@@ -267,7 +301,7 @@ function maintain(room, t) {
     let changed = false;
     for (const p of [...g.players]) {
       const m = room.meta.get(p.id);
-      if (m && !p.online && t - (m.offlineAt || t) > LOBBY_GHOST_MS && g.phase === "lobby") {
+      if (m && !p.online && t - (m.offlineAt || t) > GHOST_TTL_MS && g.phase === "lobby") {
         dropPlayer(room, p.id);
         changed = true;
       }
@@ -371,7 +405,7 @@ function onConnection(room, ws, ip) {
   send(ws, { type: "hello", code: room.code, cfg: cfgFor(room.game), tick: TICK_MS, max: MAX_PLAYERS });
   send(ws, rosterMsg(room));
   ws.on("message", (raw) => {
-    if (!rateOk(client)) return;
+    if (!rateOk(client)) return coalesceOver(client, raw);
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     try { handle(room, client, msg); } catch (err) { console.error(`${LOG} ${room.code}: обработка упала:`, err); send(ws, { type: "error", error: "server_error" }); }
@@ -400,6 +434,33 @@ function releasePlayer(room, client, id) {
 }
 
 const rateOk = (client) => netRateOk(client, MSG_RATE);
+
+// сообщение пришло сверх MSG_RATE: если это руль и до потолка MSG_HARD ещё есть запас — запоминаем последний руль
+// (финальный «0» не теряется, rapids-036); рывок `t` сверх лимита не копится — он разовый и защищён перезарядкой
+function coalesceOver(client, raw) {
+  if (!client.playerId || !client.rl || client.rl.n > MSG_HARD) return;
+  let msg;
+  try { msg = JSON.parse(raw); } catch { return; }
+  if (!msg || typeof msg !== "object" || msg.type !== "i") return;
+  client.pendingI = { st: msg.st, s: msg.s };
+}
+// применяем отложенный руль раз за тик (после этого очередь пуста)
+function flushPendingInput(room) {
+  for (const c of room.sockets) {
+    if (!c.pendingI) continue;
+    const m = c.pendingI;
+    c.pendingI = null;
+    if (c.playerId) handle(room, c, { type: "i", st: m.st, s: m.s });
+  }
+}
+
+// вход/reload в фазе «итог»: событие over было один раз при финише — повторяем его вошедшему (late), иначе итог не нарисовать
+function sendLateOver(room, client) {
+  const g = room.game;
+  if (g.phase !== "over" || !g.stats) return;
+  const e = { type: "over", host: g.host, champion: g.champion, championName: (g.byId.get(g.champion) || {}).name || "", stats: g.stats, late: true };
+  send(client.ws, { type: "ev", list: [slimEvent(e)] });
+}
 
 function handle(room, client, msg) {
   if (!msg || typeof msg !== "object") return;
@@ -433,7 +494,7 @@ function handle(room, client, msg) {
       if (id && !g.byId.has(id)) { delete room.tokens[msg.token]; id = null; }
       // один сокет — один игрок: новый вход без токена с уже вошедшего сокета новых уток не плодит
       // (иначе один сокет набивал комнату «вечно онлайн» фантомами — ревью безопасности 29.09)
-      if (!id && me && g.byId.has(me) && !room.meta.get(me)?.left) return reply({ type: "joined", playerId: me, token: client.token });
+      if (!id && me && g.byId.has(me) && !room.meta.get(me)?.left) { reply({ type: "joined", playerId: me, token: client.token }); return sendLateOver(room, client); }
       if (id && me && id !== me) releasePlayer(room, client, me);
       if (!id) {
         if (client.joinedAt && now() - client.joinedAt < 2000) return;
@@ -464,6 +525,7 @@ function handle(room, client, msg) {
       g.setOnline(id, true);
       reply({ type: "joined", playerId: id, token: msg.token });
       sendRoster(room);
+      sendLateOver(room, client);
       return;
     }
     case "color": {
@@ -532,8 +594,8 @@ setInterval(() => {
   if (rooms.size || tickCount) {
     console.log(`${LOG} комнат ${rooms.size}, в бою ${activeGames()}, соединений ${totalSockets()}, тик ср. ${(tickCost / Math.max(1, tickCount)).toFixed(2)} мс / макс ${tickMax.toFixed(1)} мс, куча ${heap} МБ, RSS ${rss} МБ`);
   }
-  if (tickMax > TICK_MS * 0.6) console.warn(`${LOG} ВНИМАНИЕ: тик ${tickMax.toFixed(1)} мс при бюджете ${TICK_MS} мс`);
-  tickCost = 0; tickCount = 0; tickMax = 0;
+  if (tickMax > TICK_MS * 0.6) console.warn(`${LOG} ВНИМАНИЕ: тик ${tickMax.toFixed(1)} мс при бюджете ${TICK_MS} мс (за окно: шаг ${secStep.toFixed(0)} мс, макс. шага комнаты ${secStepMax.toFixed(1)}, обслуживание ${secMaintain.toFixed(0)}, рассылка ${secSend.toFixed(0)})`);
+  tickCost = 0; tickCount = 0; tickMax = 0; secStep = 0; secMaintain = 0; secSend = 0; secStepMax = 0;
 }, 20000);
 
 // Дамп: заплыв короткий, после рестарта он отменяется, а комнаты с людьми, цветами и токенами — живут дальше (в лобби)
@@ -593,4 +655,4 @@ process.on("SIGTERM", () => {
 
 server.listen(PORT, () => console.log(`${LOG} порт ${PORT}${STATIC ? ", статика из " + STATIC : ""}${DEV ? ", режим разработки" : ""}`));
 
-module.exports = { rooms, handle, createRoom, DEFAULTS };
+module.exports = { rooms, handle, createRoom, dump, loop, DEFAULTS, PROD_ENV };

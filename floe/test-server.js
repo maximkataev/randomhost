@@ -101,6 +101,23 @@ function rawWs(code) {
       assert(perSnap < 1600, `средний размер сообщения ${perSnap.toFixed(0)} Б`);
     });
 
+    await test("reload в фазе over: join по токену сразу получает итог (ev over, late:true) и повтор", async () => {
+      const tok = bots[4].token, id = bots[4].id;
+      const ws = await rawWs(room.code);
+      ws.send(JSON.stringify({ type: "join", token: tok }));
+      await wait(400);
+      const joined = ws.msgs.find((m) => m.type === "joined");
+      assert.strictEqual(joined.playerId, id);
+      const evs = ws.msgs.filter((m) => m.type === "ev").flatMap((m) => m.list).filter((e) => e.type === "over");
+      assert.strictEqual(evs.length, 1, "over-событий " + evs.length);
+      assert.strictEqual(evs[0].late, true);
+      assert(evs[0].host && evs[0].host.id && Array.isArray(evs[0].kings));
+      assert.strictEqual(evs[0].stats.players.length, 6);
+      assert(ws.msgs.some((m) => m.type === "replay" && m.frames.length > 10), "повтор пришёл");
+      ws.close();
+      await wait(100);
+    });
+
     await test("реванш и возврат в лобби — только ведущий", async () => {
       bots[2].send({ type: "lobby" });
       await wait(200);
@@ -228,6 +245,109 @@ function rawWs(code) {
       assert.strictEqual(list.length, 10);
       assert.strictEqual(refused, 2);
       list.forEach((w) => w.close());
+    });
+
+    await test("игровое время по часам: паузы процесса по 100 мс не растягивают floe (clock ≈ wall ± 0,3 с)", async () => {
+      const r = await NetBot.createRoom(BASE);
+      const a = await NetBot.connect({ base: BASE, code: r.code, name: "А", hostToken: r.hostToken, think: false });
+      const b = await NetBot.connect({ base: BASE, code: r.code, name: "Б", think: false });
+      await a.until((x) => x.roster && x.roster.length === 2, 3000);
+      a.send({ type: "start" });
+      await a.until((x) => x.phase === "fight" && x.snap && x.snap.ph === "fight", 8000);
+      await wait(200);
+      const s1 = a.snap;
+      // 12 пауз процесса по 100 мс: старый код терял по ~0,1 с игрового времени на каждой
+      for (let i = 0; i < 12; i++) {
+        process.kill(srv.pid, "SIGSTOP");
+        await wait(100);
+        process.kill(srv.pid, "SIGCONT");
+        await wait(150);
+      }
+      await wait(200);
+      const s2 = a.snap;
+      assert.strictEqual(s2.ph, "fight", "ещё идёт: " + s2.ph);
+      const wall = (s2.t - s1.t) / 1000, game = s2.cl - s1.cl;
+      assert(Math.abs(wall - game) < 0.3, `по часам ${wall.toFixed(2)} с, в игре ${game.toFixed(2)} с`);
+      a.close(); b.close();
+    });
+
+    await test("PROD_ENV: в проде (NODE_ENV=production) env меняет политику — GHOST_TTL_MS=6000 убирает офлайн из лобби за ~6 с", async () => {
+      const port2 = PORT + 300;
+      const base2 = `http://localhost:${port2}`;
+      const env2 = Object.assign({}, process.env, { PORT: String(port2), NODE_ENV: "production", DUMP_FILE: path.join(require("os").tmpdir(), `floe-test-${port2}.json`), GHOST_TTL_MS: "6000", PONG_MISSES: "abc" }, {});
+      const s2 = spawn(process.execPath, [path.join(__dirname, "server.js")], { env: env2, stdio: ["ignore", "pipe", "pipe"] });
+      let log = "";
+      s2.stdout.on("data", (d) => (log += d)); s2.stderr.on("data", (d) => (log += d));
+      try {
+        for (let i = 0; i < 50; i++) { try { if ((await fetch(base2 + "/floe/api/health")).ok) break; } catch {} await wait(100); }
+        const r = await NetBot.createRoom(base2);
+        const a = await NetBot.connect({ base: base2, code: r.code, name: "А", hostToken: r.hostToken, think: false });
+        const b = await NetBot.connect({ base: base2, code: r.code, name: "Б", think: false });
+        await a.until((x) => x.roster && x.roster.length === 2, 3000);
+        const t0 = Date.now();
+        b.close();
+        await a.until((x) => x.roster.length === 1, 16000);
+        const dt = Date.now() - t0;
+        assert(dt < 12000, "убран за " + dt + " мс (по умолчанию было бы ≥ 60 с)");
+        assert(/PONG_MISSES="abc" вне диапазона/.test(log), "мусор в env отвергнут с предупреждением");
+        a.close();
+      } finally { s2.kill("SIGTERM"); }
+    });
+
+    await test("«мёртвая рука»: ввод замолчал дольше INPUT_STALE_MS (env, прод) — пингвин останавливается, а не бежит к краю", async () => {
+      // raw-клиент шлёт один `i {mx:1}` и молчит (замороженная вкладка); сервер в production с разными INPUT_STALE_MS
+      async function run(stale, off) {
+        const port2 = PORT + off;
+        const base2 = `http://localhost:${port2}`;
+        const env2 = Object.assign({}, process.env, { PORT: String(port2), NODE_ENV: "production", DUMP_FILE: path.join(require("os").tmpdir(), `floe-test-${port2}.json`), INPUT_STALE_MS: String(stale) });
+        const s2 = spawn(process.execPath, [path.join(__dirname, "server.js")], { env: env2, stdio: ["ignore", "pipe", "pipe"] });
+        try {
+          for (let i = 0; i < 50; i++) { try { if ((await fetch(base2 + "/floe/api/health")).ok) break; } catch {} await wait(100); }
+          const r = await NetBot.createRoom(base2);
+          const ws = await new Promise((res, rej) => { const w = new WebSocket(`ws://localhost:${port2}/floe/ws?r=${r.code}`); w.msgs = []; w.on("message", (m) => w.msgs.push(JSON.parse(m))); w.on("open", () => res(w)); w.on("error", rej); });
+          ws.send(JSON.stringify({ type: "join", name: "Заморожен", hostToken: r.hostToken }));
+          const other = await NetBot.connect({ base: base2, code: r.code, name: "Второй", think: false });
+          await wait(300);
+          const me = ws.msgs.find((m) => m.type === "joined").playerId;
+          ws.send(JSON.stringify({ type: "start" }));
+          for (let i = 0; i < 100 && !ws.msgs.some((m) => m.type === "s" && m.ph === "fight"); i++) await wait(50);
+          ws.send(JSON.stringify({ type: "i", mx: 1, my: 0, d: 0, s: 1 }));
+          await wait(3500);
+          const row = ws.msgs.filter((m) => m.type === "s").pop().p.find((p) => p[0] === me);
+          ws.close(); other.close();
+          return { st: row[6], speed: Math.hypot(row[3], row[4]) };
+        } finally { s2.kill("SIGTERM"); }
+      }
+      const stopped = await run(300, 301);
+      assert.strictEqual(stopped.st, "ice", "остался на льду: " + stopped.st);
+      assert(stopped.speed < 5, "скорость погашена: " + stopped.speed);
+      const runaway = await run(60000, 302);
+      assert.notStrictEqual(runaway.st, "ice", "контроль (потолок 60 с): без «мёртвой руки» пингвин добегает до края");
+    });
+
+    await test("сверх лимита ввод не теряется: рывок в сообщении №90 из пачки применяется; флуд 5000/с — сервер жив", async () => {
+      const r = await NetBot.createRoom(BASE);
+      const host = await NetBot.connect({ base: BASE, code: r.code, name: "Хост", hostToken: r.hostToken, think: false });
+      const ws = await rawWs(r.code);
+      ws.send(JSON.stringify({ type: "join", name: "Спамер" }));
+      await wait(300);
+      const me = ws.msgs.find((m) => m.type === "joined").playerId;
+      host.send({ type: "start" });
+      for (let i = 0; i < 100 && !ws.msgs.some((m) => m.type === "s" && m.ph === "fight"); i++) await wait(50);
+      await wait(2300);   // защита старта: рывок раньше 2 с боя не сработает
+      const dashes = () => ws.msgs.filter((m) => m.type === "ev").flatMap((m) => m.list).filter((e) => e.type === "dash" && e.id === me).length;
+      assert.strictEqual(dashes(), 0);
+      // пачка в один тик: первые 70 принимаются сразу, дальше — сверх общего лимита; рывок — в №90
+      for (let i = 1; i <= 100; i++) ws.send(JSON.stringify({ type: "i", mx: i === 100 ? 0 : 1, my: 0, d: i === 90 ? 1 : 0, s: i }));
+      await wait(400);
+      assert.strictEqual(dashes(), 1, "рывок из сообщения сверх лимита применён");
+      // флуд: потолок не снят, процесс и тики живы
+      for (let i = 0; i < 5000; i++) ws.send(JSON.stringify({ type: "i", mx: 1, my: 0, d: 1, s: 1000 + i }));
+      await wait(500);
+      const h = await (await fetch(BASE + "/floe/api/health")).json();
+      assert.strictEqual(h.ok, true);
+      assert(dashes() <= 4, "рывков за флуд: " + dashes() + " (перезарядка держит)");
+      ws.close(); host.close();
     });
 
     await test("рестарт сервера: комната и токены живы, партия отменена", async () => {
