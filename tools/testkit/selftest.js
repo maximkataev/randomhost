@@ -127,6 +127,28 @@ test("неверный токен ведущего → error, hostOk=false", asy
   });
 });
 
+// ---- restore: шаблон «дамп прошлой версии» (T-W0-31) ----
+console.log("restore");
+const restore = require("./restore");
+test("restore: stripFields вырезает вложенные, массивные и словарные пути; копия не меняет исходник", () => {
+  const st = { chooseExtended: true, players: [{ id: "a", played: 1 }, { id: "b", played: 0 }], paused: { auto: true, waitFor: "a", waitUntil: 5 }, cards: { x: { n: 1, repl: 2 } } };
+  const r = restore.stripFields(st, ["chooseExtended", "players[].played", "paused.waitFor", "paused.waitUntil", "cards{}.repl", "нет.такого"]);
+  assert.strictEqual(r.removed, 6);
+  assert.deepStrictEqual(r.state, { players: [{ id: "a" }, { id: "b" }], paused: { auto: true }, cards: { x: { n: 1 } } });
+  assert.strictEqual(st.players[0].played, 1);
+  restore.assertAbsent(r.state, ["players[].played", "paused.waitFor"]);
+  assert.throws(() => restore.assertAbsent(st, ["players[].played"]), /остались поля/);
+});
+test("restore: makeOldDump — по коду комнаты и для всех комнат", () => {
+  const dump = [restore.roomEntry({ code: "A", hostToken: "t", state: { x: 1, y: 2 } }), restore.roomEntry({ code: "B", hostToken: "t", state: { x: 1 } })];
+  const one = restore.makeOldDump(dump, { A: ["x"] });
+  assert.strictEqual("x" in one[0].state, false);
+  assert.strictEqual(one[1].state.x, 1);
+  const all = restore.makeOldDump(dump, ["x"]);
+  assert.ok(all.every((r) => !("x" in r.state)));
+  assert.strictEqual(dump[0].state.x, 1);
+});
+
 Promise.all(pending).then(() => {
   console.log(`\n${passed} зелёных, ${failed} красных`);
   process.exit(failed ? 1 : 0);
