@@ -53,6 +53,8 @@
   /* ----- Левая панель: вход, лобби, итог ----- */
   .panel { position: fixed; top: 12px; left: 12px; bottom: 12px; width: 316px; z-index: 10; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(10, 36, 64, 0.96), rgba(6, 24, 44, 0.96)); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 18px 50px rgba(0,0,0,0.35); overflow: hidden; transition: transform 0.3s ease, opacity 0.3s; }
   body.playing .panel, body.watching .panel { transform: translateX(calc(-100% - 24px)); opacity: 0; pointer-events: none; }
+  /* reload посреди боя: до первого снимка панель скрыта без анимации, иначе лобби-панель «уезжала» поверх арены (floe-011) */
+  body.booting .panel { visibility: hidden; transition: none; }
   /* заплыв кончился, итог ещё готовится (повтор/событие) — панель невидима, а не лобби с «Начать партию» (floe-004) */
   body.over-wait .panel { opacity: 0; visibility: hidden; pointer-events: none; transition: none; }
   .p-body { flex: 1; overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; scrollbar-color: rgba(160,215,245,0.25) transparent; }
@@ -565,6 +567,7 @@ window.I18N_DICT = {
         break;
       }
       case "error":
+        unboot();
         if (m.error === "room_expired") return showDead("no_room");
         if (!net.me) { ui.joinErr = m.error; net.wantJoin = false; redraw(); }
         else toast(T(m.error));
@@ -577,6 +580,7 @@ window.I18N_DICT = {
   // ----- снимки и интерполяция -----
   const INTERP_MS = 100;
   const serverNow = () => (net.offset == null ? null : performance.timeOrigin + performance.now() + net.offset);
+  const unboot = () => document.body.classList.remove("booting");
   function onSnap(m) {
     net.lastSnapAt = performance.now();
     if (m.sh) net.sh = m.sh;
@@ -591,6 +595,7 @@ window.I18N_DICT = {
     ui.mySt = mySt;
     if (m.ph !== ui.phase) onPhase(m.ph, ui.phase, m);
     else if (stChanged) applyMode();
+    if (net.me) unboot();
   }
   const lerpAng = (a, b, t) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * t; };
   const nameOf = (id) => { const p = net.roster.find((x) => x.id === id); return p ? p.name : "?"; };
@@ -684,6 +689,7 @@ window.I18N_DICT = {
       $("stick").style.left = t.clientX + "px"; $("stick").style.top = t.clientY + "px";
       $("stick").classList.add("on"); $("knob").style.transform = "";
       $("stickHint").classList.add("gone");
+      try { sessionStorage.setItem("floe-stick-seen", "1"); } catch (e) {}
     }
     if (document.body.classList.contains("playing")) e.preventDefault();
   }, { passive: false });
@@ -922,9 +928,11 @@ window.I18N_DICT = {
   function clearResultsScene() {
     render.setFocus(null);
     $("verdict").classList.remove("show");
+    $("verdict").textContent = "";
   }
 
   function showDead(kind) {
+    unboot();
     net.dead = true;
     try { net.ws && net.ws.close(); } catch (e) {}
     $("conn").classList.remove("on");
@@ -933,7 +941,7 @@ window.I18N_DICT = {
     const [title, text] = map[kind] || [kind, ""];
     setPanel(`<a class="back" href="index.html">${esc(T("back"))}</a>${brand()}<h2 style="font-size:20px">${esc(T(title))}</h2>${text ? `<p class="lede">${esc(T(text))}</p>` : ""}`,
       kind === "replaced" ? `<button class="btn" id="here" type="button">${esc(T("play_here"))}</button>` : `<a class="btn" href="floe-battle.html">${esc(T("new_game"))}</a>`);
-    if ($("here")) $("here").onclick = () => { net.dead = false; net.retry = 0; net.everOpen = false; connect(); redraw(); };
+    if ($("here")) $("here").onclick = () => { net.dead = false; net.retry = 0; net.everOpen = false; net.silent = false; net.lastSnapAt = 0; $("conn").classList.remove("on"); $("conn").textContent = ""; connect(); redraw(); };
   }
 
   async function createRoom() {
@@ -963,8 +971,22 @@ window.I18N_DICT = {
   }
 
   // ----- фазы -----
+  // остатки прошлой партии в DOM (скрыты классом, но читаются скринридером и ботами; языки не перерисовывают скрытое) —
+  // чистим при смене партии/фазы (floe-010)
+  function clearTransient(all) {
+    const big = $("big"); big.textContent = ""; big.classList.remove("show", "word");
+    $("outpill").textContent = "";
+    if (all) {
+      clearTimeout(bannerT);
+      const b = $("banner"); b.innerHTML = ""; b.classList.remove("show");
+      if (!document.body.classList.contains("watching")) $("tag").textContent = "";
+      if (!net.silent && !document.querySelector("#conn.on")) $("conn").textContent = "";
+    }
+  }
   function onPhase(ph, prev, m) {
     ui.phase = ph;
+    if (ph === "countdown" || ph === "lobby") clearTransient(true);
+    else if (ph === "over") clearTransient(false);
     ui.overAt = ph === "over" ? performance.now() : 0; ui.overAsked = false;
     if (ph === "countdown") { ui.showResults = false; ui.over = null; stopReplay(); clearResultsScene(); $("feed").innerHTML = ""; document.body.classList.remove("out"); }
     if (ph === "lobby") { ui.showResults = false; ui.over = null; stopReplay(); clearResultsScene(); document.body.classList.remove("out"); }
@@ -1231,8 +1253,9 @@ window.I18N_DICT = {
   function applyStatic() {
     $("dashBtn").textContent = T("dash");
     $("stickHintT").textContent = T("stick_hint");
+    try { if (sessionStorage.getItem("floe-stick-seen")) $("stickHint").classList.add("gone"); } catch (e) {}
     $("rotate").innerHTML = `<i class="rot-ph" aria-hidden="true"></i><b>${esc(T("rotate"))}</b><span>${esc(T("rotate_why"))}</span><small>${esc(T("rotate_lock"))}</small>`;
-    $("outpill").textContent = T("out_pill");
+    if (document.body.classList.contains("out")) $("outpill").textContent = T("out_pill");
     $("skip").textContent = T("skip") + " ›";
     render.setWords(WORDS());
     placeSound();
@@ -1256,6 +1279,7 @@ window.I18N_DICT = {
   if (CODE) {
     net.token = store.get(tokenKey()) || null;
     net.wantJoin = !!net.token;
+    if (net.token) { document.body.classList.add("booting"); setTimeout(unboot, 1200); }
     document.body.classList.add("with-panel");
     connect();
     redraw();
