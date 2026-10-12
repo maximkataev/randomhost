@@ -654,3 +654,60 @@ test("аватар: меняется в лобби, чужой занять не
   assert.strictEqual(g.setAvatar("b", "🌮").reason, "game_started");
   assert.strictEqual(g.snapshot(0, {}).avatarChoices, null);
 });
+
+// ---- T-W0-15: подписи ва-банка, замены, агрегат мнений ----
+test("ва-банк без «Готово»: не засчитывается (правило прежнее), но помечен bankLate и виден игроку", () => {
+  const ctx = mk(4); ctx.g.start(0);
+  const { g } = ctx;
+  ["a", "a", "a", "b"].forEach((v, i) => g.vote("p" + i, v, 0));
+  g.bankToggle("p0", true, 0);
+  ["p1", "p2", "p3"].forEach((id) => g.confirm(id, 0));
+  g.tick(g.s.phaseEnd);
+  const res = g.s.round.result;
+  assert.ok(res.bankLate.p0, "p0 включил ×2, но не нажал «Готово»");
+  assert.ok(!res.bankLate.p1);
+  assert.ok(!res.banked.p0, "ва-банк не засчитан");
+  assert.strictEqual(res.pts.p0, POINTS.win, "очки обычные, не ×2");
+  assert.strictEqual(g.player("p0").banks, 2, "ва-банк не потрачен");
+  assert.strictEqual(g.snapshot(0, "p0").me.bankLate, true);
+  assert.strictEqual(g.snapshot(0, "p1").me.bankLate, false);
+});
+
+test("bankLate до раскрытия никому не уходит в снимке", () => {
+  const ctx = mk(4); ctx.g.start(0);
+  const { g } = ctx;
+  g.vote("p0", "a", 0); g.bankToggle("p0", true, 0);
+  const j = JSON.stringify(g.snapshot(0, "p0")) + JSON.stringify(g.snapshot(0, "board"));
+  assert.ok(!/bankLate":true/.test(j));
+  assert.ok(!/"bankLate":\{"p0"/.test(j));
+});
+
+test("аннулирование: replace и номер замены; после двух замен — replace=false, номер вопроса «замена» в раунде", () => {
+  const ctx = mk(4); ctx.g.start(0);
+  const { g } = ctx;
+  const r1 = round(ctx, ["a", null, null, null]);
+  assert.strictEqual(r1.replace, true);
+  assert.strictEqual(r1.replaceNo, 1);
+  assert.strictEqual(g.s.round.repl, 1, "следующий вопрос — замена 1");
+  assert.strictEqual(g.snapshot(0, "p0").round.repl, 1);
+  const r2 = round(ctx, ["a", null, null, null]);
+  assert.strictEqual(r2.replaceNo, 2);
+  ctx.t = g.s.phaseEnd; g.tick(ctx.t); // пауза
+  assert.strictEqual(g.s.round.repl, 2);
+  const r3 = round(ctx, ["a", null, null, null]);
+  assert.strictEqual(r3.void, true);
+  assert.strictEqual(r3.replace, false, "замены кончились — обещание «заменят» не даётся");
+  assert.ok(!g.s.round || !g.s.round.repl, "следующий вопрос не помечен заменой");
+});
+
+test("агрегат мнений: при 1–2 ответивших не показывается, при ≥ 3 — показывается", () => {
+  const ctx = mk(5, { opinion: true }); ctx.g.start(0);
+  const { g } = ctx;
+  ["a", "a", "a", "b", "b"].forEach((v, i) => { g.vote("p" + i, v, 0); g.confirm("p" + i, 0); });
+  ["a", "b", "skip", "skip", "skip"].forEach((v, i) => g.opinion("p" + i, v, 0));
+  assert.strictEqual(g.s.round.result.opinions, null, "2 ответивших (a+b) — скрыто");
+  const c2 = mk(5, { opinion: true }); c2.g.start(0);
+  ["a", "a", "a", "b", "b"].forEach((v, i) => { c2.g.vote("p" + i, v, 0); c2.g.confirm("p" + i, 0); });
+  ["a", "b", "b", "skip", "skip"].forEach((v, i) => c2.g.opinion("p" + i, v, 0));
+  assert.deepStrictEqual(c2.g.s.round.result.opinions, { a: 1, b: 2, skip: 2 });
+});

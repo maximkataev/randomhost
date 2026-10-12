@@ -284,22 +284,31 @@ function wvOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
 }
 
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
-function wvConnect({ code, onMessage, onOpen, onGone, onState }) {
+function wvConnect({ code, onMessage, onOpen, onGone, onState, onSendFail }) {
   let t = null, delay = 500, stopped = false;
   // Действие, нажатое между обрывом и возвращением связи, раньше терялось молча (а кнопка уже горела «ушло»).
   // Теперь оно ждёт в очереди и уходит после входа по токену: сокет без игрока действие бы отбросил.
   const queue = [];
+  const born = typeof WeakMap === "function" ? new WeakMap() : null; // когда действие нажато: просроченное не отправляем, даже если оно вернулось в очередь
   const holder = {
     api: null,
     gated: false, // страница держит действия до входа по токену и сама снимает флаг через flush
     send(m) {
       const a = holder.api;
+      if (m && born && typeof m === "object" && !born.has(m)) born.set(m, Date.now());
       if (m && m.type !== "ping" && m.type !== "join" && m.type !== "host" && (holder.gated || !a || a.mode === "none" || a.mode === "connecting")) {
         queue.push({ m, at: Date.now() });
         if (queue.length > 8) queue.shift();
         return;
       }
       if (a) a.send(m);
+    },
+    // сколько действий ждёт отправки (для подписи «Отправляем…»)
+    pending() { return queue.length; },
+    // сокет не смог отправить (опрос: 3 попытки): действие возвращается в очередь и уйдёт после повторного входа
+    requeue(m) {
+      queue.push({ m, at: (born && born.get(m)) || Date.now() });
+      if (queue.length > 8) queue.shift();
     },
     // keep(m) — нужно ли это действие ещё; просроченные и ненужные отбрасываются через onDrop
     flush(keep, onDrop) {
@@ -321,6 +330,7 @@ function wvConnect({ code, onMessage, onOpen, onGone, onState }) {
       onOpen: () => { delay = 500; if (onState) onState("open"); if (onOpen) onOpen(); },
       onClose: () => { if (stopped) return; if (onState) onState("lost"); t = setTimeout(open, delay); delay = Math.min(delay * 2, 8000); },
       onGone: () => { stopped = true; if (onGone) onGone(); },
+      onSendFail: (m) => { holder.requeue(m); if (onSendFail) onSendFail(m); },
     });
   };
   open();
