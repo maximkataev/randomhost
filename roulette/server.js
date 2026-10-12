@@ -21,6 +21,7 @@ const { roomCode } = require("../lib/codes");
 const { clientIp, createGuessLimiter, rateOk: netRateOk, send } = require("../lib/net");
 const names = require("../lib/names");
 const seats = require("../lib/seats");
+const presence = require("../lib/presence");
 const { Game, clampSettings, cleanName, MAX_PLAYERS } = require("./game");
 const { decide, playCard, STRATEGIES } = require("./bots");
 
@@ -50,6 +51,8 @@ const MAX_MSG_BYTES = 8192;
 const NAME_MAX = 16;
 // ожидающий «Это ты?» сокет живёт CLAIM_WAIT_MS, а не ANON_TTL_MS (T-W2-10, lib/seats)
 const CLAIM_WAIT_MS = seats.CLAIM_WAIT_MS;
+// офлайн-место в лобби/итогах живёт GHOST_TTL_MS (U-07, класс A); в игре — никогда
+const GHOST_TTL_MS = presence.GHOST_TTL_MS;
 // U-01, класс B: подхват по имени посреди партии — с подтверждением «Это ты?». Выкл. = «как сейчас»: тихий подхват
 const RULE_U01_CLAIM_IN_GAME = process.env.RULE_U01_CLAIM_IN_GAME === "1";
 const MP_OFF = process.env.MP_OFF === "1";
@@ -219,6 +222,40 @@ function noteClosed(room, client) {
 }
 
 const isBotId = (room, id) => room.bots.some((b) => b.playerId === id);
+
+/*
+ * Офлайн-призраки лобби и итогов (U-07, класс A). Место без связи старше GHOST_TTL_MS уходит; в игре — никогда.
+ * В итогах трогаем только зрителей: у бывших игроков там место и очки партии.
+ */
+function ghostProtect(room) {
+  const ph = room.game.s.phase;
+  return (id) => isBotId(room, id) || (ph === "finished" && !(room.game.player(id) || {}).spectator);
+}
+
+function evictGhost(room) {
+  const g = room.game;
+  const ph = g.s.phase;
+  if (ph !== "lobby" && ph !== "finished") return false;
+  const id = presence.evictOldestGhost(g.s.players, { now: now(), minAgeMs: GHOST_TTL_MS, stage: ph, protect: ghostProtect(room), protectEarned: false });
+  if (!id) return false;
+  for (const c of room.sockets) if (c.playerId === id) c.playerId = null;
+  g.removePlayer(id, clock(room));
+  pruneTokens(room);
+  return true;
+}
+
+function sweepGhosts(room) {
+  const g = room.game;
+  const ph = g.s.phase;
+  if (ph !== "lobby" && ph !== "finished") return;
+  const ids = presence.ghostsToDrop({ players: g.s.players, now: now(), stage: ph, ttlMs: GHOST_TTL_MS, protect: ghostProtect(room), protectEarned: false });
+  if (!ids.length) return;
+  const events = [];
+  for (const id of ids) events.push(...g.removePlayer(id, clock(room)));
+  pruneTokens(room);
+  for (const id of ids) room.closedAt.delete(id);
+  afterChange(room, events);
+}
 
 function cancelOffline(room, playerId) {
   const t = room.offlineTimers.get(playerId);
@@ -603,7 +640,9 @@ function handle(room, client, msg) {
         if (client.newPlayerAt && now() - client.newPlayerAt < 3000) return reply({ type: "error", error: "too_fast" });
         client.newPlayerAt = now();
         playerId = "u_" + crypto.randomBytes(5).toString("hex");
-        const r = g.addPlayer({ id: playerId, name: createName });
+        let r = g.addPlayer({ id: playerId, name: createName });
+        // лобби/итоги заполнены: место освобождает самый давний офлайн старше GHOST_TTL_MS (U-07), в игре — никогда
+        if (!r.ok && r.reason === "room_full" && evictGhost(room)) r = g.addPlayer({ id: playerId, name: createName });
         if (!r.ok) return reply({ type: "error", error: r.reason });
         const token = crypto.randomBytes(12).toString("base64url");
         room.tokens[token] = playerId;
@@ -636,6 +675,7 @@ function handle(room, client, msg) {
     case "set_bets": return me ? act("set_bets", g.setBets(me, msg.bets)) : undefined;
     case "ready": return me ? act("ready", g.setReady(me, msg.ready !== false, t)) : undefined;
     case "card": return me ? act("card", g.playCard(me, String(msg.card || ""), String(msg.target || ""))) : undefined;
+    case "ack_away": return me ? afterChange(room, g.ackAway(me)) : undefined;
     case "chat": return me ? act("chat", g.chat(me, msg.text, t)) : undefined;
     case "react": {
       if (!me) return;
@@ -679,6 +719,9 @@ function handle(room, client, msg) {
     case "end": return client.host ? afterChange(room, g.finishNow(t)) : undefined;
     case "next_game": {
       if (!client.host) return;
+      // офлайн без сокета и не бот не переходят в новую партию (U-07): токен их места отзывается вместе с местом
+      presence.pruneOfflineForNewGame(g.s.players.filter((p) => !isBotId(room, p.id)), { now: now(), graceMs: OFFLINE_GRACE_MS });
+      for (const id of [...room.closedAt.keys()]) if (!g.player(id) || g.player(id).left) room.closedAt.delete(id);
       const events = g.reset();
       for (const p of g.s.players) p.online = room.bots.some((b) => b.playerId === p.id) || [...room.sockets].some((c) => c.playerId === p.id);
       for (const b of room.bots) b.mem = {};
@@ -734,6 +777,7 @@ setInterval(() => {
       const over = seats.isPending(c) ? t - c.pendingClaimAt > CLAIM_WAIT_MS : t - c.opened > ANON_TTL_MS;
       if (over) { try { c.ws.terminate(); } catch {} }
     }
+    try { sweepGhosts(room); } catch (err) { console.error(`${LOG} уборка призраков упала:`, err); }
   }
 }, 2000).unref();
 
@@ -767,6 +811,7 @@ function restore() {
       const room = newRoom({ code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: Game.from(r.state, rnd), tokens: r.tokens || {}, touched: r.touched });
       const s = room.game.s;
       for (const p of s.players) p.online = false;
+      presence.onRestore(s.players, now()); // после деплоя лобби не должно опустеть: срок призрака считается от рестарта
       pruneTokens(room);
       if (s.phase === "betting" && !s.paused) room.game.pause(clock(room));
       else if (s.phase !== "lobby" && s.phase !== "finished" && s.phase !== "briefing") {

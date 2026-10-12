@@ -288,6 +288,12 @@
   @keyframes drop { 0% { transform: translateY(-40px) scale(1.6); opacity: 0; } 60% { transform: translateY(0) scale(.9); opacity: 1; } }
   .lobby .who > span b { font: 700 12.5px/1.1 var(--cond); max-width: 68px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lobby .who > span.empty { opacity: .45; }
+  /* офлайн: серая фишка и «⏻» в углу — размер и положение места не меняются */
+  .lobby .who > span.off .rchip { filter: grayscale(1); opacity: .5; }
+  .lobby .who > span.off b { color: var(--muted); }
+  .lobby .who > span.off::after { content: "⏻"; position: absolute; left: 50%; top: 28px; margin-left: 8px; width: 18px; height: 18px; border-radius: 50%; background: var(--bg); color: var(--warn); font: 700 11px/18px var(--cond); text-align: center; }
+  .seats .cap .purge { position: relative; background: none; border: 0; padding: 0 0 0 12px; font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--gold-hi, #ffd57a); text-decoration: underline; cursor: pointer; }
+  .seats .cap .purge::before { content: ""; position: absolute; top: -12px; bottom: -12px; left: 0; right: -8px; }
   .lobby .who > span.empty i { width: 44px; height: 44px; border-radius: 50%; border: 2px dashed rgba(255, 255, 255, .55); }
   .lobby .who .x { position: absolute; right: 4px; top: -4px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--bg); color: var(--muted); padding: 0; font-size: 11px; }
   .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
@@ -586,6 +592,7 @@
   }
 </style>
 <script src="legacy-compat.js"></script>
+<script src="mp-common.js"></script>
 </head>
 <body>
 <div id="stage"></div>
@@ -654,6 +661,7 @@ window.I18N_DICT = {
     btn_pause: `Пауза`, btn_resume: `Продолжить`, btn_end: `Закончить`, btn_again: `Ещё партию`,
     end_confirm: `Закончить партию сейчас? Победит тот, у кого больше фишек.`,
     kick: `Убрать из-за стола`, kick_confirm: `Убрать {name} из-за стола?`,
+    purge_off: `Убрать офлайн ({n})`, purge_sure: `Точно убрать ({n})?`, offline_tip: `Нет связи`,
     mute: `Выключить чат`, unmute: `Включить чат`,
     fin_title: `{name} забирает всё`,
     fin_sub: `Последний с фишками`,
@@ -711,6 +719,7 @@ window.I18N_DICT = {
     btn_pause: `Pause`, btn_resume: `Resume`, btn_end: `End`, btn_again: `Play again`,
     end_confirm: `End the game now? The player with the most chips wins.`,
     kick: `Remove from table`, kick_confirm: `Remove {name} from the table?`,
+    purge_off: `Remove offline ({n})`, purge_sure: `Sure? Remove ({n})`, offline_tip: `No connection`,
     mute: `Mute chat`, unmute: `Unmute chat`,
     fin_title: `{name} takes it all`,
     fin_sub: `Last one with chips`,
@@ -768,6 +777,7 @@ window.I18N_DICT = {
     btn_pause: `Παύση`, btn_resume: `Συνέχεια`, btn_end: `Τέλος`, btn_again: `Ξανά`,
     end_confirm: `Τέλος παιχνιδιού τώρα; Κερδίζει όποιος έχει τις περισσότερες μάρκες.`,
     kick: `Αφαίρεση`, kick_confirm: `Να αφαιρεθεί ο/η {name};`,
+    purge_off: `Αφαίρεση χωρίς σύνδεση ({n})`, purge_sure: `Σίγουρα; ({n})`, offline_tip: `Χωρίς σύνδεση`, // EL:unverified
     mute: `Κλείσιμο chat`, unmute: `Άνοιγμα chat`,
     fin_title: `{name} τα παίρνει όλα`,
     fin_sub: `Ο τελευταίος με μάρκες`,
@@ -898,6 +908,8 @@ function syncChat() {
 
 // ---------- рельс ----------
 const player = (id) => state && state.players.find((p) => p.id === id);
+// двухтактная «Убрать офлайн»: без mp-common — один тап, как обычное действие ведущего
+const purge = window.MP && MP.twoTap && MP.twoTap.create ? MP.twoTap.create({ armedMs: 3000, onChange: () => { if (state && state.phase === "lobby") drawLobby(); } }) : null;
 const seatNodes = new Map();
 const chipHtml = (color, text, extra) => `<i class="rchip" style="${rlChipVars(color)}${extra || ""}">${text == null ? "" : escapeHtml(text)}</i>`;
 const CARD_INK = { double: "#7d0f19", freeze: "#1f5f8f", share: "#4a5560", eye: "#0f6b73", shield: "#8a6420" };
@@ -1045,7 +1057,8 @@ function drawLobby() {
   const fresh = players.filter((p) => !lobbySeen.has(p.id));
   if (fresh.length && lobbySeen.size) rlSfx.chip();
   const nodes = players.map((p) => {
-    const sp = el("span", lobbySeen.has(p.id) ? "" : "new");
+    const sp = el("span", (lobbySeen.has(p.id) ? "" : "new") + (p.online === false ? " off" : ""));
+    if (p.online === false) sp.title = T("offline_tip");
     sp.innerHTML = chipHtml(p.color, initials(p.name));
     sp.append(el("b", null, p.name));
     if (isHost) { const x = el("button", "x", "✕"); x.title = T("kick"); x.onclick = () => conn.send({ type: "kick", playerId: p.id }); sp.append(x); }
@@ -1055,7 +1068,20 @@ function drawLobby() {
   const free = Math.max(0, Math.min(12, Math.max(4, players.length + 1)) - players.length);
   for (let i = 0; i < free; i++) { const sp = el("span", "empty"); sp.append(el("i"), el("b", null, T("lobby_free"))); nodes.push(sp); }
   who.replaceChildren(...nodes);
-  $("seatn").textContent = tpl("lobby_seats", { n: players.length });
+  const sn = $("seatn");
+  sn.textContent = tpl("lobby_seats", { n: players.length });
+  // «Убрать офлайн (N)»: тем же кеглем в той же строке; двухтактно, чтобы не снести стол одним тапом
+  const offIds = players.filter((p) => p.online === false).map((p) => p.id);
+  if (isHost && offIds.length) {
+    const armed = purge && purge.isArmed("off");
+    const pb = el("button", "purge", tpl(armed ? "purge_sure" : "purge_off", { n: offIds.length }));
+    pb.type = "button";
+    pb.onclick = () => {
+      if (purge && !purge.tap("off")) return;
+      for (const id of offIds) conn.send({ type: "kick", playerId: id });
+    };
+    sn.append(pb);
+  }
   drawOpts();
   const enough = players.filter((p) => p.online).length >= 2;
   $("startbtn").disabled = !isHost || !enough;

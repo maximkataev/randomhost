@@ -15,7 +15,7 @@ let proc = null;
 
 function startServer() {
   proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300" },
+    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300", GHOST_TTL_MS: "2000" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";
@@ -391,6 +391,71 @@ test("T-W2-10: посреди партии офлайн-место возвра�
   assert.strictEqual(j.viaName, true);
   const st = (await back.wait(statePred((s) => s.players.some((x) => x.id === a.id && x.online)))).state;
   assert.strictEqual(st.players.find((x) => x.id === a.id).betTotal, 30);
+});
+
+test("T-W2-11: в лобби офлайн-место уходит через GHOST_TTL_MS, в игре — никогда", async () => {
+  const { code, hostToken } = await createRoom();
+  const b = await board(code, hostToken);
+  const a = await player(code, "Аня");
+  const p = await player(code, "Петя");
+  p.close();
+  await b.wait(statePred((s) => s.players.find((x) => x.name === "Петя")?.online === false), 4000);
+  await b.wait(statePred((s) => !s.players.some((x) => x.name === "Петя")), 8000);
+  // игра идёт: офлайн остаётся с местом сколько угодно
+  const c = await player(code, "Света");
+  b.send({ type: "start" });
+  await a.wait(statePred((s) => s.phase === "betting"));
+  c.close();
+  await sleep(5500);
+  assert.ok(b.state.players.some((x) => x.name === "Света" && x.online === false), "в игре место не освобождается");
+  b.close(); a.close();
+});
+
+test("T-W2-11: «Ещё партию» не переносит офлайн, место освобождается для новых (12 мест)", async () => {
+  const { code, hostToken } = await createRoom();
+  const b = await board(code, hostToken);
+  const ps = [];
+  for (let i = 1; i <= 12; i++) ps.push(await player(code, "И" + i));
+  const late = client(code);
+  await late.open;
+  late.send({ type: "join", name: "Лишний", caps: ["claim"] });
+  await late.wait(isErr("room_full"));
+  // партия до итогов
+  b.send({ type: "start" });
+  await b.wait(statePred((s) => s.phase === "betting"));
+  b.send({ type: "end" });
+  await b.wait(statePred((s) => s.phase === "finished"));
+  ps[0].close(); ps[1].close();
+  await sleep(1000); // вышла грация места и грация перед новой партией (по 300 мс)
+  b.send({ type: "next_game" });
+  const lobby = await b.wait(statePred((s) => s.phase === "lobby"));
+  assert.strictEqual(lobby.state.players.length, 10, "двое офлайн не перешли в новую партию");
+  assert.ok(!lobby.state.players.some((x) => x.name === "И1" || x.name === "И2"));
+  // освободившееся место принимает новых
+  const n13 = await player(code, "Лишний");
+  assert.ok(n13.id);
+  for (const c of [b, late, n13, ...ps]) c.close();
+});
+
+test("T-W2-11/roulette-019: штраф за спины без связи показывается вернувшемуся и гасится ack_away", async () => {
+  const { code, hostToken } = await createRoom();
+  const b = await board(code, hostToken);
+  const a = await player(code, "Аня");
+  const p = await player(code, "Петя");
+  b.send({ type: "start" });
+  await a.wait(statePred((s) => s.phase === "betting"));
+  a.close();
+  await sleep(500); // грация 300 мс вышла: Аня офлайн
+  p.send({ type: "bet", key: "red", amount: 50 });
+  p.send({ type: "ready" });
+  await p.wait(statePred((s) => s.phase === "payout"), 30000);
+  const back = await player(code, "", a.token);
+  const st = (await back.wait(statePred((s) => s.me && s.me.away))).state;
+  assert.ok(st.me.away.spins >= 1);
+  assert.ok(st.me.away.lost > 0);
+  back.send({ type: "ack_away" });
+  await back.wait(statePred((s) => s.me && !s.me.away));
+  for (const c of [b, p, back]) c.close();
 });
 
 test("T-W2-10: RULE_U01_CLAIM_IN_GAME=1 — посреди партии офлайн-место возвращается только после «Это ты?»", async () => {

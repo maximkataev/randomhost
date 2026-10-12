@@ -641,6 +641,7 @@ window.I18N_DICT = {
     seat_wait: `Твоё место ещё закрепляется — секунду…`,
     claim_title: `Это ты?`, claim_text: `Вернуться как {name}? Фишек: {n}`, claim_text0: `Вернуться как {name}?`, btn_claim_yes: `Да, это я`, btn_claim_no: `Я другой`,
     renamed_toast: `Это имя занято. Теперь ты: {name}`,
+    away_toast: `Без связи: пропущено спинов {n}, штраф −{lost}`,
     spec_text_renamed: `Имя занято. Теперь ты: {name}. Партия уже идёт — сядешь за стол в следующей. А пока смотри, пиши в чат и реагируй.`,
     wait_title: `Ты за столом`,
     wait_text: `Ждём, пока ведущий начнёт партию на общем экране.`,
@@ -771,6 +772,7 @@ window.I18N_DICT = {
     seat_wait: `Your seat is still settling — one second…`,
     claim_title: `Is this you?`, claim_text: `Come back as {name}? Chips: {n}`, claim_text0: `Come back as {name}?`, btn_claim_yes: `Yes, it's me`, btn_claim_no: `I'm someone else`,
     renamed_toast: `That name is taken. You are now: {name}`,
+    away_toast: `Offline: {n} spins missed, penalty −{lost}`,
     spec_text_renamed: `That name is taken. You are now: {name}. The game is already on — you'll get a seat next game. Meanwhile watch, chat and react.`,
     wait_title: `You're at the table`,
     wait_text: `Waiting for the host to start the game on the shared screen.`,
@@ -901,6 +903,7 @@ window.I18N_DICT = {
     seat_wait: `Η θέση σου κλειδώνει ακόμα — ένα δευτερόλεπτο…`, // EL:unverified
     claim_title: `Είσαι εσύ;`, claim_text: `Να γυρίσεις ως {name}; Μάρκες: {n}`, claim_text0: `Να γυρίσεις ως {name};`, btn_claim_yes: `Ναι, εγώ είμαι`, btn_claim_no: `Είμαι άλλος`, // EL:unverified
     renamed_toast: `Το όνομα χρησιμοποιείται. Τώρα είσαι: {name}`, // EL:unverified
+    away_toast: `Χωρίς σύνδεση: {n} γύρισματα χαμένα, ποινή −{lost}`, // EL:unverified
     spec_text_renamed: `Το όνομα χρησιμοποιείται. Τώρα είσαι: {name}. Το παιχνίδι έχει ήδη ξεκινήσει — θα κάτσεις στο επόμενο. Ως τότε βλέπεις, γράφεις και αντιδράς.`, // EL:unverified
     wait_title: `Είσαι στο τραπέζι`,
     wait_text: `Περιμένουμε τον οικοδεσπότη να ξεκινήσει στην κοινή οθόνη.`,
@@ -2388,6 +2391,18 @@ window.addEventListener("langchange", () => {
 
 // ---------- связь ----------
 
+// Пока тебя не было, за пропущенные спины списан штраф: один раз сообщаем и просим сервер больше не показывать (roulette-019)
+let awayShown = "";
+function noteAway() {
+  const a = state && state.me && state.me.away;
+  if (!a || !me) return;
+  const k = a.spins + ":" + a.lost;
+  if (k === awayShown) return;
+  awayShown = k;
+  toast(tpl("away_toast", { n: a.spins, lost: rlNum(a.lost) }));
+  conn.send({ type: "ack_away" });
+}
+
 function onMessage(m) {
   if (mpOn()) {
     if (m.type === "hello" && MP.applyHello(m) === false) { flow = tab = null; } // MP_OFF на сервере: старый протокол
@@ -2407,6 +2422,7 @@ function onMessage(m) {
         flow.resume(); // обрыв на экране «Это ты?»: сервер продлевает ожидание, экран не пропадает
       }
       render();
+      noteAway();
       break;
     case "joined":
       me = m.playerId;

@@ -198,7 +198,9 @@ class Game {
     const have = this.player(id);
     if (have) return { ok: true, player: have };
     const spectator = s.phase !== "lobby";
-    if (s.players.filter((p) => !p.left).length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
+    // Зрители посреди партии мест не занимают (N1): иначе «стол полон» для 13-го наблюдателя; их предел — общий
+    // потолок списка ниже, а на «Ещё партию» в игроки пройдут первые 12 (reset)
+    if (!spectator && s.players.filter((p) => !p.left && !p.spectator).length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
     name = cleanName(name);
     if (!name) return { ok: false, reason: "bad_name" };
     const used = new Set(s.players.map((p) => p.color));
@@ -251,7 +253,12 @@ class Game {
 
   setOnline(id, online, now) {
     const p = this.player(id);
-    if (p) p.online = online;
+    if (p) {
+      // offSince — когда место ушло в офлайн (мс, настенные часы): по нему лобби/итоги отпускают призрака (lib/presence)
+      if (!online) { if (p.online !== false || !Number.isFinite(p.offSince)) p.offSince = Date.now(); }
+      else delete p.offSince;
+      p.online = online;
+    }
     // ушёл последний, кого ждали на знакомстве с картами, — начинаем без него
     return !online && now != null ? this.briefingDone(now) : [];
   }
@@ -615,6 +622,13 @@ class Game {
       if (!x) continue;
       p.stack = Math.max(0, p.stack + x.net + x.share + x.eye);
       p.lastBets = { ...p.bets };
+      // штраф за спин, пока игрока не было на связи: он узнает о нём при возврате (roulette-019)
+      if (x.penalty && p.online === false) {
+        const a = p.away || { spins: 0, lost: 0 };
+        a.spins += 1;
+        a.lost += x.penalty;
+        p.away = a;
+      }
       s.casino.won += x.wager + x.penalty; // всё, что легло на стол и в штраф
       s.casino.paid += x.win + x.eye; // выигрыши вместе с возвратом ставки и «Сглаз»
       // статистика финала
@@ -745,9 +759,23 @@ class Game {
     const fresh = Game.create({ settings: s.settings, rnd: this.rnd }).s;
     fresh.chat = s.chat;
     fresh.chatSeq = s.chatSeq;
-    fresh.players = players.map((p) => ({ ...p, spectator: false, stack: s.settings.stack, bets: {}, lastBets: {}, ready: false, hand: [], frozen: false, freezeNext: false, out: false, outSpin: null, place: null }));
+    // Мест 12: бывшие игроки идут первыми, зрители — следом; кто не поместился, остаётся зрителем (roulette-002, N1)
+    const ordered = players.filter((p) => !p.spectator).concat(players.filter((p) => p.spectator));
+    fresh.players = ordered.map((p, i) => {
+      const seat = i < MAX_PLAYERS;
+      const q = { ...p, spectator: !seat, stack: seat ? s.settings.stack : 0, bets: {}, lastBets: {}, ready: false, hand: [], frozen: false, freezeNext: false, out: !seat, outSpin: null, place: null };
+      delete q.away;
+      return q;
+    });
     this.s = fresh;
     return [{ type: "new_game" }];
+  }
+
+  // игрок увидел «пропущено спинов» — больше не показываем
+  ackAway(id) {
+    const p = this.player(id);
+    if (p) delete p.away;
+    return [];
   }
 
   // ---------- чат и реакции ----------
@@ -839,7 +867,7 @@ class Game {
       stats: s.phase === "finished" ? s.stats : null,
       casino: s.casino,
       chat: board ? s.chat.filter((m) => !m.hidden).slice(-12) : [],
-      me: me ? { id: me.id, hand: me.hand, muted: me.muted, lastBets: me.lastBets } : null,
+      me: me ? { id: me.id, hand: me.hand, muted: me.muted, lastBets: me.lastBets, away: me.away || null } : null,
       players: s.players.map((p) => ({
         id: p.id,
         name: p.name,

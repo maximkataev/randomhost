@@ -480,3 +480,44 @@ test("дамп: состояние переживает JSON и продолжа
   g2.tick(g2.s.deadline);
   assert.strictEqual(g2.s.phase, "payout");
 });
+
+test("зрители в игре мест не занимают; на «Ещё партию» в игроки проходят первые 12, остальные — зрители (roulette-002, N1)", () => {
+  const names12 = Array.from({ length: 12 }, (_, i) => "P" + i);
+  const g = game(names12);
+  // партия идёт: 12 за столом, наблюдатели принимаются (не «стол полон»)
+  for (let i = 0; i < 5; i++) {
+    const r = g.addPlayer({ id: "S" + i, name: "S" + i });
+    assert.ok(r.ok, "зритель " + i);
+    assert.ok(r.player.spectator);
+  }
+  assert.strictEqual(g.s.players.length, 17);
+  g.finishNow(10);
+  g.reset();
+  const seated = g.s.players.filter((p) => !p.spectator);
+  assert.strictEqual(seated.length, 12);
+  assert.deepStrictEqual(seated.map((p) => p.id), names12, "бывшие игроки идут первыми");
+  const watchers = g.s.players.filter((p) => p.spectator);
+  assert.strictEqual(watchers.length, 5);
+  assert.ok(watchers.every((p) => p.out && p.stack === 0));
+  assert.strictEqual(g.addPlayer({ id: "X", name: "X" }).reason, "room_full", "в лобби 13-му места нет");
+  // зрители из лобби не участвуют в старте
+  assert.ok(g.start(20).ok);
+  assert.strictEqual(g.alive().length, 12);
+});
+
+test("пока игрока нет на связи, штраф копится в away; ackAway гасит (roulette-019); offSince ставится и снимается", () => {
+  const g = game(["A", "B"]);
+  g.setOnline("A", false, 0);
+  assert.ok(Number.isFinite(g.player("A").offSince));
+  g.bet("B", "red", 50);
+  spin(g, 17);
+  const a = g.snapshot(0, "A").me.away;
+  assert.strictEqual(a.spins, 1);
+  assert.ok(a.lost > 0);
+  assert.strictEqual(g.snapshot(0, "B").me.away, null);
+  g.setOnline("A", true);
+  assert.strictEqual(g.player("A").offSince, undefined);
+  assert.ok(g.snapshot(0, "A").me.away, "возврат сам по себе away не гасит");
+  g.ackAway("A");
+  assert.strictEqual(g.snapshot(0, "A").me.away, null);
+});
