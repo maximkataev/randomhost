@@ -53,6 +53,11 @@ const MIN_OPTIONS = 6; // вариантов на экране не меньше
 const TOPICS_OFFERED = 4;
 const LIE_MAX = 25;
 const LIKE_GRACE = 2500; // все выбрали — ещё 2,5 с на лайки, потом раскрытие (последний выбравший тоже успевает)
+// RULE_U31_LIKE_GRACE (класс B, по умолчанию выкл.): окно лайков 5 с (на SE 2,5 с не хватало прочитать экран) и раскрытие
+// сразу, как только у всех выбравших потрачены оба лайка. Сгорание лайка на правде/ловушке остаётся: запрет или возврат
+// лайка стал бы оракулом правды (U-31).
+const LIKE_GRACE_LONG = 5000;
+const likeGrace = () => (ruleOn("RULE_U31_LIKE_GRACE") ? LIKE_GRACE_LONG : LIKE_GRACE);
 const LIKES_PER_FACT = 2;
 const LIKE_POINTS = 100;
 const REACT_GAP = 2000;
@@ -90,6 +95,15 @@ function displayText(t) {
   let x = low, prev;
   do { prev = x; x = x.replace(/^["«“„']+|["»”“']+$/g, "").replace(/[\s.!?…,;:]+$/u, "").trim(); } while (x !== prev);
   return x || low;
+}
+
+// Текст варианта на экране. RULE_U33_CAPITALIZE (по умолчанию выкл.): у всех вариантов — правды, лжи и ловушек — одинаково
+// первая заглавная, имена собственные не выглядят небрежно (fibs-013). Правда в заголовке факта (truth.answer) остаётся строчной.
+function optText(t) {
+  const d = displayText(t);
+  if (!ruleOn("RULE_U33_CAPITALIZE") || !d) return d;
+  const a = Array.from(d);
+  return a[0].toUpperCase() + a.slice(1).join("");
 }
 
 function levenshtein(a, b) {
@@ -443,7 +457,7 @@ class Game {
     // Отказ «это правда» подсказывает правду только тому, кто её и так вписал: любая неправда сразу
     // принимается как ложь, поэтому перебором нащупать ответ нельзя — лимит попыток не нужен.
     if (isTruth(t, s.fact)) return { ok: false, reason: "truth" };
-    s.lies[id] = { text: displayText(t), key: normalize(t), hint: false, late: false, at: now };
+    s.lies[id] = { text: optText(t), key: normalize(t), hint: false, late: false, at: now };
     this.played(id);
     return { ok: true, events: [{ type: "lied", playerId: id }, ...this.maybeAdvance(now)] };
   }
@@ -471,13 +485,13 @@ class Game {
     if (free.length) {
       const i = free[this.rnd(free.length)];
       f.poolUsed.push(i);
-      return { text: displayText(f.pool[i]), key: normalize(f.pool[i]) };
+      return { text: optText(f.pool[i]), key: normalize(f.pool[i]) };
     }
     const bank = this.bank().filter((x) => x.id !== f.id && (x.lies || []).length);
     for (let tries = 0; tries < 30 && bank.length; tries++) {
       const other = bank[this.rnd(bank.length)];
       const cand = other.lies[this.rnd(other.lies.length)];
-      if (!taken.has(normalize(cand)) && !isTruth(cand, f)) return { text: displayText(cand), key: normalize(cand) };
+      if (!taken.has(normalize(cand)) && !isTruth(cand, f)) return { text: optText(cand), key: normalize(cand) };
     }
     return { text: "…", key: "…" + s.seq++ };
   }
@@ -507,7 +521,7 @@ class Game {
       byKey.get(l.key).authors.push(id);
     }
     const options = [...byKey.values()];
-    options.push({ text: displayText(s.fact.answer), kind: "truth", authors: [], key: normalize(s.fact.answer) });
+    options.push({ text: optText(s.fact.answer), kind: "truth", authors: [], key: normalize(s.fact.answer) });
     // ловушки игры — пока вариантов меньше шести
     const f = s.fact;
     const taken = new Set(options.map((o) => o.key));
@@ -520,7 +534,7 @@ class Game {
       const i = free.splice(this.rnd(free.length), 1)[0];
       f.poolUsed.push(i);
       taken.add(normalize(f.pool[i]));
-      options.push({ text: displayText(f.pool[i]), kind: "trap", authors: [], key: normalize(f.pool[i]) });
+      options.push({ text: optText(f.pool[i]), kind: "trap", authors: [], key: normalize(f.pool[i]) });
     }
     for (let i = options.length - 1; i > 0; i--) { const j = this.rnd(i + 1); [options[i], options[j]] = [options[j], options[i]]; }
     s.options = options;
@@ -564,7 +578,21 @@ class Game {
     if (mine.includes(i)) return { ok: false, reason: "liked" };
     if (mine.length >= LIKES_PER_FACT) return { ok: false, reason: "no_likes" };
     mine.push(i);
-    return { ok: true, events: [{ type: "liked" }] };
+    const ev = [{ type: "liked" }];
+    // RULE_U31_LIKE_GRACE: все выбрали и у всех потрачены оба лайка — ждать нечего
+    if (ruleOn("RULE_U31_LIKE_GRACE") && this.allChose() && this.likesSpent()) ev.push(...this.reveal(now));
+    return { ok: true, events: ev };
+  }
+
+  // у всех онлайн-игроков выбор сделан и оба лайка потрачены (меньше двух чужих вариантов — лайков и не будет)
+  likesSpent() {
+    const s = this.s;
+    const ps = this.present().filter((p) => p.online);
+    return ps.length > 0 && ps.every((p) => {
+      if (!s.picks[p.id]) return false;
+      const can = s.options.filter((o) => !o.authors.includes(p.id)).length;
+      return (s.likes[p.id] || []).length >= Math.min(LIKES_PER_FACT, can);
+    });
   }
 
   allChose() {
@@ -632,8 +660,8 @@ class Game {
   maybeAdvance(now) {
     const s = this.s;
     if (s.phase === "lie" && this.allLied()) return this.closeLies(now);
-    if (s.phase === "choose" && this.allChose() && s.phaseEnd - now > LIKE_GRACE) {
-      s.phaseEnd = now + LIKE_GRACE;
+    if (s.phase === "choose" && this.allChose() && s.phaseEnd - now > likeGrace()) {
+      s.phaseEnd = now + likeGrace();
       return [{ type: "allChose" }];
     }
     return [];
@@ -756,7 +784,8 @@ class Game {
             hint: o.authors.map((a) => !!(s.lies[a] && s.lies[a].hint)),
             late: o.authors.map((a) => !!(s.lies[a] && s.lies[a].late)),
             choosers: s.result.choosers[i],
-            likes: s.result.likes[i],
+            // 👍 считаются только у лжи игроков: на правде и ловушке счётчик выдал бы «лайк в никуда» (U-31)
+            likes: o.kind === "lie" ? s.result.likes[i] : 0,
           });
         } else if (me && o.authors.includes(me.id)) x.mine = true;
         return x;
@@ -826,4 +855,4 @@ class Game {
   }
 }
 
-module.exports = { Game, EXTRA_MS, ROUNDS, PLAN, T, DEFAULTS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, MIN_OPTIONS, TOPICS_OFFERED, LIE_MAX, LIKE_GRACE, LIKES_PER_FACT, LIKE_POINTS, REACTIONS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText, displayText, isTruth, levenshtein };
+module.exports = { Game, EXTRA_MS, ROUNDS, PLAN, T, DEFAULTS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, MIN_OPTIONS, TOPICS_OFFERED, LIE_MAX, LIKE_GRACE, LIKE_GRACE_LONG, LIKES_PER_FACT, LIKE_POINTS, REACTIONS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText, displayText, optText, isTruth, levenshtein };

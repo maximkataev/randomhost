@@ -399,6 +399,8 @@ window.I18N_DICT = {
     btn_hedge: `🛟 Подстраховка`, btn_hedge_on: `🛟 Два варианта · ×½`, btn_pick: `Это правда · {n}`,
     own: `твоя`, picked_mark: `твой выбор`,
     chose_title: `Ставка сделана`, chose_sub: `Понравилась чужая ложь? Лайкни — автору +100`, likes_left: `Лайков осталось: {n}`,
+    chose_burn: `Лайк даёт очки только лжи игроков. Лайк правде или ловушке игры сгорает — он тратится зря`,
+    like_burnt: `твой 👍 сгорел: очки получает только ложь игрока`,
     reveal_title: `Разоблачение`, you_got: `+{n}`, you_zero: `Мимо`,
     reveal_wait: `Раскрываем варианты — смотри на общий экран`, you_nopick: `Выбор не сделан`,
     bd_truth: `Правда найдена`, bd_truth_half: `Правда найдена (подстраховка: половина)`, bd_likes: `Лайки твоей лжи: {n}`,
@@ -453,6 +455,8 @@ window.I18N_DICT = {
     btn_hedge: `🛟 Safety net`, btn_hedge_on: `🛟 Two picks · ×½`, btn_pick: `That's true · {n}`,
     own: `yours`, picked_mark: `your pick`,
     chose_title: `Bet placed`, chose_sub: `Liked someone's lie? Like it — +100 to the author`, likes_left: `Likes left: {n}`,
+    chose_burn: `A like scores only for players' lies. A like on the truth or the game's trap burns — it's wasted`,
+    like_burnt: `your 👍 burned: only a player's lie scores`,
     reveal_title: `Exposed`, you_got: `+{n}`, you_zero: `Missed`,
     reveal_wait: `Revealing the options — watch the shared screen`, you_nopick: `You didn't pick in time`,
     bd_truth: `Truth found`, bd_truth_half: `Truth found (safety net: half)`, bd_likes: `Likes on your lie: {n}`,
@@ -507,6 +511,8 @@ window.I18N_DICT = {
     btn_hedge: `🛟 Δίχτυ ασφαλείας`, btn_hedge_on: `🛟 Δύο επιλογές · ×½`, btn_pick: `Αυτό είναι αλήθεια · {n}`,
     own: `δικό σου`, picked_mark: `η επιλογή σου`,
     chose_title: `Η επιλογή έγινε`, chose_sub: `Σου άρεσε ένα ψέμα; Κάνε like — +100 στον δημιουργό`, likes_left: `Like που απομένουν: {n}`,
+    chose_burn: `Το like πιάνει μόνο στα ψέματα των παικτών. Στην αλήθεια ή στην παγίδα καίγεται — πάει χαμένο`, //EL:unverified
+    like_burnt: `το 👍 σου κάηκε: μόνο ψέμα παίκτη βαθμολογείται`, //EL:unverified
     reveal_title: `Αποκάλυψη`, you_got: `+{n}`, you_zero: `Άστοχο`,
     reveal_wait: `Αποκαλύπτουμε τις επιλογές — κοίτα την κοινή οθόνη`, you_nopick: `Δεν έγινε επιλογή`, //EL:unverified
     bd_truth: `Βρήκες την αλήθεια`, bd_truth_half: `Βρήκες την αλήθεια (δίχτυ: μισό)`, bd_likes: `Like στο ψέμα σου: {n}`, //EL:unverified
@@ -552,6 +558,8 @@ let justHinted = false; // только что вытянули готовую �
 let hedge = false; // подстраховка: два варианта
 let picks = []; // выбранные варианты до отправки
 let sentPick = false;
+let likePend = []; // лайки, отправленные, но ещё не подтверждённые снимком: счётчик «осталось» меняется сразу (fibs-017)
+let likePendFact = "";
 const tokenKey = () => "fibs-token-" + CODE;
 try { token = localStorage.getItem(tokenKey()); } catch (e) {}
 
@@ -953,23 +961,31 @@ function renderChoose() {
   const s = state.me;
   if (!state.options) return;
   const chose = s && (s.picks || sentPick);
-  const key = "choose:" + factId() + ":" + !!chose + ":" + hedge + ":" + picks.join(",") + ":" + (s ? s.likes.join(",") : "") + qpLang();
+  const key = "choose:" + factId() + ":" + !!chose + ":" + hedge + ":" + picks.join(",") + ":" + (s ? s.likes.join(",") : "") + ":" + likePend.join(",") + qpLang();
   if (screenKey === key) return;
   if (!s) return;
   const letter = (i) => String.fromCharCode(65 + i);
   if (chose) {
     const mineIdx = s.picks || picks;
-    const left = 2 - s.likes.length;
-    show(`${timerHtml()}<div class="status"><h2>${T("chose_title")}</h2><p>${T("chose_sub")}</p></div>${progHtml()}
+    if (likePendFact !== factId()) { likePendFact = factId(); likePend = []; }
+    const likedSet = s.likes.concat(likePend.filter((x) => s.likes.indexOf(x) < 0));
+    const left = 2 - likedSet.length;
+    show(`${timerHtml()}<div class="status"><h2>${T("chose_title")}</h2><p>${T("chose_sub")}</p><p class="fine" style="margin-top:4px">${T("chose_burn")}</p></div>${progHtml()}
       <div class="eyebrow">${escapeHtml(tpl("likes_left", { n: left }))}</div>
       <div class="opts">${state.options.map((o, i) => {
-        const liked = s.likes.includes(i);
+        const liked = likedSet.indexOf(i) >= 0;
         return `<button type="button" class="opt${o.mine ? " own" : ""}${mineIdx.includes(i) ? " sel" : ""}" data-i="${i}" data-own="${escapeHtml(T("own"))}"${o.mine || liked || left <= 0 ? " disabled" : ""}><span class="l">${letter(i)}</span><span class="t">${escapeHtml(o.text)}</span><span class="lk${liked ? " on" : ""}">👍</span></button>`;
       }).join("")}</div>${reactsHtml()}`, key, true);
     app.querySelectorAll(".opt:not(:disabled)").forEach((b) => {
-      b.onclick = () => { conn.send({ type: "like", opt: Number(b.dataset.i) }); qpSfx.pop(); qpVibrate(10); b.disabled = true;
-        const f = factId(), opt = Number(b.dataset.i);
-        watchAction(() => state.phase === "choose" && factId() === f && state.me && !state.me.likes.includes(opt), () => {});
+      b.onclick = () => {
+        const opt = Number(b.dataset.i);
+        if (likePend.concat(state.me.likes).filter((x, k, a) => a.indexOf(x) === k).length >= 2 || likePend.indexOf(opt) >= 0) return; // лишнее на сервер не шлём
+        conn.send({ type: "like", opt });
+        qpSfx.pop(); qpVibrate(10);
+        likePend.push(opt);
+        const f = factId();
+        screenKey = ""; render();
+        watchAction(() => state.phase === "choose" && factId() === f && state.me && !state.me.likes.includes(opt), () => { likePend = likePend.filter((x) => x !== opt); });
       };
     });
     return bindReacts();
@@ -1047,8 +1063,9 @@ function renderReveal() {
     const p = o.kind === "lie" ? player(o.authors[0]) : null;
     const ch = o.choosers.map((c) => ((player(c.playerId) || {}).avatar || "") + (c.half ? "½" : "")).join(" ");
     const isMine = o.kind === "lie" && o.authors.indexOf(me) >= 0;
+    const burnt = o.kind !== "lie" && likedMine.indexOf(i) >= 0;
     return `<div class="r${o.kind === "truth" ? " truth" : ""}${isMine ? " mine" : ""}${picks.indexOf(i) >= 0 ? " picked" : ""}" data-k="${k}" hidden style="--pc:${p ? p.color : "var(--muted)"}"><div class="t">${escapeHtml(o.text)}</div><div class="p">${o.likes ? escapeHtml(tpl("likes_n", { n: o.likes })) : ""}</div>
-      <div class="who">${escapeHtml(authorsTxt)}${ch ? " · " + escapeHtml(ch) : ""}${isMine ? `<span class="tagme">${escapeHtml(T("own"))}</span>` : ""}${picks.indexOf(i) >= 0 ? `<span class="tagme">${escapeHtml(T("picked_mark"))}</span>` : ""}</div></div>`;
+      <div class="who">${escapeHtml(authorsTxt)}${ch ? " · " + escapeHtml(ch) : ""}${isMine ? `<span class="tagme">${escapeHtml(T("own"))}</span>` : ""}${burnt ? `<br>${escapeHtml(T("like_burnt"))}` : ""}${picks.indexOf(i) >= 0 ? `<span class="tagme">${escapeHtml(T("picked_mark"))}</span>` : ""}</div></div>`;
   };
   const rows = order.map((i, k) => rowHtml(i, k)).join("");
   const resTitle = !s.inRound ? T("late_title") : !s.picks ? T("you_nopick") : gain ? tpl("you_got", { n: gain }) : T("you_zero");
@@ -1308,6 +1325,7 @@ function onMessage(m) {
     case "rejected":
       if (m.action === "hint") { justHinted = false; screenKey = ""; }
       if (m.action === "choose") { sentPick = false; screenKey = ""; }
+      if (m.action === "like") { likePend = []; screenKey = ""; }
       if (m.action === "lie") {
         screenKey = "";
         if (m.reason === "truth") { truthMsg = true; draft = ""; draftClear(); qpSfx.buzz(); qpVibrate([60, 40, 60]); render(); break; }
