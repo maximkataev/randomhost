@@ -101,6 +101,23 @@ function rawWs(code) {
       assert(perSnap < 1600, `средний размер сообщения ${perSnap.toFixed(0)} Б`);
     });
 
+    await test("reload в фазе over: join по токену сразу получает итог (ev over, late:true) и повтор", async () => {
+      const tok = bots[4].token, id = bots[4].id;
+      const ws = await rawWs(room.code);
+      ws.send(JSON.stringify({ type: "join", token: tok }));
+      await wait(400);
+      const joined = ws.msgs.find((m) => m.type === "joined");
+      assert.strictEqual(joined.playerId, id);
+      const evs = ws.msgs.filter((m) => m.type === "ev").flatMap((m) => m.list).filter((e) => e.type === "over");
+      assert.strictEqual(evs.length, 1, "over-событий " + evs.length);
+      assert.strictEqual(evs[0].late, true);
+      assert(evs[0].host && evs[0].host.id && Array.isArray(evs[0].kings));
+      assert.strictEqual(evs[0].stats.players.length, 6);
+      assert(ws.msgs.some((m) => m.type === "replay" && m.frames.length > 10), "повтор пришёл");
+      ws.close();
+      await wait(100);
+    });
+
     await test("реванш и возврат в лобби — только ведущий", async () => {
       bots[2].send({ type: "lobby" });
       await wait(200);

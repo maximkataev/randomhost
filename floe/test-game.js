@@ -272,6 +272,25 @@ test('все, кроме одного, сняты без падений — ве
   assert.strictEqual(g.phase, 'over');
   assert.deepStrictEqual(g.kings, ['p2']);
 });
+test('упал, затем ушёл (leave/kick) — fellAt, место и removed не меняются (floe-050)', () => {
+  const g = fight(3);
+  parkOthers(g, [P(g, 0)]);
+  place(P(g, 0), 0, g.floe.R * 2);
+  run(g, 0.2);
+  assert.strictEqual(P(g, 0).st, 'fall');
+  const fell = P(g, 0).fellAt;
+  assert(fell >= 0);
+  run(g, 3, () => parkOthers(g, [P(g, 0)]));
+  assert.strictEqual(P(g, 0).st, 'swim');
+  g.drainEvents();
+  g.removePlayer('p0');
+  run(g, 2, () => parkOthers(g, [P(g, 0)]));
+  assert.strictEqual(P(g, 0).fellAt, fell, 'fellAt не переписан');
+  assert.strictEqual(P(g, 0).removed, false, 'ложного «снят» нет');
+  assert.strictEqual(P(g, 0).st, 'swim');
+  assert(!g.drainEvents().some((e) => e.type === 'removed'), 'события removed нет');
+  assert.strictEqual(g.host && g.host.id, 'p0', 'ведущий — упавший первым, как и был');
+});
 test('мусорный ввод и флуд рывком', () => {
   const g = fight(2);
   place(P(g, 0), 0, 0); place(P(g, 1), 60, 60);

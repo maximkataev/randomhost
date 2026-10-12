@@ -458,8 +458,9 @@
     }
 
     // снят с партии без падения: ведущим стать не может
+    // Уже упавшего (fall/swim) не снимаем: иначе позднее leave/kick переписывало fellAt и ставило ложное removed (floe-050)
     function takeOff(p, why) {
-      if (p.st === 'gone') return;
+      if (p.st === 'gone' || p.st === 'fall' || p.st === 'swim') return;
       p.st = 'gone';
       p.removed = true;
       p.fellAt = g.clock;
