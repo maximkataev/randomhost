@@ -392,7 +392,10 @@ function lqOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
 }
 
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
-function lqConnect({ code, onMessage, onOpen, onGone, onState, onSendFail }) {
+// сколько действие игрока может ждать в очереди обрыва: дальше «не дошло» (само действие всё равно отсеивает keep по фазе/вопросу)
+const LQ_QUEUE_TTL_MS = 30000;
+const LQ_QUEUE_TTL_REACT_MS = 3000;
+function lqConnect({ code, onMessage, onOpen, onGone, onState, onSendFail, onDrop }) {
   let t = null, delay = 500, stopped = false;
   // Действие, нажатое между обрывом и возвращением связи, раньше терялось (кнопка уже горела «ушло»).
   // Теперь оно ждёт в очереди и уходит после входа по токену: сокет без игрока действие бы отбросил.
@@ -404,20 +407,27 @@ function lqConnect({ code, onMessage, onOpen, onGone, onState, onSendFail }) {
       const a = holder.api;
       if (m && m.type !== "ping" && m.type !== "join" && m.type !== "host" && (holder.gated || !a || a.mode === "none" || a.mode === "connecting")) {
         queue.push({ m, at: Date.now() });
-        if (queue.length > 8) queue.shift();
+        // очередь переполнилась: самое старое действие не дошло — страница снимет его «отправлено»
+        if (queue.length > 8) { const old = queue.shift(); if (onDrop && old.m.type !== "react") onDrop(old.m, "overflow"); }
         return;
       }
       if (a) a.send(m);
     },
-    // keep(m) — нужно ли это действие ещё; просроченные и ненужные отбрасываются через onDrop
-    flush(keep, onDrop) {
+    // keep(m) — нужно ли это действие ещё. Просроченное по времени — onDrop(m, "ttl") (игрок увидит «не дошло»);
+    // ненужное (вопрос ушёл, ответ уже есть) отбрасывается молча
+    flush(keep, onDropHere) {
       holder.gated = false;
       const items = queue.splice(0);
+      const drop = onDropHere || onDrop;
       for (const it of items) {
-        if (Date.now() - it.at > 6000 || (keep && !keep(it.m))) { if (onDrop) onDrop(it.m); continue; }
+        const ttl = it.m && it.m.type === "react" ? LQ_QUEUE_TTL_REACT_MS : LQ_QUEUE_TTL_MS;
+        if (Date.now() - it.at > ttl) { if (drop) drop(it.m, "ttl"); continue; }
+        if (keep && !keep(it.m)) continue;
         if (holder.api) holder.api.send(it.m);
       }
     },
+    // ждёт ли это действие в очереди (связи нет)
+    queued(m) { return queue.some((it) => it.m === m); },
     // убрать из очереди ждущие действия, подходящие под pred (кнопка уже разблокирована — не слать позже)
     purge(pred) { for (let i = queue.length - 1; i >= 0; i--) if (pred(queue[i].m)) queue.splice(i, 1); },
     stop() { stopped = true; clearTimeout(t); queue.length = 0; if (holder.api) holder.api.close(); },

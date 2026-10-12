@@ -760,15 +760,8 @@ function renderQuestion() {
       // сразу отмечаем выбор: сервер подтвердит снимком
       app.querySelectorAll(".ans").forEach((x) => { x.disabled = true; x.classList.add(Number(x.dataset.i) === i ? "sel" : "dim"); });
       document.getElementById("note").textContent = T("answered");
-      // подтверждения нет (связь пропала, пока тап летел) — снова даём ответить
-      const q0 = qid();
-      setTimeout(() => {
-        if (qid() !== q0 || !state || !state.me || state.me.answer != null || state.phase !== "answer" && state.phase !== "fanswer") return;
-        conn.purge((x) => x === am);
-        toast(T("err_send"));
-        screenKey = "";
-        render();
-      }, 3000);
+      // подтверждения нет (связь пропала, пока тап летел) — снова даём ответить; пока действие ждёт в очереди обрыва, ждём до 30 с
+      ackWatch(am, () => !state.me || state.me.answer != null || (state.phase !== "answer" && state.phase !== "fanswer"));
     };
   });
 }
@@ -805,14 +798,7 @@ function renderReveal() {
       msgQ.set(gm, qid());
       conn.send(gm);
       lqSfx.click(); lqVibrate(20); app.querySelectorAll(".grp").forEach((x) => (x.disabled = true)); b.style.background = "var(--yellow)";
-      const q0 = qid();
-      setTimeout(() => {
-        if (qid() !== q0 || !state || state.group) return;
-        conn.purge((x) => x === gm);
-        toast(T("err_send"));
-        screenKey = "";
-        render();
-      }, 3000);
+      ackWatch(gm, () => !!state.group);
     };
   });
   if (s.palach) lqVibrate([30, 40, 30]);
@@ -1001,14 +987,7 @@ function renderBets() {
         const bm = { type: "bet", prisoner: id, escape: b.dataset.v === "1" };
         msgQ.set(bm, qid());
         conn.send(bm);
-        const q0 = qid();
-        setTimeout(() => {
-          if (qid() !== q0 || !state || !state.me || (state.me.bets || {})[id] != null) return;
-          conn.purge((x) => x === bm);
-          toast(T("err_send"));
-          screenKey = "";
-          render();
-        }, 3000);
+        ackWatch(bm, () => !state.me || (state.me.bets || {})[id] != null);
         lqSfx.tap();
         lqVibrate(10);
         // ставка одна и навсегда: обе кнопки сразу закрываем
@@ -1114,14 +1093,8 @@ function renderStake() {
     const sm = { type: "stake", n: stakeDraft };
     msgQ.set(sm, qid());
     conn.send(sm);
-    const q0 = qid(), want = stakeDraft;
-    setTimeout(() => {
-      if (qid() !== q0 || !state || state.phase !== "stake" || !state.me || state.me.stake === want) return;
-      conn.purge((x) => x === sm);
-      toast(T("err_send"));
-      screenKey = "";
-      render();
-    }, 3000);
+    const want = stakeDraft;
+    ackWatch(sm, () => state.phase !== "stake" || !state.me || state.me.stake === want);
     lqSfx.click();
     lqVibrate(15);
     stakeEdit = false;
@@ -1273,6 +1246,31 @@ window.addEventListener("langchange", () => {
 // ---------- связь ----------
 let prevPhase = null, pendingFlush = false;
 const msgQ = new WeakMap(); // сообщение -> вопрос, на который оно нажато
+const ACK_MS = 3000, QUEUED_WAIT_MS = 30000;
+const failedMsgs = new WeakSet(); // сообщения, о которых onSendFail уже сказал «не дошло» (второй тост не нужен)
+// «ушло» без подтверждения: кнопки не должны оставаться мёртвыми. Нет связи — действие ждёт в очереди до QUEUED_WAIT_MS и уходит
+// после входа по токену; ушло, а снимка с ним нет за ACK_MS — снимаем «отправлено», тост «не дошло», можно нажать ещё раз.
+// done() — подтверждено или больше не нужно (вызывается только в том же вопросе и при state)
+function ackWatch(msg, done) {
+  const q0 = qid(), t0 = Date.now();
+  let freedAt = null;
+  const tick = () => {
+    if (qid() !== q0 || !state || done() || failedMsgs.has(msg)) return;
+    const now = Date.now();
+    if (conn.queued(msg)) {
+      freedAt = null;
+      if (now - t0 < QUEUED_WAIT_MS) return void setTimeout(tick, 300);
+    } else {
+      if (freedAt == null) freedAt = now;
+      if (now - freedAt < ACK_MS) return void setTimeout(tick, 300);
+    }
+    conn.purge((x) => x === msg);
+    toast(T("err_send"));
+    screenKey = "";
+    render();
+  };
+  setTimeout(tick, 300);
+}
 // что нажато во время обрыва — отправляем, если ещё актуально (иначе сервер ответил бы «отказ» на давнее действие)
 function flushQueued() {
   pendingFlush = false;
@@ -1286,7 +1284,7 @@ function flushQueued() {
     if (q.type === "bet") return same && (s.bets || {})[q.prisoner] == null;
     if (q.type === "cell") return !!(run && run.ch.id === q.cid && (state.phase === "cell" || state.phase === "fcell"));
     return true;
-  });
+  }, onDropped);
 }
 function onMessage(m) {
   switch (m.type) {
@@ -1371,8 +1369,11 @@ function onMessage(m) {
 }
 
 // не ушло (связь оборвалась): ответ на вопрос можно дать ещё раз, ответ испытания уйдёт сам после переподключения
+// действие просрочено в очереди обрыва (30 с) или вытеснено переполнением: то же, что «не ушло»
+function onDropped(msg) { onSendFail(msg); }
 function onSendFail(msg) {
   if (!msg || msg.type === "react") return;
+  if (typeof msg === "object") failedMsgs.add(msg);
   toast(T("err_send"));
   if (msg.type === "answer" || msg.type === "group" || msg.type === "stake" || msg.type === "bet") { screenKey = ""; render(); }
   if (msg.type === "cell" && run && run.ch.id === msg.cid) run.lost = true;
@@ -1392,6 +1393,7 @@ function start() {
       if (token) { conn.gated = true; setTimeout(() => { if (conn.gated) flushQueued(); }, 4000); }
     },
     onSendFail,
+    onDrop: (m) => onDropped(m),
     onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
   });
   requestAnimationFrame(frame);
