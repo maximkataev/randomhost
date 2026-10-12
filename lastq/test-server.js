@@ -204,8 +204,35 @@ test("тёзка не забирает игрока, пока тот онлай�
   a.close();
   const twin = await player(code, "Аня");
   assert.notEqual(twin.id, a.id);
-  await twin.wait((m) => m.type === "state" && m.state.players.some((p) => p.name === "Аня 2"), 5000);
+  await twin.wait((m) => m.type === "state" && m.state.players.some((p) => p.name === "Аня (2)"), 5000);
+  assert.equal(twin.joinMsg.name, "Аня (2)");
+  assert.equal(twin.joinMsg.renamed, true);
   twin.close();
+});
+
+// T-W2-28 (lastq-005/006/039): ключ имени — регистр/пробелы/«ё»; суффикс «База (N)», а не «Игорь🔥 2 2»; срез по символам
+test("имена: «Хитрый» и «хитрый » — один ключ; суффикс «(N)» без «2 2»; эмодзи не режется", async () => {
+  const { code } = await createRoom();
+  const a = await player(code, "Хитрый");
+  const b = await player(code, "хитрый ");
+  const c = await player(code, "ХИТРЫЙ");
+  assert.equal(a.joinMsg.name, "Хитрый");
+  assert.equal(b.joinMsg.name, "хитрый (2)");
+  assert.equal(c.joinMsg.name, "ХИТРЫЙ (3)");
+  const e1 = await player(code, "Игорь🔥");
+  const e2 = await player(code, "Игорь🔥");
+  const e3 = await player(code, "Игорь🔥 (2)");
+  assert.deepEqual([e1.joinMsg.name, e2.joinMsg.name, e3.joinMsg.name], ["Игорь🔥", "Игорь🔥 (2)", "Игорь🔥 (3)"]);
+  // 15 «A» + эмодзи = 16 символов (больше, чем 16 UTF-16-единиц): эмодзи цел, одиночного суррогата нет
+  const long = await player(code, "A".repeat(15) + "😀😀😀");
+  assert.equal(Array.from(long.joinMsg.name).length, 16);
+  assert.ok(!/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(long.joinMsg.name));
+  // подсказка клиенту: лимит имени в hello
+  const probe = client(code);
+  await probe.open;
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(probe.msgs.find((m) => m.type === "hello").limits.name, 16);
+  for (const x of [a, b, c, e1, e2, e3, long, probe]) x.close();
 });
 
 test("подхват по имени выдаёт новый токен и отзывает старый — пинг-понга нет", async () => {

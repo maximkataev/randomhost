@@ -106,6 +106,11 @@
   .enter input { width: 100%; border: 0; border-bottom: 3px solid var(--chalk); background: transparent; color: var(--chalk); font: 700 28px/1.2 var(--font); padding: 4px 0; border-radius: 0; }
   .enter input::placeholder { color: var(--chalk-2); opacity: .6; }
   .enter input:focus { outline: none; border-bottom-color: var(--gold); }
+  /* счётчик имени «12/16» (MP.nameCounter): в поле, когда осталось ≤ 4 знаков; место под него занято всегда — поле не прыгает */
+  .fld { position: relative; }
+  .fld.cnt-on input { padding-right: 56px; }
+  .fld .cnt { position: absolute; right: 0; bottom: 8px; font: 800 13px/1 var(--mono); letter-spacing: .04em; color: var(--chalk-2); pointer-events: none; font-style: normal; }
+  .fld .cnt[data-state="full"] { color: var(--bad); }
   .err { min-height: 22px; color: var(--bad); font-weight: 700; }
 
   /* игроки */
@@ -406,6 +411,7 @@ window.I18N_DICT = {
     expired_title: `Комната закрыта`, expired_text: `Она пустовала полчаса или ведущий её закрыл.`, expired_new: `Создать новую`,
     paused: `Все отключились — ждём`,
     rj_not_now: `Уже поздно`, rj_closed: `Ставки уже закрыты`, rj_already: `Уже выбрано`, rj_not_in_question: `Ты со следующего вопроса`,
+    in_as: `Имя занято. Ты в игре как {name}`,
   },
   en: {
     err_send: `No connection — not sent, try again`, btn_leave: `Leave the game`, leave_q: `Leave the game? You can only come back as a new player`, stake_label: `How much you bet`, stake_vt: `{n} points`,
@@ -460,6 +466,7 @@ window.I18N_DICT = {
     expired_title: `Room closed`, expired_text: `It sat empty for half an hour or the host closed it.`, expired_new: `Create a new one`,
     paused: `Everyone dropped — waiting`,
     rj_not_now: `Too late`, rj_closed: `Betting is closed`, rj_already: `Already picked`, rj_not_in_question: `You're in from the next question`,
+    in_as: `That name is taken. You're in as {name}`,
   },
   el: {
     err_send: `Χωρίς σύνδεση — δεν στάλθηκε, δοκίμασε ξανά`, btn_leave: `Έξοδος από το παιχνίδι`, leave_q: `Έξοδος από το παιχνίδι; Θα μπορείς να γυρίσεις μόνο ως νέος παίκτης`, stake_label: `Πόσα ποντάρεις`, stake_vt: `{n} πόντοι`,
@@ -514,9 +521,11 @@ window.I18N_DICT = {
     expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης.`, expired_new: `Φτιάξε καινούργιο`,
     paused: `Όλοι αποσυνδέθηκαν — περιμένουμε`,
     rj_not_now: `Πολύ αργά`, rj_closed: `Τα στοιχήματα έκλεισαν`, rj_already: `Έχει ήδη επιλεγεί`, rj_not_in_question: `Παίζεις από την επόμενη ερώτηση`,
+    in_as: `Το όνομα είναι πιασμένο. Μπήκες ως {name}`, //EL:unverified
   },
 };
 </script>
+<script src="mp-common.js"></script>
 <script src="lastq-shared.js"></script>
 <script src="lastq-challenges.js"></script>
 <script src="i18n.js"></script>
@@ -539,6 +548,9 @@ let joinErr = null;
 let replacedHere = false, rejoining = false;
 let stakeDraft = null, stakeEdit = false; // финальная ставка: черновик ползунка
 const tokenKey = () => "lastq-token-" + CODE;
+// каркас mp-common.js (T-W1-04): без него (или при MP_OFF на сервере) страница работает по-старому
+const mpOn = () => !!(window.MP && !MP.off);
+const NAME_LIMIT = () => (window.MP && MP.limits && MP.limits.name) || 16;
 try { token = localStorage.getItem(tokenKey()); } catch (e) {}
 
 const player = (id) => state && state.players.find((p) => p.id === id);
@@ -615,12 +627,20 @@ function renderEnter() {
   try { saved = localStorage.getItem("lastq-name") || ""; } catch (e) {}
   show(`<form class="enter" id="enterform" autocomplete="off" style="display:grid;gap:14px">
     <div class="card"><div class="room">${escapeHtml(CODE)}</div><h2>${T("enter_title")}</h2>
-      <input id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}"></div>
+      <div class="fld"><input id="name"${mpOn() ? "" : ' maxlength="16"'} placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}"></div></div>
     <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
     <button class="btn" type="submit">${T("btn_join")}</button>
     <ol class="rules"><li>${T("rule1")}</li><li>${T("rule2")}</li><li>${T("rule3")}</li></ol>
   </form>`, "enter");
   const input = document.getElementById("name");
+  if (mpOn() && input) {
+    // «12/16» у поля, когда осталось ≤ 4 знака; срез по символам (эмодзи не рвётся) — вместо молчаливого maxlength
+    const fld = input.closest(".fld"), cnt = document.createElement("em");
+    cnt.className = "cnt";
+    fld.classList.add("cnt-on");
+    fld.appendChild(cnt);
+    MP.nameCounter(input, NAME_LIMIT(), { el: cnt });
+  }
   document.getElementById("enterform").onsubmit = (e) => {
     e.preventDefault();
     const name = input.value.trim();
@@ -1311,6 +1331,11 @@ function onMessage(m) {
       rejoining = false;
       replacedHere = false;
       try { localStorage.setItem(tokenKey(), token); } catch (e) {}
+      // итоговое имя от сервера («Игорь (2)», если занято): дальше входим с ним, игрок узнаёт о переименовании (lastq-005/006)
+      if (m.name) {
+        try { localStorage.setItem("lastq-name", m.name); } catch (e) {}
+        if (m.renamed) toast(tpl("in_as", { name: m.name }));
+      }
       lqWake.on();
       // тот же игрок после обрыва — экран оставляем как есть (Камера не перемонтируется); ответ испытания, если не дошёл, — ещё раз
       if (!same) { screen = null; screenKey = ""; }

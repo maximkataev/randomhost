@@ -19,7 +19,8 @@ const zlib = require("zlib");
 const { WebSocketServer } = require("ws");
 const { roomCode } = require("../lib/codes");
 const { clientIp, createGuessLimiter, rateOk: netRateOk, send } = require("../lib/net");
-const { Game, clampSettings, cleanName } = require("./game");
+const names = require("../lib/names");
+const { Game, clampSettings, cleanName, nameKey, NAME_MAX } = require("./game");
 const CONTENT = require("./content");
 
 const PORT = Number(process.env.PORT || 3800);
@@ -257,7 +258,10 @@ function broadcastEvent(room, e) {
 }
 
 function sendHello(room, c) {
-  send(c.ws, { type: "hello", code: room.code, state: room.game.snapshot(clock(room), c.host ? "board" : c.playerId || null) });
+  // limits.name — лимит имени для MP.nameCounter на телефоне (T-W2-28)
+  const hello = { type: "hello", code: room.code, state: room.game.snapshot(clock(room), c.host ? "board" : c.playerId || null), limits: { name: NAME_MAX } };
+  if (process.env.MP_OFF === "1") hello.mp = false;
+  send(c.ws, hello);
 }
 
 
@@ -484,8 +488,9 @@ function handle(room, client, msg) {
       return sendHello(room, client); // доске — снимок с испытаниями всех держателей
     }
     case "join": {
-      if (me && g.player(me) && !g.player(me).left) return reply({ type: "joined", playerId: me, token: client.token });
+      if (me && g.player(me) && !g.player(me).left) return reply({ type: "joined", playerId: me, token: client.token, name: g.player(me).name, renamed: false });
       let playerId = msg.token && room.tokens[msg.token];
+      let renamed = false;
       if (playerId && !g.player(playerId)) {
         delete room.tokens[msg.token];
         if (!String(msg.name || "").trim()) return reply({ type: "error", error: "token_gone" });
@@ -499,7 +504,7 @@ function handle(room, client, msg) {
         // только уже выпавший (после грации офлайна) и не в лобби — иначе тёзка забирал чужие очки, пока у владельца погас экран
         // и только с того же IP, что был у игрока (телефоны одной компании обычно за одним Wi-Fi)
         room.lastIp = room.lastIp || {};
-        const ghost = g.s.phase !== "lobby" && g.s.players.find((p) => !p.left && !p.online && p.name === name && room.lastIp[p.id] === client.ip && ![...room.sockets].some((c) => c.playerId === p.id));
+        const ghost = g.s.phase !== "lobby" && g.s.players.find((p) => !p.left && !p.online && nameKey(p.name) === nameKey(name) && room.lastIp[p.id] === client.ip && ![...room.sockets].some((c) => c.playerId === p.id));
         if (ghost) {
           playerId = ghost.id;
           const token = crypto.randomBytes(12).toString("base64url");
@@ -510,11 +515,13 @@ function handle(room, client, msg) {
       if (!playerId) {
         // новый игрок с одного сокета — не чаще раза в 3 с; отказ (идёт раунд) попытку не тратит
         if (client.newPlayerAt && now() - client.newPlayerAt < 3000) return;
-        // имена уникальны: тёзке дописываем номер, иначе подхват по имени перепутал бы игроков
-        let name = cleanName(msg.name);
-        if (!name) return reply({ type: "error", error: "bad_name" });
-        const taken = new Set(g.s.players.filter((p) => !p.left).map((p) => p.name));
-        for (let i = 2; taken.has(name); i++) name = `${cleanName(msg.name).slice(0, 13)} ${i}`;
+        // имена уникальны: тёзке дописываем «(N)» (lib/names, U-05; сравнение по nameKey — регистр, пробелы, «ё»),
+        // иначе подхват по имени перепутал бы игроков
+        const cleaned = cleanName(msg.name);
+        if (!cleaned) return reply({ type: "error", error: "bad_name" });
+        const takenKeys = names.takenKeysOf(g.s.players, { skipLeft: true });
+        const name = names.nextFreeName(cleaned, takenKeys, NAME_MAX) || cleaned;
+        renamed = nameKey(name) !== nameKey(cleaned);
         playerId = "u_" + crypto.randomBytes(5).toString("hex");
         const r = g.addPlayer({ id: playerId, name });
         if (!r.ok) return reply({ type: "error", error: r.reason });
@@ -522,10 +529,10 @@ function handle(room, client, msg) {
         const token = crypto.randomBytes(12).toString("base64url");
         room.tokens[token] = playerId;
         client.token = token;
-        reply({ type: "joined", playerId, token });
+        reply({ type: "joined", playerId, token, name, renamed });
       } else {
         client.token = msg.token;
-        reply({ type: "joined", playerId, token: msg.token });
+        reply({ type: "joined", playerId, token: msg.token, name: g.player(playerId).name, renamed: false });
       }
       for (const c of room.sockets) if (c !== client && c.playerId === playerId) { c.playerId = null; send(c.ws, { type: "replaced" }); }
       // у игрока один живой токен: прежние отзываем (иначе выбитый вход возвращается и выбивает снова)

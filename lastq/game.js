@@ -14,6 +14,8 @@
  */
 
 const CH = require("./challenges.js");
+const names = require("../lib/names");
+const presence = require("../lib/presence");
 
 // Акты (§2): очки за верный ответ, максимум бонуса за скорость, отлёт
 const ACTS = {
@@ -72,10 +74,14 @@ function clampSettings(input = {}) {
 }
 
 const CTRL = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g;
+// срез по СИМВОЛАМ (Array.from), а не по UTF-16: «AAAAAAAAAAAAAAA😀» не даёт одиночного суррогата (lastq-039)
 function cleanText(text, max) {
-  return String(text == null ? "" : text).replace(CTRL, "").replace(/\s+/g, " ").trim().slice(0, max);
+  return Array.from(String(text == null ? "" : text).replace(CTRL, "").replace(/\s+/g, " ").trim()).slice(0, max).join("");
 }
-const cleanName = (name) => cleanText(name, 16);
+// имя — общая реализация lib/names (U-05): суррогаты, «<>» и невидимое вырезаны, срез по символам
+const NAME_MAX = 16;
+const cleanName = (name) => names.cleanName(name, NAME_MAX);
+const nameKey = names.nameKey;
 const round10 = (x) => Math.round(x / 10) * 10;
 
 class Game {
@@ -949,4 +955,4 @@ class Game {
   }
 }
 
-module.exports = { Game, ACTS, QUESTIONS, ACT_LVL, ACT_LVL_W, T, PASS_SILENCE, BET_POINTS, BET_WINDOW, STAKE_FLOOR, GROUPS_OFFERED, DEFAULTS, MAX_PLAYERS, MIN_PLAYERS, REACTIONS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText };
+module.exports = { Game, ACTS, QUESTIONS, ACT_LVL, ACT_LVL_W, T, PASS_SILENCE, BET_POINTS, BET_WINDOW, STAKE_FLOOR, GROUPS_OFFERED, DEFAULTS, MAX_PLAYERS, MIN_PLAYERS, REACTIONS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText, nameKey, NAME_MAX };

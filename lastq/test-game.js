@@ -647,3 +647,15 @@ test("аватар: меняется в лобби, чужой занять не
   assert.strictEqual(g.setAvatar("b", "🌮").reason, "game_started");
   assert.strictEqual(g.snapshot(0, {}).avatarChoices, null);
 });
+
+// ---------- T-W2-28: имена ----------
+const { cleanName, cleanText, nameKey } = require("./game.js");
+test("cleanName/cleanText режут по символам, а не по UTF-16 (lastq-039); nameKey — регистр/пробелы/ё", () => {
+  const long = "A".repeat(15) + "😀😀";
+  const n = cleanName(long);
+  assert.equal(Array.from(n).length, 16);
+  assert.ok(!/[\ud800-\udbff](?![\udc00-\udfff])/.test(n), "одиночный суррогат в имени");
+  assert.ok(!/[\ud800-\udbff](?![\udc00-\udfff])/.test(cleanText("😀".repeat(5), 3)));
+  assert.equal(nameKey("  Ёж Игорь "), nameKey("еж игорь"));
+  assert.equal(nameKey("ХИТРЫЙ"), nameKey("хитрый "));
+});
