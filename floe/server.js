@@ -65,6 +65,12 @@ const NAME_MAX = names.LIMITS.SHORT;   // 15
 // правила движка: только если заданы явно (иначе остаются значения game.js «как сейчас»)
 const GAME_ENV = {};
 if (process.env.OFFLINE_FALL_GRACE != null && process.env.OFFLINE_FALL_GRACE !== "") GAME_ENV.OFFLINE_FALL_GRACE = envNum("OFFLINE_FALL_GRACE", 0, 0, 10);
+// T-W3-27 (floe-023, темп): по умолчанию — как сейчас (START_GUARD 2 с, кольцо 0,45·R). Включают по решению владельца:
+// START_GUARD=3 (класс A, нет ранних падений); RULE_U39_START_RING=1 → кольцо 0,30·R (класс B, U-39: «центр спасает» — решение 30.09);
+// START_RING=0.3 — то же числом (сильнее флага). Мусор → значение по умолчанию (game.js).
+if (process.env.START_GUARD != null && process.env.START_GUARD !== "") GAME_ENV.START_GUARD = envNum("START_GUARD", DEFAULTS.START_GUARD, 0.5, 10);
+if (/^(1|true|on)$/i.test(process.env.RULE_U39_START_RING || "")) GAME_ENV.START_RING = 0.3;
+if (process.env.START_RING != null && process.env.START_RING !== "") GAME_ENV.START_RING = envNum("START_RING", DEFAULTS.START_RING, 0.15, 0.6);
 const { INPUT_STALE_MS, GHOST_TTL_MS, PONG_MISSES, ANON_TTL_MS, MAX_ANON_PER_IP, CLAIM_WAIT_MS } = PROD_ENV;
 const SEND_BUFFER_LIMIT = Number(process.env.SEND_BUFFER_LIMIT || 262144);
 const MSG_RATE = Number(process.env.MSG_RATE || 70);
