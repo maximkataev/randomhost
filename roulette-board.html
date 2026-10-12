@@ -674,6 +674,7 @@ window.I18N_DICT = {
     st_casino: `Казино за вечер`, st_casino_v: `забрало {won}, выплатило {paid}`,
     viewer: `Только просмотр — управляет другая доска`,
     expired: `Комнаты больше нет — её закрыли или она долго простояла.`,
+    noroom: `Такой комнаты нет — проверь код в адресе или создай новую на странице игры.`,
     creating: `Создаём комнату…`,
     wheel_fail: `Колесо не загрузилось — игра идёт, число видно на экране`,
     frozen_next: `❄️`,
@@ -733,6 +734,7 @@ window.I18N_DICT = {
     st_casino: `The casino tonight`, st_casino_v: `took {won}, paid {paid}`,
     viewer: `View only — another screen is in control`,
     expired: `This room is gone — it was closed or sat idle too long.`,
+    noroom: `There is no such room — check the code in the address or create a new one on the game page.`,
     creating: `Creating a room…`,
     wheel_fail: `The wheel failed to load — the game goes on, the number is shown on screen`,
     frozen_next: `❄️`,
@@ -792,6 +794,7 @@ window.I18N_DICT = {
     st_casino: `Το καζίνο απόψε`, st_casino_v: `πήρε {won}, πλήρωσε {paid}`,
     viewer: `Μόνο προβολή — ελέγχει άλλη οθόνη`,
     expired: `Το δωμάτιο δεν υπάρχει πια — έκλεισε ή έμεινε ανενεργό.`,
+    noroom: `Δεν υπάρχει τέτοιο δωμάτιο — έλεγξε τον κωδικό στη διεύθυνση ή φτιάξε νέο στη σελίδα του παιχνιδιού.`, // EL:unverified
     creating: `Δημιουργία δωματίου…`,
     wheel_fail: `Ο τροχός δεν φορτώθηκε — το παιχνίδι συνεχίζεται, ο αριθμός φαίνεται στην οθόνη`,
     frozen_next: `❄️`,
@@ -1492,6 +1495,7 @@ function onMessage(m) {
   switch (m.type) {
     case "hello":
       state = m.state;
+      if (goneFlow) goneFlow.hello();
       if (m.state && !isHost) {
         let token = null;
         try { token = localStorage.getItem(hostKey()); } catch (e) {}
@@ -1523,15 +1527,18 @@ function onMessage(m) {
       else if (m.event.type === "rejoin") { const rp = player(m.event.playerId); if (rp) feedSys(tpl("ev_rejoin", { name: rp.name })); }
       break;
     case "error":
-      if (m.error === "room_expired") gone();
+      if (m.error === "room_expired") onRoomGone();
       break;
   }
 }
 
-function gone() {
+// hello не приходил ни разу — такого кода нет; приходил — комната закрылась (roulette-046, K-11: сервер различителя не даёт)
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({ showForm: () => gone("noroom"), onClosed: () => gone("expired") }) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else gone("expired"); }
+function gone(key) {
   dead = true;
   $("lobby").classList.add("hidden");
-  $("center").innerHTML = `<div class="banner">${escapeHtml(T("expired"))}</div>`;
+  $("center").innerHTML = `<div class="banner">${escapeHtml(T(key === "noroom" ? "noroom" : "expired"))}</div>`;
 }
 
 window.addEventListener("langchange", () => { $("lobby").dataset.built = ""; centerSpin = -1; render(); });
@@ -1548,7 +1555,7 @@ async function boot() {
   conn = rlConnect({
     code: CODE,
     onMessage,
-    onGone: gone,
+    onGone: onRoomGone,
     onOpen: () => { isHost = false; },
     onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
   });

@@ -176,6 +176,9 @@
   .placecard .fld .cnt { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); font: 800 12px/1 var(--cond); letter-spacing: .06em; color: var(--muted); pointer-events: none; }
   .placecard .fld .cnt:empty { display: none; }
   .placecard .fld .cnt[data-state="full"] { color: var(--warn); }
+  .codeform { display: grid; gap: 10px; width: 100%; max-width: 320px; }
+  .codeform input { width: 100%; font: 800 24px/1.1 var(--cond); letter-spacing: .04em; text-transform: uppercase; text-align: center; padding: 14px 16px; border: 1px solid var(--line-2); background: var(--surface); color: var(--text); outline: none; border-radius: 16px; }
+  .codeform input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(255, 192, 67, .18); }
   .claimbtns { display: grid; gap: 10px; align-self: stretch; width: 100%; max-width: 360px; margin-top: 6px; }
   .claimbtns .link { min-height: 48px; font-size: 16px; }
   .center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 70px 20px 26px; gap: 12px; }
@@ -626,6 +629,7 @@ window.I18N_DICT = {
     cta_sub: `Открывай на ноутбуке или ТВ — там будет колесо`,
     have_code: `У меня есть код`,
     prompt_code: `Код комнаты`,
+    noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код: слово и две цифры`, btn_go: `Перейти`,
     rule1: `<b>Полный европейский стол</b>: числа, сплиты, каре, дюжины, цвета — как за настоящим столом.`,
     rule2: `<b>Ставки открыты</b>: все видят, куда поставили соседи, и могут поставить так же.`,
     rule3: `<b>Карты-пакости</b>: удвоить соседу риск, заморозить, забрать долю выигрыша.`,
@@ -758,6 +762,7 @@ window.I18N_DICT = {
     cta_sub: `Open it on a laptop or TV — the wheel goes there`,
     have_code: `I have a code`,
     prompt_code: `Room code`,
+    noroom_title: `There is no such room`, noroom_text: `Check the code: a word and two digits`, btn_go: `Go`,
     rule1: `<b>Full European table</b>: numbers, splits, corners, dozens, colours — just like at a real table.`,
     rule2: `<b>Open bets</b>: everyone sees where the others bet and can copy them.`,
     rule3: `<b>Dirty-trick cards</b>: double a rival's risk, freeze them, take a cut of their win.`,
@@ -890,6 +895,7 @@ window.I18N_DICT = {
     cta_sub: `Άνοιξέ το σε laptop ή τηλεόραση — εκεί θα είναι ο τροχός`,
     have_code: `Έχω κωδικό`,
     prompt_code: `Κωδικός δωματίου`,
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό: μια λέξη και δύο ψηφία`, btn_go: `Πήγαινε`, // EL:unverified
     rule1: `<b>Πλήρες ευρωπαϊκό τραπέζι</b>: αριθμοί, σπλιτ, καρέ, δωδεκάδες, χρώματα — όπως σε αληθινό τραπέζι.`,
     rule2: `<b>Ανοιχτά πονταρίσματα</b>: όλοι βλέπουν πού πόνταραν οι άλλοι και μπορούν να τους αντιγράψουν.`,
     rule3: `<b>Κάρτες-κόλπα</b>: διπλό ρίσκο στον αντίπαλο, πάγωμα, μερίδιο από τα κέρδη του.`,
@@ -1232,9 +1238,28 @@ function renderLanding() {
       toast(String(err.message || err));
     }
   };
+  // поле кода прямо на экране (раньше prompt(): на телефоне блокирует страницу и не переводится)
   document.getElementById("havecode").onclick = () => {
-    const c = prompt(T("prompt_code"));
-    if (c) location.href = `roulette.html?r=${encodeURIComponent(c.trim().toUpperCase())}`;
+    const sub = document.querySelector(".landing .sub2");
+    sub.innerHTML = codeFormHtml("");
+    bindCodeForm();
+    document.getElementById("codein").focus();
+  };
+}
+
+// ---------- ввод кода комнаты ----------
+function normCode(raw) {
+  if (window.MP && MP.roomGone) return MP.roomGone.normalize(raw);
+  return String(raw || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+}
+function codeFormHtml(value) {
+  return `<form class="codeform" id="codeform" autocomplete="off"><input id="codein" maxlength="24" value="${escapeHtml(value)}" placeholder="${escapeHtml(T("prompt_code"))}" aria-label="${escapeHtml(T("prompt_code"))}" autocapitalize="characters" enterkeyhint="go"><button class="btn" type="submit">${T("btn_go")}</button></form>`;
+}
+function bindCodeForm() {
+  document.getElementById("codeform").onsubmit = (e) => {
+    e.preventDefault();
+    const c = normCode(document.getElementById("codein").value); // уходим с кодом уже после фильтра
+    if (c) location.href = `roulette.html?r=${encodeURIComponent(c)}`;
   };
 }
 
@@ -1307,6 +1332,15 @@ function renderCenter(titleKey, textKey, extra) {
   app.innerHTML = `<div class="center"><h2>${T(titleKey)}</h2>${textKey ? `<p>${T(textKey)}</p>` : ""}${extra || ""}</div>`;
 }
 
+// Неверный код: hello не приходил ни разу — комнаты с таким кодом нет (или её давно убрали), а не «закрылась» (roulette-046)
+function renderNoRoom() {
+  dead = true;
+  screen = "noroom";
+  renderCenter("noroom_title", "noroom_text", codeFormHtml(CODE) + `<a class="link" href="roulette.html">${T("expired_new")}</a>`);
+  bindCodeForm();
+}
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({ showForm: renderNoRoom, onClosed: () => renderExpired() }) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else renderExpired(); }
 function renderExpired() {
   dead = true;
   screen = "expired";
@@ -2390,6 +2424,7 @@ window.addEventListener("langchange", () => {
   if (!CODE) return renderLanding();
   if (screen === "enter") return renderEnter();
   if (screen === "claim") return renderClaim();
+  if (screen === "noroom") return renderNoRoom();
   if (screen === "kicked") { app.dataset.key = ""; return renderKicked(); }
   if (screen === "game") { buildGame(); }
   screen === "expired" ? renderExpired() : render();
@@ -2411,6 +2446,7 @@ function noteAway() {
 
 function onMessage(m) {
   if (mpOn()) {
+    if (m.type === "hello" && goneFlow) goneFlow.hello();
     if (m.type === "hello" && MP.applyHello(m) === false) { flow = tab = null; } // MP_OFF на сервере: старый протокол
     else if (tab && tab.handle(m)) return;
     else if (flow && flow.handle(m)) return;
@@ -2449,7 +2485,7 @@ function onMessage(m) {
       if (m.action === "set_bets" || m.action === "bet") { pendingUntil = 0; const p = mine(); if (p) myBets = Object.assign({}, p.bets); drawChips(); drawHud(); }
       break;
     case "error":
-      if (m.error === "room_expired") return renderExpired();
+      if (m.error === "room_expired") return onRoomGone();
       if (m.error === "too_fast") { toast(T("rj_too_fast")); break; }
       if (["game_started", "room_full", "token_gone", "bad_name", "name_taken"].includes(m.error)) {
         if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
@@ -2484,7 +2520,7 @@ function start() {
   conn = rlConnect({
     code: CODE,
     onMessage,
-    onGone: renderExpired,
+    onGone: onRoomGone,
     // переподключились — снова садимся за стол своим токеном (hello придёт первым)
     onOpen: () => { me = null; },
     onState: (st) => { banner.textContent = T("conn_lost"); banner.classList.toggle("on", st === "lost"); },
