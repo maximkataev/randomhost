@@ -502,6 +502,20 @@ async function run() {
     const rk = S().ranking;
     check(rk && rk[0].id === A.id, "победила Аня (верно везде и всё на финал)");
 
+    // ---------- T-W0-07: вошёл после финала — без «N место», с пояснением ----------
+    {
+      const L = await cdp(`${BASE}/lastq.html?r=${CODE}`, [390, 844], "Поздний");
+      pages.push(L);
+      check(!!(await waitFor(L, "!!document.getElementById('name')", 8000)), "поздний: экран входа");
+      await L.evaluate(`document.getElementById('name').value = ""`);
+      await L.evaluate(`document.getElementById('name').focus()`);
+      await L.call("Input.insertText", { text: "Поздний" });
+      await mustTap(L, "#enterform button[type=submit]", 0, "кнопка «Войти» (поздний)");
+      check(!!(await waitFor(L, "window.lqPhone.me && window.lqPhone.state && window.lqPhone.state.phase === 'finished' && !!document.querySelector('.center')", 6000)), "поздний: попал на итоги");
+      check((await L.evaluate("!document.querySelector('.center .big') && /следующей партии|next game|επόμενη/.test(document.querySelector('.center').textContent)")) === true, "поздний: нет «N место», есть пояснение");
+      await L.shot("p_final_late");
+    }
+
     // ---------- перезагрузка телефона: возвращается по токену ----------
     await P.call("Page.reload");
     check(!!(await waitFor(P, "window.lqPhone && window.lqPhone.me", 8000)), "телефон после перезагрузки вернулся по токену");

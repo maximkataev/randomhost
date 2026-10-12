@@ -93,6 +93,18 @@ for (const type of ALL) {
   });
 }
 
+test("fitMs (если задан) не меньше minMs; у «передачки» — 6500", () => {
+  for (const t of Object.keys(C.TYPE_GROUP || {})) {
+    for (let lvl = 1; lvl <= 3; lvl++) {
+      for (let seed = 1; seed < 6; seed++) {
+        const ch = C.generate({ lvl, rnd: mulberry(seed), only: t, used: {} });
+        if (ch.fitMs != null) assert.ok(ch.fitMs >= ch.minMs, `${t}: fitMs ${ch.fitMs} < minMs ${ch.minMs}`);
+      }
+    }
+  }
+  assert.equal(C.generate({ lvl: 1, rnd: mulberry(1), only: "pass", used: {} }).fitMs, 6500);
+});
+
 test("Голова: ответ не раньше 1200 мс", () => {
   for (const t of C.GROUPS.head) {
     const ch = C.generate({ lvl: 1, rnd: mulberry(3), only: t, used: {} });

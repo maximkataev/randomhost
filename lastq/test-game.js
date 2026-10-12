@@ -559,10 +559,41 @@ test("под конец Камеры не выдаём испытание, ко�
     if (now < c.ch.at + c.ch.minMs) continue;
     g.cellAnswer("p1", c.ch.id, badAns(c.ch), now);
     const left = g.s.phaseEnd - c.ch.at;
-    assert.ok(c.ch.minMs + 800 <= left || c.ch.minMs <= 1500, `${c.ch.type} minMs ${c.ch.minMs} при ${left} мс до конца`);
+    assert.ok((c.ch.fitMs ?? c.ch.minMs) + 800 <= left || (c.ch.fitMs ?? c.ch.minMs) <= 1500, `${c.ch.type} нужно ${c.ch.fitMs ?? c.ch.minMs} при ${left} мс до конца`);
     checked++;
   }
   assert.ok(checked > 10);
+});
+
+test("«Передачка» не выдаётся, если до конца Камеры не успеть (fitMs), и не уходит клиенту (T-W0-07)", () => {
+  let early = 0;
+  for (let seed = 1; seed < 120; seed++) {
+    const g = setup(3, {}, seed);
+    g.start(0);
+    let t = until(g, "answer", 0);
+    g.answer("p0", right(g), t + 100);
+    g.answer("p1", wrong(g), t + 100);
+    g.answer("p2", right(g), t + 100);
+    g.pickGroup("p0", "eyes", t + 200);
+    t = until(g, "cell", t);
+    const c = g.s.cell.p1;
+    for (const rest of [2500, 4000, 6000, 7000]) {
+      for (let k = 0; k < 6; k++) {
+        c.last = null;
+        g.player("p1").seen = {};
+        g.issue("p1", t, g.s.phaseEnd - rest);
+        assert.notEqual(c.ch.type, "pass", `seed ${seed}: pass при ${rest} мс до конца`);
+      }
+    }
+    // в начале Камеры «передачка» по-прежнему возможна
+    for (let k = 0; k < 6; k++) {
+      c.last = null;
+      g.player("p1").seen = {};
+      g.issue("p1", t, g.s.phaseEnd - 14000);
+      if (c.ch.type === "pass") { early++; assert.equal(c.ch.fitMs, 6500); assert.ok(!("fitMs" in Game.chView(c.ch))); }
+    }
+  }
+  assert.ok(early > 0, "передачка в начале Камеры выдаётся");
 });
 
 test("битый ответ испытания — отказ без решётки", () => {

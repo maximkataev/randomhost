@@ -399,7 +399,7 @@ window.I18N_DICT = {
     fq: `Последний вопрос`,
     fr_wait: `Раскрываем ставки по одному…`, fr_stake: `Ставка {n}`, fr_right: `Верно! +{n}`, fr_half: `Мимо, но выбрался: {n}`, fr_burn: `Мимо: {n}`, fr_now: `Теперь у тебя {n}`,
     final_title: `Игра окончена`, place: `{n} место`, final_sub: `Ведущий может начать ещё партию`,
-    final_few: `Игроков стало меньше двух — игра закончилась`, final_host: `Ведущий закончил игру`,
+    final_few: `Игроков стало меньше двух — игра закончилась`, final_host: `Ведущий закончил игру`, final_late: `Вы зашли после финала — играем со следующей партии`,
     table: `Счёт`, my_awards: `Твои награды`,
     kicked_title: `Ведущий убрал тебя из комнаты`,
     replaced_title: `Игра открыта в другой вкладке`, replaced_text: `Играть можно только в одной.`, btn_back_here: `Играть здесь`,
@@ -453,7 +453,7 @@ window.I18N_DICT = {
     fq: `The Last Question`,
     fr_wait: `Revealing bets one by one…`, fr_stake: `Bet {n}`, fr_right: `Right! +{n}`, fr_half: `Wrong, but escaped: {n}`, fr_burn: `Wrong: {n}`, fr_now: `Now you have {n}`,
     final_title: `Game over`, place: `#{n}`, final_sub: `The host can start another game`,
-    final_few: `Fewer than two players left — game over`, final_host: `The host ended the game`,
+    final_few: `Fewer than two players left — game over`, final_host: `The host ended the game`, final_late: `You joined after the final — you play from the next game`,
     table: `Scores`, my_awards: `Your awards`,
     kicked_title: `The host removed you from the room`,
     replaced_title: `You opened the game in another tab`, replaced_text: `You can only play in one.`, btn_back_here: `Play here`,
@@ -507,7 +507,7 @@ window.I18N_DICT = {
     fq: `Η τελευταία ερώτηση`,
     fr_wait: `Αποκαλύπτουμε τα πονταρίσματα ένα ένα…`, fr_stake: `Ποντάρισμα {n}`, fr_right: `Σωστό! +{n}`, fr_half: `Λάθος, αλλά το έσκασες: {n}`, fr_burn: `Λάθος: {n}`, fr_now: `Τώρα έχεις {n}`,
     final_title: `Τέλος παιχνιδιού`, place: `{n}η θέση`, final_sub: `Ο οικοδεσπότης μπορεί να ξεκινήσει νέα παρτίδα`,
-    final_few: `Έμειναν λιγότεροι από δύο — τέλος`, final_host: `Ο οικοδεσπότης τελείωσε το παιχνίδι`,
+    final_few: `Έμειναν λιγότεροι από δύο — τέλος`, final_host: `Ο οικοδεσπότης τελείωσε το παιχνίδι`, final_late: `Μπήκατε μετά τον τελικό — παίζετε από την επόμενη παρτίδα`,
     table: `Σκορ`, my_awards: `Τα βραβεία σου`,
     kicked_title: `Ο οικοδεσπότης σε έβγαλε από το δωμάτιο`,
     replaced_title: `Άνοιξες το παιχνίδι σε άλλη καρτέλα`, replaced_text: `Μπορείς να παίζεις μόνο σε μία.`, btn_back_here: `Παίξε εδώ`,
@@ -1179,15 +1179,17 @@ function renderFinal() {
   const p = mine();
   const r = (state.ranking || []).find((x) => x.id === me);
   const place = r ? r.place : 1 + state.players.filter((x) => !x.left && x.score > p.score).length;
-  const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : T("final_sub");
+  // вошёл после финала: в итоговой таблице его нет — «N место» не показываем (lastq-009/010)
+  const late = !r && !!state.ranking;
+  const sub = late ? T("final_late") : state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : T("final_sub");
   show(`<div class="center"><div class="kicker">${T("final_title")}</div>
-    <div class="big${place === 1 ? " ok" : ""}" style="margin:8px 0 4px">${escapeHtml(tpl("place", { n: place }))}</div>
-    <div class="lede">${emo(p)} ${escapeHtml(p.name)} · <strong>${lqNum(p.score)}</strong></div>
+    ${late ? "" : `<div class="big${place === 1 ? " ok" : ""}" style="margin:8px 0 4px">${escapeHtml(tpl("place", { n: place }))}</div>`}
+    <div class="lede">${emo(p)} ${escapeHtml(p.name)}${late ? "" : ` · <strong>${lqNum(p.score)}</strong>`}</div>
     <p class="fine" style="margin:6px 0 0">${escapeHtml(sub)}</p></div>${myAwards()}${tableHtml()}${reactsHtml()}
     <a class="btn ghost" href="index.html">${T("btn_home")}</a><button type="button" class="leave" id="leave">${T("btn_leave")}</button>`, key, true);
   bindReacts();
   bindLeave();
-  if (place === 1 && state.finishedReason === "done") lqSfx.fanfare();
+  if (!late && place === 1 && state.finishedReason === "done") lqSfx.fanfare();
 }
 
 // ---------- выбор экрана ----------

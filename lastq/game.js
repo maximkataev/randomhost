@@ -472,8 +472,9 @@ class Game {
     let ch = null;
     for (let k = 0; k < 8; k++) {
       const x = CH.generate({ lvl: CH.levelFor(s.group, this.stage()), stage: this.stage(), rnd: this.rnd, group: s.group, last: c.last, seen, used: s.usedBank, canPass });
-      if (!ch || x.minMs < ch.minMs) ch = x;
-      if (x.minMs + 800 <= left) { ch = x; break; }
+      const need = x.fitMs ?? x.minMs;
+      if (!ch || need < (ch.fitMs ?? ch.minMs)) ch = x;
+      if (need + 800 <= left) { ch = x; break; }
     }
     ch.id = ++s.seq;
     ch.at = at;
