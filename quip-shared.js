@@ -50,7 +50,7 @@ const QP_SHARED_I18N = {
     mult: "×{n}",
     jinx: "ДЖИНКС!", jinx_d: "Одинаковые ответы — оба по нулям",
     sweep: "РАЗГРОМ!",
-    hint_mark: "подсказка", late_mark: "не успел",
+    hint_mark: "подсказка", late_mark: "не успел", late_half: "½ очков", send_lost: "Не дошло — нажми ещё раз", send_lost: "Не дошло — нажми ещё раз",
     pts: "+{n}",
     votes_n: "{n} гол.",
     sec: "{s} с",
@@ -82,7 +82,7 @@ const QP_SHARED_I18N = {
     mult: "×{n}",
     jinx: "JINX!", jinx_d: "Same answers — both score zero",
     sweep: "CLEAN SWEEP!",
-    hint_mark: "hint", late_mark: "too slow",
+    hint_mark: "hint", late_mark: "too slow", late_half: "half points", send_lost: "Did not go through, tap again", send_lost: "Didn't go through, tap again",
     pts: "+{n}",
     votes_n: "{n} votes",
     sec: "{s} s",
@@ -114,7 +114,7 @@ const QP_SHARED_I18N = {
     mult: "×{n}",
     jinx: "ΤΖΙΝΞ!", jinx_d: "Ίδιες απαντήσεις — μηδέν και οι δύο",
     sweep: "ΣΑΡΩΣΕ!",
-    hint_mark: "βοήθεια", late_mark: "άργησε",
+    hint_mark: "βοήθεια", late_mark: "άργησε", late_half: "μισοί πόντοι", send_lost: "Δεν στάλθηκε, πάτα ξανά", send_lost: "Δεν στάλθηκε, πάτα ξανά",
     pts: "+{n}",
     votes_n: "{n} ψήφοι",
     sec: "{s} δ",
@@ -437,6 +437,7 @@ let qpWsBroken = false;
 const BM_WS_HANDSHAKE_MS = 5000;
 const BM_POLL_FETCH_MS = 28000;
 const BM_PROBE_MS = 3000;
+const QP_QUEUE_TTL = 30000; // сколько действие, нажатое без связи, ждёт возвращения
 
 function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone }) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -557,40 +558,55 @@ function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
 }
 
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
-function qpConnect({ code, onMessage, onOpen, onGone, onState }) {
-  let t = null, delay = 500, stopped = false;
+function qpConnect({ code, onMessage, onOpen, onGone, onState, onDrop }) {
+  let t = null, delay = 500, stopped = false, sweeper = null, curAt = 0;
   // Действие, нажатое между обрывом и возвращением связи, раньше терялось молча (а кнопка уже горела «ушло»).
   // Теперь оно ждёт в очереди и уходит после входа по токену: сокет без игрока действие бы отбросил.
+  // Очередь: ≤ 8 действий, ≤ QP_QUEUE_TTL мс; всё, что отброшено, сообщается через onDrop (страница снимает «ушло»).
   const queue = [];
+  const drop = (m, cb) => { const f = cb || onDrop; if (f) f(m); };
+  const enqueue = (m, at) => {
+    // то же действие (тип + схватка) — одно: сервер идемпотентен, но очередь не раздуваем
+    if (queue.some((it) => it.m.type === m.type && it.m.mid === m.mid)) return;
+    queue.push({ m, at: at || Date.now() });
+    if (queue.length > 8) drop(queue.shift().m);
+  };
   const holder = {
     api: null,
     gated: false, // страница держит действия до входа по токену и сама снимает флаг через flush
     send(m) {
       const a = holder.api;
       if (m && m.type !== "ping" && m.type !== "join" && m.type !== "host" && (holder.gated || !a || a.mode === "none" || a.mode === "connecting")) {
-        queue.push({ m, at: Date.now() });
-        if (queue.length > 8) queue.shift();
+        enqueue(m);
         return;
       }
       if (a) a.send(m);
     },
     // keep(m) — нужно ли это действие ещё; просроченные и ненужные отбрасываются через onDrop
-    flush(keep, onDrop) {
+    flush(keep, onDropHere) {
       holder.gated = false;
       const items = queue.splice(0);
       for (const it of items) {
-        if (Date.now() - it.at > 6000 || (keep && !keep(it.m))) { if (onDrop) onDrop(it.m); continue; }
-        if (holder.api) holder.api.send(it.m);
+        if (Date.now() - it.at > QP_QUEUE_TTL || (keep && !keep(it.m))) { drop(it.m, onDropHere); continue; }
+        if (holder.api) { curAt = it.at; holder.api.send(it.m); curAt = 0; }
       }
     },
-    stop() { stopped = true; clearTimeout(t); queue.length = 0; if (holder.api) holder.api.close(); },
+    stop() { stopped = true; clearTimeout(t); clearInterval(sweeper); queue.length = 0; if (holder.api) holder.api.close(); },
   };
+  // связи нет дольше срока — действие не ждём вечно: страница покажет «не дошло»
+  sweeper = setInterval(() => {
+    for (let i = queue.length - 1; i >= 0; i--) {
+      if (Date.now() - queue[i].at > QP_QUEUE_TTL) drop(queue.splice(i, 1)[0].m);
+    }
+  }, 2000);
   const open = () => {
     if (stopped) return;
     if (onState) onState("connecting");
     holder.api = qpOpenTransport({
       code,
       onMessage,
+      // отправка не удалась (сокет умер, POST не прошёл трижды): держим в очереди до возвращения связи и проверяем сокет
+      onSendFail: (m) => { if (stopped) return; enqueue(m, curAt); if (holder.api && holder.api.mode !== "none") holder.api.probe(); },
       onOpen: () => { delay = 500; if (onState) onState("open"); if (onOpen) onOpen(); },
       onClose: () => { if (stopped) return; if (onState) onState("lost"); t = setTimeout(open, delay); delay = Math.min(delay * 2, 8000); },
       onGone: () => { stopped = true; if (onGone) onGone(); },

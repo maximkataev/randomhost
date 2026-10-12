@@ -497,7 +497,8 @@ class Game {
     const top = Math.max(...clean);
     const winners = top > 0 ? m.order.filter((_, i) => clean[i] === top) : [];
     // разгром: все голоса за один ответ, и голосов хотя бы два (§5)
-    const sweep = winners.length === 1 && top === total && total >= 2 ? winners[0] : null;
+    // 🐌 (молчал, подсказку поставил сервер) бонуса не получает — значит, и штампа «разгром» нет
+    const sweep = winners.length === 1 && !late(winners[0]) && top === total && total >= 2 ? winners[0] : null;
     // бонус — только единоличному победителю: при ничьей его получали все, и счёт слипался
     const bonus = {};
     if (winners.length === 1 && !late(winners[0])) bonus[winners[0]] = (winners[0] === sweep ? SWEEP_BONUS : WIN_BONUS) * R.mult;
@@ -665,6 +666,8 @@ class Game {
       serverNow: now,
       code: s.code,
       settings: s.settings,
+      // лимиты длины — с сервера, чтобы телефон не расходился с ним (раньше 40 против 50)
+      limits: { answer: ANSWER_MAX, item: ITEM_MAX },
       game: s.game,
       plan: s.plan,
       ri: s.ri,

@@ -223,6 +223,9 @@
   .write .three label { display: flex; align-items: center; gap: 10px; font: var(--show-w) 16px/1 var(--show); font-variation-settings: var(--show-fvs); color: var(--bulb); }
   .write .three label::before { content: none; }
   .write .three input { font-size: 18px; padding: 11px 12px; }
+  .write .three label { position: relative; }
+  .write .three .icnt { position: absolute; right: 8px; top: -8px; font: 700 11px/1 var(--font); color: var(--bulb); background: var(--deep); padding: 3px 6px; border-radius: 999px; pointer-events: none; }
+  .write .three .icnt:empty { display: none; }
   .write .cnt { text-align: right; color: var(--ink); font-size: 13px; font-weight: 700; height: 18px; margin-top: 4px; }
   .num { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--deep); color: var(--bulb); font: var(--show-w) 16px/1 var(--show); font-variation-settings: var(--show-fvs); }
   .row2 { display: grid; gap: 10px; margin-top: 4px; }
@@ -530,7 +533,9 @@ const app = document.getElementById("app");
 const T = (k) => qpT(k);
 const tpl = (k, v) => qpTpl(k, v);
 const REACTIONS = ["😂", "🔥", "😱", "👏", "💀"];
-const LIMIT = 80, ITEM = 40;
+// лимиты приходят в снимке (state.limits); запасные значения — как на сервере
+const limAnswer = () => (state && state.limits && state.limits.answer) || 80;
+const limItem = () => (state && state.limits && state.limits.item) || 50;
 
 let conn = null, state = null, me = null, token = null, dead = false;
 let screen = null, screenKey = "";
@@ -741,8 +746,8 @@ function renderAnswer() {
     <div class="card qcard"><div class="k">${escapeHtml(promptKind)}</div><div class="q">${qpPromptHtml(cur.prompt)}</div></div>
     <form class="write" id="write" autocomplete="off">
       ${final
-        ? `<div class="three">${[0, 1, 2].map((i) => `<label><span class="num">${i + 1}</span><input maxlength="${ITEM}" data-i="${i}" value="${escapeHtml(d[i] || "")}" placeholder="${escapeHtml(tpl("ph_item", { n: i + 1 }))}" enterkeyhint="${i < 2 ? "next" : "send"}"></label>`).join("")}</div>`
-        : `<textarea id="ta" maxlength="${LIMIT}" placeholder="${escapeHtml(T(cur.prompt.e ? "ph_caption" : cur.prompt.a != null ? "ph_question" : cur.prompt.f != null ? "ph_fill" : "ph_answer"))}" enterkeyhint="send" aria-label="${escapeHtml(T("ph_answer"))}">${escapeHtml(d)}</textarea><div class="cnt" id="cnt"></div>`}
+        ? `<div class="three">${[0, 1, 2].map((i) => `<label><span class="num">${i + 1}</span><input maxlength="${limItem()}" data-i="${i}" value="${escapeHtml(d[i] || "")}" placeholder="${escapeHtml(tpl("ph_item", { n: i + 1 }))}" enterkeyhint="${i < 2 ? "next" : "send"}"><span class="icnt"></span></label>`).join("")}</div>`
+        : `<textarea id="ta" maxlength="${limAnswer()}" placeholder="${escapeHtml(T(cur.prompt.e ? "ph_caption" : cur.prompt.a != null ? "ph_question" : cur.prompt.f != null ? "ph_fill" : "ph_answer"))}" enterkeyhint="send" aria-label="${escapeHtml(T("ph_answer"))}">${escapeHtml(d)}</textarea><div class="cnt" id="cnt"></div>`}
       <div class="row2"><button class="btn" type="submit" id="sendbtn">${T("btn_send")}</button>
       <button class="btn ghost${hintArmed === cur.id ? " sure" : ""}" type="button" id="hintbtn"${s.hintsLeft <= 0 ? " disabled" : ""}>${escapeHtml(hintLabel)}</button></div>
     </form>`, key, true);
@@ -751,14 +756,20 @@ function renderAnswer() {
   if (final) {
     const inputs = [...form.querySelectorAll("input")];
     inputs.forEach((inp, i) => {
-      inp.oninput = () => { drafts[cur.id] = inputs.map((x) => x.value); };
+      const upd = () => {
+        drafts[cur.id] = inputs.map((x) => x.value);
+        const lm = limItem(), c = inp.parentNode.querySelector(".icnt");
+        if (c) c.textContent = inp.value.length > lm - 10 ? `${inp.value.length}/${lm}` : "";
+      };
+      inp.oninput = upd;
+      upd();
       inp.onkeydown = (e) => { if (e.key === "Enter" && i < 2) { e.preventDefault(); inputs[i + 1].focus(); } };
     });
     const first = inputs.find((x) => !x.value) || inputs[0];
     if (!matchMedia("(pointer: coarse)").matches) first.focus();
   } else {
     const ta = document.getElementById("ta");
-    const upd = () => { drafts[cur.id] = ta.value; cnt.textContent = ta.value.length > LIMIT - 20 ? `${ta.value.length}/${LIMIT}` : ""; };
+    const upd = () => { drafts[cur.id] = ta.value; cnt.textContent = ta.value.length > limAnswer() - 20 ? `${ta.value.length}/${limAnswer()}` : ""; };
     ta.oninput = upd;
     ta.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit ? form.requestSubmit() : form.onsubmit(e); } };
     upd();
@@ -862,7 +873,7 @@ function renderReveal() {
   const rows = c.answers.map((a, i) => {
     const p = player(a.playerId) || {};
     const jin = r.jinx.includes(a.playerId);
-    const tags = [a.hint && !a.late ? `🎲 ${T("hint_mark")}` : "", a.late ? `🐌 ${T("late_mark")}` : "", jin ? T("jinx") : "", r.sweep === a.playerId ? T("sweep") : ""].filter(Boolean).join(" · ");
+    const tags = [a.hint && !a.late ? `🎲 ${T("hint_mark")}` : "", a.late ? `🐌 ${T("late_mark")} · ${T("late_half")}` : "", jin ? T("jinx") : "", r.sweep === a.playerId ? T("sweep") : ""].filter(Boolean).join(" · ");
     return `<div class="r${r.winners.includes(a.playerId) ? " win" : ""}" style="--pc:${p.color || "#777"};--i:${(i * 0.08).toFixed(2)}s"><div class="t">${qpAnswerHtml(a)}</div><div class="p">${escapeHtml(tpl("pts", { n: r.points[i] }))}</div>
       <div class="who">${escapeHtml(p.avatar || "")} ${escapeHtml(p.name || "?")} · ${escapeHtml(qpVotes(r.tally[i]))}${tags ? " · " + escapeHtml(tags) : ""}</div></div>`;
   }).join("");
@@ -962,6 +973,25 @@ function flushQueued() {
     return true;
   });
 }
+// действие не дошло до сервера (очередь протухла/переполнена/отброшена): снимаем «ушло» и говорим об этом.
+// Если сервер успел его принять (по снимку видно), молчим.
+function lostAction(m) {
+  if (!m || dead) return;
+  const st = state && state.me;
+  let applied = false;
+  if (m.type === "answer" || m.type === "hint") {
+    const p = st && (st.prompts || []).find((x) => x.id === m.mid);
+    applied = !!(p && p.done);
+    if (m.type === "hint") { justHinted = null; hintArmed = null; }
+    screenKey = "";
+  } else if (m.type === "vote") {
+    applied = !!(st && st.voted && state.current && state.current.id === m.mid);
+    if (!applied) { sentVote = null; picks = picks.slice(); screenKey = ""; }
+  } else return;
+  if (applied) return;
+  toast(T("send_lost"));
+  render();
+}
 function onMessage(m) {
   switch (m.type) {
     case "hello":
@@ -1003,7 +1033,7 @@ function onMessage(m) {
       render();
       break;
     case "error":
-      conn.flush(() => false);
+      conn.flush(() => false, () => {});
       if (m.error === "room_expired") return renderExpired();
       if (["room_full", "token_gone", "bad_name"].includes(m.error)) {
         if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
@@ -1013,7 +1043,7 @@ function onMessage(m) {
       }
       break;
     case "kicked":
-      conn.flush(() => false);
+      conn.flush(() => false, () => {});
       me = null;
       try { localStorage.removeItem(tokenKey()); } catch (e) {}
       token = null;
@@ -1048,6 +1078,7 @@ function start() {
     code: CODE,
     onMessage,
     onGone: renderExpired,
+    onDrop: lostAction,
     // переподключились — снова входим своим токеном (hello придёт первым)
     onOpen: () => { needJoin = true; if (token) conn.gated = true; },
     onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },

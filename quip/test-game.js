@@ -3,7 +3,7 @@
 // Тесты движка «Вопроса ребром»: node --test test-game.js
 const test = require("node:test");
 const assert = require("node:assert");
-const { Game, T, ROUNDS, POINTS, WIN_BONUS, SWEEP_BONUS, clampSettings, cleanText } = require("./game");
+const { Game, T, ROUNDS, POINTS, WIN_BONUS, SWEEP_BONUS, ANSWER_MAX, ITEM_MAX, clampSettings, cleanText } = require("./game");
 const { normalize, normalizeList } = require("./normalize");
 
 // Детерминированная случайность: простой LCG
@@ -228,6 +228,30 @@ test("очки дуэли: голос = 100 × множитель, победа 
   v2.forEach((p, i) => g.vote(p.id, m2.id, [i % 2], 9000));
   assert.strictEqual(m2.result.sweep, null);
   assert.deepStrictEqual(m2.result.points, [2 * POINTS, 2 * POINTS]);
+});
+
+test("🐌: победитель-молчун не получает штамп «разгром» и бонус (quip-009)", () => {
+  const g = game(6);
+  g.tick(g.s.phaseEnd); // никто не ответил — у всех автоподсказка с late
+  assert.strictEqual(g.s.phase, "vote");
+  const m = g.s.matchups[g.s.mi];
+  const voters = g.present().filter((p) => !m.authors.includes(p.id));
+  for (const p of voters) g.vote(p.id, m.id, [0], 9000);
+  assert.strictEqual(g.s.phase, "reveal");
+  const r = m.result;
+  assert.deepStrictEqual(r.winners, [m.order[0]]);
+  assert.strictEqual(r.sweep, null);
+  assert.strictEqual(r.points[0], Math.round(voters.length * POINTS * 0.5)); // половина очков, без +250 и +100
+  const ev = g.snapshot(9000, "board");
+  assert.ok(ev);
+});
+
+test("снимок несёт лимиты длины: пункт финала 50 — как у сервера (quip-031)", () => {
+  const g = game(5);
+  const lm = g.snapshot(0, "board").limits;
+  assert.deepStrictEqual(lm, { answer: ANSWER_MAX, item: ITEM_MAX });
+  assert.strictEqual(ITEM_MAX, 50);
+  assert.deepStrictEqual(g.snapshot(0, "P1").limits, lm);
 });
 
 test("джинкс: одинаковые с точностью до падежа — оба по нулям, дуэль без голосования", () => {
