@@ -46,6 +46,7 @@ const POINTS = { win: 100, flat: 50, bankWin: 200, bankLoss: -200 };
 const UNANIMOUS_MIN = 4;
 const WOLF_MIN = 4;
 const ILLUSION_MIN = 4;
+const OPINION_AGG_MIN = 3; // агрегат мнений показывается только при стольких ответивших (a+b)
 const ILLUSION_SHARE = 0.6;
 const LEAN_B_MIN = 0.4; // доля вопросов партии с ожидаемым большинством «НЕТ»/«Б» (§5); в целых — вниз: из 6 допустимо 2–3
 const LEAN_B_MAX = 0.5;
@@ -363,6 +364,7 @@ class Game {
     s.game++;
     s.n = 0;
     s.voidsUsed = 0;
+    s.replNext = 0;
     s.voidStreak = 0;
     s.extraDone = false;
     s.deciderDone = false;
@@ -400,10 +402,12 @@ class Game {
       opinions: {}, // playerId → 'a'|'b'|'skip'
       seed: this.rnd(1 << 30),
       only, // решающий вопрос: очки только у этих игроков
+      repl: kind === "normal" || kind === "final" ? s.replNext || 0 : 0, // номер замены (1..MAX_VOIDS), если это вопрос вместо аннулированного
       start: null,
       result: null,
     };
     s.next = null;
+    s.replNext = 0;
     if (kind === "normal") return this.openVote(now);
     s.phase = "intro";
     s.phaseStart = now;
@@ -533,9 +537,20 @@ class Game {
       side: null, tie: false, unanimous: false, wolf: null,
       votes: {}, pts: {}, banked: {}, bankBack: {}, order: [],
       opinions: null, illusion: null,
+      bankLate: {}, replace: false,
     };
     r.result = res;
+    // ва-банк включён, а «Готово» не нажато: не засчитывается (правило не менялось), но игрок должен это видеть
+    if (this.bankAllowed()) {
+      for (const id of cast) {
+        const p = this.player(id);
+        if (r.bank[id] && !r.confirmed[id] && p && p.banks > 0) res.bankLate[id] = true;
+      }
+    }
     if (res.void) {
+      // заменят ли вопрос — решает afterRound тем же условием; номер замены — для подписи «замена 1/2»
+      res.replace = (r.kind === "normal" || r.kind === "final") && s.voidsUsed < MAX_VOIDS;
+      if (res.replace) { res.replaceNo = s.voidsUsed + 1; res.replaceMax = MAX_VOIDS; }
       for (const id of cast) res.votes[id] = r.votes[id];
       for (const id of Object.keys(r.bank)) if (r.confirmed[id]) res.bankBack[id] = true;
       return this.afterVote(now);
@@ -587,6 +602,7 @@ class Game {
     const r = s.round;
     const res = r.result;
     const hadOpinion = s.phase === "opinion";
+    let opA = 0, opB = 0; // для статистики вопроса — сырые счётчики, даже если агрегат скрыт
     if (!res.void) {
       const decider = !!r.only;
       for (const [id, pts] of Object.entries(res.pts)) {
@@ -607,7 +623,9 @@ class Game {
       if (hadOpinion) {
         let oa = 0, ob = 0, skip = 0;
         for (const v of Object.values(r.opinions)) { if (v === "a") oa++; else if (v === "b") ob++; else skip++; }
-        res.opinions = { a: oa, b: ob, skip };
+        // меньше трёх ответивших — агрегат раскрывает мнение одного-двух людей: не показываем
+        opA = oa; opB = ob;
+        res.opinions = oa + ob >= OPINION_AGG_MIN ? { a: oa, b: ob, skip } : null;
         const tot = oa + ob;
         if (tot >= ILLUSION_MIN && res.side && oa !== ob) {
           const opSide = oa > ob ? "a" : "b";
@@ -623,7 +641,7 @@ class Game {
     const events = [{ type: "reveal", void: res.void, tie: res.tie, side: res.side }];
     if (res.illusion) events.push({ type: "illusion" });
     if (!res.void && !r.only && res.cast >= 4) {
-      events.push({ type: "qstat", id: r.q.id, a: res.a, b: res.b, oa: res.opinions ? res.opinions.a : 0, ob: res.opinions ? res.opinions.b : 0 });
+      events.push({ type: "qstat", id: r.q.id, a: res.a, b: res.b, oa: opA, ob: opB });
     }
     return events;
   }
@@ -641,11 +659,12 @@ class Game {
     if (res.void) {
       s.voidStreak++;
       s.voidRun = (s.voidRun || 0) + 1;
-      if (main && s.voidsUsed < MAX_VOIDS) { s.voidsUsed++; next = { to: "round" }; }
-      else { if (main) s.n++; next = this.planAfter(r.kind, res); }
+      if (main && s.voidsUsed < MAX_VOIDS) { s.voidsUsed++; s.replNext = s.voidsUsed; next = { to: "round" }; }
+      else { s.replNext = 0; if (main) s.n++; next = this.planAfter(r.kind, res); }
     } else {
       s.voidStreak = 0;
       s.voidRun = 0;
+      s.replNext = 0;
       if (main) s.n++;
       next = this.planAfter(r.kind, res);
     }
@@ -815,6 +834,7 @@ class Game {
         mult: this.mult(),
         bankAllowed: this.bankAllowed(),
         only: r.only,
+        repl: r.repl || undefined,
       };
       if (s.phase === "vote") {
         round.ready = this.voters().filter((p) => r.confirmed[p.id]).map((p) => p.id);
@@ -840,6 +860,7 @@ class Game {
         asked: !!r && s.phase === "opinion" && Array.isArray(r.cast) && r.cast.includes(me.id),
         gain: shown && r.result && !r.result.void ? r.result.pts[me.id] ?? null : null,
         bankBack: shown && r.result ? !!r.result.bankBack[me.id] : false,
+        bankLate: shown && r.result && r.result.bankLate ? !!r.result.bankLate[me.id] : false,
       };
     }
     return {

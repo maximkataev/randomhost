@@ -418,7 +418,7 @@ window.I18N_DICT = {
     v_maj: `Большинство: {side}`, v_maj_d: `{k} из {n} голосов`,
     v_tie: `Раскол!`, v_tie_d: `Поровну — всем по +50`,
     v_one: `Как один!`, v_one_d: `Слишком просто — всем по +50`,
-    v_void: `Мало голосов — вопрос заменят`, v_void_d: `Нужно хотя бы 3 голоса`,
+    v_void: `Мало голосов — вопрос заменят`, v_void_d: `Нужно хотя бы 3 голоса`, v_void_none: `Мало голосов — идём дальше`, void_note_none: `Замены кончились — идём дальше`, q_repl: `замена {k}`,
     ill_t: `ИЛЛЮЗИЯ!`, ill_d: `Все думали — большинство «{v}», а лично — «{o}»`,
     wolf_note: `🐺 Одиночка: {name}`, op_title: `Лично думают`,
     scores_title: `Счёт после вопроса {n}`, scores_title_x: `Счёт`, decider_note: `Очки получают только: {names}`, bank_tip: `ва-банк ×2`, wolf_tip: `Одиночка`, void_note: `Вопрос заменят`,
@@ -451,7 +451,7 @@ window.I18N_DICT = {
     v_maj: `Majority: {side}`, v_maj_d: `{k} of {n} votes`,
     v_tie: `Split!`, v_tie_d: `Dead even — +50 for everyone`,
     v_one: `As one!`, v_one_d: `Too easy — +50 for everyone`,
-    v_void: `Too few votes — the question will be replaced`, v_void_d: `At least 3 votes needed`,
+    v_void: `Too few votes — the question will be replaced`, v_void_d: `At least 3 votes needed`, v_void_none: `Too few votes — moving on`, void_note_none: `No replacements left — moving on`, q_repl: `redo {k}`,
     ill_t: `ILLUSION!`, ill_d: `Everyone thought the majority says “{v}” — but personally it’s “{o}”`,
     wolf_note: `🐺 Lone wolf: {name}`, op_title: `Personally think`,
     scores_title: `Scores after question {n}`, scores_title_x: `Scores`, decider_note: `Only these players score: {names}`, bank_tip: `all-in ×2`, wolf_tip: `Lone wolf`, void_note: `Question will be replaced`,
@@ -484,7 +484,7 @@ window.I18N_DICT = {
     v_maj: `Πλειοψηφία: {side}`, v_maj_d: `{k} από {n} ψήφους`,
     v_tie: `Χωρίστηκαν!`, v_tie_d: `Ισοπαλία — +50 σε όλους`,
     v_one: `Ως ένας!`, v_one_d: `Πολύ εύκολο — +50 σε όλους`,
-    v_void: `Λίγες ψήφοι — η ερώτηση αντικαθίσταται`, v_void_d: `Χρειάζονται τουλάχιστον 3 ψήφοι`,
+    v_void: `Λίγες ψήφοι — η ερώτηση αντικαθίσταται`, v_void_d: `Χρειάζονται τουλάχιστον 3 ψήφοι`, v_void_none: `Λίγες ψήφοι — προχωράμε`, void_note_none: `Δεν υπάρχουν άλλες αντικαταστάσεις — προχωράμε`, q_repl: `αντικ. {k}`, // EL:unverified
     ill_t: `ΠΑΡΑΙΣΘΗΣΗ!`, ill_d: `Όλοι νόμιζαν ότι η πλειοψηφία λέει «{v}» — αλλά προσωπικά είναι «{o}»`,
     wolf_note: `🐺 Μοναχικός λύκος: {name}`, op_title: `Προσωπικά πιστεύουν`,
     scores_title: `Βαθμολογία μετά την ερώτηση {n}`, scores_title_x: `Βαθμολογία`, decider_note: `Βαθμούς παίρνουν μόνο: {names}`, bank_tip: `ρίσκο ×2`, wolf_tip: `Μοναχικός λύκος`, void_note: `Η ερώτηση αντικαθίσταται`,
@@ -832,7 +832,7 @@ function fitOne(el, max, min) {
 }
 const sideLabel = (q, s) => (s === "a" ? q.a : q.b);
 function letter(q, s) { return q.kind === "ab" ? T(s === "a" ? "ab_a" : "ab_b") : s === "a" ? "✔" : "✖"; }
-const progText = (r) => r.kind === "final" ? T("q_final") : r.kind === "extra" ? T("q_extra") : r.kind === "decider" ? T("q_decider") : tpl("q_of", { n: r.num, t: state.total });
+const progText = (r) => r.kind === "final" ? T("q_final") : r.kind === "extra" ? T("q_extra") : r.kind === "decider" ? T("q_decider") : tpl("q_of", { n: r.num, t: state.total }) + (r.repl ? " · " + tpl("q_repl", { k: r.repl }) : "");
 function pipsHtml(r) {
   if (r.kind !== "normal" && r.kind !== "final") return "";
   let s = "";
@@ -1101,7 +1101,12 @@ function buildPlan() {
   return plan;
 }
 
-function hideVd() { RV.vdOn = false; $("vd").classList.remove("on"); $("dim").classList.remove("on"); }
+function hideVd() {
+  RV.vdOn = false; $("vd").classList.remove("on"); $("dim").classList.remove("on");
+  // скрытый плакат не хранит прежний вердикт в DOM: его читают скринридеры и копируют вместе со страницей
+  $("vd").setAttribute("aria-hidden", "true");
+  setTimeout(() => { if (!RV.vdOn) ["vdK", "vdW", "vdS"].forEach((id) => { $(id).textContent = ""; }); }, 600);
+}
 function showVd(o) {
   const vd = $("vd"), F = L.f;
   place($("dim"), { x: F.x, y: F.y, w: F.w, h: F.h });
@@ -1123,11 +1128,12 @@ function showVd(o) {
   vd.style.top = Math.round(F.y + zy + Math.max(0, (zh - vd.offsetHeight) / 2)) + "px";
   RV.vdOn = true;
   $("dim").classList.add("on");
+  vd.setAttribute("aria-hidden", "false");
   vd.classList.add("on");
 }
 function verdictOf(kind) {
   const res = state.round.result, q = state.round.q;
-  if (kind === "void") return { w: T("v_void"), cls: "void", bg: "#2a2a2f", fg: "#f4f1e8", s: esc(T("v_void_d")) };
+  if (kind === "void") return { w: T(res.replace === false ? "v_void_none" : "v_void"), cls: "void", bg: "#2a2a2f", fg: "#f4f1e8", s: esc(T("v_void_d")) };
   if (kind === "tie") return { w: T("v_tie"), cls: "tie", s: esc(T("v_tie_d")) };
   if (kind === "one") return { w: T("v_one"), bg: "#3ddc84", fg: "#06210f", s: esc(T("v_one_d")) };
   const str = tpl("v_maj", { side: "\u0001" });
@@ -1330,7 +1336,7 @@ function drawScores() {
   const max = Math.max(1, ...list.map((p) => p.score));
   const cols = list.length > 6 ? 2 : 1, rows = Math.ceil(list.length / cols);
   const title = r.num && (r.kind === "normal" || r.kind === "final") ? tpl("scores_title", { n: r.num }) : T("scores_title_x");
-  const note = res.void ? T("void_note") : r.only ? tpl("decider_note", { names: wvNames(r.only, player) }) : "";
+  const note = res.void ? T(res.replace === false ? "void_note_none" : "void_note") : r.only ? tpl("decider_note", { names: wvNames(r.only, player) }) : "";
   const fmtD = (v) => (v > 0 ? "+" + v : v < 0 ? "−" + Math.abs(v) : "0");
   const outs = res.void ? [] : list.filter((p) => p.id in res.pts && res.pts[p.id] <= 0 && p.id in res.votes && !res.tie && !res.unanimous).map((p) => p.id);
   upper.innerHTML = `<div class="scr sc"><div class="sc-head"><h2>${esc(title)}</h2>${note ? `<p>${esc(note)}</p>` : ""}</div>
