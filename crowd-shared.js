@@ -52,7 +52,9 @@ function wvPluralKey(base, n, lang, has) {
   return base;
 }
 /*PLURAL-END*/
-const wvPluralTpl = (base, n, vars) => wvTpl(wvPluralKey(base, n, wvLang(), (k) => wvT(k) !== k), vars);
+// «есть ли такая форма» — по словарю ТЕКУЩЕГО языка: wvT() для чужих ключей отдаёт английский фоллбэк, это не форма
+const wvHasForm = (k) => { const d = (window.I18N_DICT || {})[wvLang()]; return !!(d && k in d); };
+const wvPluralTpl = (base, n, vars) => wvTpl(wvPluralKey(base, n, wvLang(), wvHasForm), vars);
 
 
 // ---------- звуки: короткий синтез без файлов ----------
