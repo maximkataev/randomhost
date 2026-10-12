@@ -75,7 +75,7 @@ async function cdp(url, phone) {
     return r.result?.value;
   };
   const shot = async (name) => { const r = await call("Page.captureScreenshot", { format: "png" }); if (r && r.data) fs.writeFileSync(path.join(OUT, name + ".png"), Buffer.from(r.data, "base64")); };
-  return { call, evaluate, shot, errors, name: "" };
+  return { call, evaluate, shot, errors, name: "", targetId: t.targetId };
 }
 
 async function type(page, selector, text) {
@@ -415,6 +415,50 @@ async function main() {
     // ---------- 4. перезагрузка телефона: возвращается по токену ----------
     await phones[0].call("Page.reload");
     check(!!(await waitFor(phones[0], "window.qpPhone && window.qpPhone.me", 8000)), "телефон после перезагрузки вернулся по токену");
+
+    // ---------- 5. тёзки и «Это ты?» (T-W2-17, quip-012/013/030) ----------
+    await click(board, "#tolobby");
+    await waitFor(board, "state.phase === 'lobby'", 5000);
+    // тёзка при живом оригинале: «Аня (2)» + тост, счётчик имени «N/16» виден у границы
+    const twin = await cdp(`${BASE}/quip.html?r=${room.code}`, [390, 844]);
+    twin.name = "Тёзка";
+    pages.push(twin);
+    await waitFor(twin, "!!document.getElementById('name')", 8000);
+    check((await twin.evaluate("document.getElementById('name').placeholder")) === "Имя, до 16 знаков", "вход: подсказка «до 16 знаков» в поле имени");
+    await type(twin, "#name", "Аня");
+    await click(twin, "#enterform button[type=submit]");
+    check(!!(await waitFor(twin, "window.qpPhone.me", 5000)), "тёзка вошёл");
+    const twinName = await twin.evaluate("window.qpPhone.state.players.find((p) => p.id === window.qpPhone.me).name");
+    check(twinName === "Аня (2)", `тёзка при живом оригинале назван «${twinName}», не «Аня 2»`);
+    check((await twin.evaluate("document.getElementById('toast').textContent")).indexOf("Аня (2)") >= 0, "тёзка: тост «Имя занято — теперь ты Аня (2)»");
+    // счётчик имени: 12 знаков из 16 — «12/16» в том же месте, без прыжка формы
+    const cnt = await cdp(`${BASE}/quip.html?r=${room.code}`, [390, 844]);
+    pages.push(cnt);
+    cnt.name = "Счётчик";
+    await waitFor(cnt, "!!document.getElementById('name')", 8000);
+    const h0 = await cnt.evaluate("document.getElementById('enterform').getBoundingClientRect().height");
+    await type(cnt, "#name", "Двенадцатьзн");
+    await wait(150);
+    check((await cnt.evaluate("document.getElementById('ncnt').textContent")) === "12/16", "счётчик имени: «12/16»");
+    check(Math.abs((await cnt.evaluate("document.getElementById('enterform').getBoundingClientRect().height")) - h0) < 1, "счётчик имени: форма не прыгает");
+    // офлайн-место: «Это ты?» со счётом; «Да» возвращает то же место
+    const target = await phones[1].evaluate("window.qpPhone.me");
+    await browserCall("Target.closeTarget", { targetId: phones[1].targetId }); // закрыли вкладку — сокет закрылся
+    await wait(3500); // сервер ждёт CLAIM_GRACE (2 с) от закрытия сокета
+    const claimer = await cdp(`${BASE}/quip.html?r=${room.code}`, [390, 844]);
+    claimer.name = "Возврат";
+    pages.push(claimer);
+    await waitFor(claimer, "!!document.getElementById('name')", 8000);
+    await type(claimer, "#name", "Петя");
+    await click(claimer, "#enterform button[type=submit]");
+    check(!!(await waitFor(claimer, "!!document.getElementById('claimyes')", 6000)), "офлайн-место: экран «Это ты?»");
+    pages.splice(pages.indexOf(phones[1]), 1); // эту вкладку закрыли сами
+    await claimer.shot("p_claim");
+    check((await claimer.evaluate("document.querySelector('.status h2').textContent")) === "Это ты?", "«Это ты?»: заголовок");
+    check((await claimer.evaluate(NO_HSCROLL)) === true, "«Это ты?»: без прокрутки вбок");
+    await click(claimer, "#claimyes");
+    check(!!(await waitFor(claimer, "window.qpPhone.me", 5000)), "«Да, это я»: вошёл");
+    check((await claimer.evaluate("window.qpPhone.me")) === target, "«Да, это я»: то же место, а не новое");
 
     for (const p of pages) check(p.errors.length === 0, `${p.name || "страница"}: без JS-ошибок` + (p.errors[0] ? ": " + p.errors[0] : ""));
   } catch (err) {

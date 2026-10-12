@@ -89,7 +89,8 @@ const CTRL = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u115f\u1160\u180e\u200b-\u
 function cleanText(text, max) {
   return Array.from(String(text == null ? "" : text).replace(CTRL, "").replace(/\s+/g, " ").trim()).slice(0, max).join("").trim();
 }
-const cleanName = (name) => cleanText(name, 16);
+const NAME_MAX = 16;
+const cleanName = (name) => cleanText(name, NAME_MAX);
 
 // RULE_U08_GHOST_OUT (класс B, T-W1-07): игрок без связи к началу раунда пар не получает. По умолчанию выкл —
 // как в спеке §112 («вышедший остаётся в партии, за него работают автоподсказки 🐌»). Читаем при каждом вызове
@@ -754,4 +755,4 @@ class Game {
   }
 }
 
-module.exports = { Game, EXTRA_MS, ROUNDS, PLAIN_MIDDLE, PLAN_SHORT, LATE_SHARE, T, DEFAULTS, DECKS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, SMALL, ANSWER_MAX, ITEM_MAX, REACTIONS, POINTS, WIN_BONUS, SWEEP_BONUS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText };
+module.exports = { Game, EXTRA_MS, ROUNDS, PLAIN_MIDDLE, PLAN_SHORT, LATE_SHARE, T, DEFAULTS, DECKS, MAX_PLAYERS, MAX_PLAYER_RECORDS, MIN_PLAYERS, SMALL, ANSWER_MAX, ITEM_MAX, REACTIONS, POINTS, WIN_BONUS, SWEEP_BONUS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText, NAME_MAX };
