@@ -708,7 +708,7 @@ window.I18N_DICT = {
     opt_short: `Короткое шоу`, opt_short_d: `Без эмодзи-сцены и «Наоборот»: дуэли и финал`,
     on: `Да`, off: `Нет`,
     btn_start: `Начать шоу`,
-    need_more: `Нужно хотя бы трое — ещё {n}`,
+    need_more: `Нужно хотя бы трое — ещё {n}`, need_online: `Нужно ещё {n} на связи`,
     ready: `Все на местах? Поехали`,
     viewer: `Настройки меняет ведущий — тот, кто открыл студию`,
     offline: `нет связи`, kick: `Убрать из комнаты`,
@@ -739,7 +739,7 @@ window.I18N_DICT = {
     opt_short: `Short show`, opt_short_d: `No emoji scene or Reverse: duels and final`,
     on: `Yes`, off: `No`,
     btn_start: `Start the show`,
-    need_more: `At least three needed — {n} more`,
+    need_more: `At least three needed — {n} more`, need_online: `{n} more need to be online`,
     ready: `Everyone here? Let's go`,
     viewer: `Settings are changed by the host — whoever opened the studio`,
     offline: `offline`, kick: `Remove from room`,
@@ -770,7 +770,7 @@ window.I18N_DICT = {
     opt_short: `Σύντομο σόου`, opt_short_d: `Χωρίς σκηνή emoji και «Ανάποδα»: μονομαχίες και τελικός`,
     on: `Ναι`, off: `Όχι`,
     btn_start: `Ξεκίνα το σόου`,
-    need_more: `Χρειάζονται τουλάχιστον τρεις — ακόμα {n}`,
+    need_more: `Χρειάζονται τουλάχιστον τρεις — ακόμα {n}`, need_online: `Χρειάζονται ακόμα {n} συνδεδεμένοι`,
     ready: `Είναι όλοι εδώ; Πάμε`,
     viewer: `Τις ρυθμίσεις τις αλλάζει ο οικοδεσπότης — όποιος άνοιξε το στούντιο`,
     offline: `εκτός σύνδεσης`, kick: `Αφαίρεση από το δωμάτιο`,
@@ -905,7 +905,7 @@ function drawLobby() {
   const nodes = ps.map((p) => {
     const d = el("div", "seat" + (seen.has(p.id) ? "" : " new"));
     d.style.setProperty("--pc", p.color);
-    d.innerHTML = avatarName(p) + (p.online ? "" : `<span class="off">${escapeHtml(T("offline"))}</span>`);
+    d.innerHTML = avatarName(p) + (p.online ? "" : `<span class="off">📵 ${escapeHtml(T("offline"))}</span>`);
     if (isHost) { const x = el("button", "x", "✕"); x.type = "button"; x.title = T("kick"); x.setAttribute("aria-label", T("kick")); x.onclick = () => conn.send({ type: "kick", playerId: p.id }); d.append(x); }
     return d;
   });
@@ -920,10 +920,13 @@ function drawLobby() {
   ps.forEach((p) => seen.add(p.id));
   $("seatn").textContent = tpl("lobby_n", { n: ps.length });
   drawOpts();
-  const need = Math.max(0, state.minPlayers - ps.length);
+  // при RULE_U08_GHOST_OUT партия не встаёт без троих на связи: «нужно ещё N на связи» (T-W1-07)
+  const onlineN = ps.filter((p) => p.online).length;
+  const count = state.ghostOut ? onlineN : ps.length;
+  const need = Math.max(0, state.minPlayers - count);
   $("startbtn").disabled = !isHost || need > 0;
   $("startbtn").classList.toggle("hidden", !isHost);
-  $("starthint").textContent = !isHost ? T("viewer") : need ? tpl("need_more", { n: need }) : T("ready");
+  $("starthint").textContent = !isHost ? T("viewer") : need ? tpl(state.ghostOut && ps.length >= state.minPlayers ? "need_online" : "need_more", { n: need }) : T("ready");
 }
 
 function drawOpts() {

@@ -181,6 +181,7 @@
   .pl b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .pl.me { background: var(--bulb); color: var(--ink); }
   .pl.off { opacity: .55; }
+  .pl .nc { font-style: normal; font-size: 13px; line-height: 1; }
   .av { font-style: normal; font-size: 18px; line-height: 1; }
   /* аватар: эмодзи в кружке цвета игрока с белым ободком */
   .puck { flex: none; display: inline-grid; place-items: center; width: 1.7em; height: 1.7em; border-radius: 50%; background: var(--pc, var(--teal)); box-shadow: 0 0 0 .12em #fff; font-style: normal; line-height: 1; }
@@ -402,6 +403,8 @@ window.I18N_DICT = {
     wait_title: `Подключаемся…`,
     av_pick: `Нажми на аватарку, чтобы сменить`, btn_home: `Главная`, rj_avatar_taken: `Эту аватарку уже взяли`, rj_game_started: `Сменить можно до начала шоу`,
     lobby_in: `Ты в игре`, lobby_wait: `Ждём, пока ведущий начнёт шоу. Нужно хотя бы трое`,
+    off_mark: `нет связи`, online_n: `На связи {a} из {b}`,
+    off_mark: `нет связи`, online_n: `На связи {a} из {b}`,
     intro_k: `Раунд {n} из {m}`,
     q_of: `Вопрос {i} из {n}`,
     ph_answer: `Твой ответ`, ph_item: `{n}…`, ph_caption: `Подпиши сцену`, ph_question: `Твой вопрос`, rev_k: `Придумай вопрос к ответу`, fact_k: `Допиши факт`, ph_fill: `Чем закончить?`,
@@ -447,6 +450,7 @@ window.I18N_DICT = {
     wait_title: `Connecting…`,
     av_pick: `Tap your avatar to change it`, btn_home: `Home`, rj_avatar_taken: `That avatar is taken`, rj_game_started: `You can change it before the show starts`,
     lobby_in: `You're in`, lobby_wait: `Waiting for the host to start the show. At least three players needed`,
+    off_mark: `no connection`, online_n: `{a} of {b} online`,
     intro_k: `Round {n} of {m}`,
     q_of: `Prompt {i} of {n}`,
     ph_answer: `Your answer`, ph_item: `{n}…`, ph_caption: `Write a caption`, ph_question: `Your question`, rev_k: `Write the question`, fact_k: `Finish the fact`, ph_fill: `What goes in the gap?`,
@@ -492,6 +496,7 @@ window.I18N_DICT = {
     wait_title: `Σύνδεση…`,
     av_pick: `Πάτα την εικόνα σου για να την αλλάξεις`, btn_home: `Αρχική`, rj_avatar_taken: `Αυτή η εικόνα είναι πιασμένη`, rj_game_started: `Αλλάζει μόνο πριν ξεκινήσει το σόου`,
     lobby_in: `Είσαι μέσα`, lobby_wait: `Περιμένουμε τον οικοδεσπότη να ξεκινήσει. Χρειάζονται τουλάχιστον τρεις`,
+    off_mark: `χωρίς σύνδεση`, online_n: `Συνδεδεμένοι {a} από {b}`, //EL:unverified
     intro_k: `Γύρος {n} από {m}`,
     q_of: `Ερώτηση {i} από {n}`,
     ph_answer: `Η απάντησή σου`, ph_item: `{n}η απάντηση`, ph_caption: `Γράψε λεζάντα`, ph_question: `Η ερώτησή σου`, rev_k: `Βρες την ερώτηση`, fact_k: `Συμπλήρωσε το γεγονός`, ph_fill: `Τι μπαίνει στο κενό;`,
@@ -651,7 +656,7 @@ function renderExpired() {
 
 // ---------- общие куски ----------
 function playersHtml() {
-  return `<div class="players">${state.players.filter((p) => !p.left).map((p) => `<span class="pl${p.id === me ? " me" : ""}${p.online ? "" : " off"}" style="--pc:${p.color}">${avHtml(p)}<b>${escapeHtml(p.name)}</b></span>`).join("")}</div>`;
+  return `<div class="players">${state.players.filter((p) => !p.left).map((p) => `<span class="pl${p.id === me ? " me" : ""}${p.online ? "" : " off"}" style="--pc:${p.color}"${p.online ? "" : ` title="${escapeHtml(T("off_mark"))}"`}>${avHtml(p)}<b>${escapeHtml(p.name)}</b>${p.online ? "" : `<i class="nc" aria-label="${escapeHtml(T("off_mark"))}">📵</i>`}</span>`).join("")}</div>`;
 }
 function reactsHtml() {
   return `<div class="reacts">${REACTIONS.map((e) => `<button type="button" data-e="${e}" aria-label="${e}">${e}</button>`).join("")}</div>`;
@@ -688,7 +693,8 @@ const timerHtml = () => `<div class="timer" id="timer"><i></i></div>`;
 function renderLobby() {
   const key = "lobby:" + state.players.map((p) => p.id + p.online + p.avatar).join(",") + avOpen + qpLang();
   if (screenKey === key) return;
-  show(`${meBadge(true)}${avPickHtml()}<div class="status"><p>${T("lobby_wait")}</p></div>${playersHtml()}${reactsHtml()}
+  const here = state.players.filter((p) => !p.left), onl = here.filter((p) => p.online).length;
+  show(`${meBadge(true)}${avPickHtml()}<div class="status"><p>${T("lobby_wait")}</p>${onl < here.length ? `<p class="fine" style="margin-top:4px">${escapeHtml(tpl("online_n", { a: onl, b: here.length }))}</p>` : ""}</div>${playersHtml()}${reactsHtml()}
     <div class="card howcard"><div class="k">${T("how_k")}</div><ul><li>${T("how_fast")}</li><li>${T("rule2")}</li><li>${T("rule3")}</li></ul></div>`, key, true);
   bindReacts();
   bindAvatars();
