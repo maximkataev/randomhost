@@ -17,11 +17,13 @@ const zlib = require("zlib");
 const { WebSocketServer } = require("ws");
 const { roomCode } = require("../lib/codes");
 const { clientIp, createGuessLimiter, rateOk: netRateOk, send } = require("../lib/net");
-const { Game, clampSettings, cleanName } = require("./game");
+const { Game, clampSettings, cleanName, PHASES } = require("./game");
 const { judge, lineupsFor } = require("./judge");
 const { MODES } = require("./modes");
 const { decide, decideDraft, STRATEGIES } = require("./bots");
 const presence = require("../lib/presence");
+const seats = require("../lib/seats");
+const names = require("../lib/names");
 
 const PORT = Number(process.env.PORT || 3000);
 const STATIC = process.env.STATIC ? path.resolve(process.env.STATIC) : null;
@@ -788,7 +790,7 @@ function handle(room, client, msg) {
       // тот же игрок, а не новый: раньше прежний игрок соединения оставался зомби «online навсегда»,
       // а одним сокетом можно было набить комнату до room_full.
       if (client.playerId && g.player(client.playerId) && !g.player(client.playerId).left) {
-        return reply({ type: "joined", playerId: client.playerId, token: client.token });
+        return reply({ type: "joined", playerId: client.playerId, token: client.token, name: g.player(client.playerId).name, resumed: false });
       }
       let playerId = msg.token && room.tokens[msg.token];
       // Токен ведёт к игроку, которого больше нет (выгнали в лобби, пока телефон был офлайн, или
@@ -801,18 +803,35 @@ function handle(room, client, msg) {
       // токен уже убран (см. pruneTokens) — тот же исход, что и у токена ушедшего игрока
       if (msg.token && !playerId && !String(msg.name || "").trim()) return reply({ type: "error", error: "token_gone" });
       if (playerId && g.player(playerId)?.left) playerId = null;
-      // Потерял localStorage, но игра идёт: то же имя, что у никем не занятого игрока, — продолжаем
-      // его партию. Признак занятости — живой сокет с этим playerId, а НЕ флаг online: в пределах
-      // грации вернувшийся числится онлайн, и проверка по флагу запирала его снаружи с «game_started»
-      // ровно в том случае, ради которого грация и вводилась. Имена в комнате уникальны (addPlayer
-      // дописывает « 2» тёзке), так что перехватить чужую партию совпадением имени нельзя.
-      // В лобби то же самое: иначе вошедший заново без токена получал «Аня 2», а офлайн-«Аня»
-      // оставалась призраком, стартовала вместе со всеми и держала авто-паузу.
+      // Потерял localStorage, но игра идёт: то же имя, что у места без живого сокета, — продолжаем его партию
+      // (D4 (a): имя = ключ; PIN нет, это принято). Решает lib/seats.decideJoin (T-W2-09, E-04): имя сравнивается
+      // по ключу (регистр, пробелы, ё=е), «зависший» сокет (ping без pong, poll без опроса) места не держит.
+      // Признак занятости — живой сокет, а НЕ флаг online: в пределах грации вернувшийся числится онлайн.
+      // Клиент аукциона caps:["claim"] не шлёт: подхват молчаливый (legacyClaim), а игрок видит плашку
+      // «Ты в игре как…» по joined.resumed. Прежние токены места НЕ отзываем: настоящий владелец
+      // вернётся по токену и вытеснит захватчика (см. replaced ниже) — так задумано в E-04.
+      let resumed = false;
       if (!playerId) {
-        const name = cleanName(msg.name);
-        const ghost = g.s.players.find((p) => !p.left && p.name === name && ![...room.sockets].some((c) => c.playerId === p.id));
-        if (ghost) {
-          playerId = ghost.id;
+        const tnow = now();
+        const socketsOf = (id) => [...room.sockets].filter((c) => c.playerId === id && c !== client);
+        const staleSock = (c) => (c.poll ? !c.inflight && tnow - c.lastSeen > POLL_GAP_MS : (c.misses || 0) >= 1);
+        const dec = seats.decideJoin({
+          players: g.s.players.filter((p) => !p.left).map((p) => ({ id: p.id, name: p.name })),
+          name: String(msg.name || ""),
+          token: null,
+          phase: g.s.phase,
+          claimablePhases: PHASES,
+          graceMs: 0,
+          now: tnow,
+          hasLiveSocket: (id) => socketsOf(id).length > 0,
+          isStale: (id) => { const cs = socketsOf(id); return cs.length > 0 && cs.every(staleSock); },
+          closedAt: () => null,
+          caps: [],
+          max: names.LIMITS.AUCTION,
+        });
+        if (dec.action === "claim" && dec.player && g.player(dec.player.id)) {
+          playerId = dec.player.id;
+          resumed = true;
           const token = crypto.randomBytes(12).toString("base64url");
           room.tokens[token] = playerId;
           msg.token = token;
@@ -835,12 +854,15 @@ function handle(room, client, msg) {
         playerId = "u_" + crypto.randomBytes(5).toString("hex");
         const token = crypto.randomBytes(12).toString("base64url");
         room.tokens[token] = playerId;
-        g.addPlayer({ id: playerId, name: String(msg.name || "") });
+        const placed = g.addPlayer({ id: playerId, name: String(msg.name || "") });
         client.token = token;
-        reply({ type: "joined", playerId, token });
+        // name — итоговое имя; renamed — имя заняли, дописали « 2» (E-06: клиент скажет об этом словами)
+        reply({ type: "joined", playerId, token, name: placed.name, renamed: placed.name !== cleanName(msg.name), resumed: false });
       } else {
         client.token = msg.token;
-        reply({ type: "joined", playerId, token: msg.token });
+        // resumed — вернули место по имени без токена (E-04): клиент покажет плашку «Ты в игре как…»;
+        // по токену (перезагрузка) плашки нет
+        reply({ type: "joined", playerId, token: msg.token, name: g.player(playerId).name, renamed: false, resumed });
       }
       // второе устройство той же сессии заменяет первое
       for (const c of room.sockets) if (c !== client && c.playerId === playerId) { c.playerId = null; send(c.ws, { type: "replaced" }); }

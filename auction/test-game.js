@@ -1166,3 +1166,13 @@ test("tied: все разные счета — поля tied нет; results.tie
   assert.equal(h.s.results.tieBreak, "spent");
   assert.ok(h.s.results.ranking.every((x) => x.tied === true));
 });
+
+// ---------- T-W2-09: тёзка по ключу имени ----------
+test("имя: тёзка определяется по ключу (регистр, пробелы, ё=е), дописывается « 2»", () => {
+  const g = Game.create({ kind: "test", cards, settings: { intro: 0 }, rng });
+  g.addPlayer({ id: "a", name: "Маша" });
+  assert.equal(g.addPlayer({ id: "b", name: "маша" }).name, "маша 2");
+  assert.equal(g.addPlayer({ id: "c", name: " МАША " }).name, "МАША 3");
+  assert.equal(g.addPlayer({ id: "d", name: "Ёж" }).name, "Ёж");
+  assert.equal(g.addPlayer({ id: "e", name: "еж" }).name, "еж 2");
+});

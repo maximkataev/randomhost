@@ -599,6 +599,7 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
   await tokensSuite();
   await graceSuite();
   await ghostSuite();
+  await seatsSuite();
   await pingTtlSuite();
   await shutdownSuite();
 
@@ -1082,6 +1083,79 @@ async function ghostSuite() {
     await until(() => vc() && vc().online === true, 3000);
     check(vc().online === true && vc().away === false && vc().money === h3.state.settings.budget, "away: вернувшийся — обычный участник, away снят, бюджет цел");
     for (const c of [h1, a1, h2, a2, h3, a3, b3, c3b]) c.ws.close();
+  } finally {
+    child.kill("SIGKILL");
+  }
+}
+
+// ---------- T-W2-09: вход по имени (lib/seats), joined.resumed/name/renamed, «зависший» сокет ----------
+// Свой инстанс: грация 300 мс, PONG_MISSES большой — «замерший» сокет остаётся в комнате, а не рвётся.
+async function seatsSuite() {
+  const { spawn } = require("child_process");
+  const path = require("path");
+  const os = require("os");
+  const PORT = 3800 + Math.floor(Math.random() * 90);
+  const B = `http://127.0.0.1:${PORT}`;
+  const child = spawn(process.execPath, [path.join(__dirname, "server.js")], {
+    env: { ...process.env, PORT: String(PORT), NODE_ENV: "production", OFFLINE_GRACE_MS: "300", ROOM_TTL_MS: "8000", PONG_MISSES: "50",
+      DUMP_FILE: path.join(os.tmpdir(), `seats-${PORT}.json`) },
+    stdio: "ignore",
+  });
+  const sock = (code, first, opts) => new Promise((res) => {
+    const ws = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + code, opts);
+    const c = { ws, msgs: [], send: (m) => ws.send(JSON.stringify(m)) };
+    ws.on("message", (raw) => { const m = JSON.parse(raw); c.msgs.push(m); if (m.state) c.state = m.state; if (m.type === "joined") { c.me = m.playerId; c.token = m.token; c.joined = m; } });
+    ws.on("error", () => {});
+    ws.on("open", () => { ws.send(JSON.stringify(first)); setTimeout(() => res(c), 300); });
+  });
+  const err = (c, e) => c.msgs.some((m) => m.type === "error" && m.error === e);
+  try {
+    let up = false;
+    for (let i = 0; i < 60 && !up; i++) { try { up = (await fetch(B + "/auction/api/health")).ok; } catch { await wait(100); } }
+    if (!up) return check(false, "сервер seats поднялся");
+    const room = await (await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings: { intro: 0, judge: "vote" } }) })).json();
+    const h = await sock(room.code, { type: "host", token: room.hostToken });
+    // тёзка в лобби: «Аня 2», об этом сказано в joined (E-06); регистр — тоже тёзка
+    const a1 = await sock(room.code, { type: "join", name: "Аня" });
+    const a2 = await sock(room.code, { type: "join", name: "аня" });
+    check(a1.joined && a1.joined.name === "Аня" && a1.joined.renamed === false && a1.joined.resumed === false, "joined: своё имя — name без renamed");
+    check(a2.joined && a2.joined.name === "аня 2" && a2.joined.renamed === true, "joined: имя занято (регистр не спасает) — name «аня 2», renamed");
+    a2.ws.close();
+    // старт: Аня и Боря; Аня — «Маша»
+    const m = await sock(room.code, { type: "join", name: "Маша" });
+    const b = await sock(room.code, { type: "join", name: "Боря" });
+    await until(() => h.state?.players.filter((p) => p.online).length >= 3);
+    h.send({ type: "kick", playerId: a2.me });
+    h.send({ type: "kick", playerId: a1.me });
+    await until(() => h.state.players.length === 2);
+    h.send({ type: "start" });
+    await until(() => h.state.phase === "lot");
+
+    // (а) вошёл в чистом контексте под именем в другом регистре — место без сокета возвращается, плашка по resumed
+    m.ws.close();
+    await until(() => h.state.players.find((p) => p.id === m.me)?.online === false, 3000);
+    const m2 = await sock(room.code, { type: "join", name: " маша " });
+    check(m2.joined && m2.joined.resumed === true && m2.me === m.me && m2.joined.name === "Маша", "вход по имени «маша» к месту «Маша»: то же место, resumed:true, name «Маша»");
+    // (б) настоящий владелец возвращается по своему токену и вытесняет «захватчика»
+    const m3 = await sock(room.code, { type: "join", name: "", token: m.token });
+    check(m3.me === m.me && m3.joined.resumed === false, "по токену — то же место, resumed:false (плашки нет)");
+    await until(() => err(m2, "x") || m2.msgs.some((x) => x.type === "replaced"), 2000);
+    check(m2.msgs.some((x) => x.type === "replaced"), "владелец по токену вытесняет захватчика (replaced)");
+    // (в) живой сокет место держит
+    const b2 = await sock(room.code, { type: "join", name: "боря" });
+    check(err(b2, "game_started"), "место с живым сокетом по имени не отдаётся (game_started)");
+    check(b2.me == null, "…и нового игрока в партии не заводит");
+    // (г) «зависший» сокет (не отвечает на ping) места не держит
+    b.ws.close();
+    await until(() => h.state.players.find((p) => p.id === b.me)?.online === false, 3000);
+    const frozen = await sock(room.code, { type: "join", name: "Боря" }, { autoPong: false });
+    check(frozen.me === b.me && frozen.joined.resumed === true, "подготовка: «Боря» вернулся клиентом, который не отвечает на ping");
+    await wait(2500); // один обход SWEEP (2 с): misses ≥ 1
+    const taker = await sock(room.code, { type: "join", name: "БОРЯ" });
+    check(taker.me === b.me && taker.joined.resumed === true, "«зависший» сокет (ping без pong) место не держит: вход по имени возвращает его");
+    await until(() => frozen.msgs.some((x) => x.type === "replaced"), 2000);
+    check(frozen.msgs.some((x) => x.type === "replaced"), "«зависший» получает replaced");
+    for (const c of [h, m3, taker, frozen, b2, m2]) { try { c.ws.close(); } catch {} }
   } finally {
     child.kill("SIGKILL");
   }

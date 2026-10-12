@@ -143,6 +143,17 @@
   @keyframes flash { 0%, 100% { filter: none; } 50% { filter: brightness(1.6) hue-rotate(-60deg); } }
   .mid { font: 700 14px/1 var(--display); text-transform: uppercase; letter-spacing: .05em; color: var(--text); background: none; border: 1px solid var(--glass-line); border-radius: 999px; padding: 15px; width: 100%; }
   .mid:active { background: rgba(255, 255, 255, .08); }
+  /* T-W2-09: плашка «Ты в игре как…» (вернули место по имени) и «Имя занято…» — поверх экрана, вёрстку не двигает */
+  .seatplate { position: fixed; left: 16px; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 40; display: none; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 16px; background: rgba(20, 18, 34, .96); border: 1px solid var(--c1); box-shadow: 0 8px 28px rgba(0, 0, 0, .45); font: 600 14.5px/1.35 var(--body); color: var(--text); }
+  .seatplate.on { display: flex; }
+  .seatplate .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .seatplate .t small { display: block; margin-top: 4px; font-weight: 500; font-size: 13px; color: var(--muted); }
+  .seatplate button { flex: none; border: 0; border-radius: 12px; padding: 8px 12px; font: 800 13px var(--body); background: rgba(255, 255, 255, .12); color: var(--text); }
+  /* счётчик символов имени: место под него — внутри поля (без прыжков) */
+  .fld { position: relative; }
+  .fld input.field { padding-right: 58px; }
+  .fld .cnt { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font: 800 12px/1 var(--body); letter-spacing: .06em; color: var(--muted); pointer-events: none; font-style: normal; }
+  .fld .cnt[data-state="full"] { color: #ff8a8a; }
   .plate { text-align: center; padding: 18px; border: 1px dashed var(--glass-line); border-radius: 20px; font-size: 16px; color: rgba(244, 242, 255, .8); }
   .plate b { font: 900 20px/1.2 var(--display); letter-spacing: -.03em; color: var(--text); display: block; margin-bottom: 4px; }
   .plate.lead-me { border-style: solid; border-color: var(--c1); background: rgba(255, 255, 255, .08); background: color-mix(in srgb, var(--c1) 12%, transparent); }
@@ -521,12 +532,14 @@
 <div class="util"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
 <div class="screen" id="app"></div>
 <div class="overlay" id="overlay"></div>
+<div class="seatplate" id="seatplate" role="status"><div class="t" id="seatplate-t"></div><button type="button" id="seatplate-ok"></button></div>
 <div class="sheetback" id="sheetback"></div>
 <div class="sheet" id="sheet"></div>
 <canvas class="confetti" id="confetti"></canvas>
 
 <script src="sound-toggle.js" defer></script>
 <script src="auction-modes.js"></script>
+<script src="mp-common.js"></script>
 <script src="auction-shared.js"></script>
 
 <!-- Словарь объявляем ДО i18n.js, а i18n.js — до основного скрипта (без defer):
@@ -584,6 +597,11 @@ window.I18N_DICT = {
     expired_text: `В этой комнате полчаса ничего не происходило, и она закрылась. Попроси ведущего создать новую.`,
     expired_new: `Создать свою комнату`,
     ov_replaced: `Ты открыл игру на другом устройстве — играй там`,
+    play_here: `Играть здесь`,
+    seat_plate: `Ты в игре как: {name} · {money}, лотов: {n}`,
+    seat_plate_hint: `Это не ты? Закрой страницу — настоящий игрок вернётся сам`,
+    name_taken_as: `Имя занято. Ты в игре как: {name}`,
+    plate_ok: `Понятно`,
     ov_kicked: `Ведущий убрал тебя из игры`,
     ov_offline: `Нет связи — переподключаемся…`,
     ov_paused: `Пауза — ждём ведущего`,
@@ -752,6 +770,11 @@ window.I18N_DICT = {
     expired_text: `Nothing happened in this room for half an hour, so it closed. Ask the host to start a new one.`,
     expired_new: `Create your own room`,
     ov_replaced: `You opened the game on another device — play there`,
+    play_here: `Play here`,
+    seat_plate: `You're in as: {name} · {money}, lots: {n}`,
+    seat_plate_hint: `Not you? Close this page — the real player will come back on their own`,
+    name_taken_as: `That name is taken. You're in as: {name}`,
+    plate_ok: `Got it`,
     ov_kicked: `The host removed you from the game`,
     ov_offline: `Connection lost — reconnecting…`,
     ov_paused: `Paused — waiting for the host`,
@@ -914,6 +937,11 @@ window.I18N_DICT = {
     expired_text: `Μισή ώρα δεν έγινε τίποτα σε αυτό το δωμάτιο και έκλεισε. Ζήτα από τον host να φτιάξει καινούργιο.`,
     expired_new: `Φτιάξε δικό σου δωμάτιο`,
     ov_replaced: `Άνοιξες το παιχνίδι σε άλλη συσκευή — παίξε από εκεί`,
+    play_here: `Παίξε εδώ`, //EL:unverified
+    seat_plate: `Είσαι μέσα ως: {name} · {money}, λοτ: {n}`, //EL:unverified
+    seat_plate_hint: `Δεν είσαι εσύ; Κλείσε τη σελίδα — ο πραγματικός παίκτης θα επιστρέψει μόνος του`, //EL:unverified
+    name_taken_as: `Το όνομα είναι πιασμένο. Είσαι μέσα ως: {name}`, //EL:unverified
+    plate_ok: `Εντάξει`, //EL:unverified
     ov_kicked: `Ο host σε έβγαλε από το παιχνίδι`,
     ov_offline: `Χάθηκε η σύνδεση — επανασυνδεόμαστε…`,
     ov_paused: `Παύση — περιμένουμε τον host`,
@@ -1137,6 +1165,14 @@ function setOverlay(key, vars) {
       upd();
       overlayTimer = setInterval(() => { if (!overlay.contains(label)) { clearInterval(overlayTimer); overlayTimer = null; return; } upd(); }, 500);
     }
+  } else if (overlayKey === "ov_replaced") {
+    // E-05: вытесненная вкладка возвращается кнопкой; автовозврат НЕ делаем — две вкладки отбирали бы сессию друг у друга
+    const box = el("div", "ovbox");
+    const back = el("button", "big", I18N.t("play_here"));
+    back.id = "ovback";
+    back.onclick = () => { halted = false; retry = 0; clearTimeout(retryTimer); retryTimer = null; setOverlay(null); join(lastName); };
+    box.append(el("div", null, text), back);
+    overlay.replaceChildren(box);
   } else overlay.textContent = text;
   overlay.classList.toggle("on", !!overlayKey);
 }
@@ -1301,9 +1337,11 @@ function renderJoin(error) {
   joinErrKey = error || null;
   app.innerHTML = `<div class="center enter"><h1>${I18N.t("h1_a")}<em>${I18N.t("h1_b")}</em></h1><p class="sub">${tpl("join_room", { code: CODE })}</p>
     <label for="name" class="note" style="text-align:left;margin:0">${I18N.t("join_label")}</label>
-    <input type="text" id="name" maxlength="24" placeholder="${escapeHtml(I18N.t("ph_name"))}" autocomplete="nickname" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="go" inputmode="text">
+    <div class="fld"><input type="text" class="field" id="name" maxlength="24" placeholder="${escapeHtml(I18N.t("ph_name"))}" autocomplete="nickname" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="go" inputmode="text"><em class="cnt" id="namecnt"></em></div>
     <button class="big" id="go">${I18N.t("btn_go")}</button><div class="note" id="err">${error ? escapeHtml(I18N.t(error)) : ""}</div></div>`;
   const input = document.getElementById("name");
+  // «12/24» у поля, когда осталось ≤ 4 знака; срез по символам (эмодзи не рвётся) вместо молчаливого maxlength
+  if (window.MP && MP.nameCounter && !MP.off) { input.removeAttribute("maxlength"); MP.nameCounter(input, 24, { el: document.getElementById("namecnt") }); }
   const go = () => { const n = input.value.trim(); if (n) join(n); };
   document.getElementById("go").onclick = go;
   // Тело обязано быть блоком: стрелка вида `e.key === "Enter" && go()` возвращает false на любой
@@ -1393,7 +1431,11 @@ function join(name) {
     },
     onMessage: (msg) => {
       settle();
-      if (msg.type === "joined") { me = msg.playerId; token = msg.token; try { localStorage.setItem("auction-token-" + CODE, token); } catch {} }
+      if (msg.type === "joined") {
+        me = msg.playerId; token = msg.token; try { localStorage.setItem("auction-token-" + CODE, token); } catch {}
+        // плашка: вернули место по имени без токена (resumed) или имя было занято (renamed, E-06); по токену — молча
+        pendingPlate = msg.resumed ? { kind: "resumed", name: msg.name } : msg.renamed ? { kind: "renamed", name: msg.name } : null;
+      }
       if (msg.type === "hello" || msg.type === "state") setState(msg.state);
       if (msg.type === "event") onEvent(msg.event);
       if (msg.type === "host_ok" && msg.remote) { isHostRemote = true; if (overlayKey) setOverlay(overlayKey, overlayVars); render(); }
@@ -1466,9 +1508,34 @@ function setNote(text) {
   noteAt = Date.now();
 }
 
+// плашка «Ты в игре как…» (T-W2-09): показывается один раз после входа, когда пришёл первый state
+let pendingPlate = null, plateTimer = null;
+function hideSeatPlate() { const b = document.getElementById("seatplate"); if (b) b.classList.remove("on"); clearTimeout(plateTimer); }
+function showSeatPlate() {
+  const info = pendingPlate; pendingPlate = null;
+  if (!info || !state) return;
+  const p = mine();
+  const t = document.getElementById("seatplate-t");
+  if (!t) return;
+  let text, hint = "";
+  if (info.kind === "resumed" && p) {
+    text = tpl("seat_plate", { name: info.name, money: money(p.money), n: p.lots.length });
+    hint = I18N.t("seat_plate_hint");
+  } else text = tpl("name_taken_as", { name: info.name });
+  t.textContent = "";
+  t.append(document.createTextNode(text));
+  if (hint) t.append(el("small", null, hint));
+  document.getElementById("seatplate-ok").textContent = I18N.t("plate_ok");
+  document.getElementById("seatplate").classList.add("on");
+  clearTimeout(plateTimer);
+  plateTimer = setTimeout(hideSeatPlate, 20000);
+}
+document.getElementById("seatplate-ok").onclick = hideSeatPlate;
+
 function setState(s) {
   if (!me) return;
   state = s;
+  if (pendingPlate) showSeatPlate();
   // смещение часов — по лучшему замеру ping/pong, а не «как пришёл этот state» (§6.4)
   offset = serverOffset(s.serverNow);
   document.body.dataset.kind = s.kind;

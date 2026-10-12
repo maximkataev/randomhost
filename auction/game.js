@@ -1,6 +1,7 @@
 "use strict";
 
 const { modeById, modesForKind } = require("./modes");
+const { nameKey } = require("../lib/names");
 
 /*
  * Движок аукциона: чистая логика без сети и таймеров.
@@ -143,8 +144,9 @@ class Game {
     // запасное имя тоже на языке партии: пустое имя клиент не пропускает, но по сети прийти может
     const FALLBACK = { ru: "Игрок", en: "Player", el: "Παίκτης" };
     const base = cleanName(name) || FALLBACK[s.settings.lang] || FALLBACK.ru;
+    // тёзка — по ключу (регистр, пробелы, ё=е): «маша» не заводится рядом с «Маша», иначе вход по имени неоднозначен
     let final = base;
-    for (let n = 2; s.players.some((p) => p.name === final); n++) final = `${base} ${n}`;
+    for (let n = 2; s.players.some((p) => nameKey(p.name) === nameKey(final)); n++) final = `${base} ${n}`;
     const p = { id, name: final, money: s.settings.budget, spent: 0, lots: [], online: true, left: false };
     s.players.push(p);
     return p;

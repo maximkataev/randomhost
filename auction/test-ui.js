@@ -145,6 +145,34 @@ async function typeText(page, text) {
     check(remote.errors.length === 0, "пульт: перезагрузка без JS-ошибок" + (remote.errors.length ? ": " + remote.errors[0] : ""));
     check((await evaluateSafe(board, "state.players.filter(p => p.name.startsWith('Макс')).length")) === 1, "доска: после перезагрузки пульта игрок один, без «Макс 2»");
 
+    // T-W2-09: вход по имени из чистого контекста — плашка «Ты в игре как…»; вытесненная вкладка — «Играть здесь» (E-05).
+    // Токен пульта на время прячем: вторая вкладка той же origin «чистая», а пульт остаётся на месте и сокет закрываем сами.
+    const tokKey = await evaluateSafe(remote, "'auction-token-' + CODE");
+    const savedTok = await evaluateSafe(remote, `localStorage.getItem(${JSON.stringify(tokKey)})`);
+    check(!!savedTok, "пульт: токен лежит в localStorage");
+    await evaluateSafe(remote, "halted = true; ws.close(); true");
+    await evaluateSafe(remote, `localStorage.removeItem(${JSON.stringify(tokKey)}); true`);
+    const clean = await cdp(`${BASE}/auction.html?r=${room.code}&name=${encodeURIComponent("макс")}`);
+    await wait(2500);
+    const plateOn = await evaluateSafe(clean, "document.getElementById('seatplate').classList.contains('on')");
+    const plateTxt = await evaluateSafe(clean, "document.getElementById('seatplate-t').textContent");
+    check(plateOn && /Макс/.test(plateTxt || ""), "пульт в чистом контексте: плашка «Ты в игре как: Макс…» после входа по имени (" + String(plateTxt).slice(0, 50) + ")");
+    check((await evaluateSafe(clean, "me")) === meBefore, "пульт в чистом контексте: то же место (имя без учёта регистра)");
+    // перезагрузка с токеном — плашки нет
+    await clean.call("Page.reload");
+    await wait(2500);
+    check(!(await evaluateSafe(clean, "document.getElementById('seatplate').classList.contains('on')")), "пульт: после перезагрузки с токеном плашки нет");
+    // «Играть здесь»: пульт возвращает место — чистая вкладка вытеснена и получает кнопку
+    await evaluateSafe(remote, `localStorage.setItem(${JSON.stringify(tokKey)}, ${JSON.stringify(savedTok)}); halted = false; join(lastName); true`);
+    check(await untilPage(clean, "!!document.getElementById('ovback')", 6000), "пульт: вытесненная вкладка показывает «Играть здесь»");
+    await evaluateSafe(clean, "document.getElementById('ovback').click(); true");
+    check(await untilPage(clean, "!document.getElementById('ovback') && me && state && state.players.some((p) => p.id === me)", 6000), "пульт: «Играть здесь» возвращает место");
+    check(await untilPage(remote, "!!document.getElementById('ovback')", 6000), "пульт: теперь вытеснена первая вкладка (кнопка есть и у неё)");
+    await evaluateSafe(remote, "document.getElementById('ovback').click(); true");
+    await untilPage(remote, "!document.getElementById('ovback') && state", 6000);
+    await clean.close();
+    check((await evaluateSafe(board, "state.players.filter(p => p.name.startsWith('Макс')).length")) === 1, "доска: после «Играть здесь» игрок по-прежнему один");
+
     // --- задание партии: клик по плитке должен дойти до сервера и до пульта
     await board.call("Runtime.evaluate", { expression: `[...document.querySelectorAll("#mode .tile")].find(x => x.dataset.v === "worst").click()` });
     await wait(1200);
