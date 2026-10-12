@@ -1744,7 +1744,8 @@
             if (ly > -1e8) y = ly;
           }
           if (snap.phase === 'countdown' && (y == null || !(mp && mp.inGame))) y = W.GATE;
-          if (y != null) target = y - top - U * 0.37;
+          // низкий ландшафт: утку выше — под ней больше реки впереди (⚡ закрывает нижние 82 px, rapids-023)
+          if (y != null) target = y - top - U * (view.h < 420 ? 0.30 : 0.37);
           rate = 5;
         }
       }
