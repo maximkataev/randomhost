@@ -563,7 +563,12 @@ function handle(room, client, msg) {
     }
     // ---- игрок ----
     case "answer": return me ? act("answer", g.answer(me, Number(msg.cid), msg.ans, t)) : undefined;
-    case "pass": return me ? act("pass", g.pass(me, String(msg.to || ""), t)) : undefined;
+    case "pass": {
+      if (!me) return;
+      // b/n — какая бомба и после скольких передач; нет полей (старая вкладка) — как раньше
+      const ref = Number.isInteger(msg.b) && Number.isInteger(msg.n) ? { b: msg.b, n: msg.n } : null;
+      return act("pass", g.pass(me, String(msg.to || ""), t, ref));
+    }
     case "react": {
       if (!me) return;
       const r = g.react(me, String(msg.emoji || ""), t);

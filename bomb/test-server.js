@@ -424,3 +424,30 @@ test("перебор кодов: промахи считаются на сеть
   await sleep(100);
   assert.ok((await (await fetch(`${B}/health`)).json()).ok, "сервер жив");
 });
+
+test("pass с b/n по сокету: повтор после потерянного подтверждения — rejected stale, без b/n как раньше (T-W0-28)", async () => {
+  const { code, hostToken } = await createRoom();
+  const b = await board(code, hostToken);
+  const ps = [await player(code, "Аня"), await player(code, "Петя"), await player(code, "Оля")];
+  b.send({ type: "start" });
+  await b.wait(statePred((s) => s.phase === "live"), 6000);
+  const holder = ps.find((p) => p.id === b.state.bombs[0].holder);
+  const m = await holder.wait(statePred((s) => s.me && s.me.challenge));
+  const c = m.state.me.challenge;
+  await sleep(minWait(c));
+  holder.send({ type: "answer", cid: c.id, ans: solveView(c) });
+  const armed = await holder.wait(statePred((s) => s.me && s.me.armed));
+  const n = armed.state.me.passN[0];
+  assert.strictEqual(n, 0);
+  const to = ps.find((p) => p !== holder).id;
+  const third = ps.find((p) => p !== holder && p.id !== to).id;
+  holder.send({ type: "pass", to, b: 0, n });
+  await b.wait(statePred((s) => s.bombs[0].holder === to && s.passes === 1));
+  // тот же бросок ещё раз (подтверждение потерялось): бомба не двигается
+  holder.send({ type: "pass", to: third, b: 0, n });
+  await holder.wait((x) => x.type === "rejected" && x.action === "pass" && x.reason === "stale");
+  await sleep(150);
+  assert.strictEqual(b.state.bombs[0].holder, to);
+  assert.strictEqual(b.state.passes, 1);
+  for (const x of [b, ...ps]) x.close();
+});

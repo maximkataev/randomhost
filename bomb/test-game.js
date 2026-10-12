@@ -538,3 +538,38 @@ test("напёрстки: ответ — где бомба после всех �
     assert.strictEqual(at, c.answer);
   }
 });
+
+test("pass с b/n: повтор после потерянного подтверждения — stale, бомба не уходит дальше; без b/n как раньше (T-W0-28)", () => {
+  const g = game(["A", "B", "C"], { returnOk: true });
+  const h = holderOf(g);
+  const snap = g.snapshot(1000, h);
+  assert.strictEqual(snap.me.passN[0], 0);
+  const c = g.s.challenges[h];
+  const at = c.at + c.minMs;
+  assert.ok(g.answer(h, c.id, solve(c), at).ok);
+  const others = ["A", "B", "C"].filter((x) => x !== h);
+  assert.ok(g.pass(h, others[0], at, { b: 0, n: 0 }).ok);
+  // подтверждение потерялось, телефон повторяет тот же бросок
+  const again = g.pass(h, others[1], at + 50, { b: 0, n: 0 });
+  assert.deepStrictEqual([again.ok, again.reason], [false, "stale"]);
+  assert.strictEqual(holderOf(g), others[0], "бомба у первого получателя, дальше не ушла");
+  // бомба вернулась к h: старый n уже не подходит, новый — да
+  const t2 = throwTo(g, others[1], at + 100);
+  const t3 = throwTo(g, h, t2 + 100);
+  assert.strictEqual(holderOf(g), h);
+  const c2 = g.s.challenges[h];
+  const at2 = Math.max(t3 + 100, c2.at + c2.minMs);
+  assert.ok(g.answer(h, c2.id, solve(c2), at2).ok);
+  assert.strictEqual(g.pass(h, others[0], at2, { b: 0, n: 0 }).reason, "stale");
+  assert.strictEqual(g.snapshot(at2, h).me.passN[0], 3);
+  assert.ok(g.pass(h, others[0], at2, { b: 0, n: 3 }).ok);
+});
+
+test("pass без b/n (старая вкладка) работает как раньше", () => {
+  const g = game();
+  const h = holderOf(g);
+  const other = ["A", "B", "C"].find((x) => x !== h);
+  const c = g.s.challenges[h];
+  assert.ok(g.answer(h, c.id, solve(c), c.at + c.minMs).ok);
+  assert.ok(g.pass(h, other, c.at + c.minMs + 10).ok);
+});
