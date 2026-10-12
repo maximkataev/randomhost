@@ -823,6 +823,8 @@ window.I18N_DICT = {
     draft_line_broke: `{who} · слот {n} из {total} · денег нет`,
     draft_bar_broke: `Денег нет — {who} забирает всё подряд`,
     wait_player: `Ждём: {who}`,
+    wait_secs: `Ждём: {who} — ещё {n} с`,
+    play_without: `Играть без него`,
     pickup_line: `Без ставок — забирает даром: `,
     nobody: `никто`,
     cap_nobids: `Ставок пока нет`,
@@ -967,6 +969,8 @@ window.I18N_DICT = {
     draft_line_broke: `{who} · slot {n} of {total} · out of money`,
     draft_bar_broke: `Out of money — {who} takes every lot`,
     wait_player: `Waiting for {who}`,
+    wait_secs: `Waiting for {who} — {n} s left`,
+    play_without: `Play without them`,
     pickup_line: `No bids — free for the taking: `,
     nobody: `nobody`,
     cap_nobids: `No bids yet`,
@@ -1109,6 +1113,8 @@ window.I18N_DICT = {
     draft_line_broke: `{who} · θέση {n} από {total} · χωρίς λεφτά`,
     draft_bar_broke: `Τέλος τα λεφτά — ο/η {who} τα παίρνει όλα`,
     wait_player: `Περιμένουμε: {who}`,
+    wait_secs: `Περιμένουμε: {who} — ακόμα {n} δ`,
+    play_without: `Παίξτε χωρίς αυτόν`,
     pickup_line: `Καμία προσφορά — τσάμπα για: `,
     nobody: `κανείς`,
     cap_nobids: `Καμία προσφορά`,
@@ -1353,14 +1359,29 @@ function setState(s) {
   render();
 }
 
+let pauseTimer = null;
 function showPause() {
+  if (pauseTimer) { clearInterval(pauseTimer); pauseTimer = null; }
   const box = el("div", "pausebox");
-  const btn = el("button", "start", T("resume_game"));
-  btn.onclick = () => sendMsg({ type: "resume" });
-  // соло-добор ждёт конкретного человека и не дольше минуты — так и пишем, а не «Пауза»
-  const who = state && state.pausedFor ? nameOf(state.pausedFor) : "";
-  box.append(el("div", null, who ? tf("wait_player", { who }) : T("paused")), btn);
+  // соло-добор ждёт конкретного человека и не дольше минуты — так и пишем, а не «Пауза».
+  // На ожидании кнопка «Продолжить» не нужна (сервер её игнорирует): вместо неё — «Играть без него»
+  const waiting = !!(state && state.pausedFor);
+  const who = waiting ? nameOf(state.pausedFor) : "";
+  const label = el("div", null, waiting ? tf("wait_player", { who }) : T("paused"));
+  const btn = el("button", "start", waiting ? T("play_without") : T("resume_game"));
+  btn.onclick = () => sendMsg({ type: waiting ? "skip_wait" : "resume" });
+  box.append(label, btn);
   overlay.replaceChildren(box);
+  if (waiting && state.pausedUntil) {
+    // серверное время конца ожидания; offset — смещение часов клиента
+    const until = state.pausedUntil;
+    const upd = () => {
+      const n = Math.max(0, Math.ceil((until - (Date.now() + offset)) / 1000));
+      label.textContent = tf("wait_secs", { who, n });
+    };
+    upd();
+    pauseTimer = setInterval(() => { if (!overlay.contains(label)) { clearInterval(pauseTimer); pauseTimer = null; return; } upd(); }, 500);
+  }
 }
 
 // смена языка: каркасы лобби и доски строятся один раз, поэтому пересобираем их с нуля

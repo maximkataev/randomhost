@@ -626,6 +626,27 @@ test("соло-добор: ушёл единственный добирающи�
   assert.equal(g.player("p0").lots.length, 0, "его слоты так и остались пустыми");
 });
 
+test("ожидание: ручной resume не сдвигает waitUntil, в снимке есть pausedUntil", () => {
+  const g = solo();
+  g.setOnline("p0", false, 1000);
+  assert.equal(g.snapshot(1000).pausedUntil, 61000);
+  assert.deepEqual(g.resume(30000, true), [], "ручной resume при waitFor игнорируется");
+  assert.ok(g.s.paused && g.s.paused.waitUntil === 61000, "отсчёт не продлён");
+  assert.ok(g.tick(61000).some((e) => e.type === "finished"));
+});
+
+test("ожидание: skipWait завершает партию сразу, лоты сохраняются; без ожидания — ничего", () => {
+  const g = solo();
+  g.player("p0").lots.push({ name: "X", price: 1 });
+  g.setOnline("p0", false, 1000);
+  const ev = g.skipWait(2000);
+  assert.ok(ev.some((e) => e.type === "finished"));
+  assert.equal(g.s.finishedReason, "solo_gone");
+  assert.equal(g.player("p0").lots.length, 1, "лоты сохранены");
+  const h = solo();
+  assert.deepEqual(h.skipWait(1000), [], "не на ожидании — пропускать нечего");
+});
+
 test("соло-добор: вернулся за минуту — партия продолжается сама", () => {
   const g = solo();
   g.setOnline("p0", false, 1000);
