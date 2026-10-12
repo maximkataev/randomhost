@@ -70,6 +70,8 @@ async function cdp(url, phone) {
   await call("Emulation.setFocusEmulationEnabled", { enabled: true });
   // LANG=en|el — язык до загрузки страницы (i18n.js берёт сохранённый выбор); у доски он же язык комнаты
   if (process.env.LANG_UI) await call("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem("site-lang", ${JSON.stringify(process.env.LANG_UI)}); } catch (e) {}` });
+  // стенд обрыва: запоминаем сокеты страницы, чтобы закрыть их из теста (ws.close() у клиента)
+  await call("Page.addScriptToEvaluateOnNewDocument", { source: `(function(){var W=window.WebSocket;window.__socks=[];window.WebSocket=function(u,p){var s=p?new W(u,p):new W(u);window.__socks.push(s);return s;};window.WebSocket.prototype=W.prototype;["CONNECTING","OPEN","CLOSING","CLOSED"].forEach(function(k){window.WebSocket[k]=W[k];});})();` });
   await call("Page.navigate", { url });
   const evaluate = async (expr) => {
     const r = await call("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true });
@@ -277,6 +279,66 @@ async function playGame(board, phones, label, silentRound2) {
     check((await p.evaluate(OVERLAP)) === true, `${size[0]}px: звук и языки не наезжают`);
     await p.shot(`landing_${size[0]}`);
     check(p.errors.length === 0, `${size[0]}px: без ошибок JS ${p.errors.join("; ")}`);
+  }
+
+  console.log("2а. Обрыв и reload: стрелка, «Зафиксировать», без pageerror (wave-011/012/015)");
+  {
+    const r2 = await (await fetch(`${BASE}/wave/api/rooms`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: "ru" }, speed: SPEED }) })).json();
+    const b2 = await cdp(`${BASE}/wave-board.html?r=${r2.code}&h=${r2.hostToken}`);
+    await waitFor(b2, "document.body.classList.contains('host')", 8000);
+    const ps = await joinPhones(r2.code, ["Анна", "Борис", "Вера"], [[390, 844]]);
+    await click(b2, "#startbtn");
+    const reloadAndWait = async (ph) => { await ph.evaluate("location.reload()"); await wait(300); await waitFor(ph, "!!(window.wvPhone && window.wvPhone.state && window.wvPhone.state.me)", 10000); };
+    const dropAndWait = async (ph) => { await ph.evaluate("(window.__socks || []).forEach((s) => { try { s.close(); } catch (e) {} })"); await wait(300); await waitFor(ph, "!!(window.wvPhone && window.wvPhone.state && window.wvPhone.state.me)", 10000); };
+    // clue: reload и обрыв во время выбора шкалы / ввода подсказки
+    await waitFor(ps[0], "window.wvPhone.state.phase === 'clue' && !!document.querySelector('.pick button')", 15000);
+    await reloadAndWait(ps[0]);
+    check(!!(await waitFor(ps[0], "!!document.querySelector('.pick button')", 6000)), "clue: после reload снова выбор шкалы");
+    await dropAndWait(ps[1]);
+    check(!!(await waitFor(ps[1], "!!document.querySelector('.pick button')", 6000)), "clue: после ws.close() снова выбор шкалы");
+    await clueRound(ps, 0, "rc", null);
+    // guess: угол переживает reload; «Зафиксировать»+reload доходит до сервера
+    await waitFor(ps[0], "window.wvPhone.state.phase === 'guess'", 15000);
+    const gs = [];
+    for (const ph of ps) if ((await ph.evaluate("window.wvPhone.state.me.myCard")) === false) gs.push(ph);
+    check(gs.length === 2, `guess: двое угадывают (${gs.length})`);
+    await waitFor(gs[0], "!!document.querySelector('.dial.grab')", 4000);
+    // потерянный тап: «Зафиксировать» ушёл в очередь (вход по токену не подтверждён) и просрочился — об этом сказано словами
+    if (await gs[0].evaluate("window.wvPhone.state.phase === 'guess' && window.wvPhone.state.me.guess == null")) {
+      await wait(4500); // страховочный таймер входа по токену (4 с после onOpen) уже отработал
+      await gs[0].evaluate("conn.gated = true");
+      await click(gs[0], "#lock");
+      await wait(6500);
+      await gs[0].evaluate("flushQueued()");
+      const toastTxt = await gs[0].evaluate("document.getElementById('toast').classList.contains('on') ? document.getElementById('toast').textContent : ''");
+      check(toastTxt === (await gs[0].evaluate("T('lost_tap')")), `guess: просроченный «Зафиксировать» не пропал молча: «${toastTxt}»`);
+      check((await gs[0].evaluate("!document.getElementById('lock') || !document.getElementById('lock').disabled")) === true, "guess: кнопка «Зафиксировать» снова живая");
+    }
+    const a1 = await drag(gs[0], 37);
+    await wait(400);
+    await reloadAndWait(gs[0]);
+    await waitFor(gs[0], "!!document.querySelector('.dial.grab')", 6000);
+    const a1b = await gs[0].evaluate("window.wvPhone.needle");
+    check(Math.abs(a1b - a1) < 0.2 && Math.abs(a1b - 90) > 10, `guess: угол после reload ${a1b}° (был ${a1}°)`);
+    await dropAndWait(gs[0]);
+    await waitFor(gs[0], "!!document.querySelector('.dial.grab')", 6000);
+    check(Math.abs((await gs[0].evaluate("window.wvPhone.needle")) - a1) < 0.2, "guess: угол после ws.close() на месте");
+    await drag(gs[1], 141);
+    const a2 = await gs[1].evaluate("window.wvPhone.needle");
+    await click(gs[1], "#lock");
+    await gs[1].evaluate("location.reload()");
+    await wait(300);
+    await waitFor(gs[1], "!!(window.wvPhone && window.wvPhone.state && window.wvPhone.state.me)", 10000);
+    const got = await waitFor(gs[1], "window.wvPhone.state.me.guess != null || window.wvPhone.state.phase !== 'guess'", 8000);
+    check(!!got, "guess: «Зафиксировать»+reload — действие дошло до сервера");
+    if (await gs[1].evaluate("window.wvPhone.state.phase === 'guess' && window.wvPhone.state.me.guess != null")) check(Math.abs((await gs[1].evaluate("window.wvPhone.state.me.guess")) - a2) < 0.2, `guess: зафиксирован тот же угол ${a2}°`);
+    // reveal: обрыв при раскрытии
+    await click(gs[0], "#lock");
+    await waitFor(ps[0], "window.wvPhone.state.phase === 'reveal'", 10000);
+    await dropAndWait(ps[2]);
+    await reloadAndWait(ps[0]);
+    await wait(500);
+    for (const ph of ps) check(ph.errors.length === 0, `${ph.name}: reload/ws.close без ошибок JS ${ph.errors.join("; ")}`);
   }
 
   console.log("2. Партия: доска + 4 телефона");

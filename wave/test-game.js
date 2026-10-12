@@ -91,6 +91,19 @@ test("подсказка: без цифр, без полюсов, не пуст�
   assert.ok(checkClue("full moon party", { l: "Not the vibe", r: "The vibe" }).ok);
 });
 
+test("подсказка: однокоренные слова полюса отклоняются (V3, wave-001/003)", () => {
+  const hum = { l: "Humble", r: "Arrogant" };
+  for (const t of ["arrogance", "Arrogance!", "arogant", "ARROGANTLY"]) assert.strictEqual(checkClue(t, hum).reason, "pole", t);
+  const ign = { l: "Knowledgeable", r: "Ignorant" };
+  assert.strictEqual(checkClue("ignorance", ign).reason, "pole");
+  assert.strictEqual(checkClue("подростков", { l: "Кумир подростков", r: "Кумир пенсионеров" }).reason, "pole");
+  assert.strictEqual(checkClue("подросток", { l: "Старик в душе", r: "Вечный подросток" }).reason, "pole");
+  // короткие основы и разные корни — можно
+  assert.ok(checkClue("passion", { l: "Passive-aggressive note", r: "Direct note" }).ok);
+  assert.ok(checkClue("humor", hum).ok);
+  assert.ok(checkClue("котлета", { l: "Кот", r: "Собака" }).ok);
+});
+
 test("каждому четыре разные шкалы и сектор 10…170", () => {
   const g = game(6);
   const ids = new Set();

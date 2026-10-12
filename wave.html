@@ -281,7 +281,7 @@ window.I18N_DICT = {
     clue_sent: `Подсказка ушла`, clue_wait: `Написали {n} из {m}`,
     late_join: `Подсказки пишут те, кто был с начала раунда. Ты угадываешь их шкалы — жди`,
     rj_digits: `Без цифр — опиши словами`, rj_pole: `Нельзя называть полюса шкалы`, rj_empty: `Напиши хоть что-нибудь`, rj_mixed: `Не смешивай алфавиты в одном слове`, rj_late: `Ты зашёл посреди этой шкалы — угадываешь со следующей`,
-    rj_pick_first: `Сначала выбери шкалу`, rj_done: `Уже отправлено`, rj_locked: `Уже зафиксировано`, rj_own: `Свою не угадывают`,
+    lost_tap: `Связь пропала — не ушло. Нажми ещё раз`, rj_pick_first: `Сначала выбери шкалу`, rj_done: `Уже отправлено`, rj_locked: `Уже зафиксировано`, rj_own: `Свою не угадывают`,
     guess_title: `Где это на шкале?`, btn_lock: `Зафиксировать`, drag_hint: `тяни — точнее`,
     locked_title: `Зафиксировано`, locked_wait: `Ждём остальных: {n} из {m}`,
     mine_title: `Угадывают твою — молчи!`, mine_wait: `Зафиксировали {n} из {m}`,
@@ -318,7 +318,7 @@ window.I18N_DICT = {
     clue_sent: `Clue sent`, clue_wait: `{n} of {m} done`,
     late_join: `Clues come from those who were here when the round began. You'll guess their scales — hang on`,
     rj_digits: `No numbers — use words`, rj_pole: `You can't use the poles' words`, rj_empty: `Write something`, rj_mixed: `Don't mix alphabets in one word`, rj_late: `You joined mid-scale — you'll guess from the next one`,
-    rj_pick_first: `Pick a scale first`, rj_done: `Already sent`, rj_locked: `Already locked`, rj_own: `You don't guess your own`,
+    lost_tap: `Connection dropped — it didn't go through. Tap again`, rj_pick_first: `Pick a scale first`, rj_done: `Already sent`, rj_locked: `Already locked`, rj_own: `You don't guess your own`,
     guess_title: `Where is it on the scale?`, btn_lock: `Lock it in`, drag_hint: `drag to fine-tune`,
     locked_title: `Locked in`, locked_wait: `Waiting for others: {n} of {m}`,
     mine_title: `They're guessing yours — stay quiet!`, mine_wait: `{n} of {m} locked`,
@@ -355,7 +355,7 @@ window.I18N_DICT = {
     clue_sent: `Το στοιχείο στάλθηκε`, clue_wait: `Έγραψαν {n} από {m}`,
     late_join: `Στοιχεία γράφουν όσοι ήταν από την αρχή του γύρου. Εσύ μαντεύεις τις κλίμακές τους — περίμενε`,
     rj_digits: `Χωρίς αριθμούς — με λέξεις`, rj_pole: `Όχι λέξεις από τους πόλους`, rj_empty: `Γράψε κάτι`, rj_mixed: `Μην ανακατεύεις αλφάβητα στην ίδια λέξη`, rj_late: `Μπήκες στη μέση — μαντεύεις από την επόμενη κλίμακα`,
-    rj_pick_first: `Διάλεξε πρώτα κλίμακα`, rj_done: `Ήδη στάλθηκε`, rj_locked: `Ήδη κλειδώθηκε`, rj_own: `Τη δική σου δεν τη μαντεύεις`,
+    lost_tap: `Έπεσε η σύνδεση — δεν στάλθηκε. Πάτα ξανά`, rj_pick_first: `Διάλεξε πρώτα κλίμακα`, rj_done: `Ήδη στάλθηκε`, rj_locked: `Ήδη κλειδώθηκε`, rj_own: `Τη δική σου δεν τη μαντεύεις`,
     guess_title: `Πού είναι στην κλίμακα;`, btn_lock: `Κλείδωσέ το`, drag_hint: `σύρε για ακρίβεια`,
     locked_title: `Κλειδώθηκε`, locked_wait: `Περιμένουμε: {n} από {m}`,
     mine_title: `Μαντεύουν τη δική σου — σιωπή!`, mine_wait: `Κλείδωσαν {n} από {m}`,
@@ -391,6 +391,23 @@ let clueErr = null;
 let needle = 90; // стрелка на экране угадывания, пока не зафиксирована
 let needleKey = null;
 let sentLock = false;
+let waitJoin = true; // холодная загрузка с токеном: до подтверждения входа форму не показываем (≤ 4 с)
+let resumedLock = null; // для какой карточки уже повторили «Зафиксировать» после reload
+// угол стрелки и нажатый «Зафиксировать» переживают reload: {k: карточка, a: угол, locked?}
+const needleStoreKey = () => "wave-needle-" + CODE;
+function needleLoad() {
+  try { const v = JSON.parse(localStorage.getItem(needleStoreKey()) || "null"); return v && typeof v.a === "number" && v.k ? v : null; } catch (e) { return null; }
+}
+let needleWriteAt = 0, needleWriteT = null;
+function needleSave(locked) {
+  const put = () => {
+    needleWriteAt = Date.now();
+    try { localStorage.setItem(needleStoreKey(), JSON.stringify(locked ? { k: cardKey(), a: needle, locked: true } : { k: cardKey(), a: needle })); } catch (e) {}
+  };
+  clearTimeout(needleWriteT);
+  if (locked || Date.now() - needleWriteAt >= 150) return put();
+  needleWriteT = setTimeout(put, 150 - (Date.now() - needleWriteAt)); // не чаще раза в 150 мс, но последнее значение не теряем
+}
 let onKeys = null; // клавиатура на экране угадывания
 document.addEventListener("keydown", (e) => { if (onKeys && screenKey.startsWith("guess:")) onKeys(e); });
 const tokenKey = () => "wave-token-" + CODE;
@@ -744,7 +761,11 @@ function renderGuess() {
     document.getElementById("lw").textContent = tpl("locked_wait", { n, m });
     return;
   }
-  if (needleKey !== cardKey()) { needleKey = cardKey(); needle = 90; sentLock = false; }
+  if (needleKey !== cardKey()) {
+    needleKey = cardKey(); needle = 90; sentLock = false;
+    const sv = needleLoad();
+    if (sv && sv.k === needleKey && sv.a >= 0 && sv.a <= 180) needle = sv.a;
+  }
   const key = "guess:" + cardKey() + wvLang();
   if (screenKey === key) return;
   show(`${headHtml(roundLabel())}${clueBox(card)}${dialHtml({ needle }, card.l, card.r)}<div class="grow"></div>
@@ -757,6 +778,7 @@ function renderGuess() {
   let lastDetent = Math.round(needle / 3);
   const set = (a) => {
     needle = Math.round(Math.max(0, Math.min(180, a)) * 10) / 10;
+    needleSave(false);
     nd.style.setProperty("--a", needle);
     track.style.setProperty("--sx", (needle * 6).toFixed(0) + "px");
     const d = Math.round(needle / 3);
@@ -797,6 +819,7 @@ function renderGuess() {
     document.getElementById("lock").disabled = true;
     wvSfx.lock();
     wvVibrate(35);
+    needleSave(true);
     csend({ type: "lock", angle: needle });
     unlockLater(() => { sentLock = false; const b = document.getElementById("lock"); if (b) b.disabled = false; });
   };
@@ -862,9 +885,13 @@ function render() {
   if (dead || !state) return;
   if (!me) {
     if (screen === "kicked" || screen === "replaced" || screen === "enter") return;
+    // с токеном ждём подтверждения входа, а не мигаем формой имени
+    if (waitJoin && token) return renderCenter("wait_title");
     return renderEnter();
   }
   if (!mine()) return renderEnter();
+  // вошли (joined), а состояние с «me» ещё не пришло: renderClue/Guess/Reveal читают state.me (wave-015)
+  if (!state.me && ["clue", "guess", "reveal"].includes(state.phase)) return;
   screen = "game";
   paint(phaseColor());
   switch (state.phase) {
@@ -909,19 +936,42 @@ window.addEventListener("langchange", () => {
 // ---------- связь ----------
 let prevPhase = null, needJoin = true, pendingFlush = false;
 // что нажато во время обрыва — отправляем, если ещё актуально (иначе сервер ответил бы «отказ» на давнее действие)
-function flushQueued() {
-  conn.flush((q) => {
-    const mc = state && state.me;
-    if (!mc) return false;
-    const cx = sendCtx.get(q) || {};
-    const c = mc.card;
-    switch (q.type) {
-      case "pick": case "reroll": return state.phase === "clue" && cx.r === roundKey() && !!c && c.pick == null;
-      case "clue": return state.phase === "clue" && cx.r === roundKey() && !!c && c.pick != null && !c.clue;
-      case "lock": return state.phase === "guess" && cx.c === cardKey() && mc.guess == null && !mc.myCard;
-      default: return true;
-    }
-  });
+function queuedWanted(q) {
+  const mc = state && state.me;
+  if (!mc) return false;
+  const cx = sendCtx.get(q) || {};
+  const c = mc.card;
+  switch (q.type) {
+    case "pick": case "reroll": return state.phase === "clue" && cx.r === roundKey() && !!c && c.pick == null;
+    case "clue": return state.phase === "clue" && cx.r === roundKey() && !!c && c.pick != null && !c.clue;
+    case "lock": return state.phase === "guess" && cx.c === cardKey() && mc.guess == null && !mc.myCard;
+    default: return true;
+  }
+}
+function flushQueued() { conn.flush(queuedWanted, onDropped); }
+// действие из очереди не ушло (просрочено 6 с или очередь переполнена): кнопка снова живая и сказано словами.
+// Если действие уже неактуально (фаза сменилась, сервер всё принял) — молчим, это не потеря.
+function onDropped(q) {
+  if (!q || dead) return;
+  if (!queuedWanted(q) && state && state.me) return;
+  if (q.type === "lock") { sentLock = false; needleSave(false); const b = document.getElementById("lock"); if (b) b.disabled = false; }
+  else if (q.type === "clue") { const b = document.getElementById("sendbtn"); if (b) b.disabled = false; }
+  else if (q.type === "pick" || q.type === "reroll") { screenKey = ""; render(); }
+  else return;
+  toast(T("lost_tap"));
+}
+// после reload: «Зафиксировать» нажат, а сервер угла не получил — отправляем тот же угол ещё раз (сервер идемпотентен)
+function resumeLock() {
+  const mc = state && state.me;
+  if (!mc || state.phase !== "guess" || mc.myCard || mc.guess != null || sentLock) return;
+  const sv = needleLoad();
+  if (!sv || !sv.locked || sv.k !== cardKey() || resumedLock === sv.k) return;
+  resumedLock = sv.k;
+  needle = sv.a;
+  sentLock = true;
+  const b = document.getElementById("lock"); if (b) b.disabled = true;
+  csend({ type: "lock", angle: sv.a });
+  unlockLater(() => { sentLock = false; const bb = document.getElementById("lock"); if (bb) bb.disabled = false; });
 }
 function onMessage(m) {
   switch (m.type) {
@@ -936,6 +986,7 @@ function onMessage(m) {
       render();
       // вернулись по токену: действия, нажатые в обрыв, отправляем, когда сервер снова признал нас
       if (pendingFlush && state.me) { pendingFlush = false; flushQueued(); }
+      resumeLock();
       break;
     case "joined": {
       const was = me;
@@ -962,7 +1013,7 @@ function onMessage(m) {
         if (b) b.disabled = false;
         break;
       }
-      if (m.action === "lock") { sentLock = false; screenKey = ""; }
+      if (m.action === "lock") { sentLock = false; screenKey = ""; needleSave(false); }
       if (m.action === "pick" || m.action === "reroll") screenKey = "";
       if (T("rj_" + m.reason) !== "rj_" + m.reason) toast(T("rj_" + m.reason));
       render();
@@ -973,7 +1024,7 @@ function onMessage(m) {
       if (["room_full", "token_gone", "bad_name", "name_taken"].includes(m.error)) {
         if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
         joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
-        me = null;
+        me = null; waitJoin = false;
         renderEnter();
       }
       break;
@@ -997,10 +1048,13 @@ function onMessage(m) {
 function start() {
   if (!CODE) return renderLanding();
   renderCenter("wait_title");
+  if (token) setTimeout(() => { waitJoin = false; if (!me && !dead) render(); }, 4000);
+  else waitJoin = false;
   const banner = document.getElementById("conn");
   conn = wvConnect({
     code: CODE,
     onMessage,
+    onDrop: onDropped,
     onGone: renderExpired,
     // переподключились — снова входим своим токеном (hello придёт первым)
     onOpen: () => {

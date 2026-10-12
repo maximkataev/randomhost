@@ -37,4 +37,23 @@ for (const lang of CONTENT.LANGS) {
     // полюс из одних коротких слов не должен блокировать обычные подсказки
     for (const s of CONTENT[lang]) assert.ok(checkClue("🙂", s).ok, s.id);
   });
+
+  test(`${lang}: слова полюсов ≥ 4 букв отвергаются как подсказка (V3)`, () => {
+    // служебные слова полюса («Все», «Никто») сами по себе не полюс — их checkClue пропускает намеренно
+    const SERVICE = new Set(("все всё это как для что так там тут или при без над под про его еще уже очень чем где кто мне нас вас них она они оно был быть свой твой мой себя " +
+      "the and for not you are was but with very too all any can get its has have your our their from that this than " +
+      "και για που από στο στη στην στον στα τον την του της των δεν μην πολύ όλα ένα μια είναι σαν").split(" ").map((w) => normalize(w)));
+    for (const s of CONTENT[lang]) {
+      const stems = (x) => new Set(normalize(x).split(" "));
+      const L = stems(s.l), R = stems(s.r);
+      for (const [pole, own, other] of [[s.l, L, R], [s.r, R, L]]) {
+        for (const raw of pole.split(/\s+/)) {
+          const w = raw.replace(/[^\p{L}]/gu, "");
+          const st = normalize(w);
+          if (Array.from(w).length < 4 || st.length < 3 || SERVICE.has(st) || other.has(st) || !own.has(st)) continue;
+          assert.strictEqual(checkClue(w, s).reason, "pole", `${s.id}: «${w}» из «${pole}» принято`);
+        }
+      }
+    }
+  });
 }
