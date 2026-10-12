@@ -57,7 +57,11 @@ const PROD_ENV = {
 };
 const { INPUT_STALE_MS: STEER_TTL, GHOST_TTL_MS, PONG_MISSES, ANON_TTL_MS, MAX_ANON_PER_IP } = PROD_ENV;
 const SEND_BUFFER_LIMIT = Number(process.env.SEND_BUFFER_LIMIT || 262144);
-const MSG_RATE = Number(process.env.MSG_RATE || 70);             // руль до 30/с + пинги
+const MSG_RATE = Number(process.env.MSG_RATE || 70);
+// Сверх общего MSG_RATE ввод `i` не выбрасывается молча (иначе пропадали рывок и финальный «0» — floe-014/rapids-036), а
+// запоминается: последнее значение применится в ближайшем тике. Разбирать JSON разрешено только до жёсткого потолка в секунду;
+// дальше — отбрасываем, как и раньше (защита от флуда не ослаблена, общий лимитер не отключён)
+const MSG_HARD = Math.max(MSG_RATE, Number(process.env.MSG_HARD || 120));             // руль до 30/с + пинги
 const MAX_MSG_BYTES = 1024;
 const LOG = "[rapids]";
 // только в разработке: RAPIDS_CFG='{"LEN":800}' — короткие заплывы для тестов
@@ -244,6 +248,7 @@ function tickRoom(room, t) {
   // паузы процесса игра не прыгает; пол 0,02 с — два тика подряд не удваивают время
   const dt = room.lastTickAt ? Math.min(MAX_DT, Math.max(MIN_DT, (t - room.lastTickAt) / 1000)) : TICK_MS / 1000;
   room.lastTickAt = t;
+  flushPendingInput(room);
   const s0 = performance.now();
   g.step(dt);
   const s1 = performance.now();
@@ -400,7 +405,7 @@ function onConnection(room, ws, ip) {
   send(ws, { type: "hello", code: room.code, cfg: cfgFor(room.game), tick: TICK_MS, max: MAX_PLAYERS });
   send(ws, rosterMsg(room));
   ws.on("message", (raw) => {
-    if (!rateOk(client)) return;
+    if (!rateOk(client)) return coalesceOver(client, raw);
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     try { handle(room, client, msg); } catch (err) { console.error(`${LOG} ${room.code}: обработка упала:`, err); send(ws, { type: "error", error: "server_error" }); }
@@ -429,6 +434,25 @@ function releasePlayer(room, client, id) {
 }
 
 const rateOk = (client) => netRateOk(client, MSG_RATE);
+
+// сообщение пришло сверх MSG_RATE: если это руль и до потолка MSG_HARD ещё есть запас — запоминаем последний руль
+// (финальный «0» не теряется, rapids-036); рывок `t` сверх лимита не копится — он разовый и защищён перезарядкой
+function coalesceOver(client, raw) {
+  if (!client.playerId || !client.rl || client.rl.n > MSG_HARD) return;
+  let msg;
+  try { msg = JSON.parse(raw); } catch { return; }
+  if (!msg || typeof msg !== "object" || msg.type !== "i") return;
+  client.pendingI = { st: msg.st, s: msg.s };
+}
+// применяем отложенный руль раз за тик (после этого очередь пуста)
+function flushPendingInput(room) {
+  for (const c of room.sockets) {
+    if (!c.pendingI) continue;
+    const m = c.pendingI;
+    c.pendingI = null;
+    if (c.playerId) handle(room, c, { type: "i", st: m.st, s: m.s });
+  }
+}
 
 // вход/reload в фазе «итог»: событие over было один раз при финише — повторяем его вошедшему (late), иначе итог не нарисовать
 function sendLateOver(room, client) {

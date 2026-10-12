@@ -375,6 +375,33 @@ function rawWs(code) {
       assert(held < free - 20, `со сбросом руля сдвиг ${held.toFixed(0)}, без — ${free.toFixed(0)}`);
     });
 
+    await test("сверх лимита руль не теряется: последний руль из пачки >70 сообщений применяется; флуд 5000/с — сервер жив", async () => {
+      const { makeCourse, DEFAULTS } = require("./game");
+      const r = await NetBot.createRoom(BASE);
+      const host = await NetBot.connect({ base: BASE, code: r.code, name: "Хост", hostToken: r.hostToken, think: false });
+      const ws = await rawWs(r.code);
+      ws.send(JSON.stringify({ type: "join", name: "Спамер" }));
+      await wait(300);
+      const me = ws.msgs.find((m) => m.type === "joined").playerId;
+      host.send({ type: "start" });
+      for (let i = 0; i < 160 && !ws.msgs.some((m) => m.type === "s" && m.ph === "race"); i++) await wait(50);
+      const cfg = Object.assign({}, DEFAULTS, ws.msgs.find((m) => m.type === "hello").cfg);
+      const offOf = (s) => { const row = s.p.find((p) => p[0] === me); return row[1] - makeCourse(s.sd, cfg).riverCx(row[2]); };
+      const snapLast = () => ws.msgs.filter((m) => m.type === "s").pop();
+      const off0 = offOf(snapLast());
+      const dir = off0 > 0 ? -1 : 1;
+      // первые 70 — «руль 0» (принимаются), следующие 30 — «руль к дальнему берегу» (сверх лимита: раньше пропадали)
+      for (let i = 1; i <= 100; i++) ws.send(JSON.stringify({ type: "i", st: i <= 70 ? 0 : dir, s: i }));
+      await wait(900);
+      const moved = Math.abs(offOf(snapLast()) - off0);
+      assert(moved > 25, "руль из сообщений сверх лимита применён, сдвиг " + moved.toFixed(0));
+      for (let i = 0; i < 5000; i++) ws.send(JSON.stringify({ type: "i", st: 1, s: 1000 + i }));
+      await wait(400);
+      const h = await (await fetch(BASE + "/rapids/api/health")).json();
+      assert.strictEqual(h.ok, true);
+      ws.close(); host.close();
+    });
+
     await test("рестарт сервера: комната и токены живы, партия отменена", async () => {
       const r4 = await NetBot.createRoom(BASE);
       const a = await NetBot.connect({ base: BASE, code: r4.code, name: "Ася", hostToken: r4.hostToken, think: false });

@@ -718,7 +718,10 @@ window.I18N_DICT = {
   function sendInput() {
     readInput();
     const t = performance.now();
-    if (net.me && (input.st !== input.sent || t - input.sentAt > 500)) {
+    // руль — не чаще раза в 33 мс (кадры 120 Гц иначе шлют до 120/с и сервер молча съедал хвост, rapids-036);
+    // обнуление уходит сразу; таймер 100 мс доставит последнее значение; пульс раз в 0,5 с
+    const changed = input.st !== input.sent;
+    if (net.me && ((changed && t - input.sentAt >= 33) || (changed && input.st === 0) || t - input.sentAt > 500)) {
       send({ type: "i", st: input.st, s: ++input.seq });
       input.sent = input.st; input.sentAt = t;
     }
