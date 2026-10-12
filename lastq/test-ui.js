@@ -504,6 +504,8 @@ async function run() {
         await A.shot("p_freveal_Аня");
         // T-W0-06: телефон получает только свой шаг (+fpos), чужие итоги и список ответивших не уходят
         check((await A.evaluate("(() => { const s = window.lqPhone.state; return (s.fsteps || []).length <= 1 && (s.fsteps || []).every((x) => x.id === window.lqPhone.me) && s.answered == null; })()")) === true, "телефон (freveal): в fsteps только свой шаг, answered не приходит");
+        // T-W3-23 (lastq-046): пока своего шага нет — не пустой экран, а «Раскрыто k из N» и своя очередь
+        check((await A.evaluate("(() => { const k = document.getElementById('frk'); return !k || (/\\d/.test(k.textContent) && !!document.getElementById('frt') && /\\d/.test(document.getElementById('frt').textContent + 'x1')); })()")) === true, "телефон (freveal): до своего шага — счётчик раскрытия");
         continue;
       }
       if (s.phase === "verdict" || s.phase === "reveal" || s.phase === "cell") { await wait(200); continue; }
