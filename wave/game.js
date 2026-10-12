@@ -28,6 +28,12 @@ const CLASH_MIN_LEN = 7;
 const CLASH_PREFIX_SLACK = 1;
 const CLASH_LEN_DELTA = 3;
 
+// RULE_U34_WAVE_RULES (класс B, по умолчанию выкл. — «как сейчас»; U-34/35/36): строгий валидатор (числа словом, перевод-
+// заимствование), «Изменить» отправленную подсказку, раскрытие с «выдержкой» 2,8 с после плашек и заставка ×2 на 5 с.
+// Сервер выставляет game.waveRules из env; без флага ничего из этого не работает.
+const REVEAL_HOLD = 2800;
+const INTRO2_MS = 5000;
+
 const T = {
   intro: 3000, // заставка раунда
   clue: 45000 + EXTRA_MS, // выбор шкалы + подсказка (§3) + добавка
@@ -99,6 +105,58 @@ function points(angle, target) {
 }
 
 // Служебные слова полюсов не запрещают подсказку: «Все знают» — не повод отклонять «про всё сразу»
+// ---- строгий валидатор (RULE_U34_WAVE_RULES): числа словом и перевод-заимствование ----
+// Числительные по формам; разбор по целому слову без диакритики (ё→е, ς→σ). «семь гномов» — идиома, не координата:
+// подсказка отклоняется как "numeral" только если ВСЕ значимые слова — числительные/служебные/короче трёх букв.
+const NUM_RU = /^(ноль|нуль|нуля|нулю|нулем|одн(о|а|у|ой|им|ого|ому|ом|ою|и|их|ими|ем|ах)?|один(надцат\p{L}*)?|дв(а|е|ух|ум|умя|ое|оих|оим|ойк\p{L}*)|тр(и|ех|ем|емя|ое|оих|оим|ойк\p{L}*)|четыр(е|ех|ем|емя|надцат\p{L}*)|четверо|пят(ь|и|ью|еро|надцат\p{L}*|ерк\p{L}*)|шест(ь|и|ью|еро|надцат\p{L}*)|сем(ь|и|ью|еро|надцат\p{L}*)|вос(ем|ьм)(ь|и|ью|еро|надцат\p{L}*)|восемь|девят(ь|и|ью|еро|надцат\p{L}*)|десят(ь|и|ью|ок|ка|ки|ков|ым)|двадцат(ь|и|ью)|тридцат(ь|и|ью)|сорок|пятьдесят|пятидесяти|шестьдесят|шестидесяти|семьдесят|семидесяти|восемьдесят|восьмидесяти|девяносто|девяноста|сто|ста|двести|двухсот|триста|трехсот|четыреста|четырехсот|пятьсот|пятисот|шестьсот|шестисот|семьсот|семисот|восемьсот|восьмисот|девятьсот|девятисот|тысяч(а|и|у|е|ей|ами|ах|ный|ная|ное)?|миллион(а|ов|у|е|ы|ом)?|миллиард(а|ов|у|е|ы|ом)?|полтора|полторы)$/u;
+const NUM_EN = /^(zero|oh|nought|naught|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|thousands?|millions?|billions?|dozen|first|second|third|fourth|fifth|tenth|once|twice)$/u;
+const NUM_EL = /^(μηδεν|ενα|ενας|μια|μιας|μια|δυο|δυο|τρια|τρεις|τεσσερα|τεσσερις|πεντε|εξι|επτα|εφτα|οκτω|οχτω|εννεα|εννια|δεκα|ενδεκα|δωδεκα|δεκατρια|δεκατεσσερα|δεκαπεντε|δεκαεξι|δεκαεπτα|δεκαοκτω|δεκαεννεα|εικοσι|τριαντα|σαραντα|πενηντα|εξηντα|εβδομηντα|ογδοντα|ενενηντα|εκατο|εκατον|διακοσια|τριακοσια|τετρακοσια|πεντακοσια|χιλια|χιλιαδες|εκατομμυριο|εκατομμυρια|δισεκατομμυριο)$/u;
+// связки вокруг числа: «ровно семь», «ten out of ten», «on the ten» — смысла не добавляют
+const NUM_FILLER = new Set(("ровно около почти ещё еще из от до на по за и или штук штуки раз раза баллов балла балл очков очка очко процентов процента процент градусов градуса градус " +
+  "out of on in at to the an and or by for from over about than more less exactly just only almost nearly points point out " +
+  "ακριβως περιπου μονο σχεδον απο στα στο και η ή της του σε για πεντε").split(" "));
+const stripMarks = (w) => w.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ς/g, "σ").replace(/ё/g, "е").toLowerCase();
+function numeralOnly(t) {
+  const words = t.split(/[\s\-–—,.;:!?«»"“”()]+/u).map(stripMarks).filter((w) => /\p{L}/u.test(w));
+  let nums = 0;
+  for (const w of words) {
+    if (NUM_RU.test(w) || NUM_EN.test(w) || NUM_EL.test(w)) { nums++; continue; }
+    if (w.length <= 2 || NUM_FILLER.has(w)) continue;
+    return false;
+  }
+  return nums > 0;
+}
+// «офис» ↔ «Office», «пират» ↔ «Pirate»: слово из другого алфавита, звучащее как слово полюса. Оба слова сводим к грубой
+// латинице (translit → canon) и сравниваем по общему префиксу (основа от 4 знаков, расхождение ≤ 1 знак в конце).
+const TR_RU = { а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "j", з: "z", и: "i", й: "i", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "ts", ч: "ch", ш: "sh", щ: "sh", ъ: "", ы: "i", ь: "", э: "e", ю: "u", я: "a" };
+const TR_EL = { α: "a", β: "v", γ: "g", δ: "d", ε: "e", ζ: "z", η: "i", θ: "t", ι: "i", κ: "k", λ: "l", μ: "m", ν: "n", ξ: "ks", ο: "o", π: "p", ρ: "r", σ: "s", τ: "t", υ: "i", φ: "f", χ: "h", ψ: "ps", ω: "o" };
+function translit(w) {
+  w = stripMarks(w).replace(/ου/g, "u").replace(/ει/g, "i").replace(/αι/g, "e").replace(/μπ/g, "b").replace(/ντ/g, "d");
+  return Array.from(w).map((ch) => TR_RU[ch] !== undefined ? TR_RU[ch] : TR_EL[ch] !== undefined ? TR_EL[ch] : ch).join("");
+}
+// грубая «каноническая» запись: c перед e/i/y → s, иначе k; ph→f; ck→k; y→i; w→v; x→ks; q→k; h выкидываем (th/kh/ch→t/k/c); двойные → одна; конечное e/i/y/a/o — отбрасываем
+function canon(w) {
+  let r = w.toLowerCase().replace(/[^a-z]/g, "");
+  r = r.replace(/ph/g, "f").replace(/ck/g, "k").replace(/c(?=[eiy])/g, "s").replace(/c/g, "k").replace(/q/g, "k").replace(/x/g, "ks").replace(/w/g, "v").replace(/y/g, "i").replace(/(.)\1+/g, "$1");
+  r = r.replace(/h/g, "");
+  return r.replace(/[eiyao]$/, "");
+}
+const scriptOf = (w) => (/[a-z]/i.test(w) ? "lat" : /[а-яё]/i.test(w) ? "cyr" : /[α-ωάέήίόύώϊϋΐΰ]/i.test(w) ? "grk" : "");
+function translitClash(clueWord, scale) {
+  const sw = scriptOf(clueWord);
+  if (!sw) return false;
+  const cw = canon(translit(clueWord));
+  if (cw.length < 3) return false;
+  for (const raw of (scale.l + " " + scale.r).split(/[\s\-]+/)) {
+    const pw = raw.replace(/[^\p{L}]/gu, "");
+    if (!pw || scriptOf(pw) === sw || pw.length < 4) continue; // тот же алфавит ловят стемы
+    const cp = canon(translit(pw));
+    const m = Math.min(cp.length, cw.length);
+    if (m >= 3 && lcp(cp, cw) >= m - (m >= 5 ? 1 : 0) && Math.abs(cp.length - cw.length) <= 1) return true;
+  }
+  return false;
+}
+
 const STOP = new Set(("все всё это как для что так там тут или при без над под про его еще уже очень чем где кто мне нас вас них она они оно был быть свой твой мой себя " +
   "the and for not you are was but with very too all any can get its has have your our their from that this than " +
   "και για που από στο στη στην στον στα τον την του της των δεν μην πολύ όλα ένα μια είναι σαν").split(" ").map((w) => normalize(w)));
@@ -133,11 +191,15 @@ function stemClash(p, w) {
  * Подсказка по правилам (§4): без цифр и без слов полюсов. Слова сравниваем по основам (normalize):
  * «горячий» при полюсе «Горячее» — нельзя. Основы короче трёх букв («не», «в») и служебные слова не считаются.
  */
-function checkClue(text, scale) {
+function checkClue(text, scale, opts) {
+  const strict = !!(opts && opts.strict);
   const t = cleanText(text, CLUE_MAX);
   if (/[\p{N}\u{1F51F}]/u.test(t)) return { ok: false, reason: "digits" };
-  // буквы или эмодзи обязательны: «🔥🔥» — подсказка, «!!» — нет
-  if (!/[\p{L}\p{Extended_Pictographic}]/u.test(t) || (Array.from(t).length < CLUE_MIN && !/\p{Extended_Pictographic}/u.test(t))) return { ok: false, reason: "empty" };
+  // буквы или эмодзи обязательны: «🔥🔥» — подсказка, «!!» — нет; одна буква («a») — отдельный отказ «short»
+  if (!/[\p{L}\p{Extended_Pictographic}]/u.test(t)) return { ok: false, reason: "empty" };
+  if (Array.from(t).length < CLUE_MIN && !/\p{Extended_Pictographic}/u.test(t)) return { ok: false, reason: "short" };
+  // числа словом («семь», «ten out of ten») — та же координата, что цифра; «семь гномов» остаётся (RULE_U34_WAVE_RULES)
+  if (strict && numeralOnly(t)) return { ok: false, reason: "numeral" };
   if (scale) {
     // слово, общее для обоих полюсов («pet» в «Normal pet ↔ Questionable pet»), направление не выдаёт — его можно
     const stems = (x) => new Set(normalize(x).split(" ").filter((w) => w.length >= 3 && !STOP.has(w)));
@@ -145,11 +207,23 @@ function checkClue(text, scale) {
     const poles = new Set([...L, ...R].filter((w) => !(L.has(w) && R.has(w))));
     // двойники из другого алфавита («Живoe», «Hоt», «κρύo»): слово из смеси алфавитов не принимаем
     if (t.split(/\s+/).some((w) => scripts(w.replace(/[^\p{L}]/gu, "")) > 1)) return { ok: false, reason: "mixed" };
-    const words = normalize(t.replace(/\u200D/g, "")).split(" ");
     const clash = (w) => poles.has(w) || [...poles].some((p) => stemClash(p, w));
-    if (words.some(clash)) return { ok: false, reason: "pole" };
+    // по одному слову: так отказ называет именно то слово, которое автор написал («Слово «горячий» — с шкалы»)
+    const raw = t.replace(/\u200D/g, "").split(/\s+/).filter(Boolean);
+    for (const rw of raw) {
+      const ws = normalize(rw).split(" ").filter(Boolean);
+      if (ws.some(clash)) return { ok: false, reason: "pole", word: rw.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "") || rw };
+    }
+    if (strict) for (const rw of raw) if (translitClash(rw.replace(/[^\p{L}]/gu, ""), scale)) return { ok: false, reason: "pole", word: rw.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "") };
   }
   return { ok: true, text: t };
+}
+
+// когда на клиенте вскрыта последняя плашка, мс от начала раскрытия (зеркало wvRevealPlan(n).done)
+function revealDone(n) {
+  const open = 200 + n * 120 + 700;
+  const badge0 = open + 650;
+  return n ? badge0 + (n - 1) * 450 + (n > 1 ? 300 : 0) + 400 : open + 700;
 }
 
 class Game {
@@ -158,6 +232,7 @@ class Game {
     this.rnd = rnd;
     this.content = content || {};
     this.ghostOut = false; // RULE_U08_GHOST_OUT: старт без тех, кто сейчас офлайн (выставляет сервер из env)
+    this.waveRules = false; // RULE_U34_WAVE_RULES: строгий валидатор, «Изменить», выдержка раскрытия (выставляет сервер из env)
   }
 
   static create({ settings, code = "", rnd, content } = {}) {
@@ -329,7 +404,8 @@ class Game {
     this.clearRound();
     s.phase = "intro";
     s.phaseStart = now;
-    s.phaseEnd = now + T.intro;
+    // RULE_U34_WAVE_RULES: заставка ×2 с тройкой лидеров — 5 с, а не мимолётные 3 (U-36)
+    s.phaseEnd = now + (this.waveRules && s.ri > 0 ? INTRO2_MS : T.intro);
     return [{ type: "round", index: s.ri, mult: this.mult() }];
   }
 
@@ -350,6 +426,7 @@ class Game {
     s.cards = {};
     ps.forEach((p, i) => {
       p.played = (p.played || 0) + 1;
+      p.rs = p.score; // счёт на начало раунда: «+N за раунд» в снимке фазы scores (T-W3-22, wave-041)
       const options = scales.slice(i * OPTIONS, (i + 1) * OPTIONS);
       while (options.length < 2) options.push(scales[options.length % scales.length]);
       s.cards[p.id] = { options, pick: null, rerolls: 0, target: TARGET_MIN + this.rnd(TARGET_MAX - TARGET_MIN + 1), clue: null, at: null };
@@ -399,11 +476,16 @@ class Game {
     const c = s.cards[id];
     if (!c) return { ok: false, reason: "not_in_round" };
     if (c.pick == null) return { ok: false, reason: "pick_first" };
-    if (c.clue) return { ok: false, reason: "done" };
-    const r = checkClue(text, c.options[c.pick]);
+    // «Изменить» (RULE_U34_WAVE_RULES, U-35): пока идёт фаза подсказок, отправленную можно заменить — тем же правилам;
+    // без флага — как раньше («Уже отправлено»)
+    if (c.clue && !this.waveRules) return { ok: false, reason: "done" };
+    const r = checkClue(text, c.options[c.pick], { strict: this.waveRules });
     if (!r.ok) return r;
+    const was = !!c.clue;
     c.clue = r.text;
     c.at = now;
+    // замена не «клацает» второй раз и не двигает фазу: «все написали» уже учтено при первой отправке
+    if (was) return { ok: true, events: [] };
     return { ok: true, events: [{ type: "clued", playerId: id }, ...this.maybeAdvance(now)] };
   }
 
@@ -426,7 +508,6 @@ class Game {
     }
     for (let i = q.length - 1; i > 0; i--) { const j = this.rnd(i + 1); [q[i], q[j]] = [q[j], q[i]]; }
     s.queue = q;
-      p.rs = p.score; // счёт на начало раунда: «+N за раунд» в снимке фазы scores (T-W3-22, wave-041)
     s.qi = -1;
     return this.nextCard(now);
   }
@@ -524,7 +605,10 @@ class Game {
     s.history.push({ author: authorId, l: sc.l, r: sc.r, clue: card.clue, target, guesses: { ...s.guesses } });
     s.phase = "reveal";
     s.phaseStart = now;
-    s.phaseEnd = now + T.reveal + REVEAL_STEP * raw.length;
+    // Без флага — как раньше (3,8 с + 0,45 с на стрелку). С RULE_U34_WAVE_RULES (U-36): после последней плашки ещё
+    // REVEAL_HOLD (2,8 с), чтобы реплику ведущего успели прочесть. revealDone — та же формула, что wvRevealPlan(n).done
+    // в wave-shared.js (держать в синхроне).
+    s.phaseEnd = now + (this.waveRules ? revealDone(raw.length) + REVEAL_HOLD : T.reveal + REVEAL_STEP * raw.length);
     return [{ type: "reveal", wave }];
   }
 
@@ -706,6 +790,7 @@ class Game {
       avatarChoices: s.phase === "lobby" || s.phase === "finished" ? AVATAR_CHOICES : null,
       clueMax: CLUE_MAX,
       bands: BANDS,
+      rules: { editClue: !!this.waveRules }, // аддитивно: старый клиент поле не читает — кнопки «Изменить» у него нет
       me: mePart,
       players: s.players.map((p) => ({
         id: p.id,
@@ -716,6 +801,8 @@ class Game {
         left: p.left,
         score: p.score,
         skipped: p.stats ? p.stats.skipped || 0 : 0, // 🐌: сколько раз не успел с подсказкой (спека §3)
+        // очки за только что сыгранный раунд — телефону и доске на фазе scores (после reload доски «+0» не показываем)
+        ...(s.phase === "scores" && typeof p.rs === "number" ? { round: Math.max(0, p.score - p.rs) } : {}),
         // вошедший после финала (ни одной карточки) — не участник итогов; снимок прошлой версии без поля — участник
         ...(s.phase === "finished" ? { played: p.played === undefined ? true : p.played > 0 || p.score > 0 } : {}),
       })),
@@ -723,6 +810,4 @@ class Game {
   }
 }
 
-module.exports = { Game, EXTRA_MS, ROUNDS, T, REVEAL_STEP, DEFAULTS, OPTIONS, REROLLS, MAX_PLAYERS, MIN_PLAYERS, CLUE_MAX, BANDS, WAVE_BONUS, REACTIONS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText, checkClue, stemClash, points, nameKey };
-        // очки за только что сыгранный раунд — телефону и доске на фазе scores (после reload доски «+0» не показываем)
-        ...(s.phase === "scores" && typeof p.rs === "number" ? { round: Math.max(0, p.score - p.rs) } : {}),
+module.exports = { Game, revealDone, REVEAL_HOLD, INTRO2_MS, EXTRA_MS, ROUNDS, T, REVEAL_STEP, DEFAULTS, OPTIONS, REROLLS, MAX_PLAYERS, MIN_PLAYERS, CLUE_MAX, BANDS, WAVE_BONUS, REACTIONS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText, checkClue, stemClash, points, nameKey };

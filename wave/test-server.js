@@ -324,6 +324,36 @@ test("сервер", async (t) => {
     for (const c of [b, ...ps]) c.close();
   });
 
+  // ---- T-W3-26: отказ называет слово с шкалы; без флага «Изменить» нет ----
+  await t.test("rejected несёт word; «short»; без RULE_U34_WAVE_RULES вторая подсказка — «done», rules.editClue=false", async () => {
+    const room = await createRoom({ lang: "ru" });
+    const b = await board(room.code, room.hostToken);
+    const ps = [await player(room.code, "Оля"), await player(room.code, "Петя"), await player(room.code, "Вася")];
+    b.send({ type: "start" });
+    const p = ps[0];
+    await p.wait(statePred((s) => s.phase === "clue" && s.me && s.me.card));
+    p.send({ type: "pick", i: 0 });
+    const st = await p.wait(statePred((s) => s.me.card.pick === 0));
+    assert.strictEqual(st.state.rules.editClue, false);
+    const c = p.state.me.card;
+    const pole = c.l.split(/\s+/).sort((x, y) => y.length - x.length)[0].replace(/[^\p{L}]/gu, "");
+    p.send({ type: "clue", text: "почти " + pole });
+    const rj = await p.wait((m) => m.type === "rejected" && m.action === "clue");
+    assert.strictEqual(rj.reason, "pole");
+    assert.strictEqual(rj.word.toLowerCase(), pole.toLowerCase());
+    p.msgs.length = 0;
+    p.send({ type: "clue", text: "я" });
+    const sh = await p.wait((m) => m.type === "rejected" && m.action === "clue");
+    assert.strictEqual(sh.reason, "short");
+    p.send({ type: "clue", text: "подсказка про всё" });
+    await p.wait(statePred((s) => !!s.me.card.clue));
+    p.msgs.length = 0;
+    p.send({ type: "clue", text: "другая подсказка" });
+    const dn = await p.wait((m) => m.type === "rejected" && m.action === "clue");
+    assert.strictEqual(dn.reason, "done");
+    for (const x of [b, ...ps]) x.close();
+  });
+
   await t.test("пинг комнат «в игре»: ping-кадры каждые PING_MS, в лобби быстрого пинга нет", async () => {
     const room = await createRoom({ short: true });
     const b = await board(room.code, room.hostToken);

@@ -56,4 +56,18 @@ for (const lang of CONTENT.LANGS) {
       }
     }
   });
+
+  // строгий режим (RULE_U34_WAVE_RULES) ничего не разрешает сверх нестрогого: слово полюса отвергается так же,
+  // а 🙂 проходит у каждой шкалы; «numeral» допустим только для слова, которое само — числительное
+  test(`${lang}: строгий валидатор — слова полюсов отвергаются, 🙂 проходит`, () => {
+    for (const s of CONTENT[lang]) {
+      assert.ok(checkClue("🙂", s, { strict: true }).ok, s.id);
+      for (const raw of (s.l + " " + s.r).split(/\s+/)) {
+        const w = raw.replace(/[^\p{L}]/gu, "");
+        if (Array.from(w).length < 4) continue;
+        const a = checkClue(w, s), b = checkClue(w, s, { strict: true });
+        if (!a.ok) assert.ok(!b.ok, `${s.id}: «${w}» строго принято`);
+      }
+    }
+  });
 }

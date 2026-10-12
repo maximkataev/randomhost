@@ -575,3 +575,89 @@ test("«Ясно выражается»: 🐌 — ноль в знаменате
   st("P3", { authorSum: 0, authorN: 0, skipped: 1 });
   assert.strictEqual(g.awards().clear, null);
 });
+
+// ---------- T-W3-26: валидатор, «Изменить», выдержка раскрытия ----------
+const { revealDone, REVEAL_HOLD, INTRO2_MS } = require("./game");
+
+test("подсказка: «short» для одной буквы, «empty» для знаков без букв; отказ называет слово полюса", () => {
+  const sc = { l: "Холодное", r: "Горячее" };
+  assert.strictEqual(checkClue("a", sc).reason, "short");
+  assert.strictEqual(checkClue("я", sc).reason, "short");
+  assert.strictEqual(checkClue("!!", sc).reason, "empty");
+  assert.ok(checkClue("ёж", sc).ok);
+  const r = checkClue("почти горячий чай", sc);
+  assert.strictEqual(r.reason, "pole");
+  assert.strictEqual(r.word, "горячий");
+  assert.strictEqual(checkClue("a normal hamster", { l: "Normal pet", r: "Questionable pet" }).word, "normal");
+});
+
+test("строгий валидатор (RULE_U34_WAVE_RULES): числа словом, перевод-заимствование; без флага — как раньше", () => {
+  const sc = { l: "Холодное", r: "Горячее" };
+  for (const t of ["семь", "seven", "on the ten", "ten out of ten", "ровно двадцать", "δέκα", "εκατό"]) {
+    assert.strictEqual(checkClue(t, sc, { strict: true }).reason, "numeral", t);
+    assert.ok(checkClue(t, sc).ok, "без флага «" + t + "» проходит, как сегодня");
+  }
+  for (const t of ["семь гномов", "seven dwarfs", "one of a kind", "Один дома", "сорока", "семья", "🔥🔥"]) assert.ok(checkClue(t, sc, { strict: true }).ok, t);
+  assert.strictEqual(checkClue("офис", { l: "Office", r: "Home" }, { strict: true }).reason, "pole");
+  assert.strictEqual(checkClue("пират", { l: "Pirate", r: "Ninja" }, { strict: true }).reason, "pole");
+  assert.ok(checkClue("офис", { l: "Office", r: "Home" }).ok, "без флага перевод-заимствование не ловим");
+  assert.ok(checkClue("холодный", { l: "Cold", r: "Hot" }, { strict: true }).ok, "настоящий перевод разрешён");
+  assert.ok(checkClue("кот", { l: "Cat", r: "Dog" }, { strict: true }).ok);
+});
+
+test("«Изменить»: без флага «done», с флагом — замена до закрытия фазы, второго «клац» нет", () => {
+  for (const on of [false, true]) {
+    const g = game(4);
+    g.waveRules = on;
+    assert.ok(g.pickScale("P1", 0, 1).ok);
+    assert.ok(g.clue("P1", "первая версия", 2).ok);
+    const r = g.clue("P1", "вторая версия", 3);
+    if (!on) { assert.strictEqual(r.reason, "done"); assert.strictEqual(g.s.cards.P1.clue, "первая версия"); continue; }
+    assert.ok(r.ok);
+    assert.deepStrictEqual(r.events, [], "клац не повторяется");
+    assert.strictEqual(g.s.cards.P1.clue, "вторая версия");
+    assert.strictEqual(g.clue("P1", "семь", 4).reason, "numeral", "замена проходит те же правила");
+    assert.strictEqual(g.s.cards.P1.clue, "вторая версия");
+    assert.strictEqual(g.snapshot(5, "P1").rules.editClue, true);
+    // фаза закрылась — править поздно
+    for (const id of ["P2", "P3", "P4"]) { g.pickScale(id, 0, 5); g.clue(id, "слово " + "абв"[Number(id[1]) - 2], 5); }
+    assert.strictEqual(g.s.phase, "guess");
+    assert.strictEqual(g.clue("P1", "поздно", 6).reason, "not_clue");
+  }
+  assert.strictEqual(game(3).snapshot(1, "board").rules.editClue, false);
+});
+
+test("выдержка раскрытия: с флагом ≥ 2,5 с после последней плашки (до 11 стрелок), без — как раньше; заставка ×2 на 5 с", () => {
+  const run = (on, n) => {
+    const g = game(n + 1);
+    g.waveRules = on;
+    toGuess(g);
+    const a = g.author();
+    const start = g.s.phaseStart;
+    for (const id of g.s.queue) if (id !== a) g.lock(id, 40, start + 1);
+    assert.strictEqual(g.s.phase, "reveal");
+    return g.s.phaseEnd - g.s.phaseStart;
+  };
+  for (const n of [2, 3, 5, 8, 11]) {
+    assert.strictEqual(run(false, n), T.reveal + 450 * n, "без флага — прежняя длительность, n=" + n);
+    const dur = run(true, n);
+    assert.strictEqual(dur, revealDone(n) + REVEAL_HOLD);
+    assert.ok(dur - revealDone(n) >= 2500, "выдержка ≥ 2,5 с, n=" + n);
+  }
+  assert.strictEqual(REVEAL_HOLD, 2800);
+  const g = game(3);
+  g.waveRules = true;
+  toGuess(g);
+  for (let guard = 0; g.s.ri < 1 && guard < 60; guard++) { if (g.s.phase === "guess") for (const id of g.s.queue) g.lock(id, 40, g.s.phaseStart + 1); g.tick(g.s.phaseEnd); }
+  assert.strictEqual(g.s.phase, "intro");
+  assert.strictEqual(g.s.phaseEnd - g.s.phaseStart, INTRO2_MS);
+});
+
+test("wvPlural: «очко/очка/очков», en/el — один/много", () => {
+  const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "wave-shared.js"), "utf8");
+  const fn = new Function(src.match(/function wvPlural[\s\S]*?\n}\n/)[0] + "; return wvPlural;")();
+  const ru = ["очко", "очка", "очков"];
+  assert.deepStrictEqual([1, 2, 5, 11, 12, 21, 233, 250].map((n) => fn(n, ru)), ["очко", "очка", "очков", "очков", "очков", "очко", "очка", "очков"]);
+  assert.strictEqual(fn(1, ["point", "points"]), "point");
+  assert.strictEqual(fn(233, ["point", "points"]), "points");
+});
