@@ -229,7 +229,7 @@ test("не успел соврать — заготовка с 🐌, лимит 
   g.tick(g.s.phaseEnd);
   assert.strictEqual(g.s.phase, "choose");
   assert.ok(g.s.lies.P3.late && g.s.lies.P3.hint);
-  assert.ok(g.s.lies.P4.late);
+  assert.strictEqual(g.s.lies.P4, undefined, "призрак (нет связи) заготовку не получает — fibs-021");
   assert.strictEqual(g.player("P3").hintsUsed, 0);
   // P4 офлайн — выбор без него
   for (const id of ["P1", "P2", "P3"]) g.choose(id, [truthIdx(g)], g.s.phaseStart + 10);
@@ -465,4 +465,230 @@ test("аватар: меняется в лобби, чужой занять не
   g.s.phase = "answer";
   assert.strictEqual(g.setAvatar("b", "🌮").reason, "game_started");
   assert.strictEqual(g.snapshot(0, {}).avatarChoices, null);
+});
+
+// ---------- T-W0-10: isTruth ----------
+
+test("isTruth: однословный alt не объявляет правдой ложь «чужое слово + alt» (fibs-049)", () => {
+  const rhino = { answer: "шерстистого носорога", alts: ["носорога"] };
+  assert.ok(!isTruth("белого носорога", rhino));
+  assert.ok(!isTruth("чёрного носорога", rhino));
+  assert.ok(isTruth("шерстистого носорога", rhino));
+  assert.ok(isTruth("носорога", rhino)); // сам alt — правда
+  assert.ok(isTruth("Носорога!", rhino));
+  const lungs = { answer: "человеческих лёгких", alts: ["лёгких"] };
+  assert.ok(!isTruth("куриных лёгких", lungs));
+  // alt из двух слов «правду внутри» сохраняет
+  const sin = { answer: "Фрэнк Синатра", alts: ["фрэнк синатра", "Френк Синатра"] };
+  assert.ok(isTruth("великий Френк Синатра", sin));
+  assert.ok(!isTruth("Нэнси Синатра", sin));
+  // ответ из одного слова — «правда внутри» как раньше (спека §4: «бобровой железы»)
+  assert.ok(isTruth("бобровой железы", { answer: "бобров", alts: [] }));
+});
+
+test("isTruth: сдвиг пробела и две опечатки в длинном ответе — правда (fibs-047)", () => {
+  const f = { answer: "шерстистого носорога", alts: [] };
+  assert.ok(isTruth("шерстистог оносорога", f));
+  assert.ok(isTruth("шерстистого  но сорога", f));
+  assert.ok(isTruth("шерстистго носорга", f)); // две пропущенные буквы, ответ от 12 букв
+  assert.ok(!isTruth("шерстистго носрга", f)); // три
+  // ответы короче 12 букв — одна опечатка, как раньше
+  const g = { answer: "единорог", alts: [] };
+  assert.ok(isTruth("еденорог", g));
+  assert.ok(!isTruth("еденарог", g));
+  // совсем короткие — только буквально
+  assert.ok(isTruth("лук", { answer: "лук", alts: [] }));
+  assert.ok(!isTruth("лок", { answer: "лук", alts: [] }));
+  // числа: опечатки в цифрах — другое число
+  assert.ok(!isTruth("1913 год основания компании", { answer: "1912 год основания компании", alts: [] }));
+});
+
+test("«один выстрел на факт»: отказ «правда» не даёт нащупывать ответ — первая же неправда принимается и закрывает приём (fibs-046)", () => {
+  const g = game(3);
+  g.pickTopic(g.s.chooser, g.s.topics[0], 5000);
+  const f = g.s.fact;
+  for (let i = 0; i < 20; i++) assert.strictEqual(g.lie("P1", i % 2 ? f.answer : f.alts[0], 6000).reason, "truth");
+  assert.strictEqual(g.s.lies.P1, undefined, "отказ ничего не записал");
+  assert.ok(g.lie("P1", "первая неправда", 6000).ok);
+  // дальше приём закрыт: ни правду, ни другую ложь «проверить» нельзя — ответ всегда «уже отправлено»
+  for (const t of [f.answer, "ещё ложь", f.alts[0]]) assert.strictEqual(g.lie("P1", t, 6000).reason, "done");
+  assert.strictEqual(g.s.tries, undefined, "мёртвого счётчика попыток нет");
+});
+
+// ---------- T-W0-11: призрак без очков, продление выбора ----------
+
+// ложь у всех, кроме P4; P4 офлайн; время лжи вышло
+function ghostGame() {
+  const g = game(4);
+  g.pickTopic(g.s.chooser, g.s.topics[0], 5000);
+  g.lie("P1", "раз", 6000);
+  g.lie("P2", "два", 6000);
+  g.setOnline("P4", false, 6000);
+  g.tick(g.s.phaseEnd);
+  assert.strictEqual(g.s.phase, "choose");
+  return g;
+}
+
+test("призрак не копит очки: нет заготовки, нет обманутых и лайков; онлайн-опоздавшему 🐌 по-прежнему ставится", () => {
+  const g = ghostGame();
+  assert.ok(!g.s.options.some((o) => o.authors.includes("P4")));
+  assert.ok(g.s.lies.P3.late, "онлайн, но не успел — 🐌 как раньше");
+  // все выбирают ложь «раз» (P1): очки только P1; призрак ни при чём
+  const i = lieOf(g, "P1");
+  for (const id of ["P2", "P3"]) g.choose(id, [i], g.s.phaseStart + 10);
+  g.like("P2", i, g.s.phaseStart + 20);
+  g.tick(g.s.phaseEnd);
+  g.tick(g.s.phaseEnd);
+  assert.strictEqual(g.player("P4").score, 0);
+  assert.strictEqual(g.s.result.gain.P4, undefined);
+  assert.ok(g.player("P1").score > 0);
+  // вернулся — следующий факт обычный
+  g.setOnline("P4", true, g.s.phaseStart);
+  g.tick(g.s.phaseEnd);
+  g.pickTopic(g.s.chooser, g.s.topics[0], g.s.phaseStart + 100);
+  assert.ok(g.s.roster.includes("P4"));
+});
+
+test("RULE_U09B_CHOOSE_EXTEND: по умолчанию выкл — возврат окно не меняет; включён — не больше +8 с и один раз на фазу", () => {
+  const key = "RULE_U09B_CHOOSE_EXTEND";
+  const saved = process.env[key];
+  try {
+    for (const on of [false, true]) {
+      if (on) process.env[key] = "1"; else delete process.env[key];
+      const g = game(4);
+      g.keepGrace = true;
+      g.pickTopic(g.s.chooser, g.s.topics[0], 5000);
+      g.lie("P1", "раз", 6000); g.lie("P2", "два", 6000); g.lie("P3", "три", 6000);
+      g.setOnline("P4", false, 6500);
+      // P4 без лжи ушёл — все остальные соврали, фаза выбора открылась сразу
+      assert.strictEqual(g.s.phase, "choose");
+      const t0 = g.s.phaseStart;
+      for (const id of ["P1", "P2", "P3"]) g.choose(id, [truthIdx(g)], t0 + 1000);
+      assert.strictEqual(g.s.phaseEnd, t0 + 1000 + LIKE_GRACE, "все онлайн-выбравшие сократили окно");
+      const short = g.s.phaseEnd;
+      g.setOnline("P4", true, t0 + 1500);
+      if (!on) { assert.strictEqual(g.s.phaseEnd, short, "флаг выкл: как сейчас"); continue; }
+      assert.strictEqual(g.s.phaseEnd, t0 + 1500 + 8000, "не больше +8 с от возврата");
+      assert.ok(g.s.phaseEnd <= t0 + T.choose, "не дальше исходного срока фазы");
+      // второй обрыв и возврат на той же фазе не продлевают снова
+      g.s.phaseEnd = short;
+      g.setOnline("P4", false, t0 + 1600);
+      g.setOnline("P4", true, t0 + 1700);
+      assert.strictEqual(g.s.phaseEnd, short);
+      // следующая фаза выбора — продление снова доступно
+      assert.strictEqual(g.s.chooseExtended, true);
+    }
+  } finally {
+    if (saved === undefined) delete process.env[key]; else process.env[key] = saved;
+  }
+});
+
+// ---------- T-W0-12: played ----------
+
+test("played: растёт от реальной лжи/выбора, не от 🐌; призрак и новичок после финала — без наград и в таблице", () => {
+  const g = ghostGame();
+  const s0 = g.snapshot(0, "board");
+  assert.strictEqual(s0.players.find((p) => p.id === "P3").played, 0, "🐌-автоложь — не ход");
+  assert.strictEqual(s0.players.find((p) => p.id === "P1").played, 1);
+  assert.strictEqual(s0.players.find((p) => p.id === "P4").played, 0);
+  const i = lieOf(g, "P1");
+  g.choose("P2", [i], g.s.phaseStart + 10);
+  g.choose("P3", [i], g.s.phaseStart + 10);
+  g.tick(g.s.phaseEnd);
+  g.abort(g.s.phaseEnd + 1);
+  assert.strictEqual(g.s.phase, "finished");
+  const late = g.addPlayer({ id: "N1", name: "Новичок" });
+  assert.ok(late.ok);
+  const snap = g.snapshot(0, "board");
+  assert.strictEqual(snap.players.find((p) => p.id === "N1").played, 0);
+  const aw = snap.awards;
+  const ids = [aw.liar, aw.detector, aw.gullible].filter(Boolean).flatMap((x) => x.ids);
+  assert.ok(ids.length && !ids.includes("P4") && !ids.includes("N1"));
+  // новая партия: счётчик обнуляется
+  g.start(g.s.phaseStart + 10);
+  assert.ok(g.s.players.every((p) => p.played === 0));
+});
+
+test("played: дамп прошлой версии без поля — присутствующим с очками 1, остальным 0; финал с наградами", () => {
+  const g = game(4);
+  toChoose(g);
+  const i = lieOf(g, "P1");
+  for (const id of ["P2", "P3", "P4"]) g.choose(id, [i], g.s.phaseStart + 10);
+  g.tick(g.s.phaseEnd);
+  g.abort(g.s.phaseEnd + 1);
+  const dump = JSON.parse(JSON.stringify(g.s));
+  g.addPlayer({ id: "G1", name: "Призрак" });
+  dump.players.push(JSON.parse(JSON.stringify(g.player("G1"))));
+  for (const p of dump.players) delete p.played; // как у дампа до этой версии
+  delete dump.awards;
+  const g2 = Game.from(dump, rig(3), fixture());
+  const pl = Object.fromEntries(g2.s.players.map((p) => [p.id, p.played]));
+  assert.strictEqual(pl.P1, 1);
+  assert.strictEqual(pl.G1, 0);
+  const a = g2.awards();
+  assert.ok(a.liar && a.liar.ids.includes("P1"), "награда «Главный врун» есть");
+  assert.ok(g2.snapshot(0, "board").players.every((p) => typeof p.played === "number"));
+});
+
+// ---------- T-W0-29: очередь неотправленных действий на телефоне (fibs-shared.js) ----------
+
+// Берём из fibs-shared.js транспорт и qpConnect и гоняем их с поддельными сокетом/таймерами браузера.
+function loadConnect(opts = {}) {
+  const fs = require("fs");
+  const vm = require("vm");
+  const src = fs.readFileSync(require("path").join(__dirname, "..", "fibs-shared.js"), "utf8");
+  let code = src.slice(src.indexOf("const qpClock = {"));
+  if (opts.queueMs) code = code.replace("const QP_QUEUE_MS = 30000;", `const QP_QUEUE_MS = ${opts.queueMs};`);
+  const sockets = [];
+  class FakeWS {
+    constructor() { this.readyState = 0; this.sent = []; sockets.push(this); }
+    send(x) { this.sent.push(JSON.parse(x)); }
+    close() { this.readyState = 3; }
+    open() { this.readyState = 1; this.onopen(); }
+    drop() { this.readyState = 3; this.onclose({}); }
+  }
+  const ctx = {
+    location: { protocol: "http:", host: "x" }, WebSocket: FakeWS, console, setTimeout, clearTimeout, setInterval, clearInterval, Date, JSON, Math,
+    document: { addEventListener() {}, hidden: false }, window: { addEventListener() {} }, fetch: () => Promise.reject(new Error("offline")), AbortController: undefined,
+  };
+  vm.createContext(ctx);
+  vm.runInContext(code + "\n;this.qpConnect = qpConnect;", ctx);
+  return { qpConnect: ctx.qpConnect, sockets };
+}
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+test("телефон: тап в обрыве ждёт в очереди и уходит после возврата связи; чужому факту не уходит", async () => {
+  const { qpConnect, sockets } = loadConnect();
+  let fact = "f1";
+  const dropped = [];
+  const conn = qpConnect({ code: "X", onMessage() {}, onDrop: (m) => dropped.push(m.type), tag: () => fact });
+  sockets[0].open();
+  conn.send({ type: "lie", text: "раз" });
+  assert.deepStrictEqual(sockets[0].sent.filter((m) => m.type === "lie").length, 1, "при живой связи уходит сразу");
+  sockets[0].drop();
+  conn.send({ type: "lie", text: "в обрыв" });
+  conn.send({ type: "choose", picks: [1] });
+  fact = "f2"; // за время обрыва факт сменился
+  conn.send({ type: "like", opt: 0 });
+  await sleepMs(700); // реконнект 500 мс
+  assert.ok(sockets.length >= 2, "сокет переоткрыт");
+  sockets[1].open();
+  conn.flush((m, tg) => tg === fact);
+  const sent = sockets[1].sent.filter((m) => m.type !== "ping").map((m) => m.type);
+  assert.deepStrictEqual(sent, ["like"], "действия прошлого факта не уходят");
+  assert.deepStrictEqual(dropped.sort(), ["choose", "lie"], "а страница узнаёт, что они не дошли");
+  conn.stop();
+});
+
+test("телефон: обрыв дольше срока очереди — onDrop («Не дошло»), очередь ограничена 8", async () => {
+  const { qpConnect, sockets } = loadConnect({ queueMs: 400 });
+  const dropped = [];
+  const conn = qpConnect({ code: "X", onMessage() {}, onDrop: (m) => dropped.push(m.n), tag: () => "f" });
+  sockets[0].open();
+  sockets[0].drop();
+  for (let n = 1; n <= 10; n++) conn.send({ type: "like", opt: 0, n });
+  assert.deepStrictEqual(dropped, [1, 2], "переполнение выталкивает самые старые");
+  await sleepMs(900);
+  assert.deepStrictEqual(dropped.slice(2).sort((a, b) => a - b), [3, 4, 5, 6, 7, 8, 9, 10], "просроченные — через onDrop");
+  conn.stop();
 });

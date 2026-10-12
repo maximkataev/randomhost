@@ -370,33 +370,59 @@ function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
 }
 
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
-function qpConnect({ code, onMessage, onOpen, onGone, onState }) {
-  let t = null, delay = 500, stopped = false;
+const QP_QUEUE_MS = 30000; // сколько действие, нажатое в обрыв, ждёт связи
+const QP_QUEUE_MAX = 8;
+function qpConnect({ code, onMessage, onOpen, onGone, onState, onDrop, tag }) {
+  let t = null, delay = 500, stopped = false, expireT = null;
   // Действие, нажатое между обрывом и возвращением связи, раньше терялось молча (а кнопка уже горела «ушло»).
-  // Теперь оно ждёт в очереди и уходит после входа по токену: сокет без игрока действие бы отбросил.
+  // Теперь оно ждёт в очереди (до 8 штук и до 30 с) и уходит после входа по токену: сокет без игрока действие бы отбросил.
+  // Ушедшее по опросу, но не дошедшее (onSendFail транспорта) возвращается в очередь с прежним временем нажатия.
+  // tag() — метка контекста (факт) на момент нажатия: к другому факту действие не уходит. Не дошло → onDrop(m).
   const queue = [];
+  const meta = typeof WeakMap === "function" ? new WeakMap() : null;
+  const drop = (m) => { if (onDrop) onDrop(m); };
+  const armExpire = () => {
+    clearTimeout(expireT);
+    if (!queue.length) return;
+    const wait = Math.max(200, QP_QUEUE_MS - (Date.now() - queue[0].at) + 50);
+    expireT = setTimeout(() => {
+      const now = Date.now();
+      const dead = queue.filter((it) => now - it.at > QP_QUEUE_MS);
+      for (const it of dead) queue.splice(queue.indexOf(it), 1);
+      dead.forEach((it) => drop(it.m));
+      armExpire();
+    }, wait);
+  };
+  const enqueue = (m, at, tg) => {
+    queue.push({ m, at, tag: tg });
+    if (queue.length > QP_QUEUE_MAX) { const old = queue.shift(); drop(old.m); }
+    armExpire();
+  };
+  const queueable = (m) => m && m.type !== "ping" && m.type !== "join" && m.type !== "host";
   const holder = {
     api: null,
     gated: false, // страница держит действия до входа по токену и сама снимает флаг через flush
     send(m) {
       const a = holder.api;
-      if (m && m.type !== "ping" && m.type !== "join" && m.type !== "host" && (holder.gated || !a || a.mode === "none" || a.mode === "connecting")) {
-        queue.push({ m, at: Date.now() });
-        if (queue.length > 8) queue.shift();
+      const tg = tag ? tag() : null;
+      if (queueable(m) && meta) meta.set(m, { at: Date.now(), tag: tg });
+      if (queueable(m) && (holder.gated || !a || a.mode === "none" || a.mode === "connecting")) {
+        enqueue(m, Date.now(), tg);
         return;
       }
       if (a) a.send(m);
     },
-    // keep(m) — нужно ли это действие ещё; просроченные и ненужные отбрасываются через onDrop
-    flush(keep, onDrop) {
+    // keep(m, tag) — нужно ли это действие ещё; просроченные и ненужные отбрасываются через onDrop
+    flush(keep, onDropNow) {
       holder.gated = false;
       const items = queue.splice(0);
+      clearTimeout(expireT);
       for (const it of items) {
-        if (Date.now() - it.at > 6000 || (keep && !keep(it.m))) { if (onDrop) onDrop(it.m); continue; }
+        if (Date.now() - it.at > QP_QUEUE_MS || (keep && !keep(it.m, it.tag))) { (onDropNow || drop)(it.m); continue; }
         if (holder.api) holder.api.send(it.m);
       }
     },
-    stop() { stopped = true; clearTimeout(t); queue.length = 0; if (holder.api) holder.api.close(); },
+    stop() { stopped = true; clearTimeout(t); clearTimeout(expireT); queue.length = 0; if (holder.api) holder.api.close(); },
   };
   const open = () => {
     if (stopped) return;
@@ -407,6 +433,13 @@ function qpConnect({ code, onMessage, onOpen, onGone, onState }) {
       onOpen: () => { delay = 500; if (onState) onState("open"); if (onOpen) onOpen(); },
       onClose: () => { if (stopped) return; if (onState) onState("lost"); t = setTimeout(open, delay); delay = Math.min(delay * 2, 8000); },
       onGone: () => { stopped = true; if (onGone) onGone(); },
+      // транспорт не смог отправить (сокета нет, опрос не прошёл после трёх попыток): не теряем, а ждём следующего входа
+      onSendFail: (m) => {
+        if (stopped || !queueable(m)) return;
+        const mt = meta && meta.get(m);
+        if (mt && Date.now() - mt.at > QP_QUEUE_MS) return drop(m);
+        enqueue(m, mt ? mt.at : Date.now(), mt ? mt.tag : null);
+      },
     });
   };
   open();

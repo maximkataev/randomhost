@@ -109,29 +109,42 @@ function literal(text) {
 }
 
 /*
- * Вписал правду? (§4) Буквальное совпадение с ответом или alts — всегда. Для ответов от 5 букв ещё и
- * совпадение по основам слов и опечатка в одну букву (кроме чисел). Короткие ответы стеммером не сравниваем:
- * «эмо» и «эму» дают одну основу, и отказ «Это правда!» подсказал бы ответ.
+ * Вписал правду? (§4) Буквальное совпадение с ответом или alts (пробелы не важны) — всегда. Для эталонов от 5 букв ещё
+ * совпадение по основам слов, «правда внутри» и опечатка (1 буква; у эталонов от 12 букв — 2; кроме чисел). Короткие
+ * эталоны стеммером не сравниваем: «эмо» и «эму» дают одну основу, и отказ «Это правда!» подсказал бы ответ.
+ * «Правда внутри» («бобровой железы» при ответе «бобров») — только для ответа и alts из двух слов и больше:
+ * однословный alt («носорога» при «шерстистого носорога») — часть ответа, а не он сам, и «белого носорога» — ложь.
  */
 function isTruth(text, fact) {
   const lit = literal(text);
   if (!lit) return false;
+  const lc = lit.replace(/ /g, "");
   const key = normalize(text);
+  const have = key.split(" ");
+  const answerLit = literal(fact.answer);
   for (const t of [fact.answer, ...(fact.alts || [])]) {
     const tl = literal(t);
     if (!tl) continue;
-    if (lit === tl) return true;
-    if (Array.from(tl).length < 5) continue;
+    const tc = tl.replace(/ /g, "");
+    if (lit === tl || lc === tc) return true; // «шерстистог оносорога» — сдвиг пробела, а не другой ответ
+    const len = Array.from(tc).length;
+    if (len < 5) continue;
     if (key && key === normalize(t)) return true;
-    // перефраз с правдой внутри: «бобровой железы» при ответе «бобров» — каждая основа ответа начинает слово лжи
-    const need = normalize(t).split(" ").filter(Boolean);
-    const have = key.split(" ");
-    if (need.length && need.every((w) => w.length >= 4 && have.some((h) => h.startsWith(w)))) return true;
+    // перефраз с правдой внутри: каждая основа эталона начинает слово лжи
+    if (tl === answerLit || tl.indexOf(" ") >= 0) {
+      const need = normalize(t).split(" ").filter(Boolean);
+      if (need.length && need.every((w) => w.length >= 4 && have.some((h) => h.startsWith(w)))) return true;
+    }
     // в числах опечаток не бывает: «14 часов» — не опечатка в «11 часов», а другое число
     if (lit.replace(/\D/g, "") !== tl.replace(/\D/g, "")) continue;
-    if (levenshtein(lit, tl) <= 1) return true;
+    if (levenshtein(lc, tc) <= (len >= 12 ? 2 : 1)) return true;
   }
   return false;
+}
+
+// Правила класса B (IMPLEMENTATION-PLAN §2.3б): env сервера, по умолчанию «как сейчас». Читается в момент вызова.
+function ruleOn(name) {
+  return /^(1|true|on|yes)$/i.test(String(process.env[name] || ""));
 }
 
 class Game {
@@ -159,7 +172,6 @@ class Game {
       fact: null, // разыгрываемый факт: {id, topic, text, answer, alts, source, pool, poolUsed}
       roster: [], // кто врёт в этом факте
       lies: {}, // playerId → {text, key, hint, late, at}
-      tries: {}, // playerId → сколько раз ложь отклонена как правда
       options: null, // варианты на экране: [{text, kind: lie|trap|truth, authors, key}]
       picks: {}, // playerId → [индексы вариантов]
       likes: {}, // playerId → [индексы вариантов]
@@ -172,6 +184,13 @@ class Game {
   }
 
   static from(state, rnd, content) {
+    // дамп прошлой версии без `played`: присутствующим с очками/ответами — 1, прочим 0 (иначе финал и награды пусты)
+    for (const p of state.players || []) {
+      if (p.played !== undefined) continue;
+      const st = p.stats || {};
+      const acted = (state.lies && state.lies[p.id]) || (state.picks && state.picks[p.id]) || p.hintsUsed > 0;
+      p.played = !p.left && (p.score > 0 || st.fooled > 0 || st.truths > 0 || st.traps > 0 || st.likes > 0 || acted) ? 1 : 0;
+    }
     return new Game(state, rnd, content);
   }
 
@@ -203,6 +222,7 @@ class Game {
       left: false,
       score: 0,
       hintsUsed: 0,
+      played: 0, // сколько раз реально соврал или выбрал в этой партии (автоложь 🐌 не в счёт)
       stats: { fooled: 0, truths: 0, traps: 0, likes: 0 },
       lastReact: null,
     };
@@ -231,7 +251,15 @@ class Game {
   setOnline(id, online, now) {
     const p = this.player(id);
     if (p) p.online = online;
-    return online ? [] : this.maybeAdvance(now);
+    if (!online) return this.maybeAdvance(now);
+    // RULE_U09B_CHOOSE_EXTEND: вернувшемуся без выбора возвращаем окно выбора, если «все выбрали» его сократили
+    // (не больше +8 с от возврата, не дальше исходного срока фазы, одно продление на фазу)
+    const s = this.s;
+    if (p && !p.left && s.phase === "choose" && !s.picks[id] && !s.chooseExtended && ruleOn("RULE_U09B_CHOOSE_EXTEND")) {
+      const end = Math.max(s.phaseEnd, Math.min(s.phaseStart + T.choose, now + 8000));
+      if (end > s.phaseEnd) { s.phaseEnd = end; s.chooseExtended = true; }
+    }
+    return [];
   }
 
   // ---------- банк ----------
@@ -285,7 +313,7 @@ class Game {
     s.playedTopics = [];
     s.bestLie = null;
     s.finishedReason = null;
-    for (const p of ps) { p.score = 0; p.hintsUsed = 0; p.stats = { fooled: 0, truths: 0, traps: 0, likes: 0 }; }
+    for (const p of ps) { p.score = 0; p.hintsUsed = 0; p.played = 0; p.stats = { fooled: 0, truths: 0, traps: 0, likes: 0 }; }
     // очередь выбора темы — по кругу в перемешанном порядке
     const ring = ps.map((p) => p.id);
     for (let i = ring.length - 1; i > 0; i--) { const j = this.rnd(i + 1); [ring[i], ring[j]] = [ring[j], ring[i]]; }
@@ -327,7 +355,6 @@ class Game {
     s.topic = null;
     s.chooser = null;
     s.lies = {};
-    s.tries = {};
     s.options = null;
     s.picks = {};
     s.likes = {};
@@ -389,11 +416,15 @@ class Game {
     const s = this.s;
     s.roster = this.present().map((p) => p.id);
     s.lies = {};
-    s.tries = {};
     s.phase = "lie";
     s.phaseStart = now;
     s.phaseEnd = now + T.lie;
     return [{ type: "fact" }];
+  }
+
+  played(id) {
+    const p = this.player(id);
+    if (p) p.played = (p.played || 0) + 1;
   }
 
   // ложь руками; правду не принимаем — «Это правда! Придумай ложь» (§4)
@@ -408,6 +439,7 @@ class Game {
     // принимается как ложь, поэтому перебором нащупать ответ нельзя — лимит попыток не нужен.
     if (isTruth(t, s.fact)) return { ok: false, reason: "truth" };
     s.lies[id] = { text: displayText(t), key: normalize(t), hint: false, late: false, at: now };
+    this.played(id);
     return { ok: true, events: [{ type: "lied", playerId: id }, ...this.maybeAdvance(now)] };
   }
 
@@ -421,6 +453,7 @@ class Game {
     if (!p || p.hintsUsed >= s.settings.hints) return { ok: false, reason: "no_hints" };
     p.hintsUsed++;
     s.lies[id] = { ...this.pickCanned(), hint: true, late: false, at: now };
+    this.played(id);
     return { ok: true, events: [{ type: "lied", playerId: id }, ...this.maybeAdvance(now)] };
   }
 
@@ -457,7 +490,8 @@ class Game {
     // не успел — заготовленная ложь с 🐌, лимит не тратит (§3)
     for (const id of s.roster) {
       const p = this.player(id);
-      if (!s.lies[id] && p && !p.left) s.lies[id] = { ...this.pickCanned(), hint: true, late: true, at: now };
+      // призрак (нет связи) заготовку не получает: ни очков за обманутых, ни лайков (U-09)
+      if (!s.lies[id] && p && !p.left && p.online) s.lies[id] = { ...this.pickCanned(), hint: true, late: true, at: now };
     }
     // одинаковая ложь склеивается в один вариант, авторы делят его (§4)
     const byKey = new Map();
@@ -490,6 +524,7 @@ class Game {
     s.phase = "choose";
     s.phaseStart = now;
     s.phaseEnd = now + T.choose;
+    s.chooseExtended = false;
     return [{ type: "choose" }];
   }
 
@@ -507,6 +542,7 @@ class Game {
       if (s.options[i].authors.includes(id)) return { ok: false, reason: "own" };
     }
     s.picks[id] = list;
+    this.played(id);
     return { ok: true, events: [{ type: "chose", playerId: id }, ...this.maybeAdvance(now)] };
   }
 
@@ -623,7 +659,7 @@ class Game {
 
   // награды партии (§5): лучший по счётчику, ничьи — все
   awards() {
-    const ps = this.present();
+    const ps = this.present().filter((p) => p.played > 0); // призрак и новичок без единого хода наград не получают
     const top = (k) => {
       const max = Math.max(0, ...ps.map((p) => p.stats[k]));
       const ids = ps.filter((p) => p.stats[k] === max).map((p) => p.id);
@@ -765,6 +801,7 @@ class Game {
         online: p.online,
         left: p.left,
         score: p.score,
+        played: p.played || 0,
         // Сколько «Соври за меня» взял — только в итогах: посреди партии счётчик выдавал бы,
         // кто сейчас подал заготовку (§4: «подсказку от своей лжи не отличить»).
         ...(s.phase === "finished" ? { hintsUsed: p.hintsUsed } : {}),

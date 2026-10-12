@@ -221,6 +221,7 @@
   .rowx b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.25; }
   .rowx .d { color: var(--red); text-align: right; white-space: nowrap; }
   .rowx .s { font-size: 1.2em; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .rowx.gone:not(.lead) { opacity: .55; }
   .rowx.lead { background: var(--ink); color: var(--sheet); box-shadow: 6px 6px 0 var(--red); }
   .rowx.lead .n { color: var(--sheet); }
   .rowx.lead .d { color: #ff7a6e; }
@@ -257,6 +258,7 @@
   .table ol { list-style: none; margin: 8px 0 0; padding: 0; display: grid; column-gap: 28px; }
   .table ol.two { grid-template-columns: 1fr 1fr; grid-auto-flow: column; }
   .table li { display: flex; align-items: center; gap: 10px; min-width: 0; font: 700 var(--tfs, 24px)/var(--tlh, 1.9) var(--mono); border-bottom: 1px dotted var(--rule); }
+  .table li.gone { opacity: .55; }
   .table li .n { width: 1.6em; color: var(--muted); flex: none; }
   .table li b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
   .hostbtns { display: flex; gap: 12px; }
@@ -878,8 +880,14 @@ function showStep(i, live) {
 }
 
 // ---------- счёт ----------
+// Без единого хода (`played === 0`): серому призраку и новичку после финала в таблице не место.
+// Старый сервер поле не присылает (undefined) — показываем всех, как раньше.
+function inTable(p) {
+  if (p.played !== 0) return true;
+  return p.online && state.phase !== "finished";
+}
 function ranked() {
-  return present().slice().sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  return present().filter(inTable).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 }
 function drawScores() {
   const key = "scores:" + factKey() + qpLang();
@@ -896,7 +904,7 @@ function drawScores() {
   const from = (p) => (base && base[p.id] != null ? base[p.id] : p.score);
   main.innerHTML = `<div class="screen">
     <div class="bar"><div class="what">${escapeHtml(T("scores_what"))}</div><div class="clock" id="clock"></div></div>
-    <div class="board${two ? " two" : ""}" style="--rowh:${rowh}px;--rows:${rows}">${list.map((p, i) => { const d = p.score - from(p); return `<div class="rowx${i === 0 && p.score > 0 ? " lead" : ""}" style="--pc:${p.color}"><span class="n">${i + 1}</span><i class="av">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><span class="d" style="--dd:${(0.3 + i * 0.08).toFixed(2)}s">${d > 0 ? escapeHtml(tpl("pts", { n: d })) : ""}</span><span class="s" data-from="${from(p)}" data-to="${p.score}">${p.score}</span></div>`; }).join("")}</div></div>`;
+    <div class="board${two ? " two" : ""}" style="--rowh:${rowh}px;--rows:${rows}">${list.map((p, i) => { const d = p.score - from(p); return `<div class="rowx${i === 0 && p.score > 0 ? " lead" : ""}${p.online ? "" : " gone"}" style="--pc:${p.color}"><span class="n">${i + 1}</span><i class="av">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><span class="d" style="--dd:${(0.3 + i * 0.08).toFixed(2)}s">${d > 0 ? escapeHtml(tpl("pts", { n: d })) : ""}</span><span class="s" data-from="${from(p)}" data-to="${p.score}">${p.score}</span></div>`; }).join("")}</div></div>`;
   cqFallback();
   countUp();
 }
@@ -937,7 +945,7 @@ function drawFinal() {
       <div class="hostbtns">${isHost ? `<button class="start" id="again" type="button">${T("btn_again")}</button><button class="ghostbtn" id="tolobby" type="button">${T("btn_lobby")}</button>` : ""}<a class="ghostbtn homebtn" id="homebtn" href="index.html">${T("btn_home")}</a></div>
     </div>
     <div class="awards"><div class="awcards">${cards || `<div class="award sheet wide"><div class="a">${T("no_awards")}</div></div>`}</div>
-      <div class="table sheet" id="ftable"><div class="kicker">${T("scores_what")}</div><ol class="${list.length > 8 ? "two" : ""}" style="grid-template-rows:repeat(${list.length > 8 ? Math.ceil(list.length / 2) : list.length}, auto)">${list.map((p, i) => `<li><span class="n">${i + 1}</span><i style="font-style:normal">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><span>${p.score}</span></li>`).join("")}</ol></div>
+      <div class="table sheet" id="ftable"><div class="kicker">${T("scores_what")}</div><ol class="${list.length > 8 ? "two" : ""}" style="grid-template-rows:repeat(${list.length > 8 ? Math.ceil(list.length / 2) : list.length}, auto)">${list.map((p, i) => `<li${p.online ? "" : ` class="gone" title="${escapeHtml(T("offline"))}"`}><span class="n">${i + 1}</span><i style="font-style:normal">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><span>${p.score}</span></li>`).join("")}</ol></div>
     </div></div>`;
   // сводка тянется до низа колонки: кегль — самый крупный, при котором все строки влезают
   fit($("ftable"), $("ftable"), "--tfs", 36, 12);

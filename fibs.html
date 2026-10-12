@@ -206,6 +206,7 @@
   .table li .n { width: 22px; flex: none; color: var(--muted); }
   .table li b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
   .table li .s { flex: none; font-variant-numeric: tabular-nums; }
+  .table li.off { opacity: .55; }
   .table li.me { color: var(--red); }
   .howcard ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
 
@@ -314,7 +315,7 @@ window.I18N_DICT = {
     replaced_title: `Игра открыта в другой вкладке`, replaced_text: `Играть можно только в одной.`, btn_back_here: `Играть здесь`,
     expired_title: `Комната закрыта`, expired_text: `Она пустовала полчаса или ведущий её закрыл.`, expired_new: `Открыть новую редакцию`,
     table: `Сводка`, how_k: `Пока ждём — как играть`, how_lie: `Хорошая ложь похожа на правду: того же вида, та же длина`,
-    rj_no_hints: `Подсказки кончились`, rj_empty: `Напиши хоть что-нибудь`, rj_not_lie: `Время вышло`, rj_done: `Уже отправлено`, rj_own: `Свою ложь выбрать нельзя`, rj_chosen: `Выбор уже сделан`, rj_not_choose: `Выбор закончился`, rj_no_likes: `Лайков больше нет`, rj_not_chooser: `Тему выбирает другой`, rj_bad_topic: `Такой темы нет`,
+    not_sent: `Не дошло — нажми ещё раз`, rj_no_hints: `Подсказки кончились`, rj_empty: `Напиши хоть что-нибудь`, rj_not_lie: `Время вышло`, rj_done: `Уже отправлено`, rj_own: `Свою ложь выбрать нельзя`, rj_chosen: `Выбор уже сделан`, rj_not_choose: `Выбор закончился`, rj_no_likes: `Лайков больше нет`, rj_not_chooser: `Тему выбирает другой`, rj_bad_topic: `Такой темы нет`,
   },
   en: {
     _title: `No Way! — the truth-or-lie party game`,
@@ -358,7 +359,7 @@ window.I18N_DICT = {
     replaced_title: `You opened the game in another tab`, replaced_text: `You can only play in one.`, btn_back_here: `Play here`,
     expired_title: `Room closed`, expired_text: `It sat empty for half an hour or the host closed it.`, expired_new: `Open a new newsroom`,
     table: `Standings`, how_k: `While we wait — how to play`, how_lie: `A good lie looks like the truth: same kind, same length`,
-    rj_no_hints: `No hints left`, rj_empty: `Write something`, rj_not_lie: `Time's up`, rj_done: `Already sent`, rj_own: `You can't pick your own lie`, rj_chosen: `You already picked`, rj_not_choose: `Picking is over`, rj_no_likes: `No likes left`, rj_not_chooser: `Someone else picks the topic`, rj_bad_topic: `No such topic`,
+    not_sent: `Didn't go through — tap again`, rj_no_hints: `No hints left`, rj_empty: `Write something`, rj_not_lie: `Time's up`, rj_done: `Already sent`, rj_own: `You can't pick your own lie`, rj_chosen: `You already picked`, rj_not_choose: `Picking is over`, rj_no_likes: `No likes left`, rj_not_chooser: `Someone else picks the topic`, rj_bad_topic: `No such topic`,
   },
   el: {
     _title: `Δεν το πιστεύω! — παιχνίδι αλήθειας και ψέματος για παρέες`,
@@ -402,7 +403,7 @@ window.I18N_DICT = {
     replaced_title: `Άνοιξες το παιχνίδι σε άλλη καρτέλα`, replaced_text: `Μπορείς να παίζεις μόνο σε μία.`, btn_back_here: `Παίξε εδώ`,
     expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης.`, expired_new: `Άνοιξε νέα σύνταξη`,
     table: `Κατάταξη`, how_k: `Όσο περιμένουμε — πώς παίζεται`, how_lie: `Ένα καλό ψέμα μοιάζει με αλήθεια: ίδιο είδος, ίδιο μήκος`,
-    rj_no_hints: `Τελείωσαν οι βοήθειες`, rj_empty: `Γράψε κάτι`, rj_not_lie: `Τέλος χρόνου`, rj_done: `Στάλθηκε ήδη`, rj_own: `Όχι το δικό σου ψέμα`, rj_chosen: `Διάλεξες ήδη`, rj_not_choose: `Η επιλογή τελείωσε`, rj_no_likes: `Τελείωσαν τα like`, rj_not_chooser: `Άλλος διαλέγει θέμα`, rj_bad_topic: `Δεν υπάρχει τέτοιο θέμα`,
+    not_sent: `Δεν στάλθηκε — πάτα ξανά`, rj_no_hints: `Τελείωσαν οι βοήθειες`, rj_empty: `Γράψε κάτι`, rj_not_lie: `Τέλος χρόνου`, rj_done: `Στάλθηκε ήδη`, rj_own: `Όχι το δικό σου ψέμα`, rj_chosen: `Διάλεξες ήδη`, rj_not_choose: `Η επιλογή τελείωσε`, rj_no_likes: `Τελείωσαν τα like`, rj_not_chooser: `Άλλος διαλέγει θέμα`, rj_bad_topic: `Δεν υπάρχει τέτοιο θέμα`,
   },
 };
 </script>
@@ -772,13 +773,14 @@ function renderReveal() {
 }
 
 function standing() {
-  const list = state.players.filter((p) => !p.left).slice().sort((a, b) => b.score - a.score);
+  // `played === 0`: призрак и новичок без единого хода в таблице не нужны; старый сервер поле не шлёт — показываем всех
+  const list = state.players.filter((p) => !p.left && (p.id === me || p.played !== 0 || (p.online && state.phase !== "finished"))).slice().sort((a, b) => b.score - a.score);
   const p = mine();
   const place = 1 + list.filter((x) => x.score > p.score).length;
   return { list, place, p };
 }
 function tableHtml(list) {
-  return `<div class="card table"><div class="k">${T("table")}</div><ol>${list.map((x, i) => `<li class="${x.id === me ? "me" : ""}"><span class="n">${i + 1}</span>${avHtml(x)}<b>${escapeHtml(x.name)}</b><span class="s">${x.score}</span></li>`).join("")}</ol></div>`;
+  return `<div class="card table"><div class="k">${T("table")}</div><ol>${list.map((x, i) => `<li class="${x.id === me ? "me" : ""}${x.online ? "" : " off"}"><span class="n">${i + 1}</span>${avHtml(x)}<b>${escapeHtml(x.name)}</b><span class="s">${x.score}</span></li>`).join("")}</ol></div>`;
 }
 
 function renderScores() {
@@ -870,9 +872,10 @@ function watchAction(stuck, release, tries) {
 }
 // что нажато во время обрыва — отправляем, если ещё актуально (иначе сервер ответил бы «отказ» на давнее действие)
 function flushQueued() {
-  conn.flush((q) => {
+  conn.flush((q, tg) => {
     const mc = state && state.me;
     if (!mc) return false;
+    if (tg && tg !== factId()) return false; // нажато на прошлом факте — к этому не относится
     switch (q.type) {
       case "lie": return state.phase === "lie" && !mc.lie;
       case "hint": return state.phase === "lie" && !mc.lie && mc.hintsLeft > 0;
@@ -881,12 +884,19 @@ function flushQueued() {
       case "topic": return state.phase === "topic" && !!mc.chooser;
       default: return true;
     }
-  }, (q) => {
-    if (q.type === "choose") sentPick = false;
-    if (q.type === "hint") justHinted = false;
-    screenKey = "";
-    render();
-  });
+  }, unlockDropped);
+}
+// действие не дошло (связь не вернулась за 30 с или оно устарело): снимаем замки кнопок и говорим об этом
+function unlockDropped(q) {
+  if (dead) return;
+  if (q.type === "choose") sentPick = false;
+  if (q.type === "hint") justHinted = false;
+  // уже видно по состоянию, что действие дошло (или фаза прошла) — тост «не дошло» был бы неправдой
+  const mc = state && state.me;
+  const landed = !mc || (q.type === "lie" || q.type === "hint" ? !!mc.lie : q.type === "choose" ? !!mc.picks : q.type === "like" ? mc.likes.includes(q.opt) : q.type === "topic" ? !mc.chooser : true);
+  if (!landed && ["lie", "hint", "choose", "like", "topic"].indexOf(q.type) >= 0) toast(T("not_sent"));
+  screenKey = "";
+  render();
 }
 function onMessage(m) {
   switch (m.type) {
@@ -962,6 +972,8 @@ function start() {
     code: CODE,
     onMessage,
     onGone: renderExpired,
+    onDrop: unlockDropped,
+    tag: () => (state ? factId() : null),
     // переподключились — снова входим своим токеном (hello придёт первым)
     onOpen: () => { needJoin = true; if (token) conn.gated = true; },
     onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
