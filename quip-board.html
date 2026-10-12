@@ -729,6 +729,7 @@ window.I18N_DICT = {
     need_more: `Нужно хотя бы трое — ещё {n}`, need_online: `Нужно ещё {n} на связи`,
     ready: `Все на местах? Поехали`,
     viewer: `Настройки меняет ведущий — тот, кто открыл студию`,
+    noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код в адресной строке или открой студию заново`, code_ph: `Код комнаты`, btn_go: `Перейти`,
     offline: `нет связи`, kick: `Убрать из комнаты`,
     btn_skip: `Дальше`, skip_sure: `Точно дальше?`, end_sure: `Точно закончить?`, kick_sure: `Убрать?`,
     host_link: `Ссылка ведущего`, link_copied: `Ссылка скопирована. Не показывай её залу`, link_shared: `Ссылка отправлена. Не показывай её залу`, link_none: `На этом экране нет ключа ведущего`,
@@ -764,6 +765,7 @@ window.I18N_DICT = {
     need_more: `At least three needed — {n} more`, need_online: `{n} more need to be online`,
     ready: `Everyone here? Let's go`,
     viewer: `Settings are changed by the host — whoever opened the studio`,
+    noroom_title: `There is no such room`, noroom_text: `Check the code in the address bar or open a new studio`, code_ph: `Room code`, btn_go: `Go`,
     offline: `offline`, kick: `Remove from room`,
     btn_skip: `Next`, skip_sure: `Skip for real?`, end_sure: `Really end?`, kick_sure: `Remove?`,
     host_link: `Host link`, link_copied: `Link copied. Don't show it to the room`, link_shared: `Link sent. Don't show it to the room`, link_none: `This screen has no host key`,
@@ -799,6 +801,7 @@ window.I18N_DICT = {
     need_more: `Χρειάζονται τουλάχιστον τρεις — ακόμα {n}`, need_online: `Χρειάζονται ακόμα {n} συνδεδεμένοι`,
     ready: `Είναι όλοι εδώ; Πάμε`,
     viewer: `Τις ρυθμίσεις τις αλλάζει ο οικοδεσπότης — όποιος άνοιξε το στούντιο`,
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό στη γραμμή διεύθυνσης ή άνοιξε νέο στούντιο`, code_ph: `Κωδικός δωματίου`, btn_go: `Πήγαινε`, //EL:unverified
     offline: `εκτός σύνδεσης`, kick: `Αφαίρεση από το δωμάτιο`,
     btn_skip: `Επόμενο`, skip_sure: `Σίγουρα επόμενο;`, end_sure: `Σίγουρα τέλος;`, kick_sure: `Αφαίρεση;`, //EL:unverified
     host_link: `Σύνδεσμος οικοδεσπότη`, link_copied: `Ο σύνδεσμος αντιγράφηκε. Μην τον δείχνεις στην αίθουσα`, link_shared: `Ο σύνδεσμος στάλθηκε. Μην τον δείχνεις στην αίθουσα`, link_none: `Αυτή η οθόνη δεν έχει κλειδί οικοδεσπότη`, //EL:unverified
@@ -1468,6 +1471,7 @@ function onMessage(m) {
   switch (m.type) {
     case "hello":
       state = m.state;
+      if (goneFlow) goneFlow.hello();
       if (!isHost) {
         let token = null;
         try { token = localStorage.getItem(hostKey()); } catch (e) {}
@@ -1501,7 +1505,7 @@ function onMessage(m) {
       if (m.event.type === "react") floatReact(m.event.playerId, m.event.emoji);
       break;
     case "error":
-      if (m.error === "room_expired") gone();
+      if (m.error === "room_expired") closed();
       if (m.error === "bad host token") {
         // ключ не подошёл: забываем его и просим вставить ссылку ведущего
         hostLost = false;
@@ -1516,11 +1520,26 @@ function onMessage(m) {
   }
 }
 
-function gone() {
+function closed() {
   dead = true;
   main.innerHTML = "";
   showBanner(T("expired"));
 }
+// Неверный код (hello не приходил ни разу) — «Такой комнаты нет» с полем кода, а не «комната закрыта»
+function noRoom() {
+  dead = true;
+  showBanner(null);
+  const code = window.MP && MP.roomGone ? MP.roomGone.normalize(CODE) : CODE;
+  main.innerHTML = `<div class="screen" style="align-items:center;justify-content:center"><div class="panel" style="max-width:560px;width:100%"><h2>${escapeHtml(T("noroom_title"))}</h2><p>${escapeHtml(T("noroom_text"))}</p>
+    <form id="codeform" autocomplete="off" style="display:flex;gap:10px;margin-top:12px"><input id="codein" maxlength="24" value="${escapeHtml(code)}" placeholder="${escapeHtml(T("code_ph"))}" aria-label="${escapeHtml(T("code_ph"))}" style="flex:1;min-width:0;font:700 22px/1.2 var(--font);padding:10px 12px;border-radius:12px;border:2px solid var(--deep);text-transform:uppercase"><button class="start" type="submit" style="flex:none">${escapeHtml(T("btn_go"))}</button></form></div></div>`;
+  $("codeform").onsubmit = (e) => {
+    e.preventDefault();
+    const c = window.MP && MP.roomGone ? MP.roomGone.normalize($("codein").value) : $("codein").value.toUpperCase().replace(/[^A-Z2-9]/g, "");
+    if (c) location.href = `quip-board.html?r=${encodeURIComponent(c)}`;
+  };
+}
+const goneFlow = window.MP && MP.roomGone && !MP.off ? MP.roomGone({ showForm: noRoom, onClosed: closed }) : null;
+function gone() { if (goneFlow) goneFlow.gone(); else closed(); }
 
 async function boot() {
   // ?h=токен — ссылка ведущего на другое устройство: токен кладём в хранилище и убираем из адреса

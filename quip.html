@@ -181,6 +181,11 @@
   .enter .ncnt { position: absolute; right: 0; bottom: 10px; font: 700 15px/1 var(--font); font-style: normal; color: var(--ink); pointer-events: none; }
   .enter .ncnt[data-state="full"] { color: var(--deep); }
   .claimbtns { display: grid; gap: 4px; margin-top: 14px; }
+  /* поле кода комнаты (вместо prompt()) */
+  .codeform { display: grid; gap: 8px; margin-top: 12px; }
+  .codeform input { width: 100%; background: var(--tile); border: 0; border-radius: 16px; padding: 12px 14px; font: 700 22px/1.2 var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); box-shadow: 0 6px 0 var(--teal-edge); }
+  .codeform input:focus { outline: none; box-shadow: 0 6px 0 var(--teal-edge), 0 0 0 4px var(--bulb); }
+  .codeform .btn { margin-bottom: 7px; }
   .err { min-height: 22px; color: var(--deep); font-weight: 700; }
 
   /* участники */
@@ -453,7 +458,8 @@ window.I18N_DICT = {
     lede: `На экране вопрос. У тебя меньше минуты, чтобы ответить <b>смешнее всех</b>. Потом зал голосует.`,
     btn_create: `Открыть студию`, btn_creating: `Открываем…`,
     cta_sub: `Открывай на ноутбуке или ТВ — там будет сцена`,
-    have_code: `У меня есть код`, prompt_code: `Код комнаты`,
+    have_code: `У меня есть код`, prompt_code: `Код комнаты`, btn_go: `Перейти`,
+    noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код — он на общем экране`,
     rule1: `От трёх человек, все заходят с телефонов по QR с общего экрана`,
     rule2: `Дуэли, подпись к эмодзи-сцене, «Наоборот» (к ответу — вопрос) и финал из трёх ответов`,
     rule3: `Одинаковые ответы — «джинкс»: оба получают ноль`,
@@ -505,7 +511,8 @@ window.I18N_DICT = {
     lede: `A prompt hits the screen. You have under a minute to be <b>the funniest in the room</b>. Then the room votes.`,
     btn_create: `Open the studio`, btn_creating: `Opening…`,
     cta_sub: `Open it on a laptop or TV — that's the stage`,
-    have_code: `I have a code`, prompt_code: `Room code`,
+    have_code: `I have a code`, prompt_code: `Room code`, btn_go: `Go`,
+    noroom_title: `There is no such room`, noroom_text: `Check the code — it's on the shared screen`,
     rule1: `Three or more players, everyone joins by phone via the QR on the shared screen`,
     rule2: `Duels, an emoji-scene caption, Reverse (write the question to an answer) and a three-answer final`,
     rule3: `Same answers? "Jinx" — both score zero`,
@@ -556,7 +563,8 @@ window.I18N_DICT = {
     lede: `Στην οθόνη μια ερώτηση. Έχεις λιγότερο από ένα λεπτό να γίνεις <b>ο πιο αστείος</b>. Μετά ψηφίζει η αίθουσα.`,
     btn_create: `Άνοιξε το στούντιο`, btn_creating: `Ανοίγουμε…`,
     cta_sub: `Άνοιξέ το σε laptop ή τηλεόραση — εκεί είναι η σκηνή`,
-    have_code: `Έχω κωδικό`, prompt_code: `Κωδικός δωματίου`,
+    have_code: `Έχω κωδικό`, prompt_code: `Κωδικός δωματίου`, btn_go: `Πήγαινε`, //EL:unverified
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό — είναι στην κοινή οθόνη`, //EL:unverified
     rule1: `Από τρεις παίκτες, όλοι μπαίνουν από το κινητό με το QR της κοινής οθόνης`,
     rule2: `Μονομαχίες, λεζάντα σε σκηνή με emoji, «Ανάποδα» (βρες την ερώτηση) και τελικός με τρεις απαντήσεις`,
     rule3: `Ίδιες απαντήσεις; «Τζινξ» — μηδέν και οι δύο`,
@@ -755,9 +763,28 @@ function renderLanding() {
       toast(String(err.message || err));
     }
   };
+  // поле кода прямо на экране (раньше prompt(): на телефоне он блокирует страницу и не переводится)
   document.getElementById("havecode").onclick = () => {
-    const c = prompt(T("prompt_code"));
-    if (c) location.href = `quip.html?r=${encodeURIComponent(c.trim().toUpperCase())}`;
+    const box = document.getElementById("havecode").parentNode;
+    box.innerHTML = codeFormHtml("");
+    bindCodeForm();
+    document.getElementById("codein").focus();
+  };
+}
+
+// ---------- ввод кода комнаты ----------
+function normCode(raw) {
+  if (window.MP && MP.roomGone) return MP.roomGone.normalize(raw);
+  return String(raw || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+}
+function codeFormHtml(value) {
+  return `<form class="codeform" id="codeform" autocomplete="off"><input id="codein" maxlength="24" value="${escapeHtml(value)}" placeholder="${escapeHtml(T("prompt_code"))}" aria-label="${escapeHtml(T("prompt_code"))}" autocapitalize="characters" enterkeyhint="go"><button class="btn ghost" type="submit">${T("btn_go")}</button></form>`;
+}
+function bindCodeForm() {
+  document.getElementById("codeform").onsubmit = (e) => {
+    e.preventDefault();
+    const c = normCode(document.getElementById("codein").value); // уходим с кодом уже после фильтра
+    if (c) location.href = `quip.html?r=${encodeURIComponent(c)}`;
   };
 }
 
@@ -806,6 +833,16 @@ function renderClaim() {
 function renderCenter(titleKey, textKey, extra, key) {
   show(`<div class="card status"><h2>${T(titleKey)}</h2>${textKey ? `<p style="margin:0;color:var(--tile-muted)">${T(textKey)}</p>` : ""}${extra || ""}</div>`, key || "c:" + titleKey);
 }
+// Неверный код: hello не приходил ни разу — комнаты с таким кодом нет (или её давно убрали), а не «закрылась».
+// Серверного различителя нет (К-11): опечатка и комната, убранная по сроку, до hello выглядят одинаково.
+function renderNoRoom() {
+  dead = true;
+  screen = "noroom";
+  renderCenter("noroom_title", "noroom_text", codeFormHtml(CODE), "noroom");
+  bindCodeForm();
+}
+const goneFlow = window.MP && MP.roomGone && !MP.off ? MP.roomGone({ showForm: renderNoRoom, onClosed: () => renderExpired() }) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else renderExpired(); }
 function renderExpired() {
   dead = true;
   screen = "expired";
@@ -1144,6 +1181,7 @@ window.addEventListener("langchange", () => {
   if (!CODE) return renderLanding();
   if (screen === "enter") return renderEnter();
   if (screen === "claim") return renderClaim();
+  if (screen === "noroom") return renderNoRoom();
   screenKey = "";
   screen === "expired" ? renderExpired() : render();
 });
@@ -1185,6 +1223,7 @@ function onMessage(m) {
     if (m.type === "hello" && MP.applyHello(m) === false) flow = null; // MP_OFF на сервере: старый протокол
     else if (flow && flow.handle(m)) return;
   }
+  if (m.type === "hello" && goneFlow) goneFlow.hello();
   switch (m.type) {
     case "hello":
     case "state":
@@ -1296,7 +1335,7 @@ function start() {
   conn = qpConnect({
     code: CODE,
     onMessage,
-    onGone: renderExpired,
+    onGone: onRoomGone,
     onDrop: lostAction,
     // переподключились — снова входим своим токеном (hello придёт первым)
     onOpen: () => { needJoin = true; if (token) conn.gated = true; },
