@@ -166,6 +166,8 @@ class Game {
     p.online = online;
     const s = this.s;
     if (online) {
+      // вернувшийся «away» (не взят в партию на старте, T-W2-07) — обычный участник: бюджет и слоты целы
+      if (p.away) delete p.away;
       // Партию ждали именно его (или отключённых больше не больше половины) — авто-пауза снимается
       // сама: ведущий мог уйти вместе с остальными, а ручную паузу это не трогает (§7.4).
       if (s.paused) return this.autoResume(now);
@@ -207,7 +209,8 @@ class Game {
   // Кто ещё влияет на ход партии: не вышел и лайнап не собран. Обрыв игрока с полным лайнапом
   // ничего не меняет — останавливать из-за него остальных незачем.
   contenders() {
-    return this.s.players.filter((p) => !p.left && p.lots.length < this.s.settings.slots);
+    // away — не взят в партию на старте (RULE_U08_GHOST_OUT): не соперник, ждать его не нужно
+    return this.s.players.filter((p) => !p.left && !p.away && p.lots.length < this.s.settings.slots);
   }
 
   // §7.4: «отключилось больше половины» — повод для авто-паузы и условие, пока она держится.
@@ -295,12 +298,16 @@ class Game {
 
   // ---------- старт и лоты ----------
 
-  start(now) {
+  // opts.ghostOut (класс B, RULE_U08_GHOST_OUT; по умолчанию выкл. — как раньше): офлайн к старту не
+  // берём в партию — p.away = true; он не соперник (contenders), не входит в rounds и не вешает паузу;
+  // вернувшийся (setOnline true) снимает away и играет как обычный участник.
+  start(now, opts = {}) {
     const s = this.s;
     if (s.phase !== "lobby") throw new Error("already started");
-    const n = this.activePlayers().length;
     // считаем тех, кто на связи: иначе старт с одним живым игроком сразу уводил в соло-добор
     if (this.activePlayers().filter((p) => p.online).length < 2) throw new Error("need at least 2 players");
+    if (opts.ghostOut) for (const p of this.activePlayers()) if (p.online === false) p.away = true;
+    const n = this.activePlayers().filter((p) => !p.away).length;
     s.rounds = Math.min(s.deck.length, Math.ceil(n * s.settings.slots * 1.25));
     s.round = -1;
     if (s.settings.intro > 0) {
@@ -790,6 +797,7 @@ class Game {
         // событие и на слабой сети каждый килобайт — это задержка (у судьи лоты свои, полные)
         lots: p.lots.map((l) => ({ name: l.name, emoji: l.emoji, price: l.price, round: l.round })),
         online: p.online,
+        away: !!p.away, // не взят в партию на старте (T-W2-07): доска красит приглушённо
         left: p.left,
         full: p.lots.length >= s.settings.slots,
         canBid: this.canBid(p),

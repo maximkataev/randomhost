@@ -1065,3 +1065,63 @@ test("судья: цены и траты в модель не уходят, пр
   const raw = buildPrompt("artist", players.map((p, i) => ({ pid: `p${i + 1}`, lots: p.lots })), 5, "base");
   assert.ok(!/29|\$/.test(raw));
 });
+
+// ---------- T-W2-07: away на старте (RULE_U08_GHOST_OUT) ----------
+function lobbyWith(n, offline = [], settings = {}) {
+  const g = Game.create({ kind: "test", cards, settings: { intro: 0, ...settings }, rng });
+  for (let i = 0; i < n; i++) g.addPlayer({ id: `p${i}`, name: `P${i}` });
+  for (const id of offline) g.setOnline(id, false, 0);
+  return g;
+}
+
+test("away: флаг выкл. — офлайн к старту не away, rounds по всем, как раньше", () => {
+  const g = lobbyWith(5, ["p4"]);
+  g.start(0);
+  assert.equal(g.player("p4").away, undefined);
+  assert.equal(g.s.rounds, Math.ceil(5 * 5 * 1.25));
+  assert.ok(g.contenders().some((p) => p.id === "p4"));
+});
+
+test("away: флаг вкл. — старт с 4 онлайн + 1 офлайн: rounds по четверым, пауза не встаёт", () => {
+  const g = lobbyWith(5, ["p4"]);
+  g.start(0, { ghostOut: true });
+  assert.equal(g.player("p4").away, true);
+  assert.equal(g.s.rounds, Math.ceil(4 * 5 * 1.25));
+  assert.equal(g.contenders().length, 4);
+  assert.ok(!g.s.paused);
+  assert.equal(g.tooManyOffline(), false);
+  assert.equal(g.snapshot(0).players.find((p) => p.id === "p4").away, true);
+});
+
+test("away: партия идёт до all_full без ожидания офлайн-места", () => {
+  const g = lobbyWith(3, ["p2"], { slots: 1 });
+  g.start(0, { ghostOut: true });
+  let t = 0, guard = 0;
+  while (g.s.phase !== "finished" && guard++ < 100) {
+    assert.ok(!g.s.paused, "пауза не должна вставать на away");
+    if (g.s.phase === "lot") g.bid("p0", 1, t);
+    t = g.s.deadline; g.tick(t);
+  }
+  assert.equal(g.s.phase, "finished");
+  assert.equal(g.s.finishedReason, "all_full");
+});
+
+test("away: вернувшийся играет как обычный участник (away снят, бюджет и слоты целы)", () => {
+  const g = lobbyWith(3, ["p2"]);
+  g.start(0, { ghostOut: true });
+  g.setOnline("p2", true, 1000);
+  assert.equal(g.player("p2").away, undefined);
+  assert.equal(g.player("p2").money, g.s.settings.budget);
+  assert.ok(g.contenders().some((p) => p.id === "p2"));
+});
+
+test("away: tooManyOffline не считает away (иначе лишняя пауза), старый дамп без away = false", () => {
+  const g = lobbyWith(4, ["p3"]);
+  g.start(0, { ghostOut: true });
+  g.setOnline("p2", false, 100); // один из трёх соперников отвалился — авто-пауза по правилам §7.4 ещё нет
+  assert.equal(g.contenders().length, 3);
+  assert.equal(g.contenders().filter((p) => !p.online).length, 1);
+  const old = Game.from(JSON.parse(JSON.stringify(g.s)));
+  delete old.s.players[3].away;
+  assert.equal(old.snapshot(0).players[3].away, false);
+});

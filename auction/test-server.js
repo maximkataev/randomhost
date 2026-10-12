@@ -565,6 +565,7 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
   await ttlSuite();
   await tokensSuite();
   await graceSuite();
+  await ghostSuite();
   await pingTtlSuite();
   await shutdownSuite();
 
@@ -970,6 +971,84 @@ async function graceSuite() {
     check(rescued, "доски нет — паузу снимает любой игрок, партия не застревает навсегда");
 
     for (const c of [h, x2, y4]) c.ws.close();
+  } finally {
+    child.kill("SIGKILL");
+  }
+}
+
+// ---------- T-W2-07: away на старте (RULE_U08_GHOST_OUT), ✕ в лобби, GHOST_TTL_MS ----------
+// Свой инстанс: грация 300 мс, офлайн-место лобби живёт 1,5 с (уборка — в обходе SWEEP ≈ 2 с).
+async function ghostSuite() {
+  const { spawn } = require("child_process");
+  const path = require("path");
+  const os = require("os");
+  const PORT = 3800 + Math.floor(Math.random() * 90);
+  const B = `http://127.0.0.1:${PORT}`;
+  const child = spawn(process.execPath, [path.join(__dirname, "server.js")], {
+    env: { ...process.env, PORT: String(PORT), NODE_ENV: "production", OFFLINE_GRACE_MS: "300", GHOST_TTL_MS: "1500", ROOM_TTL_MS: "8000",
+      RULE_U08_GHOST_OUT: "1", DUMP_FILE: path.join(os.tmpdir(), `ghost-${PORT}.json`) },
+    stdio: "ignore",
+  });
+  const sock = (code, first) => new Promise((res) => {
+    const ws = new WebSocket(B.replace(/^http/, "ws") + "/auction/ws?r=" + code);
+    const c = { ws, msgs: [], send: (m) => ws.send(JSON.stringify(m)) };
+    ws.on("message", (raw) => { const m = JSON.parse(raw); c.msgs.push(m); if (m.state) c.state = m.state; if (m.type === "joined") { c.me = m.playerId; c.token = m.token; } });
+    ws.on("error", () => {});
+    ws.on("open", () => { ws.send(JSON.stringify(first)); setTimeout(() => res(c), 250); });
+  });
+  const mkRoom = async () => (await fetch(B + "/auction/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "animal", settings: { intro: 0, judge: "vote" } }) })).json();
+  try {
+    let up = false;
+    for (let i = 0; i < 60 && !up; i++) { try { up = (await fetch(B + "/auction/api/health")).ok; } catch { await wait(100); } }
+    if (!up) return check(false, "сервер ghost поднялся");
+
+    // ✕ в лобби: kick офлайн-места убирает игрока и его токен
+    const r1 = await mkRoom();
+    const h1 = await sock(r1.code, { type: "host", token: r1.hostToken });
+    const a1 = await sock(r1.code, { type: "join", name: "Аня" });
+    const g1 = await sock(r1.code, { type: "join", name: "Призрак" });
+    await until(() => h1.state?.players.length === 2);
+    g1.ws.close();
+    await until(() => h1.state.players.find((p) => p.id === g1.me)?.online === false, 3000);
+    check(h1.state.players.find((p) => p.id === g1.me)?.online === false, "ghost: офлайн-место в лобби остаётся (до ✕ или TTL)");
+    h1.send({ type: "kick", playerId: g1.me });
+    await until(() => h1.state.players.length === 1, 2000);
+    check(h1.state.players.length === 1 && h1.state.players[0].id === a1.me, "ghost: ✕ (kick) убирает офлайн-место из лобби");
+    const back = await sock(r1.code, { type: "join", name: "", token: g1.token });
+    check(back.msgs.some((m) => m.type === "error" && m.error === "token_gone"), "ghost: токен убранного места больше не входит (token_gone)");
+    back.ws.close();
+
+    // GHOST_TTL_MS: офлайн-место лобби уходит само
+    const r2 = await mkRoom();
+    const h2 = await sock(r2.code, { type: "host", token: r2.hostToken });
+    const a2 = await sock(r2.code, { type: "join", name: "Аня" });
+    const z2 = await sock(r2.code, { type: "join", name: "Зевс" });
+    await until(() => h2.state?.players.length === 2);
+    z2.ws.close();
+    const gone = await until(() => h2.state.players.length === 1, 9000);
+    check(gone && h2.state.players[0].id === a2.me, "ghost: офлайн-место лобби старше GHOST_TTL_MS убрано само");
+
+    // away на старте
+    const r3 = await mkRoom();
+    const h3 = await sock(r3.code, { type: "host", token: r3.hostToken });
+    const a3 = await sock(r3.code, { type: "join", name: "Аня" });
+    const b3 = await sock(r3.code, { type: "join", name: "Боря" });
+    const c3 = await sock(r3.code, { type: "join", name: "Витя" });
+    await until(() => h3.state?.players.length === 3);
+    c3.ws.close();
+    await until(() => h3.state.players.find((p) => p.id === c3.me)?.online === false, 3000);
+    h3.send({ type: "start" });
+    await until(() => h3.state.phase === "lot");
+    const slots = h3.state.settings.slots;
+    const vc = () => h3.state.players.find((p) => p.id === c3.me);
+    check(vc().away === true && h3.state.phase === "lot" && !h3.state.paused, "away: офлайн к старту — away, партия идёт без паузы");
+    check(h3.state.rounds === Math.ceil(2 * slots * 1.25), "away: rounds считан по двоим (без away)");
+    check(h3.state.players.filter((p) => !p.away).every((p) => p.online), "away: у остальных away=false");
+    // kick в игре и ✕ не нужен: проверяем возврат
+    const c3b = await sock(r3.code, { type: "join", name: "", token: c3.token });
+    await until(() => vc() && vc().online === true, 3000);
+    check(vc().online === true && vc().away === false && vc().money === h3.state.settings.budget, "away: вернувшийся — обычный участник, away снят, бюджет цел");
+    for (const c of [h1, a1, h2, a2, h3, a3, b3, c3b]) c.ws.close();
   } finally {
     child.kill("SIGKILL");
   }

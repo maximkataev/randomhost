@@ -121,6 +121,19 @@ async function typeText(page, text) {
     await remote.shot("ui_remote_lobby");
     await wait(500);
     check(await evaluateSafe(board, "document.body.innerText.includes('Макс')"), "доска: игрок появился в лобби");
+    // T-W2-07: ✕ на всех сидах лобби занимает место заранее — у онлайн скрыт, у офлайн виден; ширина сида не меняется
+    const kxProbe = await evaluateSafe(board, `(() => {
+      const seatOf = () => [...document.querySelectorAll("#seatrow .seat")].find((x) => x.querySelector(".kx"));
+      const was = state.players.map((p) => p.online);
+      const on = seatOf(); const w1 = on.offsetWidth; const vis1 = getComputedStyle(on.querySelector(".kx")).visibility;
+      state.players.forEach((p) => { p.online = false; }); render();
+      const off = seatOf(); const w2 = off.offsetWidth; const vis2 = getComputedStyle(off.querySelector(".kx")).visibility;
+      state.players.forEach((p, i) => { p.online = was[i]; }); render();
+      return JSON.stringify({ w1: w1, w2: w2, vis1: vis1, vis2: vis2 });
+    })()`);
+    const kxp = JSON.parse(kxProbe || "{}");
+    check(kxp.vis1 === "hidden" && kxp.vis2 === "visible", "доска: ✕ в лобби скрыт у онлайн-места и виден у офлайн (" + kxProbe + ")");
+    check(kxp.w1 > 0 && kxp.w1 === kxp.w2, "доска: ✕ не меняет ширину сида (место зарезервировано)");
 
     // --- перезагрузка пульта: вход по токену обязан вернуть того же игрока. Раньше join() на
     // верхнем уровне скрипта падал на TDZ (let lastName ниже) — пустой экран и авто-пауза партии.

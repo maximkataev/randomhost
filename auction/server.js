@@ -21,6 +21,7 @@ const { Game, clampSettings, cleanName } = require("./game");
 const { judge, lineupsFor } = require("./judge");
 const { MODES } = require("./modes");
 const { decide, decideDraft, STRATEGIES } = require("./bots");
+const presence = require("../lib/presence");
 
 const PORT = Number(process.env.PORT || 3000);
 const STATIC = process.env.STATIC ? path.resolve(process.env.STATIC) : null;
@@ -67,6 +68,11 @@ const ANON_TTL_MS = Number(process.env.ANON_TTL_MS || 30000);
 // Сколько ждём следующий опрос после ответа на предыдущий, прежде чем считать poll-клиента ушедшим
 const POLL_GAP_MS = Number(process.env.POLL_GAP_MS || 12000);
 const MAX_MSG_BYTES = 8192; // максимум на одно входящее сообщение
+// T-W2-07 (U-08, класс B): офлайн к старту не берём в партию (away) — по умолчанию ВЫКЛ., «как сейчас».
+const RULE_U08_GHOST_OUT = process.env.RULE_U08_GHOST_OUT === "1";
+// T-W2-07 (U-07, класс A): офлайн-место в ЛОББИ живёт GHOST_TTL_MS (lib/presence, по умолч. 120 с) и уходит само;
+// в партии место не освобождается никогда. Проверка — в обходе SWEEP (≤ 25 с), поэтому точность до SWEEP.
+const GHOST_TTL_MS = presence.GHOST_TTL_MS;
 // Карточки лотов по языкам: data/<kind>.json — русские, data/<lang>/<kind>.json — переводы.
 // Категории, для которых перевода ещё нет, отдаются по-русски: игра должна работать и с неполным
 // переводом, а не падать на отсутствующем файле.
@@ -291,6 +297,7 @@ function scheduleOffline(room, playerId) {
     statDrops++;
     console.log(`[auction] ${room.code}: ${name} не вернулся — offline`);
     const ev = room.game.setOnline(playerId, false, clock(room));
+    presence.setOnline(room.game.player(playerId), false, now()); // offSince — для уборки лобби по GHOST_TTL_MS
     afterChange(room, [{ type: "offline", playerId }, ...ev]);
   }, OFFLINE_GRACE_MS);
   if (t.unref) t.unref();
@@ -806,7 +813,13 @@ function handle(room, client, msg) {
       }
       if (!playerId) {
         if (g.s.phase !== "lobby") return reply({ type: "error", error: "game_started" });
-        if (g.activePlayers().length >= MAX_PLAYERS) return reply({ type: "error", error: "room_full" });
+        if (g.activePlayers().length >= MAX_PLAYERS) {
+          // комната полна: самое давнее офлайн-место старше GHOST_TTL_MS уступает новичку
+          const gid = presence.evictOldestGhost(g.s.players, { now: now(), stage: "lobby" });
+          if (!gid) return reply({ type: "error", error: "room_full" });
+          g.removePlayer(gid);
+          pruneTokens(room);
+        }
         // Новый игрок с одного соединения — не чаще раза в 3 с. Живой пульт после «Выйти» заходит
         // заново через новое соединение, так что это ограничение касается только цикла «вошёл — вышел»
         // по одному сокету: каждый такой вход — рассылка состояния всей комнате (30 сокетов жгли 35% CPU).
@@ -826,6 +839,7 @@ function handle(room, client, msg) {
       for (const c of room.sockets) if (c !== client && c.playerId === playerId) { c.playerId = null; send(c.ws, { type: "replaced" }); }
       client.playerId = playerId;
       cancelOffline(room, playerId);
+      presence.setOnline(g.player(playerId), true, now());
       // события возврата важны: вернувшийся единственный добирающий снимает паузу сам (§7.4)
       const events = [{ type: "online", playerId }, ...g.setOnline(playerId, true, t)];
       // Авто-паузу, которую поставил чей-то обрыв, снимаем сами, как только все вернулись: иначе
@@ -900,7 +914,7 @@ function handle(room, client, msg) {
     }
     case "start": {
       if (!isHost(client)) return;
-      return afterChange(room, g.start(t));
+      return afterChange(room, g.start(t, { ghostOut: RULE_U08_GHOST_OUT }));
     }
     // пропуск ведущим тоже привязан к лоту: запоздавшее нажатие не должно продать следующий лот
     case "skip_lot": return isHost(client) && !stale(msg) ? afterChange(room, g.hostSkip(t)) : undefined;
@@ -980,6 +994,18 @@ setInterval(() => {
     // доска: иначе телевизор с итогами, оставленный на ночь, держал комнату (и писал её в дамп)
     // сколько угодно. Игроки увидят внятный экран «комната была неактивна», а не молча мёртвый код.
     const ph = room.game.s.phase;
+    // офлайн-места лобби старше GHOST_TTL_MS уходят сами (U-07); в партии и в итогах место не трогаем
+    if (ph === "lobby") {
+      presence.ensureOffSince(room.game.s.players, now()); // после «ещё раз» офлайн-места без метки получают её сейчас
+      const ids = presence.ghostsToDrop({ players: room.game.s.players, now: now(), stage: "lobby", ttlMs: GHOST_TTL_MS, protect: (id) => room.bots.some((b) => b.playerId === id) });
+      if (ids.length) {
+        const evs = [];
+        for (const id of ids) evs.push(...room.game.removePlayer(id));
+        pruneTokens(room);
+        console.log(`[auction] ${room.code}: офлайн-мест лобби убрано ${ids.length} (> ${GHOST_TTL_MS} мс)`);
+        afterChange(room, evs);
+      }
+    }
     if (room.sockets.size && ph !== "lobby" && ph !== "finished" && !room.game.s.paused) room.touched = now();
     if (now() - room.touched > ROOM_TTL) destroyRoom(room);
   }
@@ -1070,6 +1096,7 @@ function restore() {
       }
       const room = { code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: Game.from(r.state), tokens: r.tokens, sockets: new Set(), offlineTimers: new Map(), dropCounts: new Map(), timer: null, voteTimer: null, touched: r.touched, speed: 1, skew: 0, bots: [], botTimer: null, judging: false, judgeCalls: Number(r.judgeCalls) || 0 };
       for (const p of room.game.s.players) p.online = false;
+      presence.onRestore(room.game.s.players, now()); // после деплоя лобби не пустеет: отсчёт GHOST_TTL_MS с момента restore
       pruneTokens(room); // дамп прежней версии мог успеть накопить мёртвые токены
       // После перезапуска на связи никого: без паузы таймеры шли бы, и лоты продавались и сгорали
       // без людей. Авто-пауза снимется сама, когда вернётся больше половины (§7.4).

@@ -144,6 +144,7 @@
   .p { flex: none; background: rgba(255, 255, 255, .045); border: 1px solid var(--glass-line); border-radius: 1em; padding: .62em .88em; transition: border-color .3s, box-shadow .3s, opacity .3s; }
   .p.leader { border-color: var(--c1); box-shadow: 0 0 0 1px var(--c1), 0 10px 30px -12px var(--c1); }
   .p.full, .p.offline, .p.left { opacity: .55; }
+  .p.away { opacity: .4; }
   .p-top { display: flex; align-items: baseline; gap: .5em; }
   .p-name { font-weight: 600; font-size: 1em; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .p-tag { font: 700 .63em/1 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--c1); }
@@ -371,6 +372,11 @@
   .seat .nm { font: 600 16px/1 var(--body); max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .seat.new { animation: seatIn .55s cubic-bezier(.3, 1.7, .5, 1) both; }
   @keyframes seatIn { from { opacity: 0; transform: scale(.6) translateY(10px); } }
+  /* ✕ в лобби (T-W2-07): место под него зарезервировано на ВСЕХ сидах — ширина не меняется (правило «без скачков»);
+     у онлайн-сида он невидим и не нажимается. Взведённый (первый тап) — только цвет, подпись та же. */
+  .seat .kx { flex: none; width: 24px; height: 24px; margin: 0 -6px 0 -2px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .1); color: var(--text); font: 700 13px/24px var(--body); cursor: pointer; }
+  .seat .kx.hid { visibility: hidden; pointer-events: none; }
+  .seat .kx[data-armed="1"] { background: #e5484d; color: #fff; }
   .seat.off { opacity: .5; }
   .seat.off .av { background: rgba(255, 255, 255, .12); color: var(--text); }
   .seat.wait { border-style: dashed; background: none; color: var(--muted); font-size: 14px; padding: 8px 16px; animation: waitPulse 2.2s ease-in-out infinite; }
@@ -404,6 +410,7 @@
     .seat { padding: 5px 12px 5px 5px; gap: 8px; }
     .seat .av { width: 26px; height: 26px; font-size: 13px; }
     .seat .nm { font-size: 14px; max-width: 12ch; }
+    .seat .kx { width: 20px; height: 20px; font-size: 11px; line-height: 20px; }
     .seat.wait { padding: 5px 12px; font-size: 13px; }
   }
 
@@ -719,6 +726,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="sound-toggle.js" defer></script>
 <script src="auction-modes.js"></script>
+<script src="mp-common.js"></script>
 <script src="auction-shared.js"></script>
 <script src="auction-music.js"></script>
 <script>
@@ -833,6 +841,8 @@ window.I18N_DICT = {
     cap_leader: `Лидер`,
     tag_left: `вышел`,
     tag_offline: `offline`,
+    tag_away: `не в игре`,
+    kick_seat: `Убрать место`,
     tag_full: `готов`,
     tag_leader: `лидер`,
     tag_broke: `на мели`,
@@ -979,6 +989,8 @@ window.I18N_DICT = {
     cap_leader: `Leader`,
     tag_left: `left`,
     tag_offline: `offline`,
+    tag_away: `sitting out`,
+    kick_seat: `Remove seat`,
     tag_full: `full`,
     tag_leader: `leader`,
     tag_broke: `broke`,
@@ -1123,6 +1135,8 @@ window.I18N_DICT = {
     cap_leader: `Πρώτος`,
     tag_left: `έφυγε`,
     tag_offline: `offline`,
+    tag_away: `εκτός παιχνιδιού`, //EL:unverified
+    kick_seat: `Αφαίρεση θέσης`, //EL:unverified
     tag_full: `γεμάτος`,
     tag_leader: `πρώτος`,
     tag_broke: `άφραγκος`,
@@ -1449,6 +1463,12 @@ function render() {
 // дальше приходящие state'ы только синхронизируют выбранные значения и ленту игроков.
 const BUDGETS = [20, 30, 50], SLOTS = [3, 5, 7];
 let seatsSeen = new Set();
+// ✕ у офлайн-места в лобби — двухтактный (MP.twoTap, U-12): первый тап взводит на 3 с, второй убирает место.
+// Без mp-common.js (или при MP_OFF) — один тап, как у остальных команд ведущего.
+const lobbyKick = (window.MP && MP.twoTap && MP.twoTap.create ? MP.twoTap.create : (o) => ({ tap: () => true, armed: () => null, isArmed: () => false, disarm() {} }))({
+  armedMs: 3000,
+  onChange: () => { document.querySelectorAll(".seat .kx[data-kick]").forEach((b) => { if (lobbyKick.isArmed("k:" + b.dataset.kick)) b.setAttribute("data-armed", "1"); else b.removeAttribute("data-armed"); }); },
+});
 
 function renderLobby() {
   stopMusic();
@@ -1654,7 +1674,15 @@ function syncLobby() {
   const seats = players.map((p) => {
     const seat = el("div", "seat" + (p.online ? "" : " off") + (seatsSeen.has(p.id) ? "" : " new"));
     seatsSeen.add(p.id);
-    seat.append(el("div", "av", initial(p.name)), el("div", "nm", p.name));
+    const kx = el("button", "kx" + (p.online ? " hid" : ""), "✕");
+    kx.type = "button";
+    kx.dataset.kick = p.id;
+    kx.title = T("kick_seat");
+    kx.setAttribute("aria-label", T("kick_seat"));
+    if (p.online) kx.tabIndex = -1;
+    else if (lobbyKick.isArmed("k:" + p.id)) kx.setAttribute("data-armed", "1");
+    kx.onclick = () => { if (!p.online && lobbyKick.tap("k:" + p.id)) sendMsg({ type: "kick", playerId: p.id }); };
+    seat.append(el("div", "av", initial(p.name)), el("div", "nm", p.name), kx);
     return seat;
   });
   const wait = el("div", "seat wait");
@@ -1945,10 +1973,10 @@ function renderPlayers() {
   box.style.setProperty("--sc", String(Math.ceil(s.settings.slots / 2)));
   box.style.setProperty("--sn", String(s.settings.slots));
   box.replaceChildren(...s.players.map((p) => {
-    const row = el("div", "p" + (p.id === s.leaderId && (s.phase === "bidding" || s.phase === "sold" || s.phase === "taken") ? " leader" : "") + (p.full ? " full" : "") + (!p.online ? " offline" : "") + (p.left ? " left" : "") + (p.money === 0 ? " broke" : ""));
+    const row = el("div", "p" + (p.id === s.leaderId && (s.phase === "bidding" || s.phase === "sold" || s.phase === "taken") ? " leader" : "") + (p.full ? " full" : "") + (!p.online ? " offline" : "") + (p.away ? " away" : "") + (p.left ? " left" : "") + (p.money === 0 ? " broke" : ""));
     const top = el("div", "p-top");
     // сравниваем ключ, а не подпись: «лидер» на другом языке перестал бы подсвечиваться
-    const tagKey = p.left ? "tag_left" : !p.online ? "tag_offline" : p.full ? "tag_full" : p.id === s.leaderId && s.phase === "bidding" ? "tag_leader" : p.skipped ? "tag_skip" : p.money === 0 ? "tag_broke" : "";
+    const tagKey = p.left ? "tag_left" : p.away && !p.online ? "tag_away" : !p.online ? "tag_offline" : p.full ? "tag_full" : p.id === s.leaderId && s.phase === "bidding" ? "tag_leader" : p.skipped ? "tag_skip" : p.money === 0 ? "tag_broke" : "";
     top.append(el("div", "p-name", p.name), el("span", "p-tag" + (tagKey === "tag_leader" ? "" : " dim"), tagKey ? T(tagKey) : ""), el("div", "p-left", money(p.money)));
     const bar = el("div", "p-bar"); const fill = el("i"); fill.style.width = Math.max(0, Math.min(100, (p.money / s.settings.budget) * 100)) + "%"; bar.append(fill);
     const slots = el("div", "slots");
