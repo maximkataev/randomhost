@@ -168,7 +168,7 @@ const SOLVER = String.raw`(async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const dump = path.join(os.tmpdir(), `bomb-ui-${process.pid}.json`);
   const server = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(SRV), NODE_ENV: "development", STATIC: path.join(__dirname, ".."), DUMP_FILE: dump },
+    env: { ...process.env, PORT: String(SRV), NODE_ENV: "development", STATIC: path.join(__dirname, ".."), DUMP_FILE: dump, OFFLINE_GRACE_MS: "3000" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let slog = "";
@@ -501,6 +501,65 @@ const SOLVER = String.raw`(async () => {
     await wait(5000);
     check((await board.evaluate("state.phase")) === "finished" && (await board.evaluate("state.loserId")) === victimPhone, "итоги: проиграл тот, на ком рванула");
     await board.shot("b_final");
+
+    // --- 6а. вход по имени (T-W2-15): плитки «Это я», «Это ты?», тёзка получает «Имя (2)» и тост
+    {
+      const r2 = await (await fetch(BASE + "/bomb/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: "ru" } }) })).json();
+      const joinRaw = (name) => new Promise((resolve, reject) => {
+        const ws = new WebSocket(`ws://localhost:${SRV}/bomb/ws?r=${r2.code}`);
+        ws.on("open", () => ws.send(JSON.stringify({ type: "join", name })));
+        ws.on("message", (raw) => { const m = JSON.parse(raw); if (m.type === "joined") resolve({ ws, id: m.playerId }); });
+        ws.on("error", reject);
+      });
+      const guest = await joinRaw("Гость"), lena = await joinRaw("Лена");
+      guest.ws.close();
+      lena.ws.close();
+      await wait(3800); // OFFLINE_GRACE_MS=3000 + запас: оба места без связи, грация подхвата прошла
+      const fresh = async (size) => {
+        // сначала страница без комнаты (токены в общем localStorage чужих телефонов не читаются), чистим, потом входим в комнату
+        const pg = await cdp(`${BASE}/bomb.html`, size);
+        pages.push(pg);
+        await wait(700);
+        await pg.evaluate("localStorage.clear()");
+        await pg.call("Page.navigate", { url: `${BASE}/bomb.html?r=${r2.code}` });
+        await wait(1800);
+        await pg.call("Page.bringToFront");
+        return pg;
+      };
+      const p1 = await fresh([390, 844]);
+      const tiles = await p1.evaluate("[...document.querySelectorAll('#ghosts .ghost')].map((b) => b.textContent).sort().join()");
+      check(tiles === "Гость,Лена", `вход: под формой плитки «Это я» с офлайн-местами (${tiles})`);
+      const geo = await p1.evaluate(`(() => { const r = document.querySelector('#ghosts .ghost').getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), document.documentElement.scrollWidth <= innerWidth]; })()`);
+      check(geo[1] >= 44 && geo[2], `плитки «Это я»: высота ≥ 44 и без горизонтальной прокрутки (${geo[0]}×${geo[1]})`);
+      await p1.shot("p_enter_ghosts");
+      // имя набрано руками — «Это ты?»
+      await p1.call("Runtime.evaluate", { expression: "document.getElementById('name').focus()" });
+      await typeText(p1, "Лена");
+      await p1.evaluate("document.querySelector('#enterform button[type=submit]').click()");
+      await wait(900);
+      check((await p1.evaluate("!!document.getElementById('claimyes')")) === true, "имя офлайн-места набрано руками: экран «Это ты?»");
+      await p1.shot("p_claim");
+      await p1.evaluate("document.getElementById('claimyes').click()");
+      await wait(900);
+      check((await p1.evaluate("window.bmPhone.me")) === lena.id, "«Да, это я» возвращает то же место (playerId)");
+      // плитка «Гость» на втором телефоне — одним тапом
+      const p2 = await fresh([360, 640]);
+      await p2.evaluate("[...document.querySelectorAll('#ghosts .ghost')].find((b) => b.textContent === 'Гость').click()");
+      await wait(900);
+      check((await p2.evaluate("window.bmPhone.me")) === guest.id, "плитка «Это я: Гость» возвращает своё место");
+      // тёзка живого игрока — «Лена (2)» и тост
+      const p3 = await fresh([390, 844]);
+      await p3.call("Runtime.evaluate", { expression: "document.getElementById('name').focus()" });
+      await typeText(p3, "Лена");
+      await p3.evaluate("document.querySelector('#enterform button[type=submit]').click()");
+      await wait(900);
+      const nm = await p3.evaluate("(window.bmPhone.state.players.find((p) => p.id === window.bmPhone.me) || {}).name");
+      const tst = await p3.evaluate("document.getElementById('toast').textContent");
+      if (nm !== "Лена (2)") { await p3.shot("p_dbg_homonym"); console.log("   диагностика:", await p3.evaluate("document.body.innerText.slice(0, 200) + ' | screen=' + screen + ' me=' + me + ' joinErr=' + joinErr")); }
+      check(nm === "Лена (2)", `тёзка живого игрока получает «Лена (2)» (${nm})`);
+      check(/Лена \(2\)/.test(tst), `тост «имя занято — теперь ты …» (${tst})`);
+      for (const pg of [p1, p2, p3]) check(pg.errors.length === 0, "вход по имени без JS-ошибок" + (pg.errors[0] ? ": " + pg.errors[0] : ""));
+    }
 
     // --- 7. телефоны и доска без JS-ошибок, без горизонтальной прокрутки
     for (const [i, ph] of phones.entries()) {

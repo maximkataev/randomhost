@@ -200,9 +200,17 @@ class Game {
     return ev;
   }
 
-  setOnline(id, online) {
+  // offSince — момент ухода в офлайн (мс, wall-clock): по нему лобби считает срок призрака (lib/presence, GHOST_TTL_MS)
+  setOnline(id, online, now) {
     const p = this.player(id);
-    if (p) p.online = online;
+    if (!p) return [];
+    if (online) {
+      p.online = true;
+      delete p.offSince;
+    } else {
+      if (p.online !== false || !Number.isFinite(p.offSince)) p.offSince = Number.isFinite(now) ? now : Date.now();
+      p.online = false;
+    }
     return [];
   }
 

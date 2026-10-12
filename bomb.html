@@ -106,6 +106,11 @@
   h2 { margin: 0; font: italic 900 38px/1 var(--font); text-transform: uppercase; }
   input { font: 700 26px/1 var(--font); width: 100%; padding: 12px; border: var(--line); background: #fff; color: var(--ink); border-radius: 0; }
   .err { color: var(--red); font-weight: 700; min-height: 1.25em; }
+  .ghosts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+  .ghosts:empty { display: none; }
+  .ghosts .gk { font-weight: 700; font-size: 15px; }
+  .ghosts .ghost { border: 2.5px solid var(--ink); background: var(--paper); color: var(--ink); font: 700 17px/1 var(--font); padding: 0 12px; min-height: 44px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-shadow: 3px 3px 0 var(--ink); }
+  .ghosts .ghost:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
   .enter { display: grid; gap: 14px; }
   .codeform { display: grid; gap: 10px; }
   .codeform input { text-transform: uppercase; }
@@ -471,6 +476,7 @@ window.I18N_DICT = {
     fine: `Ботов нет: играют только те, кто зашёл с телефона.`,
     enter_title: `Как тебя зовут?`, enter_ph: `Имя`, btn_join: `Войти`,
     err_name: `Напиши имя`, err_room_full: `В комнате уже 16 игроков`, err_game_started: `Раунд уже идёт — зайдёшь, как только он закончится`, err_token_gone: `Тебя нет в этой партии — войди заново`,
+    claim_title: `Это ты?`, claim_text: `Вернуться как {name}?`, btn_claim_yes: `Да, это я`, btn_claim_no: `Я другой`, renamed_toast: `Имя занято — теперь ты {name}`, ghosts_k: `Это я:`, err_name_taken: `Это имя уже занято — возьми другое`,
     wait_title: `Подключаемся…`,
     lobby_in: `Ты в игре`, lobby_wait: `Ждём, пока ведущий подожжёт фитиль`,
     spectator: `Раунд уже идёт`, spectator_sub: `Смотри на общий экран — войдёшь в следующий`,
@@ -534,6 +540,7 @@ window.I18N_DICT = {
     fine: `No bots: only people who joined from a phone play.`,
     enter_title: `What's your name?`, enter_ph: `Name`, btn_join: `Join`,
     err_name: `Type a name`, err_room_full: `The room already has 16 players`, err_game_started: `A round is on — you'll join as soon as it ends`, err_token_gone: `You're not in this game — join again`,
+    claim_title: `Is this you?`, claim_text: `Come back as {name}?`, btn_claim_yes: `Yes, it's me`, btn_claim_no: `I'm someone else`, renamed_toast: `That name is taken — you're now {name}`, ghosts_k: `That's me:`, err_name_taken: `That name is already taken — pick another`,
     wait_title: `Connecting…`,
     lobby_in: `You're in`, lobby_wait: `Waiting for the host to light the fuse`,
     spectator: `A round is on`, spectator_sub: `Watch the shared screen — you'll join the next one`,
@@ -596,6 +603,7 @@ window.I18N_DICT = {
     fine: `Χωρίς bots: παίζουν μόνο όσοι μπήκαν από κινητό.`,
     enter_title: `Πώς σε λένε;`, enter_ph: `Όνομα`, btn_join: `Είσοδος`,
     err_name: `Γράψε όνομα`, err_room_full: `Το δωμάτιο έχει ήδη 16 παίκτες`, err_game_started: `Ο γύρος τρέχει — θα μπεις μόλις τελειώσει`, err_token_gone: `Δεν είσαι σε αυτό το παιχνίδι — μπες ξανά`,
+    claim_title: `Είσαι εσύ;`, claim_text: `Να γυρίσεις ως {name};`, btn_claim_yes: `Ναι, εγώ είμαι`, btn_claim_no: `Είμαι άλλος`, renamed_toast: `Το όνομα είναι πιασμένο — τώρα είσαι {name}`, ghosts_k: `Εγώ είμαι:`, err_name_taken: `Το όνομα είναι ήδη πιασμένο — διάλεξε άλλο`, //EL:unverified
     wait_title: `Σύνδεση…`,
     lobby_in: `Είσαι μέσα`, lobby_wait: `Περιμένουμε να ανάψει το φιτίλι`,
     spectator: `Ο γύρος τρέχει`, spectator_sub: `Δες την κοινή οθόνη — θα μπεις στον επόμενο`,
@@ -665,6 +673,21 @@ const tokenKey = () => "bomb-token-" + CODE;
 try { token = localStorage.getItem(tokenKey()); } catch (e) {}
 // после reload с токеном форму входа не показываем, пока сервер не ответил на join (страховка — 4 с)
 let joinWait = !!token, joinWaitT = null;
+// вход по имени (T-W2-15): MP.joinFlow («Это ты?», тихие повторы name_claim); без mp-common — прежнее сообщение без caps
+let flow = null, claimPrompt = null, joinName = "";
+const mpOn = () => !!(window.MP && !MP.off && MP.joinFlow);
+function savedName() { try { return localStorage.getItem("bomb-name") || ""; } catch (e) { return ""; } }
+function buildJoin() {
+  const m = { type: "join" };
+  if (joinName) m.name = joinName;
+  return m;
+}
+function doJoin(extra) {
+  if (flow && flow.join(extra)) return;
+  const m = buildJoin();
+  if (extra) for (const k in extra) m[k] = extra[k];
+  conn.send(m);
+}
 let userActAt = 0; // когда игрок в последний раз сам нажал бросок/ответ: тост «раунд закончился» — только после этого
 
 const player = (id) => state && state.players.find((p) => p.id === id);
@@ -764,17 +787,59 @@ function renderEnter() {
       <input id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}"></div>
     <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
     <button class="btn" type="submit">${T("btn_join")}</button>
+    <div class="ghosts" id="ghosts"></div>
   </form>`;
   const input = document.getElementById("name");
+  ghostsKey = "";
+  drawGhosts();
   document.getElementById("enterform").onsubmit = (e) => {
     e.preventDefault();
     const name = input.value.trim();
     if (!name) { document.getElementById("err").textContent = T("err_name"); return; }
     try { localStorage.setItem("bomb-name", name); } catch (e2) {}
     joinErr = null;
-    conn.send({ type: "join", name });
+    joinName = name;
+    doJoin();
     keepAwake();
   };
+}
+// «Это я: Маша» — офлайн-места комнаты под формой входа: тап возвращает своё место (D2-2). Под кнопкой, а не над
+// полем: плитки появляются позже снимка, и форма не должна уезжать из-под пальца.
+let ghostsKey = "";
+function drawGhosts() {
+  const box = document.getElementById("ghosts");
+  if (!box || !state) return;
+  const list = state.players.filter((p) => p.online === false && !p.left).slice(0, 6);
+  const key = list.map((p) => p.id + ":" + p.name).join("|") + "|" + bmLang();
+  if (key === ghostsKey) return;
+  ghostsKey = key;
+  box.replaceChildren();
+  if (!list.length || (state.phase !== "lobby" && state.phase !== "finished")) return;
+  box.append(el("span", "gk", T("ghosts_k")));
+  for (const p of list) {
+    const b = el("button", "ghost", p.name);
+    b.type = "button";
+    b.onclick = () => {
+      try { localStorage.setItem("bomb-name", p.name); } catch (e) {}
+      joinErr = null;
+      joinName = p.name;
+      doJoin({ claim: true });
+      keepAwake();
+    };
+    box.append(b);
+  }
+}
+// «Это ты?»: офлайн-место с таким именем возвращается одним тапом; «Я другой» — новое место «Имя (2)»
+function renderClaim() {
+  if (!claimPrompt) return;
+  screen = "claim";
+  bodyMode(null);
+  const c = claimPrompt;
+  app.innerHTML = `<div class="calm"><div class="card"><h2>${T("claim_title")}</h2><p style="margin:0">${escapeHtml(tpl("claim_text", { name: c.name }))}</p>
+    <button class="btn" id="claimyes" type="button">${T("btn_claim_yes")}</button>
+    <button class="btn alt" id="claimno" type="button">${T("btn_claim_no")}</button></div></div>`;
+  document.getElementById("claimyes").onclick = () => { const p = claimPrompt; claimPrompt = null; screen = null; if (p) p.accept(); };
+  document.getElementById("claimno").onclick = () => { const p = claimPrompt; claimPrompt = null; screen = null; if (p) p.decline(); };
 }
 
 function renderCenter(titleKey, textKey, extra) {
@@ -1606,7 +1671,7 @@ function render() {
   drawHint();
   if (dead || !state) return;
   if (!me) {
-    if (screen === "kicked" || screen === "replaced") return;
+    if (screen === "kicked" || screen === "replaced" || screen === "claim") return;
     if (joinErr === "err_game_started") {
       if (state.phase !== "lobby" && state.phase !== "finished") {
         if (screen !== "spect") { screen = "spect"; renderCenter("spectator", "spectator_sub"); }
@@ -1615,9 +1680,9 @@ function render() {
       // раунд кончился — входим сами под тем же именем
       let name = "";
       try { name = localStorage.getItem("bomb-name") || ""; } catch (e) {}
-      if (name && !autoJoinSent) { autoJoinSent = true; joinErr = null; conn.send({ type: "join", name }); return; }
+      if (name && !autoJoinSent) { autoJoinSent = true; joinErr = null; joinName = name; doJoin(); return; }
     }
-    if (screen === "enter") return;
+    if (screen === "enter") { drawGhosts(); return; }
     // вход по токену ещё не подтверждён — форму не мелькаем (после reload игрок вернётся сам)
     if (joinWait && token) {
       if (screen !== "wait") { screen = "wait"; renderCenter("wait_title"); }
@@ -1673,6 +1738,7 @@ function frame() {
 window.addEventListener("langchange", () => {
   if (!CODE) return renderLanding();
   if (screen === "enter") return renderEnter();
+  if (screen === "claim") return renderClaim();
   calmKey = targetsKey = boomKey = "";
   if (screen === "hot") { screen = null; }
   if (screen === "noroom") return renderNoRoom();
@@ -1692,11 +1758,20 @@ function flushQueued() {
   });
 }
 function onMessage(m) {
+  if (mpOn() && flow) {
+    if (m.type === "hello" && MP.applyHello(m) === false) flow = null; // MP_OFF на сервере: старый протокол
+    else if (flow.handle(m)) return;
+  }
   switch (m.type) {
     case "hello":
     case "state":
       state = m.state;
       if (m.type === "hello" && goneFlow) goneFlow.hello();
+      if (m.type === "hello" && !token && needJoin && flow && flow.state().prompting) {
+        // обрыв на экране «Это ты?»: повторяем join (без claim) — сервер продлевает ожидание, экран не пропадает
+        needJoin = false;
+        flow.resume();
+      }
       if (m.type === "hello" && token && needJoin) {
         needJoin = false;
         conn.send({ type: "join", token });
@@ -1713,6 +1788,13 @@ function onMessage(m) {
       token = m.token;
       joinWait = false;
       joinErr = null;
+      claimPrompt = null;
+      if (m.name) {
+        joinName = m.name;
+        try { localStorage.setItem("bomb-name", m.name); } catch (e) {}
+        // «Маша» уже была в комнате — теперь «Маша (2)»: не молча (bomb-038)
+        if (m.renamed) toast(tpl("renamed_toast", { name: m.name }));
+      }
       try { localStorage.setItem(tokenKey(), token); } catch (e) {}
       keepAwake();
       if (was !== me) screen = null; // повторный вход после обрыва экран не пересобирает — иначе кнопки пропадают из-под пальца
@@ -1745,8 +1827,17 @@ function onMessage(m) {
       joinWait = false;
       conn.flush(() => false);
       if (m.error === "room_expired") return onRoomGone();
-      if (["game_started", "room_full", "token_gone", "bad_name"].includes(m.error)) {
-        if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
+      if (["game_started", "room_full", "token_gone", "bad_name", "name_taken"].includes(m.error)) {
+        if (m.error === "token_gone") {
+          try { localStorage.removeItem(tokenKey()); } catch (e) {}
+          token = null;
+          // место убрано (призрак в лобби, «Играть здесь» с другого телефона): с сохранённым именем входим заново сами
+          const nm = savedName();
+          if (nm && state && (state.phase === "lobby" || state.phase === "finished") && !autoJoinSent) {
+            autoJoinSent = true; joinErr = null; me = null; joinName = nm; doJoin();
+            break;
+          }
+        }
         joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
         me = null;
         if (m.error === "game_started") { autoJoinSent = false; screen = "spect"; renderCenter("spectator", "spectator_sub"); }
@@ -1801,12 +1892,21 @@ function start() {
       }
     },
     // переподключились — снова входим своим токеном (hello придёт первым)
-    onOpen: () => { needJoin = true; if (token) conn.gated = true; },
+    onOpen: () => { needJoin = true; autoJoinSent = false; if (token) conn.gated = true; },
     onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
   });
   requestAnimationFrame(frame);
   // ручка для стенда: состояние и отправка
   window.bmPhone = { send: (msg) => conn.send(msg), get state() { return state; }, get me() { return me; } };
+}
+if (window.MP && MP.joinFlow) {
+  flow = MP.joinFlow({
+    send: (m) => conn.send(m),
+    buildJoin,
+    onClaimPrompt: (c) => { claimPrompt = c; renderClaim(); },
+    // «подождите» не бесконечно: после повторов — обычное «имя занято»
+    onGiveUp: () => { joinErr = "err_name_taken"; me = null; renderEnter(); },
+  });
 }
 start();
 </script>
