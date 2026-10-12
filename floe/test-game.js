@@ -262,6 +262,60 @@ test('упал, пока офлайн, — снятие, не падение', (
   assert.strictEqual(P(g, 0).removed, true);
   assert.strictEqual(g.host, null);
 });
+test('OFFLINE_FALL_GRACE=1,5: упал в окне после отключения — падение, ведущий он (floe-007)', () => {
+  const g = fight(3, 1, { OFFLINE_FALL_GRACE: 1.5 });
+  parkOthers(g, [P(g, 0)]);
+  g.setOnline('p0', false);
+  run(g, 0.1, () => parkOthers(g, [P(g, 0)]));
+  place(P(g, 0), 0, g.floe.R * 2);
+  g.step(1 / 60);
+  assert.strictEqual(P(g, 0).removed, false);
+  assert.strictEqual(g.host && g.host.id, 'p0');
+});
+test('OFFLINE_FALL_GRACE=1,5: офлайн 2 с, затем упал — снятие, не падение', () => {
+  const g = fight(3, 1, { OFFLINE_FALL_GRACE: 1.5 });
+  g.setOnline('p0', false);
+  run(g, 2, () => parkOthers(g, []));
+  assert.strictEqual(P(g, 0).st, 'ice');
+  place(P(g, 0), 0, g.floe.R * 2);
+  g.step(1 / 60);
+  assert.strictEqual(P(g, 0).removed, true);
+  assert.strictEqual(g.host, null);
+});
+test('OFFLINE_FALL_GRACE=1,5: leave у края — тело на льду, упало в окне — ведущий; без падения снят через 1,5 с', () => {
+  const g = fight(3, 1, { OFFLINE_FALL_GRACE: 1.5 });
+  parkOthers(g, [P(g, 0)]);
+  g.removePlayer('p0');
+  assert.strictEqual(P(g, 0).st, 'ice', 'тело остаётся на льду');
+  assert.strictEqual(P(g, 0).removed, false);
+  run(g, 0.1, () => parkOthers(g, [P(g, 0)]));
+  place(P(g, 0), 0, g.floe.R * 2);
+  g.step(1 / 60);
+  assert.strictEqual(P(g, 0).removed, false);
+  assert.strictEqual(g.host && g.host.id, 'p0');
+  // у центра: никуда не падает — через окно снят
+  const h = fight(3, 1, { OFFLINE_FALL_GRACE: 1.5 });
+  h.removePlayer('p1');
+  run(h, 1.0, () => parkOthers(h, []));
+  assert.strictEqual(P(h, 1).st, 'ice');
+  run(h, 0.7, () => parkOthers(h, []));
+  assert.strictEqual(P(h, 1).st, 'gone');
+  assert.strictEqual(P(h, 1).removed, true);
+  assert.strictEqual(h.host, null);
+});
+test('OFFLINE_FALL_GRACE=0 (по умолчанию): упал сразу после отключения — всё равно снятие, leave снимает сразу', () => {
+  const g = fight(3);
+  parkOthers(g, [P(g, 0)]);
+  g.setOnline('p0', false);
+  g.step(1 / 60);
+  place(P(g, 0), 0, g.floe.R * 2);
+  g.step(1 / 60);
+  assert.strictEqual(P(g, 0).removed, true);
+  assert.strictEqual(g.host, null);
+  const h = fight(3);
+  h.removePlayer('p1');
+  assert.strictEqual(P(h, 1).st, 'gone');
+});
 test('все, кроме одного, сняты без падений — ведущий по жребию среди снятых', () => {
   const g = fight(3);
   g.removePlayer('p0');

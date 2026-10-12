@@ -294,6 +294,76 @@ function rawWs(code) {
       } finally { s2.kill("SIGTERM"); }
     });
 
+    await test("OFFLINE_FALL_GRACE: сокет закрыт у самого края после рывка — при 1,5 упавший ведёт, при 0 (как сейчас) он «снят»", async () => {
+      async function run(grace, off) {
+        const port2 = PORT + off;
+        const base2 = `http://localhost:${port2}`;
+        const env2 = Object.assign({}, process.env, { PORT: String(port2), NODE_ENV: "development", DUMP_FILE: path.join(require("os").tmpdir(), `floe-test-${port2}.json`), FLOE_CFG: JSON.stringify({ FIGHT_T: 25, START_GUARD: 0 }) });
+        if (grace != null) env2.OFFLINE_FALL_GRACE = String(grace);
+        const s2 = spawn(process.execPath, [path.join(__dirname, "server.js")], { env: env2, stdio: ["ignore", "pipe", "pipe"] });
+        try {
+          for (let i = 0; i < 50; i++) { try { if ((await fetch(base2 + "/floe/api/health")).ok) break; } catch {} await wait(100); }
+          const r = await NetBot.createRoom(base2);
+          const other = await NetBot.connect({ base: base2, code: r.code, name: "Второй", hostToken: r.hostToken, think: false });
+          const ws = await new Promise((res, rej) => { const w = new WebSocket(`ws://localhost:${port2}/floe/ws?r=${r.code}`); w.msgs = []; w.on("message", (m) => w.msgs.push(JSON.parse(m))); w.on("open", () => res(w)); w.on("error", rej); });
+          ws.send(JSON.stringify({ type: "join", name: "Рывок" }));
+          await wait(300);
+          const me = ws.msgs.find((m) => m.type === "joined").playerId;
+          other.send({ type: "start" });
+          for (let i = 0; i < 200 && !ws.msgs.some((m) => m.type === "s" && m.ph === "fight"); i++) await wait(25);
+          let closed = false, seq = 0;
+          for (let i = 0; i < 400 && !closed; i++) {
+            ws.send(JSON.stringify({ type: "i", mx: 1, my: 0, d: i % 40 === 0 ? 1 : 0, s: ++seq }));
+            await wait(25);
+            const sn = ws.msgs.filter((m) => m.type === "s").pop();
+            const row = sn && sn.p.find((p) => p[0] === me);
+            if (row && row[6] === "ice" && Math.hypot(row[1], row[2]) > sn.R - 22) { ws.close(); closed = true; }
+          }
+          assert(closed, "дошёл до края");
+          await other.until((b) => b.snap && (b.snap.host || b.phase === "over"), 8000);
+          await wait(300);
+          const ev = other.events.filter((e) => e.type === "fall" && e.id === me)[0];
+          const hostId = other.snap.host && other.snap.host.id;
+          return { ev, hostId, me, lottery: !!(other.snap.host && other.snap.host.lottery) };
+        } finally { s2.kill("SIGTERM"); }
+      }
+      const on = await run(1.5, 310);
+      assert(on.ev, "падение учтено событием fall");
+      assert(!on.ev.offline, "падение, а не снятие");
+      assert.strictEqual(on.hostId, on.me, "упавший первым — ведущий");
+      assert.strictEqual(on.lottery, false, "ведущий по падению, не по жребию среди снятых");
+      const off = await run(null, 311);
+      if (off.ev) assert.strictEqual(off.ev.offline, true, "по умолчанию — снятие, как сейчас");
+      assert(!off.ev || off.lottery, "по умолчанию отключённый — не по падению (в паре — жребий среди снятых)");
+    });
+
+    await test("снятый (офлайн > OFFLINE_T) вернулся по токену: inGame true, st gone в снимке (floe-001/002)", async () => {
+      const port2 = PORT + 320;
+      const base2 = `http://localhost:${port2}`;
+      const env2 = Object.assign({}, process.env, { PORT: String(port2), NODE_ENV: "development", DUMP_FILE: path.join(require("os").tmpdir(), `floe-test-${port2}.json`), FLOE_CFG: JSON.stringify({ FIGHT_T: 25, OFFLINE_T: 1 }) });
+      const s2 = spawn(process.execPath, [path.join(__dirname, "server.js")], { env: env2, stdio: ["ignore", "pipe", "pipe"] });
+      try {
+        for (let i = 0; i < 50; i++) { try { if ((await fetch(base2 + "/floe/api/health")).ok) break; } catch {} await wait(100); }
+        const r = await NetBot.createRoom(base2);
+        const host = await NetBot.connect({ base: base2, code: r.code, name: "Хост", hostToken: r.hostToken, think: false });
+        const b = await NetBot.connect({ base: base2, code: r.code, name: "Б", think: false });
+        const tok = b.token, id = b.id;
+        host.send({ type: "start" });
+        await b.until((x) => x.phase === "fight", 8000);
+        b.close();
+        await wait(2500);
+        const ws = await new Promise((res, rej) => { const w = new WebSocket(`ws://localhost:${port2}/floe/ws?r=${r.code}`); w.msgs = []; w.on("message", (m) => w.msgs.push(JSON.parse(m))); w.on("open", () => res(w)); w.on("error", rej); });
+        ws.send(JSON.stringify({ type: "join", token: tok }));
+        await wait(500);
+        assert.strictEqual(ws.msgs.find((m) => m.type === "joined").playerId, id);
+        const ro = ws.msgs.filter((m) => m.type === "roster").pop();
+        assert(ro.players.find((p) => p.id === id).inGame, "inGame в ростере");
+        const row = ws.msgs.filter((m) => m.type === "s").pop().p.find((p) => p[0] === id);
+        assert.strictEqual(row[6], "gone", "st в снимке: " + row[6]);
+        ws.close(); host.close();
+      } finally { s2.kill("SIGTERM"); }
+    });
+
     await test("«мёртвая рука»: ввод замолчал дольше INPUT_STALE_MS (env, прод) — пингвин останавливается, а не бежит к краю", async () => {
       // raw-клиент шлёт один `i {mx:1}` и молчит (замороженная вкладка); сервер в production с разными INPUT_STALE_MS
       async function run(stale, off) {

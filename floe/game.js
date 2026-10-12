@@ -52,6 +52,7 @@
     OVERTIME_EVERY: 1,
     OVERTIME_CRACK_T: 0.9,
     OFFLINE_T: 5,
+    OFFLINE_FALL_GRACE: 0, // U-38 (RULE_U38_FALL_GRACE): >0 — падение в первые N с после отключения/leave засчитывается; 0 = как раньше
     PRACTICE_RESPAWN: 1.2,
     REPLAY_BEFORE: 3,
     REPLAY_AFTER: 1.1,
@@ -454,6 +455,12 @@
         emit('leave', { id });
         return;
       }
+      // окно падения (U-38): тело остаётся на льду на GRACE с — упавший за это время считается упавшим, не снятым
+      if (cfg.OFFLINE_FALL_GRACE > 0 && p.st === 'ice') {
+        if (!p.leaving) { p.leaving = true; p.offlineSince = g.time; }
+        p.online = false; p.ix = 0; p.iy = 0; p.wantDash = -1;
+        return;
+      }
       takeOff(p, 'left');
     }
 
@@ -470,6 +477,7 @@
     function setOnline(id, on) {
       const p = g.byId.get(id);
       if (!p) return;
+      if (on && p.leaving) return;   // ушёл (leave/kick) — назад не возвращается
       if (on && !p.online) emit('online', { id });
       if (!on && p.online) { p.offlineSince = g.time; emit('offline', { id }); }
       p.online = !!on;
@@ -650,7 +658,9 @@
       }
       p.fellAt = g.clock;
       // упал, пока был офлайн, — не падение, а снятие: исход не решается чужим Wi-Fi
-      if (!p.online) {
+      // при OFFLINE_FALL_GRACE>0 упавший в окне после отключения/leave — падение: рывок + закрытая вкладка роль не обходят
+      const grace = cfg.OFFLINE_FALL_GRACE;
+      if (!p.online && !(grace > 0 && g.time - p.offlineSince <= grace)) {
         p.removed = true;
         emit('fall', { id: p.id, by: null, offline: true, x: p.x, y: p.y });
         return;
@@ -827,7 +837,10 @@
       // офлайн дольше OFFLINE_T — снимаем со льдины
       if (g.phase === 'fight' || g.phase === 'overtime' || g.phase === 'countdown') {
         for (const p of g.players) {
-          if (p.inGame && p.st === 'ice' && !p.online && g.time - p.offlineSince >= cfg.OFFLINE_T) takeOff(p, 'offline');
+          if (p.inGame && p.st === 'ice' && !p.online) {
+            const lim = p.leaving && cfg.OFFLINE_FALL_GRACE > 0 ? cfg.OFFLINE_FALL_GRACE : cfg.OFFLINE_T;
+            if (g.time - p.offlineSince >= lim) takeOff(p, p.leaving ? 'left' : 'offline');
+          }
         }
       }
 
