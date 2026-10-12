@@ -379,3 +379,153 @@ test("аватар: меняется в лобби, чужой занять не
   assert.strictEqual(g.setAvatar("b", "🌮").reason, "game_started");
   assert.strictEqual(g.snapshot(0, {}).avatarChoices, null);
 });
+
+// ---------- T-W2-22: призраки, played, skipped ----------
+
+test("призрак не в «N из M»: roster и guessers по онлайн + ответившие, locked не больше guessers", () => {
+  const g = game(5);
+  // P5 вышел из сети в самом начале подсказок
+  g.setOnline("P5", false, 5000);
+  let sn = g.snapshot(5000, "board");
+  assert.ok(!sn.roster.includes("P5"), "офлайн не в знаменателе");
+  assert.strictEqual(sn.roster.length, 4);
+  assert.strictEqual(sn.clued.length, 0);
+  // P4 написал и тоже пропал: уже ответил — остаётся в счёте, «4 из 3» не бывает
+  g.pickScale("P4", 0, 6000); g.clue("P4", "слово г", 6000);
+  g.setOnline("P4", false, 6000);
+  sn = g.snapshot(6000, "board");
+  assert.ok(sn.roster.includes("P4") && sn.clued.includes("P4"));
+  assert.ok(sn.clued.every((id) => sn.roster.includes(id)), "clued ⊆ roster");
+  for (const id of ["P1", "P2", "P3"]) { g.pickScale(id, 0, 7000); g.clue(id, "слово " + "абв"[Number(id[1]) - 1], 7000); }
+  assert.strictEqual(g.s.phase, "guess");
+  const a = g.author();
+  const rest = g.s.queue.filter((x) => x !== a);
+  g.setOnline(rest[0], false, 8000);
+  // зафиксировал и пропал после — остаётся в «N из M»
+  g.lock(rest[1], 10, 8000);
+  g.setOnline(rest[1], false, 8001);
+  sn = g.snapshot(8001, "board");
+  assert.ok(sn.locked.length <= sn.guessers.length, `${sn.locked.length} из ${sn.guessers.length}`);
+  assert.ok(sn.guessers.includes(rest[1]) && sn.locked.includes(rest[1]));
+});
+
+test("skipped и played в снимке; вошедший после финала — played=false, участник очков — true", () => {
+  const g = game(3, { short: true });
+  assert.strictEqual(g.snapshot(1, "board").players[0].skipped, 0);
+  g.pickScale("P1", 0, 1); g.clue("P1", "слово а", 1);
+  g.pickScale("P2", 0, 1); g.clue("P2", "слово б", 1);
+  g.tick(g.s.phaseEnd); // P3 не написал — 🐌
+  assert.strictEqual(g.snapshot(g.s.phaseStart, "board").players.find((p) => p.id === "P3").skipped, 1);
+  for (let guard = 0; g.s.phase !== "finished" && guard < 50; guard++) g.tick(g.s.phaseEnd);
+  assert.ok(g.addPlayer({ id: "LATE", name: "Опоздавший", now: 99999 }).ok);
+  const ps = g.snapshot(100000, "board").players;
+  assert.strictEqual(ps.find((p) => p.id === "LATE").played, false);
+  assert.ok(ps.filter((p) => p.id !== "LATE").every((p) => p.played === true));
+  // в других фазах поля нет
+  const g2 = game(3);
+  assert.ok(!("played" in g2.snapshot(1, "board").players[0]));
+});
+
+function finishedGame(n) {
+  const g = game(n, { short: true });
+  for (let guard = 0; g.s.phase !== "finished" && guard < 80; guard++) { if (g.s.phase === "clue") toGuess(g); else g.tick(g.s.phaseEnd); }
+  assert.strictEqual(g.s.phase, "finished");
+  return g;
+}
+
+test("«Ещё партию» без офлайн: оставшиеся без связи дольше грации в новую партию не переходят", () => {
+  const g = finishedGame(4);
+  g.setOnline("P4", false, 100000);
+  // сразу после обрыва (в пределах грации) — ещё в списке
+  assert.strictEqual(g.start(103000).ok, true);
+  assert.ok(g.player("P4"));
+  const g2 = finishedGame(4);
+  g2.setOnline("P4", false, 100000);
+  const r = g2.start(120000);
+  assert.ok(r.ok);
+  assert.strictEqual(g2.player("P4"), undefined, "призрак в новой партии не участвует");
+  assert.strictEqual(g2.s.players.length, 3);
+  assert.ok(!Object.keys(g2.s.cards).includes("P4"));
+  // трое без одного офлайн — few_players: офлайн не считается
+  const g3 = finishedGame(3);
+  g3.setOnline("P3", false, 100000);
+  assert.deepStrictEqual(g3.start(130000), { ok: false, reason: "few_players" });
+});
+
+test("RULE_U08_GHOST_OUT: старт из лобби без всех, кто сейчас офлайн; без флага — как раньше", () => {
+  const mk = (flag) => {
+    const g = Game.create({ settings: {}, code: "T", rnd: rig(), content: fixture() });
+    g.ghostOut = flag;
+    names(4).forEach((id) => g.addPlayer({ id, name: id, now: 0 }));
+    g.setOnline("P4", false, 1000);
+    return g;
+  };
+  const off = mk(false);
+  assert.ok(off.start(2000).ok);
+  assert.ok(off.player("P4"), "без флага призрак в партии (в пределах грации)");
+  const on = mk(true);
+  assert.ok(on.start(2000).ok);
+  assert.strictEqual(on.player("P4"), undefined);
+  const few = mk(true);
+  few.setOnline("P3", false, 1000);
+  assert.deepStrictEqual(few.start(2000), { ok: false, reason: "few_players" });
+});
+
+test("GHOST_TTL: в лобби офлайн уходит по сроку, в игре — никогда, в итогах — только без участия", () => {
+  const g = Game.create({ settings: { short: true }, code: "T", rnd: rig(), content: fixture() });
+  names(4).forEach((id) => g.addPlayer({ id, name: id, now: 0 }));
+  g.setOnline("P4", false, 1000);
+  assert.deepStrictEqual(g.purgeGhosts(5000, 10000), []); // срок не вышел
+  assert.ok(g.purgeGhosts(12000, 10000).some((e) => e.playerId === "P4"));
+  assert.strictEqual(g.player("P4"), undefined);
+  // игра
+  assert.ok(g.addPlayer({ id: "P4", name: "P4", now: 12000 }).ok);
+  assert.ok(g.start(12000).ok);
+  g.tick(g.s.phaseEnd);
+  g.setOnline("P2", false, 20000);
+  assert.deepStrictEqual(g.purgeGhosts(900000, 10000), [], "в игре место не освобождается");
+  assert.ok(g.player("P2"));
+  // итоги: P2 играл — место не трогаем; новичок без участия и очков — уходит
+  for (let guard = 0; g.s.phase !== "finished" && guard < 80; guard++) { if (g.s.phase === "clue") toGuess(g); else g.tick(g.s.phaseEnd); }
+  assert.ok(g.addPlayer({ id: "NEW", name: "Новичок", now: 1000000 }).ok);
+  g.setOnline("NEW", false, 1000001);
+  g.purgeGhosts(2000000, 10000);
+  assert.strictEqual(g.player("NEW"), undefined);
+  assert.ok(g.player("P2"), "место сыгравшего в итогах остаётся");
+});
+
+test("room_full в лобби вытесняет давнего офлайн (старше порога), но не свежего", () => {
+  const g = Game.create({ settings: {}, code: "T", rnd: rig(), content: fixture() });
+  Array.from({ length: 12 }, (_, i) => "Q" + i).forEach((id) => g.addPlayer({ id, name: id, now: 0 }));
+  assert.strictEqual(g.addPlayer({ id: "X", name: "X", now: 1000 }).reason, "room_full");
+  g.setOnline("Q3", false, 1000);
+  assert.strictEqual(g.addPlayer({ id: "X", name: "X", now: 2000 }).reason, "room_full", "офлайн свежий — не трогаем");
+  const r = g.addPlayer({ id: "X", name: "X", now: 1000 + 200000 });
+  assert.ok(r.ok, r.reason);
+  assert.strictEqual(g.player("Q3"), undefined);
+});
+
+// ---------- T-W2-23: skip ----------
+
+test("skip ведущего: clue → guess с 🐌 у неписавших, guess → reveal, не раньше 800 мс, в лобби/итогах — отказ", () => {
+  const lobby = Game.create({ settings: {}, code: "T", rnd: rig(), content: fixture() });
+  assert.strictEqual(lobby.skip(1000).ok, false);
+  const g = game(4);
+  const t0 = g.s.phaseStart;
+  assert.strictEqual(g.skip(t0 + 100).reason, "too_early");
+  assert.strictEqual(g.s.phase, "clue");
+  for (const id of ["P1", "P2", "P3"]) { g.pickScale(id, 0, t0 + 1); g.clue(id, "слово " + "абв"[Number(id[1]) - 1], t0 + 1); }
+  assert.ok(g.skip(t0 + 2000).ok);
+  assert.strictEqual(g.s.phase, "guess");
+  assert.strictEqual(g.player("P4").stats.skipped, 1);
+  assert.strictEqual(g.skip(g.s.phaseStart + 10).reason, "too_early", "двойной тап не пролистывает шкалу");
+  const a = g.author();
+  const other = g.s.queue.find((x) => x !== a);
+  g.lock(other, 50, g.s.phaseStart + 1000);
+  assert.ok(g.skip(g.s.phaseStart + 1500).ok);
+  assert.strictEqual(g.s.phase, "reveal");
+  assert.ok(g.skip(g.s.phaseStart + 900).ok);
+  assert.ok(["guess", "scores"].includes(g.s.phase));
+  for (let guard = 0; g.s.phase !== "finished" && guard < 80; guard++) { if (g.s.phase === "clue") toGuess(g); else g.tick(g.s.phaseEnd); }
+  assert.strictEqual(g.skip(g.s.phaseStart + 5000).ok, false);
+});

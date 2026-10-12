@@ -48,6 +48,8 @@ const WV_SHARED_I18N = {
     aw_split: "Раскол", aw_split_d: "стрелки разошлись на {n}°",
     leaders: "Лидеры перед удвоением",
     err_connect: "Нет связи с сервером, переподключаемся…",
+    conn_lost: "Нет связи — проверяем…",
+    off_note: "нет связи", snail_t: "не успел с подсказкой: {n}",
   },
   en: {
     game_name: "Same Wave",
@@ -70,6 +72,8 @@ const WV_SHARED_I18N = {
     aw_split: "The Great Divide", aw_split_d: "needles {n}° apart",
     leaders: "Leaders before the double",
     err_connect: "No connection, reconnecting…",
+    conn_lost: "No connection — checking…",
+    off_note: "offline", snail_t: "missed the clue: {n}",
   },
   el: {
     game_name: "Στο ίδιο κύμα",
@@ -92,6 +96,8 @@ const WV_SHARED_I18N = {
     aw_split: "Διχασμός", aw_split_d: "οι βελόνες απέχουν {n}°",
     leaders: "Οι πρώτοι πριν το διπλό",
     err_connect: "Χωρίς σύνδεση, επανασύνδεση…",
+    conn_lost: "Χωρίς σύνδεση — έλεγχος…", //EL:unverified
+    off_note: "χωρίς σύνδεση", snail_t: "δεν πρόλαβε το στοιχείο: {n}", //EL:unverified
   },
 };
 (function mergeSharedDict() {
@@ -235,11 +241,14 @@ const BM_WS_HANDSHAKE_MS = 5000;
 const BM_POLL_FETCH_MS = 28000;
 const BM_PROBE_MS = 3000;
 
-function wvOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone }) {
+function wvOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone, onQuiet }) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   let closed = false, opened = false, sid = null, ws = null, polling = false, pollAbort = null;
   let lastSeen = 0, beat = null, notified = false, probeTimer = null;
-  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } clearTimeout(probeTimer); probeTimer = null; };
+  // MP.conn (mp-common.js, T-W2-03): пинг 5 с в игре / 10 с в лобби, баннер «нет связи» после 10 с тишины,
+  // закрытие и переподключение после 22 с. Без mp-common.js (или при MP.off) — прежний цикл ниже (20 с / 45 с).
+  let mpConn = null, inGame = false;
+  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } if (mpConn) { mpConn.stop(); mpConn = null; } clearTimeout(probeTimer); probeTimer = null; };
   const fireClose = () => {
     if (closed || notified) return;
     notified = true;
@@ -254,14 +263,31 @@ function wvOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
   const deliver = (m) => {
     if (closed) return;
     lastSeen = Date.now();
+    // сервер выключил каркас (MP_OFF=1): возвращаемся к прежнему циклу пингов
+    if (m && m.type === "hello" && window.MP && MP.applyHello && !MP.applyHello(m) && mpConn) startBeat();
+    if (mpConn) mpConn.seen(lastSeen);
     if (m && m.type === "pong") { if (typeof m.c === "number") wvClockSample(m.t, m.c); return; }
-    if (m && (m.type === "state" || m.type === "hello") && m.state) wvStateSample(m.state.serverNow);
+    if (m && (m.type === "state" || m.type === "hello") && m.state) {
+      wvStateSample(m.state.serverNow);
+      inGame = !!m.state.phase && m.state.phase !== "lobby" && m.state.phase !== "finished";
+    }
     onMessage(m);
   };
   const startBeat = () => {
     stopBeat();
     lastSeen = Date.now();
     ping(); setTimeout(ping, 400); setTimeout(ping, 1500);
+    if (window.MP && typeof MP.conn === "function" && !MP.off) {
+      mpConn = MP.conn({
+        ping: () => { if (!closed) ping(); },
+        inGame: () => inGame,
+        onOffline: () => { if (onQuiet) onQuiet(true); },
+        onOnline: () => { if (onQuiet) onQuiet(false); },
+        onDead: () => fireClose(),
+      });
+      mpConn.start();
+      return;
+    }
     beat = setInterval(() => {
       if (closed) return stopBeat();
       if (Date.now() - lastSeen > 45000) { fireClose(); return; }
@@ -286,6 +312,8 @@ function wvOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
         });
     },
     close() { closed = true; stopBeat(); try { if (ws) ws.close(); } catch (e) {} try { if (pollAbort) pollAbort.abort(); } catch (e) {} sid = null; },
+    // вкладка снова видна: тишину, пока она была скрыта, MP.conn не считает
+    visible() { if (mpConn) mpConn.visible(Date.now()); },
     probe(ms) {
       if (closed || !opened) return;
       clearTimeout(probeTimer);
@@ -359,7 +387,7 @@ function wvOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
 const WV_QUEUE_CEILING_MS = { "*": 90000 };
 
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
-function wvConnect({ code, onMessage, onOpen, onGone, onState, onDrop }) {
+function wvConnect({ code, onMessage, onOpen, onGone, onState, onDrop, onQuiet }) {
   let t = null, delay = 500, stopped = false;
   // Действие, нажатое между обрывом и возвращением связи, раньше терялось молча (а кнопка уже горела «ушло»).
   // Теперь оно ждёт в очереди MP.sendQueue и уходит после входа по токену: сокет без игрока действие бы отбросил.
@@ -406,6 +434,7 @@ function wvConnect({ code, onMessage, onOpen, onGone, onState, onDrop }) {
     if (onState) onState("connecting");
     holder.api = wvOpenTransport({
       code,
+      onQuiet,
       onMessage: (m) => { if (queue) queue.heard(); onMessage(m); },
       // отправка не удалась после повторов (long-polling): не теряем, а ставим в очередь до входа по токену
       onSendFail: (m) => { if (stopped || !m || m.type === "join" || m.type === "host") return; enqueue(m); },
@@ -417,7 +446,7 @@ function wvConnect({ code, onMessage, onOpen, onGone, onState, onDrop }) {
   open();
   // вернулись в вкладку или сеть появилась — проверяем, жив ли сокет, не дожидаясь 45 с тишины
   const wake = () => { if (holder.api && holder.api.mode !== "none") holder.api.probe(); };
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (holder.api && holder.api.visible) holder.api.visible(); wake(); } });
   window.addEventListener("online", wake);
   return holder;
 }

@@ -15,7 +15,7 @@ let proc = null;
 
 function startServer() {
   proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300", ANON_TTL_MS: "1500", ...(startServer.env || {}) },
+    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300", ANON_TTL_MS: "1500", GHOST_TTL_MS: "1500", PING_MS: "1000", ...(startServer.env || {}) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";
@@ -228,5 +228,117 @@ test("сервер", async (t) => {
     assert.ok(scanned > 15, "кадров мало — проверка пустая: " + scanned);
     assert.ok(cut(ps[0]).some((m) => m.state && m.state.me && m.state.me.card && m.state.me.card.target != null), "свой target телефон не получал — проверка пустая");
     for (const c of [b, thief, anon, ...ps]) c.close();
+  });
+
+  // ---- T-W2-22: name_taken.online, joined.name, токен-прототип ----
+  await t.test("name_taken: online говорит, на связи ли владелец имени; кадры без target и карточки", async () => {
+    const room = await createRoom({ lang: "ru" }, 4);
+    const b = await board(room.code, room.hostToken);
+    const ps = [await player(room.code, "Оля"), await player(room.code, "Петя"), await player(room.code, "Вася")];
+    b.send({ type: "start" });
+    await allClue(ps);
+    await b.wait(statePred((s) => s.phase === "guess"));
+    // владелец имени на связи
+    const t1 = client(room.code);
+    await t1.open;
+    t1.send({ type: "join", name: "оля" }); // регистр и двойники не отличают
+    const r1 = await t1.wait((m) => m.type === "error" || m.type === "joined");
+    assert.strictEqual(r1.error, "name_taken");
+    assert.strictEqual(r1.online, true);
+    // владелец без сокета (дольше грации 300 мс): «место ждёт игрока»
+    ps[1].close();
+    await sleep(700);
+    const t2 = client(room.code);
+    await t2.open;
+    t2.send({ type: "join", name: "Петя" });
+    const r2 = await t2.wait((m) => m.type === "error" || m.type === "joined");
+    assert.strictEqual(r2.error, "name_taken");
+    assert.strictEqual(r2.online, false);
+    for (const c of [t1, t2]) {
+      assert.ok(!c.raw.some((x) => x.includes('"target"') || x.includes('"card":{') && x.includes('"options"')), "после name_taken нет ни сектора, ни карточки");
+    }
+    for (const c of [b, t1, t2, ...ps]) c.close();
+  });
+
+  await t.test("joined.name: в лобби тёзка получает «Имя 2» и сервер называет принятое имя; токен «__proto__» — token_gone", async () => {
+    const room = await createRoom({ lang: "ru" });
+    const first = await player(room.code, "Маша");
+    const second = client(room.code);
+    await second.open;
+    second.send({ type: "join", name: "Маша" });
+    const j = await second.wait((m) => m.type === "joined");
+    assert.strictEqual(j.name, "Маша 2");
+    // токен-прототип не находит свойств Object.prototype
+    const bad = client(room.code);
+    await bad.open;
+    bad.send({ type: "join", token: "__proto__" });
+    const e = await bad.wait((m) => m.type === "error");
+    assert.strictEqual(e.error, "token_gone");
+    // возврат по токену: joined.name — прежнее имя
+    const again = await player(room.code, "", first.token);
+    assert.strictEqual(again.id, first.id);
+    for (const c of [first, second, bad, again]) c.close();
+  });
+
+  await t.test("призрак в лобби уходит через GHOST_TTL_MS; онлайн остаются", async () => {
+    const room = await createRoom({ lang: "ru" });
+    const b = await board(room.code, room.hostToken);
+    const a = await player(room.code, "Аня");
+    const z = await player(room.code, "Зоя");
+    await b.wait(statePred((s) => s.players.length === 2));
+    z.close();
+    await b.wait(statePred((s) => s.players.length === 2 && s.players.some((p) => p.name === "Зоя" && p.online === false)), 5000);
+    await b.wait(statePred((s) => s.players.length === 1 && s.players[0].name === "Аня"), 8000);
+    // токен ушедшего больше ничего не значит
+    const back = client(room.code);
+    await back.open;
+    back.send({ type: "join", token: z.token });
+    const r = await back.wait((m) => m.type === "error" || m.type === "joined");
+    assert.strictEqual(r.error, "token_gone");
+    for (const c of [b, a, back]) c.close();
+  });
+
+  // ---- T-W2-23: skip ----
+  await t.test("skip: игроку нельзя; ведущему — в intro отказ, в clue закрывает фазу (не написавшим 🐌)", async () => {
+    const room = await createRoom({ lang: "ru" });
+    const b = await board(room.code, room.hostToken);
+    const ps = [await player(room.code, "Оля"), await player(room.code, "Петя"), await player(room.code, "Вася")];
+    b.send({ type: "start" });
+    await b.wait(statePred((s) => s.phase === "intro"));
+    b.send({ type: "skip" });
+    const rj = await b.wait((m) => m.type === "rejected" && m.action === "skip");
+    assert.strictEqual(rj.reason, "bad_phase");
+    await b.wait(statePred((s) => s.phase === "clue"));
+    await sleep(900);
+    ps[0].send({ type: "skip" }); // игрок — игнор
+    await sleep(200);
+    assert.strictEqual(b.state.phase, "clue");
+    // пишет один: остальные получат 🐌
+    ps[0].send({ type: "pick", i: 0 });
+    await ps[0].wait(statePred((s) => s.me.card.pick === 0));
+    ps[0].send({ type: "clue", text: "подсказка а" });
+    await ps[0].wait(statePred((s) => !!s.me.card.clue));
+    b.send({ type: "skip" });
+    await b.wait(statePred((s) => s.phase === "guess"), 5000);
+    assert.strictEqual(b.state.players.filter((p) => p.skipped === 1).length, 2);
+    for (const c of [b, ...ps]) c.close();
+  });
+
+  await t.test("пинг комнат «в игре»: ping-кадры каждые PING_MS, в лобби быстрого пинга нет", async () => {
+    const room = await createRoom({ short: true });
+    const b = await board(room.code, room.hostToken);
+    const ps = [await player(room.code, "Аня"), await player(room.code, "Боря"), await player(room.code, "Вика")];
+    const pings = { lobby: 0, game: 0 };
+    let phase = "lobby";
+    b.ws.on("ping", () => { pings[phase]++; });
+    await sleep(2500);
+    assert.strictEqual(pings.lobby, 0, "быстрый пинг не должен идти в лобби");
+    phase = "game";
+    b.send({ type: "start" });
+    await b.wait(statePred((s) => s.phase !== "lobby"));
+    await sleep(3500);
+    assert.ok(pings.game >= 2, "в игре ping-кадров мало: " + pings.game);
+    assert.strictEqual(b.ws.readyState, 1, "живой сокет не закрывается");
+    for (const c of [b, ...ps]) c.close();
   });
 });
