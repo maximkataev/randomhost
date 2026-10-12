@@ -97,8 +97,9 @@ async function browserCall(method, params = {}) {
 }
 
 // страница в своём контексте браузера: у каждого телефона своё localStorage
-async function cdp(url, size, name) {
-  const ctx = await browserCall("Target.createBrowserContext", {});
+async function cdp(url, size, name, sameContext) {
+  // sameContext — id контекста другой страницы: та же «вкладка того же браузера» (общее localStorage)
+  const ctx = sameContext ? { browserContextId: sameContext } : await browserCall("Target.createBrowserContext", {});
   const t = await browserCall("Target.createTarget", { url: "about:blank", browserContextId: ctx.browserContextId });
   const list = await (await fetch(`http://localhost:${PORT}/json/list`)).json();
   const target = list.find((x) => x.id === t.targetId);
@@ -130,7 +131,7 @@ async function cdp(url, size, name) {
     return r.result?.value;
   };
   const shot = async (n) => { const r = await call("Page.captureScreenshot", { format: "png" }); if (r && r.data) fs.writeFileSync(path.join(OUT, `${LANG}_${n}.png`), Buffer.from(r.data, "base64")); };
-  return { call, evaluate, shot, errors, name, size };
+  return { call, evaluate, shot, errors, name, size, ctxId: ctx.browserContextId };
 }
 
 async function waitFor(page, expr, ms = 20000, step = 120) {
@@ -312,6 +313,17 @@ async function run() {
       check((await land.evaluate(NO_HSCROLL)) === true, `стартовый экран ${w}px: без прокрутки вбок`);
     }
     await land.shot("landing");
+    // T-W2-43 (lastq-037): «У меня есть код» — поле на экране (не prompt()); неверный код — «Такой комнаты нет» с полем и без ретраев
+    await land.evaluate("document.getElementById('havecode').click()");
+    check(!!(await waitFor(land, "!!document.getElementById('codein')", 3000)), "стартовый экран: поле кода вместо prompt()");
+    {
+      // 404 в консоли здесь ожидаем (комнаты нет) — страницу в проверку «без ошибок консоли» не берём
+      const bad = await cdp(`${BASE}/lastq.html?r=NOPE77`, [390, 844], "неверный код");
+      check(!!(await waitFor(bad, "!!document.getElementById('codein') && !!document.getElementById('codeform')", 8000)), "неверный код: «Такой комнаты нет» и поле кода");
+      check((await bad.evaluate("!/закрыта|closed|έκλεισε/i.test(document.body.innerText)")) === true, "неверный код: не «Комната закрыта»");
+      check((await bad.evaluate("document.documentElement.scrollWidth <= innerWidth")) === true, "неверный код: без прокрутки вбок");
+      await bad.shot("p_noroom");
+    }
 
     // ---------- комната и доска ----------
     const res = await (await fetch(BASE + "/lastq/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: LANG }, speed: SPEED }) })).json();
@@ -322,8 +334,14 @@ async function run() {
     check(!!(await waitFor(board, "!!document.getElementById('startbtn') && document.body.classList.contains('host')", 8000)), "доска: лобби, ведущий");
     check((await board.evaluate("document.getElementById('seats').getBoundingClientRect().left < document.getElementById('qr').getBoundingClientRect().left")) === true, "доска: игроки слева от QR");
     // галочки: «Короткая партия» включаем настоящим нажатием, «Финал» проверяем, что включён
-    await mustTap(board, ".tog[data-k=short]", 0, "галочка «Короткая партия»");
-    check(!!(await waitFor(board, "window.lqBoard.state.settings.short === true", 3000)), "доска: «Короткая партия» включилась");
+    // после host_ok приходит снимок и галочки перерисовываются: нажатие между press и release терялось (мигало) — до трёх попыток
+    let shortOn = null;
+    for (let i = 0; i < 3 && !shortOn; i++) {
+      await wait(500);
+      await mustTap(board, ".tog[data-k=short]", 0, "галочка «Короткая партия»");
+      shortOn = await waitFor(board, "window.lqBoard.state.settings.short === true", 2500);
+    }
+    check(!!shortOn, "доска: «Короткая партия» включилась");
     check((await board.evaluate("window.lqBoard.state.settings.final")) === true, "доска: «Финал со ставками» включён по умолчанию");
     check((await board.evaluate("document.getElementById('startbtn').disabled")) === true, "доска: «Старт» закрыт, пока игроков меньше двух");
 
@@ -446,6 +464,9 @@ async function run() {
         await wait(500);
         await board.shot("b_stake");
         for (const p of phones) check(!!(await waitFor(p, "!!document.getElementById('stakebtn')", 4000)), `${p.name}: ползунок ставки`);
+        // T-W2-34 (lastq-019/056): ползунок стоит на 0, под кнопкой честная подпись «Не нажмёшь … — ставка 0»
+        check((await A.evaluate("document.getElementById('sv').textContent")) === "0" && (await A.evaluate("document.getElementById('sr').value")) === "0", "Аня: ползунок ставки стоит на 0");
+        check((await A.evaluate("/0/.test((document.getElementById('stakewarn') || {}).textContent || '')")) === true, "Аня: подпись «ставка 0» под кнопкой");
         await layout(phones, "ставка финала", true);
         await mustTap(A, ".quick button[data-k=all]", 0, "«Всё»");
         await mustTap(P, ".quick button[data-k=half]", 0, "«Половина»");
@@ -514,6 +535,64 @@ async function run() {
       check(!!(await waitFor(L, "window.lqPhone.me && window.lqPhone.state && window.lqPhone.state.phase === 'finished' && !!document.querySelector('.center')", 6000)), "поздний: попал на итоги");
       check((await L.evaluate("!document.querySelector('.center .big') && /следующей партии|next game|επόμενη/.test(document.querySelector('.center').textContent)")) === true, "поздний: нет «N место», есть пояснение");
       await L.shot("p_final_late");
+
+      // ---------- T-W2-32 (lastq-004): тот же человек с чистого устройства — «Это ты?», «Это я» возвращает запись ----------
+      const lateId = await L.evaluate("window.lqPhone.me");
+      await L.call("Page.close"); // вкладка закрыта — сокет места закрыт
+      await wait(10500); // грация офлайна (8 с) + пауза подхвата (2 с)
+      const N = await cdp(`${BASE}/lastq.html?r=${CODE}`, [390, 844], "Поздний-2");
+      pages.push(N);
+      check(!!(await waitFor(N, "!!document.getElementById('name')", 8000)), "чистое устройство: экран входа");
+      await N.evaluate(`document.getElementById('name').value = ""`);
+      await N.evaluate(`document.getElementById('name').focus()`);
+      await N.call("Input.insertText", { text: "поздний " });
+      await mustTap(N, "#enterform button[type=submit]", 0, "кнопка «Войти» (чистое устройство)");
+      check(!!(await waitFor(N, "!!document.getElementById('claimyes') && !!document.getElementById('claimno')", 6000)), "офлайн-место с тем же именем: экран «Это ты?»");
+      check((await N.evaluate("document.documentElement.scrollWidth <= innerWidth")) === true, "«Это ты?»: без прокрутки вбок");
+      if (process.env.DEBUG_CLAIM) console.log("N:", await N.evaluate("document.body.innerText.slice(0, 300)"), JSON.stringify(S().players.map((x) => [x.name, x.online])));
+      await N.shot("p_claim");
+      await mustTap(N, "#claimyes", 0, "«Это я»");
+      check(!!(await waitFor(N, `window.lqPhone.me === ${JSON.stringify(lateId)}`, 6000)), "«Это я»: та же запись, а не «Поздний (2)»");
+
+      // ---------- T-W2-05 (lastq-035): телефон на другом языке — подсказка «Язык комнаты: …», не меняя язык под пальцем ----------
+      const other = LANG === "en" ? "ru" : "en";
+      await N.evaluate(`window.I18N && I18N.setLang(${JSON.stringify(other)}, { persist: false })`);
+      check(!!(await waitFor(N, "document.getElementById('langhint').classList.contains('on')", 6000)), "телефон на другом языке: подсказка «Язык комнаты»");
+      check((await N.evaluate("(() => { const b = document.getElementById('lh-yes'); const r = b.getBoundingClientRect(); return r.height >= 44 && r.width >= 44; })()")) === true, "подсказка языка: кнопка ≥ 44×44");
+      await mustTap(N, "#lh-yes", 0, "«Переключить» язык");
+      check(!!(await waitFor(N, `window.I18N.lang === ${JSON.stringify(LANG)} && !document.getElementById('langhint').classList.contains('on')`, 4000)), "«Переключить»: язык комнаты");
+
+      // ---------- T-W2-33 (lastq-011): вторая вкладка того же браузера вытесняет первую; закрыли вторую — первая возвращается сама ----------
+      const N2 = await cdp(`${BASE}/lastq.html?r=${CODE}`, [390, 844], "Поздний-2 (вкладка 2)", N.ctxId);
+      pages.push(N2);
+      check(!!(await waitFor(N2, `window.lqPhone && window.lqPhone.me === ${JSON.stringify(lateId)}`, 8000)), "вторая вкладка: вошла по токену");
+      // в headless обе вкладки «видимы» и событие фокуса может прийти любой: вытесненной окажется та, что показывает «Играть здесь»
+      let loser = null, winner = null;
+      for (let i = 0; i < 50 && !loser; i++) {
+        for (const [x, y] of [[N, N2], [N2, N]]) if (await x.evaluate("!!document.getElementById('here')")) { loser = x; winner = y; }
+        if (!loser) await wait(120);
+      }
+      check(!!loser, "одна из вкладок: «Игра открыта в другой вкладке» и кнопка «Играть здесь»");
+      if (loser) {
+        await winner.call("Page.close");
+        await wait(300);
+        await loser.evaluate("window.dispatchEvent(new Event('focus'))"); // вернулись на вкладку
+      }
+      check(!!loser && !!(await waitFor(loser, `window.lqPhone.me === ${JSON.stringify(lateId)} && !document.getElementById('here')`, 6000)), "вытесненная вкладка вернулась в игру сама (авто-возврат)");
+    }
+
+    // ---------- T-W2-33 (lastq-012/013): «🔑 Ссылка ведущего»; вторая доска по ссылке не отбирает молча — «Забрать» ----------
+    check((await board.evaluate("(() => { const b = document.querySelector('#hostbar .linkbtn'); if (!b) return false; const r = b.getBoundingClientRect(); return r.width >= 44 && r.height >= 44; })()")) === true, "доска: кнопка «🔑 Ссылка ведущего» ≥ 44×44");
+    check((await board.evaluate("!document.getElementById('main').textContent.includes(" + JSON.stringify(res.hostToken) + ")")) === true, "доска: токен ведущего не нарисован на экране");
+    {
+      const B2 = await cdp(`${BASE}/lastq-board.html?r=${CODE}&h=${res.hostToken}`, null, "доска-2");
+      pages.push(B2);
+      check(!!(await waitFor(B2, "document.body.classList.contains('host')", 8000)), "доска-2 по ссылке ведущего: ведущая");
+      check(!!(await waitFor(board, "!document.body.classList.contains('host') && !!document.querySelector('#hostbar .note.warn')", 6000)), "первая доска: «Управление перешло к другому экрану»");
+      check((await board.evaluate("!!document.getElementById('hostbar').querySelector('button')")) === true, "первая доска: есть кнопка «Забрать»");
+      await mustTap(board, "#hostbar button.linkbtn", 0, "«Забрать»");
+      check(!!(await waitFor(board, "document.body.classList.contains('host')", 6000)), "«Забрать»: первая доска снова ведущая");
+      check(!!(await waitFor(B2, "!document.body.classList.contains('host')", 6000)), "доска-2 стала зрителем");
     }
 
     // ---------- перезагрузка телефона: возвращается по токену ----------

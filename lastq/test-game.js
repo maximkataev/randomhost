@@ -647,3 +647,221 @@ test("аватар: меняется в лобби, чужой занять не
   assert.strictEqual(g.setAvatar("b", "🌮").reason, "game_started");
   assert.strictEqual(g.snapshot(0, {}).avatarChoices, null);
 });
+
+// ---------- T-W2-28: имена ----------
+const { cleanName, cleanText, nameKey } = require("./game.js");
+test("cleanName/cleanText режут по символам, а не по UTF-16 (lastq-039); nameKey — регистр/пробелы/ё", () => {
+  const long = "A".repeat(15) + "😀😀";
+  const n = cleanName(long);
+  assert.equal(Array.from(n).length, 16);
+  assert.ok(!/[\ud800-\udbff](?![\udc00-\udfff])/.test(n), "одиночный суррогат в имени");
+  assert.ok(!/[\ud800-\udbff](?![\udc00-\udfff])/.test(cleanText("😀".repeat(5), 3)));
+  assert.equal(nameKey("  Ёж Игорь "), nameKey("еж игорь"));
+  assert.equal(nameKey("ХИТРЫЙ"), nameKey("хитрый "));
+});
+
+// ---------- T-W2-29: призраки и ставки; RULE_U08_GHOST_OUT ----------
+function withEnv(name, value, fn) {
+  const prev = process.env[name];
+  if (value == null) delete process.env[name]; else process.env[name] = value;
+  try { return fn(); } finally { if (prev == null) delete process.env[name]; else process.env[name] = prev; }
+}
+
+test("ставка на узника без связи закрыта (ghost); в снимке узник помечен offline (lastq-001)", () => {
+  const g = setup(4);
+  g.start(0);
+  let t = until(g, "answer", 0);
+  g.answer("p0", right(g), t + 100);
+  g.answer("p1", right(g), t + 120);
+  g.answer("p2", wrong(g), t + 150);
+  g.setOnline("p2", false, t + 160);
+  g.answer("p3", wrong(g), t + 170);
+  t = until(g, "cell", t);
+  assert.equal(g.s.cell.p2.ghost, true);
+  assert.equal(g.s.cell.p3.ghost, false);
+  assert.equal(g.bet("p0", "p2", false, t + 50).reason, "ghost", "на призрака ставить нельзя");
+  assert.ok(g.bet("p0", "p3", false, t + 60).ok, "на онлайн-узника можно");
+  const snap = g.snapshot(t + 100, "p0");
+  assert.equal(snap.cell.find((x) => x.id === "p2").offline, true);
+  assert.equal(snap.cell.find((x) => x.id === "p3").offline, false);
+});
+
+test("узник ушёл в офлайн ПОСЛЕ ставки и не выбрался — ставка «сгорит» не засчитывается; онлайн-узник — засчитывается", () => {
+  const g = setup(4);
+  g.start(0);
+  let t = until(g, "answer", 0);
+  g.answer("p0", right(g), t + 100);
+  g.answer("p1", right(g), t + 120);
+  g.answer("p2", wrong(g), t + 150);
+  g.answer("p3", wrong(g), t + 170);
+  t = until(g, "cell", t);
+  assert.ok(g.bet("p0", "p2", false, t + 50).ok);
+  assert.ok(g.bet("p0", "p3", false, t + 60).ok);
+  const hits0 = g.player("p0").stats.betHits;
+  g.setOnline("p2", false, t + 500); // выбил сетью
+  until(g, "verdict", t);
+  assert.deepEqual(g.s.result.burned.sort(), ["p2", "p3"]);
+  assert.equal(g.s.result.betGain.p0, 20, "засчитана только ставка на p3");
+  assert.equal(g.player("p0").stats.betHits, hits0 + 1);
+});
+
+test("RULE_U08_GHOST_OUT: по умолчанию выпавший до вопроса отвечает (и идёт в Камеру); при =1 — вне eligible, очков не теряет", () => {
+  for (const [flag, inQuestion] of [[null, true], ["1", false]]) {
+    withEnv("RULE_U08_GHOST_OUT", flag, () => {
+      const g = setup(4);
+      g.start(0);
+      g.setOnline("p3", false, 10);
+      const t = until(g, "answer", 0);
+      assert.equal(g.s.eligible.includes("p3"), inQuestion, "flag=" + flag);
+      // и на последний вопрос — финал
+      assert.equal(g.s.eligible.length, inQuestion ? 4 : 3);
+    });
+  }
+});
+
+test("RULE_U08_GHOST_OUT=1: если на связи меньше двух — вопрос идёт всем присутствующим (К-13)", () => {
+  withEnv("RULE_U08_GHOST_OUT", "1", () => {
+    const g = setup(3);
+    g.start(0);
+    g.setOnline("p1", false, 5);
+    g.setOnline("p2", false, 5);
+    until(g, "answer", 0);
+    assert.equal(g.s.eligible.length, 3);
+  });
+});
+
+// ---------- T-W2-30: призраки в лобби ----------
+test("addPlayer на полной комнате вытесняет самое давнее офлайн-место старше GHOST_TTL; свежий призрак не вытесняется", () => {
+  const g = Game.create({ settings: {}, code: "T", rnd: mulberry(3), content: bank() });
+  for (let i = 0; i < 10; i++) g.addPlayer({ id: "p" + i, name: "И" + i });
+  const t0 = 1000000;
+  g.setOnline("p3", false, t0);
+  g.setOnline("p5", false, t0 + 1000);
+  // оба призрака моложе порога — места нет
+  assert.equal(g.addPlayer({ id: "n1", name: "Новый", now: t0 + 60000 }).reason, "room_full");
+  // p3 (самый давний) старше 120 с — вытесняется
+  const r = g.addPlayer({ id: "n2", name: "Новый", now: t0 + 130000 });
+  assert.ok(r.ok);
+  assert.equal(r.evicted, "p3");
+  assert.equal(g.player("p3"), undefined);
+  assert.ok(g.player("p5"), "второй призрак (ещё не старше порога) остался");
+  assert.equal(g.present().length, 10);
+});
+
+test("start: «двое» — на связи; серые перед партией уходят в left, а не в вопрос", () => {
+  const g = setup(3);
+  g.setOnline("p1", false, 1000);
+  g.setOnline("p2", false, 1000);
+  assert.equal(g.start(2000).reason, "few_players", "1 онлайн + 2 серых");
+  assert.equal(g.snapshot(2000, "p0").onlineN, 1);
+  g.setOnline("p2", true, 3000);
+  const r = g.start(20000); // p1 офлайн дольше грации (8 с) — в left
+  assert.ok(r.ok);
+  assert.equal(g.player("p1"), undefined, "серый не попал в партию");
+  assert.deepEqual(g.s.eligible.length ? g.s.eligible : g.present().map((p) => p.id), g.present().map((p) => p.id));
+  assert.equal(g.present().length, 2);
+});
+
+test("toLobby после партии: места, отмеченные офлайн, получают offSince (чистит их таймер GHOST_TTL_MS)", () => {
+  const g = setup(3);
+  g.start(0);
+  const t = until(g, "answer", 0);
+  g.setOnline("p2", false, t + 50);
+  assert.ok(Number.isFinite(g.player("p2").offSince));
+  g.toLobby(t + 100);
+  assert.equal(g.s.phase, "lobby");
+  assert.equal(g.player("p2").online, false);
+  assert.equal(g.player("p2").offSince, t + 50, "метка не сбрасывается");
+  g.setOnline("p2", true, t + 200);
+  assert.equal(g.player("p2").offSince, undefined);
+});
+
+// ---------- T-W2-31: возврат записи, стартовый счёт вошедшего ----------
+function lowestAtP2(g) {
+  // p0, p1 верно; p2 мимо и не выбрался: p2 уходит в минус
+  g.start(0);
+  let t = until(g, "answer", 0);
+  g.answer("p0", right(g), t + 100);
+  g.answer("p1", right(g), t + 120);
+  g.answer("p2", wrong(g), t + 140);
+  t = until(g, "verdict", t);
+  assert.ok(g.player("p2").score < 0, "p2 в минусе: " + g.player("p2").score);
+  return t;
+}
+
+test("RULE_U43_LATE_MIN выкл (по умолчанию): новичок посреди партии — 0; вкл — min(0, минимум счёта, включая ушедших)", () => {
+  for (const [flag, expectMin] of [[null, false], ["1", true]]) {
+    withEnv("RULE_U43_LATE_MIN", flag, () => {
+      const g = setup(3);
+      const t = lowestAtP2(g);
+      const low = g.player("p2").score;
+      g.removePlayer("p2", t + 10); // ушёл на дне
+      const r = g.addPlayer({ id: "late", name: "Новичок", now: t + 20 });
+      assert.ok(r.ok);
+      assert.equal(g.player("late").score, expectMin ? low : 0, "flag=" + flag);
+      assert.equal(g.player("late").stats.minScore, expectMin ? low : 0);
+    });
+  }
+});
+
+test("rejoinLeft: ушедший возвращается со своим счётом; «Дно» не теряется после ухода (lastq-008)", () => {
+  const g = setup(3);
+  let t = lowestAtP2(g);
+  const low = g.player("p2").score;
+  g.removePlayer("p2", t + 10);
+  assert.equal(g.player("p2").left, true);
+  // «Дно» считается и по ушедшим
+  g.finish("host", t + 20);
+  assert.ok(g.s.awards.bottom && g.s.awards.bottom.ids.includes("p2"), "награда «Дно» ушедшего пропала");
+  // в finished возвращать запись нельзя — это уже итоги
+  assert.equal(g.rejoinLeft("p2", t + 30).ok, false);
+  // другая партия: вернуть можно только вне лобби/итогов
+  const g2 = setup(3);
+  t = lowestAtP2(g2);
+  g2.removePlayer("p2", t + 10);
+  const r = g2.rejoinLeft("p2", t + 30);
+  assert.ok(r.ok);
+  assert.equal(g2.player("p2").left, false);
+  assert.equal(g2.player("p2").score, low, "счёт сохранён");
+  assert.equal(g2.s.players.length, 3, "записей не прибавилось");
+});
+
+// ---------- T-W2-05: язык комнаты, перевод вопроса на телефоне (RULE_U17_LANG_FOLLOW) ----------
+test("question.tr: за флагом, по тому же id и порядку вариантов; доске и без флага — нет; верный индекс совпадает", () => {
+  const ru = [], en = [];
+  for (let i = 0; i < 30; i++) {
+    ru.push({ id: "q" + i, tag: "animals", lvl: 1 + (i % 3), final: false, q: "Вопрос " + i, a: ["верно" + i, "мимо1", "мимо2", "мимо3"], fun: 3 });
+    en.push({ id: "q" + i, tag: "animals", lvl: 1 + (i % 3), final: false, q: "Question " + i, a: ["right" + i, "wrong1", "wrong2", "wrong3"], fun: 3 });
+  }
+  ru.push({ id: "f0", tag: "geo", lvl: 3, final: true, q: "Финал", a: ["верно", "м1", "м2", "м3"], fun: 2 });
+  en.push({ id: "f0", tag: "geo", lvl: 3, final: true, q: "Final", a: ["right", "w1", "w2", "w3"], fun: 2 });
+  const mk = () => {
+    const g = Game.create({ settings: { lang: "ru" }, code: "T", rnd: mulberry(5), content: { ru, en, el: [] } });
+    for (let i = 0; i < 3; i++) g.addPlayer({ id: "p" + i, name: "И" + i });
+    g.start(0);
+    until(g, "answer", 0);
+    return g;
+  };
+  withEnv("RULE_U17_LANG_FOLLOW", "1", () => {
+    const g = mk();
+    const own = g.snapshot(g.s.phaseStart + 10, "p0", { lang: "ru" });
+    assert.equal(own.question.tr, null, "язык комнаты — перевода нет");
+    const snap = g.snapshot(g.s.phaseStart + 10, "p0", { lang: "en" });
+    const tr = snap.question.tr;
+    assert.ok(tr && tr.lang === "en");
+    assert.match(tr.text, /^Question \d+$/);
+    // тот же порядок: на месте «верно<N>» стоит «right<N>», и индекс верного не пришлось раскрывать
+    snap.question.options.forEach((o, i) => {
+      const idx = ["верно", "мимо1", "мимо2", "мимо3"].findIndex((x) => o.startsWith(x));
+      assert.equal(tr.options[i], ["right", "wrong1", "wrong2", "wrong3"][idx] + (idx === 0 ? o.replace("верно", "") : ""));
+    });
+    assert.equal(g.snapshot(g.s.phaseStart + 10, "board").question.tr, null, "доске перевод не нужен");
+    assert.equal(g.snapshot(g.s.phaseStart + 10, "p0", { lang: "el" }).question.tr, null, "нет банка языка — нет перевода");
+    assert.ok(!JSON.stringify(snap).includes('"order"'), "порядок вариантов в снимок не уходит");
+    assert.equal(snap.right, null, "верный индекс до раскрытия не уходит");
+  });
+  withEnv("RULE_U17_LANG_FOLLOW", null, () => {
+    const g = mk();
+    assert.equal(g.snapshot(g.s.phaseStart + 10, "p0", { lang: "en" }).question.tr, null, "флаг выкл — перевода нет");
+  });
+});

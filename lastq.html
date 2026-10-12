@@ -65,7 +65,8 @@
   body.cellmode { background: #15191b; }
   body.cellmode .util, body.cellmode .lang-switch, body.ingame .util, body.ingame .lang-switch { display: none !important; }
   body.ingame #app { padding-top: 12px; }
-  .conn { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 30; background: var(--bad); color: var(--night); font-weight: 800; font-size: 15px; padding: 8px 12px; visibility: hidden; width: max-content; max-width: calc(100% - 16px); text-align: center; }
+  /* баннер «нет связи»: под строкой с переключателем языка (--lsc — её центр), а не поверх него; клики сквозь (lastq-036) */
+  .conn { position: fixed; left: 50%; top: calc(var(--lsc, 30px) * 2 + 4px); transform: translateX(-50%); z-index: 30; background: var(--bad); color: var(--night); font-weight: 800; font-size: 15px; padding: 8px 12px; visibility: hidden; width: max-content; max-width: calc(100% - 16px); text-align: center; pointer-events: none; }
   .conn.on { visibility: visible; }
   .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: var(--chalk); color: var(--night); font-weight: 700; padding: 11px 14px; max-width: calc(100% - 32px); visibility: hidden; }
   .toast.on { visibility: visible; }
@@ -106,6 +107,20 @@
   .enter input { width: 100%; border: 0; border-bottom: 3px solid var(--chalk); background: transparent; color: var(--chalk); font: 700 28px/1.2 var(--font); padding: 4px 0; border-radius: 0; }
   .enter input::placeholder { color: var(--chalk-2); opacity: .6; }
   .enter input:focus { outline: none; border-bottom-color: var(--gold); }
+  /* счётчик имени «12/16» (MP.nameCounter): в поле, когда осталось ≤ 4 знаков; место под него занято всегда — поле не прыгает */
+  .claimbtns { display: grid; gap: 10px; margin-top: 14px; }
+  /* подсказка «Язык комнаты: EN. Переключить?»: внизу, только в лобби/на входе/на итогах, кнопки ≥ 44 px */
+  .langhint { position: fixed; left: 8px; right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); z-index: 40; max-width: 504px; margin: 0 auto; background: var(--chalk); color: var(--night); padding: 10px 12px; display: none; gap: 8px; align-items: center; grid-template-columns: minmax(0, 1fr) auto auto; font-weight: 700; font-size: 16px; }
+  .langhint.on { display: grid; }
+  .langhint button { min-height: 44px; min-width: 44px; border: 2px solid var(--night); background: var(--night); color: var(--chalk); font: 800 15px/1 var(--font); padding: 6px 12px; }
+  .langhint button.no { background: transparent; color: var(--night); }
+  .codeform { display: grid; gap: 10px; margin-top: 14px; }
+  .codeform input { width: 100%; border: 0; border-bottom: 3px solid var(--chalk); background: transparent; color: var(--chalk); font: 700 26px/1.2 var(--font); padding: 4px 0; border-radius: 0; text-transform: uppercase; }
+  .codeform input:focus { outline: none; border-bottom-color: var(--gold); }
+  .fld { position: relative; }
+  .fld.cnt-on input { padding-right: 56px; }
+  .fld .cnt { position: absolute; right: 0; bottom: 8px; font: 800 13px/1 var(--mono); letter-spacing: .04em; color: var(--chalk-2); pointer-events: none; font-style: normal; }
+  .fld .cnt[data-state="full"] { color: var(--bad); }
   .err { min-height: 22px; color: var(--bad); font-weight: 700; }
 
   /* игроки */
@@ -230,6 +245,12 @@
   .bet .two button.on.n { background: var(--bad); border-color: var(--bad); color: var(--night); }
   .bet .done { grid-column: 1 / -1; font: 800 19px/1 var(--font); text-transform: uppercase; }
   .bet .done.y { color: var(--ok); } .bet .done.n { color: var(--bad); }
+  .bet.off { opacity: .6; border-left-color: var(--edge); }
+  /* пропущенная ставка = 0: последние 3 с подпись под кнопкой становится красной плашкой (то же место, без прыжка) */
+  .stakewarn { font-weight: 800; }
+  .stakewarn.hot { background: var(--bad); color: var(--night); padding: 5px 8px; }
+  .stake0 { margin-top: 6px; font: 700 15px/1.2 var(--font); color: var(--gold); text-align: center; }
+  .bet .done.off { color: var(--chalk-2); font-size: 16px; }
 
   /* своя дорожка на приговоре */
   .mylane { position: relative; height: 64px; margin: 16px 0 4px; background: var(--track); border-top: 3px solid var(--chalk); border-bottom: 3px solid var(--chalk); overflow: hidden; }
@@ -349,6 +370,7 @@
 <div class="conn" id="pausebar"></div>
 <div id="app"></div>
 <div class="toast" id="toast" role="status"></div>
+<div class="langhint" id="langhint" role="group"></div>
 <div class="sr-only" id="live" aria-live="polite"></div>
 
 <script>
@@ -406,6 +428,14 @@ window.I18N_DICT = {
     expired_title: `Комната закрыта`, expired_text: `Она пустовала полчаса или ведущий её закрыл.`, expired_new: `Создать новую`,
     paused: `Все отключились — ждём`,
     rj_not_now: `Уже поздно`, rj_closed: `Ставки уже закрыты`, rj_already: `Уже выбрано`, rj_not_in_question: `Ты со следующего вопроса`,
+    lang_hint: `Язык комнаты: {lang}. Переключить?`, lang_switch: `Переключить`, lang_keep: `Не надо`,
+    noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код — в нём слово и две цифры`, btn_go: `Перейти`,
+    stake_skip: `Не нажмёшь «Ставлю» — ставка 0`, stake_none_0: `Ты не поставил — ставка 0`, fr_stake0: `Без ставки`,
+    claim_title: `Это ты?`, claim_text: `Игрок «{name}» без связи. Очки: {n}`, claim_text0: `Игрок «{name}» без связи`, btn_claim_yes: `Это я`, btn_claim_no: `Нет, я другой`,
+    welcome_back: `С возвращением`, err_name_taken: `Это имя сейчас занято. Возьми другое`,
+    lobby_wait_n: `Ждём, пока ведущий начнёт. В сети: {n}`,
+    bet_off: `нет связи — ставка закрыта`, rj_ghost: `Игрок без связи — ставка на него закрыта`,
+    in_as: `Имя занято. Ты в игре как {name}`,
   },
   en: {
     err_send: `No connection — not sent, try again`, btn_leave: `Leave the game`, leave_q: `Leave the game? You can only come back as a new player`, stake_label: `How much you bet`, stake_vt: `{n} points`,
@@ -460,6 +490,14 @@ window.I18N_DICT = {
     expired_title: `Room closed`, expired_text: `It sat empty for half an hour or the host closed it.`, expired_new: `Create a new one`,
     paused: `Everyone dropped — waiting`,
     rj_not_now: `Too late`, rj_closed: `Betting is closed`, rj_already: `Already picked`, rj_not_in_question: `You're in from the next question`,
+    lang_hint: `Room language: {lang}. Switch?`, lang_switch: `Switch`, lang_keep: `No`,
+    noroom_title: `There is no such room`, noroom_text: `Check the code: a word and two digits`, btn_go: `Go`,
+    stake_skip: `If you don't tap “Bet”, your bet is 0`, stake_none_0: `You didn't bet — your bet is 0`, fr_stake0: `No bet`,
+    claim_title: `Is this you?`, claim_text: `Player “{name}” is offline. Score: {n}`, claim_text0: `Player “{name}” is offline`, btn_claim_yes: `That's me`, btn_claim_no: `No, someone else`,
+    welcome_back: `Welcome back`, err_name_taken: `That name is taken right now. Pick another`,
+    lobby_wait_n: `Waiting for the host to start. Online: {n}`,
+    bet_off: `offline — betting is closed`, rj_ghost: `That player is offline — betting on them is closed`,
+    in_as: `That name is taken. You're in as {name}`,
   },
   el: {
     err_send: `Χωρίς σύνδεση — δεν στάλθηκε, δοκίμασε ξανά`, btn_leave: `Έξοδος από το παιχνίδι`, leave_q: `Έξοδος από το παιχνίδι; Θα μπορείς να γυρίσεις μόνο ως νέος παίκτης`, stake_label: `Πόσα ποντάρεις`, stake_vt: `{n} πόντοι`,
@@ -514,9 +552,18 @@ window.I18N_DICT = {
     expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης.`, expired_new: `Φτιάξε καινούργιο`,
     paused: `Όλοι αποσυνδέθηκαν — περιμένουμε`,
     rj_not_now: `Πολύ αργά`, rj_closed: `Τα στοιχήματα έκλεισαν`, rj_already: `Έχει ήδη επιλεγεί`, rj_not_in_question: `Παίζεις από την επόμενη ερώτηση`,
+    lang_hint: `Γλώσσα δωματίου: {lang}. Αλλαγή;`, lang_switch: `Αλλαγή`, lang_keep: `Όχι`, //EL:unverified
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό: μια λέξη και δύο ψηφία`, btn_go: `Πήγαινε`, //EL:unverified
+    stake_skip: `Αν δεν πατήσεις «Ποντάρω», το ποντάρισμα είναι 0`, stake_none_0: `Δεν πόνταρες — ποντάρισμα 0`, fr_stake0: `Χωρίς ποντάρισμα`, //EL:unverified
+    claim_title: `Είσαι εσύ;`, claim_text: `Ο παίκτης «{name}» είναι εκτός σύνδεσης. Πόντοι: {n}`, claim_text0: `Ο παίκτης «{name}» είναι εκτός σύνδεσης`, btn_claim_yes: `Εγώ είμαι`, btn_claim_no: `Όχι, είμαι άλλος`, //EL:unverified
+    welcome_back: `Καλώς ξαναήρθες`, err_name_taken: `Το όνομα είναι πιασμένο αυτή τη στιγμή. Διάλεξε άλλο`, //EL:unverified
+    lobby_wait_n: `Περιμένουμε να ξεκινήσει ο οικοδεσπότης. Συνδεδεμένοι: {n}`, //EL:unverified
+    bet_off: `εκτός σύνδεσης — το στοίχημα έκλεισε`, rj_ghost: `Ο παίκτης είναι εκτός σύνδεσης — το στοίχημα έκλεισε`, //EL:unverified
+    in_as: `Το όνομα είναι πιασμένο. Μπήκες ως {name}`, //EL:unverified
   },
 };
 </script>
+<script src="mp-common.js"></script>
 <script src="lastq-shared.js"></script>
 <script src="lastq-challenges.js"></script>
 <script src="i18n.js"></script>
@@ -537,8 +584,29 @@ let joinErr = null;
 // replacedHere — игру забрала другая вкладка: на переподключении сами не входим, пока не нажмут «Играть здесь».
 // rejoining — после обрыва входим своим токеном заново: экран не трогаем до joined (иначе мелькает вход и сбивается Камера)
 let replacedHere = false, rejoining = false;
+let autoJoined = false; // автовход по имени после token_gone — один раз
+// вход по имени (T-W2-32): MP.joinFlow («Это ты?», тихие повторы), «ты открыл игру в другой вкладке» (MP.replacedTab)
+let flow = null, tab = null;
+let joinName = ""; // имя, с которым входим по имени: из формы либо сохранённое
+let claimPrompt = null; // {name, summary, accept, decline}: открытый экран «Это ты?»
 let stakeDraft = null, stakeEdit = false; // финальная ставка: черновик ползунка
 const tokenKey = () => "lastq-token-" + CODE;
+// каркас mp-common.js (T-W1-04): без него (или при MP_OFF на сервере) страница работает по-старому
+const mpOn = () => !!(window.MP && !MP.off);
+function savedName() { try { return localStorage.getItem("lastq-name") || ""; } catch (e) { return ""; } }
+// все входы ПО ИМЕНИ идут одним путём; без mp-common (или при MP_OFF) — прежнее сообщение без caps
+function buildJoin() {
+  const m = { type: "join" };
+  if (joinName) m.name = joinName;
+  return m;
+}
+function doJoin(extra) {
+  if (flow && flow.join(extra)) return;
+  const m = buildJoin();
+  if (extra) for (const k in extra) m[k] = extra[k];
+  conn.send(m);
+}
+const NAME_LIMIT = () => (window.MP && MP.limits && MP.limits.name) || 16;
 try { token = localStorage.getItem(tokenKey()); } catch (e) {}
 
 const player = (id) => state && state.players.find((p) => p.id === id);
@@ -602,9 +670,13 @@ function renderLanding() {
       toast(String(err.message || err));
     }
   };
+  // поле кода прямо на экране (prompt() на телефоне блокирует страницу и не переводится)
   document.getElementById("havecode").onclick = () => {
-    const c = prompt(T("prompt_code"));
-    if (c) location.href = `lastq.html?r=${encodeURIComponent(c.trim().toUpperCase())}`;
+    const btn = document.getElementById("havecode");
+    btn.insertAdjacentHTML("afterend", codeFormHtml(""));
+    btn.classList.add("hidden");
+    bindCodeForm();
+    document.getElementById("codein").focus();
   };
 }
 
@@ -615,26 +687,110 @@ function renderEnter() {
   try { saved = localStorage.getItem("lastq-name") || ""; } catch (e) {}
   show(`<form class="enter" id="enterform" autocomplete="off" style="display:grid;gap:14px">
     <div class="card"><div class="room">${escapeHtml(CODE)}</div><h2>${T("enter_title")}</h2>
-      <input id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}"></div>
+      <div class="fld"><input id="name"${mpOn() ? "" : ' maxlength="16"'} placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}"></div></div>
     <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
     <button class="btn" type="submit">${T("btn_join")}</button>
     <ol class="rules"><li>${T("rule1")}</li><li>${T("rule2")}</li><li>${T("rule3")}</li></ol>
   </form>`, "enter");
   const input = document.getElementById("name");
+  if (mpOn() && input) {
+    // «12/16» у поля, когда осталось ≤ 4 знака; срез по символам (эмодзи не рвётся) — вместо молчаливого maxlength
+    const fld = input.closest(".fld"), cnt = document.createElement("em");
+    cnt.className = "cnt";
+    fld.classList.add("cnt-on");
+    fld.appendChild(cnt);
+    MP.nameCounter(input, NAME_LIMIT(), { el: cnt });
+  }
   document.getElementById("enterform").onsubmit = (e) => {
     e.preventDefault();
     const name = input.value.trim();
     if (!name) { document.getElementById("err").textContent = T("err_name"); return; }
     try { localStorage.setItem("lastq-name", name); } catch (e2) {}
     joinErr = null;
-    conn.send({ type: "join", name });
+    joinName = name;
+    doJoin();
     lqWake.on();
   };
 }
 
+// «Это ты?»: офлайн-место с таким именем можно вернуть одним тапом; «Нет, я другой» — новое место «Имя (2)» (lastq-004)
+function renderClaim() {
+  if (!claimPrompt) return;
+  screen = "claim";
+  const c = claimPrompt;
+  const sc = c.summary && typeof c.summary.score === "number" ? c.summary.score : null;
+  const text = sc == null ? tpl("claim_text0", { name: c.name }) : tpl("claim_text", { name: c.name, n: lqNum(sc) });
+  screenKey = "";
+  show(`<div class="card status"><h2>${escapeHtml(T("claim_title"))}</h2><p>${escapeHtml(text)}</p>
+    <div class="claimbtns"><button class="btn" id="claimyes" type="button">${escapeHtml(T("btn_claim_yes"))}</button>
+    <button class="btn ghost" id="claimno" type="button">${escapeHtml(T("btn_claim_no"))}</button></div></div>`, "claim");
+  document.getElementById("claimyes").onclick = () => { const p = claimPrompt; claimPrompt = null; screen = null; if (p) p.accept(); };
+  document.getElementById("claimno").onclick = () => { const p = claimPrompt; claimPrompt = null; screen = null; if (p) p.decline(); };
+}
 function renderCenter(titleKey, textKey, extra, key) {
   show(`<div class="card status"><h2>${T(titleKey)}</h2>${textKey ? `<p>${T(textKey)}</p>` : ""}${extra || ""}</div>`, key || "c:" + titleKey);
 }
+// ---------- ввод кода комнаты (T-W2-43, lastq-037) ----------
+function normCode(raw) {
+  if (window.MP && MP.roomGone) return MP.roomGone.normalize(raw);
+  return String(raw || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+}
+function codeFormHtml(value) {
+  return `<form class="codeform" id="codeform" autocomplete="off"><input id="codein" maxlength="24" value="${escapeHtml(value)}" placeholder="${escapeHtml(T("prompt_code"))}" aria-label="${escapeHtml(T("prompt_code"))}" autocapitalize="characters" enterkeyhint="go"><button class="btn" type="submit">${escapeHtml(T("btn_go"))}</button></form>`;
+}
+function bindCodeForm() {
+  document.getElementById("codeform").onsubmit = (e) => {
+    e.preventDefault();
+    const c = normCode(document.getElementById("codein").value); // уходим с кодом уже после фильтра
+    if (c) location.href = `lastq.html?r=${encodeURIComponent(c)}`;
+  };
+}
+// Неверный код: hello не приходил ни разу — комнаты с таким кодом нет (или её давно убрали), а не «закрылась».
+// Серверного различителя нет (К-11): 404 и «закрыта по TTL» до hello неразличимы.
+// ---------- язык комнаты (T-W2-05, U-17) ----------
+// Телефон показывает язык комнаты, пока игрок не переключил сам: по умолчанию — подсказка «Язык комнаты: EN. Переключить?»
+// (только на безопасных экранах: вход, лобби, итоги — не под пальцем в ответе); с RULE_U17_LANG_FOLLOW на сервере — сам.
+let followLang = null, sentLang = null;
+function ensureFollow(rules) {
+  if (followLang || !mpOn() || !MP.followRoomLang) return;
+  followLang = MP.followRoomLang({
+    enabled: true,
+    auto: !!(rules && rules.RULE_U17_LANG_FOLLOW),
+    getRoomLang: () => (state && state.settings ? state.settings.lang : null),
+    onSuggest: showLangHint,
+  });
+}
+function showLangHint(s) {
+  const box = document.getElementById("langhint");
+  const paint = () => {
+    box.innerHTML = `<span>${escapeHtml(tpl("lang_hint", { lang: String(s.lang).toUpperCase() }))}</span>
+      <button type="button" id="lh-yes">${escapeHtml(T("lang_switch"))}</button><button type="button" class="no" id="lh-no">${escapeHtml(T("lang_keep"))}</button>`;
+    document.getElementById("lh-yes").onclick = () => { box.classList.remove("on"); s.accept(); };
+    document.getElementById("lh-no").onclick = () => { box.classList.remove("on"); s.decline(); };
+  };
+  paint();
+  box.classList.add("on");
+}
+// язык телефона — серверу (для question.tr); без изменений не шлём
+function syncLang() {
+  if (!conn || sentLang === lqLang()) return;
+  sentLang = lqLang();
+  conn.send({ type: "lang", lang: sentLang });
+}
+function checkFollow() {
+  if (!followLang || !state) return;
+  const safe = !me || state.phase === "lobby" || state.phase === "finished";
+  if (!safe) return;
+  followLang.check();
+}
+function renderNoRoom() {
+  dead = true;
+  screen = "noroom";
+  renderCenter("noroom_title", "noroom_text", codeFormHtml(CODE));
+  bindCodeForm();
+}
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({ showForm: renderNoRoom, onClosed: () => renderExpired() }) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else renderExpired(); }
 function renderExpired() {
   dead = true;
   screen = "expired";
@@ -706,15 +862,22 @@ function myNoHtml() {
 const headHtml = () => `<div class="qhead">${myNoHtml()}<span class="where">${whereHtml()}</span><span class="tl" id="tleft"></span></div>${timerHtml()}`;
 const qCardHtml = () => {
   const q = state.question;
-  return `<div class="card qcard"><div class="k">${escapeHtml(lqTopic(q.tag))}</div><div class="qt${q.text.length > 80 ? " long" : ""}">${escapeHtml(q.text)}</div></div>`;
+  const qt = q.tr && q.tr.text ? q.tr.text : q.text; // перевод на язык игрока (RULE_U17_LANG_FOLLOW), если сервер прислал
+  return `<div class="card qcard"><div class="k">${escapeHtml(lqTopic(q.tag))}</div><div class="qt${qt.length > 80 ? " long" : ""}">${escapeHtml(qt)}</div></div>`;
 };
+// вопрос на языке игрока: сервер присылает question.tr, когда включён RULE_U17_LANG_FOLLOW и в банке есть перевод
+const qOptions = () => { const q = state.question; return q.tr && q.tr.options ? q.tr.options : q.options; };
+const trKey = () => (state && state.question && state.question.tr ? ":" + state.question.tr.lang : "");
 const letterCss = (i) => `--lc:var(--c${i})`;
 
 // ---------- экраны по фазам ----------
 function renderLobby() {
   const key = "lobby:" + state.players.map((p) => p.id + p.online).join(",") + avKey() + lqLang();
   if (screenKey === key) return;
-  show(`${meBadge()}${avPickHtml()}<div class="status"><p>${T("lobby_wait")}</p></div>${playersHtml()}
+  // сколько на связи: серые места (телефон погас) в «готовых» не считаются; без двух на связи партия не начнётся
+  const onl = state.players.filter((p) => !p.left && p.online).length;
+  const waitText = onl < state.minPlayers ? T("lobby_wait") : tpl("lobby_wait_n", { n: onl });
+  show(`${meBadge()}${avPickHtml()}<div class="status"><p>${escapeHtml(waitText)}</p></div>${playersHtml()}
     <button type="button" class="leave" id="leave">${T("btn_leave")}</button>`, "lobby:" + key, true);
   screenKey = key;
   bindReacts();
@@ -740,15 +903,17 @@ function renderQuestion() {
   const open = state.phase === "answer" || state.phase === "fanswer";
   const late = !s.inQuestion;
   const mineA = s.answer;
-  const key = "q:" + qid() + ":" + open + ":" + mineA + ":" + late + lqLang();
+  // финал: ставку не нажал — на экране вопроса одна строка «Ты не поставил — ставка 0» (lastq-019)
+  const noStake = isFinal() && s.inQuestion && s.stake == null;
+  const key = "q:" + qid() + ":" + open + ":" + mineA + ":" + late + ":" + noStake + lqLang() + trKey();
   if (screenKey === key) return;
-  const btns = q.options.map((o, i) => {
+  const btns = qOptions().map((o, i) => {
     const cls = !open ? " closed" : mineA != null ? (mineA === i ? " sel" : " dim") : late ? " dim" : "";
     return `<button type="button" class="ans${cls}" data-i="${i}" style="${letterCss(i)}"${!open || mineA != null || late ? " disabled" : ""}><span class="lt">${LQ_LETTERS[i]}</span><span class="tx">${escapeHtml(o)}</span></button>`;
   }).join("");
   const note = late ? `<b>${isFinal() ? T("watch_t") : T("late_title")}</b>` : mineA != null ? T("answered") : open ? "" : `<span id="readwait"></span>`;
   const bonus = !isFinal() && state.points ? `<div class="bonus" id="bonus"><span>${T("bonus")}</span><span class="bb"><i></i></span><b></b></div>` : "";
-  show(`${headHtml()}${bonus}${qCardHtml()}<div class="answers">${btns}</div><div class="note" id="note">${note}</div>`, key, true);
+  show(`${headHtml()}${bonus}${qCardHtml()}<div class="answers">${btns}</div><div class="note" id="note">${note}${noStake ? `<div class="stake0">${escapeHtml(T("stake_none_0"))}</div>` : ""}</div>`, key, true);
   app.querySelectorAll(".ans:not(:disabled)").forEach((b) => {
     b.onclick = () => {
       const i = Number(b.dataset.i);
@@ -773,7 +938,7 @@ function groupCards(disabled) {
 function renderReveal() {
   const s = state.me;
   if (!s || !state.question) return;
-  const key = "rev:" + qid() + ":" + s.palach + ":" + state.group + ":" + state.palach + lqLang();
+  const key = "rev:" + qid() + ":" + s.palach + ":" + state.group + ":" + state.palach + lqLang() + trKey();
   if (screenKey === key) return;
   const r = state.right;
   const iWasRight = s.inQuestion && s.answer === r;
@@ -783,7 +948,7 @@ function renderReveal() {
   if (!s.inQuestion) head = `<div class="status center"><h2>${T("watch_t")}</h2></div>`;
   else if (iWasRight) head = `<div class="center"><div class="big ok">${T("right_t")}</div><div class="sub" style="margin-top:6px">${escapeHtml(tpl("pts", { n: s.gain || 0 }))}</div></div>`;
   else head = `<div class="center"><div class="big bad">${s.answer == null ? T("none_t") : T("wrong_t")}</div><div class="sub" style="margin-top:6px">${T("to_cell")}</div></div>`;
-  const ans = `<div class="card"><div class="k">${T("right_was")}</div><div class="rightans" style="${letterCss(r)}"><span class="lt">${LQ_LETTERS[r]}</span><span>${escapeHtml(state.question.options[r])}</span></div></div>`;
+  const ans = `<div class="card"><div class="k">${T("right_was")}</div><div class="rightans" style="${letterCss(r)}"><span class="lt">${LQ_LETTERS[r]}</span><span>${escapeHtml(qOptions()[r])}</span></div></div>`;
   let tail = "";
   if (clean) tail = `<div class="status center"><p style="font-weight:700">${T("clean")}</p></div>`;
   else if (s.palach) tail = `<div class="center"><div class="big palach">${T("palach_t")}</div><p class="fine" style="margin:6px 0 0;font-weight:700">${T("palach_sub")}</p></div>${groupCards(false)}`;
@@ -808,11 +973,11 @@ function renderReveal() {
 function renderFshow() {
   const s = state.me;
   if (!s || !state.question || state.right == null) return;
-  const key = "fshow:" + qid() + lqLang();
+  const key = "fshow:" + qid() + lqLang() + trKey();
   if (screenKey === key) return;
   const r = state.right;
   const right = s.inQuestion && s.answer === r;
-  const ans = `<div class="card"><div class="k">${T("right_was")}</div><div class="rightans" style="${letterCss(r)}"><span class="lt">${LQ_LETTERS[r]}</span><span>${escapeHtml(state.question.options[r])}</span></div></div>`;
+  const ans = `<div class="card"><div class="k">${T("right_was")}</div><div class="rightans" style="${letterCss(r)}"><span class="lt">${LQ_LETTERS[r]}</span><span>${escapeHtml(qOptions()[r])}</span></div></div>`;
   let head;
   if (!s.inQuestion) head = `<div class="status center"><h2>${T("watch_t")}</h2></div>`;
   else if (right) head = `<div class="center"><div class="big ok">${T("right_t")}</div><div class="sub" style="margin-top:6px">${escapeHtml(tpl("f_right_sub", { n: s.stake || 0 }))}</div></div>`;
@@ -964,7 +1129,9 @@ function renderBets() {
   const open = betsOpen();
   const hints = (s.passHints || []).map((h) => h.prisoner + h.code).join(",");
   // свои ставки в ключ не входят: после тапа кнопки блокируются сразу, а перерисовка съедала бы следующий тап
-  const key = "bets:" + qid() + ":" + open + ":" + hints + lqLang();
+  // узник без связи — строка серая, без кнопок (lastq-001): состав таких меняет ключ, ставки — нет
+  const offIds = cell.filter((x) => x.offline).map((x) => x.id).join(",");
+  const key = "bets:" + qid() + ":" + open + ":" + hints + ":" + offIds + lqLang();
   if (screenKey !== key) {
     const hintHtml = (s.passHints || []).map((h) => {
       const p = player(h.prisoner);
@@ -976,8 +1143,9 @@ function renderBets() {
       const my = s.bets[x.id];
       const locked = my != null || !open;
       const btn = (v, cls, label) => `<button type="button" class="${cls}${my === v ? " on" : ""}" data-v="${v ? 1 : 0}"${locked ? " disabled" : ""}>${label}</button>`;
-      const body = !open && my == null ? `<div class="done">${T("bet_none")}</div>` : `<div class="two">${btn(true, "y", T("bet_y"))}${btn(false, "n", T("bet_n"))}</div>`;
-      return `<div class="bet" style="--pc:${p.color}" data-id="${escapeHtml(x.id)}"><div class="who">${emo(p)}<b>${escapeHtml(p.name)}</b></div><div class="mini">${progressDots(x.done, x.need)}</div>${body}</div>`;
+      const off = !!x.offline && my == null;
+      const body = off ? `<div class="done off">${T("bet_off")}</div>` : !open && my == null ? `<div class="done">${T("bet_none")}</div>` : `<div class="two">${btn(true, "y", T("bet_y"))}${btn(false, "n", T("bet_n"))}</div>`;
+      return `<div class="bet${off ? " off" : ""}" style="--pc:${p.color}" data-id="${escapeHtml(x.id)}"><div class="who">${emo(p)}<b>${escapeHtml(p.name)}</b></div><div class="mini">${progressDots(x.done, x.need)}</div>${body}</div>`;
     }).join("");
     const sub = open ? `${T("bets_sub")} · <b id="betleft"></b>` : T("bets_closed");
     show(`${headHtml()}${hintHtml}<div><h2 style="font:900 26px/1.05 var(--font)">${T("bets_t")}</h2><p class="fine" style="margin:4px 0 0">${sub}</p></div><div class="bets">${rows}</div>`, key, true);
@@ -1076,13 +1244,15 @@ function renderStake() {
     document.getElementById("chg").onclick = () => { stakeEdit = true; stakeDraft = s.stake; render(); };
     return;
   }
-  if (stakeDraft == null || stakeDraft > max) stakeDraft = Math.min(max, Math.round(max / 2 / 10) * 10);
+  // по умолчанию 0: «Ставлю» — осознанное действие; экран не обещает ставку, которой не будет (lastq-019, lastq-056)
+  if (stakeDraft == null || stakeDraft > max) stakeDraft = 0;
   show(`${headHtml()}${themeHtml}
     <div class="stakev" id="sv">${stakeDraft}</div>
     <input type="range" id="sr" min="0" max="${max}" step="10" value="${stakeDraft}" aria-label="${escapeHtml(T("stake_label"))}" aria-valuetext="${escapeHtml(tpl("stake_vt", { n: stakeDraft }))}">
     <div class="quick"><button type="button" data-k="all">${T("q_all")}</button><button type="button" data-k="half">${T("q_half")}</button><button type="button" data-k="zero">${T("q_zero")}</button></div>
     <button class="btn" type="button" id="stakebtn">${escapeHtml(tpl("btn_stake", { n: stakeDraft }))}</button>
-    <p class="fine center" style="margin:0">${T("stake_hint")}</p>`, key, true);
+    <p class="fine center" style="margin:0">${T("stake_hint")}</p>
+    <p class="fine center stakewarn" id="stakewarn" style="margin:0">${T("stake_skip")}</p>`, key, true);
   const sr = document.getElementById("sr");
   const setV = (v) => { stakeDraft = Math.max(0, Math.min(max, Math.round(v))); sr.value = stakeDraft; sr.setAttribute("aria-valuetext", tpl("stake_vt", { n: stakeDraft })); document.getElementById("sv").textContent = stakeDraft; document.getElementById("stakebtn").textContent = tpl("btn_stake", { n: stakeDraft }); };
   sr.oninput = () => setV(Number(sr.value));
@@ -1104,6 +1274,8 @@ function renderStake() {
 
 // раскрытие финала: доска идёт по одному снизу вверх, каждый шаг — 3 с; свой итог телефон показывает в свой черёд
 const FSTEP_MS = 3000;
+// ставка 0 — «Без ставки» (а не «Ставка 0»): человек не нажимал «Ставлю» или поставил ноль
+const stakeLabel = (n) => (n > 0 ? tpl("fr_stake", { n }) : T("fr_stake0"));
 function myFstep() {
   // телефону сервер шлёт только свой шаг + fpos (его место в очереди); старый сервер — полный список
   const st = state.fsteps || [];
@@ -1119,13 +1291,13 @@ function renderFreveal() {
   if (screenKey === key) return;
   const p = mine();
   if (!f || !shown) {
-    show(`<div class="center"><div class="kicker">${T("fq")}</div><div class="sub" style="margin-top:10px">${T("fr_wait")}</div>${f ? `<p class="fine" style="margin-top:10px">${escapeHtml(tpl("fr_stake", { n: f.x.stake }))}</p>` : ""}</div>`, key);
+    show(`<div class="center"><div class="kicker">${T("fq")}</div><div class="sub" style="margin-top:10px">${T("fr_wait")}</div>${f ? `<p class="fine" style="margin-top:10px">${escapeHtml(stakeLabel(f.x.stake))}</p>` : ""}</div>`, key);
     return;
   }
   const x = f.x;
   const head = x.right ? `<div class="big ok">${escapeHtml(tpl("fr_right", { n: x.stake }))}</div>`
     : `<div class="big bad" style="font-size:40px">${escapeHtml(tpl(x.escaped ? "fr_half" : "fr_burn", { n: lqNum(x.delta) }))}</div>`;
-  show(`<div class="center"><div class="kicker">${escapeHtml(tpl("fr_stake", { n: x.stake }))}</div><div style="margin-top:10px">${head}</div>
+  show(`<div class="center"><div class="kicker">${escapeHtml(stakeLabel(x.stake))}</div><div style="margin-top:10px">${head}</div>
     <p class="lede" style="margin-top:12px;font-weight:700">${escapeHtml(tpl("fr_now", { n: lqNum(x.after) }))}</p><p class="fine">${emo(p)} ${escapeHtml(p.name)}</p></div>`, key);
   if (x.right) lqSfx.gong(); else lqSfx.whoosh();
 }
@@ -1170,7 +1342,7 @@ function render() {
   if (dead || !state) return;
   if (rejoining) return;
   if (!me) {
-    if (screen === "kicked" || screen === "replaced" || screen === "enter") return;
+    if (screen === "kicked" || screen === "replaced" || screen === "enter" || screen === "claim") return;
     return renderEnter();
   }
   if (!mine()) return renderEnter();
@@ -1214,6 +1386,13 @@ function frame() {
   }
   const tl = document.getElementById("tleft");
   if (tl) { tl.textContent = Math.max(0, Math.ceil(left / 1000)); tl.classList.toggle("hot", hot); }
+  const sw = document.getElementById("stakewarn");
+  if (sw) {
+    const none = ph === "stake" && state.me && state.me.stake == null && left < 3000;
+    sw.classList.toggle("hot", none);
+    const txt = T(none ? "stake_none_0" : "stake_skip");
+    if (sw.textContent !== txt) sw.textContent = txt;
+  }
   const bl = document.getElementById("betleft");
   if (bl && state.betUntil) { const l = state.betUntil - now; if (l <= 0) render(); else bl.textContent = tpl("betleft", { s: Math.ceil(l / 1000) }); }
   const rw = document.getElementById("readwait");
@@ -1240,6 +1419,7 @@ window.addEventListener("langchange", () => {
   if (!CODE) return renderLanding();
   if (screen === "enter") return renderEnter();
   screenKey = "";
+  if (screen === "noroom") return renderNoRoom();
   screen === "expired" ? renderExpired() : render();
 });
 
@@ -1287,10 +1467,18 @@ function flushQueued() {
   }, onDropped);
 }
 function onMessage(m) {
+  if (mpOn()) {
+    if (m.type === "hello" && MP.applyHello(m) === false) { flow = tab = null; } // MP_OFF на сервере: старый протокол
+    else if (tab && tab.handle(m)) return;
+    else if (flow && flow.handle(m)) return;
+  }
   switch (m.type) {
     case "hello":
     case "state":
       state = m.state;
+      if (m.type === "hello" && goneFlow) goneFlow.hello();
+      if (m.type === "hello") { ensureFollow(m.rules); sentLang = null; syncLang(); }
+      checkFollow();
       if (m.type === "hello" && token && !replacedHere && screen !== "kicked") { rejoining = !!me; conn.send({ type: "join", token }); }
       if (state.phase !== prevPhase) {
         if (state.phase === "stake") { stakeDraft = null; stakeEdit = false; }
@@ -1310,7 +1498,15 @@ function onMessage(m) {
       joinErr = null;
       rejoining = false;
       replacedHere = false;
+      autoJoined = false;
       try { localStorage.setItem(tokenKey(), token); } catch (e) {}
+      // итоговое имя от сервера («Игорь (2)», если занято): дальше входим с ним, игрок узнаёт о переименовании (lastq-005/006)
+      if (m.name) {
+        try { localStorage.setItem("lastq-name", m.name); } catch (e) {}
+        if (m.renamed) toast(tpl("in_as", { name: m.name }));
+        else if (m.byName) toast(T("welcome_back"));
+      }
+      claimPrompt = null;
       lqWake.on();
       // тот же игрок после обрыва — экран оставляем как есть (Камера не перемонтируется); ответ испытания, если не дошёл, — ещё раз
       if (!same) { screen = null; screenKey = ""; }
@@ -1338,10 +1534,23 @@ function onMessage(m) {
       break;
     case "error":
       conn.flush(() => false);
-      if (m.error === "room_expired") return renderExpired();
+      if (m.error === "room_expired") return onRoomGone();
       if (["room_full", "token_gone", "bad_name"].includes(m.error)) {
         rejoining = false;
-        if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
+        if (m.error === "token_gone") {
+          try { localStorage.removeItem(tokenKey()); } catch (e) {}
+          token = null;
+          // место снято (серым в лобби дольше GHOST_TTL или перед партией): в лобби/итогах входим сами с сохранённым именем,
+          // а не показываем форму — для человека это мигание, не шаг (lastq-002). Один раз на подключение: без цикла.
+          const saved = savedName();
+          if (saved && !autoJoined && state && (state.phase === "lobby" || state.phase === "finished") && screen !== "kicked" && screen !== "replaced") {
+            autoJoined = true;
+            me = null;
+            joinName = saved;
+            doJoin();
+            break;
+          }
+        }
         joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
         me = null;
         renderEnter();
@@ -1356,17 +1565,36 @@ function onMessage(m) {
       renderCenter("kicked_title");
       break;
     case "replaced":
-      conn.flush(() => false);
-      me = null;
-      run = null;
-      rejoining = false;
-      replacedHere = true;
-      screen = "replaced";
-      renderCenter("replaced_title", "replaced_text", `<button class="btn" style="margin-top:14px" id="here" type="button">${T("btn_back_here")}</button>`);
-      document.getElementById("here").onclick = () => { replacedHere = false; conn.send({ type: "join", token }); };
+      showReplaced(m);
       break;
   }
 }
+
+// «Игра открыта в другой вкладке»: здесь игра на паузе; «Играть здесь» (или сам возврат вкладки на экран) возвращает место
+function showReplaced(m) {
+  conn.flush(() => false);
+  me = null;
+  run = null;
+  rejoining = false;
+  replacedHere = true;
+  screen = "replaced";
+  // место забрали подтверждённым подхватом с другого устройства — авто-возврат 60 с молчит (две вкладки не дерутся)
+  if (m && m.by === "claim" && tab) tab.noteClaimElsewhere(Date.now());
+  renderCenter("replaced_title", "replaced_text", `<button class="btn" style="margin-top:14px" id="here" type="button">${T("btn_back_here")}</button>`);
+  document.getElementById("here").onclick = playHere;
+}
+function playHere() {
+  replacedHere = false;
+  if (tab && tab.back()) return;
+  conn.send({ type: "join", token });
+}
+// вкладка снова на виду: игра ушла в другое окно — забираем место обратно сама, не чаще раза в 5 с (К-12)
+function maybeAutoReturn() {
+  if (document.hidden || screen !== "replaced" || !token || !tab || !tab.canAutoReturn(Date.now())) return;
+  playHere();
+}
+document.addEventListener("visibilitychange", maybeAutoReturn);
+window.addEventListener("focus", maybeAutoReturn);
 
 // не ушло (связь оборвалась): ответ на вопрос можно дать ещё раз, ответ испытания уйдёт сам после переподключения
 // действие просрочено в очереди обрыва (30 с) или вытеснено переполнением: то же, что «не ушло»
@@ -1379,14 +1607,42 @@ function onSendFail(msg) {
   if (msg.type === "cell" && run && run.ch.id === msg.cid) run.lost = true;
 }
 
+if (window.MP) {
+  flow = MP.joinFlow({
+    send: (m) => conn.send(m),
+    buildJoin,
+    onClaimPrompt: (c) => { claimPrompt = c; renderClaim(); },
+    // «подождите» не бесконечно: после повторов — обычное «имя занято»
+    onGiveUp: () => { joinErr = "err_name_taken"; me = null; renderEnter(); },
+  });
+  tab = MP.replacedTab({
+    rejoin: () => conn.send({ type: "join", token }),
+    onReplaced: (m) => showReplaced(m),
+    auto: true,
+    // токен отозван (место вернули с другого устройства): обычный вход по имени; сохранённого имени нет — форма
+    onTokenGone: () => {
+      try { localStorage.removeItem(tokenKey()); } catch (e) {}
+      token = null; me = null; joinErr = null;
+      if (savedName()) { joinName = savedName(); doJoin(); } else { screen = null; renderEnter(); }
+    },
+  });
+}
+// сменили язык на экране «Это ты?» — перерисовать
+window.addEventListener("langchange", () => { if (screen === "claim") renderClaim(); syncLang(); const lh = document.getElementById("langhint"); if (lh) lh.classList.remove("on"); });
 function start() {
   if (!CODE) return renderLanding();
   renderCenter("wait_title");
   const banner = document.getElementById("conn");
+  let netLost = false, netQuiet = false;
+  const showNet = () => {
+    banner.textContent = T(netLost ? "err_connect" : "conn_lost");
+    banner.classList.toggle("on", netLost || netQuiet);
+  };
+  window.addEventListener("langchange", showNet);
   conn = lqConnect({
     code: CODE,
     onMessage,
-    onGone: renderExpired,
+    onGone: onRoomGone,
     // переподключились — снова входим своим токеном (hello придёт первым); me не обнуляем: экран и Камера остаются
     // нажатое до входа по токену ждёт в очереди; если вход не случится (выбит, вытеснен) — через 4 с очередь уходит в отбой
     onOpen: () => {
@@ -1394,7 +1650,9 @@ function start() {
     },
     onSendFail,
     onDrop: (m) => onDropped(m),
-    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+    // «lost» — сокет закрыт, переподключаемся; «quiet» — сокет жив, но молчит дольше 10 с (MP.conn): только предупреждение
+    onState: (st) => { netLost = st === "lost"; if (st === "open") netQuiet = false; showNet(); },
+    onQuiet: (q) => { netQuiet = !!q; showNet(); },
   });
   requestAnimationFrame(frame);
   // ручка для стенда: состояние и отправка

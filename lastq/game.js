@@ -14,6 +14,8 @@
  */
 
 const CH = require("./challenges.js");
+const names = require("../lib/names");
+const presence = require("../lib/presence");
 
 // Акты (§2): очки за верный ответ, максимум бонуса за скорость, отлёт
 const ACTS = {
@@ -53,6 +55,20 @@ const DEFAULTS = {
   lang: "ru",
 };
 
+// RULE_U08_GHOST_OUT (класс B, T-W2-29, lastq-003): выпавший ДО начала вопроса в нём не участвует — не отвечает,
+// не попадает в Камеру и не теряет очков. По умолчанию выкл: спека §8 «не ответил — ошибка, идёт в Камеру»;
+// иначе «выдернуть Wi-Fi на вопросе, который не знаешь» стало бы выигрышной стратегией. Читается при каждом вызове.
+const ghostOut = () => process.env.RULE_U08_GHOST_OUT === "1";
+
+// RULE_U43_LATE_MIN (класс B, T-W2-31, lastq-008): вошедший под НОВЫМ именем посреди партии стартует не с 0, а с минимума
+// счёта всех (включая ушедших) — min(0, …). По умолчанию выкл: спека §226 «играет со следующего вопроса с 0 очков».
+// (Вернувшийся под тем же именем с того же IP получает свою запись назад независимо от флага — rejoinLeft.)
+// RULE_U43_LATE_SCORE — синоним имени из задания.
+// RULE_U17_LANG_FOLLOW (класс B, T-W2-05, U-17): телефон видит вопрос на СВОЁМ языке, если в банке есть параллельный
+// перевод (тот же id). По умолчанию выкл: все видят язык комнаты. Читается при каждом вызове.
+const langFollow = () => process.env.RULE_U17_LANG_FOLLOW === "1";
+const lateMin = () => process.env.RULE_U43_LATE_MIN === "1" || process.env.RULE_U43_LATE_SCORE === "1";
+
 const MAX_PLAYERS = 10;
 const MIN_PLAYERS = 2;
 const REACT_GAP = 2000;
@@ -72,10 +88,14 @@ function clampSettings(input = {}) {
 }
 
 const CTRL = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g;
+// срез по СИМВОЛАМ (Array.from), а не по UTF-16: «AAAAAAAAAAAAAAA😀» не даёт одиночного суррогата (lastq-039)
 function cleanText(text, max) {
-  return String(text == null ? "" : text).replace(CTRL, "").replace(/\s+/g, " ").trim().slice(0, max);
+  return Array.from(String(text == null ? "" : text).replace(CTRL, "").replace(/\s+/g, " ").trim()).slice(0, max).join("");
 }
-const cleanName = (name) => cleanText(name, 16);
+// имя — общая реализация lib/names (U-05): суррогаты, «<>» и невидимое вырезаны, срез по символам
+const NAME_MAX = 16;
+const cleanName = (name) => names.cleanName(name, NAME_MAX);
+const nameKey = names.nameKey;
 const round10 = (x) => Math.round(x / 10) * 10;
 
 class Game {
@@ -133,11 +153,39 @@ class Game {
     return this.s.players.filter((p) => !p.left);
   }
 
-  addPlayer({ id, name }) {
+  // кто отвечает на вопрос: все присутствующие; при RULE_U08_GHOST_OUT=1 — только на связи (если их хотя бы двое: К-13)
+  questionPlayers() {
+    const ps = this.present();
+    if (!ghostOut()) return ps;
+    const on = ps.filter((p) => p.online);
+    return on.length >= MIN_PLAYERS ? on : ps;
+  }
+
+  onlineN() {
+    return this.present().filter((p) => p.online).length;
+  }
+
+  // Комната полна: в лобби и итогах вытесняем самого давнего офлайн-места СТАРШЕ GHOST_TTL (lib/presence R2);
+  // в итогах — только того, кто не участвовал в партии (нет в ranking, нет очков). id вытесненного — evicted.
+  evictGhost(now) {
+    const s = this.s;
+    if (s.phase !== "lobby" && s.phase !== "finished") return null;
+    const ranked = new Set((s.ranking || []).map((r) => r.id));
+    const id = presence.evictOldestGhost(s.players, { now, stage: s.phase, protect: (x) => ranked.has(x), earnedKeys: ["score"] });
+    if (!id) return null;
+    s.players = s.players.filter((p) => p.id !== id);
+    return id;
+  }
+
+  addPlayer({ id, name, now }) {
     const s = this.s;
     const have = this.player(id);
     if (have) return { ok: true, player: have };
-    if (this.present().length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
+    let evicted = null;
+    if (this.present().length >= MAX_PLAYERS) {
+      evicted = this.evictGhost(Number.isFinite(now) ? now : Date.now());
+      if (!evicted) return { ok: false, reason: "room_full" };
+    }
     name = cleanName(name);
     if (!name) return { ok: false, reason: "bad_name" };
     const used = new Set(this.present().map((p) => p.color));
@@ -156,9 +204,26 @@ class Game {
     // ушедшие посреди партии копятся в списке (их очки нужны итогам); но не бесконечно — иначе пара join/leave в цикле
     // раздувает каждый снимок до мегабайт (как в wave)
     if (s.players.length >= MAX_PLAYERS * 3) return { ok: false, reason: "room_full" };
+    // вошёл посреди партии — отвечает со следующего вопроса с 0 очков (§8); за RULE_U43_LATE_MIN — с минимума счёта
+    if (lateMin() && s.phase !== "lobby" && s.phase !== "finished") {
+      p.score = Math.min(0, ...s.players.map((x) => x.score));
+      p.stats.minScore = p.score;
+    }
     s.players.push(p);
-    // вошёл посреди партии — отвечает со следующего вопроса с 0 очков (§8)
-    return { ok: true, player: p };
+    return { ok: true, player: p, evicted };
+  }
+
+  // «выйти и зайти» не чистит счёт: ушедший посреди партии, вернувшийся под тем же именем с того же IP (проверяет сервер),
+  // получает свою запись назад — со счётом, статистикой и цветом (lastq-008)
+  rejoinLeft(id, now) {
+    const s = this.s;
+    const p = this.player(id);
+    if (!p || !p.left) return { ok: false, reason: "bad" };
+    if (s.phase === "lobby" || s.phase === "finished") return { ok: false, reason: "bad" };
+    if (this.present().length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
+    p.left = false;
+    presence.setOnline(p, true, now);
+    return { ok: true, player: p, events: [{ type: "back", playerId: id }] };
   }
 
   static freshStats() {
@@ -187,7 +252,7 @@ class Game {
     const p = this.player(id);
     if (!p) return [];
     const was = p.online;
-    p.online = online;
+    presence.setOnline(p, online, now); // offline: offSince = now (лобби: GHOST_TTL_MS, вытеснение); online: метка снимается
     if (online) {
       const ev = this.resume(now);
       // вернулся из офлайна посреди Камеры — играет оставшееся время; испытание новое (расписание от момента показа),
@@ -289,6 +354,7 @@ class Game {
       text: raw.q,
       options: order.map((k) => raw.a[k]),
       right: order.indexOf(0), // только на сервере до раскрытия
+      order, // порядок вариантов относительно банка: по нему строится перевод (в снимки не уходит)
     };
   }
 
@@ -297,9 +363,12 @@ class Game {
   start(now) {
     const s = this.s;
     if (s.phase !== "lobby" && s.phase !== "finished") return { ok: false, reason: "started" };
-    const ps = this.present();
-    if (ps.length < MIN_PLAYERS) return { ok: false, reason: "few_players" };
+    // «двое» — двое НА СВЯЗИ: серые места (телефон погас до старта) партию не заводят и в неё не попадают (lastq-002)
+    if (this.onlineN() < MIN_PLAYERS) return { ok: false, reason: "few_players" };
     if (!this.bank().some((q) => !q.final)) return { ok: false, reason: "no_content" };
+    // офлайн дольше грации уходят в left (токен жив: вернуться можно, но уже посреди партии, без очков)
+    presence.pruneOfflineForNewGame(s.players, { now });
+    const ps = this.present();
     s.game++;
     s.plan = (s.settings.short ? QUESTIONS.short : QUESTIONS.normal).slice();
     s.qn = -1;
@@ -354,7 +423,7 @@ class Game {
     const raw = this.pickQuestion(act);
     if (!raw) return this.finish("no_content", now);
     this.takeQuestion(raw);
-    s.eligible = this.present().map((p) => p.id);
+    s.eligible = this.questionPlayers().map((p) => p.id);
     s.phase = "read";
     s.phaseStart = now;
     s.phaseEnd = now + T.read;
@@ -439,7 +508,8 @@ class Game {
     for (const id of s.prisoners) {
       const p = this.player(id);
       p.stats.cells++;
-      s.cell[id] = { done: 0, need: cfg.need, ch: null, lockUntil: 0, last: null, escaped: false, burned: false, at: null };
+      // ghost: узник без связи к открытию Камеры — на него нельзя ставить, а его «сгорел» не кормит чужие ставки (lastq-001)
+      s.cell[id] = { done: 0, need: cfg.need, ch: null, lockUntil: 0, last: null, escaped: false, burned: false, at: null, ghost: !p.online };
       if (p.online) this.issue(id, now, ready);
     }
     s.bets = {};
@@ -524,6 +594,9 @@ class Game {
     if (!this.free().some((p) => p.id === id)) return { ok: false, reason: "not_free" };
     if (!s.prisoners.includes(prisoner)) return { ok: false, reason: "bad" };
     if (typeof escape !== "boolean") return { ok: false, reason: "bad" };
+    // узник без связи: ставка «сгорит» была бы гарантированными +20 (lastq-001); и вышедший в обрыв позже ставку не кормит
+    const target = this.player(prisoner);
+    if ((s.cell[prisoner] && s.cell[prisoner].ghost) || !target || target.left || !target.online) return { ok: false, reason: "ghost" };
     if (now > s.cellReady + BET_WINDOW) return { ok: false, reason: "closed" };
     if (s.bets[id] && s.bets[id][prisoner] != null) return { ok: false, reason: "already" };
     (s.bets[id] = s.bets[id] || {})[prisoner] = escape;
@@ -550,7 +623,12 @@ class Game {
       const b = this.player(bid);
       if (!b) continue;
       for (const [pid, esc] of Object.entries(picks)) {
-        if (esc === s.cell[pid].escaped) {
+        const cp = s.cell[pid];
+        if (!cp) continue;
+        // ставка на того, кто ушёл в офлайн и не выбрался, не засчитывается: «выбить сетью» — не способ заработать
+        const tp = this.player(pid);
+        if (!cp.escaped && (cp.ghost || !tp || tp.left || !tp.online)) continue;
+        if (esc === cp.escaped) {
           betGain[bid] = (betGain[bid] || 0) + BET_POINTS;
           b.stats.betHits++;
         }
@@ -586,7 +664,7 @@ class Game {
     this.takeQuestion(raw);
     s.act = 3;
     s.stakes = {};
-    s.eligible = this.present().map((p) => p.id);
+    s.eligible = this.questionPlayers().map((p) => p.id);
     s.phase = "stake";
     s.phaseStart = now;
     s.phaseEnd = now + T.stake;
@@ -763,7 +841,14 @@ class Game {
       rocket: best((p) => p.stats.msSum / p.stats.right, (p) => p.stats.right >= 3, true),
       kamikaze: s.settings.final ? pos(best((p) => p.stats.stake)) : null,
       seer: pos(best((p) => p.stats.betHits)),
-      bottom: (() => { const b = best((p) => p.stats.minScore, () => true, true); return b && b.n < 0 ? b : null; })(),
+      // «Дно» считаем по всем, кто был в партии, включая ушедших: иначе «выйти на дне» стирало бы награду (lastq-008)
+      bottom: (() => {
+        const all = s.players.filter((p) => p.stats && Number.isFinite(p.stats.minScore));
+        if (!all.length) return null;
+        const m = Math.min(...all.map((p) => p.stats.minScore));
+        const ids = all.filter((p) => p.stats.minScore === m).map((p) => p.id);
+        return m < 0 && ids.length <= 2 ? { ids, n: m } : null;
+      })(),
     };
   }
 
@@ -830,7 +915,19 @@ class Game {
     return { ok: true, events: [{ type: "avatar", playerId: id }] };
   }
 
-  snapshot(now, view) {
+  // перевод текущего вопроса на язык игрока (RULE_U17_LANG_FOLLOW): тот же id в банке нужного языка, тот же порядок
+  // вариантов. Нет перевода (или дамп без order) — null: телефон показывает язык комнаты.
+  translateQuestion(lang, hideText) {
+    const q = this.s.q;
+    if (!q || !langFollow() || !Array.isArray(q.order) || !["ru", "en", "el"].includes(lang) || lang === this.s.settings.lang) return null;
+    this._byId = this._byId || {};
+    if (!this._byId[lang]) this._byId[lang] = new Map((this.content[lang] || []).map((x) => [x.id, x]));
+    const raw = this._byId[lang].get(q.id);
+    if (!raw || !Array.isArray(raw.a) || raw.a.length !== 4 || typeof raw.q !== "string") return null;
+    return { lang, text: hideText ? null : raw.q, options: hideText ? null : q.order.map((k) => String(raw.a[k])) };
+  }
+
+  snapshot(now, view, opts) {
     const s = this.s;
     const board = view === "board";
     const me = board ? null : this.player(view);
@@ -849,7 +946,8 @@ class Game {
         const c = s.cell[id] || {};
         // пока открыто окно ставок — прогресс узника не показываем никому, кроме него самого (исход не должен подсказывать ставку)
         const hide = inCell && now < s.cellReady + BET_WINDOW;
-        const x = { id, done: hide ? 0 : c.done || 0, need: c.need || s.cellNeed, escaped: !hide && !!c.escaped, burned: !!c.burned, locked: !hide && c.lockUntil > now, type: c.ch ? c.ch.type : null };
+        const pl = this.player(id);
+        const x = { id, done: hide ? 0 : c.done || 0, need: c.need || s.cellNeed, escaped: !hide && !!c.escaped, burned: !!c.burned, locked: !hide && c.lockUntil > now, type: c.ch ? c.ch.type : null, offline: !!c.ghost || !pl || !pl.online };
         // доске — вопрос «Головы» (не на память), чтобы зал подсказывал; и код «Передачки» после 4 с тишины
         if (board && c.ch && c.ch.at <= now && c.ch.group === "head" && !CH.MEMORY_TYPES.includes(c.ch.type)) x.ch = Game.chView(c.ch);
         if (board && c.ch && c.ch.type === "pass" && c.ch.view.where === "tv") x.passCode = c.ch.answer;
@@ -905,6 +1003,8 @@ class Game {
         final: q.final,
         text: ph === "stake" ? null : tx(q.text),
         options: ph === "stake" ? null : q.options.map(tx),
+        // телефону — ещё и перевод на его язык (если включено и есть в банке); доске не нужен
+        tr: !board && opts && opts.lang ? this.translateQuestion(opts.lang, ph === "stake") : null,
       } : null,
       // кто именно ответил — только доске; телефону — число (имена и порядок ответов не нужны)
       answered: board && (ph === "answer" || ph === "fanswer") ? Object.keys(s.answers) : null,
@@ -932,6 +1032,7 @@ class Game {
       ranking: ph === "finished" ? s.ranking || null : null,
       finishedReason: ph === "finished" ? s.finishedReason : null,
       minPlayers: MIN_PLAYERS,
+      onlineN: this.onlineN(),
       avatarChoices: s.phase === "lobby" || s.phase === "finished" ? AVATAR_CHOICES : null,
       maxPlayers: MAX_PLAYERS,
       me: mePart,
@@ -949,4 +1050,4 @@ class Game {
   }
 }
 
-module.exports = { Game, ACTS, QUESTIONS, ACT_LVL, ACT_LVL_W, T, PASS_SILENCE, BET_POINTS, BET_WINDOW, STAKE_FLOOR, GROUPS_OFFERED, DEFAULTS, MAX_PLAYERS, MIN_PLAYERS, REACTIONS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText };
+module.exports = { Game, ACTS, QUESTIONS, ACT_LVL, ACT_LVL_W, T, PASS_SILENCE, BET_POINTS, BET_WINDOW, STAKE_FLOOR, GROUPS_OFFERED, DEFAULTS, MAX_PLAYERS, MIN_PLAYERS, REACTIONS, COLORS, AVATARS, AVATAR_CHOICES, clampSettings, cleanName, cleanText, nameKey, NAME_MAX };
