@@ -545,6 +545,7 @@ const has = (c, type, pred = () => true) => c.msgs.some((m) => m.type === type &
   // с полным снимком на всём протяжении партии с ботами — по WebSocket, по long-polling и после
   // переподключения, и что трафик действительно меньше.
   await deltaSuite(make);
+  await secretsSuite(make);
 
   // health и неизвестная комната
   const h = await (await fetch(BASE + "/auction/api/health")).json();
@@ -1205,4 +1206,65 @@ async function anonIpSuite() {
   } finally {
     child.kill("SIGKILL");
   }
+}
+
+// ---------- T-W0-05: сканер секретов (tools/testkit/scan.js) по трём видам: доска, игрок, сокет без токена ----------
+// В аукционе составы (lots игроков) открыты по замыслу — торги публичные; тайна — «кто за кого проголосовал»
+// до закрытия голосования, колода впереди (deck), токены игроков/ведущего. Поля проверены по snapshot() и server.js.
+async function secretsSuite(make) {
+  const { scanFrames } = require("../tools/testkit/scan");
+  const r = await make({ slots: 2, budget: 20, t1: 5000, t2: 3000, judge: "vote" }, 6);
+  const h = await connect(r.code, { type: "host", token: r.hostToken });
+  const vs = [];
+  for (const n of ["Секрет1", "Секрет2", "Секрет3"]) vs.push(await connect(r.code, { type: "join", name: n }));
+  // сокет без join/host: получает только то, что отдают всем
+  const anon = { msgs: [] };
+  anon.ws = new WebSocket(WS + r.code);
+  anon.ws.on("message", (raw) => { try { anon.msgs.push(JSON.parse(raw)); } catch {} });
+  await until(() => h.state?.players.length === 3);
+  h.send({ type: "start" });
+  await until(() => h.state.phase !== "lobby");
+  for (const c of vs) {
+    const mine = () => h.state.players.find((p) => p.id === c.me);
+    await until(() => (h.state.phase === "lot" || h.state.phase === "bidding") && mine().canBid && !h.state.leaderId, 40000);
+    c.send({ type: "bid", amount: h.state.price + 1, round: h.state.round });
+    await until(() => mine().lots.length >= 1, 40000);
+  }
+  h.send({ type: "end" });
+  await until(() => h.state.voting, 8000);
+  vs[0].send({ type: "vote", for: vs[1].me });
+  vs[1].send({ type: "vote", for: vs[0].me });
+  await until(() => h.state.votes === 2, 3000);
+  await wait(300); // голоса двух из трёх открыты в снимке только числом и списком проголосовавших
+  const beforeResults = (c) => { const i = c.msgs.findIndex((m) => m.state && m.state.results); return i < 0 ? c.msgs : c.msgs.slice(0, i); };
+  const snap = {};
+  for (const [name, c] of [["host", h], ["v0", vs[0]], ["v1", vs[1]], ["v2", vs[2]], ["anon", anon]]) snap[name] = beforeResults(c).slice();
+  vs[2].send({ type: "vote", for: vs[0].me });
+  check(await until(() => !!h.state.results, 4000), "секреты: голосование закрылось, итоги пришли");
+
+  const ids = new Set(vs.map((c) => c.me));
+  const tokens = vs.map((c) => c.token);
+  let scanned = 0, votingFrames = 0, bad = [];
+  for (const [name, view, c] of [["host", "board", h], ["v0", "player", vs[0]], ["v1", "player", vs[1]], ["v2", "player", vs[2]], ["anon", "anon", anon]]) {
+    const frames = snap[name].map((f) => ({ view, frame: f }));
+    scanned += frames.length;
+    votingFrames += snap[name].filter((m) => m.state && m.state.voting).length;
+    const foreign = tokens.filter((t) => t && t !== c.token);
+    const v = scanFrames(frames, {
+      forbiddenKeys: ["deck", "hostToken",
+        // votes — только число; карта «кто за кого» и любые id-ключи (карты по игрокам) — нет
+        (p, k, val) => k === "votes" && typeof val !== "number" && "votes: карта голосов",
+        (p, k) => ids.has(k) && "карта по id игрока",
+        (p, k, val) => k === "voted" && Array.isArray(val) && val.some((x) => typeof x !== "string") && "voted: не только id"],
+      forbiddenSubstrings: view === "board" ? foreign : foreign.concat(r.hostToken),
+    });
+    if (v.length) bad.push(`${name}: ${JSON.stringify(v.slice(0, 2))}`);
+  }
+  check(scanned > 20 && votingFrames > 2, `секреты не в кадрах: кадров ${scanned}, из них с голосованием ${votingFrames}`);
+  check(!bad.length, "секреты не в кадрах: доска / игрок / сокет без токена — нет карты голосов, колоды, чужих токенов" + (bad.length ? " " + bad.join(" | ") : ""));
+  // «за кого» не видно и в самих событиях/кадрах до закрытия: пара «голосовавший → цель» не встречается нигде
+  const raw = JSON.stringify(snap.v2);
+  check(!raw.includes(`"${vs[0].me}":"${vs[1].me}"`) && !raw.includes(`"for":"${vs[1].me}"`), "секреты не в кадрах: чужой голос (за кого) телефону не виден до итогов");
+  for (const x of [h, ...vs]) x.ws.close();
+  anon.ws.close();
 }
