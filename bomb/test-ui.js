@@ -168,7 +168,7 @@ const SOLVER = String.raw`(async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const dump = path.join(os.tmpdir(), `bomb-ui-${process.pid}.json`);
   const server = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(SRV), NODE_ENV: "development", STATIC: path.join(__dirname, ".."), DUMP_FILE: dump },
+    env: { ...process.env, PORT: String(SRV), NODE_ENV: "development", STATIC: path.join(__dirname, ".."), DUMP_FILE: dump, OFFLINE_GRACE_MS: "3000" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let slog = "";
@@ -398,6 +398,44 @@ const SOLVER = String.raw`(async () => {
     check(typeof doing === "string" && doing.length > 3, `доска: подпись «что делает держатель» (${doing})`);
     check((await board.evaluate("state.challenges && Object.keys(state.challenges).length >= 0")) === true, "доска видит испытания держателя");
 
+    // --- 4а. «нет связи» (bomb-003): метка на карточке держателя и в подписи по центру; карточки не двигаются
+    {
+      await board.call("Page.bringToFront"); // метка в .st и раскладка карточек живут в rAF — в фоновой вкладке он не идёт
+      await wait(900);
+      const before = await board.evaluate(`(() => { const o = {}; document.querySelectorAll(".pc").forEach((c) => { const r = c.getBoundingClientRect(); o[c.dataset.id] = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; }); return o; })()`);
+      const hid = await board.evaluate("state.bombs[0].holder");
+      await board.evaluate(`(() => { const p = state.players.find((x) => x.id === ${JSON.stringify(hid)}); p.online = false; render(); })()`);
+      await wait(900);
+      const mark = await board.evaluate(`(() => { const c = document.querySelector('.pc[data-id=' + JSON.stringify(${JSON.stringify(hid)}) + ']'); return { st: c.querySelector(".st").textContent, doing: document.getElementById("doing").textContent }; })()`);
+      check(/нет связи/.test(mark.st) && /⚡/.test(mark.st), `доска: у держателя без связи «🧨 ⚡ нет связи» (${mark.st})`);
+      check(/без связи/.test(mark.doing), `доска: подпись по центру «без связи…» (${mark.doing})`);
+      const after = await board.evaluate(`(() => { const o = {}; document.querySelectorAll(".pc").forEach((c) => { const r = c.getBoundingClientRect(); o[c.dataset.id] = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; }); return o; })()`);
+      check(JSON.stringify(before) === JSON.stringify(after), "доска: карточки не сдвинулись и не изменили размер от метки «нет связи»");
+      await board.evaluate(`(() => { state.players.find((x) => x.id === ${JSON.stringify(hid)}).online = true; })()`);
+
+      // телефон: плитки целей — серая «нет связи»; с правилом U-26 — disabled; размер плитки не меняется
+      const res = await phones[0].evaluate(`(() => {
+        const me = window.bmPhone.me, real = window.bmPhone.state;
+        const run = (onlineOnly, offId) => {
+          const fake = JSON.parse(JSON.stringify(real));
+          fake.phase = "live"; fake.onlineOnly = onlineOnly;
+          fake.bombs = [{ id: 0, holder: me, from: null, since: Date.now(), alive: true, commit: "0".repeat(64) }];
+          fake.me = { id: me, challenge: null, armed: true, holding: [0], passN: { 0: 0 } };
+          fake.players.forEach((p) => { p.online = p.id !== offId; });
+          screen = null; state = fake; renderTargets();
+          return [...document.querySelectorAll("#targets .target")].map((t) => ({ off: t.classList.contains("off"), disabled: t.disabled, small: (t.querySelector("small") || {}).textContent || "", h: Math.round(t.getBoundingClientRect().height) }));
+        };
+        const other = real.players.find((p) => p.id !== me).id;
+        const base = run(false, null), soft = run(false, other), hard = run(true, other);
+        return { base, soft, hard };
+      })()`);
+      const offSoft = res.soft.find((t) => t.off), offHard = res.hard.find((t) => t.off);
+      check(offSoft && offSoft.small === "нет связи" && !offSoft.disabled, "телефон: офлайн-плитка серая с «нет связи», без правила — нажимается");
+      check(offHard && offHard.small === "нет связи" && offHard.disabled, "телефон: с RULE_U26_BOMB_ONLINE офлайн-плитка disabled");
+      check(res.base.map((t) => t.h).join() === res.hard.map((t) => t.h).join(), "телефон: высота плиток не меняется от метки «нет связи»");
+      await phones[0].evaluate("screen = null; targetsKey = ''; render();");
+    }
+
     // --- 5. ведущий останавливает раунд → итоги, печать сверяется в браузере
     await board.evaluate("document.querySelector('#hostbar button:not(.linkbtn)').click()");
     await wait(2000);
@@ -463,6 +501,133 @@ const SOLVER = String.raw`(async () => {
     await wait(5000);
     check((await board.evaluate("state.phase")) === "finished" && (await board.evaluate("state.loserId")) === victimPhone, "итоги: проиграл тот, на ком рванула");
     await board.shot("b_final");
+
+    // --- 6а. вход по имени (T-W2-15): плитки «Это я», «Это ты?», тёзка получает «Имя (2)» и тост
+    {
+      const r2 = await (await fetch(BASE + "/bomb/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: "ru" } }) })).json();
+      const joinRaw = (name) => new Promise((resolve, reject) => {
+        const ws = new WebSocket(`ws://localhost:${SRV}/bomb/ws?r=${r2.code}`);
+        ws.on("open", () => ws.send(JSON.stringify({ type: "join", name })));
+        ws.on("message", (raw) => { const m = JSON.parse(raw); if (m.type === "joined") resolve({ ws, id: m.playerId }); });
+        ws.on("error", reject);
+      });
+      const guest = await joinRaw("Гость"), lena = await joinRaw("Лена");
+      guest.ws.close();
+      lena.ws.close();
+      await wait(3800); // OFFLINE_GRACE_MS=3000 + запас: оба места без связи, грация подхвата прошла
+      const fresh = async (size) => {
+        // сначала страница без комнаты (токены в общем localStorage чужих телефонов не читаются), чистим, потом входим в комнату
+        const pg = await cdp(`${BASE}/bomb.html`, size);
+        pages.push(pg);
+        await wait(700);
+        await pg.evaluate("localStorage.clear()");
+        await pg.call("Page.navigate", { url: `${BASE}/bomb.html?r=${r2.code}` });
+        await wait(1800);
+        await pg.call("Page.bringToFront");
+        return pg;
+      };
+      const p1 = await fresh([390, 844]);
+      const tiles = await p1.evaluate("[...document.querySelectorAll('#ghosts .ghost')].map((b) => b.textContent).sort().join()");
+      check(tiles === "Гость,Лена", `вход: под формой плитки «Это я» с офлайн-местами (${tiles})`);
+      const geo = await p1.evaluate(`(() => { const r = document.querySelector('#ghosts .ghost').getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), document.documentElement.scrollWidth <= innerWidth]; })()`);
+      check(geo[1] >= 44 && geo[2], `плитки «Это я»: высота ≥ 44 и без горизонтальной прокрутки (${geo[0]}×${geo[1]})`);
+      await p1.shot("p_enter_ghosts");
+      // имя набрано руками — «Это ты?»
+      await p1.call("Runtime.evaluate", { expression: "document.getElementById('name').focus()" });
+      await typeText(p1, "Лена");
+      await p1.evaluate("document.querySelector('#enterform button[type=submit]').click()");
+      await wait(900);
+      check((await p1.evaluate("!!document.getElementById('claimyes')")) === true, "имя офлайн-места набрано руками: экран «Это ты?»");
+      await p1.shot("p_claim");
+      await p1.evaluate("document.getElementById('claimyes').click()");
+      await wait(900);
+      check((await p1.evaluate("window.bmPhone.me")) === lena.id, "«Да, это я» возвращает то же место (playerId)");
+      // плитка «Гость» на втором телефоне — одним тапом
+      const p2 = await fresh([360, 640]);
+      await p2.evaluate("[...document.querySelectorAll('#ghosts .ghost')].find((b) => b.textContent === 'Гость').click()");
+      await wait(900);
+      check((await p2.evaluate("window.bmPhone.me")) === guest.id, "плитка «Это я: Гость» возвращает своё место");
+      // тёзка живого игрока — «Лена (2)» и тост
+      const p3 = await fresh([390, 844]);
+      await p3.call("Runtime.evaluate", { expression: "document.getElementById('name').focus()" });
+      await typeText(p3, "Лена");
+      await p3.evaluate("document.querySelector('#enterform button[type=submit]').click()");
+      await wait(900);
+      const nm = await p3.evaluate("(window.bmPhone.state.players.find((p) => p.id === window.bmPhone.me) || {}).name");
+      const tst = await p3.evaluate("document.getElementById('toast').textContent");
+      if (nm !== "Лена (2)") { await p3.shot("p_dbg_homonym"); console.log("   диагностика:", await p3.evaluate("document.body.innerText.slice(0, 200) + ' | screen=' + screen + ' me=' + me + ' joinErr=' + joinErr")); }
+      check(nm === "Лена (2)", `тёзка живого игрока получает «Лена (2)» (${nm})`);
+      check(/Лена \(2\)/.test(tst), `тост «имя занято — теперь ты …» (${tst})`);
+      for (const pg of [p1, p2, p3]) check(pg.errors.length === 0, "вход по имени без JS-ошибок" + (pg.errors[0] ? ": " + pg.errors[0] : ""));
+    }
+
+    // --- 6б. потерянный тап (T-W2-16, S-12): сокет закрылся, тап по цели в первые 100 мс — бросок доходит после возврата связи
+    {
+      const r3 = await (await fetch(BASE + "/bomb/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { fuse: "long", groups: { hands: true, eyes: false, head: false, crowd: false } } }) })).json();
+      const conn3 = (extra) => new Promise((resolve, reject) => {
+        const ws = new WebSocket(`ws://localhost:${SRV}/bomb/ws?r=${r3.code}`);
+        const c = { ws, state: null };
+        ws.on("message", (raw) => { const m = JSON.parse(raw); if (m.state) c.state = m.state; if (m.type === "hello" || m.type === "joined" || m.type === "host_ok") c.ready = true; });
+        ws.on("open", () => { ws.send(JSON.stringify(extra)); resolve(c); });
+        ws.on("error", reject);
+      });
+      const hostC = await conn3({ type: "host", token: r3.hostToken });
+      const mate = await conn3({ type: "join", name: "Напарник" });
+      const tap = await cdp(`${BASE}/bomb.html`, [390, 844]);
+      pages.push(tap);
+      await wait(600);
+      await tap.evaluate("localStorage.clear()");
+      // перехват сокетов страницы: закрыть «связь» можно только изнутри страницы
+      await tap.call("Page.addScriptToEvaluateOnNewDocument", { source: "(() => { const W = window.WebSocket; window.__ws = []; window.WebSocket = function (u, p) { const w = p ? new W(u, p) : new W(u); window.__ws.push(w); return w; }; window.WebSocket.prototype = W.prototype; ['CONNECTING','OPEN','CLOSING','CLOSED'].forEach((k) => { window.WebSocket[k] = W[k]; }); })();" });
+      await tap.call("Page.navigate", { url: `${BASE}/bomb.html?r=${r3.code}` });
+      await wait(1800);
+      await tap.call("Page.bringToFront");
+      await tap.call("Runtime.evaluate", { expression: "document.getElementById('name').focus()" });
+      await typeText(tap, "Тап");
+      await tap.evaluate("document.querySelector('#enterform button[type=submit]').click()");
+      await wait(1000);
+      const myId = await tap.evaluate("window.bmPhone.me");
+      check(!!myId, "S-12: телефон вошёл в комнату");
+      // раундов, пока бомба не окажется у телефона (до 8 попыток)
+      let got = false;
+      for (let round = 0; round < 8 && !got; round++) {
+        hostC.ws.send(JSON.stringify({ type: round === 0 ? "start" : "end" }));
+        if (round) { await wait(500); hostC.ws.send(JSON.stringify({ type: "start" })); }
+        await wait(3800);
+        got = (await tap.evaluate("(window.bmPhone.state.bombs[0] || {}).holder")) === myId;
+      }
+      check(got, "S-12: бомба у телефона для проверки броска");
+      if (got) {
+        // решаем испытание по-настоящему, ждём экран целей
+        for (let i = 0; i < 20 && !(await tap.evaluate("!!document.getElementById('targets')")); i++) {
+          await tap.evaluate(SOLVER);
+          await wait(600);
+        }
+        check((await tap.evaluate("!!document.getElementById('targets')")) === true, "S-12: экран целей открыт");
+        const before = hostC.state ? hostC.state.passes : 0;
+        // обрыв и тап сразу: сокет закрыт, переподключение ещё не началось
+        const res = await tap.evaluate(`(() => {
+          window.__ws.forEach((w) => { try { w.close(); } catch (e) {} });
+          const t = [...document.querySelectorAll('#targets .target')].find((b) => !b.disabled);
+          t.click();
+          return conn.api ? conn.api.mode : "?";
+        })()`);
+        console.log("   режим транспорта в момент тапа:", res);
+        let passed = false;
+        for (let i = 0; i < 40 && !passed; i++) { await wait(250); passed = hostC.state && hostC.state.passes > before; }
+        check(passed, "S-12: тап после ws.close() дошёл после возврата связи (бомба передана)");
+        const toastText = await tap.evaluate("document.getElementById('toast').textContent");
+        check(!/Не дошло/.test(toastText), "S-12: тоста «Не дошло» нет (" + toastText + ")");
+        check((await tap.evaluate("document.body.innerText")).length > 0 && (await tap.evaluate("!document.querySelector('.throwing')")), "S-12: кнопки целей не остались мёртвыми (.throwing снят)");
+      }
+      // bomb-030: событие offline браузера — баннер «нет связи» сразу, не через 45 с
+      await tap.evaluate("window.dispatchEvent(new Event('offline'))");
+      await wait(200);
+      check((await tap.evaluate("document.getElementById('conn').classList.contains('on')")) === true, "bomb-030: событие offline — баннер «нет связи» виден сразу");
+      check(tap.errors.length === 0, "S-12: без JS-ошибок" + (tap.errors[0] ? ": " + tap.errors[0] : ""));
+      hostC.ws.close();
+      mate.ws.close();
+    }
 
     // --- 7. телефоны и доска без JS-ошибок, без горизонтальной прокрутки
     for (const [i, ph] of phones.entries()) {

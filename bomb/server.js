@@ -19,6 +19,9 @@ const crypto = require("crypto");
 const zlib = require("zlib");
 const { WebSocketServer } = require("ws");
 const { roomCode } = require("../lib/codes");
+const seats = require("../lib/seats");
+const presence = require("../lib/presence");
+const names = require("../lib/names");
 const { clientIp, createGuessLimiter, rateOk: netRateOk, send } = require("../lib/net");
 const { Game, clampSettings, cleanName } = require("./game");
 
@@ -36,6 +39,13 @@ const MAX_SOCKETS_PER_IP = Number(process.env.MAX_SOCKETS_PER_IP || 200);
 const EVICT_GRACE_MS = Number(process.env.EVICT_GRACE_MS || 10000);
 const OFFLINE_GRACE_MS = Number(process.env.OFFLINE_GRACE_MS || 8000);
 const PONG_MISSES = Number(process.env.PONG_MISSES || 3);
+// Быстрый пинг только для комнат «в игре» (T-W2-16, как у quip T-W1-08): общий цикл SWEEP — 25 с × 3 промаха, тихий обрыв
+// виден через 25–100 с, а метка «нет связи» и бросок на призрака (RULE_U26_BOMB_ONLINE) зависят от этого. Свой цикл:
+// PING_MS (8 с), GAME_PONG_MISSES промахов подряд И не меньше GAME_DEAD_MS тишины (≥ 20 с: ложный офлайн стоил бы раунда).
+// Лобби и итоги этот цикл не трогает.
+const PING_MS = Math.max(1000, Number(process.env.PING_MS || 8000));
+const GAME_PONG_MISSES = Math.max(1, Number(process.env.GAME_PONG_MISSES || 2));
+const GAME_DEAD_MS = Math.max(20000, Number(process.env.GAME_DEAD_MS || 20000));
 // 256 КБ в очереди — десятки непрочитанных снимков: клиент мёртв. При 1 МБ сотня нечитающих сокетов
 // с одного адреса поднимала процесс к лимиту контейнера 128 МБ (стенд quip), рвал их только пинг через 75–100 с.
 const SEND_BUFFER_LIMIT = Number(process.env.SEND_BUFFER_LIMIT || 262144);
@@ -46,6 +56,17 @@ const ANON_TTL_MS = Number(process.env.ANON_TTL_MS || 30000);
 const POLL_GAP_MS = Number(process.env.POLL_GAP_MS || 12000);
 const MAX_MSG_BYTES = 8192;
 const LOG = "[bomb]";
+const NAME_MAX = 16;
+// Лобби-призрак (T-W2-15, U-07): офлайн-место в лобби живёт GHOST_TTL_MS (120 с, env GHOST_TTL_MS), в игре и в итогах — всегда.
+const GHOST_TTL_MS = presence.GHOST_TTL_MS;
+const GHOST_SWEEP_MS = Math.max(500, Math.min(5000, Math.floor(GHOST_TTL_MS / 4)));
+// Подхват места по имени: сокет должен быть закрыт не меньше CLAIM_GRACE_MS (иначе name_claim retry)
+const CLAIM_GRACE_MS = Number(process.env.CLAIM_GRACE_MS || seats.CLAIM_GRACE_MS);
+// Ждущий подтверждения «Это ты?» живёт CLAIM_WAIT_MS (120 с), а не ANON_TTL_MS
+const CLAIM_WAIT_MS = seats.CLAIM_WAIT_MS;
+// U-01 (класс B): вход по имени посреди партии с подтверждением «Это ты?». Выкл — в игре как сейчас:
+// офлайн-место по имени возвращается молча (запасной путь после очистки данных телефона), а лишнее имя — game_started.
+const RULE_U01_CLAIM_IN_GAME = process.env.RULE_U01_CLAIM_IN_GAME === "1";
 
 // случайность партии — криптографическая: фитиль и первый держатель не должны угадываться
 const rnd = (n) => crypto.randomInt(n);
@@ -127,6 +148,7 @@ function newRoom({ code, ip = "", hostToken, game, tokens = {}, touched = Date.n
     sockets: new Set(), // {ws, playerId?, host?}
     offlineTimers: new Map(),
     dropCounts: new Map(),
+    closedAt: new Map(), // playerId → когда закрылся последний сокет места (для CLAIM_GRACE_MS подхвата по имени)
     timer: null,
     touched,
     speed,
@@ -205,7 +227,7 @@ function scheduleOffline(room, playerId) {
     console.log(`${LOG} ${room.code}: ${name} не вернулся — offline`);
     // исключение в колбэке таймера — непойманное: уронило бы процесс со всеми комнатами
     try {
-      afterChange(room, [{ type: "offline", playerId }, ...room.game.setOnline(playerId, false)]);
+      afterChange(room, [{ type: "offline", playerId }, ...room.game.setOnline(playerId, false, now())]);
     } catch (err) {
       console.error(`${LOG} ${room.code}: офлайн игрока упал:`, err);
     }
@@ -260,7 +282,10 @@ function broadcastEvent(room, e) {
 }
 
 function sendHello(room, c) {
-  send(c.ws, { type: "hello", code: room.code, state: room.game.snapshot(clock(room), c.host ? "board" : c.playerId || null) });
+  // MP_OFF=1 — аварийный выключатель клиентского каркаса mp-common.js (T-W1-04): страницы возвращаются к прежнему коду
+  const hello = { type: "hello", code: room.code, state: room.game.snapshot(clock(room), c.host ? "board" : c.playerId || null), limits: { name: NAME_MAX } };
+  if (process.env.MP_OFF === "1") hello.mp = false;
+  send(c.ws, hello);
 }
 
 
@@ -327,6 +352,14 @@ function openPoll(room, opts = {}) {
   return client;
 }
 
+// последний сокет места закрылся — запоминаем когда: подхват по имени ждёт CLAIM_GRACE_MS
+function noteClosed(room, client) {
+  const id = client.playerId;
+  if (!id) return;
+  if ([...room.sockets].some((c) => c !== client && c.playerId === id)) return;
+  room.closedAt.set(id, now());
+}
+
 function closePoll(sid) {
   const client = pollClients.get(sid);
   if (!client) return;
@@ -335,15 +368,18 @@ function closePoll(sid) {
   room.sockets.delete(client);
   pollClients.delete(sid);
   if (client.ws.waiter) { const w = client.ws.waiter; client.ws.waiter = null; w(); }
+  noteClosed(room, client);
   scheduleOffline(room, client.playerId);
 }
 
 // Бывшая доска (wasHost) — тоже аноним: иначе один адрес с токеном ведущего пересаживал доску
 // на новый сокет сколько угодно раз и держал по 100 сокетов в каждой своей комнате.
 const isAnon = (c) => !c.playerId && !c.host;
+// ждущий подтверждения «Это ты?» — не «пустой» аноним: в MAX_ANON не считается (у него свои потолки в lib/seats)
+const isFreeAnon = (c) => isAnon(c) && !seats.isPending(c);
 function anonCount(room, ip) {
   let n = 0;
-  for (const c of room.sockets) if (isAnon(c) && (ip === undefined || c.ip === ip)) n++;
+  for (const c of room.sockets) if (isFreeAnon(c) && (ip === undefined || c.ip === ip)) n++;
   return n;
 }
 // Общий потолок сокетов с одного адреса по всем комнатам: без него один адрес (20 своих комнат ×
@@ -447,9 +483,9 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 function onConnection(room, ws, opts = {}) {
-  const client = { ws, playerId: null, host: false, misses: 0, ip: opts.ip || "" };
+  const client = { ws, playerId: null, host: false, misses: 0, gameMisses: 0, alive: now(), ip: opts.ip || "" };
   room.sockets.add(client);
-  ws.on("pong", () => (client.misses = 0));
+  ws.on("pong", () => { client.misses = 0; client.gameMisses = 0; client.alive = now(); });
   // сюда приходим из колбэка handleUpgrade: исключение (например, снимок комнаты из битого дампа)
   // было бы непойманным и роняло процесс. Рвём только этот сокет.
   try {
@@ -461,6 +497,8 @@ function onConnection(room, ws, opts = {}) {
     return;
   }
   ws.on("message", (raw) => {
+    client.alive = now(); // любое сообщение — признак жизни (приложение шлёт свой ping раз в 5 с)
+    client.gameMisses = 0;
     if (!rateOk(client)) return;
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
@@ -474,6 +512,7 @@ function onConnection(room, ws, opts = {}) {
   });
   ws.on("close", () => {
     room.sockets.delete(client);
+    noteClosed(room, client);
     scheduleOffline(room, client.playerId);
   });
 }
@@ -507,7 +546,7 @@ function handle(room, client, msg) {
       return sendHello(room, client); // доске — снимок с испытаниями всех держателей
     }
     case "join": {
-      if (me && g.player(me) && !g.player(me).left) return reply({ type: "joined", playerId: me, token: client.token });
+      if (me && g.player(me) && !g.player(me).left) return reply({ type: "joined", playerId: me, token: client.token, name: g.player(me).name, renamed: false, resumed: true });
       // Возврат по токену или имени — не чаще раза в секунду с сокета. Два сокета с одним токеном,
       // перехватывающие игрока друг у друга, иначе гоняли бы полный снимок всей комнате 40 раз в секунду.
       if (client.joinAt && now() - client.joinAt < 1000) return reply({ type: "error", error: "slow_down" });
@@ -520,39 +559,91 @@ function handle(room, client, msg) {
       }
       if (msg.token && !playerId && !String(msg.name || "").trim()) return reply({ type: "error", error: "token_gone" });
       if (playerId && g.player(playerId)?.left) playerId = null;
-      // потерял localStorage, но игра идёт: то же имя у никем не занятого игрока — продолжаем его партию
+      let joinName = null, renamed = false, resumed = !!playerId;
+      // Вход по имени (токена нет или он не найден). Решение — lib/seats.decideJoin: тёзка — «Имя (2)», офлайн-место —
+      // «Это ты?» (клиент с caps:["claim"]) либо молча, как раньше (старая вкладка без caps).
       if (!playerId) {
-        const name = cleanName(msg.name);
-        const ghost = g.s.players.find((p) => !p.left && p.name === name && ![...room.sockets].some((c) => c.playerId === p.id));
-        if (ghost) {
-          playerId = ghost.id;
+        const cleaned = names.cleanName(msg.name, NAME_MAX);
+        if (!cleaned) return reply({ type: "error", error: "bad_name" });
+        const phase = g.s.phase;
+        const inGame = phase !== "lobby" && phase !== "finished";
+        const caps = Array.isArray(msg.caps) ? msg.caps.filter((x) => typeof x === "string").slice(0, 8) : [];
+        // в игре без RULE_U01_CLAIM_IN_GAME подхват остаётся молчаливым и без грации — как было до T-W2-15
+        const legacy = inGame && !RULE_U01_CLAIM_IN_GAME;
+        const live = (id) => [...room.sockets].some((c) => c.playerId === id && c.ws.readyState === 1);
+        const decision = seats.decideJoin({
+          players: g.s.players.map((p) => ({ id: p.id, name: p.name, left: p.left })),
+          name: cleaned,
+          token: null,
+          phase,
+          claimablePhases: ["lobby", "finished", "countdown", "live", "boom"],
+          graceMs: legacy || !caps.length ? 0 : CLAIM_GRACE_MS,
+          now: now(),
+          hasLiveSocket: live,
+          isStale: (id) => { const cs = [...room.sockets].filter((c) => c.playerId === id); return cs.length > 0 && cs.every((c) => (c.misses || 0) >= 2); },
+          closedAt: (id) => (room.closedAt.has(id) ? room.closedAt.get(id) : null),
+          caps: legacy ? [] : caps,
+          claim: msg.claim === true,
+          fresh: msg.fresh === true,
+          max: NAME_MAX,
+        });
+        if (decision.action === "deny") return reply({ type: "error", error: "bad_name" });
+        const place = decision.player ? g.player(decision.player.id) : null;
+        if (decision.action === "prompt" || decision.action === "retry") {
+          const mp = seats.markPending(client, { sockets: room.sockets, now: now(), ip: client.ip });
+          if (!mp.ok) return reply({ type: "error", error: "name_taken", reason: mp.reason, retry: false, online: false });
+          if (decision.action === "retry") return reply({ type: "error", error: "name_claim", name: place ? place.name : cleaned, retry: true, retryInMs: decision.retryInMs });
+          return reply({ type: "error", error: "name_claim", name: place.name, summary: seats.claimSummary(place, ["color"]) });
+        }
+        if ((decision.action === "claim" || decision.action === "resume") && place) {
+          playerId = place.id;
+          resumed = true;
+          joinName = place.name;
+          // подхват отзывает прежние токены места: старый телефон «Играть здесь» получит token_gone и пойдёт по имени
+          for (const [tk, id] of Object.entries(room.tokens)) if (id === playerId) delete room.tokens[tk];
           msg.token = issueToken(room, playerId);
+        } else if (inGame) {
+          // в игре нового игрока не заводим; тот же отказ, что и раньше
+          return reply({ type: "error", error: "game_started" });
+        } else {
+          // «Маша» занята — «Маша (2)»: имена в комнате уникальны, иначе подхват по имени перепутал бы игроков
+          const name = decision.action === "create" || decision.action === "taken" ? (decision.name || decision.suggested) : cleaned;
+          // новый игрок с одного сокета — не чаще раза в 3 с; отказ (идёт раунд) попытку не тратит
+          if (client.newPlayerAt && now() - client.newPlayerAt < 3000) return;
+          playerId = "u_" + crypto.randomBytes(5).toString("hex");
+          let r = g.addPlayer({ id: playerId, name });
+          if (!r.ok && r.reason === "room_full" && g.s.phase === "lobby") {
+            // комната полна: вытесняем самого давнего офлайн-призрака старше порога (U-07), но не тех, кто только что отвалился
+            const ghost = presence.evictOldestGhost(g.s.players, { now: now(), minAgeMs: GHOST_TTL_MS, stage: "lobby" });
+            if (ghost) {
+              const evEv = g.removePlayer(ghost, t);
+              pruneTokens(room);
+              afterChange(room, evEv);
+              r = g.addPlayer({ id: playerId, name });
+            }
+          }
+          if (!r.ok) return reply({ type: "error", error: r.reason });
+          client.newPlayerAt = now();
+          renamed = names.nameKey(r.player.name) !== names.nameKey(cleaned);
+          joinName = r.player.name;
+          resumed = false;
+          const token = issueToken(room, playerId);
+          client.token = token;
+          reply({ type: "joined", playerId, token, name: r.player.name, renamed, resumed: false });
+          msg.token = null;
         }
       }
-      if (!playerId) {
-        // новый игрок с одного сокета — не чаще раза в 3 с; отказ (идёт раунд) попытку не тратит
-        if (client.newPlayerAt && now() - client.newPlayerAt < 3000) return;
-        // имена уникальны: тёзке дописываем номер, иначе подхват по имени перепутал бы игроков
-        let name = cleanName(msg.name);
-        if (!name) return reply({ type: "error", error: "bad_name" });
-        const taken = new Set(g.s.players.filter((p) => !p.left).map((p) => p.name));
-        for (let i = 2; taken.has(name); i++) name = `${cleanName(msg.name).slice(0, 13)} ${i}`;
-        playerId = "u_" + crypto.randomBytes(5).toString("hex");
-        const r = g.addPlayer({ id: playerId, name });
-        if (!r.ok) return reply({ type: "error", error: r.reason });
-        client.newPlayerAt = now();
-        const token = issueToken(room, playerId);
-        client.token = token;
-        reply({ type: "joined", playerId, token });
-      } else {
+      if (msg.token) {
         client.token = msg.token;
-        reply({ type: "joined", playerId, token: msg.token });
+        reply({ type: "joined", playerId, token: msg.token, name: joinName || g.player(playerId).name, renamed: false, resumed });
       }
+      seats.clearPending(client);
+      room.closedAt.delete(playerId);
       for (const c of room.sockets) if (c !== client && c.playerId === playerId) { c.playerId = null; send(c.ws, { type: "replaced" }); }
       client.playerId = playerId;
       client.joinAt = now();
       cancelOffline(room, playerId);
-      return afterChange(room, [{ type: "online", playerId }, ...g.setOnline(playerId, true)]);
+      return afterChange(room, [{ type: "online", playerId }, ...g.setOnline(playerId, true, now())]);
     }
     case "leave": {
       if (!me) return;
@@ -586,6 +677,8 @@ function handle(room, client, msg) {
     }
     case "start": {
       if (!client.host || !hostRateOk(client)) return;
+      // «Ещё партию» из итогов: давно офлайн-места уходят в left (токен остаётся — вернуться по нему можно) (U-07)
+      if (g.s.phase === "finished") presence.pruneOfflineForNewGame(g.s.players, { now: now() });
       const r = g.start(t);
       if (!r.ok) return reply({ type: "rejected", action: "start", reason: r.reason });
       return afterChange(room, r.events);
@@ -601,7 +694,7 @@ function handle(room, client, msg) {
     case "lobby": {
       if (!client.host || !hostRateOk(client)) return;
       const events = g.toLobby(t);
-      for (const p of g.s.players) p.online = [...room.sockets].some((c) => c.playerId === p.id);
+      for (const p of g.s.players) g.setOnline(p.id, [...room.sockets].some((c) => c.playerId === p.id), now());
       pruneTokens(room);
       return afterChange(room, events);
     }
@@ -633,14 +726,57 @@ setInterval(() => {
   if (rssMb > 100) console.warn(`${LOG} ВНИМАНИЕ: RSS ${rssMb} МБ при лимите контейнера 128 МБ, комнат ${rooms.size}`);
 }, SWEEP);
 
+// Быстрый пинг комнат «в игре». SWEEP (TTL комнат, RSS-лог, медленный пинг) не трогаем.
+setInterval(() => {
+  const t = now();
+  for (const room of rooms.values()) {
+    const ph = room.game.s.phase;
+    if (ph === "lobby" || ph === "finished" || !room.sockets.size) continue;
+    for (const c of room.sockets) {
+      if (c.poll || !c.ws || c.ws.readyState !== 1) continue;
+      if (c.gameMisses >= GAME_PONG_MISSES && t - (c.alive || t) >= GAME_DEAD_MS) {
+        console.log(`${LOG} ${room.code}: сокет молчит ${Math.round((t - c.alive) / 1000)} с — закрываем`);
+        c.ws.terminate();
+        continue;
+      }
+      c.gameMisses = (c.gameMisses || 0) + 1;
+      try { c.ws.ping(); } catch {}
+    }
+  }
+}, PING_MS).unref();
+
 setInterval(() => {
   const t = now();
   for (const c of pollClients.values()) {
     const idle = !c.inflight && t - c.lastSeen > POLL_GAP_MS;
-    const anon = !c.playerId && !c.host && !c.wasHost && t - c.opened > ANON_TTL_MS;
+    const anon = !c.playerId && !c.host && !c.wasHost && t - (seats.isPending(c) ? c.pendingClaimAt : c.opened) > (seats.isPending(c) ? CLAIM_WAIT_MS : ANON_TTL_MS);
     if (idle || anon || t - c.lastSeen > 40000) closePoll(c.sid);
   }
 }, 2000).unref();
+
+// Лобби-призраки (T-W2-15, U-07): офлайн-место в лобби уходит через GHOST_TTL_MS. В игре — никогда,
+// в итогах — тоже (на записи ссылаются итоги). Токен пропадает вместе с записью: вернувшийся идёт по имени.
+setInterval(() => {
+  for (const room of rooms.values()) {
+    try {
+      const g = room.game;
+      if (g.s.phase !== "lobby") continue;
+      presence.ensureOffSince(g.s.players, now());
+      const live = (id) => [...room.sockets].some((c) => c.playerId === id);
+      const ids = presence.ghostsToDrop({ players: g.s.players, now: now(), stage: "lobby", ttlMs: GHOST_TTL_MS, protect: live });
+      if (!ids.length) continue;
+      const events = [];
+      for (const id of ids) {
+        console.log(`${LOG} ${room.code}: призрак «${g.player(id)?.name}» в лобби убран (офлайн ≥ ${Math.round(GHOST_TTL_MS / 1000)} с)`);
+        events.push(...g.removePlayer(id, clock(room)));
+      }
+      pruneTokens(room);
+      afterChange(room, events);
+    } catch (err) {
+      console.error(`${LOG} ${room.code}: уборка призраков упала:`, err);
+    }
+  }
+}, GHOST_SWEEP_MS).unref();
 
 let dumpWasEmpty = false;
 function dump() {
@@ -674,6 +810,8 @@ function restore() {
         if (now() - r.touched > ROOM_TTL) continue;
         const room = newRoom({ code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: Game.from(r.state, rnd, bytes), tokens: r.tokens && typeof r.tokens === "object" ? r.tokens : {}, touched: r.touched });
         for (const p of room.game.s.players) p.online = false;
+        // после рестарта срок призрака считается от момента восстановления, а не «давно»: после деплоя лобби не должно опустеть
+        presence.onRestore(room.game.s.players, now());
         pruneTokens(room);
         // пробный снимок: комната, которую нельзя показать, уронила бы первый же сокет
         room.game.snapshot(now(), "board");

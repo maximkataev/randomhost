@@ -573,3 +573,170 @@ test("pass без b/n (старая вкладка) работает как ра
   assert.ok(g.answer(h, c.id, solve(c), c.at + c.minMs).ok);
   assert.ok(g.pass(h, other, c.at + c.minMs + 10).ok);
 });
+
+// ---------- T-W2-14: RULE_U26_BOMB_ONLINE (бомба только онлайн) и N1 (left в finished) ----------
+
+// флаг читается при каждом вызове: переключаем в самом тесте и всегда возвращаем как было
+function withRule(value, fn) {
+  const prev = process.env.RULE_U26_BOMB_ONLINE;
+  if (value == null) delete process.env.RULE_U26_BOMB_ONLINE; else process.env.RULE_U26_BOMB_ONLINE = value;
+  try { return fn(); } finally { if (prev == null) delete process.env.RULE_U26_BOMB_ONLINE; else process.env.RULE_U26_BOMB_ONLINE = prev; }
+}
+
+// партия, где перед стартом часть игроков уже без связи
+function gameWithGhosts(names, ghosts, settings = {}, rnd = rig()) {
+  const g = Game.create({ settings, code: "TEST22", rnd, bytes });
+  names.forEach((n) => g.addPlayer({ id: n, name: n }));
+  ghosts.forEach((id) => g.setOnline(id, false));
+  const r = g.start(0);
+  if (!r.ok) return { g, r };
+  g.tick(T.countdown);
+  return { g, r };
+}
+
+test("U-26 выкл (по умолчанию): призрак может получить первую бомбу, бросок на него проходит — как в спеке §4", () => {
+  withRule(null, () => {
+    let ghostFirst = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      const { g } = gameWithGhosts(["A", "B", "C"], ["C"], {}, rig([], seed));
+      if (holderOf(g) === "C") ghostFirst++;
+    }
+    assert.ok(ghostFirst > 0, "без флага призрак остаётся в пуле");
+    const { g } = gameWithGhosts(["A", "B", "C"], ["C"], { returnOk: true }, rig([], 3));
+    const from = holderOf(g);
+    const c = g.s.challenges[from];
+    const at = c.at + c.minMs;
+    assert.ok(g.answer(from, c.id, solve(c), at).ok);
+    const r = g.pass(from, "C", at);
+    if (from !== "C") assert.ok(r.ok, "бросок на офлайн разрешён");
+  });
+});
+
+test("U-26 вкл: за 200 прогонов офлайн-игрок ни разу не первый держатель (классика и две бомбы)", () => {
+  withRule("1", () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const { g } = gameWithGhosts(["A", "B", "C"], ["C"], {}, rig([], seed));
+      assert.notStrictEqual(holderOf(g), "C", "seed " + seed);
+    }
+    for (let seed = 1; seed <= 60; seed++) {
+      const names = ["A", "B", "C", "D", "E", "F", "G", "H"];
+      const { g } = gameWithGhosts(names, ["F", "G"], { mode: "two" }, rig([], seed));
+      assert.strictEqual(g.s.bombs.length, 2);
+      for (const b of g.s.bombs) assert.ok(!["F", "G"].includes(b.holder), "seed " + seed);
+    }
+    // шестой игрок есть, но на связи пятеро — две бомбы не заводим
+    const { g } = gameWithGhosts(["A", "B", "C", "D", "E", "F"], ["F"], { mode: "two" });
+    assert.strictEqual(g.s.bombs.length, 1);
+  });
+});
+
+test("U-26 вкл: pass на офлайн -> rejected offline; вернулся на связь — бросок проходит", () => {
+  withRule("1", () => {
+    const { g } = gameWithGhosts(["A", "B", "C"], [], { returnOk: true });
+    const from = holderOf(g);
+    const other = ["A", "B", "C"].filter((x) => x !== from);
+    g.setOnline(other[0], false);
+    const c = g.s.challenges[from];
+    const at = c.at + c.minMs;
+    assert.ok(g.answer(from, c.id, solve(c), at).ok);
+    const r = g.pass(from, other[0], at);
+    assert.deepStrictEqual([r.ok, r.reason], [false, "offline"]);
+    assert.strictEqual(holderOf(g), from, "бомба не ушла");
+    assert.strictEqual(g.canTarget(g.s.bombs[0], from, other[0]), false);
+    g.setOnline(other[0], true);
+    assert.ok(g.pass(from, other[0], at).ok);
+  });
+});
+
+test("U-26 вкл: держатель вышел — бомба не достаётся офлайн-призраку; ушедший сам в офлайн — бомба остаётся у него (D1)", () => {
+  withRule("1", () => {
+    for (let seed = 1; seed <= 100; seed++) {
+      const { g } = gameWithGhosts(["A", "B", "C", "D"], ["D"], {}, rig([], seed));
+      const h = holderOf(g);
+      g.removePlayer(h, 5000);
+      assert.notStrictEqual(holderOf(g), "D", "seed " + seed);
+      assert.notStrictEqual(holderOf(g), h);
+    }
+    // D1: пропавший держатель — бомба при нём; рванёт у него
+    const { g } = gameWithGhosts(["A", "B", "C"], []);
+    const h = holderOf(g);
+    g.setOnline(h, false);
+    assert.strictEqual(holderOf(g), h);
+    const ev = g.tick(g.s.bombs[0].explodeAt);
+    assert.strictEqual(ev[0].type, "boom");
+    assert.strictEqual(ev[0].playerId, h);
+  });
+});
+
+test("U-26 вкл: elim с призраком доходит до победителя без зависания", () => {
+  withRule("1", () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      const { g } = gameWithGhosts(["A", "B", "C"], ["C"], { mode: "elim" }, rig([], seed));
+      const first = holderOf(g);
+      assert.notStrictEqual(first, "C");
+      g.tick(g.s.bombs[0].explodeAt); // boom у first
+      g.tick(g.s.phaseEnd); // afterBoom: на связи остался один — финал
+      assert.strictEqual(g.s.phase, "finished", "seed " + seed);
+      assert.strictEqual(g.s.finishedReason, "last");
+      assert.ok(g.s.winnerId && g.s.winnerId !== "C" && g.s.winnerId !== first, "seed " + seed);
+    }
+  });
+});
+
+test("U-26 вкл: двое на связи + призрак при returnOk=false — возврат не заблокирован; без флага — как раньше", () => {
+  for (const flag of ["1", null]) {
+    withRule(flag, () => {
+      const { g } = gameWithGhosts(["A", "B", "C"], ["C"], { returnOk: false }, rig([], 5));
+      const from = holderOf(g);
+      if (from === "C") return;
+      const other = from === "A" ? "B" : "A";
+      const c = g.s.challenges[from];
+      const at = c.at + c.minMs;
+      assert.ok(g.answer(from, c.id, solve(c), at).ok);
+      assert.ok(g.pass(from, other, at).ok, "первый бросок");
+      const c2 = g.s.challenges[other];
+      const at2 = c2.at + c2.minMs + at;
+      assert.ok(g.answer(other, c2.id, solve(c2), at2).ok);
+      const back = g.pass(other, from, at2);
+      if (flag === "1") assert.ok(back.ok, "с флагом на связи двое: возврат разрешён, иначе бросать некому");
+      else assert.strictEqual(back.reason, "no_return"); // призрак ещё «живой»: трое живых, возврат запрещён
+    });
+  }
+});
+
+test("U-26 вкл: start с одним на связи -> few_players; без флага старт проходит", () => {
+  withRule("1", () => {
+    const { r } = gameWithGhosts(["A", "B", "C"], ["B", "C"]);
+    assert.deepStrictEqual([r.ok, r.reason], [false, "few_players"]);
+  });
+  withRule(null, () => {
+    const { r } = gameWithGhosts(["A", "B", "C"], ["B", "C"]);
+    assert.ok(r.ok);
+  });
+});
+
+test("N1: removePlayer в finished не удаляет запись, а ставит left; итоги без «?»; toLobby вычищает", () => {
+  const g = game(["A", "B", "C"]);
+  g.tick(g.s.bombs[0].explodeAt);
+  g.tick(g.s.phaseEnd);
+  assert.strictEqual(g.s.phase, "finished");
+  const loser = g.s.loserId;
+  const ev = g.removePlayer(loser, 99999);
+  assert.deepStrictEqual(ev, [{ type: "left", playerId: loser }]);
+  assert.ok(g.player(loser), "запись на месте");
+  assert.strictEqual(g.player(loser).left, true);
+  const snap = g.snapshot(99999, "board");
+  const pl = snap.players.find((p) => p.id === loser);
+  assert.ok(pl && pl.name && pl.left === true, "имя проигравшего видно в итогах");
+  assert.strictEqual(snap.loserId, loser);
+  assert.strictEqual(g.alive().some((p) => p.id === loser), false);
+  g.toLobby(100000);
+  assert.strictEqual(g.player(loser), undefined);
+});
+
+test("N1: removePlayer в лобби удаляет, как раньше", () => {
+  const g = Game.create({ settings: {}, code: "TEST22", rnd: rig(), bytes });
+  g.addPlayer({ id: "A", name: "A" });
+  g.removePlayer("A", 0);
+  assert.strictEqual(g.player("A"), undefined);
+});

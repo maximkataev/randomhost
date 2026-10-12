@@ -13,10 +13,11 @@ const WebSocket = require("ws");
 const DUMP = path.join(os.tmpdir(), `bomb-test-${process.pid}.json`);
 const port = 4400 + (process.pid % 500);
 let proc = null;
+let serverEnv = {}; // дополнительные переменные окружения следующего запуска (флаги правил, таймеры)
 
 function startServer() {
   proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300" },
+    env: { ...process.env, PORT: String(port), NODE_ENV: "development", DUMP_FILE: DUMP, OFFLINE_GRACE_MS: "300", ...serverEnv },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";
@@ -558,4 +559,274 @@ test("restore-from-prev-dump: passN после рестарта считаетс
   b.send({ type: "end" });
   await b.wait(statePred((s) => s.phase === "finished"));
   for (const x of [b, back]) x.close();
+});
+
+// ---- T-W2-14: бросок на офлайн — за RULE_U26_BOMB_ONLINE ----
+for (const flag of [true, false]) {
+  test(`бросок в закрывшегося: ${flag ? "RULE_U26_BOMB_ONLINE=1 — rejected offline" : "флаг выкл — бросок проходит, как в спеке §4"}`, async () => {
+    await stopServer();
+    serverEnv = flag ? { RULE_U26_BOMB_ONLINE: "1" } : {};
+    await startServer();
+    try {
+      const { code, hostToken } = await createRoom({ fuse: "long" });
+      const b = await board(code, hostToken);
+      const ps = [await player(code, "Аня"), await player(code, "Петя"), await player(code, "Оля")];
+      b.send({ type: "start" });
+      const live = await b.wait(statePred((s) => s.phase === "live"), 6000);
+      const holder = ps.find((p) => p.id === live.state.bombs[0].holder);
+      const rest = ps.filter((p) => p !== holder);
+      // один из двух остальных закрыл вкладку; ждём, пока сервер отметит его «нет связи» (OFFLINE_GRACE_MS=300)
+      rest[0].close();
+      await b.wait(statePred((s) => s.players.some((p) => p.id === rest[0].id && p.online === false)), 4000);
+      const m = await holder.wait(statePred((s) => s.me && s.me.challenge));
+      const c = m.state.me.challenge;
+      await sleep(minWait(c));
+      holder.send({ type: "answer", cid: c.id, ans: solveView(c) });
+      await holder.wait(statePred((s) => s.me && s.me.armed));
+      holder.send({ type: "pass", to: rest[0].id });
+      if (flag) {
+        await holder.wait((x) => x.type === "rejected" && x.action === "pass" && x.reason === "offline");
+        assert.strictEqual(b.state.bombs[0].holder, holder.id, "бомба не ушла");
+        holder.send({ type: "pass", to: rest[1].id }); // живому — можно
+        await b.wait(statePred((s) => s.bombs[0].holder === rest[1].id && s.passes === 1));
+      } else {
+        await b.wait(statePred((s) => s.bombs[0].holder === rest[0].id && s.passes === 1));
+      }
+      for (const x of [b, ...ps]) x.close();
+    } finally {
+      await stopServer();
+      serverEnv = {};
+      await startServer();
+    }
+  });
+}
+
+// ---- T-W2-15: вход по имени (lib/seats), лобби-призраки (lib/presence), left в итогах ----
+async function withServerEnv(env, fn) {
+  await stopServer();
+  serverEnv = env;
+  await startServer();
+  try { await fn(); } finally {
+    await stopServer();
+    serverEnv = {};
+    await startServer();
+  }
+}
+
+// клиент с caps:["claim"] — как новая вкладка с MP.joinFlow
+async function capsJoin(code, name, extra = {}) {
+  const c = client(code);
+  await c.open;
+  c.send({ type: "join", name, caps: ["claim"], ...extra });
+  return c;
+}
+const isClaim = (m) => m.type === "error" && m.error === "name_claim";
+
+test("тёзка в лобби получает «Имя (2)», joined.name и renamed (bomb-017/038); без caps — то же имя", async () => {
+  const { code, hostToken } = await createRoom();
+  const b = await board(code, hostToken);
+  const a = await player(code, "Маша");
+  const t = await capsJoin(code, "Маша");
+  const j = await t.wait((m) => m.type === "joined");
+  assert.strictEqual(j.name, "Маша (2)");
+  assert.strictEqual(j.renamed, true);
+  assert.strictEqual(j.resumed, false);
+  const leg = client(code);
+  await leg.open;
+  leg.send({ type: "join", name: "Маша" });
+  const j2 = await leg.wait((m) => m.type === "joined");
+  assert.strictEqual(j2.name, "Маша (3)");
+  await b.wait(statePred((s) => s.players.filter((p) => !p.left).length === 3));
+  assert.deepStrictEqual(b.state.players.map((p) => p.name).sort(), ["Маша", "Маша (2)", "Маша (3)"]);
+  for (const c of [b, a, t, leg]) c.close();
+});
+
+test("офлайн-место в лобби: клиент с caps — «Это ты?», подтверждение возвращает тот же playerId и отзывает старый токен", async () => {
+  await withServerEnv({ CLAIM_GRACE_MS: "300" }, async () => {
+    const { code, hostToken } = await createRoom();
+    const b = await board(code, hostToken);
+    const a = await player(code, "Аня");
+    const oldToken = a.token, oldId = a.id;
+    a.close();
+    await b.wait(statePred((s) => s.players.some((p) => p.id === oldId && p.online === false)), 4000);
+    await sleep(350); // грация подхвата (CLAIM_GRACE_MS) прошла
+    const c = await capsJoin(code, "аня"); // регистр не важен
+    const prompt = await c.wait(isClaim);
+    assert.strictEqual(prompt.name, "Аня");
+    assert.ok(!c.msgs.some((m) => m.type === "joined"), "без подтверждения место не отдано");
+    c.send({ type: "join", name: "аня", caps: ["claim"], claim: true });
+    const j = await c.wait((m) => m.type === "joined");
+    assert.strictEqual(j.playerId, oldId);
+    assert.strictEqual(j.resumed, true);
+    assert.strictEqual(j.name, "Аня");
+    assert.notStrictEqual(j.token, oldToken);
+    // старый токен отозван
+    const old = client(code);
+    await old.open;
+    old.send({ type: "join", token: oldToken });
+    await old.wait((m) => m.type === "error" && m.error === "token_gone");
+    for (const x of [b, c, old]) x.close();
+  });
+});
+
+test("«Это ты?» — «Я другой» (fresh) заводит «Имя (2)»; сокет без caps подхватывает место молча, как раньше", async () => {
+  await withServerEnv({ CLAIM_GRACE_MS: "200" }, async () => {
+    const { code, hostToken } = await createRoom();
+    const b = await board(code, hostToken);
+    const a = await player(code, "Петя");
+    const o = await player(code, "Оля");
+    a.close();
+    o.close();
+    await b.wait(statePred((s) => s.players.every((p) => p.online === false)), 4000);
+    await sleep(250);
+    const c = await capsJoin(code, "Петя");
+    await c.wait(isClaim);
+    c.send({ type: "join", name: "Петя", caps: ["claim"], fresh: true });
+    const j = await c.wait((m) => m.type === "joined");
+    assert.notStrictEqual(j.playerId, a.id);
+    assert.strictEqual(j.name, "Петя (2)");
+    const legacy = client(code);
+    await legacy.open;
+    legacy.send({ type: "join", name: "Оля" });
+    const j2 = await legacy.wait((m) => m.type === "joined");
+    assert.strictEqual(j2.playerId, o.id, "старая вкладка без caps — молчаливый подхват");
+    assert.strictEqual(j2.resumed, true);
+    for (const x of [b, c, legacy]) x.close();
+  });
+});
+
+test("сразу после обрыва (в грации) клиент с caps получает name_claim retry:true, затем — «Это ты?»", async () => {
+  await withServerEnv({ CLAIM_GRACE_MS: "1200" }, async () => {
+    const { code, hostToken } = await createRoom();
+    const b = await board(code, hostToken);
+    const a = await player(code, "Игорь");
+    a.close();
+    await sleep(60);
+    const c = await capsJoin(code, "Игорь");
+    const r = await c.wait(isClaim);
+    assert.strictEqual(r.retry, true);
+    assert.ok(r.retryInMs > 0 && r.retryInMs <= 1200);
+    await sleep(r.retryInMs + 100);
+    c.send({ type: "join", name: "Игорь", caps: ["claim"] });
+    const p = await c.wait((m) => isClaim(m) && !m.retry);
+    assert.strictEqual(p.name, "Игорь");
+    for (const x of [b, c]) x.close();
+  });
+});
+
+test("лобби-призрак уходит через GHOST_TTL_MS, в игре и в итогах места не освобождаются; токен убранного — token_gone", async () => {
+  await withServerEnv({ GHOST_TTL_MS: "1500" }, async () => {
+    // лобби
+    {
+      const { code, hostToken } = await createRoom();
+      const b = await board(code, hostToken);
+      const a = await player(code, "Аня");
+      const p = await player(code, "Петя");
+      const gone = p.id, goneToken = p.token;
+      p.close();
+      await b.wait(statePred((s) => s.players.some((x) => x.id === gone && x.online === false)), 4000);
+      await sleep(600);
+      assert.ok(b.state.players.some((x) => x.id === gone), "до порога призрак на месте");
+      await b.wait(statePred((s) => !s.players.some((x) => x.id === gone)), 8000);
+      assert.strictEqual(b.state.players.length, 1);
+      const back = client(code);
+      await back.open;
+      back.send({ type: "join", token: goneToken });
+      await back.wait((m) => m.type === "error" && m.error === "token_gone");
+      for (const x of [b, a, back]) x.close();
+    }
+    // игра и итоги
+    {
+      const { code, hostToken } = await createRoom({ fuse: "long" });
+      const b = await board(code, hostToken);
+      const ps = [await player(code, "Аня"), await player(code, "Петя"), await player(code, "Оля")];
+      b.send({ type: "start" });
+      await b.wait(statePred((s) => s.phase === "live"), 6000);
+      const victim = ps[1];
+      victim.close();
+      await b.wait(statePred((s) => s.players.some((x) => x.id === victim.id && x.online === false)), 4000);
+      await sleep(2200); // дольше GHOST_TTL_MS
+      assert.ok(b.state.players.some((x) => x.id === victim.id && !x.left), "в игре место не освобождается по таймеру");
+      b.send({ type: "end" });
+      await b.wait(statePred((s) => s.phase === "finished"));
+      await sleep(2200);
+      assert.ok(b.state.players.some((x) => x.id === victim.id), "в итогах призрак тоже остаётся (на нём статистика)");
+      for (const x of [b, ...ps]) x.close();
+    }
+  });
+});
+
+test("N1: «Выйти» в итогах не стирает запись — проигравший в итогах с именем, без «?»", async () => {
+  const { code, hostToken } = await createRoom({ fuse: "short" });
+  const b = await board(code, hostToken);
+  const ps = [await player(code, "Аня"), await player(code, "Петя")];
+  b.send({ type: "start" });
+  await b.wait(statePred((s) => s.phase === "live"), 6000);
+  const fin = await b.wait(statePred((s) => s.phase === "finished"), 60000);
+  const loser = fin.state.loserId;
+  const lp = ps.find((p) => p.id === loser);
+  assert.ok(lp, "проигравший — один из игроков");
+  lp.send({ type: "leave" });
+  const after = await b.wait(statePred((s) => s.phase === "finished" && s.players.some((x) => x.id === loser && x.left === true)));
+  const rec = after.state.players.find((x) => x.id === loser);
+  assert.ok(rec && rec.name, "запись и имя на месте");
+  assert.strictEqual(after.state.loserId, loser);
+  for (const x of [b, ...ps]) x.close();
+});
+
+test("в игре: без RULE_U01_CLAIM_IN_GAME офлайн-место возвращается по имени молча (как раньше), с флагом — «Это ты?»", async () => {
+  for (const flag of [false, true]) {
+    await withServerEnv(flag ? { RULE_U01_CLAIM_IN_GAME: "1", CLAIM_GRACE_MS: "200" } : { CLAIM_GRACE_MS: "200" }, async () => {
+      const { code, hostToken } = await createRoom({ fuse: "long" });
+      const b = await board(code, hostToken);
+      const ps = [await player(code, "Аня"), await player(code, "Петя"), await player(code, "Оля")];
+      b.send({ type: "start" });
+      await b.wait(statePred((s) => s.phase === "live"), 6000);
+      const v = ps[0];
+      v.close();
+      await b.wait(statePred((s) => s.players.some((x) => x.id === v.id && x.online === false)), 4000);
+      await sleep(250);
+      const c = await capsJoin(code, "Аня");
+      if (flag) {
+        const prompt = await c.wait(isClaim);
+        assert.strictEqual(prompt.name, "Аня");
+        c.send({ type: "join", name: "Аня", caps: ["claim"], claim: true });
+      }
+      const j = await c.wait((m) => m.type === "joined");
+      assert.strictEqual(j.playerId, v.id);
+      assert.strictEqual(j.resumed, true);
+      // новое имя посреди раунда — как раньше «раунд идёт»
+      const late = await capsJoin(code, "Опоздун");
+      await late.wait((m) => m.type === "error" && m.error === "game_started");
+      b.send({ type: "end" });
+      for (const x of [b, c, late, ...ps]) x.close();
+    });
+  }
+});
+
+// ---- T-W2-16: быстрый пинг комнат «в игре» ----
+test("быстрый пинг в игре: сокет, не отвечающий на ping, закрывается за ~20–35 с, живой остаётся; лобби не трогаем", async () => {
+  await withServerEnv({ PING_MS: "1000", GAME_DEAD_MS: "20000", GAME_PONG_MISSES: "2" }, async () => {
+    const { code, hostToken } = await createRoom({ fuse: "long" });
+    const b = await board(code, hostToken);
+    const live = [await player(code, "Аня"), await player(code, "Петя")];
+    // «мёртвый» телефон: сокет открыт, но на ping протокола не отвечает
+    const dead = new WebSocket(`ws://127.0.0.1:${port}/bomb/ws?r=${code}`, { autoPong: false });
+    await new Promise((res, rej) => { dead.once("open", res); dead.once("error", rej); });
+    dead.send(JSON.stringify({ type: "join", name: "Тишина" }));
+    await new Promise((res) => dead.on("message", (raw) => { if (JSON.parse(raw).type === "joined") res(); }));
+    const closed = new Promise((res) => dead.once("close", () => res(Date.now())));
+    // в лобби пока не рвём: даём ему «провисеть» 3 с без пингов игры
+    await sleep(3000);
+    assert.strictEqual(dead.readyState, 1, "в лобби быстрый пинг молчит");
+    const t0 = Date.now();
+    b.send({ type: "start" });
+    await b.wait(statePred((s) => s.phase === "live"), 6000);
+    const at = await Promise.race([closed, sleep(40000).then(() => null)]);
+    assert.ok(at, "мёртвый сокет закрыт сервером");
+    const secs = (at - t0) / 1000;
+    assert.ok(secs >= 14 && secs <= 36, "закрыт за " + secs + " с");
+    assert.ok(live.every((p) => p.ws.readyState === 1), "живые сокеты на месте");
+    for (const x of [b, ...live]) x.close();
+  });
 });

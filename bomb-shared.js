@@ -377,11 +377,14 @@ const BM_WS_HANDSHAKE_MS = 5000;
 const BM_POLL_FETCH_MS = 28000;
 const BM_PROBE_MS = 3000;
 
-function bmOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone }) {
+function bmOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone, onQuiet }) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   let closed = false, opened = false, sid = null, ws = null, polling = false, pollAbort = null;
   let lastSeen = 0, beat = null, notified = false, probeTimer = null;
-  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } clearTimeout(probeTimer); probeTimer = null; };
+  // MP.conn (mp-common.js, T-W2-16, N4): пинг 5 с в игре / 10 с в лобби, «нет связи» после 10 с тишины,
+  // закрытие и переподключение после 22 с. Без mp-common.js (или при MP.off) — прежний цикл ниже (20 с / 45 с).
+  let mpConn = null, inGame = false;
+  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } if (mpConn) { mpConn.stop(); mpConn = null; } clearTimeout(probeTimer); probeTimer = null; };
   const fireClose = () => {
     if (closed || notified) return;
     notified = true;
@@ -396,14 +399,31 @@ function bmOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
   const deliver = (m) => {
     if (closed) return;
     lastSeen = Date.now();
+    // сервер выключил каркас (MP_OFF=1): возвращаемся к прежнему циклу пингов
+    if (m && m.type === "hello" && window.MP && MP.applyHello && !MP.applyHello(m) && mpConn) startBeat();
+    if (mpConn) mpConn.seen(lastSeen);
     if (m && m.type === "pong") { if (typeof m.c === "number") bmClockSample(m.t, m.c); return; }
-    if (m && (m.type === "state" || m.type === "hello") && m.state) bmStateSample(m.state.serverNow);
+    if (m && (m.type === "state" || m.type === "hello") && m.state) {
+      bmStateSample(m.state.serverNow);
+      inGame = !!m.state.phase && m.state.phase !== "lobby" && m.state.phase !== "finished";
+    }
     onMessage(m);
   };
   const startBeat = () => {
     stopBeat();
     lastSeen = Date.now();
     ping(); setTimeout(ping, 400); setTimeout(ping, 1500);
+    if (window.MP && typeof MP.conn === "function" && !MP.off) {
+      mpConn = MP.conn({
+        ping: () => { if (!closed) ping(); },
+        inGame: () => inGame,
+        onOffline: () => { if (onQuiet) onQuiet(true); },
+        onOnline: () => { if (onQuiet) onQuiet(false); },
+        onDead: () => fireClose(),
+      });
+      mpConn.start();
+      return;
+    }
     beat = setInterval(() => {
       if (closed) return stopBeat();
       if (Date.now() - lastSeen > 45000) { fireClose(); return; }
@@ -428,6 +448,8 @@ function bmOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
         });
     },
     close() { closed = true; stopBeat(); try { if (ws) ws.close(); } catch (e) {} try { if (pollAbort) pollAbort.abort(); } catch (e) {} sid = null; },
+    // вкладка снова видна: тишину, пока вкладка была скрыта, MP.conn не считает
+    visible() { if (mpConn) mpConn.visible(Date.now()); },
     probe(ms) {
       if (closed || !opened) return;
       clearTimeout(probeTimer);
@@ -495,42 +517,72 @@ function bmOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
   return api;
 }
 
+// Потолок возраста действия в очереди — по ТИПУ (MP.sendQueue, T-W2-16, R3-19). Бросок живёт 5 с: бомба горит,
+// а «улетевший» через минуту бросок — враньё. Ответ на испытание — 12 с (испытание само протухает за CHALLENGE_TTL).
+// Команды ведущего — 30 с, как было. Старше потолка — onSendFail: страница снимает «улетело» и говорит «Не дошло».
+const BM_QUEUE_CEILING_MS = { pass: 5000, answer: 12000, react: 3000, "*": 30000 };
+
 // Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
-function bmConnect({ code, onMessage, onOpen, onGone, onState, onSendFail }) {
+function bmConnect({ code, onMessage, onOpen, onGone, onState, onSendFail, onQuiet, keep }) {
   let t = null, delay = 500, stopped = false;
   // Действие, нажатое между обрывом и возвращением связи, раньше терялось молча (а кнопка уже горела «ушло»).
   // Теперь оно ждёт в очереди и уходит после входа по токену: сокет без игрока действие бы отбросил.
-  const queue = [];
+  // Очередь — общая MP.sendQueue; без mp-common.js (или при MP_OFF) работает прежняя локальная (T-W0-28).
+  const useMp = !!(window.MP && typeof MP.sendQueue === "function" && !MP.off);
+  const queue = []; // локальная очередь: только когда MP.sendQueue нет
+  const fail = (m, reason) => { if (onSendFail) onSendFail(m, reason); };
+  // «нет связи» без закрытия сокета: тишина > 10 с (MP.conn) либо событие браузера offline; снимается первым же сообщением
+  let quiet = false;
+  const setQuiet = (q) => { if (quiet === q) return; quiet = q; if (onQuiet) onQuiet(q); };
+  const mpq = useMp ? MP.sendQueue({
+    send: (m) => { if (holder.api) holder.api.send(m); },
+    keep: typeof keep === "function" ? keep : undefined,
+    onDrop: (m, reason) => fail(m, reason),
+    ceilingMs: BM_QUEUE_CEILING_MS,
+    // новый бросок/ответ на то же испытание заменяет старый, а не копится рядом: повтор тапа не удваивает отправку
+    replace: (m) => (m.type === "pass" ? "pass" : m.type === "answer" ? "answer:" + m.cid : m.type === "react" ? "react" : null),
+    max: 8,
+    minGapMs: 250,
+    probe: (ms) => { if (holder.api && holder.api.mode !== "none") holder.api.probe(ms); },
+  }) : null;
   const holder = {
     api: null,
+    queue: mpq,
     gated: false, // страница держит действия до входа по токену и сама снимает флаг через flush
     send(m) {
       const a = holder.api;
-      if (m && m.type !== "ping" && m.type !== "join" && m.type !== "host" && (holder.gated || !a || a.mode === "none" || a.mode === "connecting")) {
+      if (m && m.type !== "ping" && m.type !== "join" && m.type !== "host" && (holder.gated || !a || a.mode === "none" || a.mode === "connecting" || (mpq && mpq.isFlushing()))) {
+        if (mpq) { mpq.push(m); return; }
         queue.push({ m, at: Date.now() });
-        if (queue.length > 8) { const old = queue.shift(); if (onSendFail) onSendFail(old.m); }
+        if (queue.length > 8) { const old = queue.shift(); fail(old.m, "overflow"); }
         return;
       }
       if (a) a.send(m);
     },
-    // keep(m) — нужно ли это действие ещё; просроченные и ненужные отбрасываются через onDrop
-    flush(keep, onDrop) {
+    // keep(m) — нужно ли это действие ещё; просроченные и ненужные отбрасываются через onDrop/onSendFail
+    flush(keepFn, onDrop) {
       holder.gated = false;
+      if (mpq) {
+        mpq.flush(keepFn, onDrop ? (m, reason) => { onDrop(m); fail(m, reason); } : undefined);
+        return;
+      }
       const items = queue.splice(0);
       for (const it of items) {
         // в очереди действие живёт до 30 с: повтор безопасен — pass несёт b/n, а answer привязан к id испытания
-        if (Date.now() - it.at > 30000 || (keep && !keep(it.m))) { if (onDrop) onDrop(it.m); if (onSendFail) onSendFail(it.m); continue; }
+        if (Date.now() - it.at > 30000 || (keepFn && !keepFn(it.m))) { if (onDrop) onDrop(it.m); fail(it.m, "expired"); continue; }
         if (holder.api) holder.api.send(it.m);
       }
     },
-    stop() { stopped = true; clearTimeout(t); clearInterval(sweep); queue.length = 0; if (holder.api) holder.api.close(); },
+    // вкладка снова видна
+    visible() { if (holder.api && holder.api.visible) holder.api.visible(); },
+    stop() { stopped = true; clearTimeout(t); clearInterval(sweep); queue.length = 0; if (mpq) mpq.clear(); if (holder.api) holder.api.close(); },
   };
-  // связи нет дольше 30 с — действие из очереди не ждёт возвращения молча, а сообщает странице
+  // связи нет дольше 30 с — действие из очереди не ждёт возвращения молча, а сообщает странице (только локальная очередь)
   const sweep = setInterval(() => {
     if (!queue.length) return;
     const now = Date.now();
     for (let i = queue.length - 1; i >= 0; i--) {
-      if (now - queue[i].at > 30000) { const it = queue.splice(i, 1)[0]; if (onSendFail) onSendFail(it.m); }
+      if (now - queue[i].at > 30000) { const it = queue.splice(i, 1)[0]; fail(it.m, "expired"); }
     }
   }, 5000);
   const open = () => {
@@ -538,8 +590,15 @@ function bmConnect({ code, onMessage, onOpen, onGone, onState, onSendFail }) {
     if (onState) onState("connecting");
     holder.api = bmOpenTransport({
       code,
-      onMessage,
-      onSendFail,
+      onMessage: (m) => { if (mpq) mpq.heard(); if (quiet) setQuiet(false); onMessage(m); },
+      onQuiet: setQuiet,
+      // отправка не удалась после повторов (long-polling) или сокет уже закрыт: не теряем, а ставим в очередь
+      // до возвращения связи и входа по токену; ping/join/host в очередь не идут
+      onSendFail: (m) => {
+        if (stopped || !m || m.type === "join" || m.type === "host" || m.type === "ping") return;
+        if (mpq) { mpq.push(m); return; }
+        fail(m, "failed");
+      },
       onOpen: () => { delay = 500; if (onState) onState("open"); if (onOpen) onOpen(); },
       onClose: () => { if (stopped) return; if (onState) onState("lost"); t = setTimeout(open, delay); delay = Math.min(delay * 2, 8000); },
       onGone: () => { stopped = true; if (onGone) onGone(); },
@@ -548,8 +607,10 @@ function bmConnect({ code, onMessage, onOpen, onGone, onState, onSendFail }) {
   open();
   // вернулись в вкладку или сеть появилась — проверяем, жив ли сокет, не дожидаясь 45 с тишины
   const wake = () => { if (holder.api && holder.api.mode !== "none") holder.api.probe(); };
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { holder.visible(); wake(); } });
   window.addEventListener("online", wake);
+  // сеть пропала по сведениям браузера — баннер сразу, не дожидаясь тишины (bomb-030)
+  window.addEventListener("offline", () => setQuiet(true));
   return holder;
 }
 
