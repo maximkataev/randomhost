@@ -90,9 +90,9 @@
   .codeform input { flex: 1; min-width: 0; border: 2px solid var(--ink); background: var(--sheet); border-radius: 0; padding: 10px 12px; font: 700 20px/1.2 var(--mono); text-transform: uppercase; }
   .codeform .btn { flex: none; width: auto; padding: 0 18px; }
   .claimbtns { display: grid; gap: 10px; }
-  .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: var(--ink); color: var(--sheet); font: 700 15px/1.3 var(--mono); padding: 11px 14px; max-width: calc(100% - 32px); visibility: hidden; box-shadow: 4px 4px 0 var(--red); }
+  .toast { position: fixed; left: 50%; top: calc(var(--lsc, 30px) * 2 + 4px); transform: translateX(-50%); z-index: 30; background: var(--ink); color: var(--sheet); font: 700 15px/1.3 var(--mono); padding: 11px 14px; max-width: calc(100% - 32px); visibility: hidden; box-shadow: 4px 4px 0 var(--red); }
   .toast.on { visibility: visible; animation: toast .3s var(--press); }
-  @keyframes toast { from { transform: translate(-50%, 20px); } }
+  @keyframes toast { from { transform: translate(-50%, -20px); } }
   #app { max-width: 520px; margin: 0 auto; padding: 0 16px 28px; min-height: calc(100vh - var(--lsc, 30px) * 2); min-height: calc(100dvh - var(--lsc, 30px) * 2); display: flex; flex-direction: column; justify-content: center; gap: 16px; }
   #app.top { justify-content: flex-start; padding-top: 4px; }
 
@@ -191,8 +191,11 @@
   .opt.own { opacity: .45; border-style: dashed; }
   .opt.own::after { content: attr(data-own); position: absolute; right: 8px; top: -9px; background: var(--paper); padding: 0 4px; font: 700 12px/1.4 var(--mono); text-transform: uppercase; color: var(--ink-2); }
   .opt:not(:disabled):active { transform: scale(.985); }
+  /* «Подстраховка» стоит над списком: на SE под сгибом её не видно; «Это правда · 2/2» липнет к низу экрана */
   .hedge { display: flex; gap: 10px; align-items: center; }
-  .hedge .btn { flex: 1; }
+  .hedge .btn { flex: 1; padding-top: 13px; padding-bottom: 13px; font-size: 17px; }
+  #pickbtn { position: sticky; bottom: 10px; z-index: 5; }
+  .enter .latenote { margin: 0; padding: 8px 10px; border: 2px dashed var(--ink-2); background: var(--sheet); font: 700 15px/1.3 var(--mono); }
 
   /* раскрытие */
   .res { display: grid; gap: 8px; }
@@ -271,6 +274,50 @@
     .lede { font-size: 16px; }
   }
 
+  /* невысокий портрет (SE): варианты плотнее, чтобы к сгибу влезало как можно больше */
+  @media (max-height: 640px) and (orientation: portrait) {
+    .opts { gap: 6px; }
+    .opt { min-height: 46px; padding: 8px 10px; font-size: 18px; line-height: 1.15; gap: 8px; }
+    .opt .l { width: 26px; height: 26px; font-size: 14px; line-height: 22px; }
+    .mini .card { padding: 8px 10px; }
+    .mini .card .k { display: none; }
+    .mini .fact, .mini .fact.long { font-size: 16px; line-height: 1.2; }
+  }
+  /* телефон боком: две колонки — слева факт и подсказки, справа варианты / форма (fibs-035) */
+  @media (orientation: landscape) and (max-height: 500px) and (min-width: 480px) {
+    #app { max-width: 900px; padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+    #app[data-screen="choose"], #app[data-screen="lie"], #app[data-screen="lied"] {
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); column-gap: 16px; row-gap: 10px;
+      grid-template-rows: repeat(5, min-content) 1fr; justify-content: stretch; align-content: start; align-items: start; min-height: 0;
+    }
+    #app[data-screen="choose"] > *, #app[data-screen="lie"] > *, #app[data-screen="lied"] > * { grid-column: 1; }
+    #app[data-screen="choose"] > .opts { grid-column: 2; grid-row: 1 / span 6; }
+    #app[data-screen="lie"] > .write { grid-column: 2; grid-row: 1 / span 6; }
+    #app[data-screen="lied"] > :nth-child(n+4) { grid-column: 2; }
+    .opts { gap: 6px; }
+    .opt { min-height: 42px; padding: 6px 10px; font-size: 17px; line-height: 1.15; gap: 8px; }
+    .opt .l { width: 24px; height: 24px; font-size: 13px; line-height: 20px; }
+    .mini .card .k { display: none; }
+    .mini .fact, .mini .fact.long { font-size: 16px; line-height: 1.2; }
+    .hedge .btn { padding: 10px 12px; font-size: 15px; }
+    #pickbtn { bottom: 6px; }
+    .reacts button { width: 44px; height: 44px; font-size: 22px; }
+  }
+  /* экранная клавиатура открыта (MP.keyboardClass → html.kb): шапка и переключатель языка уходят, форма сжимается,
+     «Соври за меня» остаётся в видимой области (fibs-034, 035, 036) */
+  html.kb .util, html.kb .lang-switch, html.kb .langhint, html.kb .ahead, html.kb .masthead { display: none !important; }
+  html.kb #app { min-height: 0; padding-top: 4px; padding-bottom: 8px; gap: 8px; justify-content: flex-start; }
+  html.kb .card { padding: 8px 10px; }
+  html.kb .card .k { display: none; }
+  html.kb .fact, html.kb .fact.long { font-size: 16px; line-height: 1.2; }
+  html.kb .write input { padding: 9px 10px; font-size: 20px; }
+  html.kb .write .truthmsg:empty { min-height: 0; }
+  html.kb .write .cnt { margin-top: 2px; min-height: 0; }
+  html.kb .write .row2 { gap: 6px; margin-top: 2px !important; }
+  html.kb .btn { padding: 10px 12px; font-size: 17px; box-shadow: 3px 3px 0 var(--red); }
+  html.kb .btn.ghost { font-size: 15px; }
+  html.kb .enter h2 { margin: 2px 0 6px; font-size: 22px; }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
   }
@@ -299,6 +346,7 @@ window.I18N_DICT = {
     rule3: `Все факты правдивые и проверены по источникам`,
     sample_k: `Пример`, sample_q: `В 1932 году Австралия официально объявила войну ______ и проиграла`,
     enter_title: `Как тебя зовут?`, enter_ph: `Имя`, btn_join: `В редакцию`,
+    enter_late: `Идёт игра — подключишься со следующего факта`,
     claim_title: `Это ты, {name}?`, claim_sub: `Игрок с таким именем уже в редакции. Очки: {n}`, claim_yes: `Занять место`, claim_no: `Я другой`,
     taken_title: `«{name}» уже в игре`, taken_sub: `Это имя занято прямо сейчас — войди под другим`, taken_as: `Войти как «{alt}»`, taken_other: `Другое имя`,
     renamed_toast: `Имя занято: ты теперь «{name}»`,
@@ -348,6 +396,7 @@ window.I18N_DICT = {
     rule3: `Every fact is true and checked against sources`,
     sample_k: `Example`, sample_q: `In 1932, Australia's military waged a war against ______ and lost`,
     enter_title: `What's your name?`, enter_ph: `Name`, btn_join: `Join the newsroom`,
+    enter_late: `A game is on — you join from the next fact`,
     claim_title: `Is this you, {name}?`, claim_sub: `A player with this name is already in the newsroom. Points: {n}`, claim_yes: `Take the seat`, claim_no: `I'm someone else`,
     taken_title: `"{name}" is already playing`, taken_sub: `That name is taken right now — pick another`, taken_as: `Join as "{alt}"`, taken_other: `Another name`,
     renamed_toast: `Name taken: you are now "{name}"`,
@@ -397,6 +446,7 @@ window.I18N_DICT = {
     rule3: `Όλα τα γεγονότα είναι αληθινά και ελεγμένα σε πηγές`,
     sample_k: `Παράδειγμα`, sample_q: `Το 1932 ο στρατός της Αυστραλίας κήρυξε πόλεμο στους ______ και έχασε`,
     enter_title: `Πώς σε λένε;`, enter_ph: `Όνομα`, btn_join: `Στη σύνταξη`,
+    enter_late: `Το παιχνίδι τρέχει — μπαίνεις από το επόμενο γεγονός`, //EL:unverified
     claim_title: `Είσαι εσύ, {name};`, claim_sub: `Ένας παίκτης με αυτό το όνομα είναι ήδη στη σύνταξη. Πόντοι: {n}`, claim_yes: `Πάρε τη θέση`, claim_no: `Είμαι άλλος`, //EL:unverified
     taken_title: `Το «{name}» παίζει ήδη`, taken_sub: `Αυτό το όνομα είναι πιασμένο τώρα — διάλεξε άλλο`, taken_as: `Μπες ως «{alt}»`, taken_other: `Άλλο όνομα`, //EL:unverified
     renamed_toast: `Το όνομα ήταν πιασμένο: τώρα είσαι «{name}»`, //EL:unverified
@@ -467,6 +517,12 @@ try { token = localStorage.getItem(tokenKey()); } catch (e) {}
 const player = (id) => state && state.players.find((p) => p.id === id);
 const mine = () => (state && me ? player(me) : null);
 const avHtml = (p) => `<i class="av">${escapeHtml(p.avatar)}</i>`;
+// «1st / 2nd / 3rd» в английском; ru/el — как в словаре (fibs-031)
+const placeTxt = (n) => {
+  if (qpLang() !== "en") return tpl("place", { n });
+  const m = n % 100, k = n % 10;
+  return n + (m >= 11 && m <= 13 ? "th" : k === 1 ? "st" : k === 2 ? "nd" : k === 3 ? "rd" : "th") + " place";
+};
 const factId = () => (state ? state.game + ":" + state.ri + ":" + state.fi : "");
 
 function toast(text) {
@@ -474,7 +530,7 @@ function toast(text) {
   t.textContent = text;
   t.classList.remove("on"); void t.offsetWidth; t.classList.add("on");
   clearTimeout(toast.t);
-  toast.t = setTimeout(() => t.classList.remove("on"), 2400);
+  toast.t = setTimeout(() => t.classList.remove("on"), 1600);
 }
 function show(html, key, top) {
   // новый экран (другая фаза) — с самого верха: на SE прокрутка от прошлого экрана прятала факт и первые варианты
@@ -482,6 +538,7 @@ function show(html, key, top) {
   screenHead = head;
   screenKey = key;
   app.classList.toggle("top", !!top);
+  app.dataset.screen = head;
   app.innerHTML = html;
   if (fresh && scrollY > 0) scrollTo(0, 0);
 }
@@ -503,6 +560,8 @@ function keepActionVisible(input, btn) {
   input.addEventListener("focus", () => setTimeout(fitAction, 350));
 }
 if (window.visualViewport) visualViewport.addEventListener("resize", fitAction);
+// html.kb, пока клавиатура съела > 120 px: CSS прячет шапку и сжимает форму; после смены раскладки — подтягиваем кнопки
+if (window.MP && MP.keyboardClass) MP.keyboardClass({ threshold: 100, onChange: () => { setTimeout(fitAction, 60); setTimeout(fitAction, 400); } });
 
 // экран не гаснет, пока идёт игра (где поддерживается)
 let wakeLock = null;
@@ -573,6 +632,7 @@ function renderEnter() {
     <div class="card"><div class="room">${escapeHtml(CODE)}</div><h2>${T("enter_title")}</h2>
       <input id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}">
       <div class="cnt"><span></span><span id="ncnt"></span></div></div>
+    ${state && ["intro", "topic", "lie", "choose", "reveal", "scores"].includes(state.phase) ? `<p class="latenote">${escapeHtml(T("enter_late"))}</p>` : ""}
     <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
     <button class="btn" type="submit">${T("btn_join")}</button>
   </form>`, "enter");
@@ -794,7 +854,7 @@ function renderLie() {
   };
   inp.oninput = upd;
   upd();
-  keepActionVisible(inp, document.getElementById("sendbtn"));
+  keepActionVisible(inp, document.getElementById("hintbtn")); // под кнопкой «Отправить» — «Соври за меня»: видны обе
   if (!matchMedia("(pointer: coarse)").matches || truthMsg) inp.focus();
   form.onsubmit = (e) => {
     e.preventDefault();
@@ -845,10 +905,11 @@ function renderChoose() {
     return bindReacts();
   }
   const need = hedge ? 2 : 1;
+  // «Подстраховка» сразу под подсказкой, над списком: на SE (320×568) список с 6–7 вариантами уходит под сгиб (fibs-033)
   show(`${timerHtml()}<div class="mini">${factCard()}</div>
     <div class="eyebrow">${escapeHtml(hedge ? T("choose_two") : T("choose_one"))}</div>
-    <div class="opts">${state.options.map((o, i) => `<button type="button" class="opt${o.mine ? " own" : ""}${picks.includes(i) ? " sel" : ""}" data-i="${i}" data-own="${escapeHtml(T("own"))}"${o.mine ? " disabled" : ""}><span class="l">${letter(i)}</span><span class="t">${escapeHtml(o.text)}</span></button>`).join("")}</div>
     <div class="hedge"><button class="btn ghost${hedge ? " on" : ""}" type="button" id="hedge">${escapeHtml(hedge ? T("btn_hedge_on") : T("btn_hedge"))}</button></div>
+    <div class="opts">${state.options.map((o, i) => `<button type="button" class="opt${o.mine ? " own" : ""}${picks.includes(i) ? " sel" : ""}" data-i="${i}" data-own="${escapeHtml(T("own"))}"${o.mine ? " disabled" : ""}><span class="l">${letter(i)}</span><span class="t">${escapeHtml(o.text)}</span></button>`).join("")}</div>
     ${hedge ? `<button class="btn" type="button" id="pickbtn"${picks.length === 2 ? "" : " disabled"}>${escapeHtml(tpl("btn_pick", { n: `${picks.length}/2` }))}</button>` : ""}`, key, true);
   app.querySelectorAll(".opt:not(.own)").forEach((b) => {
     b.onclick = () => {
@@ -918,7 +979,7 @@ function renderScores() {
   if (screenKey === key) return;
   const { list, place, p } = standing();
   show(`<div class="center"><div class="eyebrow">${T("scores_title")}</div>
-    <div class="big" style="margin:10px 0">${escapeHtml(tpl("place", { n: place }))}</div><div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div></div>${tableHtml(list)}${reactsHtml()}`, key, true);
+    <div class="big" style="margin:10px 0">${escapeHtml(placeTxt(place))}</div><div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div></div>${tableHtml(list)}${reactsHtml()}`, key, true);
   bindReacts();
 }
 
@@ -928,7 +989,7 @@ function renderFinal() {
   const { list, place, p } = standing();
   const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : T("final_sub");
   show(`<div class="center"><h1 class="headline">${T("final_title")}</h1>
-    <div class="big${place === 1 ? " red" : ""}" style="margin:14px 0 6px">${escapeHtml(tpl("place", { n: place }))}</div>
+    <div class="big${place === 1 ? " red" : ""}" style="margin:14px 0 6px">${escapeHtml(placeTxt(place))}</div>
     <div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div>
     <p class="fine">${escapeHtml(sub)}</p></div>${tableHtml(list)}${reactsHtml()}
     <a class="btn ghost" id="homebtn" href="index.html">${T("btn_home")}</a>`, key, true);
