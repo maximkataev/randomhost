@@ -95,7 +95,11 @@ function betPos(key) {
 // инициалы — как на аватарке рельса доски: первые буквы слов, без эмодзи бота, максимум две
 function initialsOf(p) {
   if (p && p.initials) return String(p.initials).slice(0, 3);
-  return String((p && p.name) || "?").replace(/^\p{Extended_Pictographic}\s*/u, "").split(/\s+/).filter(Boolean).map((w) => [...w][0]).join("").slice(0, 2).toUpperCase() || "?";
+  let n = String((p && p.name) || "?").replace(/^\p{Extended_Pictographic}\s*/u, "");
+  let idx = "";
+  const m = n.match(/^(.*\S)\s+\((\d{1,2})\)$/); // «Маша (2)» → «М2», как на фишке
+  if (m) { n = m[1]; idx = m[2]; }
+  return (n.split(/\s+/).filter(Boolean).map((w) => [...w][0]).join("").slice(0, idx ? 1 : 2).toUpperCase() + idx) || "?";
 }
 // сумма ставки: разделители по языку страницы (rlAmount из roulette-shared.js)
 function rlAmount(n) {

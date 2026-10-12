@@ -108,6 +108,7 @@ const RL_SHARED_I18N = {
     ev_card: "{by} → {target}: {card}",
     ev_penalty: "{name}: штраф {n}",
     ev_frozen: "{name}: заморозка на следующий спин",
+    ev_rejoin: "{name}: с другого устройства",
     err_connect: "Нет связи с сервером, переподключаемся…",
   },
   en: {
@@ -129,6 +130,7 @@ const RL_SHARED_I18N = {
     ev_card: "{by} → {target}: {card}",
     ev_penalty: "{name}: penalty {n}",
     ev_frozen: "{name} is frozen next spin",
+    ev_rejoin: "{name}: from another device",
     err_connect: "No connection, reconnecting…",
   },
   el: {
@@ -150,6 +152,7 @@ const RL_SHARED_I18N = {
     ev_card: "{by} → {target}: {card}",
     ev_penalty: "{name}: ποινή {n}",
     ev_frozen: "{name} παγώνει στο επόμενο γύρισμα",
+    ev_rejoin: "{name}: από άλλη συσκευή", //EL:unverified
     err_connect: "Χωρίς σύνδεση, επανασύνδεση…",
   },
 };
@@ -188,7 +191,14 @@ function rlAmount(n, lang) {
 }
 
 // по кодовым точкам, а не по UTF-16: у «😀 Emoji Cat» аватар был «�E»
-function initials(name) { return Array.from(String(name || "?").replace(/^🤖\s*/, "").split(/\s+/).map((w) => Array.from(w)[0] || "").join("")).slice(0, 2).join("").toUpperCase(); }
+// «Маша (2)» — буква базового имени и номер («М2»), а не «М(»: тёзки различимы на фишке (roulette-009)
+function initials(name) {
+  let n = String(name || "?").replace(/^🤖\s*/, "");
+  let idx = "";
+  const m = n.match(/^(.*\S)\s+\((\d{1,2})\)$/);
+  if (m) { n = m[1]; idx = m[2]; }
+  return Array.from(n.split(/\s+/).map((w) => Array.from(w)[0] || "").join("")).slice(0, idx ? 1 : 2).join("").toUpperCase() + idx;
+}
 
 // Геометрия стола: зона чисел — 3 колонки × 13 строк (строка 0 — зеро). Координаты в долях зоны.
 // w, h — размер зоны в px: тап в табличку номера — всегда ставка на число, сплит/каре — только у самой линии.

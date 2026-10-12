@@ -170,6 +170,14 @@
   .placecard input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(255, 192, 67, .18); }
   .placecard input::placeholder { color: #4d535c; }
   .enter .err { color: var(--warn); min-height: 20px; font-size: 14px; font-weight: 600; }
+  /* «12/16» у поля имени: появляется, когда осталось ≤ 4 знака; внутри поля — размер и положение поля не меняются */
+  .placecard .fld { position: relative; }
+  .placecard .fld input { padding-right: 62px; }
+  .placecard .fld .cnt { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); font: 800 12px/1 var(--cond); letter-spacing: .06em; color: var(--muted); pointer-events: none; }
+  .placecard .fld .cnt:empty { display: none; }
+  .placecard .fld .cnt[data-state="full"] { color: var(--warn); }
+  .claimbtns { display: grid; gap: 10px; align-self: stretch; width: 100%; max-width: 360px; margin-top: 6px; }
+  .claimbtns .link { min-height: 48px; font-size: 16px; }
   .center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 70px 20px 26px; gap: 12px; }
   .center h2 { font: 900 34px/1.05 var(--cond); letter-spacing: -.04em; margin: 0; }
   .center p { color: #c5cad2; margin: 0; max-width: 360px; }
@@ -629,6 +637,11 @@ window.I18N_DICT = {
     err_game_started: `Партия уже идёт — дождись следующей или войди со своего телефона`,
     err_room_full: `За столом нет мест (максимум 12)`,
     err_token_gone: `Тебя больше нет за этим столом — войди заново`,
+    err_name_taken: `Это имя сейчас занято — выбери другое`,
+    seat_wait: `Твоё место ещё закрепляется — секунду…`,
+    claim_title: `Это ты?`, claim_text: `Вернуться как {name}? Фишек: {n}`, claim_text0: `Вернуться как {name}?`, btn_claim_yes: `Да, это я`, btn_claim_no: `Я другой`,
+    renamed_toast: `Это имя занято. Теперь ты: {name}`,
+    spec_text_renamed: `Имя занято. Теперь ты: {name}. Партия уже идёт — сядешь за стол в следующей. А пока смотри, пиши в чат и реагируй.`,
     wait_title: `Ты за столом`,
     wait_text: `Ждём, пока ведущий начнёт партию на общем экране.`,
     wait_players: `За столом`,
@@ -754,6 +767,11 @@ window.I18N_DICT = {
     err_game_started: `A game is already running — wait for the next one or rejoin from your own phone`,
     err_room_full: `The table is full (12 max)`,
     err_token_gone: `You're no longer at this table — join again`,
+    err_name_taken: `That name is taken right now — pick another`,
+    seat_wait: `Your seat is still settling — one second…`,
+    claim_title: `Is this you?`, claim_text: `Come back as {name}? Chips: {n}`, claim_text0: `Come back as {name}?`, btn_claim_yes: `Yes, it's me`, btn_claim_no: `I'm someone else`,
+    renamed_toast: `That name is taken. You are now: {name}`,
+    spec_text_renamed: `That name is taken. You are now: {name}. The game is already on — you'll get a seat next game. Meanwhile watch, chat and react.`,
     wait_title: `You're at the table`,
     wait_text: `Waiting for the host to start the game on the shared screen.`,
     wait_players: `At the table`,
@@ -879,6 +897,11 @@ window.I18N_DICT = {
     err_game_started: `Το παιχνίδι έχει ήδη αρχίσει — περίμενε το επόμενο ή μπες από το δικό σου κινητό`,
     err_room_full: `Το τραπέζι είναι γεμάτο (έως 12)`,
     err_token_gone: `Δεν είσαι πια σε αυτό το τραπέζι — μπες ξανά`,
+    err_name_taken: `Το όνομα χρησιμοποιείται αυτή τη στιγμή — διάλεξε άλλο`, // EL:unverified
+    seat_wait: `Η θέση σου κλειδώνει ακόμα — ένα δευτερόλεπτο…`, // EL:unverified
+    claim_title: `Είσαι εσύ;`, claim_text: `Να γυρίσεις ως {name}; Μάρκες: {n}`, claim_text0: `Να γυρίσεις ως {name};`, btn_claim_yes: `Ναι, εγώ είμαι`, btn_claim_no: `Είμαι άλλος`, // EL:unverified
+    renamed_toast: `Το όνομα χρησιμοποιείται. Τώρα είσαι: {name}`, // EL:unverified
+    spec_text_renamed: `Το όνομα χρησιμοποιείται. Τώρα είσαι: {name}. Το παιχνίδι έχει ήδη ξεκινήσει — θα κάτσεις στο επόμενο. Ως τότε βλέπεις, γράφεις και αντιδράς.`, // EL:unverified
     wait_title: `Είσαι στο τραπέζι`,
     wait_text: `Περιμένουμε τον οικοδεσπότη να ξεκινήσει στην κοινή οθόνη.`,
     wait_players: `Στο τραπέζι`,
@@ -984,6 +1007,7 @@ window.I18N_DICT = {
   },
 };
 </script>
+<script src="mp-common.js"></script>
 <script src="roulette-shared.js"></script>
 <script src="i18n.js"></script>
 <script src="sound-toggle.js" defer></script>
@@ -1210,6 +1234,40 @@ function renderLanding() {
 
 // ---------- вход ----------
 
+// вход по имени (T-W2-10): MP.joinFlow — «Это ты?» и тихие повторы, пока у места идёт грация; MP.replacedTab — «Играть здесь»
+let flow = null, tab = null;
+let joinName = ""; // имя, с которым входим: из формы либо сохранённое — уходит вместе с токеном
+let claimPrompt = null; // {name, summary, accept, decline}: открытый экран «Это ты?»
+let renamedTo = null; // выданное имя, если своё оказалось занято: объясняем зрителю в игре
+const mpOn = () => !!(window.MP && !MP.off);
+const NAME_LIMIT = () => (window.MP && MP.limits && MP.limits.name) || 16;
+function savedName() { try { return localStorage.getItem("roulette-name") || ""; } catch (e) { return ""; } }
+function buildJoin() {
+  const m = { type: "join" };
+  if (joinName) m.name = joinName;
+  if (token) m.token = token;
+  return m;
+}
+// все входы идут одним путём; без mp-common (или при MP_OFF) — прежнее сообщение без caps
+function doJoin(extra) {
+  if (flow && flow.join(extra)) return;
+  const m = buildJoin();
+  if (extra) for (const k in extra) m[k] = extra[k];
+  conn.send(m);
+}
+
+// «Это ты?»: офлайн-место с таким именем возвращается одним тапом; «Я другой» — новое место «Имя (2)»
+function renderClaim() {
+  if (!claimPrompt) return;
+  screen = "claim";
+  const c = claimPrompt;
+  const st = c.summary && typeof c.summary.stack === "number" ? c.summary.stack : null;
+  const text = st == null ? tpl("claim_text0", { name: c.name }) : tpl("claim_text", { name: c.name, n: rlNum(st) });
+  renderCenter("claim_title", null, `<p>${escapeHtml(text)}</p><div class="claimbtns"><button class="btn" id="claimyes" type="button">${T("btn_claim_yes")}</button><button class="link" id="claimno" type="button">${T("btn_claim_no")}</button></div>`);
+  document.getElementById("claimyes").onclick = () => { const p = claimPrompt; claimPrompt = null; screen = null; if (p) p.accept(); };
+  document.getElementById("claimno").onclick = () => { const p = claimPrompt; claimPrompt = null; screen = null; if (p) p.decline(); };
+}
+
 function renderEnter() {
   screen = "enter";
   screenMode(null);
@@ -1219,19 +1277,22 @@ function renderEnter() {
     <div class="placecard">
       <div class="room">${escapeHtml(CODE)}</div>
       <h2>${T("enter_title")}</h2>
-      <input id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}">
+      <div class="fld"><input id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}"><em class="cnt" id="namecnt"></em></div>
     </div>
     <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
     <button class="btn" type="submit">${T("btn_join")}</button>
   </form>`;
   const input = document.getElementById("name");
+  // «12/16» у поля, когда осталось ≤ 4 знака; срез по символам (эмодзи не рвётся)
+  if (mpOn()) MP.nameCounter(input, NAME_LIMIT(), { el: document.getElementById("namecnt") });
   document.getElementById("enterform").onsubmit = (e) => {
     e.preventDefault();
     const name = input.value.trim();
     if (!name) { document.getElementById("err").textContent = T("err_name"); return; }
     try { localStorage.setItem("roulette-name", name); } catch (e2) {}
     joinErr = null;
-    conn.send({ type: "join", name });
+    joinName = name;
+    doJoin();
   };
 }
 
@@ -2220,12 +2281,14 @@ function render() {
   if (screen === "kicked") return renderKicked();
   const p = mine();
   if (!p) {
+    if (claimPrompt) return; // открыт экран «Это ты?»
     // есть токен — ждём ответа на join, а не показываем форму имени на полсекунды
     if (!token && screen !== "enter") renderEnter();
     return;
   }
   if (state.phase === "lobby") {
     screen = "wait";
+    renamedTo = null;
     screenMode(null);
     const seated = state.players.filter((x) => !x.left);
     // новенькие падают на сукно со щелчком, старые лежат спокойно
@@ -2255,7 +2318,7 @@ function render() {
   watchHand();
   noteFreeze();
   if (state.phase === "briefing" && p.spectator) {
-    if (screen !== "spec") { screen = "spec"; renderCenter("spec_title", "spec_text"); }
+    if (screen !== "spec") { screen = "spec"; renderCenter("spec_title", renamedTo ? null : "spec_text", renamedTo ? `<p>${escapeHtml(tpl("spec_text_renamed", { name: renamedTo }))}</p>` : ""); }
     return;
   }
   if (state.phase === "briefing") { stopSuspense(); renderBriefing(p); return; }
@@ -2317,6 +2380,7 @@ window.addEventListener("resize", () => { if (screen === "game") drawChips(); })
 window.addEventListener("langchange", () => {
   if (!CODE) return renderLanding();
   if (screen === "enter") return renderEnter();
+  if (screen === "claim") return renderClaim();
   if (screen === "kicked") { app.dataset.key = ""; return renderKicked(); }
   if (screen === "game") { buildGame(); }
   screen === "expired" ? renderExpired() : render();
@@ -2325,17 +2389,34 @@ window.addEventListener("langchange", () => {
 // ---------- связь ----------
 
 function onMessage(m) {
+  if (mpOn()) {
+    if (m.type === "hello" && MP.applyHello(m) === false) { flow = tab = null; } // MP_OFF на сервере: старый протокол
+    else if (tab && tab.handle(m)) return;
+    else if (flow && flow.handle(m)) return;
+  }
   switch (m.type) {
     case "hello":
     case "state":
       state = m.state;
       if (m.type === "hello") knownHand = null;
-      if (m.type === "hello" && token && !me) conn.send({ type: "join", token });
+      if (m.type === "hello" && token && !me) {
+        // и с именем: если токен протух, сервер найдёт место по имени, а не отдаст «тебя нет за столом»
+        joinName = joinName || savedName();
+        doJoin();
+      } else if (m.type === "hello" && !me && flow && flow.state().prompting) {
+        flow.resume(); // обрыв на экране «Это ты?»: сервер продлевает ожидание, экран не пропадает
+      }
       render();
       break;
     case "joined":
       me = m.playerId;
       token = m.token;
+      claimPrompt = null;
+      if (m.name) {
+        joinName = m.name;
+        try { localStorage.setItem("roulette-name", m.name); } catch (e) {}
+        if (m.renamed) { renamedTo = m.name; toast(tpl("renamed_toast", { name: m.name })); }
+      }
       try { localStorage.setItem(tokenKey(), token); } catch (e) {}
       render();
       flushQueued();
@@ -2348,7 +2429,7 @@ function onMessage(m) {
     case "error":
       if (m.error === "room_expired") return renderExpired();
       if (m.error === "too_fast") { toast(T("rj_too_fast")); break; }
-      if (["game_started", "room_full", "token_gone", "bad_name"].includes(m.error)) {
+      if (["game_started", "room_full", "token_gone", "bad_name", "name_taken"].includes(m.error)) {
         if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
         joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
         me = null;
@@ -2367,7 +2448,7 @@ function onMessage(m) {
       me = null;
       screen = "replaced";
       renderCenter("replaced_title", "replaced_text", `<button class="btn" id="here">${T("btn_back_here")}</button>`);
-      document.getElementById("here").onclick = () => { conn.send({ type: "join", token }); };
+      document.getElementById("here").onclick = () => { if (tab && tab.back()) return; doJoin(); };
       break;
     case "event":
       break;
@@ -2386,6 +2467,28 @@ function start() {
     onOpen: () => { me = null; },
     onState: (st) => { banner.textContent = T("conn_lost"); banner.classList.toggle("on", st === "lost"); },
     onSendFail,
+  });
+}
+if (window.MP) {
+  flow = MP.joinFlow({
+    send: (m) => conn.send(m),
+    buildJoin,
+    onClaimPrompt: (c) => { claimPrompt = c; renderClaim(); },
+    // «секунду…» пока у места идёт грация: молчаливые повторы раз в 2 с, до шести
+    onRetry: () => { const e = document.getElementById("err"); if (e && screen === "enter") e.textContent = T("seat_wait"); },
+    // не бесконечно: после повторов — обычное «имя занято»
+    onGiveUp: () => { joinErr = "err_name_taken"; me = null; renderEnter(); },
+  });
+  tab = MP.replacedTab({
+    rejoin: () => doJoin(),
+    onReplaced: () => {
+      me = null;
+      screen = "replaced";
+      renderCenter("replaced_title", "replaced_text", `<button class="btn" id="here">${T("btn_back_here")}</button>`);
+      document.getElementById("here").onclick = () => { if (tab && tab.back()) return; doJoin(); };
+    },
+    // токен отозван (место вернули с другого устройства): обычный вход по имени
+    onTokenGone: () => { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; me = null; joinErr = null; if (savedName()) { joinName = savedName(); doJoin(); } else renderEnter(); },
   });
 }
 start();
