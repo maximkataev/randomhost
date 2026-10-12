@@ -249,3 +249,83 @@ test("кривые запросы не роняют процесс; перебо
   const r = await fetch(`${base}/api/session?r=${room.code}`, { headers: { "x-real-ip": "2001:db8:7:7:abcd::1" } });
   assert.equal(r.status, 404);
 });
+
+// ---- T-W0-05: сканер секретов (tools/testkit/scan.js) по трём видам: доска, игрок, сокет без токена ----
+const { scanFrames } = require("../tools/testkit/scan");
+
+// партия до Камеры: доска, два игрока и сокет без join/host; возвращает все четыре клиента + возврат по токену
+async function playToCell() {
+  const { code, hostToken } = await createRoom({}, 8);
+  const b = await board(code, hostToken);
+  const a = await player(code, "Аня");
+  const z = await player(code, "Зоя");
+  const anon = client(code);
+  await anon.open;
+  b.send({ type: "start" });
+  await a.phase("answer");
+  a.send({ type: "answer", i: 0 });
+  z.send({ type: "answer", i: 1 });
+  await b.phase("reveal");
+  await b.wait((m) => m.type === "state" && m.state.phase === "cell", 15000);
+  await new Promise((r) => setTimeout(r, 2500)); // испытание выдаётся после «Приготовься»
+  const again = await player(code, "", a.token); // hello посреди партии
+  await new Promise((r) => setTimeout(r, 300));
+  return { hostToken, b, a, z, anon, again };
+}
+const framesOf = (c) => c.raw.map((r) => JSON.parse(r));
+
+test("секреты не в кадрах: доска / игрок / сокет без токена — нет ch (кроме своего me.cell.ch), passCode, hostToken, массива answered, чужих токенов", async () => {
+  const { hostToken, b, a, z, anon, again } = await playToCell();
+  const tokens = [a.token, z.token];
+  const clients = [["board", b], ["player", a], ["player", z], ["player", again], ["anon", anon]];
+  let scanned = 0;
+  for (const [view, c] of clients) {
+    const frames = framesOf(c);
+    scanned += frames.length;
+    const own = c.id || null;
+    const rules = view === "board" ? [] : [
+      // ch узников (вид испытания) — только доске; свой me.cell.ch — телефону по замыслу
+      (p, k) => k === "ch" && p !== "state.me.cell.ch" && "ch не у доски",
+      "passCode", "hostToken",
+      // список ответивших — число answeredN, не массив имён/id
+      (p, k, v) => k === "answered" && Array.isArray(v) && "answered[] не у доски",
+      // финал: телефону только свой шаг
+      (p, k, v) => k === "fsteps" && Array.isArray(v) && (v.length > 1 || v.some((x) => x.id !== own)) && "fsteps: чужие шаги",
+    ];
+    const foreign = tokens.filter((t) => t && t !== c.token);
+    const v = scanFrames(frames.map((f) => ({ view, frame: f })), {
+      forbiddenKeys: rules,
+      forbiddenSubstrings: view === "board" ? foreign : foreign.concat(hostToken),
+    });
+    assert.deepStrictEqual(v, [], `${view}: ${JSON.stringify(v.slice(0, 3))}`);
+    // верный индекс и чужие выборы — не раньше раскрытия (read/answer), ни у кого
+    const early = scanFrames(frames.map((f) => ({ view, frame: f })), {
+      phases: ["read", "answer", "fread", "fanswer", "stake"],
+      forbiddenKeys: [(p, k, val) => /^state\.(right|picks|gain|palach|prisoners)$/.test(p) && val != null && "до раскрытия: " + k],
+    });
+    assert.deepStrictEqual(early, [], `${view}: ${JSON.stringify(early.slice(0, 3))}`);
+  }
+  assert.ok(scanned > 15, "кадров мало — проверка пустая: " + scanned);
+  assert.ok(framesOf(again).some((m) => m.type === "hello" && m.state && m.state.phase !== "lobby"), "hello посреди партии не получен");
+  assert.ok(framesOf(b).some((m) => m.type === "state" && m.state.cell && m.state.cell.length), "доска не видела Камеру — проверка ch пустая");
+  for (const c of [b, a, z, anon, again]) try { c.close(); } catch {}
+});
+
+// События (type:"event") рассылаются всем сокетам одной строкой: {type:"answered", playerId} уходит и телефонам,
+// хотя T-W0-06 убрал state.answered. Найдено при T-W0-05 — чинится отдельно; кейс остаётся красным (todo).
+test("секреты не в кадрах: событие «answered» с playerId не уходит телефонам и сокету без токена", { todo: "T-W0-05: найдена утечка — broadcastEvent шлёт answered{playerId} всем" }, async () => {
+  const { code, hostToken } = await createRoom({}, 8);
+  const b = await board(code, hostToken);
+  const a = await player(code, "Аня");
+  const z = await player(code, "Зоя");
+  const anon = client(code);
+  await anon.open;
+  b.send({ type: "start" });
+  await a.phase("answer");
+  a.send({ type: "answer", i: 0 });
+  await b.wait((m) => m.type === "event" && m.event.type === "answered", 5000);
+  await new Promise((r) => setTimeout(r, 300));
+  const leaked = [["игрок", z], ["сокет без токена", anon]].filter(([, c]) => c.events.some((e) => e.type === "answered" && e.playerId));
+  assert.deepStrictEqual(leaked.map(([n]) => n), [], "кто ответил, ушло как событие: " + JSON.stringify(leaked.map(([, c]) => c.events.filter((e) => e.type === "answered"))));
+  for (const c of [b, a, z, anon]) c.close();
+});
