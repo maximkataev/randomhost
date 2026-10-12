@@ -203,6 +203,27 @@ const SOLVER = String.raw`(async () => {
     await land.shot("p_landing");
     check(land.errors.length === 0, "стартовый экран без JS-ошибок" + (land.errors[0] ? ": " + land.errors[0] : ""));
 
+    // --- 1б. неверный код (bomb-037): «Такой комнаты нет» + поле кода, не «Комната закрылась»
+    const wrong = await cdp(`${BASE}/bomb.html?r=ZZZZ99`, [390, 844]);
+    pages.push(wrong);
+    await wait(2500);
+    const wtxt = await wrong.evaluate("document.body.innerText");
+    check(/такой комнаты нет/i.test(wtxt) && !/закрылась/i.test(wtxt), "телефон, неверный код: «Такой комнаты нет», а не «закрылась»");
+    check((await wrong.evaluate("!!document.getElementById('codein')")) === true, "телефон, неверный код: поле для кода");
+    await wrong.evaluate("document.getElementById('codein').value = ' bear 74 '; document.getElementById('codeform').requestSubmit();");
+    await wait(600);
+    check((await wrong.evaluate("location.search")) === "?r=BEAR74", "телефон: код уходит после фильтра (bear 74 -> BEAR74)");
+    await wrong.shot("p_noroom");
+    const wrongBoard = await cdp(`${BASE}/bomb-board.html?r=ZZZZ99`);
+    pages.push(wrongBoard);
+    await wait(2500);
+    const btxt = await wrongBoard.evaluate("document.body.innerText");
+    check(/Такой комнаты нет/.test(btxt) && !/закрылась/i.test(btxt) && (await wrongBoard.evaluate("!!document.getElementById('gonecode')")) === true, "доска, неверный код: «Такой комнаты нет» и поле кода");
+    check((await wrongBoard.evaluate("document.querySelectorAll('#hostbar *').length")) === 0, "доска, неверный код: кнопок ведущего нет");
+    check(wrong.errors.filter((e) => !/404|WebSocket|Failed to load/.test(e)).length === 0, "неверный код: без JS-ошибок" + (wrong.errors[0] ? ": " + wrong.errors[0] : ""));
+    await wrong.close();
+    await wrongBoard.close();
+
     // --- 2. комната, доска, телефоны
     const room = await (await fetch(BASE + "/bomb/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: "ru" } }) })).json();
     console.log("комната", room.code);

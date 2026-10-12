@@ -60,6 +60,14 @@
  *     api.adopt(text) -> токен | null      «Я ведущий»: из вставленной ссылки (?h=) или голого токена; кладёт в localStorage
  *     api.take(now?, text?) -> bool        «Забрать»: sendHost(токен) не чаще раза в takeMinMs (3 с)
  *     MP.hostLink.build(href, boardPath, code, token), MP.hostLink.parseToken(text)
+ *
+ *   MP.roomGone({showForm, onClosed}) -> api   «Такой комнаты нет» против «Комната закрыта» (T-W1-12)
+ *     api.hello()      пришёл hello — комната существовала
+ *     api.gone(info?)  404 / room_expired: до первого hello -> showForm(info) («Такой комнаты нет» + поле кода),
+ *                      после -> onClosed(info); возвращает "noroom" | "closed". Повторно не вызывает (404 не ретраится)
+ *     api.seen()       был ли hello;  api.submit(raw) -> итоговый код ПОСЛЕ фильтра | null (пусто)
+ *     MP.roomGone.normalize(raw) -> "BEAR74"  (верхний регистр, только A-Z и 2-9, ≤ 12)
+ *     Серверного различителя нет (К-11): «нет такой» и «закрыта по TTL» до hello неразличимы.
  */
 (function (root) {
   'use strict';
@@ -382,6 +390,37 @@
   };
   MP.hostLink.build = buildHostUrl;
   MP.hostLink.parseToken = parseHostToken;
+
+  // ── roomGone ───────────────────────────────────────────────────────────────────────────────────
+  function normalizeCode(raw) {
+    return String(raw == null ? '' : raw).toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, 12);
+  }
+
+  MP.roomGone = function (opts) {
+    var o = opts || {};
+    var seen = false;
+    var fired = false;
+    var api = {
+      hello: function () { seen = true; },
+      seen: function () { return seen; },
+      gone: function (info) {
+        if (fired) return seen ? 'closed' : 'noroom';
+        fired = true;
+        if (!seen) {
+          if (typeof o.showForm === 'function') o.showForm(info);
+          return 'noroom';
+        }
+        if (typeof o.onClosed === 'function') o.onClosed(info);
+        return 'closed';
+      },
+      submit: function (raw) {
+        var c = normalizeCode(raw);
+        return c || null;
+      }
+    };
+    return api;
+  };
+  MP.roomGone.normalize = normalizeCode;
 
   root.MP = MP;
 })(this);

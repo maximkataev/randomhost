@@ -157,6 +157,11 @@
   .hostbar .linkbtn { min-height: 44px; min-width: 44px; }
   .hostbar input { font: 700 16px/1 var(--font); border: var(--line); background: #fff; color: var(--ink); padding: 6px 8px; min-height: 44px; width: 190px; min-width: 0; border-radius: 0; }
   .hostbar .note { font-size: 14px; font-weight: 700; max-width: 240px; }
+  .gonebox { display: grid; gap: 10px; justify-items: center; }
+  .gonebox .t { font-size: 28px; font-weight: 900; }
+  .gonebox form { display: flex; gap: 8px; }
+  .gonebox input { font: 700 22px/1 var(--font); border: var(--line); background: #fff; color: var(--ink); padding: 8px 10px; min-height: 44px; width: 180px; text-transform: uppercase; border-radius: 0; }
+  .gonebox button { border: var(--line); background: var(--paper); font-weight: 700; padding: 6px 14px; min-height: 44px; box-shadow: var(--shift); font-size: 18px; }
   @media (max-width: 640px) { .hostbar .lt { display: none; } .hostbar .note { display: none; } }
   .hostbar button { border: var(--line); background: var(--paper); font-weight: 700; padding: 6px 12px; box-shadow: var(--shift); font-size: 16px; white-space: nowrap; }
 
@@ -368,6 +373,7 @@ window.I18N_DICT = {
     host_link: `Ссылка ведущего`, link_copied: `Ссылка скопирована. Не показывай её игрокам`, link_shared: `Ссылка отправлена. Не показывай её игрокам`, link_none: `На этом экране нет ключа ведущего`,
     link_prompt_hint: `Скопируй ссылку и не показывай её игрокам`,
     btn_im_host: `Я ведущий`, host_paste_ph: `Вставь ссылку ведущего`, btn_ok: `OK`, host_bad: `Это не ссылка ведущего`, btn_take: `Забрать управление`, host_lost_msg: `Управление перешло к другому экрану`,
+    noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код`, code_ph: `Код комнаты`, btn_go: `Перейти`,
     viewer: `Этот экран — зритель: управляет другая вкладка`,
     lobby_who: `В игре`, lobby_n: `{n} из 16`, lobby_free: `свободно`,
     lobby_scan: `Наведи камеру телефона на QR или открой ссылку и введи имя.`,
@@ -411,6 +417,7 @@ window.I18N_DICT = {
     host_link: `Host link`, link_copied: `Link copied. Don't show it to players`, link_shared: `Link sent. Don't show it to players`, link_none: `This screen has no host key`,
     link_prompt_hint: `Copy the link and keep it from the players`,
     btn_im_host: `I'm the host`, host_paste_ph: `Paste the host link`, btn_ok: `OK`, host_bad: `That is not a host link`, btn_take: `Take control`, host_lost_msg: `Another screen took control`,
+    noroom_title: `There is no such room`, noroom_text: `Check the code`, code_ph: `Room code`, btn_go: `Go`,
     viewer: `This screen is a viewer: another tab is in control`,
     lobby_who: `Players`, lobby_n: `{n} of 16`, lobby_free: `free`,
     lobby_scan: `Point your phone camera at the QR or open the link and type your name.`,
@@ -454,6 +461,7 @@ window.I18N_DICT = {
     host_link: `Σύνδεσμος οικοδεσπότη`, link_copied: `Ο σύνδεσμος αντιγράφηκε. Μην τον δείχνεις στους παίκτες`, link_shared: `Ο σύνδεσμος στάλθηκε. Μην τον δείχνεις στους παίκτες`, link_none: `Αυτή η οθόνη δεν έχει κλειδί οικοδεσπότη`,
     link_prompt_hint: `Αντίγραψε τον σύνδεσμο και μην τον δείχνεις στους παίκτες`,
     btn_im_host: `Είμαι ο οικοδεσπότης`, host_paste_ph: `Επικόλλησε τον σύνδεσμο οικοδεσπότη`, btn_ok: `OK`, host_bad: `Αυτός δεν είναι σύνδεσμος οικοδεσπότη`, btn_take: `Πάρε τον έλεγχο`, host_lost_msg: `Τον έλεγχο πήρε άλλη οθόνη`,
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό`, code_ph: `Κωδικός δωματίου`, btn_go: `Πήγαινε`,
     viewer: `Αυτή η οθόνη είναι θεατής: ελέγχει άλλη καρτέλα`,
     lobby_who: `Παίκτες`, lobby_n: `{n} από 16`, lobby_free: `ελεύθερο`,
     lobby_scan: `Στρέψε την κάμερα του κινητού στο QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.`,
@@ -1202,6 +1210,7 @@ function onMessage(m) {
   switch (m.type) {
     case "hello":
       state = m.state;
+      if (gone$) gone$.hello();
       if (!isHost) {
         let token = null;
         try { token = localStorage.getItem(hostKey()); } catch (e) {}
@@ -1244,11 +1253,33 @@ function onMessage(m) {
   }
 }
 
+// Комнаты нет (404 до первого hello) и «закрылась» (после) — разные экраны. Серверного различителя нет:
+// опечатка в коде и комната, убранная по сроку, до hello выглядят одинаково (К-11).
+const gone$ = window.MP && MP.roomGone ? MP.roomGone({ showForm: noRoom, onClosed: closed }) : null;
 function gone() {
+  if (gone$) gone$.gone(); else closed();
+}
+function endScreen() {
   dead = true;
   for (const id of ["lobby", "arena", "result"]) $(id).classList.add("hidden");
   $("seal").classList.remove("on");
+  $("hostbar").innerHTML = "";
+}
+function closed() {
+  endScreen();
   showBanner(T("expired"));
+}
+function noRoom() {
+  endScreen();
+  const b = $("banner");
+  b.classList.remove("hidden");
+  b.innerHTML = `<div class="gonebox"><div class="t">${escapeHtml(T("noroom_title"))}</div><div>${escapeHtml(T("noroom_text"))}</div>
+    <form id="goneform" autocomplete="off"><input id="gonecode" maxlength="24" placeholder="${escapeHtml(T("code_ph"))}" aria-label="${escapeHtml(T("code_ph"))}" value="${escapeHtml(CODE)}"><button type="submit">${escapeHtml(T("btn_go"))}</button></form></div>`;
+  $("goneform").onsubmit = (e) => {
+    e.preventDefault();
+    const c = MP.roomGone.normalize($("gonecode").value);
+    if (c) location.href = `bomb-board.html?r=${encodeURIComponent(c)}`;
+  };
 }
 
 async function boot() {

@@ -291,7 +291,7 @@ function hostEnv(extra) {
   return { w, log, store, hl: w.MP.hostLink(o) };
 }
 
-console.log("hostLink");
+console.log("hostLink / roomGone");
 test("hostLink.url: ?r=КОД&h=ТОКЕН рядом с доской, без хвоста старого адреса", () => {
   const e = hostEnv();
   assert.equal(e.hl.url(), "https://randomhost.online/bomb-board.html?r=BEAR74&h=tok_ABCdef123456");
@@ -355,6 +355,29 @@ test("hostLink при MP_OFF: copy и take ничего не делают", () =
   assert.equal(e.hl.take(1), false);
   assert.deepEqual(e.log.sent, []);
 });
+test("roomGone: до hello 404 -> showForm; после hello -> onClosed; повторный gone молчит", () => {
+  const w = load();
+  const calls = [];
+  let g = w.MP.roomGone({ showForm: () => calls.push("form"), onClosed: () => calls.push("closed") });
+  assert.equal(g.seen(), false);
+  assert.equal(g.gone(), "noroom");
+  assert.equal(g.gone(), "noroom");
+  assert.deepEqual(calls, ["form"]);
+  g = w.MP.roomGone({ showForm: () => calls.push("form2"), onClosed: () => calls.push("closed") });
+  g.hello();
+  assert.equal(g.gone(), "closed");
+  assert.deepEqual(calls, ["form", "closed"]);
+});
+test("roomGone.submit: итоговый код после фильтра, пустой -> null", () => {
+  const w = load();
+  const g = w.MP.roomGone({});
+  assert.equal(g.submit(" bear 74 "), "BEAR74");
+  assert.equal(g.submit("be-ar_01"), "BEAR");
+  assert.equal(g.submit("   "), null);
+  assert.equal(g.submit("!!!"), null);
+  assert.equal(w.MP.roomGone.normalize("a".repeat(30)).length, 12);
+});
+
 (async () => {
   for (const t of asyncTests) {
     try { await t.fn(); passed++; console.log("  ✓ " + t.name); }
