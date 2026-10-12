@@ -5,7 +5,7 @@
 #   tools/run-all-tests.sh --bench          — плюс sim/bench: floe sim 100, rapids sim 300 6 и 300 12, lastq bench-cell
 #   tools/run-all-tests.sh --out FILE       — таблица ещё и в FILE (markdown)
 #   tools/run-all-tests.sh --logs DIR       — куда класть полные логи (по умолчанию: временный каталог)
-#   tools/run-all-tests.sh quip fibs        — только перечисленные игры (имя «lib» — node --test lib/test-*.js)
+#   tools/run-all-tests.sh quip fibs        — только перечисленные игры (имя «lib» — node --test lib/test-*.js + tools/testkit/mp-units.js)
 #   tools/run-all-tests.sh --parallel       — игры параллельно (быстрее, но тайминговые тесты могут мигать)
 #
 # Код выхода: 0 — всё зелёное или красное только из списка известных (known_red ниже); 1 — новое красное;
@@ -82,7 +82,9 @@ run_game() {
       local files; files="$(ls "$ROOT"/lib/test-*.js 2>/dev/null)"
       if [ -z "$files" ]; then echo "- нет lib/test-*.js" >>"$log"; echo "skip 0 0 0" >"$LOGS/$g.res"; return; fi
       # глоб файлов, не каталог (Node >= 21 каталог не раскрывает)
-      ( cd "$ROOT" && node --test lib/test-*.js ) >>"$log" 2>&1 || rc=$? ;;
+      ( cd "$ROOT" && node --test lib/test-*.js ) >>"$log" 2>&1 || rc=$?
+      # клиентский каркас mp-common.js (vm-тесты + проверка уровня ES2017, T-W1-04): строки «✓/✗»
+      ( cd "$ROOT" && node tools/testkit/mp-units.js ) >>"$log" 2>&1 || rc=1 ;;
     auction)
       # у auction нет npm test: движок — node --test test-game.js; протокол — test-server.js против dev-сервера
       run_step "$log" "$ROOT/auction" node --test test-game.js || rc=1
@@ -106,8 +108,8 @@ run_game() {
       run_step "$log" "$ROOT/$g" npm test || rc=$? ;;
   esac
   local c p f; c="$(count_from_log "$log")"; p="${c% *}"; f="${c#* }"
-  # auction: сумма TAP (test-game) и самописных ✓/✗ (test-server)
-  if [ "$g" = auction ]; then
+  # auction: сумма TAP (test-game) и самописных ✓/✗ (test-server); lib: TAP lib/test-*.js + ✓/✗ mp-units
+  if [ "$g" = auction ] || [ "$g" = lib ]; then
     local tp tf sp sf
     tp="$(grep -E '^# pass [0-9]+' "$log" | awk '{s+=$3} END{print s+0}')"
     tf="$(grep -E '^# fail [0-9]+' "$log" | awk '{s+=$3} END{print s+0}')"
