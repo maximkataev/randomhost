@@ -348,6 +348,63 @@ const SOLVER = String.raw`(async () => {
         await gallery.shot(`v_${phase}_${victimIsMe ? "me" : "other"}_${size[0]}`);
       }
     }
+    // --- 3б. T-W3-11: вёрстка телефона 320×568 (хеш 8 знаков, вердикт без разрыва слов, имена, «← Все игры», тост, «ты вне игры», «ты»)
+    await gallery.call("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+    const w311 = await gallery.evaluate(`(() => {
+      const real = window.bmPhone.state, me = window.bmPhone.me;
+      const mk = () => { const f = JSON.parse(JSON.stringify(real)); f.phase = "live"; f.startedAt = Date.now() - 38000; return f; };
+      const out = {};
+      // имена «Игорь🔥» и «Игорь🔥 2» в сетке целей различимы и не обрезаны
+      const f1 = mk();
+      f1.players = real.players.slice(0, 1).concat([{ id: "x1", name: "Игорь🔥", color: "#e8322b", online: true }, { id: "x2", name: "Игорь🔥 2", color: "#1e6fd9", online: true }, { id: "x3", name: "Alexandra-Lupita", color: "#16924a", online: true }]);
+      f1.players[0] = Object.assign({}, real.players.find((p) => p.id === me));
+      f1.bombs = [{ id: 0, holder: me, from: null, since: Date.now() - 3000, alive: true, commit: "ab12cd34" + "0".repeat(56), min: 30, max: 90 }];
+      f1.me = { id: me, challenge: null, armed: true, holding: [0], passN: {} };
+      screen = null; state = f1; renderTargets();
+      out.targets = [...document.querySelectorAll("#targets .target .nm")].map((n) => ({ t: n.textContent, clipped: n.scrollHeight > n.clientHeight + 1 }));
+      // красный экран: «← Все игры» не кликабельна, тост — под шапкой, не на кнопках
+      const a = document.querySelector(".util a");
+      out.backPE = getComputedStyle(a).pointerEvents; out.backAria = a.getAttribute("aria-disabled");
+      toast("Не успел — держи другое");
+      const tr = document.getElementById("toast").getBoundingClientRect(), tg = document.getElementById("targets").getBoundingClientRect();
+      out.toastBottom = Math.round(tr.bottom); out.targetsTop = Math.round(tg.top);
+      // отсчёт: 8 знаков, по тапу полный; часов с начала раунда на телефоне нет
+      const f2 = mk(); f2.phase = "countdown"; f2.phaseEnd = Date.now() + 3000;
+      f2.bombs = [{ id: 0, holder: null, from: null, since: 0, alive: true, commit: "ab12cd34" + "0".repeat(56), min: 30, max: 90 }];
+      f2.me = { id: me, challenge: null, armed: false, holding: [] };
+      screen = null; calmKey = ""; state = f2; render();
+      out.hashShort = (document.querySelector(".seal .hash") || {}).textContent;
+      out.long64 = /[0-9a-f]{40,}/i.test(document.getElementById("app").innerText);
+      document.querySelector(".seal .hash").click();
+      out.hashFull = (document.querySelector(".seal .hash") || {}).textContent.length;
+      // пассивный экран: метка «ты», нет часов «0:38», выбывший без «(а)»
+      const f3 = mk();
+      f3.bombs = [{ id: 0, holder: f3.players.find((p) => p.id !== me).id, from: null, since: Date.now() - 3000, alive: true, commit: "ab12cd34" + "0".repeat(56), min: 30, max: 90 }];
+      f3.me = { id: me, challenge: null, armed: false, holding: [] };
+      screen = null; calmKey = ""; state = f3; render();
+      out.you = document.querySelectorAll(".pl.me .you").length;
+      out.clock = /\\d+:\\d\\d/.test((document.querySelector(".mini .t") || {}).textContent || "");
+      f3.players.find((p) => p.id === me).out = true; screen = null; calmKey = ""; render();
+      out.outText = document.querySelector(".status").innerText;
+      f3.players.find((p) => p.id === me).out = false;
+      // итоги: вердикт печати переносится по словам
+      Object.assign(f3, { phase: "finished", loserId: f3.players[0].id, round: 7, seals: [{ round: 7, bomb: 0, commit: "ab".repeat(32), min: 30, max: 90, revealed: true, fuseMs: 47000, salt: "00", seal: "x" }], bombs: [] });
+      screen = null; boomKey = ""; render();
+      const ok = document.getElementById("sealok");
+      out.verdictBreak = getComputedStyle(ok).wordBreak + "/" + getComputedStyle(ok).overflowWrap;
+      out.finishedHash = (document.querySelector(".seal .hash") || {}).textContent;
+      out.gender = /\\([а-я]+\\)/.test(document.body.innerText);
+      return out;
+    })()`);
+    check(w311 && w311.targets && w311.targets.length === 3 && new Set(w311.targets.map((t) => t.t)).size === 3 && w311.targets.every((t) => !t.clipped), "320: «Игорь🔥» / «Игорь🔥 2» / «Alexandra-Lupita» в сетке целей различимы и не обрезаны" + (w311 && w311.__error ? " " + w311.__error : ""));
+    check(w311 && w311.backPE === "none" && w311.backAria === "true", "красный экран: «← Все игры» неактивна");
+    check(w311 && w311.toastBottom <= w311.targetsTop + 1, `красный экран: тост не перекрывает плитки (низ ${w311 && w311.toastBottom}, плитки с ${w311 && w311.targetsTop})`);
+    check(w311 && /^[0-9a-f]{8}…$/.test(w311.hashShort) && w311.long64 === false && w311.hashFull === 64, "отсчёт: хеш 8 знаков, по тапу полный 64");
+    check(w311 && w311.you === 1 && w311.clock === false, "пассивный экран: метка «ты», часов с начала раунда нет");
+    check(w311 && !/\([а-я]+\)/.test(w311.outText) && !w311.gender, "экран «ты вне игры» и итоги без «(а)»");
+    check(w311 && /^normal/.test(w311.verdictBreak) && /^[0-9a-f]{8}…$/.test(w311.finishedHash), "итоги: вердикт печати без разрыва внутри слова, хеш короткий");
+    await gallery.shot("w311_320");
+
     check(gallery.errors.length === 0, "галерея без JS-ошибок" + (gallery.errors[0] ? ": " + gallery.errors[0] : ""));
     // вернуть настоящее состояние
     await gallery.call("Emulation.setDeviceMetricsOverride", { width: 360, height: 640, deviceScaleFactor: 2, mobile: true });
