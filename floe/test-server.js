@@ -12,8 +12,9 @@ const BASE = `http://localhost:${PORT}`;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let passed = 0, failed = 0;
 async function test(name, fn) {
+  if (process.env.ONLY && !name.includes(process.env.ONLY)) return;
   try { await fn(); passed++; console.log("  ✓ " + name); }
-  catch (e) { failed++; console.log("  ✗ " + name + "\n    " + String(e.stack || e).split("\n").slice(0, 3).join("\n    ")); }
+  catch (e) { failed++; console.log("  ✗ " + name + "\n    " + String(e.stack || e).split("\n").slice(0, 6).join("\n    ")); }
 }
 
 function startServer(env = {}) {
@@ -72,7 +73,7 @@ function rawWs(code) {
       await host.until((b) => b.roster && b.roster.length === 6, 3000);
       assert.strictEqual(host.hostId, host.id);
       const names = host.roster.map((p) => p.name).sort();
-      assert.deepStrictEqual(names, ["Бот", "Бот 2", "Бот 3", "Бот 4", "Бот 5", "Хост"]);
+      assert.deepStrictEqual(names, ["Бот", "Бот (2)", "Бот (3)", "Бот (4)", "Бот (5)", "Хост"]);
       assert.strictEqual(new Set(host.roster.map((p) => p.ci)).size, 6, "шапки разные");
       await host.until((b) => b.snap && b.snap.ph === "lobby", 2000);
     });
@@ -361,6 +362,75 @@ function rawWs(code) {
         const row = ws.msgs.filter((m) => m.type === "s").pop().p.find((p) => p[0] === id);
         assert.strictEqual(row[6], "gone", "st в снимке: " + row[6]);
         ws.close(); host.close();
+      } finally { s2.kill("SIGTERM"); }
+    });
+
+    await test("вход по имени (lib/seats): «Это ты?» после 2 с офлайна, подтверждение отзывает прежний токен; тёзка онлайн — «Имя (2)»; эмодзи не рвутся; аноним 4000 молча, ждущий подтверждения живёт дольше", async () => {
+      const port2 = PORT + 330;
+      const base2 = `http://localhost:${port2}`;
+      const env2 = Object.assign({}, process.env, { PORT: String(port2), NODE_ENV: "development", DUMP_FILE: path.join(require("os").tmpdir(), `floe-test-${port2}.json`), FLOE_CFG: JSON.stringify({ FIGHT_T: 25, OFFLINE_T: 1 }), ANON_TTL_MS: "3000", CLAIM_WAIT_MS: "9000" });
+      const s2 = spawn(process.execPath, [path.join(__dirname, "server.js")], { env: env2, stdio: ["ignore", "pipe", "pipe"] });
+      const sock = (code) => new Promise((res, rej) => {
+        const w = new WebSocket(`ws://localhost:${port2}/floe/ws?r=${code}`);
+        w.msgs = []; w.closed = null;
+        w.on("message", (m) => w.msgs.push(JSON.parse(m)));
+        w.on("close", (c) => (w.closed = c));
+        w.on("open", () => res(w)); w.on("error", rej);
+      });
+      const until = async (fn, ms) => { for (let i = 0; i < ms / 50; i++) { const v = fn(); if (v) return v; await wait(50); } return fn(); };
+      const last = (w, type) => w.msgs.filter((m) => m.type === type || m.error === type).pop();
+      try {
+        for (let i = 0; i < 50; i++) { try { if ((await fetch(base2 + "/floe/api/health")).ok) break; } catch {} await wait(100); }
+        const r = await NetBot.createRoom(base2);
+        const host = await NetBot.connect({ base: base2, code: r.code, name: "Хост", hostToken: r.hostToken, think: false });
+        // эмодзи на границе 15 символов: срез по символам, без «�»
+        const emo = await sock(r.code);
+        emo.send(JSON.stringify({ type: "join", name: "Двенадцать" + "😀".repeat(8), caps: ["claim"] }));
+        const ej = await until(() => last(emo, "joined"), 2000);
+        assert.strictEqual(Array.from(ej.name).length, 15);
+        assert(!/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(ej.name), "нет одиночных суррогатов");
+        // Маша входит, закрывается
+        const m1 = await sock(r.code);
+        m1.send(JSON.stringify({ type: "join", name: "Маша", caps: ["claim"] }));
+        const j1 = await until(() => last(m1, "joined"), 2000);
+        assert.strictEqual(j1.name, "Маша");
+        // тёзка, пока Маша онлайн, — «Маша (2)»
+        const twin = await sock(r.code);
+        twin.send(JSON.stringify({ type: "join", name: "маша", caps: ["claim"] }));
+        const jt = await until(() => last(twin, "joined"), 2000);
+        assert.strictEqual(jt.name, "маша (2)");
+        assert.strictEqual(jt.renamed, true);
+        m1.close();
+        await wait(300);
+        // раньше 2 с: «подожди» (retry)
+        const c0 = await sock(r.code);
+        c0.send(JSON.stringify({ type: "join", name: "Маша", caps: ["claim"] }));
+        const e0 = await until(() => last(c0, "name_claim"), 2000);
+        assert(e0 && e0.retry === true, "в первые 2 с — тихий повтор");
+        // после 2 с — «Это ты?», сокет ждёт дольше ANON_TTL_MS (3 с)
+        await wait(2000);
+        const c1 = await sock(r.code);
+        c1.send(JSON.stringify({ type: "join", name: "Маша", caps: ["claim"] }));
+        const e1 = await until(() => last(c1, "name_claim"), 2000);
+        assert(e1 && !e1.retry && e1.name === "Маша", "подтверждение: " + JSON.stringify(e1));
+        await wait(5000);
+        assert.strictEqual(c1.closed, null, "ждущий подтверждения не отключён по ANON_TTL_MS");
+        // без подтверждения старый токен жив; подтвердили — токен отозван
+        c1.send(JSON.stringify({ type: "join", name: "Маша", caps: ["claim"], claim: true }));
+        const j2 = await until(() => last(c1, "joined"), 2000);
+        assert.strictEqual(j2.playerId, j1.playerId);
+        assert.strictEqual(j2.resumed, true);
+        assert.notStrictEqual(j2.token, j1.token);
+        const old = await sock(r.code);
+        old.send(JSON.stringify({ type: "join", token: j1.token, name: "Маша", caps: ["claim"] }));
+        const jo = await until(() => last(old, "joined") || last(old, "name_claim") || last(old, "name_taken"), 2000);
+        assert(!(jo.type === "joined" && jo.playerId === j1.playerId && jo.token === j1.token), "прежний токен отозван");
+        // аноним без входа: закрыт кодом 4000 на ~3 с
+        const idle = await sock(r.code);
+        await until(() => idle.closed != null, 25000);   // проверка живости раз в 20 с
+        assert.strictEqual(idle.closed, 4000);
+        [emo, twin, c0, c1, old].forEach((w) => { try { w.close(); } catch {} });
+        host.close();
       } finally { s2.kill("SIGTERM"); }
     });
 
