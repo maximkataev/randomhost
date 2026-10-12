@@ -425,3 +425,57 @@ test("дамп прошлой версии без `played`: после рест�
   assert.ok(![s.state.awards.liar, s.state.awards.detector, s.state.awards.gullible].filter(Boolean).some((x) => x.ids.includes("z")));
   b.close();
 });
+
+// ---- T-W0-05: сканер секретов (tools/testkit/scan.js) по трём видам: доска, игрок, сокет без токена ----
+const { scanFrames } = require("../tools/testkit/scan");
+
+test("секреты не в кадрах: какая плитка — правда, isTruth, авторы, чужая ложь до раскрытия; токены — доска / игрок / сокет без токена", async () => {
+  const room = await createRoom({ short: true }, 20);
+  const b = await board(room.code, room.hostToken);
+  const ps = [await player(room.code, "Аня"), await player(room.code, "Боря"), await player(room.code, "Вика")];
+  const anon = client(room.code); // сокет без join/host
+  await anon.open;
+  b.send({ type: "start" });
+  await playThrough(b, ps);
+  assert.strictEqual(b.state.phase, "finished");
+  await sleep(200);
+
+  const C = require("./content");
+  const byText = new Map(C.ru.map((f) => [f.text, f]));
+  const frames = (c) => c.raw.map((r) => JSON.parse(r));
+  const OPT = /^state\.options\[\d+\]\.(kind|authors|hint|late|choosers|likes|isTruth|truth)$/;
+  const clients = [["board", b], ["player", ps[0]], ["player", ps[1]], ["player", ps[2]], ["anon", anon]];
+  let scanned = 0, chooseFrames = 0, lieFrames = 0;
+  for (const [view, c] of clients) {
+    const list = frames(c);
+    scanned += list.length;
+    const foreign = ps.map((p) => p.token).filter((t) => t && t !== c.token);
+    // до раскрытия (topic/lie/choose): у плитки только text (+ mine у автора), нет kind/authors/hint/late/choosers/likes/isTruth,
+    // нет state.truth, нет ответа в fact, нет служебных pool/alts/key
+    const v = scanFrames(list.map((f) => ({ view, frame: f })), {
+      phases: ["lobby", "topic", "lie", "choose"],
+      forbiddenKeys: ["pool", "alts", "key", "isTruth", "hostToken",
+        (p, k, val) => OPT.test(p) && "поле плитки до раскрытия",
+        (p, k, val) => p === "state.truth" && val !== null && "state.truth до раскрытия",
+        (p) => /^state\.fact\.(answer|source|alts)$/.test(p) && "ответ в fact"],
+      forbiddenSubstrings: view === "board" ? foreign : foreign.concat(room.hostToken),
+    });
+    assert.deepStrictEqual(v, [], `${view}: ${JSON.stringify(v.slice(0, 3))}`);
+    for (const f of list) {
+      const s = f.state;
+      if (!s || !s.fact) continue;
+      if (s.phase === "choose") chooseFrames++;
+      const fa = byText.get(s.fact.text);
+      if (s.phase === "lie") {
+        lieFrames++;
+        // в фазе лжи правда не уходит нигде в кадре (если её нет в тексте самого факта)
+        if (fa && !s.fact.text.includes(fa.answer)) assert.deepStrictEqual(scanFrames([{ view, frame: f }], { forbiddenSubstrings: [fa.answer] }), [], `${view}: правда в кадре фазы лжи`);
+        // чужая ложь в фазе лжи не видна ни доске, ни телефонам, ни анониму
+        const otherLies = ps.filter((p) => p !== c).map((p) => `выдумка ${p.id} `);
+        assert.deepStrictEqual(scanFrames([{ view, frame: f }], { forbiddenSubstrings: view === "board" || view === "anon" ? ps.map((p) => `выдумка ${p.id} `) : otherLies }), [], `${view}: чужая ложь в фазе lie`);
+      }
+    }
+  }
+  assert.ok(scanned > 30 && chooseFrames > 3 && lieFrames > 3, `кадров мало — проверка пустая: ${scanned}/${chooseFrames}/${lieFrames}`);
+  for (const c of [b, anon, ...ps]) c.close();
+});
