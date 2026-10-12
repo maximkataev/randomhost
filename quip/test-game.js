@@ -873,3 +873,25 @@ test("skipPhase: заставка, ответы, голосование, рас�
   g.abort(1e6);
   assert.strictEqual(g.skipPhase(1e6 + 5000).reason, "bad_phase");
 });
+
+// quip-024 (U-29): раскрытие сетки финала растёт с числом карточек: 7 с до 4, +1,5 с за каждую сверх, потолок 14 с
+test("раскрытие сетки финала: 7 → 14 с в зависимости от числа карточек", () => {
+  const dur = (n) => {
+    const g = game(n);
+    let guard = 0;
+    while (!(g.s.plan[g.s.ri] === "final" && g.s.phase === "vote") && guard++ < 400) {
+      if (g.s.phase === "answer") answerAll(g, g.s.phaseStart + 1);
+      else g.tick(g.s.phaseEnd);
+    }
+    assert.strictEqual(g.s.phase, "vote");
+    const m = g.s.matchups[g.s.mi];
+    assert.strictEqual(m.kind, "grid");
+    g.tick(g.s.phaseEnd);
+    assert.strictEqual(g.s.phase, "reveal");
+    return { ms: g.s.phaseEnd - g.s.phaseStart, n: m.order.length };
+  };
+  const a = dur(4), b = dur(6), c = dur(8);
+  assert.strictEqual(a.ms, T.revealGrid);
+  assert.strictEqual(b.ms, T.revealGrid + 1500 * (b.n - 4));
+  assert.ok(c.ms > b.ms && c.ms <= 14000);
+});

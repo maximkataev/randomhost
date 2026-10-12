@@ -1086,7 +1086,7 @@ function drawWall() {
       <div class="wall${c.kind === "duel" ? " duel" : ""}${n > 4 ? " dense" : ""}${huge ? " huge" : ""}" id="wall" lang="${qpLang()}">
         ${c.answers.map((a, i) => `<div class="card ans pinned" id="a${i}" style="--d:${(i * 0.08).toFixed(2)}s;--rot:${i % 2 ? 3 : -3}deg"><span class="l">${String.fromCharCode(65 + i)}</span>
           <div class="tally" id="tally${i}"></div>
-          <div class="t">${qpAnswerHtml(a)}</div>
+          <div class="t">${boardAnswerHtml(a)}</div>
           <div class="foot"><div class="who" id="who${i}"></div><span class="tags" id="tags${i}"></span><span class="vn" id="vn${i}"></span><span class="pts" id="pts${i}"></span></div>
           <div class="stamp" id="stamp${i}"></div></div>`).join("")}
         ${c.kind === "duel" ? `<div class="vs">${T("vs")}</div>` : ""}
@@ -1128,20 +1128,66 @@ function pickWall(n, kind) {
   setWallGrid(wall, n, best.cols);
   fitWall(maxAns, maxPrompt);
 }
+// Ответ на доске: слово без пробелов длиннее 18 знаков получает мягкие переносы через каждые 12, текст — не длиннее 120 знаков
+// («…»). Иначе одно «жжжж…» на 80 знаков считалось «не влезающим» и тянуло шрифт всей пары вниз до 14 px (quip-008).
+const BOARD_WORD = 18, BOARD_CHUNK = 12, BOARD_MAX = 120;
+function softText(raw) {
+  let cp = Array.from(String(raw == null ? "" : raw));
+  if (cp.length > BOARD_MAX) cp = cp.slice(0, BOARD_MAX - 1).concat("…");
+  return cp.join("").split(/(\s+)/).map((w) => {
+    const c = Array.from(w);
+    if (c.length <= BOARD_WORD || /^\s+$/.test(w)) return escapeHtml(w);
+    const parts = [];
+    for (let i = 0; i < c.length; i += BOARD_CHUNK) parts.push(escapeHtml(c.slice(i, i + BOARD_CHUNK).join("")));
+    return parts.join("<wbr>");
+  }).join("");
+}
+function boardAnswerHtml(a) {
+  if (!a) return "";
+  if (a.items) return `<ol class="items">${a.items.map((x) => `<li>${softText(x)}</li>`).join("")}</ol>`;
+  return softText(a.text);
+}
 function fitWall(ans, prompt) {
   if (ans) wallFit = { ans, prompt };
   if (!wallFit || !$("wall")) return;
   const pr = $("prompt");
   if (pr) fit(pr, "--pfs", wallFit.prompt, 20);
-  // шрифт ответов — один на всю стену, по самому длинному
   const cards = [...main.querySelectorAll(".ans")];
-  let fs = wallFit.ans;
-  const over = () => cards.some((x) => { const t = x.querySelector(".t"); return t.scrollHeight > t.clientHeight + 1 || t.scrollWidth > t.clientWidth + 1; });
-  main.style.setProperty("--afs", fs + "px");
+  const overOf = (x) => { const t = x.querySelector(".t"); return t.scrollHeight > t.clientHeight + 1 || t.scrollWidth > t.clientWidth + 1; };
   main.classList.add("fitting");
-  let guard = 0;
+  if ($("wall").classList.contains("duel")) {
+    // дуэль (≤ 4 карточки): шрифт у каждой таблички свой, не ниже 18 px; в паре разница не больше чем в 1,5 раза.
+    // Длинный ответ одного не «выключает» ответ другого (quip-008)
+    const floor = 18;
+    const sizes = cards.map((c) => {
+      let fs = wallFit.ans;
+      c.style.setProperty("--afs", fs + "px");
+      let guard = 0;
+      while (fs > floor && overOf(c) && guard++ < 30) { fs -= 2; c.style.setProperty("--afs", fs + "px"); }
+      return fs;
+    });
+    const lo = Math.min.apply(null, sizes);
+    const cap = Math.round(lo * 1.5 / 2) * 2;
+    cards.forEach((c, i) => c.style.setProperty("--afs", Math.min(sizes[i], cap) + "px"));
+    main.style.setProperty("--afs", lo + "px");
+    main.classList.remove("fitting");
+    return;
+  }
+  // Шрифт ответов — один на всю стену. Но табличка-«выброс» (одна, которой нужен шрифт меньше 70 % от медианного)
+  // сжимается сама, а не тянет вниз остальные: длинный пункт одного не должен делать нечитаемым весь финал (quip-008)
   const floor = cards.length > 8 ? 10 : 12;
-  while (fs > floor && over() && guard++ < 30) { fs -= 2; main.style.setProperty("--afs", fs + "px"); }
+  const sizes = cards.map((c) => {
+    let fs = wallFit.ans;
+    c.style.setProperty("--afs", fs + "px");
+    let guard = 0;
+    while (fs > floor && overOf(c) && guard++ < 30) { fs -= 2; c.style.setProperty("--afs", fs + "px"); }
+    return fs;
+  });
+  const sorted = sizes.slice().sort((a, b) => a - b);
+  const med = sorted[Math.floor(sorted.length / 2)];
+  const common = Math.min.apply(null, sizes.filter((x) => x >= med * 0.7));
+  cards.forEach((c, i) => { if (sizes[i] < common) c.style.setProperty("--afs", sizes[i] + "px"); else c.style.removeProperty("--afs"); });
+  main.style.setProperty("--afs", common + "px");
   main.classList.remove("fitting");
 }
 if (document.fonts) {
@@ -1250,7 +1296,7 @@ function drawFinal() {
     if (!a) return "";
     const p = player(a.playerId) || { name: "?", avatar: "?" };
     return `<div class="card award"><div class="k">${escapeHtml(label)}</div><div class="q">${qpPromptHtml(a.prompt)}</div>
-      <div class="a">${qpAnswerHtml(a)}</div><div class="by">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · ${escapeHtml(qpVotes(a.votes))}</div></div>`;
+      <div class="a">${boardAnswerHtml(a)}</div><div class="by">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · ${escapeHtml(qpVotes(a.votes))}</div></div>`;
   };
   const fast = present().filter((p) => p.avgMs != null).sort((a, b) => a.avgMs - b.avgMs)[0];
   const reason = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : "";

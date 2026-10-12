@@ -43,7 +43,9 @@ const T = {
   voteDuel: 15000,
   voteGrid: 20000,
   revealDuel: 5000, // успеть прочитать авторов и отсмеяться (3–4 с сливались в мельтешение)
-  revealGrid: 7000,
+  revealGrid: 7000, // база; растёт с числом карточек: +revealGridPer за каждую сверх 4, не больше revealGridMax (quip-024)
+  revealGridPer: 1500,
+  revealGridMax: 14000,
   scores: 6000,
 };
 
@@ -607,7 +609,9 @@ class Game {
     });
     s.phase = "reveal";
     s.phaseStart = now;
-    s.phaseEnd = now + (m.kind === "duel" ? T.revealDuel : T.revealGrid);
+    // сетка финала: 6 карточек × 3 пункта за 7 с не прочесть — время растёт с числом карточек (quip-024, U-29)
+    const gridMs = Math.min(T.revealGridMax, T.revealGrid + T.revealGridPer * Math.max(0, m.order.length - 4));
+    s.phaseEnd = now + (m.kind === "duel" ? T.revealDuel : gridMs);
     const ev = [{ type: "reveal", mid: m.id, winners, sweep }];
     if (m.jinx.length) ev.push({ type: "jinx", mid: m.id });
     return ev;
