@@ -36,13 +36,17 @@
   }
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; overflow: hidden; background: #051b31; color: var(--ink); font: 500 15px/1.4 Montserrat, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-  body { touch-action: manipulation; }
+  body { touch-action: manipulation; overscroll-behavior-x: none; }
   body.playing { touch-action: none; user-select: none; -webkit-user-select: none; }
   button, input { font: inherit; color: inherit; }
   button { cursor: pointer; }
   #arena { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   /* на широком экране арена справа от панели, а не под ней */
   @media (min-width: 900px) { body.with-panel #arena { left: 340px; width: calc(100% - 340px); } body.with-panel .hud, body.with-panel .banner, body.with-panel .big { margin-left: 170px; } }
+  /* 701–899 px и выше 500: арена на весь экран под панелью (льдину отодвигает render.setInsets), плашки — по центру видимой части */
+  @media (min-width: 701px) and (max-width: 899px) and (min-height: 501px) { body.with-panel .hud, body.with-panel .banner, body.with-panel .big, body.with-panel .verdict, body.with-panel .conn { margin-left: 164px; }
+    /* и ниже переключателя языка, а не под ним */
+    body.inlobby .hud { top: calc(60px + env(safe-area-inset-top, 0px)); } }
   @media (max-height: 500px) and (min-width: 600px) and (orientation: landscape) { body.with-panel #arena { left: 300px; width: calc(100% - 300px); } body.with-panel .verdict, body.with-panel .hud { margin-left: 150px; } }
 
   /* ----- Шапка ----- */
@@ -51,7 +55,7 @@
   body.playing .util, body.playing .lang-switch { display: none !important; }
 
   /* ----- Левая панель: вход, лобби, итог ----- */
-  .panel { position: fixed; top: 12px; left: 12px; bottom: 12px; width: 316px; z-index: 10; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(10, 36, 64, 0.96), rgba(6, 24, 44, 0.96)); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 18px 50px rgba(0,0,0,0.35); overflow: hidden; transition: transform 0.3s ease, opacity 0.3s; }
+  .panel { position: fixed; top: 12px; left: calc(12px + env(safe-area-inset-left, 0px)); bottom: 12px; width: 316px; z-index: 10; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(10, 36, 64, 0.96), rgba(6, 24, 44, 0.96)); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 18px 50px rgba(0,0,0,0.35); overflow: hidden; transition: transform 0.3s ease, opacity 0.3s; }
   body.playing .panel, body.watching .panel { transform: translateX(calc(-100% - 24px)); opacity: 0; pointer-events: none; }
   /* reload посреди боя: до первого снимка панель скрыта без анимации, иначе лобби-панель «уезжала» поверх арены (floe-011) */
   body.booting .panel { visibility: hidden; transition: none; }
@@ -140,6 +144,10 @@
   .king-line { text-align: center; color: var(--muted); font-size: 13px; font-weight: 600; }
   .king-line b { color: var(--ink); }
   .noms div { display: flex; justify-content: space-between; gap: 8px; }
+  /* кнопки итога: «Реванш» на всю ширину, «Повтор» и «В лобби» в ряд; на низком ландшафте — все три в одну строку */
+  .res-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .res-btns > .btn:first-child:nth-last-child(n+2) { grid-column: 1 / -1; }
+  .noms-foot { display: none; }
   .table { display: grid; gap: 3px; }
   .table .r { display: grid; grid-template-columns: 22px 14px 1fr auto; gap: 8px; align-items: center; font-size: 14px; padding: 5px 4px; border-bottom: 1px solid var(--line); }
   .table .r.me { background: rgba(255,255,255,0.06); border-radius: 8px; }
@@ -157,11 +165,12 @@
   .timer { font-variant-numeric: tabular-nums; font-size: 18px; min-width: 72px; text-align: center; }
   .timer.low { color: var(--gold); }
   .timer.ot { color: #fff; background: rgba(205, 48, 58, 0.92); }
-  .quit { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 12px; z-index: 6; display: none; width: 40px; height: 38px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 16px; }
+  .quit { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: calc(12px + env(safe-area-inset-left, 0px)); z-index: 6; display: none; width: 40px; height: 38px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 16px; }
   body.playing .quit { display: block; }
   .big { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 8; pointer-events: none; font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: min(22vw, 150px); color: #06182c; -webkit-text-stroke: 4px #fff; paint-order: stroke fill; text-shadow: 0 6px 0 rgba(6,24,44,0.25); opacity: 0; white-space: nowrap; }
   .big.show { animation: pop 0.9s ease-out forwards; }
   .big.word { font-size: min(11vw, 76px); }
+  @keyframes popLow { 0% { opacity: 0; transform: translate(-50%, 0) scale(1.5); } 18% { opacity: 1; transform: translate(-50%, 0) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, 0) scale(0.9); } }
   @keyframes pop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); } 18% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); } }
   .banner { position: fixed; left: 50%; top: 70px; transform: translateX(-50%) translateY(-20px); z-index: 8; pointer-events: none; background: rgba(205, 48, 58, 0.96); color: #fff; border-radius: 16px; padding: 12px 22px; font-weight: 800; font-size: 20px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4); opacity: 0; transition: opacity 0.25s, transform 0.25s; max-width: calc(100vw - 32px); }
   .banner small { display: block; font-weight: 600; font-size: 12px; opacity: 0.85; margin-top: 2px; }
@@ -171,7 +180,7 @@
   .tag.top { top: 12px; }
   /* «вы смотрите» у зрителя — внизу, чтобы не спорить с баннером ведущего сверху */
   .tag:not(.top) { top: auto; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
-  .feed { position: fixed; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 5; display: flex; flex-direction: column; gap: 5px; align-items: flex-end; pointer-events: none; }
+  .feed { position: fixed; right: calc(12px + env(safe-area-inset-right, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 5; display: flex; flex-direction: column; gap: 5px; align-items: flex-end; pointer-events: none; }
   .feed div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 5px 10px; font-size: 13px; font-weight: 600; animation: feedIn 0.25s ease-out; max-width: 70vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .feed .mine { border-color: var(--gold); background: rgba(60, 44, 6, 0.92); }
   .feed .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
@@ -203,7 +212,8 @@
   .outpill { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 6; display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 9px 16px; font-weight: 700; font-size: 14px; white-space: nowrap; }
   body.out .outpill { display: block; }
   /* вердикт поверх арены на итоге */
-  .verdict { position: fixed; left: 50%; bottom: 7%; transform: translateX(-50%); z-index: 7; pointer-events: none; font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: min(44px, 4.2vw); color: #fff; text-align: center; text-shadow: 0 0 2px #06182c, 0 3px 0 #06182c, 0 6px 24px rgba(0,0,0,0.6); display: none; max-width: calc(100vw - 32px); line-height: 1.15; }
+  .verdict { position: fixed; left: 50%; bottom: 7%; transform: translateX(-50%); z-index: 7; pointer-events: none; font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: min(44px, 4.2vw); color: #fff; text-align: center; text-shadow: 0 0 2px #06182c, 0 3px 0 #06182c, 0 6px 24px rgba(0,0,0,0.6); display: none; max-width: 92vw; line-height: 1.15; white-space: nowrap; }
+  @media (orientation: portrait) { .verdict { white-space: normal; } }
   .verdict.show { display: block; animation: verdictIn 0.5s cubic-bezier(.2,1.4,.4,1); }
   @keyframes verdictIn { from { opacity: 0; transform: translate(-50%, 20px) scale(0.9); } }
   @media (min-width: 900px) { body.with-panel .verdict { margin-left: 170px; } }
@@ -272,7 +282,7 @@
     .brand h1 { font-size: 17px; }
     .code-box .code { font-size: 20px; }
     .verdict { font-size: 22px; bottom: 5%; white-space: nowrap; }
-    .outpill { bottom: auto; top: 44px; font-size: 12px; padding: 6px 12px; }
+    .outpill { bottom: calc(6px + env(safe-area-inset-bottom, 0px)); font-size: 12px; padding: 6px 12px; max-width: calc(100vw - 24px); }
     .feed div { font-size: 11px; padding: 3px 8px; }
     .feed div:nth-last-child(n+4) { display: none; }
     .panel { top: 8px; bottom: 8px; left: 8px; width: 290px; }
@@ -283,6 +293,36 @@
     .banner { top: auto; bottom: 14px; font-size: 14px; padding: 7px 14px; border-radius: 12px; max-width: 42vw; }
     .banner small { font-size: 11px; }
     .tag { top: 44px; }
+    /* T-W3-08: плашки не закрывают льдину. Выбывший: «вы в воде» — внизу по центру (место свободно: тач скрыт),
+       баннер «Неудачник — это вы» дублирует её — не показываем. Ленту событий — влево под ✕, правый край и DASH свободны.
+       «3-2-1-Толкайся!» — в строку таймера справа от HUD, а не на центр льдины */
+    body.out .banner { display: none; }
+    .feed, body.is-touch.playing .feed { left: calc(12px + env(safe-area-inset-left, 0px)); right: auto; top: calc(52px + env(safe-area-inset-top, 0px)); bottom: auto; align-items: flex-start; }
+    .feed div { max-width: 36vw; background: rgba(6, 24, 44, 0.75); }
+    .feed div:nth-last-child(n+3) { display: none; }
+    .big { top: calc(4px + env(safe-area-inset-top, 0px)); left: calc(50% + 190px); transform: translate(-50%, 0); font-size: 46px; -webkit-text-stroke: 3px #fff; }
+    .big.word { font-size: 28px; }
+    .big.show { animation-name: popLow; }
+    /* в лобби кнопка рывка меньше — меньше закрывает льдину на разминке */
+    body.is-touch.inlobby .dash-btn { right: calc(12px + env(safe-area-inset-right, 0px)); bottom: 10px; width: 72px; height: 72px; font-size: 12px; }
+    body.is-touch.inlobby .dash-btn::after { inset: -5px; -webkit-mask: radial-gradient(circle, transparent 39px, #000 40px); mask: radial-gradient(circle, transparent 39px, #000 40px); }
+    /* итог: без шапки с названием, карточка ведущего и таблица плотнее, номинации и кнопки — в подвале (всегда в экране) */
+    .res-brand { display: none; }
+    .res-btns { grid-template-columns: 1.4fr 1fr 1fr; gap: 6px; }
+    .res-btns > .btn:first-child:nth-last-child(n+2) { grid-column: auto; }
+    .res-btns .btn { padding: 9px 4px; font-size: 13px; border-radius: 11px; box-shadow: 0 3px 0 #b88400; }
+    .res-btns .btn.ghost { box-shadow: none; padding: 9px 4px; font-size: 12px; }
+    .p-foot { padding: 8px 10px; gap: 6px; }
+    .noms-body { display: none; }
+    .p-foot > .noms-foot { display: block; padding: 0 2px; font-size: 11px; line-height: 1.35; }
+    .host-card { padding: 6px 10px; border-radius: 12px; display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; column-gap: 8px; }
+    .host-card .lbl { font-size: 10px; }
+    .host-card .nm { font-size: clamp(15px, calc(100cqi / var(--n, 8) / 1.1), 22px); margin-top: 0; }
+    .host-card .note { font-size: 11px; margin-top: 1px; flex-basis: 100%; }
+    .king-line { font-size: 12px; }
+    #pbody.res-body { padding: 8px 10px; gap: 6px; }
+    .table { gap: 0; }
+    .table .r { padding: 1px 4px; font-size: 12px; gap: 6px; }
     /* разминка в лобби — по центру видимой арены справа от панели и под переключателем языка */
     body.inlobby .hud { left: calc(50% + 149px); margin-left: 0; top: calc(62px + env(safe-area-inset-top, 0px)); max-width: calc(100% - 316px); }
     .tag.top { top: calc(62px + env(safe-area-inset-top, 0px)); }
@@ -751,7 +791,10 @@ window.I18N_DICT = {
       const lobby = document.body.classList.contains("inlobby"), pr = lobby ? $("panel").getBoundingClientRect() : null;
       // в лобби панель слева (ландшафт, десктоп) или листом снизу (портрет) — под ней джойстик не ловим
       const left = lobby && !sheetMq.matches ? pr.right : 0, bottomY = lobby && sheetMq.matches ? pr.top : innerHeight;
-      if (touch.id !== null || t.clientX > innerWidth * 0.62 || t.clientX < left || t.clientY > bottomY) continue;
+      // правый предел: в бою 62 % ширины; в лобби на ландшафте — до кнопки рывка (innerWidth − 120), иначе на 568 px зона была 54 px (floe-028).
+      // clientX < 24 — системный жест «назад» iOS: не стик (floe-041)
+      const right = lobby ? innerWidth - 120 : innerWidth * 0.62;
+      if (touch.id !== null || t.clientX > right || t.clientX < Math.max(left, 24) || t.clientY > bottomY) continue;
       touch.id = t.identifier; touch.ox = t.clientX; touch.oy = t.clientY; touch.x = touch.y = 0;
       $("stick").style.left = t.clientX + "px"; $("stick").style.top = t.clientY + "px";
       $("stick").classList.add("on"); $("knob").style.transform = "";
@@ -819,7 +862,8 @@ window.I18N_DICT = {
     showResults: false, replay: null, claim: null, codeOpen: false, lastCount: 0, resultsAt: 0, over: null, mySt: null, overAt: 0, overAsked: false,
   };
 
-  function setPanel(body, foot) {
+  function setPanel(body, foot, cls) {
+    $("pbody").className = "p-body" + (cls ? " " + cls : "");
     $("pbody").innerHTML = body;
     $("pfoot").innerHTML = foot || "";
     requestAnimationFrame(markMore);
@@ -987,14 +1031,15 @@ window.I18N_DICT = {
     const noms = [nomLine("nom_push", s.pusher.map((id) => nm(id) + " ×" + s.maxKos).join(", ")), nomLine("nom_self", s.selfFallers.map(nm).join(", "))];
     const iAmHost = net.me === net.hostId;
     const host = net.roster.find((p) => p.id === net.hostId);
-    setPanel(`${brand()}
+    setPanel(`${brand().replace('class="brand"', 'class="brand res-brand"')}
       <div class="host-card"><div class="lbl">${esc(T("res_host"))}</div><div class="nm" style="--n:${[...nm(h.id)].length + 2}">😅 ${esc(nm(h.id))}</div><div class="note">${esc(note)}</div></div>
       <div class="king-line">${esc(String(T("res_king")).split("{names}")[0])}<b>${esc(kings || "—")}</b></div>
-      <div class="table">${rows}</div>
-      <div class="noms">${noms.join("")}</div>`,
-      iAmHost
-        ? `<button class="btn" id="again" type="button">${esc(T("again"))}</button><div class="row2"><button class="btn ghost" id="rep" type="button">${esc(T("show_replay"))}</button><button class="btn ghost" id="lob" type="button">${esc(T("to_lobby"))}</button></div>`
-        : `<div class="waitline">${esc(tpl("wait_again", { name: host ? host.name : "…" }))}</div>${net.replay ? `<button class="btn ghost" id="rep" type="button">${esc(T("show_replay"))}</button>` : ""}`);
+      <div class="table">${rows}</div><div class="noms noms-body">${noms.join("")}</div>`,
+      // на низком ландшафте номинации и кнопки — в подвале листа: всегда в экране, прокручивается только таблица (floe-034);
+      // в остальных раскладках номинации — под таблицей, как раньше (копия в подвале скрыта)
+      `<div class="noms noms-foot">${noms.join("")}</div>` + (iAmHost
+        ? `<div class="res-btns"><button class="btn" id="again" type="button">${esc(T("again"))}</button><button class="btn ghost" id="rep" type="button">${esc(T("show_replay"))}</button><button class="btn ghost" id="lob" type="button">${esc(T("to_lobby"))}</button></div>`
+        : `<div class="waitline">${esc(tpl("wait_again", { name: host ? host.name : "…" }))}</div>${net.replay ? `<button class="btn ghost" id="rep" type="button">${esc(T("show_replay"))}</button>` : ""}`), "res-body");
     if ($("again")) $("again").onclick = () => { Sound.ensure(); send({ type: "start" }); };
     if ($("lob")) $("lob").onclick = () => send({ type: "lobby" });
     if ($("rep")) $("rep").onclick = startReplay;
@@ -1312,21 +1357,33 @@ window.I18N_DICT = {
   // портрет на телефоне: лист панели снизу закрывает до 64% экрана — льдину ставим в открытое окно
   // над ним, а кнопку рывка и подсказку джойстика поднимаем над листом (переменная --sheet)
   const sheetMq = matchMedia("(max-width: 700px) and (orientation: portrait)");
+  const lowMq = matchMedia("(max-height: 500px) and (orientation: landscape)");
   let insetAt = -1, sheetPx = -1;
   function syncInsets(t) {
     if (t - insetAt < 0.12 && insetAt >= 0) return;   // t — в секундах
     insetAt = t;
     const cl = document.body.classList;
-    let top = 0, bottom = 0;
+    let top = 0, bottom = 0, left = 0;
+    const hudEl = document.querySelector(".hud");
+    const hudOn = getComputedStyle(hudEl).display !== "none";
     // with-panel не проверяем: во время боя его нет и у того, кто ещё заполняет форму входа, а лист виден
-    if (sheetMq.matches && !cl.contains("playing") && !cl.contains("watching") && $("panel").style.display !== "none") {
+    const panelOn = !cl.contains("playing") && !cl.contains("watching") && !cl.contains("over-wait") && !cl.contains("booting") && $("panel").style.display !== "none";
+    if (panelOn) {
       const pr = $("panel").getBoundingClientRect();
-      bottom = Math.max(0, innerHeight - pr.top);
-      const hudEl = document.querySelector(".hud"), ur = document.querySelector(".util").getBoundingClientRect();
-      top = ur.bottom + 6;
-      if (cl.contains("inlobby") && getComputedStyle(hudEl).display !== "none") top = Math.max(top, hudEl.getBoundingClientRect().bottom + 4);
+      if (sheetMq.matches) {
+        bottom = Math.max(0, innerHeight - pr.top);
+        const ur = document.querySelector(".util").getBoundingClientRect();
+        top = ur.bottom + 6;
+        if (cl.contains("inlobby") && hudOn) top = Math.max(top, hudEl.getBoundingClientRect().bottom + 4);
+      } else {
+        // панель слева закрывает часть арены (ландшафт телефона, планшет, окно 800×600): льдину — в оставшееся окно (T-W3-08)
+        left = Math.max(0, pr.right + 8 - $("arena").getBoundingClientRect().left);
+        if (lowMq.matches && cl.contains("inlobby") && hudOn) top = hudEl.getBoundingClientRect().bottom + 4;   // «Разминка» не на льдине
+      }
     }
-    render.setInsets(top, bottom);
+    render.setInsets(top, bottom, left);
+    // подписи не заезжают под таймер: нижняя кромка HUD + 6
+    render.setTopGap(hudOn ? Math.ceil(hudEl.getBoundingClientRect().bottom) + 6 : 56);
     const sh = Math.round(bottom);
     if (sh !== sheetPx) { sheetPx = sh; document.documentElement.style.setProperty("--sheet", sh + "px"); }
   }
@@ -1334,7 +1391,7 @@ window.I18N_DICT = {
   $("skip").onclick = () => { if (ui.replay) finishReplay(); };
   $("quit").onclick = () => { if (confirm(T("quit_confirm"))) { send({ type: "leave" }); store.set(tokenKey(), ""); location.href = "floe-battle.html"; } };
   addEventListener("popstate", () => location.reload());
-  addEventListener("langchange", () => { render.setMe(net.me); applyStatic(); redraw(); });
+  addEventListener("langchange", () => { render.setMe(net.me); render.setSuffix(T("you")); applyStatic(); redraw(); });
   function applyStatic() {
     $("dashBtn").textContent = T("dash");
     $("stickHintT").textContent = T("stick_hint");
@@ -1343,6 +1400,7 @@ window.I18N_DICT = {
     if (document.body.classList.contains("out")) $("outpill").textContent = outPillText();
     $("skip").textContent = T("skip") + " ›";
     render.setWords(WORDS());
+    render.setSuffix(T("you"));
     placeSound();
   }
   // кнопка звука — сразу слева от переключателя языка, ширина которого зависит от языка

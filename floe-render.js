@@ -157,10 +157,12 @@
   // ===================================================================
   function create(canvas, opts = {}) {
     const ctx = canvas.getContext('2d');
-    let view = { w: 0, h: 0, dpr: 1, base: 1, cy: 0 };
+    let view = { w: 0, h: 0, dpr: 1, base: 1, cy: 0, cx: 0 };
     // заслонённые края экрана (лист панели снизу в портрете, таймер сверху): льдина вписывается
     // и центрируется в оставшемся окне; к новым значениям камера подъезжает плавно, без скачка
-    const inset = { t: 0, b: 0, tt: 0, tb: 0, set: false };
+    const inset = { t: 0, b: 0, l: 0, tt: 0, tb: 0, tl: 0, set: false };
+    let topGap = opts.topGap || 52;       // низ HUD страницы: подписи не заезжают под таймер (T-W3-08)
+    let meSuffix = opts.meSuffix || ' · вы'; // подпись «вы» — меняется на лету при смене языка
     const cam = { x: 0, y: 0, zoom: 1 };
     const shakeFx = { a: 0, x: 0, y: 0 };
     let me = opts.me || null;
@@ -183,7 +185,7 @@
     let simT = 0;
 
     const S = () => view.base * cam.zoom;
-    const sx = (x) => view.w / 2 + shakeFx.x + (x - cam.x) * S();
+    const sx = (x) => view.cx + shakeFx.x + (x - cam.x) * S();
     const sy = (y) => view.cy + shakeFx.y + (y - cam.y) * S() * YS;
 
     function rrect(g, x, y, w, h, r) {
@@ -202,22 +204,30 @@
     function resize(dt) {
       const w = Math.max(200, canvas.clientWidth);
       const h = Math.max(150, canvas.clientHeight);
-      if (!inset.set || !dt) { inset.t = inset.tt; inset.b = inset.tb; inset.set = true; }
-      else { const k = 1 - Math.exp(-dt * 6); inset.t += (inset.tt - inset.t) * k; inset.b += (inset.tb - inset.b) * k; if (Math.abs(inset.t - inset.tt) < 0.5) inset.t = inset.tt; if (Math.abs(inset.b - inset.tb) < 0.5) inset.b = inset.tb; }
+      if (!inset.set || !dt) { inset.t = inset.tt; inset.b = inset.tb; inset.l = inset.tl; inset.set = true; }
+      else {
+        const k = 1 - Math.exp(-dt * 6);
+        inset.t += (inset.tt - inset.t) * k; inset.b += (inset.tb - inset.b) * k; inset.l += (inset.tl - inset.l) * k;
+        if (Math.abs(inset.t - inset.tt) < 0.5) inset.t = inset.tt;
+        if (Math.abs(inset.b - inset.tb) < 0.5) inset.b = inset.tb;
+        if (Math.abs(inset.l - inset.tl) < 0.5) inset.l = inset.tl;
+      }
       // на телефонах плотность пикселей ограничена 1,5: разница на глаз мала, а кадр вдвое дешевле
       const coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
       const dpr = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
       const R = floe ? floe.R : 150;
-      const top = Math.max(h < 500 ? 44 : 70, inset.t);   // место под таймер сверху
+      const top = Math.max(h < 500 ? 48 : 70, inset.t);   // место под таймер сверху
       const avail = Math.max(90, h - top - inset.b);
-      const base = Math.min(w / (R * 2 * 1.14), avail / (R * 2 * YS * 1.08 + 30));
+      const availW = Math.max(120, w - inset.l);   // панель слева (лобби/итог на ландшафте) закрывает часть арены
+      const base = Math.min(availW / (R * 2 * 1.14), avail / (R * 2 * YS * 1.08 + 30));
+      const cx = inset.l + availW / 2;
       // без заслонок — как раньше (центр чуть ниже середины); с листом снизу — середина открытого окна
       const cy = inset.b > 0 || inset.t > 0
         ? (inset.t + h - inset.b) / 2 + VIEW_DY * Math.max(0, 1 - inset.b / 40)
         : h / 2 + VIEW_DY;
       const sized = w === view.w && h === view.h && dpr === view.dpr;
-      if (sized && Math.abs(base - view.base) < 1e-6 && Math.abs(cy - view.cy) < 1e-3) return;
-      view = { w, h, dpr, base, cy };
+      if (sized && Math.abs(base - view.base) < 1e-6 && Math.abs(cy - view.cy) < 1e-3 && Math.abs(cx - view.cx) < 1e-3) return;
+      view = { w, h, dpr, base, cy, cx };
       if (!sized) {
         canvas.width = Math.round(w * dpr);
         canvas.height = Math.round(h * dpr);
@@ -501,9 +511,22 @@
       }
       const fp = focus && focusMode === 'host' && snap && snap.players.find(p => p.id === focus);
       if (fp) {
+        // итог: рамка из неудачника и живой льдины (T-W3-08, floe-035): ни льдину, ни Царя на краю не срезает.
+        // Масштаб — не крупнее прежнего «на неудачнике» и не крупнее, чем влезает рамка с полями 12 %
         const c = floe ? floeCenter() : [0, 0];
-        tx = lerp(fp.x, c[0], 0.4); ty = lerp(fp.y, c[1], 0.4) - 10;
-        tz = clamp((Math.max(90, view.h - Math.max(inset.t, 0) - inset.b) * 0.42) / ((Math.hypot(fp.x - c[0], (fp.y - c[1]) * YS) * 0.6 + 60) * view.base), 1, 1.8);
+        let frad = 0;
+        if (floe) floe.shards.forEach((s, i) => {
+          if (shardVis[i].st === 'g') return;
+          for (const v of s.poly) frad = Math.max(frad, Math.hypot(v[0] - c[0], v[1] - c[1]));
+        });
+        const x0 = Math.min(c[0] - frad, fp.x - 26), x1 = Math.max(c[0] + frad, fp.x + 26);
+        const y0 = Math.min(c[1] - frad, fp.y - 56), y1 = Math.max(c[1] + frad, fp.y + 16);
+        tx = (x0 + x1) / 2; ty = (y0 + y1) / 2;
+        const aw = Math.max(90, view.w - inset.l) * 0.76;
+        const ah = Math.max(90, view.h - Math.max(view.h < 500 ? 48 : 70, inset.t) - inset.b) * 0.76;
+        const zFit = Math.min(aw / ((x1 - x0) * view.base), ah / ((y1 - y0) * YS * view.base));
+        const zHost = (Math.max(90, view.h - Math.max(inset.t, 0) - inset.b) * 0.42) / ((Math.hypot(fp.x - c[0], (fp.y - c[1]) * YS) * 0.6 + 60) * view.base);
+        tz = clamp(Math.min(zHost, zFit), 0.4, 1.8);
       }
       shakeFx.a *= Math.exp(-dt * 9);
       shakeFx.x = (rnd() - 0.5) * 2 * shakeFx.a;
@@ -518,7 +541,7 @@
     function screenTransform() { ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0); }
     function groundTransform() {
       const s = S(), d = view.dpr;
-      ctx.setTransform(d * s, 0, 0, d * s * YS, d * (view.w / 2 + shakeFx.x - cam.x * s), d * (view.cy + shakeFx.y - cam.y * s * YS));
+      ctx.setTransform(d * s, 0, 0, d * s * YS, d * (view.cx + shakeFx.x - cam.x * s), d * (view.cy + shakeFx.y - cam.y * s * YS));
     }
 
     function drawSea(t) {
@@ -1044,9 +1067,9 @@
       const X = sx(fp.x), Y = sy(fp.y) - 16 * S();
       const R = 70 * S();
       const g = ctx.createRadialGradient(X, Y, R * 0.35, X, Y, R * 2.2);
-      g.addColorStop(0, 'rgba(255,240,200,0.18)');
+      g.addColorStop(0, 'rgba(255,240,200,0.10)');
       g.addColorStop(0.35, 'rgba(3,12,24,0)');
-      g.addColorStop(1, 'rgba(3,12,24,0.55)');
+      g.addColorStop(1, 'rgba(3,12,24,0.4)');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, view.w, view.h);
     }
@@ -1064,6 +1087,15 @@
       g.addColorStop(1, `rgba(${col},${a})`);
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
+    }
+
+    // «толпа»: одна буква, а у тёзок по первой букве — две (floe-032: «К» и «К» — кто есть кто)
+    function crowdLetters(p, list) {
+      const ch = (n) => Array.from(String(n).trim());
+      const a = ch(p.name);
+      const first = (a[0] || '?').toUpperCase();
+      const dup = list.some(o => o !== p && String(o.name).trim() && ch(o.name)[0] && ch(o.name)[0].toUpperCase() === first);
+      return dup ? a.slice(0, 2).join('').toUpperCase() : first;
     }
 
     // Подписи: имя над каждым, у своего — «вы»; ближние к зрителю стоят на месте, дальние уступают вверх
@@ -1086,10 +1118,12 @@
         const king = snap.phase === 'over' && snap.kings && snap.kings.includes(p.id);
         const host = snap.host && snap.host.id === p.id;
         const crowd = list.length > 5 && p.st === 'ice' && p.id !== me && !king && !host && !(v.streak > 0) && (simT - (v.hitAt || -9) > 2) && edgeDist(p.x, p.y) > 28;
-        const text = crowd ? String(p.name).trim().charAt(0).toUpperCase() : (king ? '👑 ' : host ? '🎤 ' : '') + (p.online === false ? '📡 ' : '') + p.name + (p.id === me ? (opts.meSuffix || ' · вы') : '');
+        const text = crowd ? crowdLetters(p, list) : (king ? '👑 ' : host ? '🎤 ' : '') + (p.online === false ? '📡 ' : '') + p.name + (p.id === me ? meSuffix : '');
         const h = 18;
-        const w = crowd ? 22 : ctx.measureText(text).width + 24;
-        const X = sx(p.x);
+        const w = crowd ? Math.max(22, ctx.measureText(text).width + 14) : ctx.measureText(text).width + 24;
+        // подпись целиком в экране (и не под панелью слева): у края прижимается, а не усекается — «· вы» не теряется
+        const xmin = Math.max(0, inset.l) + w / 2 + 6, xmax = view.w - w / 2 - 6;
+        const X = xmax > xmin ? clamp(sx(p.x), xmin, xmax) : sx(p.x);
         const top = p.st === 'swim' ? 22 : p.st === 'fall' ? 40 : king ? 50 : 42;
         const Y0 = sy(p.y) - top * s - h / 2 - 2;
         let Y = Y0;
@@ -1099,7 +1133,7 @@
           Y = hit.y - h - 2;
         }
         // далеко от своего пингвина подпись не уезжает и не лезет под таймер сверху
-        Y = Math.max(Y, Y0 - 2 * (h + 2), Math.max(opts.topGap || 52, inset.t) + h / 2);
+        Y = Math.max(Y, Y0 - 2 * (h + 2), Math.max(topGap, inset.t) + h / 2);
         boxes.push({ x: X, y: Y, w });
         drawn.push({ p, X, Y, Y0, w, h, text, king, host, a: v.la, crowd });
       }
@@ -1171,7 +1205,9 @@
       get perf() { return perf.last; },
       setMe(id) { me = id; },
       // top/bottom — сколько пикселей сверху и снизу холста закрыто интерфейсом
-      setInsets(top, bottom) { inset.tt = Math.max(0, top || 0); inset.tb = Math.max(0, bottom || 0); },
+      setInsets(top, bottom, left) { inset.tt = Math.max(0, top || 0); inset.tb = Math.max(0, bottom || 0); inset.tl = Math.max(0, left || 0); },
+      setTopGap(px) { if (px > 0) topGap = px; },
+      setSuffix(s) { meSuffix = s || ' · вы'; },
       setWords(w) { Object.assign(words, w); },
       setFocus(id, mode) { if (focus && !id) camSnap = true; focus = id || null; focusMode = mode || null; },
       reset() { rings.length = drops.length = bursts.length = puffs.length = later.length = popups.length = pulses.length = 0; vignette.hit = 0; danger = 0; vis.clear(); snap = null; },
