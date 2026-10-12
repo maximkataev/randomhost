@@ -698,6 +698,13 @@ function handle(room, client, msg) {
       for (const c of room.sockets) if (c.playerId === msg.playerId) { c.playerId = null; send(c.ws, { type: "kicked" }); }
       return afterChange(room, events);
     }
+    case "skip": {
+      // «Дальше»: только ведущему (client.host выдаёт проверенный токен ведущего), как «время вышло»
+      if (!client.host || !hostRateOk(client)) return;
+      const r = g.skipPhase(t);
+      if (!r.ok) return reply({ type: "rejected", action: "skip", reason: r.reason });
+      return afterChange(room, r.events);
+    }
     case "end": return client.host && hostRateOk(client) ? afterChange(room, g.abort(t)) : undefined;
     case "lobby": {
       if (!client.host || !hostRateOk(client)) return;

@@ -657,3 +657,64 @@ test("черновик ответа: правило выкл. — игнорир
     for (const c of [b2, back, ...q]) c.close();
   });
 });
+
+// ---------- T-W2-19: «Дальше» ведущего, кик офлайн-игрока в игре, токен ведущего (quip-001/002/003) ----------
+
+test("skip: только ведущему с проверенным токеном, не раньше 800 мс, как «время вышло»; кик офлайн-игрока в игре — только ведущий", async () => {
+  const room = await createRoom({}, 1);
+  const b = await board(room.code, room.hostToken);
+  const ps = [await player(room.code, "Аня"), await player(room.code, "Боря"), await player(room.code, "Вика")];
+  b.send({ type: "start" });
+  await b.wait(statePred((s) => s.phase === "intro"));
+  // слишком рано: отказ, фаза не сдвинулась
+  b.send({ type: "skip" });
+  const rj = await b.wait((m) => m.type === "rejected" && m.action === "skip");
+  assert.strictEqual(rj.reason, "too_early");
+  assert.strictEqual(b.state.phase, "intro");
+  // игрок (не ведущий) и доска без токена skip не двигают
+  await sleep(900);
+  ps[0].send({ type: "skip" });
+  const anon = client(room.code);
+  await anon.open;
+  anon.send({ type: "host", token: "чужой" });
+  anon.send({ type: "skip" });
+  await sleep(300);
+  assert.strictEqual(b.state.phase, "intro", "skip от игрока и от доски с чужим токеном проигнорирован");
+  // ведущий: заставка -> ответы
+  b.send({ type: "skip" });
+  await b.wait(statePred((s) => s.phase === "answer"));
+  // в фазе ответов (К-9) — как таймаут: не успевшим 🐌
+  await sleep(900);
+  b.send({ type: "skip" });
+  await b.wait(statePred((s) => s.phase === "vote" || s.phase === "reveal"));
+  // кик офлайн-игрока посреди партии: только с доски ведущего; игрок убран из списка
+  ps[2].close();
+  await sleep(700);
+  await b.wait(statePred((s) => s.players.some((p) => p.name === "Вика" && !p.online)));
+  ps[1].send({ type: "kick", playerId: ps[2].id });
+  await sleep(200);
+  assert.ok(b.state.players.some((p) => p.id === ps[2].id), "кик от игрока проигнорирован");
+  b.send({ type: "kick", playerId: ps[2].id });
+  await b.wait(statePred((s) => !s.players.some((p) => p.id === ps[2].id && !p.left) || s.phase === "finished"));
+  for (const c of [b, anon, ps[0], ps[1]]) c.close();
+});
+
+test("ссылка ведущего: токен из другого окна даёт управление, прежняя доска узнаёт host_lost; чужой токен — bad host token (quip-001)", async () => {
+  const room = await createRoom({}, 1);
+  const b1 = await board(room.code, room.hostToken);
+  const b2 = client(room.code);
+  await b2.open;
+  b2.send({ type: "host", token: room.hostToken });
+  await b2.wait((m) => m.type === "host_ok");
+  await sleep(150);
+  assert.ok(b1.msgs.some((m) => m.type === "host_lost"), "прежняя доска получила host_lost");
+  const bad = client(room.code);
+  await bad.open;
+  bad.send({ type: "host", token: "x".repeat(16) });
+  assert.strictEqual((await bad.wait((m) => m.type === "error")).error, "bad host token");
+  // команда ведущего от потерявшей управление доски не проходит
+  b1.send({ type: "settings", settings: { hints: 3 } });
+  await sleep(200);
+  assert.strictEqual(b2.state.settings.hints, 2);
+  for (const c of [b1, b2, bad]) c.close();
+});

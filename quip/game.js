@@ -62,6 +62,9 @@ const SMALL = 4; // до стольких игроков дуэли идут «�
 const ANSWER_MAX = 80;
 const ITEM_MAX = 50; // греческие слова длинные: на 40 пункт резался посреди слова
 const REACT_GAP = 2000;
+// «Дальше» ведущего не раньше, чем через столько после начала фазы: тап в тот миг, когда фаза сменилась сама,
+// иначе проскакивал бы следующую (T-W2-19, quip-003; как SKIP_MIN_MS в fibs)
+const SKIP_MIN_MS = 800;
 const REACTIONS = ["😂", "🔥", "😱", "👏", "💀"];
 const POINTS = 100;
 const WIN_BONUS = 100;
@@ -655,6 +658,18 @@ class Game {
     s.matchups = [];
     s.mi = -1;
     return ev.concat([{ type: "lobby" }]);
+  }
+
+  // «Дальше» ведущего (T-W2-19, quip-003): фаза закрывается как «время вышло» — то же состояние, что даёт таймаут,
+  // без новых правил. В фазе ответов (К-9) не успевшим ставится 🐌 (или черновик при RULE_U28_SERVER_DRAFT), в голосовании
+  // не проголосовавшие теряют голос — как по таймеру. Не раньше SKIP_MIN_MS от начала фазы.
+  skipPhase(now) {
+    const s = this.s;
+    if (!["intro", "answer", "vote", "reveal", "scores"].includes(s.phase)) return { ok: false, reason: "bad_phase", events: [] };
+    if (s.phaseEnd == null) return { ok: false, reason: "bad_phase", events: [] };
+    if (s.phaseStart != null && now - s.phaseStart < SKIP_MIN_MS) return { ok: false, reason: "too_early", events: [] };
+    s.phaseEnd = now;
+    return { ok: true, events: this.tick(now) };
   }
 
   abort(now) {

@@ -829,3 +829,47 @@ test("RULE_U28_SERVER_DRAFT=1: чужая схватка, уже отправл�
     assert.strictEqual(h.answerDraft(mm.authors[0], mm.id, "x").reason, "not_answer");
   });
 });
+
+// ---- T-W2-19 (quip-003, К-9): «Дальше» ведущего ----
+test("skipPhase: заставка, ответы, голосование, раскрытие, табло закрываются как таймаут; не раньше 800 мс; лобби и итоги — отказ", () => {
+  const lobby = Game.create({ settings: {}, code: "SKIP22", rnd: rig(), content: fixture() });
+  assert.strictEqual(lobby.skipPhase(1000).reason, "bad_phase");
+  const g = Game.create({ settings: {}, code: "SKIP22", rnd: rig(), content: fixture() });
+  names(5).forEach((id) => g.addPlayer({ id, name: id }));
+  g.start(0);
+  assert.strictEqual(g.s.phase, "intro");
+  // слишком рано: тап в миг смены фазы не перепрыгивает следующую
+  assert.strictEqual(g.skipPhase(100).reason, "too_early");
+  assert.strictEqual(g.s.phase, "intro");
+  assert.ok(g.skipPhase(900).ok);
+  assert.strictEqual(g.s.phase, "answer");
+  // фаза ответов (К-9): как таймаут — не успевшим 🐌, ответившие остаются
+  const m = g.s.matchups[0];
+  const [a, b] = m.authors;
+  g.answer(a, m.id, "мой ответ", 1000);
+  assert.strictEqual(g.skipPhase(1100).reason, "too_early");
+  const r = g.skipPhase(900 + 800);
+  assert.ok(r.ok);
+  assert.strictEqual(g.s.phase, "vote");
+  assert.strictEqual(m.answers[a].text, "мой ответ");
+  assert.strictEqual(m.answers[a].late, false);
+  assert.strictEqual(m.answers[b].late, true, "не успевший получил 🐌, как по таймауту");
+  // голосование: не проголосовавшие теряют голос, схватка раскрывается
+  const t0 = g.s.phaseStart;
+  const voter = g.present().find((p) => !m.authors.includes(p.id));
+  g.vote(voter.id, m.id, [m.order.findIndex((id) => id === a)], t0 + 10);
+  assert.ok(g.skipPhase(t0 + 900).ok);
+  assert.strictEqual(g.s.phase, "reveal");
+  assert.ok(m.result && m.result.tally.reduce((x, y) => x + y, 0) === 1, "считается только поданный голос");
+  // раскрытие → следующая схватка (или табло), табло → следующий раунд
+  let guard = 0;
+  while (g.s.phase !== "scores" && guard++ < 50) {
+    if (g.s.phase === "answer" || g.s.phase === "vote" || g.s.phase === "reveal") assert.ok(g.skipPhase(g.s.phaseStart + 900).ok);
+  }
+  assert.strictEqual(g.s.phase, "scores");
+  assert.ok(g.skipPhase(g.s.phaseStart + 900).ok);
+  assert.ok(g.s.phase === "intro" || g.s.phase === "finished");
+  // итоги: пропускать нечего
+  g.abort(1e6);
+  assert.strictEqual(g.skipPhase(1e6 + 5000).reason, "bad_phase");
+});
