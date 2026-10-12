@@ -46,6 +46,24 @@ test("hitKey: середина таблички — число, у линии �
   }
 });
 
+test("hitKey: на 320×568 (строка 22 px) сплит у линии — полоса не уже 4 px (roulette-020)", () => {
+  const { ev } = load();
+  const W = 224, H = 22.3 * 13, ch = H / 13;
+  // число 17: ряд 6 (r=5), колонка 1; fy в долях зоны чисел
+  const rowTop = (r) => (r + 1) * ch; // строка 0 — зеро
+  const keyAtY = (n, yPx) => { // yPx — от верха строки числа n
+    const r = Math.floor((n - 1) / 3), c = (n - 1) % 3;
+    return ev(`hitKey(${(c + 0.5) / 3}, ${(rowTop(r) + yPx) / H}, ${W}, ${H})`);
+  };
+  assert.strictEqual(keyAtY(17, ch / 2), "n:17");
+  assert.strictEqual(keyAtY(17, ch / 2 + 6), "n:17"); // в таблице номера
+  assert.strictEqual(keyAtY(17, 3), "sp:14-17");    // 3 px от верхней линии — сплит с верхним
+  assert.strictEqual(keyAtY(17, ch - 3), "sp:17-20"); // 3 px от нижней — с нижним
+  assert.strictEqual(keyAtY(17, 4.5), "n:17");       // за полосой — число
+  // крупный экран: таблица номера не уже прежнего (≤13 px от центра)
+  assert.strictEqual(ev(`hitKey(${1.5 / 3}, ${(6.5 * 44.2 + 12) / (44.2 * 13)}, 316, ${44.2 * 13})`), "n:17");
+});
+
 test("initials: слова, эмодзи бота, кодовые точки", () => {
   const { ev } = load();
   assert.strictEqual(ev(`initials("Маша Иванова")`), "МИ");
