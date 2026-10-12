@@ -288,7 +288,7 @@ function qpConfetti(o) {
   const cv = document.createElement("canvas");
   cv.className = "qp-confetti";
   cv.setAttribute("aria-hidden", "true");
-  cv.style.cssText = "position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:60";
+  cv.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:60";
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const W = innerWidth, H = innerHeight;
   cv.width = W * dpr; cv.height = H * dpr;

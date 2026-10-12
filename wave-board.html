@@ -100,7 +100,7 @@
   /* замок место держит всегда: плитка не шире после «клац», соседи не прыгают */
   .pc::after { content: "🔒"; visibility: hidden; }
   .pc.on::after { visibility: visible; }
-  .pc.author::after, .pc:has(.pts)::after { display: none; }
+  .pc.author::after, .pc.sc::after { display: none; } /* .sc — плитка с очками: без :has(), его нет в старом Chromium проектора */
   .pc.author { border-style: dashed; background: transparent; }
   .pc.off { opacity: .45; }
   .pc .pts { font-weight: 1000; font-variant-numeric: tabular-nums; }
@@ -261,15 +261,15 @@
 
   /* ---------- узкий экран (хост открыл экран игры с телефона): лобби — одна прокручиваемая колонка.
      Сначала то, что нужно хосту: код + QR + ссылка, настройка, кнопка старта; ниже — игроки и пример.
-     Только лобби (body:has(.lobby)), остальные фазы и ТВ-раскладка не трогаются. ---------- */
+     Только лобби (body.in-lobby), остальные фазы и ТВ-раскладка не трогаются. ---------- */
   @media (max-width: 760px) {
-    body:has(.lobby) { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }
+    body.in-lobby { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }
     /* шапка липкая и с фоном: прокручиваемое содержимое уходит под неё, а не под звук/переключатель языка */
-    body:has(.lobby) .top { position: sticky; top: 0; background: var(--bg); padding-left: 16px; gap: 10px; }
-    body:has(.lobby) .brand { min-width: 0; font-size: 19px; }
-    body:has(.lobby) .brand span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-    body:has(.lobby) main { flex: none; }
-    .screen:has(> .lobby) { position: static; padding: 4px 16px calc(5vh + 28px); }
+    body.in-lobby .top { position: sticky; top: 0; background: var(--bg); padding-left: 16px; gap: 10px; }
+    body.in-lobby .brand { min-width: 0; font-size: 19px; }
+    body.in-lobby .brand span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    body.in-lobby main { flex: none; }
+    .screen.lobbyscr { position: static; padding: 4px 16px calc(5vh + 28px); }
     .lobby { display: flex; flex-direction: column; gap: 16px; height: auto; }
     .lobby > .col { display: contents; }
     /* название уже в шапке — крупный заголовок на телефоне не нужен */
@@ -316,7 +316,7 @@
   }
   /* телефон вертикально: шапке не хватает места на название рядом со звуком и языками — остаётся волна-логотип */
   @media (max-width: 440px) {
-    body:has(.lobby) .brand span { display: none; }
+    body.in-lobby .brand span { display: none; }
   }
 
   /* ---------- экран игры с телефона: все фазы после лобби. ТВ-раскладка (шире 760 и выше 500) не трогается ---------- */
@@ -560,6 +560,22 @@ function fit(box, holder, varName, max, min) {
   }
 }
 const vh = (k) => Math.round(window.innerHeight * k);
+// aspect-ratio появился в Chrome 88: в старом движке проектора у .dialbox нет ширины (шкала — главный визуал игры),
+// поэтому там размер считаем сами: ширина = высота × 1000/540, но не шире родителя. В новых браузерах функция ничего не делает.
+const NO_AR = !(window.CSS && CSS.supports && CSS.supports("aspect-ratio", "1 / 1"));
+function fixDials() {
+  if (!NO_AR) return;
+  main.querySelectorAll(".dialbox").forEach((b) => {
+    const p = b.parentNode;
+    b.style.width = "";
+    b.style.height = "";
+    const pw = p.clientWidth, ph = p.clientHeight;
+    if (!pw || !ph) return;
+    const w = Math.max(1, Math.floor(Math.min(pw, (ph * 1000) / 540)));
+    b.style.width = w + "px";
+    b.style.height = Math.floor((w * 540) / 1000) + "px";
+  });
+}
 // крупный заголовок: если самое длинное слово шире экрана (телефон), уменьшаем кегль; на ТВ всё влезает — не трогаем
 function fitShout(h) {
   if (!h) return;
@@ -666,7 +682,7 @@ function drawLobby() {
   viewKey = key;
   if (fresh) {
     qrDrawn = false;
-    main.innerHTML = `<div class="screen"><div class="lobby">
+    main.innerHTML = `<div class="screen lobbyscr"><div class="lobby">
       <div class="col"><h1 class="shout">${escapeHtml(T("game_name"))}</h1><div class="eyebrow">${T("lobby_players")} · <span id="pn"></span></div><div class="seats" id="seats"></div><div class="free" id="free"></div></div>
       <div class="col">
         <div class="joinbox"><div id="qr"></div><div style="min-width:0;flex:1"><div class="bigcode" id="bigcode">${escapeHtml(CODE)}</div><div class="url">${escapeHtml(url.replace(/^https?:\/\//, "")).replace("?r=", "<wbr>?r=")}</div><div class="scan">${T("lobby_scan")}</div></div></div>
@@ -696,6 +712,7 @@ function drawLobby() {
   const need = Math.max(0, state.minPlayers - ps.length);
   $("startbtn").disabled = !isHost || need > 0;
   // пример без места на шкалу схлопывался в ноль и наезжал на настройки — тогда прячем его целиком
+  fixDials();
   const demo = main.querySelector(".demo");
   if (demo) { demo.classList.remove("tiny"); const db = demo.querySelector(".dialbox"); if (db && db.clientHeight < 70) demo.classList.add("tiny"); }
   $("starthint").textContent = !isHost ? T("viewer") : need > 0 ? tpl("need_more", { n: need }) : "";
@@ -708,6 +725,7 @@ function runDemo() {
   const gs = [{ a: 40, color: "#1438e0", avatar: "🦊", pts: 0 }, { a: 100, color: "#e0115f", avatar: "🐙", pts: 200 }, { a: 136, color: "#0a8a4a", avatar: "🐸", pts: 400, best: true }];
   const plan = wvRevealPlan(gs.length);
   box.innerHTML = `<div class="dialbox">${wvDialSvg({ uid: "demo", target: 138, shutter: "open", guesses: gs, plan, missText: T("miss_short") })}</div>`;
+  fixDials();
   demoTimer = setTimeout(runDemo, 7000);
 }
 
@@ -726,7 +744,7 @@ function drawIntro() {
 function leadersHtml() {
   const list = present().slice().sort((a, b) => b.score - a.score).slice(0, 3);
   if (!list.length || !list[0].score) return "";
-  return `<div class="leaders"><div class="eyebrow">${T("leaders")}</div><div class="chips" style="justify-content:center">${list.map((p) => `<span class="pc">${avHtml(p)}<b>${escapeHtml(p.name)}</b><span class="pts">${p.score}</span></span>`).join("")}</div></div>`;
+  return `<div class="leaders"><div class="eyebrow">${T("leaders")}</div><div class="chips" style="justify-content:center">${list.map((p) => `<span class="pc sc">${avHtml(p)}<b>${escapeHtml(p.name)}</b><span class="pts">${p.score}</span></span>`).join("")}</div></div>`;
 }
 
 // ---------- все пишут подсказки ----------
@@ -803,7 +821,7 @@ function drawReveal() {
   else flash = escapeHtml(hostLine(card, guesses));
   const a = player(card.author);
   // очки игроков в нижней строке появляются вместе с табличками на шкале
-  const chips = guesses.map((g, i) => { const p = player(g.id); return p ? `<span class="pc" style="animation:slamIn .35s var(--press) both;animation-delay:${plan.badgeAt(i)}ms">${avHtml(p)}<b>${escapeHtml(p.name)}</b><span class="pts">${g.pts ? "+" + g.pts : "0"}</span></span>` : ""; });
+  const chips = guesses.map((g, i) => { const p = player(g.id); return p ? `<span class="pc sc" style="animation:slamIn .35s var(--press) both;animation-delay:${plan.badgeAt(i)}ms">${avHtml(p)}<b>${escapeHtml(p.name)}</b><span class="pts">${g.pts ? "+" + g.pts : "0"}</span></span>` : ""; });
   main.innerHTML = `<div class="screen">${clueBar(card, flash)}${dialBlock({ target: card.target, shutter: "open", label: wvNo(card.n), guesses, plan }, card.l, card.r)}
     <div class="foot"><div class="chips">${a ? `<span class="pc author" style="animation:slamIn .35s var(--press) both;animation-delay:${plan.done}ms">${avHtml(a)}<b>${escapeHtml(a.name)}</b><span class="pts">+${card.authorPts}</span></span>` : ""}${chips.join("")}</div><div class="count"></div><div class="secs"></div></div><div class="timer done" id="timer"><i></i></div></div>`;
   fitClue();
@@ -889,6 +907,7 @@ function drawFinal() {
     <div class="awards">${rows.join("")}${replay}<div class="hostbtns">${isHost ? `<button class="start" id="again" type="button">${T("btn_again")}</button><button class="ghostbtn" id="tolobby" type="button">${T("btn_lobby")}</button>` : ""}<a class="ghostbtn" href="index.html">${T("btn_home")}</a></div></div></div></div>`;
   fitShout(main.querySelector(".screen > h1"));
   // на низком экране шкала повтора схлопывается в ноль, а полюса вылезают из рамки — оставляем одну строку с подсказкой
+  fixDials();
   main.querySelectorAll(".replay").forEach((r) => { const d = r.querySelector(".dialbox"); if (d && d.clientHeight < 80) r.classList.add("compact"); });
   if (isHost) {
     $("again").onclick = () => conn.send({ type: "start" });
@@ -903,6 +922,7 @@ function render() {
   if (!state || dead) return;
   if (state.phase !== lastPhase) { if (lastPhase === "reveal" || state.phase === "lobby") clearLater(); lastPhase = state.phase; }
   document.body.dataset.phase = state.phase;
+  document.body.classList.toggle("in-lobby", state.phase === "lobby");
   paint(phaseColor());
   $("brand").textContent = T("game_name");
   $("codechip").textContent = CODE;
@@ -913,14 +933,15 @@ function render() {
   $("endbtn").setAttribute("aria-label", T("btn_end"));
   if (state.phase !== "lobby") clearTimeout(demoTimer);
   switch (state.phase) {
-    case "lobby": return drawLobby();
-    case "intro": return drawIntro();
-    case "clue": return drawClues();
-    case "guess": return drawGuess();
-    case "reveal": return drawReveal();
-    case "scores": return drawScores();
-    case "finished": return drawFinal();
+    case "lobby": drawLobby(); break;
+    case "intro": drawIntro(); break;
+    case "clue": drawClues(); break;
+    case "guess": drawGuess(); break;
+    case "reveal": drawReveal(); break;
+    case "scores": drawScores(); break;
+    case "finished": drawFinal(); break;
   }
+  fixDials();
 }
 $("endbtn").onclick = () => { if (confirm(T("btn_end") + "?")) conn.send({ type: "end" }); };
 

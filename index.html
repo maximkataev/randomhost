@@ -2026,6 +2026,52 @@ body.lang-spotlight-active .lang-switch {
 }
   </style>
 <script src="legacy-compat.js"></script>
+<script>
+// Возврат на главную (назад в браузере, «Главная», «Все игры») — на то же место, где ушли в игру.
+(function () {
+  var KEY = 'rh_home_scroll_v1';
+  var ss;
+  try { ss = window.sessionStorage; ss.length; } catch (e) { return; }
+  try { history.scrollRestoration = 'manual'; } catch (e) {}
+
+  function save() {
+    try { ss.setItem(KEY, String(Math.round(window.pageYOffset || 0))); } catch (e) {}
+  }
+  window.addEventListener('pagehide', save);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') save();
+  });
+
+  // Пришли с другой страницы нашего сайта (не с самой главной)? Тогда восстанавливаем.
+  var fromSite = false;
+  try {
+    var r = document.referrer ? new URL(document.referrer) : null;
+    var nav = performance.getEntriesByType('navigation')[0];
+    var type = nav && nav.type;
+    var homeRe = /^\/(index\.html)?$/;
+    fromSite = (r && r.origin === location.origin && !homeRe.test(r.pathname)) || type === 'back_forward' || type === 'reload';
+  } catch (e) {}
+  var target = 0;
+  try { target = fromSite ? parseInt(ss.getItem(KEY), 10) || 0 : 0; } catch (e) {}
+  if (!fromSite) { try { ss.removeItem(KEY); } catch (e) {} }
+  if (!target || location.hash) return;
+
+  var stop = false, tries = 0;
+  function apply() {
+    if (stop) return;
+    var max = document.documentElement.scrollHeight - window.innerHeight;
+    window.scrollTo({ top: Math.min(target, Math.max(0, max)), behavior: 'instant' });
+    // страница дорастает (шрифты, i18n, картинки) — повторяем, пока не доехали
+    if (max < target && ++tries < 40) setTimeout(apply, 100);
+  }
+  function cancel() { stop = true; }
+  window.addEventListener('wheel', cancel, { passive: true, once: true });
+  window.addEventListener('touchstart', cancel, { passive: true, once: true });
+  window.addEventListener('keydown', cancel, { once: true });
+  document.addEventListener('DOMContentLoaded', apply);
+  window.addEventListener('load', function () { apply(); setTimeout(apply, 300); });
+})();
+</script>
 </head>
 <body>
   <!-- Анимированный фон -->

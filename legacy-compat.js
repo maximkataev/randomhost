@@ -17,6 +17,18 @@
 (function () {
   'use strict';
 
+  // ParentNode.replaceChildren — Chrome 86+. Доски зовут его для мест игроков, подсказок и QR:
+  // без него в старом движке первая же перерисовка падает с TypeError, и доска остаётся пустой.
+  if (!Element.prototype.replaceChildren) {
+    var replaceChildren = function () {
+      while (this.firstChild) this.removeChild(this.firstChild);
+      this.append.apply(this, arguments);
+    };
+    [Element, Document, DocumentFragment].forEach(function (C) {
+      if (C && !C.prototype.replaceChildren) C.prototype.replaceChildren = replaceChildren;
+    });
+  }
+
   function supportsFlexGap() {
     var d = document.createElement('div');
     d.style.cssText = 'display:flex;flex-direction:column;row-gap:1px;position:absolute;visibility:hidden;pointer-events:none';

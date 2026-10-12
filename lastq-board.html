@@ -94,7 +94,14 @@
   .emo { font-style: normal; line-height: 1; }
   .join { display: flex; gap: 22px; align-items: center; }
   /* узкое окно: QR над кодом — код комнаты в узкой колонке рядом с QR обрезался */
-  @media (max-width: 1199px) { .join { flex-direction: column; align-items: flex-start; gap: 12px; } .join > div:last-child { width: 100%; } #qr { width: clamp(120px, calc(20 * var(--vh)), 180px); height: clamp(120px, calc(20 * var(--vh)), 180px); } }
+  @media (max-width: 1199px) {
+    .join { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 16px; align-items: start; }
+    .join > div:last-child { display: contents; }
+    .bigcode { grid-column: 1 / -1; grid-row: 1; }
+    #qr { grid-row: 2 / span 2; width: clamp(120px, calc(20 * var(--vh)), 180px); height: clamp(120px, calc(20 * var(--vh)), 180px); }
+    .url { grid-column: 2; grid-row: 2; margin-top: 0; }
+    .scan { grid-column: 2; grid-row: 3; margin-top: 0; }
+  }
   /* QR крупный и на белом: его сканируют с дивана, метров с трёх */
   #qr { flex: none; width: clamp(150px, calc(27 * var(--vh)), 250px); height: clamp(150px, calc(27 * var(--vh)), 250px); background: #fff; padding: 10px; }
   #qr img, #qr canvas { width: 100% !important; height: 100% !important; display: block; image-rendering: pixelated; }
@@ -288,6 +295,7 @@
   #track .road { position: absolute; left: var(--namew, 230px); right: 34px; top: 0; bottom: 0; pointer-events: none; }
   #track .pit { position: absolute; top: 0; bottom: 0; left: 0; background: var(--sand) radial-gradient(circle, rgba(93, 67, 23, .22) 1.4px, transparent 2px) 0 0 / 11px 11px; box-shadow: inset -10px 0 0 #fff; }
   #track .pit span { position: absolute; left: 14px; right: 22px; bottom: 10px; overflow: hidden; color: var(--sand-ink); font: 900 24px/1 var(--font); text-transform: uppercase; letter-spacing: .18em; white-space: nowrap; }
+  @media (max-width: 1300px) { #track .pit span { font-size: 16px; letter-spacing: .06em; left: 10px; } }
   #track .tick { position: absolute; top: 0; bottom: 0; border-left: 2px dashed rgba(242, 238, 227, .35); }
   #track .tick span { position: absolute; top: 6px; left: 6px; font: 800 20px/1 var(--mono); color: var(--chalk); }
   #track .tick:last-child span { left: auto; right: 6px; }
@@ -303,7 +311,10 @@
   .lname .no.place { background: var(--chalk); color: var(--night); box-shadow: inset 6px 0 0 var(--pc); }
   .lname .no.place.p1 { background: var(--gold); }
   .lname.off { opacity: .45; }
-  .lroad { position: relative; border-top: 3px solid rgba(242, 238, 227, .9); margin-right: 34px; --tk: clamp(26px, calc((100cqh - 36px) / var(--n, 3) - 8px), 76px); }
+  .lroad { position: relative; border-top: 3px solid rgba(242, 238, 227, .9); margin-right: 34px; }
+  /* --tk по умолчанию приходит из JS (buildTrack); точный размер от высоты дорожки — только где есть container queries,
+     иначе значение с cqh недействительно и жетон остаётся без размера */
+  @supports (container-type: size) { .lroad { --tk: clamp(26px, calc((100cqh - 36px) / var(--n, 3) - 8px), 76px); } }
   .lane:nth-child(odd) .lroad { background: rgba(0, 0, 0, .07); }
   .tok { position: absolute; top: 50%; left: 0; width: var(--tk, 40px); height: var(--tk, 40px); margin: calc(var(--tk, 40px) / -2) 0 0 calc(var(--tk, 40px) / -2); border-radius: 50%; background: var(--chalk); border: 4px solid var(--pc); display: grid; place-items: center; font-size: calc(var(--tk, 40px) * .58); line-height: 1; z-index: 3; box-shadow: 0 4px 0 rgba(0, 0, 0, .35); }
   /* ниже нуля — сидит в песке по пояс */
@@ -325,12 +336,13 @@
     #stage { gap: 10px; }
     .qbar { height: 46px; }
     .clock { font-size: 50px; }
-    .bopt { min-height: 72px; padding-block: 6px; }
+    .bopt { min-height: 72px; padding-top: 6px; padding-bottom: 6px; }
     .bopt .lt { width: 48px; height: 48px; font-size: 30px; line-height: 48px; }
     .bopts { gap: 10px; }
     .strip { min-height: 44px; font-size: 24px; }
     .strip .big { font-size: 34px; }
     #track { padding-top: 26px; }
+    body.dense .qtext .tag { display: none; }
   }
   @media (max-width: 1000px) {
     body { overflow: auto; }
@@ -346,6 +358,7 @@
     .seats { flex: none; }
     .tiles { grid-template-rows: none; grid-auto-rows: minmax(96px, auto); }
     .side { min-height: auto; }
+    .qtext { flex: none; min-height: 110px; }
     .cellwrap { grid-template-columns: minmax(0, 1fr); }
     .side { width: auto; }
     .top h1 { display: none; }
@@ -400,7 +413,8 @@
   .tile .st span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .cellwrap.dense .side { width: min(400px, calc(27 * var(--vw))); }
   .cellwrap.dense .tile .nm { font-size: clamp(16px, calc(2.6 * var(--vh)), 28px); gap: 6px; }
-  .cellwrap.dense .side:has(.headq:not(.hidden)) .warden { display: none; }
+  /* без :has() (Chromium <105 на проекторах): классы ставит syncSide() */
+  .cellwrap.dense .side.hq-on .warden { display: none; }
   .cellwrap.dense .side > * { grid-column: 1 / -1; }
   @media (max-height: 800px) { .strip { height: 46px; } }
   .cellwrap.dense .tile { padding: 8px 10px; gap: 6px; }
@@ -428,7 +442,7 @@
   /* палач и ставки — одной строкой, чтобы вопросу «Головы» досталась почти вся колонка */
   .side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); align-content: start; }
   .side > #passes, .side > .headq { grid-column: 1 / -1; }
-  .side > .warden:has(+ .betbox.hidden) { grid-column: 1 / -1; }
+  .side.bet-off > .warden { grid-column: 1 / -1; }
   .side .warden { grid-template-columns: minmax(0, 1fr); }
   .side .warden .wg { font-size: clamp(22px, calc(3 * var(--vh)), 34px); }
   .side .headq { height: 100%; }
@@ -912,7 +926,9 @@ function drawRevealParts() {
     while (w > 11 && ob.offsetHeight > boxH + 1) { w -= 1; ob.style.setProperty("--wfs", w + "px"); }
     // плашки на минимуме, а ряд всё ещё выше — ужимаем и текст вариантов
     let o = parseFloat(ob.style.getPropertyValue("--ofs")) || 30;
-    while (o > 16 && ob.offsetHeight > boxH + 1) { o -= 2; ob.style.setProperty("--ofs", o + "px"); }
+    while (o > 22 && ob.offsetHeight > boxH + 1) { o -= 2; ob.style.setProperty("--ofs", o + "px"); }
+    // всё равно выше — вопросу отдаём остаток: подгоняем его кегль заново, лучше мельче, чем обрезан
+    if (ob.offsetHeight > boxH + 1 && $("qtext") && $("qtext").firstChild) fit($("qtext").firstChild, $("qtext"), "--qfs", Math.round(LH() / 12), 18);
   }
   const elig = state.eligible.filter((id) => { const p = player(id); return p && !p.left; });
   const wrong = state.prisoners || elig.filter((id) => !picks[r].includes(id));
@@ -968,6 +984,7 @@ function drawCell() {
   const sig = cellSig + ":" + open;
   if ($("tiles").dataset.sig !== sig) { $("tiles").dataset.sig = sig; drawCellData(cell, open); }
   drawHeadQ(cell, now);
+  syncSide();
 }
 function drawCellData(cell, open) {
   for (const x of cell) {
@@ -999,6 +1016,14 @@ function drawCellData(cell, open) {
     $("passes").dataset.k = pk;
     $("passes").innerHTML = passes.map((x) => `<div class="passcode"><div class="h">${escapeHtml(tpl("pass_h", { name: nameOf(x.id) }))}</div><div class="code">${escapeHtml(x.passCode)}</div></div>`).join("");
   }
+}
+// состояние боковой колонки — классами (вместо :has(), которого нет в старых Chromium на проекторах)
+function syncSide() {
+  const side = stage.querySelector(".side");
+  if (!side) return;
+  const hq = $("headq"), bb = $("betbox");
+  side.classList.toggle("hq-on", !!hq && !hq.classList.contains("hidden"));
+  side.classList.toggle("bet-off", !!bb && bb.classList.contains("hidden"));
 }
 function drawHeadQ(cell, now) {
   const box = $("headq");
@@ -1170,7 +1195,7 @@ function buildTrack(ids) {
   // мало игроков — шкала ниже, вопросу больше места; больше шести — до 44 % высоты, чтобы имена читались из угла
   // (варианты тогда встают в один ряд — body.dense)
   const vh = LH();
-  const h = n > 6 ? Math.round(Math.min(vh * (vh < 800 ? (innerWidth < 1200 ? 0.34 : 0.4) : 0.44), n * 58 + 40)) : Math.round(Math.min(vh * (vh < 800 ? 0.27 : 0.3), Math.max(170, n * 66 + 40)));
+  const h = n > 6 ? Math.round(Math.min(vh * (vh < 800 ? (innerWidth < 1200 ? 0.34 : 0.37) : 0.44), n * 58 + 40)) : Math.round(Math.min(vh * (vh < 800 ? 0.27 : 0.3), Math.max(170, n * 66 + 40)));
   track.style.setProperty("--trh", h + "px");
   document.body.classList.toggle("dense", n > 6);
   const laneH = (h - 32) / Math.max(1, n);
