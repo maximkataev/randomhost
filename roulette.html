@@ -273,8 +273,10 @@
   @keyframes rim { 50% { border-color: rgba(255, 106, 61, .9); box-shadow: 0 0 0 4px rgba(255, 106, 61, .18), 0 0 30px rgba(255, 90, 50, .35); } }
 
   /* покрывало над столом */
-  .veil { position: absolute; inset: 5px; border-radius: 15px; z-index: 6; display: flex; visibility: hidden; opacity: 0; transition: opacity .2s, visibility 0s .2s; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 18px; gap: 12px; background: rgba(10, 11, 13, .84); overflow: hidden; }
-  .veil.on { visibility: visible; opacity: 1; transition: opacity .2s; }
+  .veil { position: absolute; inset: 5px; border-radius: 15px; z-index: 6; display: flex; visibility: hidden; opacity: 0; pointer-events: none; transition: opacity .12s, visibility 0s .12s; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 18px; gap: 12px; background: rgba(10, 11, 13, .84); overflow: hidden; }
+  .veil.on { visibility: visible; opacity: 1; pointer-events: auto; transition: opacity .2s; }
+  /* 030: затемнение выплаты/мягкое и уходящая заставка не перехватывают первые тапы новой фазы ставок */
+  .veil:not(.on), .veil.res, .veil.soft, .splash.out { pointer-events: none; }
   .veil.soft { background: rgba(10, 11, 13, .55); }
   .veil.res { background: rgba(10, 11, 13, .3); }
   /* итог — плашкой, а стол вокруг виден: сыгравшие фишки светятся */
@@ -330,6 +332,12 @@
   .splash .win { font: 900 72px/1 var(--cond); letter-spacing: -.06em; color: var(--text); font-variant-numeric: tabular-nums; position: relative; white-space: nowrap; }
   .splash .sub { color: var(--muted); font-size: 15px; font-weight: 600; position: relative; }
   .splash .tapx { position: absolute; bottom: calc(18px + env(safe-area-inset-bottom)); color: var(--muted); font-size: 13px; }
+  /* 008: у кириллицы и греческого плотный минус склеивает буквы и пробелы — для заголовков с текстом мягче (цифровые табло не трогаем) */
+  :lang(ru) .placecard h2, :lang(el) .placecard h2, :lang(ru) .center h2, :lang(el) .center h2, :lang(ru) .veil .big, :lang(el) .veil .big,
+  :lang(ru) .veil .nomore, :lang(el) .veil .nomore, :lang(ru) .veil .look, :lang(el) .veil .look, :lang(ru) .sheet h3, :lang(el) .sheet h3,
+  :lang(ru) .final h2, :lang(el) .final h2, :lang(ru) .brief .bh h2, :lang(el) .brief .bh h2, :lang(ru) .bcard .top b, :lang(el) .bcard .top b,
+  :lang(ru) .landing h1, :lang(el) .landing h1 { letter-spacing: -.01em; word-spacing: .08em; }
+  .veil .nomore { text-wrap: balance; max-width: 320px; }
   .burst { position: absolute; left: 50%; top: 40%; width: 0; height: 0; pointer-events: none; }
   .burst .rchip { position: absolute; width: 30px; height: 30px; margin: -15px; font-size: 0; animation: fly var(--d, 1.2s) cubic-bezier(.15, .7, .4, 1) forwards; }
   @keyframes fly { 0% { transform: translate(0, 0) scale(.4) rotate(0); opacity: 1; } 70% { opacity: 1; } 100% { transform: translate(var(--x), var(--y)) scale(1) rotate(var(--r)); opacity: 0; } }
@@ -595,7 +603,7 @@
 <div id="app"></div>
 <div class="sheet-bg" id="sheetbg"></div>
 <div class="sheet" id="sheet"></div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" aria-live="polite"></div>
 
 <script>
 window.I18N_DICT = {
@@ -885,7 +893,7 @@ window.I18N_DICT = {
     look: `Κοίτα την οθόνη`,
     no_more: `Τέλος πονταρισμάτων`,
     frozen: `❄️ Είσαι παγωμένος`,
-    frozen_text: `Χωρίς πόνταρισμα σε αυτό το γύρισμα, ποινή {n}.`,
+    frozen_text: `Χωρίς ποντάρισμα σε αυτό το γύρισμα, ποινή {n}.`,
     paused: `Παύση`,
     paused_text: `Ο οικοδεσπότης έβαλε παύση.`,
     res_plus: `+{n}`, res_minus: `−{n}`, res_zero: `±0`,
@@ -969,7 +977,7 @@ window.I18N_DICT = {
     lose_quips: `Το καζίνο ευχαριστεί για τη χορηγία|Οι μάρκες σου αγόρασαν γραβάτα στον κρουπιέρη|Πες το επένδυση στην ατμόσφαιρα|Η μπίλια δεν σε πρόσεξε|Συμβαίνει. Ειδικά στα καζίνο`,
     zero_quip: `Μηδέν. Το καζίνο χαμογελά.`,
     even_quip: `Ισοπαλία. Σαν να μην έπαιξες.`,
-    nobet: `Χωρίς πόνταρισμα — απλώς βλέπουμε`,
+    nobet: `Χωρίς ποντάρισμα — απλώς βλέπουμε`,
     look_sub: `Η μπίλια είναι ήδη στον τροχό`,
     fin_quip: `Το καζίνο θα θυμάται αυτή τη βραδιά`,
     quick: `All in!|Καζίνο, δώσε πίσω τις μάρκες|Όλοι στο κόκκινο!|Απλώς κοιτάζω|Ποιος έριξε κάρτα;`,
@@ -1014,7 +1022,7 @@ function toast(text) {
   t.textContent = text;
   t.classList.add("on");
   clearTimeout(toastT);
-  toastT = setTimeout(() => t.classList.remove("on"), 2200);
+  toastT = setTimeout(() => { t.classList.remove("on"); t.textContent = ""; }, 2200);
 }
 
 // ---------- общие предметы: фишка, колесо ----------
@@ -1023,8 +1031,6 @@ function toast(text) {
 function chipHtml(color, text, cls, extra) {
   return `<i class="rchip${cls ? " " + cls : ""}" style="${rlChipVars(color)}${extra || ""}">${text == null ? "" : escapeHtml(text)}</i>`;
 }
-// по кодовым точкам, а не по UTF-16: у «😀 Emoji Cat» аватар был «�E»
-const initials = (name) => Array.from(String(name || "?").replace(/^🤖\s*/, "").split(/\s+/).map((w) => Array.from(w)[0] || "").join("")).slice(0, 2).join("").toUpperCase();
 
 // колесо сверху: 37 ячеек в настоящем порядке, латунная турель. Рисуется один раз, крутится CSS-трансформом
 function wheelSvg(cls, numbers) {
@@ -1285,7 +1291,7 @@ function addChip(key) {
   if (amt <= 0) { toast(T("rj_no_money")); return; }
   const next = Object.assign({}, myBets);
   next[key] = (next[key] || 0) + amt;
-  if (pushBets(next)) { lastAdded = key; drawChips(true); rlSfx.chip(); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} }
+  if (pushBets(next)) { lastAdded = key; drawChips(true); rlSfx.chip(); rlBuzz(8); }
 }
 let lastAdded = null;
 
@@ -1309,51 +1315,6 @@ function flushQueued() {
 function canBet() {
   const p = mine();
   return state && state.phase === "betting" && p && !p.out && !p.frozen;
-}
-
-// Геометрия стола: зона чисел — 3 колонки × 13 строк (строка 0 — зеро). Координаты в долях зоны.
-// w, h — размер зоны в px: тап в табличку номера — всегда ставка на число, сплит/каре — только у самой линии.
-function hitKey(fx, fy, w, h) {
-  const rowsH = 13;
-  const cy = fy * rowsH;
-  const row = Math.floor(cy);
-  const cx = fx * 3;
-  const col = Math.min(2, Math.floor(cx));
-  const inX = cx - col;
-  const inY = cy - row;
-  const EDGE_X = 0.2, EDGE_Y = 0.3, STREET_X = 0.1;
-  if (row > 0 && w && h) {
-    const cw = w / 3, ch = h / 13;
-    const dx = Math.abs(inX - 0.5) * cw, dy = Math.abs(inY - 0.5) * ch;
-    // табличка номера 34×(до 24) px — вся целиком ставка на число
-    if (dx <= 19 && dy <= Math.min(12, ch * 0.41) + 1) return "n:" + (3 * (row - 1) + col + 1);
-  }
-  if (row === 0) {
-    // зеро: у нижней кромки — сплит/трио/«первые четыре» с числами первого ряда
-    if (inY < 1 - EDGE_Y) return "n:0";
-    if (col === 0 && inX < EDGE_X) return "co:0-1-2-3";
-    if (col === 0 && inX > 1 - EDGE_X) return "st:0-1-2";
-    if (col === 1 && inX < EDGE_X) return "st:0-1-2";
-    if (col === 1 && inX > 1 - EDGE_X) return "st:0-2-3";
-    if (col === 2 && inX < EDGE_X) return "st:0-2-3";
-    return rlKeyFor([0, col + 1]);
-  }
-  const r = row - 1; // ряд чисел 0..11
-  const n = 3 * r + col + 1;
-  const left = inX < EDGE_X, right = inX > 1 - EDGE_X, top = inY < EDGE_Y, bottom = inY > 1 - EDGE_Y;
-  // правая внешняя кромка (узкая) — стрит, на стыке рядов — сикслайн
-  if (col === 2 && inX > 1 - STREET_X) {
-    if (bottom && r < 11) return rlKeyFor([n - 2, n - 1, n, n + 1, n + 2, n + 3]);
-    if (top && r > 0) return rlKeyFor([n - 5, n - 4, n - 3, n - 2, n - 1, n]);
-    return rlKeyFor([n - 2, n - 1, n]);
-  }
-  const hn = right && col < 2 ? n + 1 : left && col > 0 ? n - 1 : null; // сосед по горизонтали (у col 2 справа — стрит выше)
-  const vn = bottom && r < 11 ? n + 3 : top && r > 0 ? n - 3 : top && r === 0 ? 0 : null; // по вертикали
-  if (hn && vn != null && vn !== 0) return rlKeyFor([n, hn, vn, vn + (hn - n)]);
-  if (hn && vn === 0) return rlKeyFor([0, n, hn]) || "n:" + n; // трио есть не у всех пар
-  if (hn) return rlKeyFor([n, hn]);
-  if (vn != null) return rlKeyFor([n, vn]);
-  return "n:" + n;
 }
 
 // Где рисовать фишку ставки (в долях зоны чисел; внешние — в своих клетках)
@@ -1631,7 +1592,7 @@ function buildRack() {
   const dens = denominations();
   const my = mine();
   const color = my ? my.color : "#f2c14e";
-  const pick = (i) => { chipIdx = i; rlSfx.select(); if (navigator.vibrate) try { navigator.vibrate(5); } catch (e) {} buildRack(); };
+  const pick = (i) => { chipIdx = i; rlSfx.select(); rlBuzz(5); buildRack(); };
   const buttons = dens.map((v, i) => {
     const b = el("button", "den rchip" + (i === chipIdx ? " sel" : ""), fmtChip(v));
     b.dataset.v = String(v);
@@ -1687,7 +1648,7 @@ function buildActions() {
     if (!p.ready && !p.frozen && bet < need && readyArmed < Date.now()) {
       readyArmed = Date.now() + 2500;
       toast(tpl("ready_warn", { bet: rlNum(bet), min: rlNum(need), n: rlNum(need - bet) }));
-      if (navigator.vibrate) try { navigator.vibrate([20, 40, 20]); } catch (e) {}
+      rlBuzz([20, 40, 20]);
       drawHud();
       setTimeout(drawHud, 2600);
       return;
@@ -1791,7 +1752,7 @@ function drawHud() {
     rb.textContent = armed ? tpl("ready_arm", { n: rlNum(Math.max(0, need - bet)) }) : T(on ? "act_ready_on" : "act_ready");
     rb.disabled = state.phase !== "betting" || p.out;
     // «Готов» ставится штампом: удар, звук, короткая вибрация
-    if (on && !lastReady) { rb.classList.remove("stamp"); void rb.offsetWidth; rb.classList.add("stamp"); rlSfx.stamp(); if (navigator.vibrate) try { navigator.vibrate(20); } catch (e) {} }
+    if (on && !lastReady) { rb.classList.remove("stamp"); void rb.offsetWidth; rb.classList.add("stamp"); rlSfx.stamp(); rlBuzz(20); }
     lastReady = on;
   }
 }
@@ -2003,7 +1964,7 @@ function showOutcome() {
     ${lines.length ? `<div class="sub">${lines.join("<br>")}</div>` : ""}
     <div class="tapx">${T("tap_close")}</div>`;
   rlSfx.win(big);
-  if (navigator.vibrate) try { navigator.vibrate(big ? [60, 50, 60, 50, 120] : [40, 60, 40]); } catch (e) {}
+  rlBuzz(big ? [60, 50, 60, 50, 120] : [40, 60, 40]);
   // сумма набегает, как на табло
   const cnt = document.getElementById("wincount");
   const t0 = performance.now(), dur = reduce ? 1 : 1300;
@@ -2174,7 +2135,7 @@ function openExact(n) {
     b.onclick = () => { addChip(k); closeSheet(); };
     list.append(b);
   }
-  if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) {}
+  rlBuzz(15);
   openSheet([h, list]);
   sheetGuard = Date.now() + 450;
 }
@@ -2209,7 +2170,7 @@ function renderBriefing(p) {
   const rb = document.getElementById("bready");
   rb.textContent = T(p.ready ? "br_ready_on" : "br_ready");
   rb.classList.toggle("on", !!p.ready);
-  if (p.ready && !briefReady) { rb.classList.remove("stamp"); void rb.offsetWidth; rb.classList.add("stamp"); rlSfx.stamp(); if (navigator.vibrate) try { navigator.vibrate(20); } catch (e) {} }
+  if (p.ready && !briefReady) { rb.classList.remove("stamp"); void rb.offsetWidth; rb.classList.add("stamp"); rlSfx.stamp(); rlBuzz(20); }
   briefReady = !!p.ready;
   const waiting = state.players.filter((x) => !x.out && !x.left && x.online && !x.ready && x.id !== me).map((x) => x.name);
   document.getElementById("bwait").textContent = waiting.length ? tpl("br_wait", { names: waiting.join(", ") }) : p.ready ? T("br_all") : "";
@@ -2218,13 +2179,18 @@ function renderBriefing(p) {
 // новая карта посреди игры (подъём минимума): карта выезжает над доком и переворачивается
 let knownHand = null;
 function watchHand() {
-  const hand = (state.me && state.me.hand) || [];
-  if (knownHand && state.phase !== "lobby" && state.phase !== "briefing") {
+  // первый hello после reload приходит без me: рука пуста, а следом — вся рука «новая». Помним руку только
+  // от снимка с me; тост — по разнице двух снимков одной сессии (сброс на hello)
+  if (!state.me) return;
+  const hand = state.me.hand || [];
+  const p = mine();
+  if (state.phase === "lobby") { knownHand = null; return; }
+  if (knownHand && state.phase !== "briefing" && !(p && p.out)) {
     const left = knownHand.slice();
     const fresh = hand.filter((c) => { const i = left.indexOf(c); if (i >= 0) { left.splice(i, 1); return false; } return true; });
     fresh.forEach((c, i) => setTimeout(() => cardToast(c), i * 700));
   }
-  knownHand = state.phase === "lobby" ? null : hand.slice();
+  knownHand = hand.slice();
 }
 function cardToast(c) {
   const t = el("div", "cardtoast");
@@ -2232,7 +2198,7 @@ function cardToast(c) {
   t.innerHTML = `<span class="ic">${RL_CARDS[c].icon}</span><span>${escapeHtml(tpl("new_card", { name: T("card_" + c) }))}</span>`;
   document.body.append(t);
   rlSfx.flip();
-  if (navigator.vibrate) try { navigator.vibrate(12); } catch (e) {}
+  rlBuzz(12);
   setTimeout(() => t.remove(), 3100);
 }
 
@@ -2277,7 +2243,7 @@ function render() {
       if (!c) return;
       c.classList.remove("flip"); void c.offsetWidth; c.classList.add("flip");
       rlSfx.chip();
-      if (navigator.vibrate) try { navigator.vibrate(6); } catch (e2) {}
+      rlBuzz(6);
     };
     document.getElementById("leave").onclick = () => { conn.send({ type: "leave" }); try { localStorage.removeItem(tokenKey()); } catch (e) {} me = null; token = null; renderEnter(); };
     myBets = {};
@@ -2363,6 +2329,7 @@ function onMessage(m) {
     case "hello":
     case "state":
       state = m.state;
+      if (m.type === "hello") knownHand = null;
       if (m.type === "hello" && token && !me) conn.send({ type: "join", token });
       render();
       break;
