@@ -973,6 +973,25 @@ function flushQueued() {
     return true;
   });
 }
+// действие не дошло до сервера (очередь протухла/переполнена/отброшена): снимаем «ушло» и говорим об этом.
+// Если сервер успел его принять (по снимку видно), молчим.
+function lostAction(m) {
+  if (!m || dead) return;
+  const st = state && state.me;
+  let applied = false;
+  if (m.type === "answer" || m.type === "hint") {
+    const p = st && (st.prompts || []).find((x) => x.id === m.mid);
+    applied = !!(p && p.done);
+    if (m.type === "hint") { justHinted = null; hintArmed = null; }
+    screenKey = "";
+  } else if (m.type === "vote") {
+    applied = !!(st && st.voted && state.current && state.current.id === m.mid);
+    if (!applied) { sentVote = null; picks = picks.slice(); screenKey = ""; }
+  } else return;
+  if (applied) return;
+  toast(T("send_lost"));
+  render();
+}
 function onMessage(m) {
   switch (m.type) {
     case "hello":
@@ -1014,7 +1033,7 @@ function onMessage(m) {
       render();
       break;
     case "error":
-      conn.flush(() => false);
+      conn.flush(() => false, () => {});
       if (m.error === "room_expired") return renderExpired();
       if (["room_full", "token_gone", "bad_name"].includes(m.error)) {
         if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
@@ -1024,7 +1043,7 @@ function onMessage(m) {
       }
       break;
     case "kicked":
-      conn.flush(() => false);
+      conn.flush(() => false, () => {});
       me = null;
       try { localStorage.removeItem(tokenKey()); } catch (e) {}
       token = null;
@@ -1059,6 +1078,7 @@ function start() {
     code: CODE,
     onMessage,
     onGone: renderExpired,
+    onDrop: lostAction,
     // переподключились — снова входим своим токеном (hello придёт первым)
     onOpen: () => { needJoin = true; if (token) conn.gated = true; },
     onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
