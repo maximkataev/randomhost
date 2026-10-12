@@ -341,6 +341,40 @@ function rawWs(code) {
       } finally { s2.kill("SIGTERM"); }
     });
 
+    await test("брошенный руль: нет ввода дольше INPUT_STALE_MS (env, прод) — руль в ноль, утка не прижата к берегу", async () => {
+      const { makeCourse, DEFAULTS } = require("./game");
+      async function run(stale, off) {
+        const port2 = PORT + off;
+        const base2 = `http://localhost:${port2}`;
+        const env2 = Object.assign({}, process.env, { PORT: String(port2), NODE_ENV: "production", DUMP_FILE: path.join(require("os").tmpdir(), `rapids-test-${port2}.json`), INPUT_STALE_MS: String(stale) });
+        const s2 = spawn(process.execPath, [path.join(__dirname, "server.js")], { env: env2, stdio: ["ignore", "pipe", "pipe"] });
+        try {
+          for (let i = 0; i < 50; i++) { try { if ((await fetch(base2 + "/rapids/api/health")).ok) break; } catch {} await wait(100); }
+          const r = await NetBot.createRoom(base2);
+          const ws = await new Promise((res, rej) => { const w = new WebSocket(`ws://localhost:${port2}/rapids/ws?r=${r.code}`); w.msgs = []; w.on("message", (m) => w.msgs.push(JSON.parse(m))); w.on("open", () => res(w)); w.on("error", rej); });
+          ws.send(JSON.stringify({ type: "join", name: "Заморожен", hostToken: r.hostToken }));
+          const other = await NetBot.connect({ base: base2, code: r.code, name: "Второй", think: false });
+          await wait(300);
+          const me = ws.msgs.find((m) => m.type === "joined").playerId;
+          ws.send(JSON.stringify({ type: "start" }));
+          for (let i = 0; i < 160 && !ws.msgs.some((m) => m.type === "s" && m.ph === "race"); i++) await wait(50);
+          const cfg = Object.assign({}, DEFAULTS, ws.msgs.find((m) => m.type === "hello").cfg);
+          const first = ws.msgs.filter((m) => m.type === "s").pop();
+          const row0 = first.p.find((p) => p[0] === me);
+          const off0 = row0[1] - makeCourse(first.sd, cfg).riverCx(row0[2]);
+          ws.send(JSON.stringify({ type: "i", st: off0 > 0 ? -1 : 1, s: 1 }));   // к дальнему берегу, и тишина
+          await wait(3000);
+          const last = ws.msgs.filter((m) => m.type === "s").pop();
+          const row = last.p.find((p) => p[0] === me);
+          const off = row[1] - makeCourse(last.sd, cfg).riverCx(row[2]);
+          ws.close(); other.close();
+          return Math.abs(off - off0);
+        } finally { s2.kill("SIGTERM"); }
+      }
+      const held = await run(300, 301), free = await run(60000, 302);
+      assert(held < free - 20, `со сбросом руля сдвиг ${held.toFixed(0)}, без — ${free.toFixed(0)}`);
+    });
+
     await test("рестарт сервера: комната и токены живы, партия отменена", async () => {
       const r4 = await NetBot.createRoom(BASE);
       const a = await NetBot.connect({ base: BASE, code: r4.code, name: "Ася", hostToken: r4.hostToken, think: false });
