@@ -305,66 +305,104 @@ function wvOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone,
   return api;
 }
 
-// Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
-function wvConnect({ code, onMessage, onOpen, onGone, onState, onSendFail, onQuiet }) {
+// Потолок возраста действия в очереди (MP.sendQueue): 90 с. Фаза голосования — 25 с, так что актуальность решает
+// keep(m) страницы (фаза, раунд, «Готово», «Мнение»), а потолок только страхует от залежавшегося.
+const WV_QUEUE_CEILING_MS = { "*": 90000 };
+// Действия, которые нельзя терять тихо: если сокет «открыт», но от сервера > 8 с ни слова — это ложная связь
+const WV_SENSITIVE = { vote: 1, bank: 1, confirm: 1, opinion: 1 };
+const WV_SILENT_MS = 8000;
+
+// Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить.
+// keep(m) — актуально ли действие (по умолчанию для flush/pump); onDrop(m, reason, at) — действие не дошло (reason:
+// expired | unwanted | overflow | off): страница снимает «ушло» с кнопки и просит нажать ещё раз.
+function wvConnect({ code, onMessage, onOpen, onGone, onState, onSendFail, onQuiet, keep, onDrop }) {
   let t = null, delay = 500, stopped = false;
+  let lastHeard = Date.now(), awaitProbe = false, browserOffline = false;
   // Действие, нажатое между обрывом и возвращением связи, раньше терялось молча (а кнопка уже горела «ушло»).
-  // Теперь оно ждёт в очереди и уходит после входа по токену: сокет без игрока действие бы отбросил.
-  const queue = [];
-  const born = typeof WeakMap === "function" ? new WeakMap() : null; // когда действие нажато: просроченное не отправляем, даже если оно вернулось в очередь
+  // Теперь оно ждёт в очереди MP.sendQueue и уходит после входа по токену: сокет без игрока действие бы отбросил.
+  // Если общего каркаса нет (аварийный выключатель mp-off) — очереди нет: действие без связи сразу «не дошло».
+  const queue = window.MP && MP.sendQueue ? MP.sendQueue({
+    send: (m) => { if (holder.api) holder.api.send(m); },
+    keep,
+    onDrop: (m, why, at) => { if (onDrop) onDrop(m, why, at); },
+    ceilingMs: WV_QUEUE_CEILING_MS,
+    replace: ["vote", "bank", "opinion", "avatar"], // последнее значение заменяет прежнее, а не копится рядом
+    max: 8,
+    minGapMs: 250,
+    probe: (ms) => { if (holder.api) holder.api.probe(ms); },
+  }) : null;
+  const enqueue = (m) => {
+    if (queue) return queue.push(m);
+    if (onDrop) onDrop(m, "off", Date.now());
+    return false;
+  };
   const holder = {
     api: null,
+    queue,
     gated: false, // страница держит действия до входа по токену и сама снимает флаг через flush
     send(m) {
       const a = holder.api;
-      if (m && born && typeof m === "object" && !born.has(m)) born.set(m, Date.now());
-      if (m && m.type !== "ping" && m.type !== "join" && m.type !== "host" && (holder.gated || !a || a.mode === "none" || a.mode === "connecting")) {
-        queue.push({ m, at: Date.now() });
-        if (queue.length > 8) queue.shift();
+      const action = m && m.type !== "ping" && m.type !== "join" && m.type !== "host";
+      // пока очередь разгребается (шаг 4/с), новое действие встаёт за ней: порядок не нарушаем
+      if (action && (holder.gated || !a || a.mode === "none" || a.mode === "connecting" || (queue && queue.isFlushing()))) {
+        enqueue(m);
+        return;
+      }
+      // сокет «открыт», но сервер молчит > 8 с: действие не шлём в пустоту, а держим и проверяем сокет за 1,5 с.
+      // Ответит — очередь уходит сразу; нет — сокет закроется, и действие уйдёт после повторного входа.
+      if (action && queue && WV_SENSITIVE[m.type] && a && Date.now() - lastHeard > WV_SILENT_MS) {
+        awaitProbe = true;
+        enqueue(m);
+        a.probe(1500);
         return;
       }
       if (a) a.send(m);
     },
     // сколько действий ждёт отправки (для подписи «Отправляем…»)
-    pending() { return queue.length; },
-    // сокет не смог отправить (опрос: 3 попытки): действие возвращается в очередь и уйдёт после повторного входа
-    requeue(m) {
-      queue.push({ m, at: (born && born.get(m)) || Date.now() });
-      if (queue.length > 8) queue.shift();
-    },
-    // keep(m) — нужно ли это действие ещё; просроченные и ненужные отбрасываются через onDrop
-    flush(keep, onDrop) {
+    pending() { return queue ? queue.size() : 0; },
+    // keep(m) — нужно ли это действие ещё; ненужные и залежавшиеся отбрасываются через onDrop
+    flush(keepFn, dropFn) {
       holder.gated = false;
-      const items = queue.splice(0);
-      for (const it of items) {
-        if (Date.now() - it.at > 6000 || (keep && !keep(it.m))) { if (onDrop) onDrop(it.m); continue; }
-        if (holder.api) holder.api.send(it.m);
-      }
+      awaitProbe = false;
+      if (queue) queue.flush(keepFn || keep, dropFn);
     },
-    stop() { stopped = true; clearTimeout(t); queue.length = 0; if (holder.api) holder.api.close(); },
+    // «тишина»: проверить, жив ли сокет (страница зовёт, когда кнопка отпущена без ответа)
+    probe(ms) { if (holder.api && holder.api.mode !== "none") holder.api.probe(ms); },
+    stop() { stopped = true; clearTimeout(t); if (queue) queue.clear(); if (holder.api) holder.api.close(); },
+  };
+  const heard = () => {
+    lastHeard = Date.now();
+    if (queue) queue.heard();
+    if (browserOffline && navigator.onLine !== false) { browserOffline = false; if (onQuiet) onQuiet(false); }
+    // сокет ответил на проверку: удержанные из-за тишины действия уходят сразу
+    if (awaitProbe && queue && queue.size() && !holder.gated && holder.api && holder.api.mode !== "none" && holder.api.mode !== "connecting") {
+      awaitProbe = false;
+      queue.flush(keep, null);
+    }
   };
   const open = () => {
     if (stopped) return;
     if (onState) onState("connecting");
     holder.api = wvOpenTransport({
       code,
-      onMessage,
+      onMessage: (m) => { heard(); onMessage(m); },
       onQuiet,
-      onOpen: () => { delay = 500; if (onState) onState("open"); if (onOpen) onOpen(); },
+      // отправка не удалась после повторов (long-polling): не теряем, а ставим в очередь до входа по токену
+      onSendFail: (m) => { if (stopped || !m || m.type === "join" || m.type === "host") return; enqueue(m); if (onSendFail) onSendFail(m); },
+      onOpen: () => { delay = 500; lastHeard = Date.now(); if (onState) onState("open"); if (onOpen) onOpen(); },
       onClose: () => { if (stopped) return; if (onState) onState("lost"); t = setTimeout(open, delay); delay = Math.min(delay * 2, 8000); },
       onGone: () => { stopped = true; if (onGone) onGone(); },
-      onSendFail: (m) => { holder.requeue(m); if (onSendFail) onSendFail(m); },
     });
   };
   open();
-  // вернулись в вкладку или сеть появилась — проверяем, жив ли сокет, не дожидаясь 45 с тишины
+  // вернулись в вкладку или сеть появилась — проверяем, жив ли сокет, не дожидаясь тишины
   const wake = () => { if (holder.api && holder.api.mode !== "none") holder.api.probe(); };
   document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (holder.api && holder.api.visible) holder.api.visible(); wake(); } });
   window.addEventListener("online", wake);
+  // браузер сам знает, что сети нет: баннер сразу, не дожидаясь 10 с тишины
+  window.addEventListener("offline", () => { browserOffline = true; if (onQuiet) onQuiet(true); });
   return holder;
 }
-
-
 
 // место в таблице: равные очки — равное место (1, 2, 2, 4)
 const wvRank = (list, p) => 1 + list.filter((x) => x.score > p.score).length;
