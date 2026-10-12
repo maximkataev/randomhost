@@ -142,6 +142,8 @@ function isTruth(text, fact) {
   return false;
 }
 
+const SKIP_MIN_MS = 800; // «Дальше» не раньше чем через столько от старта фазы
+
 // Правила класса B (IMPLEMENTATION-PLAN §2.3б): env сервера, по умолчанию «как сейчас». Читается в момент вызова.
 function ruleOn(name) {
   return /^(1|true|on|yes)$/i.test(String(process.env[name] || ""));
@@ -690,6 +692,17 @@ class Game {
     s.players = s.players.filter((p) => !p.left);
     this.clearFact();
     return ev.concat([{ type: "lobby" }]);
+  }
+
+  // «Дальше» ведущего (T-W1-13, fibs-003): фаза тема/ложь/выбор закрывается как «время вышло» — то же состояние,
+  // что даёт таймаут, без бонусов и без новых правил. Не раньше SKIP_MIN_MS от старта фазы (не промахнуться по тапу).
+  skipPhase(now) {
+    const s = this.s;
+    if (s.phase !== "topic" && s.phase !== "lie" && s.phase !== "choose") return { ok: false, reason: "bad_phase", events: [] };
+    if (s.phaseEnd == null) return { ok: false, reason: "bad_phase", events: [] };
+    if (now - s.phaseStart < SKIP_MIN_MS) return { ok: false, reason: "too_early", events: [] };
+    s.phaseEnd = now;
+    return { ok: true, events: this.tick(now) };
   }
 
   abort(now) {

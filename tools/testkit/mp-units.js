@@ -270,6 +270,65 @@ test("авто-возврат: выключен по умолчанию; ≥ 5 �
   assert.equal(rt.canAutoReturn(1e6 + 66000), true);
 });
 
+console.log("twoTap");
+function fakeEl(text) {
+  const h = {};
+  return { textContent: text, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; },
+    addEventListener(t, f) { h[t] = f; }, removeEventListener(t) { delete h[t]; }, click() { if (h.click) h.click({ type: "click" }); } };
+}
+test("twoTap: первый тап взводит и меняет подпись, второй выполняет и возвращает подпись", () => {
+  const w = load();
+  const el = fakeEl("Закончить");
+  let n = 0;
+  const c = w.MP.twoTap(el, { onConfirm: () => n++, armedLabel: "Точно завершить?" });
+  el.click();
+  assert.equal(n, 0);
+  assert.equal(c.isArmed(), true);
+  assert.equal(el.attrs["data-armed"], "1");
+  assert.equal(el.textContent, "Точно завершить?");
+  el.click();
+  assert.equal(n, 1);
+  assert.equal(c.isArmed(), false);
+  assert.equal(el.attrs["data-armed"], undefined);
+  assert.equal(el.textContent, "Закончить");
+});
+test("twoTap: через 3 с само снимается, третий тап снова только взводит", () => {
+  const w = load();
+  const el = fakeEl("Дальше");
+  let n = 0;
+  const c = w.MP.twoTap(el, { onConfirm: () => n++, armedLabel: "Точно?" });
+  el.click();
+  assert.equal(w.__timers[w.__timers.length - 1].ms, 3000);
+  w.__timers[w.__timers.length - 1].fn();
+  assert.equal(c.isArmed(), false);
+  assert.equal(el.textContent, "Дальше");
+  el.click();
+  assert.equal(n, 0);
+  assert.equal(c.isArmed(), true);
+});
+test("twoTap.create: ключи, перевзвод по другому ключу, onChange", () => {
+  const w = load();
+  const ch = [];
+  const c = w.MP.twoTap.create({ onChange: (k) => ch.push(k) });
+  assert.equal(c.tap("a"), false);
+  assert.equal(c.tap("b"), false); // другой — перевзвод
+  assert.equal(c.armed(), "b");
+  assert.equal(c.tap("b"), true);
+  assert.equal(c.armed(), null);
+  assert.deepEqual(ch, ["a", "b", null]);
+  c.tap("a"); c.disarm();
+  assert.equal(c.isArmed("a"), false);
+});
+test("twoTap при MP.off — один тап выполняет (как до модуля)", () => {
+  const w = load();
+  w.MP.applyHello({ mp: false });
+  const el = fakeEl("X");
+  let n = 0;
+  w.MP.twoTap(el, { onConfirm: () => n++ });
+  el.click();
+  assert.equal(n, 1);
+});
+
 console.log("draft");
 test("draft: save/load по ключу фазы, один слот на комнату, регистр кода не важен", () => {
   const st = {};

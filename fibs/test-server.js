@@ -521,3 +521,45 @@ test("restore-from-prev-dump: без `chooseExtended` (и `played`) — фаза
   assert.ok(fin.state.awards, "награды посчитаны");
   for (const x of [b, a, c]) x.close();
 });
+
+// ---- T-W1-13 (fibs-002/003): skip ведущего, кик офлайн-игрока в игре ----
+test("skip: только ведущему, не раньше 800 мс, как «время вышло»; кик офлайн-игрока в игре — токен жив", async () => {
+  const room = await createRoom({}, 1);
+  const b = await board(room.code, room.hostToken);
+  const ps = [await player(room.code, "Аня"), await player(room.code, "Боря"), await player(room.code, "Вика"), await player(room.code, "Глеб")];
+  b.send({ type: "start" });
+  const t = await Promise.race(ps.map((p) => p.wait(statePred((s) => s.phase === "topic" && s.me && s.me.chooser)).then(() => p)));
+  t.send({ type: "topic", topic: t.state.topics[0] });
+  await b.wait(statePred((s) => s.phase === "lie"));
+  // слишком рано: отказ, фаза та же
+  b.send({ type: "skip" });
+  const rj = await b.wait((m) => m.type === "rejected" && m.action === "skip");
+  assert.strictEqual(rj.reason, "too_early");
+  assert.strictEqual(b.state.phase, "lie");
+  await sleep(900);
+  // игрок (не ведущий) skip не двигает
+  ps[0].send({ type: "skip" });
+  await sleep(300);
+  assert.strictEqual(b.state.phase, "lie");
+  // Глеб офлайн -> ✕ в игре: left, остальные играют дальше
+  ps[3].close();
+  await b.wait(statePred((s) => s.players.some((p) => p.id === ps[3].id && !p.online)));
+  b.send({ type: "kick", playerId: ps[3].id });
+  await b.wait(statePred((s) => s.players.some((p) => p.id === ps[3].id && p.left)));
+  // токен не стёрт: возврат по токену без имени — не token_gone
+  const back = client(room.code);
+  await back.open;
+  back.send({ type: "join", name: "", token: ps[3].token });
+  const er = await back.wait((m) => m.type === "error");
+  assert.notStrictEqual(er.error, "token_gone");
+  back.close();
+  // skip ведущего в фазе лжи -> выбор
+  ps[1].send({ type: "lie", text: "выдумка раз" });
+  await ps[1].wait(statePred((s) => s.me && s.me.lie));
+  b.send({ type: "skip" });
+  await b.wait(statePred((s) => s.phase === "choose"));
+  await sleep(900);
+  b.send({ type: "skip" });
+  await b.wait(statePred((s) => s.phase === "reveal"));
+  for (const c of [b, ...ps]) c.close();
+});

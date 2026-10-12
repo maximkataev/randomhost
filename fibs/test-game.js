@@ -692,3 +692,38 @@ test("телефон: обрыв дольше срока очереди — onDr
   assert.deepStrictEqual(dropped.slice(2).sort((a, b) => a - b), [3, 4, 5, 6, 7, 8, 9, 10], "просроченные — через onDrop");
   conn.stop();
 });
+
+// ---- T-W1-13 (fibs-003): skipPhase — «Дальше» ведущего как «время вышло» ----
+test("skipPhase: тема/ложь/выбор закрываются как таймаут (то же состояние), не раньше 800 мс, в лобби/раскрытии — отказ", () => {
+  const mk = () => game(4, {}, rig(3));
+  const a = mk(), b = mk();
+  const t0 = a.s.phaseStart;
+  assert.strictEqual(a.skipPhase(t0 + 799).reason, "too_early");
+  assert.strictEqual(a.s.phase, "topic");
+  const now = t0 + 1000;
+  assert.ok(a.skipPhase(now).ok);
+  b.s.phaseEnd = now; b.tick(now);
+  assert.strictEqual(JSON.stringify(a.s), JSON.stringify(b.s));
+  assert.strictEqual(a.s.phase, "lie");
+  // ложь: один соврал, остальные — нет
+  a.lie(a.s.roster[0], "выдумка один", now + 10);
+  b.lie(b.s.roster[0], "выдумка один", now + 10);
+  assert.strictEqual(a.skipPhase(now + 100).reason, "too_early"); // фаза началась в now
+  const n2 = now + 2000;
+  assert.ok(a.skipPhase(n2).ok);
+  b.s.phaseEnd = n2; b.tick(n2);
+  assert.strictEqual(JSON.stringify(a.s), JSON.stringify(b.s));
+  assert.strictEqual(a.s.phase, "choose");
+  // выбор: без ожидающих → раскрытие, очки те же, что у таймаута
+  const n3 = n2 + 1500;
+  assert.ok(a.skipPhase(n3).ok);
+  b.s.phaseEnd = n3; b.tick(n3);
+  assert.strictEqual(JSON.stringify(a.s), JSON.stringify(b.s));
+  assert.strictEqual(a.s.phase, "reveal");
+  // раскрытие и далее — отказ, состояние не тронуто
+  const snap = JSON.stringify(a.s);
+  assert.strictEqual(a.skipPhase(n3 + 5000).reason, "bad_phase");
+  assert.strictEqual(JSON.stringify(a.s), snap);
+  const l = Game.create({ settings: {}, code: "LOBBY2", rnd: rig(), content: fixture() });
+  assert.strictEqual(l.skipPhase(1e6).reason, "bad_phase");
+});

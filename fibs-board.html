@@ -69,7 +69,14 @@
   .banner { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 50; background: var(--red); color: #fff; padding: 8px 14px; font: 700 16px/1.2 var(--mono); }
   .conn { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 50; background: var(--red); color: #fff; padding: 6px 12px; font: 700 15px/1.2 var(--mono); visibility: hidden; }
   .conn.on { visibility: visible; }
-  .endbtn { flex: none; border: 1.5px dashed var(--ink); background: var(--sheet); padding: 8px 12px; font: 700 15px/1 var(--mono); color: var(--ink-2); }
+  .endbtn { flex: none; border: 1.5px dashed var(--ink); background: var(--sheet); padding: 8px 14px; min-height: 44px; font: 700 20px/1 var(--mono); color: var(--ink-2); cursor: pointer; }
+  .endbtn.skipbtn { border-style: solid; color: var(--ink); }
+  /* двухтактные команды ведущего (MP.twoTap): взведённая кнопка красная и подписана «Точно …?», через 3 с сама остывает */
+  .endbtn[data-armed], .kickx[data-armed] { background: var(--red); border-color: var(--red); color: #fff; }
+  .kickx { flex: none; min-width: 44px; min-height: 44px; border: 1.5px solid var(--ink-2); background: var(--sheet); color: var(--ink-2); font: 700 16px/1 var(--mono); padding: 0 8px; cursor: pointer; }
+  .writer .kickx { min-height: 40px; }
+  .rowx.kickable { grid-template-columns: 1.5em 1.5em minmax(0, 1fr) 3.4em 4.2em auto; }
+  .rowx .kickx { align-self: stretch; min-height: 0; }
 
   main { flex: 1; min-height: 0; position: relative; z-index: 1; }
   .screen { position: absolute; top: 6px; right: 22px; bottom: 22px; left: 22px; display: flex; flex-direction: column; gap: 16px; min-height: 0; }
@@ -385,7 +392,7 @@
     .top { gap: 8px; padding-left: 12px; }
     .top .chip { font-size: 14px; padding: 6px 8px; }
     #roundchip { flex: 1 1 0; max-width: max-content; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-    .endbtn { font-size: 14px; padding: 6px 10px; min-height: 44px; }
+    .endbtn { font-size: 16px; padding: 6px 10px; min-height: 44px; }
     .intro h2 { font-size: clamp(36px, 13vw, 56px); overflow-wrap: anywhere; }
     .intro .kicker { font-size: 17px; }
     .intro .desc { font-size: 20px; }
@@ -460,12 +467,14 @@
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 <script src="legacy-compat.js"></script>
+<script src="mp-common.js"></script>
 </head>
 <body>
 <div class="top">
   <h1 id="brand" data-i18n="game_name">Не верю<em>!</em></h1>
   <span class="chip hidden" id="roundchip"></span>
   <span class="grow"></span>
+  <button class="endbtn skipbtn hidden" id="skipbtn" type="button"></button>
   <button class="endbtn hidden" id="endbtn" type="button"></button>
   <span class="chip hidden" id="codechip"></span>
   <button class="sound-toggle-btn" type="button"></button>
@@ -494,7 +503,7 @@ window.I18N_DICT = {
     liars_done: `{n} из {m} соврали`, chose_n: `{n} из {m} выбрали`,
     scores_what: `Сводка`,
     final_title: `Номер сдан`, final_few: `игроков меньше трёх`, final_host: `ведущий закончил`,
-    btn_home: `Главная`, btn_again: `Ещё выпуск`, btn_lobby: `В лобби`, btn_end: `Закончить`,
+    btn_home: `Главная`, btn_again: `Ещё выпуск`, btn_lobby: `В лобби`, btn_end: `Закончить`, end_sure: `Точно завершить?`, btn_skip: `Дальше`, skip_sure: `Точно дальше?`, kick_sure: `Точно убрать?`,
     expired: `Комната закрыта: она пустовала полчаса или ведущий её закрыл`,
     no_awards: `Наград нет — все играли честно`,
   },
@@ -516,7 +525,7 @@ window.I18N_DICT = {
     liars_done: `{n} of {m} lied`, chose_n: `{n} of {m} picked`,
     scores_what: `Standings`,
     final_title: `That's a wrap`, final_few: `fewer than three players`, final_host: `the host ended it`,
-    btn_home: `Home`, btn_again: `Another issue`, btn_lobby: `To lobby`, btn_end: `End game`,
+    btn_home: `Home`, btn_again: `Another issue`, btn_lobby: `To lobby`, btn_end: `End game`, end_sure: `Really end?`, btn_skip: `Next`, skip_sure: `Skip for real?`, kick_sure: `Really remove?`,
     expired: `Room closed: it sat empty for half an hour or the host closed it`,
     no_awards: `No awards — everyone played it straight`,
   },
@@ -538,7 +547,7 @@ window.I18N_DICT = {
     liars_done: `{n} από {m} είπαν ψέμα`, chose_n: `{n} από {m} διάλεξαν`,
     scores_what: `Κατάταξη`,
     final_title: `Το φύλλο κλείνει`, final_few: `λιγότεροι από τρεις`, final_host: `τελείωσε ο οικοδεσπότης`,
-    btn_home: `Αρχική`, btn_again: `Νέο φύλλο`, btn_lobby: `Στο λόμπι`, btn_end: `Τέλος`,
+    btn_home: `Αρχική`, btn_again: `Νέο φύλλο`, btn_lobby: `Στο λόμπι`, btn_end: `Τέλος`, end_sure: `Σίγουρα τέλος;`, btn_skip: `Επόμενο`, skip_sure: `Σίγουρα επόμενο;`, kick_sure: `Σίγουρα αφαίρεση;`,
     expired: `Το δωμάτιο έκλεισε: έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης`,
     no_awards: `Χωρίς βραβεία — όλοι έπαιξαν τίμια`,
   },
@@ -740,7 +749,7 @@ function writersHtml(ids, doneIds) {
   return `<div class="writers${rows >= 4 ? " dense" : ""}" id="writers" style="--wc:${cols}">${ids.map((id) => {
     const p = player(id) || { avatar: "?", name: "?", color: "#777" };
     const done = doneIds.includes(id);
-    return `<div class="writer${done ? " done" : ""}" style="--pc:${p.color}">${avatarName(p)}<span class="st">${done ? "✓" : `<span class="typer">⌨️</span>`}</span></div>`;
+    return `<div class="writer${done ? " done" : ""}" style="--pc:${p.color}">${avatarName(p)}<span class="st">${done ? "✓" : `<span class="typer">⌨️</span>`}</span>${kickBtnHtml(p)}</div>`;
   }).join("")}</div>`;
 }
 function drawLie() {
@@ -904,7 +913,7 @@ function drawScores() {
   const from = (p) => (base && base[p.id] != null ? base[p.id] : p.score);
   main.innerHTML = `<div class="screen">
     <div class="bar"><div class="what">${escapeHtml(T("scores_what"))}</div><div class="clock" id="clock"></div></div>
-    <div class="board${two ? " two" : ""}" style="--rowh:${rowh}px;--rows:${rows}">${list.map((p, i) => { const d = p.score - from(p); return `<div class="rowx${i === 0 && p.score > 0 ? " lead" : ""}${p.online ? "" : " gone"}" style="--pc:${p.color}"><span class="n">${i + 1}</span><i class="av">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><span class="d" style="--dd:${(0.3 + i * 0.08).toFixed(2)}s">${d > 0 ? escapeHtml(tpl("pts", { n: d })) : ""}</span><span class="s" data-from="${from(p)}" data-to="${p.score}">${p.score}</span></div>`; }).join("")}</div></div>`;
+    <div class="board${two ? " two" : ""}" style="--rowh:${rowh}px;--rows:${rows}">${list.map((p, i) => { const d = p.score - from(p); return `<div class="rowx${i === 0 && p.score > 0 ? " lead" : ""}${p.online ? "" : " gone"}${kickBtnHtml(p) ? " kickable" : ""}" style="--pc:${p.color}"><span class="n">${i + 1}</span><i class="av">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><span class="d" style="--dd:${(0.3 + i * 0.08).toFixed(2)}s">${d > 0 ? escapeHtml(tpl("pts", { n: d })) : ""}</span><span class="s" data-from="${from(p)}" data-to="${p.score}">${p.score}</span>${kickBtnHtml(p)}</div>`; }).join("")}</div></div>`;
   cqFallback();
   countUp();
 }
@@ -991,7 +1000,10 @@ function render() {
   $("roundchip").classList.toggle("hidden", !inGame);
   if (inGame && state.roundKey) $("roundchip").innerHTML = `${escapeHtml(tpl("round_n", { n: state.ri + 1 }))} · <b>${escapeHtml(qpRoundName(state.roundKey))}</b>`;
   $("endbtn").classList.toggle("hidden", !(isHost && inGame));
-  $("endbtn").textContent = T("btn_end");
+  const canSkip = isHost && ["topic", "lie", "choose"].includes(state.phase);
+  $("skipbtn").classList.toggle("hidden", !canSkip);
+  if (!canSkip) hostTap.disarm();
+  syncHostBtns();
   // класс вместо :has() — старые движки (проекторы) его не знают
   document.body.classList.toggle("in-lobby", state.phase === "lobby");
   main.classList.toggle("in-lobby", state.phase === "lobby");
@@ -1006,7 +1018,38 @@ function render() {
     case "finished": return drawFinal();
   }
 }
-$("endbtn").onclick = () => conn.send({ type: "end" });
+// Команды ведущего, которые нельзя отменить, — двухтактные (MP.twoTap, U-12): первый тап взводит на 3 с, второй выполняет.
+// Если mp-common.js не загрузился или выключен — один тап, как раньше. Взведённая — только одна на всю шапку и список.
+const hostTap = (window.MP && MP.twoTap && MP.twoTap.create ? MP.twoTap.create : (o) => {
+  return { tap: () => true, armed: () => null, isArmed: () => false, disarm() {} };
+})({ armedMs: 3000, onChange: () => syncHostBtns() });
+function kickBtnHtml(p) {
+  if (!isHost || p.online || p.left || !state || state.phase === "lobby") return "";
+  const on = hostTap.isArmed("kick:" + p.id);
+  return `<button class="kickx" type="button" data-kick="${escapeHtml(p.id)}"${on ? ` data-armed="1"` : ""} title="${escapeHtml(T("kick"))}" aria-label="${escapeHtml(T("kick"))}">${on ? escapeHtml(T("kick_sure")) : "✕"}</button>`;
+}
+function syncHostBtns() {
+  const set = (id, key, label, sure) => {
+    const b = $(id);
+    if (!b) return;
+    const on = hostTap.isArmed(key);
+    b.textContent = on ? T(sure) : T(label);
+    if (on) b.setAttribute("data-armed", "1"); else b.removeAttribute("data-armed");
+  };
+  set("endbtn", "end", "btn_end", "end_sure");
+  set("skipbtn", "skip", "btn_skip", "skip_sure");
+  for (const b of main.querySelectorAll("[data-kick]")) {
+    const on = hostTap.isArmed("kick:" + b.dataset.kick);
+    b.textContent = on ? T("kick_sure") : "✕";
+    if (on) b.setAttribute("data-armed", "1"); else b.removeAttribute("data-armed");
+  }
+}
+$("endbtn").onclick = () => { if (hostTap.tap("end")) conn.send({ type: "end" }); };
+$("skipbtn").onclick = () => { if (hostTap.tap("skip")) conn.send({ type: "skip" }); };
+main.addEventListener("click", (e) => {
+  const b = e.target && e.target.closest ? e.target.closest("[data-kick]") : null;
+  if (b && isHost && hostTap.tap("kick:" + b.dataset.kick)) conn.send({ type: "kick", playerId: b.dataset.kick });
+});
 
 // ТВ и большие мониторы: вёрстка рассчитана на 1920×1080, выше — увеличиваем целиком (на 4K всё иначе мелкое)
 function applyScale() {
@@ -1066,6 +1109,7 @@ function onMessage(m) {
       break;
     case "event":
       if (m.event.type === "react") floatReact(m.event.playerId, m.event.emoji);
+      if (m.event.type === "left" && isHost && state && state.phase !== "lobby") floatReact(m.event.playerId, "✕");
       break;
     case "error":
       if (m.error === "room_expired") gone();

@@ -95,6 +95,17 @@
  *     api.seen()       был ли hello;  api.submit(raw) -> итоговый код ПОСЛЕ фильтра | null (пусто)
  *     MP.roomGone.normalize(raw) -> "BEAR74"  (верхний регистр, только A-Z и 2-9, ≤ 12)
  *     Серверного различителя нет (К-11): «нет такой» и «закрыта по TTL» до hello неразличимы.
+ *   MP.twoTap(el, {onConfirm, armedMs = 3000, label, armedLabel, onArm, onDisarm, setTimeout, clearTimeout}) -> ctl
+ *     Двухтактная команда ведущего (U-12, класс A): первый тап «взводит» (el[data-armed="1"], текст -> armedLabel
+ *     «Точно завершить?», если задан), второй в течение armedMs (3 с) вызывает onConfirm(event); по истечении —
+ *     само снимается. Защита от случайного «Закончить»/«Дальше». label — подпись по умолчанию (вернётся при снятии).
+ *     Если MP.off — первый же тап выполняет команду (как до модуля).
+ *     ctl.disarm() / ctl.isArmed() / ctl.destroy()
+ *   MP.twoTap.create({armedMs, onChange(key|null), now, setTimeout, clearTimeout}) -> ctl
+ *     Тот же двухтактный автомат без DOM — для списков, которые перерисовываются целиком (кнопка ✕ у игрока):
+ *     ctl.tap(key) -> true, если это ВТОРОЙ тап по тому же key в окне (команду выполнять); иначе взводит key и
+ *     возвращает false. Тап по другому key перевзводит. ctl.armed() -> key|null; ctl.isArmed(key); ctl.disarm().
+ *     onChange вызывается при смене взведённого key (в т.ч. по таймеру) — игра перерисовывает кнопки.
  */
 (function (root) {
   'use strict';
@@ -583,6 +594,67 @@
     return api;
   };
   MP.roomGone.normalize = normalizeCode;
+  // ── twoTap ─────────────────────────────────────────────────────────────────────────────────────
+  MP.twoTap = function (el, opts) {
+    var o = opts || {};
+    var armedMs = typeof o.armedMs === 'number' ? o.armedMs : 3000;
+    var base = null; // подпись до взвода
+    var ctl = MP.twoTap.create({
+      armedMs: armedMs,
+      setTimeout: o.setTimeout,
+      clearTimeout: o.clearTimeout,
+      onChange: function (key) {
+        if (!el) return;
+        if (key != null) {
+          if (el.setAttribute) el.setAttribute('data-armed', '1');
+          if (o.armedLabel != null) { base = el.textContent; el.textContent = o.armedLabel; }
+          if (typeof o.onArm === 'function') o.onArm(el);
+        } else {
+          if (el.removeAttribute) el.removeAttribute('data-armed');
+          if (o.armedLabel != null && base != null) { el.textContent = o.label != null ? o.label : base; base = null; }
+          if (typeof o.onDisarm === 'function') o.onDisarm(el);
+        }
+      }
+    });
+    if (o.label != null && el) el.textContent = o.label;
+    function onClick(ev) {
+      if (ctl.tap('el') && typeof o.onConfirm === 'function') o.onConfirm(ev);
+    }
+    if (el && el.addEventListener) el.addEventListener('click', onClick);
+    return {
+      disarm: ctl.disarm,
+      isArmed: function () { return ctl.isArmed('el'); },
+      destroy: function () {
+        ctl.disarm();
+        if (el && el.removeEventListener) el.removeEventListener('click', onClick);
+      }
+    };
+  };
+  MP.twoTap.create = function (opts) {
+    var o = opts || {};
+    var t = timers(o);
+    var armedMs = typeof o.armedMs === 'number' ? o.armedMs : 3000;
+    var key = null;
+    var timer = null;
+    function set(k) {
+      var changed = k !== key;
+      key = k;
+      if (timer != null) { t.clear(timer); timer = null; }
+      if (k != null) timer = t.set(function () { timer = null; set(null); }, armedMs);
+      if (changed && typeof o.onChange === 'function') o.onChange(key);
+    }
+    return {
+      tap: function (k) {
+        if (MP.off) return true; // модуль выключен: поведение «как раньше» — один тап
+        if (key != null && key === k) { set(null); return true; }
+        set(k);
+        return false;
+      },
+      armed: function () { return key; },
+      isArmed: function (k) { return key != null && key === k; },
+      disarm: function () { if (key != null) set(null); }
+    };
+  };
 
   root.MP = MP;
 })(this);

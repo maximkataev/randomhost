@@ -349,6 +349,40 @@ async function main() {
     check(!!(await waitFor(board, "state.phase === 'finished'", 15000)), "короткая партия дошла до итогов");
     await board.shot("g3_b_final");
 
+    // ---------- 3b. двухтактные команды ведущего (T-W1-13, U-12): «Закончить», «Дальше», ✕ у офлайн ----------
+    await click(board, "#tolobby");
+    await waitFor(board, "state.phase === 'lobby'", 5000);
+    await click(board, "#startbtn");
+    await waitFor(board, "state.phase === 'topic'", 8000);
+    check((await board.evaluate("!document.getElementById('skipbtn').classList.contains('hidden')")) === true, "доска: «Дальше» видна ведущему в фазе темы");
+    check((await board.evaluate("document.getElementById('endbtn').getBoundingClientRect().height >= 44")) === true, "доска: «Закончить» ≥ 44 px высотой");
+    await click(board, "#endbtn");
+    check((await board.evaluate("document.getElementById('endbtn').hasAttribute('data-armed')")) === true, "«Закончить»: первый тап только взводит («Точно завершить?»)");
+    check((await board.evaluate("state.phase")) === "topic", "«Закончить»: после одного тапа партия идёт");
+    await wait(1000); // skip не раньше 800 мс от старта фазы
+    await click(board, "#skipbtn");
+    check((await board.evaluate("document.getElementById('skipbtn').hasAttribute('data-armed') && !document.getElementById('endbtn').hasAttribute('data-armed')")) === true, "«Дальше»: взведена, «Закончить» остыла (взведена одна команда)");
+    check((await board.evaluate("state.phase")) === "topic", "«Дальше»: после одного тапа фаза та же");
+    await click(board, "#skipbtn");
+    check(!!(await waitFor(board, "state.phase === 'lie'", 4000)), "«Дальше»: второй тап — тема выбрана жребием, пошла ложь");
+    // взведённая кнопка сама остывает через 3 с
+    await click(board, "#endbtn");
+    await wait(3400);
+    check((await board.evaluate("document.getElementById('endbtn').hasAttribute('data-armed')")) === false, "«Закончить»: без второго тапа за 3 с взвод снят");
+    // ✕ у офлайн-игрока в карточках лжи: локально «роняем» связь у игрока в снимке доски
+    await board.evaluate("(() => { const id = state.roster[0]; state.players.find((p) => p.id === id).online = false; viewKey = ''; render(); })()");
+    check((await board.evaluate("document.querySelectorAll('.writer .kickx').length")) === 1, "карточка лжи офлайн-игрока: есть ✕");
+    check((await board.evaluate("document.querySelector('.writer .kickx').getBoundingClientRect().width >= 44")) === true, "✕: цель ≥ 44 px");
+    await click(board, ".writer .kickx");
+    check((await board.evaluate("document.querySelector('.writer .kickx').hasAttribute('data-armed')")) === true, "✕: первый тап взводит («Точно убрать?»), игрока не убирает");
+    check((await board.evaluate("state.players.length")) === 3, "✕: после одного тапа игроков по-прежнему трое");
+    await wait(3400);
+    check((await board.evaluate("document.querySelector('.writer .kickx') ? document.querySelector('.writer .kickx').hasAttribute('data-armed') : false")) === false, "✕: без второго тапа взвод снят");
+    // «Закончить» двумя тапами завершает партию
+    await click(board, "#endbtn");
+    await click(board, "#endbtn");
+    check(!!(await waitFor(board, "state.phase === 'finished'", 4000)), "«Закончить»: два тапа — партия завершена");
+
     // ---------- 4. перезагрузка телефона: возвращается по токену ----------
     await phones[0].call("Page.reload");
     check(!!(await waitFor(phones[0], "window.qpPhone && window.qpPhone.me", 8000)), "телефон после перезагрузки вернулся по токену");
