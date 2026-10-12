@@ -107,6 +107,8 @@
   input { font: 700 26px/1 var(--font); width: 100%; padding: 12px; border: var(--line); background: #fff; color: var(--ink); border-radius: 0; }
   .err { color: var(--red); font-weight: 700; min-height: 1.25em; }
   .enter { display: grid; gap: 14px; }
+  .codeform { display: grid; gap: 10px; }
+  .codeform input { text-transform: uppercase; }
 
   /* ---------- ожидание и спокойные экраны ---------- */
   .calm { display: grid; gap: 14px; align-content: center; }
@@ -460,6 +462,7 @@ window.I18N_DICT = {
     btn_create: `Создать комнату`, btn_creating: `Создаём…`,
     cta_sub: `Открывай на ноутбуке или ТВ — там будет бомба`,
     have_code: `У меня есть код`, prompt_code: `Код комнаты`,
+    noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код — в нём слово и две цифры`, btn_go: `Перейти`,
     rule1: `Все заходят с телефонов по QR с общего экрана`,
     rule2: `Бомба пришла — пройди испытание: провода, судоку, вопрос, «не жми»…`,
     rule3: `Прошёл — кидай кому хочешь. Время взрыва запечатано до старта — после взрыва его можно проверить`,
@@ -521,6 +524,7 @@ window.I18N_DICT = {
     btn_create: `Create a room`, btn_creating: `Creating…`,
     cta_sub: `Open it on a laptop or TV — that's where the bomb lives`,
     have_code: `I have a code`, prompt_code: `Room code`,
+    noroom_title: `There is no such room`, noroom_text: `Check the code: a word and two digits`, btn_go: `Go`,
     rule1: `Everyone joins from their phone via the QR on the shared screen`,
     rule2: `Got the bomb? Beat a challenge: wires, sudoku, trivia, "don't press"…`,
     rule3: `Done — throw it to anyone. The blast time is sealed before the start and can be checked afterwards`,
@@ -581,6 +585,7 @@ window.I18N_DICT = {
     btn_create: `Νέο δωμάτιο`, btn_creating: `Δημιουργία…`,
     cta_sub: `Άνοιξέ το σε laptop ή τηλεόραση — εκεί θα είναι η βόμβα`,
     have_code: `Έχω κωδικό`, prompt_code: `Κωδικός δωματίου`,
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό: μια λέξη και δύο ψηφία`, btn_go: `Πήγαινε`,
     rule1: `Όλοι μπαίνουν από το κινητό με το QR της κοινής οθόνης`,
     rule2: `Ήρθε η βόμβα; Πέρνα μια δοκιμασία: καλώδια, σουντόκου, ερώτηση, «μην πατάς»…`,
     rule3: `Τα κατάφερες — πέτα τη σε όποιον θες. Η ώρα της έκρηξης σφραγίζεται πριν την αρχή και ελέγχεται μετά`,
@@ -634,6 +639,7 @@ window.I18N_DICT = {
   },
 };
 </script>
+<script src="mp-common.js"></script>
 <script src="bomb-shared.js"></script>
 <script src="i18n.js"></script>
 <script src="sound-toggle.js" defer></script>
@@ -717,9 +723,28 @@ function renderLanding() {
       toast(String(err.message || err));
     }
   };
+  // поле кода прямо на экране (раньше prompt(): на телефоне он блокирует страницу и не переводится)
   document.getElementById("havecode").onclick = () => {
-    const c = prompt(T("prompt_code"));
-    if (c) location.href = `bomb.html?r=${encodeURIComponent(c.trim().toUpperCase())}`;
+    const sub = document.querySelector(".cta .sub");
+    sub.innerHTML = codeFormHtml("");
+    bindCodeForm();
+    document.getElementById("codein").focus();
+  };
+}
+
+// ---------- ввод кода комнаты ----------
+function normCode(raw) {
+  if (window.MP && MP.roomGone) return MP.roomGone.normalize(raw);
+  return String(raw || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+}
+function codeFormHtml(value) {
+  return `<form class="codeform" id="codeform" autocomplete="off"><input id="codein" maxlength="24" value="${escapeHtml(value)}" placeholder="${escapeHtml(T("prompt_code"))}" aria-label="${escapeHtml(T("prompt_code"))}" autocapitalize="characters" enterkeyhint="go"><button class="btn alt" type="submit">${T("btn_go")}</button></form>`;
+}
+function bindCodeForm() {
+  document.getElementById("codeform").onsubmit = (e) => {
+    e.preventDefault();
+    const c = normCode(document.getElementById("codein").value); // уходим с кодом уже после фильтра
+    if (c) location.href = `bomb.html?r=${encodeURIComponent(c)}`;
   };
 }
 
@@ -751,6 +776,15 @@ function renderCenter(titleKey, textKey, extra) {
   bodyMode(null);
   app.innerHTML = `<div class="calm"><div class="card"><h2>${T(titleKey)}</h2>${textKey ? `<p style="margin:0">${T(textKey)}</p>` : ""}${extra || ""}</div></div>`;
 }
+// Неверный код: hello не приходил ни разу — комнаты с таким кодом нет (или её давно убрали), а не «закрылась»
+function renderNoRoom() {
+  dead = true;
+  screen = "noroom";
+  renderCenter("noroom_title", "noroom_text", codeFormHtml(CODE));
+  bindCodeForm();
+}
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({ showForm: renderNoRoom, onClosed: () => renderExpired() }) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else renderExpired(); }
 function renderExpired() {
   dead = true;
   screen = "expired";
@@ -1627,6 +1661,7 @@ window.addEventListener("langchange", () => {
   if (screen === "enter") return renderEnter();
   calmKey = targetsKey = boomKey = "";
   if (screen === "hot") { screen = null; }
+  if (screen === "noroom") return renderNoRoom();
   screen === "expired" ? renderExpired() : render();
 });
 
@@ -1647,6 +1682,7 @@ function onMessage(m) {
     case "hello":
     case "state":
       state = m.state;
+      if (m.type === "hello" && goneFlow) goneFlow.hello();
       if (m.type === "hello" && token && needJoin) {
         needJoin = false;
         conn.send({ type: "join", token });
@@ -1694,7 +1730,7 @@ function onMessage(m) {
     case "error":
       joinWait = false;
       conn.flush(() => false);
-      if (m.error === "room_expired") return renderExpired();
+      if (m.error === "room_expired") return onRoomGone();
       if (["game_started", "room_full", "token_gone", "bad_name"].includes(m.error)) {
         if (m.error === "token_gone") { try { localStorage.removeItem(tokenKey()); } catch (e) {} token = null; }
         joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
@@ -1736,7 +1772,7 @@ function start() {
   conn = bmConnect({
     code: CODE,
     onMessage,
-    onGone: renderExpired,
+    onGone: onRoomGone,
     // действие не ушло (обрыв дольше 30 с, очередь переполнена): снимаем «улетело» и говорим игроку
     onSendFail: (msg) => {
       if (!msg) return;

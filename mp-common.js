@@ -78,6 +78,23 @@
  *                       flush(function () { return false; }) — выбросить всё (kicked / expired)
  *     q.heard()         пришло любое сообщение сервера (сбрасывает «тишину»)
  *     q.size() / q.has(type) / q.clear() (без onDrop) / q.setCeiling(type, ms)
+ *   MP.hostLink({hostKeyFn, boardPath, getRoom, onToast, sendHost, navigator, location, prompt, takeMinMs = 3000})
+ *     -> api   «🔑 Ссылка ведущего» (T-W1-10, U-03 вариант A). Токен ведущего НЕ рисуется на экране.
+ *     hostKeyFn() -> ключ localStorage с токеном (bomb: "bomb-host-КОД"); getRoom() -> код; boardPath -> "bomb-board.html"
+ *     api.url() -> "…/bomb-board.html?r=КОД&h=ТОКЕН" | null (нет токена или кода)
+ *     api.copy() -> Promise<"copied"|"shared"|"prompt"|"cancelled"|"none">   clipboard -> Web Share -> prompt();
+ *                                          onToast(kind) вызывается с тем же значением
+ *     api.adopt(text) -> токен | null      «Я ведущий»: из вставленной ссылки (?h=) или голого токена; кладёт в localStorage
+ *     api.take(now?, text?) -> bool        «Забрать»: sendHost(токен) не чаще раза в takeMinMs (3 с)
+ *     MP.hostLink.build(href, boardPath, code, token), MP.hostLink.parseToken(text)
+ *
+ *   MP.roomGone({showForm, onClosed}) -> api   «Такой комнаты нет» против «Комната закрыта» (T-W1-12)
+ *     api.hello()      пришёл hello — комната существовала
+ *     api.gone(info?)  404 / room_expired: до первого hello -> showForm(info) («Такой комнаты нет» + поле кода),
+ *                      после -> onClosed(info); возвращает "noroom" | "closed". Повторно не вызывает (404 не ретраится)
+ *     api.seen()       был ли hello;  api.submit(raw) -> итоговый код ПОСЛЕ фильтра | null (пусто)
+ *     MP.roomGone.normalize(raw) -> "BEAR74"  (верхний регистр, только A-Z и 2-9, ≤ 12)
+ *     Серверного различителя нет (К-11): «нет такой» и «закрыта по TTL» до hello неразличимы.
  */
 (function (root) {
   'use strict';
@@ -450,6 +467,122 @@
     };
     return q;
   };
+  // ── hostLink ───────────────────────────────────────────────────────────────────────────────────
+  var TOKEN_RE = /^[A-Za-z0-9_-]{6,64}$/;
+
+  function buildHostUrl(href, boardPath, code, token) {
+    var base = String(href || '').split('#')[0].split('?')[0];
+    base = base.slice(0, base.lastIndexOf('/') + 1) + boardPath;
+    return base + '?r=' + encodeURIComponent(code) + '&h=' + encodeURIComponent(token);
+  }
+  function parseHostToken(text) {
+    var s = String(text == null ? '' : text).trim();
+    if (!s) return null;
+    var m = /[?&]h=([^&#\s]+)/.exec(s);
+    if (m) {
+      var v = m[1];
+      try { v = decodeURIComponent(v); } catch (e) { /* оставляем как есть */ }
+      return TOKEN_RE.test(v) ? v : null;
+    }
+    return TOKEN_RE.test(s) ? s : null;
+  }
+
+  MP.hostLink = function (opts) {
+    var o = opts || {};
+    var minMs = typeof o.takeMinMs === 'number' ? o.takeMinMs : 3000;
+    var lastTake = -Infinity;
+    function env(k) { return o[k] || root[k]; }
+    function key() { return typeof o.hostKeyFn === 'function' ? o.hostKeyFn() : null; }
+    function token() { var k = key(); return k ? safeGet(k) : null; }
+    function toast(kind) { if (typeof o.onToast === 'function') o.onToast(kind); return kind; }
+
+    var api = {
+      url: function () {
+        var t = token();
+        var code = typeof o.getRoom === 'function' ? o.getRoom() : '';
+        var loc = env('location');
+        if (!t || !code || !loc) return null;
+        return buildHostUrl(loc.href, o.boardPath || 'bomb-board.html', code, t);
+      },
+      copy: function () {
+        if (MP.off) return Promise.resolve('none');
+        var url = api.url();
+        if (!url) return Promise.resolve(toast('none'));
+        var nav = env('navigator') || {};
+        function viaPrompt() {
+          var pr = env('prompt');
+          if (typeof pr === 'function') { try { pr('', url); } catch (e) { /* ignore */ } }
+          return toast('prompt');
+        }
+        function viaShare() {
+          if (typeof nav.share !== 'function') return Promise.resolve(viaPrompt());
+          var p;
+          try { p = nav.share({ url: url }); } catch (e) { return Promise.resolve(viaPrompt()); }
+          return Promise.resolve(p).then(function () { return toast('shared'); }, function (e) {
+            if (e && e.name === 'AbortError') return toast('cancelled'); // игрок закрыл меню — не спорим
+            return viaPrompt();
+          });
+        }
+        if (nav.clipboard && typeof nav.clipboard.writeText === 'function') {
+          var w;
+          try { w = nav.clipboard.writeText(url); } catch (e) { return viaShare(); }
+          return Promise.resolve(w).then(function () { return toast('copied'); }, viaShare);
+        }
+        return viaShare();
+      },
+      adopt: function (text) {
+        var t = parseHostToken(text);
+        var k = key();
+        if (!t || !k) return null;
+        safeSet(k, t);
+        return t;
+      },
+      take: function (now, text) {
+        if (MP.off) return false;
+        var n = typeof now === 'number' ? now : Date.now();
+        if (n - lastTake < minMs) return false;
+        var t = text ? api.adopt(text) : token();
+        if (!t) return false;
+        lastTake = n;
+        if (typeof o.sendHost === 'function') o.sendHost(t);
+        return true;
+      }
+    };
+    return api;
+  };
+  MP.hostLink.build = buildHostUrl;
+  MP.hostLink.parseToken = parseHostToken;
+
+  // ── roomGone ───────────────────────────────────────────────────────────────────────────────────
+  function normalizeCode(raw) {
+    return String(raw == null ? '' : raw).toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, 12);
+  }
+
+  MP.roomGone = function (opts) {
+    var o = opts || {};
+    var seen = false;
+    var fired = false;
+    var api = {
+      hello: function () { seen = true; },
+      seen: function () { return seen; },
+      gone: function (info) {
+        if (fired) return seen ? 'closed' : 'noroom';
+        fired = true;
+        if (!seen) {
+          if (typeof o.showForm === 'function') o.showForm(info);
+          return 'noroom';
+        }
+        if (typeof o.onClosed === 'function') o.onClosed(info);
+        return 'closed';
+      },
+      submit: function (raw) {
+        var c = normalizeCode(raw);
+        return c || null;
+      }
+    };
+    return api;
+  };
+  MP.roomGone.normalize = normalizeCode;
 
   root.MP = MP;
 })(this);
