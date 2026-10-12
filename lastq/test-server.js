@@ -391,3 +391,28 @@ test("лобби: Start требует двоих НА СВЯЗИ — один �
   assert.equal(rj.reason, "few_players");
   for (const c of [b, a]) c.close();
 });
+
+// ---- T-W2-31 (lastq-008): leave + join тем же именем с того же IP возвращает запись, а не заводит новичка ----
+test("leave посреди партии и вход тем же именем с того же IP — та же запись (id, счёт); другое имя — новый игрок с 0", async () => {
+  const { code, hostToken } = await createRoom({}, 8);
+  const b = await board(code, hostToken);
+  const a = await player(code, "Аня");
+  const z = await player(code, "Зоя");
+  const c = await player(code, "Вера");
+  b.send({ type: "start" });
+  await a.phase("answer");
+  a.send({ type: "leave" });
+  await b.wait((m) => m.type === "state" && m.state.players.some((p) => p.id === a.id && p.left === true), 5000);
+  const back = await player(code, "аня "); // регистр и пробел — тот же ключ
+  assert.equal(back.joinMsg.type, "joined");
+  assert.equal(back.id, a.id, "та же запись");
+  assert.equal(back.joinMsg.resumed, true);
+  await b.wait((m) => m.type === "state" && m.state.players.filter((p) => !p.left).length === 3, 5000);
+  assert.equal(b.state.players.length, 3, "записей не прибавилось");
+  // чужое имя — новая запись
+  back.send({ type: "leave" });
+  await b.wait((m) => m.type === "state" && m.state.players.some((p) => p.id === a.id && p.left === true), 5000);
+  const other = await player(code, "Пётр");
+  assert.notEqual(other.id, a.id);
+  for (const x of [b, z, c, back, other]) try { x.close(); } catch {}
+});

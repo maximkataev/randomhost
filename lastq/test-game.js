@@ -775,3 +775,53 @@ test("toLobby после партии: места, отмеченные офла
   g.setOnline("p2", true, t + 200);
   assert.equal(g.player("p2").offSince, undefined);
 });
+
+// ---------- T-W2-31: возврат записи, стартовый счёт вошедшего ----------
+function lowestAtP2(g) {
+  // p0, p1 верно; p2 мимо и не выбрался: p2 уходит в минус
+  g.start(0);
+  let t = until(g, "answer", 0);
+  g.answer("p0", right(g), t + 100);
+  g.answer("p1", right(g), t + 120);
+  g.answer("p2", wrong(g), t + 140);
+  t = until(g, "verdict", t);
+  assert.ok(g.player("p2").score < 0, "p2 в минусе: " + g.player("p2").score);
+  return t;
+}
+
+test("RULE_U43_LATE_MIN выкл (по умолчанию): новичок посреди партии — 0; вкл — min(0, минимум счёта, включая ушедших)", () => {
+  for (const [flag, expectMin] of [[null, false], ["1", true]]) {
+    withEnv("RULE_U43_LATE_MIN", flag, () => {
+      const g = setup(3);
+      const t = lowestAtP2(g);
+      const low = g.player("p2").score;
+      g.removePlayer("p2", t + 10); // ушёл на дне
+      const r = g.addPlayer({ id: "late", name: "Новичок", now: t + 20 });
+      assert.ok(r.ok);
+      assert.equal(g.player("late").score, expectMin ? low : 0, "flag=" + flag);
+      assert.equal(g.player("late").stats.minScore, expectMin ? low : 0);
+    });
+  }
+});
+
+test("rejoinLeft: ушедший возвращается со своим счётом; «Дно» не теряется после ухода (lastq-008)", () => {
+  const g = setup(3);
+  let t = lowestAtP2(g);
+  const low = g.player("p2").score;
+  g.removePlayer("p2", t + 10);
+  assert.equal(g.player("p2").left, true);
+  // «Дно» считается и по ушедшим
+  g.finish("host", t + 20);
+  assert.ok(g.s.awards.bottom && g.s.awards.bottom.ids.includes("p2"), "награда «Дно» ушедшего пропала");
+  // в finished возвращать запись нельзя — это уже итоги
+  assert.equal(g.rejoinLeft("p2", t + 30).ok, false);
+  // другая партия: вернуть можно только вне лобби/итогов
+  const g2 = setup(3);
+  t = lowestAtP2(g2);
+  g2.removePlayer("p2", t + 10);
+  const r = g2.rejoinLeft("p2", t + 30);
+  assert.ok(r.ok);
+  assert.equal(g2.player("p2").left, false);
+  assert.equal(g2.player("p2").score, low, "счёт сохранён");
+  assert.equal(g2.s.players.length, 3, "записей не прибавилось");
+});

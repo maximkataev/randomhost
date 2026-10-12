@@ -489,7 +489,7 @@ function handle(room, client, msg) {
       return sendHello(room, client); // доске — снимок с испытаниями всех держателей
     }
     case "join": {
-      if (me && g.player(me) && !g.player(me).left) return reply({ type: "joined", playerId: me, token: client.token, name: g.player(me).name, renamed: false });
+      if (me && g.player(me) && !g.player(me).left) return reply({ type: "joined", playerId: me, token: client.token, name: g.player(me).name, renamed: false, resumed: true });
       let playerId = msg.token && room.tokens[msg.token];
       let renamed = false;
       if (playerId && !g.player(playerId)) {
@@ -505,8 +505,18 @@ function handle(room, client, msg) {
         // только уже выпавший (после грации офлайна) и не в лобби — иначе тёзка забирал чужие очки, пока у владельца погас экран
         // и только с того же IP, что был у игрока (телефоны одной компании обычно за одним Wi-Fi)
         room.lastIp = room.lastIp || {};
-        const ghost = g.s.phase !== "lobby" && g.s.players.find((p) => !p.left && !p.online && nameKey(p.name) === nameKey(name) && room.lastIp[p.id] === client.ip && ![...room.sockets].some((c) => c.playerId === p.id));
+        // вернулся ушедший («Выйти» или вкладка закрыта до конца партии), имя и IP те же: своя запись назад — со счётом
+        // (выйти и зайти новичком не чистит минус, lastq-008). Вне лобби/итогов, имя ещё никем не занято.
+        const key0 = nameKey(name);
+        const inGame0 = g.s.phase !== "lobby" && g.s.phase !== "finished";
+        const left = inGame0 && key0 && !g.s.players.some((p) => !p.left && nameKey(p.name) === key0)
+          ? g.s.players.find((p) => p.left && nameKey(p.name) === key0 && room.lastIp[p.id] === client.ip) : null;
+        const ghost = left || g.s.phase !== "lobby" && g.s.players.find((p) => !p.left && !p.online && nameKey(p.name) === nameKey(name) && room.lastIp[p.id] === client.ip && ![...room.sockets].some((c) => c.playerId === p.id));
         if (ghost) {
+          if (left) {
+            const rr = g.rejoinLeft(left.id, t);
+            if (!rr.ok) return reply({ type: "error", error: rr.reason });
+          }
           playerId = ghost.id;
           const token = crypto.randomBytes(12).toString("base64url");
           room.tokens[token] = playerId;
@@ -535,7 +545,7 @@ function handle(room, client, msg) {
         reply({ type: "joined", playerId, token, name, renamed });
       } else {
         client.token = msg.token;
-        reply({ type: "joined", playerId, token: msg.token, name: g.player(playerId).name, renamed: false });
+        reply({ type: "joined", playerId, token: msg.token, name: g.player(playerId).name, renamed: false, resumed: true });
       }
       for (const c of room.sockets) if (c !== client && c.playerId === playerId) { c.playerId = null; send(c.ws, { type: "replaced" }); }
       // у игрока один живой токен: прежние отзываем (иначе выбитый вход возвращается и выбивает снова)

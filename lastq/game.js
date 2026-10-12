@@ -60,6 +60,12 @@ const DEFAULTS = {
 // иначе «выдернуть Wi-Fi на вопросе, который не знаешь» стало бы выигрышной стратегией. Читается при каждом вызове.
 const ghostOut = () => process.env.RULE_U08_GHOST_OUT === "1";
 
+// RULE_U43_LATE_MIN (класс B, T-W2-31, lastq-008): вошедший под НОВЫМ именем посреди партии стартует не с 0, а с минимума
+// счёта всех (включая ушедших) — min(0, …). По умолчанию выкл: спека §226 «играет со следующего вопроса с 0 очков».
+// (Вернувшийся под тем же именем с того же IP получает свою запись назад независимо от флага — rejoinLeft.)
+// RULE_U43_LATE_SCORE — синоним имени из задания.
+const lateMin = () => process.env.RULE_U43_LATE_MIN === "1" || process.env.RULE_U43_LATE_SCORE === "1";
+
 const MAX_PLAYERS = 10;
 const MIN_PLAYERS = 2;
 const REACT_GAP = 2000;
@@ -195,9 +201,26 @@ class Game {
     // ушедшие посреди партии копятся в списке (их очки нужны итогам); но не бесконечно — иначе пара join/leave в цикле
     // раздувает каждый снимок до мегабайт (как в wave)
     if (s.players.length >= MAX_PLAYERS * 3) return { ok: false, reason: "room_full" };
+    // вошёл посреди партии — отвечает со следующего вопроса с 0 очков (§8); за RULE_U43_LATE_MIN — с минимума счёта
+    if (lateMin() && s.phase !== "lobby" && s.phase !== "finished") {
+      p.score = Math.min(0, ...s.players.map((x) => x.score));
+      p.stats.minScore = p.score;
+    }
     s.players.push(p);
-    // вошёл посреди партии — отвечает со следующего вопроса с 0 очков (§8)
     return { ok: true, player: p, evicted };
+  }
+
+  // «выйти и зайти» не чистит счёт: ушедший посреди партии, вернувшийся под тем же именем с того же IP (проверяет сервер),
+  // получает свою запись назад — со счётом, статистикой и цветом (lastq-008)
+  rejoinLeft(id, now) {
+    const s = this.s;
+    const p = this.player(id);
+    if (!p || !p.left) return { ok: false, reason: "bad" };
+    if (s.phase === "lobby" || s.phase === "finished") return { ok: false, reason: "bad" };
+    if (this.present().length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
+    p.left = false;
+    presence.setOnline(p, true, now);
+    return { ok: true, player: p, events: [{ type: "back", playerId: id }] };
   }
 
   static freshStats() {
@@ -814,7 +837,14 @@ class Game {
       rocket: best((p) => p.stats.msSum / p.stats.right, (p) => p.stats.right >= 3, true),
       kamikaze: s.settings.final ? pos(best((p) => p.stats.stake)) : null,
       seer: pos(best((p) => p.stats.betHits)),
-      bottom: (() => { const b = best((p) => p.stats.minScore, () => true, true); return b && b.n < 0 ? b : null; })(),
+      // «Дно» считаем по всем, кто был в партии, включая ушедших: иначе «выйти на дне» стирало бы награду (lastq-008)
+      bottom: (() => {
+        const all = s.players.filter((p) => p.stats && Number.isFinite(p.stats.minScore));
+        if (!all.length) return null;
+        const m = Math.min(...all.map((p) => p.stats.minScore));
+        const ids = all.filter((p) => p.stats.minScore === m).map((p) => p.id);
+        return m < 0 && ids.length <= 2 ? { ids, n: m } : null;
+      })(),
     };
   }
 
