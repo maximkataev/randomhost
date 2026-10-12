@@ -209,6 +209,8 @@
   @media (max-height: 500px) and (min-width: 600px) { body.with-panel .conn { margin-left: 150px; } }
   .conn { position: fixed; left: 50%; bottom: auto; top: calc(52px + env(safe-area-inset-top, 0px)); pointer-events: none; transform: translateX(-50%); z-index: 30; background: rgba(205, 48, 58, 0.95); color: #fff; font-weight: 800; font-size: 14px; padding: 9px 14px; border-radius: 12px; display: none; white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; }
   .conn.on { display: block; }
+  /* reload посреди заплыва: до первого снимка панель скрыта без анимации, иначе она «уезжала» поверх реки (rapids-018/019) */
+  body.booting .panel { visibility: hidden; transition: none; }
   .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: #fff; color: #0b2a22; font-weight: 800; font-size: 14px; padding: 10px 16px; border-radius: 12px; max-width: calc(100% - 32px); display: none; }
   .toast.on { display: block; animation: toastIn 0.3s ease-out; }
   @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 10px); } }
@@ -546,6 +548,7 @@ window.I18N_DICT = {
         break;
       }
       case "error":
+        unboot();
         if (m.error === "room_expired") return showDead("no_room");
         if (!net.me) { ui.joinErr = m.error; net.wantJoin = false; redraw(); }
         else toast(T(m.error === "need_two" ? "need_two_err" : m.error));
@@ -561,6 +564,7 @@ window.I18N_DICT = {
   // всегда есть следующий — чужие утки плывут плавно, а не ступеньками (плейтест 04.10)
   const INTERP_MS = 70;
   const showTime = () => (net.offset == null ? null : performance.now() + net.offset - INTERP_MS);
+  const unboot = () => document.body.classList.remove("booting");
   function onSnap(m) {
     const now = performance.now();
     net.lastSnapAt = now;
@@ -577,6 +581,7 @@ window.I18N_DICT = {
     const mine = net.me && m.p.find((p) => p[0] === net.me);
     if (mine) reconcile(mine, m); else pred.on = false;
     if (m.ph !== ui.phase) onPhase(m.ph, ui.phase, m);
+    if (net.me) unboot();
   }
   const lerpAng = (a, b, t) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * t; };
   // ушедшие из комнаты пропадают из списка игроков, но в заплыве и итоге остаются — имя и цвет помним
@@ -918,9 +923,11 @@ window.I18N_DICT = {
   function clearResultsScene() {
     render.setFocus(null);
     $("verdict").classList.remove("show");
+    $("verdict").textContent = "";
   }
 
   function showDead(kind) {
+    unboot();
     net.dead = true;
     try { net.ws && net.ws.close(); } catch (e) {}
     $("conn").classList.remove("on");
@@ -930,7 +937,7 @@ window.I18N_DICT = {
     const [title, text] = map[kind] || [kind, ""];
     setPanel(`<a class="back" href="index.html">${esc(T("back"))}</a>${brand()}<h2 style="font-size:20px">${esc(T(title))}</h2>${text ? `<p class="lede">${esc(T(text))}</p>` : ""}`,
       kind === "replaced" ? `<button class="btn" id="here" type="button">${esc(T("play_here"))}</button>` : `<a class="btn" href="duck-rapids.html">${esc(T("new_game"))}</a>`);
-    if ($("here")) $("here").onclick = () => { net.dead = false; net.retry = 0; net.everOpen = false; connect(); redraw(); };
+    if ($("here")) $("here").onclick = () => { net.dead = false; net.retry = 0; net.everOpen = false; net.lastSnapAt = 0; $("conn").classList.remove("on"); $("conn").textContent = ""; connect(); redraw(); };
   }
 
   async function createRoom() {
@@ -960,8 +967,21 @@ window.I18N_DICT = {
   }
 
   // ----- фазы -----
+  // остатки прошлого заплыва в DOM (скрыты классом, но читаются скринридером и ботами) — чистим при смене заплыва/фазы (rapids-018)
+  function clearTransient(all) {
+    const big = $("big"); big.textContent = ""; big.classList.remove("show", "word");
+    $("outpill").textContent = "";
+    if (all) {
+      clearTimeout(bannerT);
+      const b = $("banner"); b.innerHTML = ""; b.classList.remove("show", "gold");
+      if (!document.body.classList.contains("watching")) $("tag").textContent = "";
+      if (!$("conn").classList.contains("on")) $("conn").textContent = "";
+    }
+  }
   function onPhase(ph, prev) {
     ui.phase = ph;
+    if (ph === "countdown" || ph === "lobby") clearTransient(true);
+    else if (ph === "over") clearTransient(false);
     ui.overAt = ph === "over" ? performance.now() : 0; ui.overAsked = false;
     if (ph === "countdown" || ph === "lobby") {
       ui.showResults = false; ui.over = null; clearResultsScene();
@@ -1200,6 +1220,7 @@ window.I18N_DICT = {
   if (CODE) {
     net.token = store.get(tokenKey()) || null;
     net.wantJoin = !!net.token;
+    if (net.token) { document.body.classList.add("booting"); setTimeout(unboot, 1200); }
     connect();
     redraw();
   } else {
