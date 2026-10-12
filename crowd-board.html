@@ -354,6 +354,9 @@
   .fbtn .ghostbtn { min-width: 220px; padding: 20px 30px; }
   .fbtn .fhint { flex: 1 1 100%; text-align: center; font: 800 22px/1.25 var(--body); color: var(--text); opacity: .8; order: 2; }
   .fbtn .start:disabled { opacity: .4; }
+  .fopts { flex: 1 1 100%; order: -1; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 14px 34px; }
+  .fopt { display: inline-flex; align-items: center; gap: 14px; font: 800 26px/1.1 var(--body); }
+  .fplay { flex: 1 1 100%; text-align: center; font: 800 26px/1.2 var(--body); color: var(--a); }
   .pidle { font-size: .8em; opacity: .9; margin-top: 18px; }
   .pkick { margin-top: 12px; }
   .rest { display: flex; flex-direction: column; justify-content: flex-start; align-self: start; gap: 8px; font: 700 22px/1 var(--body); min-height: 0; }
@@ -467,7 +470,7 @@ window.I18N_DICT = {
     r1: `На экране вопрос. Отвечай не за себя, а за всех: что выберет большинство?`,
     r2: `Угадал большинство — +100. Нет — 0. Поровну — всем по +50.`,
     r3: `×2: угадал +200, ошибся −200. Только два раза за игру.`,
-    opt_short: `Короткая партия (6)`, opt_short_d: `6 вопросов вместо 10`,
+    opt_short: `Короткая партия (6)`, opt_short_d: `6 вопросов вместо 10`, again_plays: `Играть: {opts}`, play_short: `6 вопросов`, play_full: `10 вопросов`, play_op_on: `с мнением`, play_op_off: `без мнения`,
     opt_opinion: `Мнение`, opt_opinion_d: `После голосов спросим, кто что думает лично`, opt_opinion_min: `включится от {n} игроков`,
     btn_start: `Старт`, need_more: `Нужно ещё {n}`, viewer: `Начать может только ведущий — тот, кто открыл этот экран`, kick: `Убрать`,
     final_shared: `Победу делят: {names}`, final_tie2: `Делят 2-е место: {names}`,
@@ -505,7 +508,7 @@ window.I18N_DICT = {
     r1: `A question appears. Answer not for yourself but for everyone: what will the majority pick?`,
     r2: `Guessed the majority — +100. Missed — 0. A tie — +50 for all.`,
     r3: `×2: right +200, wrong −200. Only twice per game.`,
-    opt_short: `Short game (6)`, opt_short_d: `6 questions instead of 10`,
+    opt_short: `Short game (6)`, opt_short_d: `6 questions instead of 10`, again_plays: `Playing: {opts}`, play_short: `6 questions`, play_full: `10 questions`, play_op_on: `with opinions`, play_op_off: `no opinions`,
     opt_opinion: `Opinion`, opt_opinion_d: `After the votes we ask what you personally think`, opt_opinion_min: `turns on from {n} players`,
     btn_start: `Start`, need_more: `{n} more needed`, viewer: `Only the host — whoever opened this screen — can start`, kick: `Remove`,
     final_shared: `Shared win: {names}`, final_tie2: `Sharing 2nd place: {names}`,
@@ -545,7 +548,7 @@ window.I18N_DICT = {
     r1: `Εμφανίζεται μια ερώτηση. Απάντησε όχι για σένα αλλά για όλους: τι θα διαλέξει η πλειοψηφία;`,
     r2: `Βρήκες την πλειοψηφία — +100. Όχι — 0. Ισοπαλία — +50 σε όλους.`,
     r3: `×2: σωστά +200, λάθος −200. Μόνο δύο φορές ανά παιχνίδι.`,
-    opt_short: `Σύντομη παρτίδα (6)`, opt_short_d: `6 ερωτήσεις αντί για 10`,
+    opt_short: `Σύντομη παρτίδα (6)`, opt_short_d: `6 ερωτήσεις αντί για 10`, again_plays: `Παίζουμε: {opts}`, play_short: `6 ερωτήσεις`, play_full: `10 ερωτήσεις`, play_op_on: `με γνώμες`, play_op_off: `χωρίς γνώμες`, //EL:unverified
     opt_opinion: `Γνώμη`, opt_opinion_d: `Μετά τις ψήφους ρωτάμε τι πιστεύει ο καθένας`, opt_opinion_min: `ενεργοποιείται από {n} παίκτες`,
     btn_start: `Έναρξη`, need_more: `Χρειάζονται ακόμα {n}`, viewer: `Ξεκινά μόνο ο οικοδεσπότης — όποιος άνοιξε αυτή την οθόνη`, kick: `Αφαίρεση`,
     final_shared: `Κοινή νίκη: {names}`, final_tie2: `Μοιράζονται τη 2η θέση: {names}`, //EL:unverified
@@ -1598,9 +1601,18 @@ function tieLine(list, reason) {
   const w2 = s2 == null ? [] : list.filter((x) => x.score === s2);
   return w2.length >= 2 ? { k: "final_tie2", names: names(w2) } : null;
 }
+// «Ещё партию» с теми же тумблерами, что в лобби, и подписью «Играть: …» (T-W3-23, U-14 B): без захода в лобби
+function updFinalOpts() {
+  if (!$("fshort")) return;
+  const st = state.settings, onl = present().filter((p) => p.online !== false).length;
+  $("fshort").setAttribute("aria-pressed", String(!!st.short));
+  $("fop").setAttribute("aria-pressed", String(!!st.opinion));
+  const op = st.opinion && onl >= state.opinionMin;
+  $("fplay").textContent = tpl("again_plays", { opts: T(st.short ? "play_short" : "play_full") + " · " + T(op ? "play_op_on" : "play_op_off") });
+}
 function drawFinal() {
   const key = "final:" + state.game + wvLang() + isHost + L.sig + ":" + Math.max(0, state.minPlayers - present().length);
-  if (viewKey === key) return;
+  if (viewKey === key) { updFinalOpts(); return; }
   viewKey = key;
   const list = present().slice().sort((a, b) => b.score - a.score);
   const top = [list[1], list[0], list[2]];
@@ -1623,9 +1635,14 @@ function drawFinal() {
     <div class="podium" id="podium">${top.map((p, i) => p ? `<div class="step${wvRank(list, p) === 1 ? " first" : ""}"><div class="who" style="--d:${ds[i]}">${avHtml(p)}<span>${esc(p.name)}</span></div><div class="blk" style="--hf:${hsOf(p)};--d:${[0.4, 0.9, 0.1][i]}s">${wvRank(list, p)}<small>${p.score}</small></div></div>` : `<div class="step"></div>`).join("")}</div>
     <div class="rest r">${restL.slice(rhalf).map(rowH).join("")}</div>
     <div class="awrow">${cards.join("")}</div>
-    <div class="fbtn">${isHost ? `<button class="start" id="again" type="button"${againNeed > 0 ? " disabled" : ""}>${esc(T("btn_again"))}</button>${againNeed > 0 ? `<span class="fhint" id="againhint">${esc(tpl("again_need", { n: againNeed }))}</span>` : ""}<button class="ghostbtn" id="tolobby" type="button">${esc(T("btn_lobby"))}</button>` : ""}<a class="ghostbtn" href="index.html">${esc(T("btn_home"))}</a></div></div>`;
+    <div class="fbtn">${isHost ? `<div class="fopts" id="fopts"><span class="fopt"><button class="tog" id="fshort" type="button" aria-label="${esc(T("opt_short"))}"></button><b>${esc(T("opt_short"))}</b></span><span class="fopt"><button class="tog" id="fop" type="button" aria-label="${esc(T("opt_opinion"))}"></button><b>${esc(T("opt_opinion"))}</b></span><span class="fplay" id="fplay"></span></div><button class="start" id="again" type="button"${againNeed > 0 ? " disabled" : ""}>${esc(T("btn_again"))}</button>${againNeed > 0 ? `<span class="fhint" id="againhint">${esc(tpl("again_need", { n: againNeed }))}</span>` : ""}<button class="ghostbtn" id="tolobby" type="button">${esc(T("btn_lobby"))}</button>` : ""}<a class="ghostbtn" href="index.html">${esc(T("btn_home"))}</a></div></div>`;
   showUpper(false);
-  if (isHost) { $("again").onclick = () => conn.send({ type: "start" }); $("tolobby").onclick = () => conn.send({ type: "lobby" }); }
+  if (isHost) {
+    $("again").onclick = () => conn.send({ type: "start" }); $("tolobby").onclick = () => conn.send({ type: "lobby" });
+    $("fshort").onclick = () => conn.send({ type: "settings", settings: { short: !state.settings.short } });
+    $("fop").onclick = () => conn.send({ type: "settings", settings: { opinion: !state.settings.opinion } });
+    updFinalOpts();
+  }
   // аватары подиума крупнее: до 150px, пока влезают по высоте
   const pod = $("podium");
   const ava = clamp(Math.min(150, (pod.clientHeight - 30) * 0.4), 64, 150);

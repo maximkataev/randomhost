@@ -191,6 +191,8 @@ def run(pw, code, token):
     check(bool(board.evaluate("document.getElementById('againhint').textContent.trim()")), "под кнопкой написано, сколько игроков не хватает")
     if os.environ.get("HANDOFF_STAGE", "1") != "0":
         handoff_stage(browser, lang_script, errs)
+    if os.environ.get("W3_STAGE", "1") != "0":
+        w3_stage(browser, lang_script, errs)
     if os.environ.get("PAUSE_STAGE", "1") != "0":
         pause_stage(browser, lang_script, errs)
     check(not errs, "нет JS-ошибок на страницах" + (": " + "; ".join(errs[:3]) if errs else ""))
@@ -288,6 +290,105 @@ def handoff_stage(browser, lang_script, errs):
         c.close()
     for c, _ in phones:
         c.close()
+
+
+def w3_stage(browser, lang_script, errs):
+    """T-W3-05/18/23: ✕ на плитке офлайн-игрока (44 px, два касания, без бана), тумблер ва-банка с текстом, «Не скажу» → отдельный ответ,
+    иконка не перекрывает подпись в ландшафте, итоги телефона без прокрутки на 320×568, «Ещё партию» с тумблерами."""
+    room = json.loads(urllib.request.urlopen(urllib.request.Request(f"{BASE}/crowd/api/rooms", data=json.dumps({"settings": {"lang": LANG, "short": True, "opinion": True}, "speed": 3}).encode(), method="POST")).read())
+    code, token = room["code"], room["hostToken"]
+    bctx, board = mk_page(browser, 1280, 720, False, lang_script + f"try{{localStorage.setItem('crowd-host-{code}','{token}')}}catch(e){{}}", errs, "boardW3")
+    board.goto(f"{BASE}/crowd-board.html?r={code}", wait_until="domcontentloaded")
+    board.wait_for_function("window.wvBoard && wvBoard.state && document.body.classList.contains('host')")
+    phones = []
+    for i in range(5):
+        ctx, p = mk_page(browser, 390, 780, True, lang_script, errs, f"pW{i}")
+        p.goto(f"{BASE}/crowd.html?r={code}", wait_until="domcontentloaded")
+        p.wait_for_selector("#name")
+        p.fill("#name", f"Волна{i + 1}")
+        p.evaluate("document.getElementById('enterform').requestSubmit()")
+        p.wait_for_function("window.wvPhone && wvPhone.me", timeout=10000)
+        phones.append((ctx, p))
+    board.wait_for_function("wvBoard.state.players.length === 5")
+    # ✕ у офлайн-игрока: виден, ≥ 44 px, два касания, без бана
+    gone_id = phones[4][1].evaluate("wvPhone.me")
+    phones[4][0].close()
+    board.wait_for_function(f"wvBoard.state.players.some(p => p.id === '{gone_id}' && !p.online)", timeout=15000)
+    board.wait_for_selector(".lp.off .x", timeout=5000)
+    board.wait_for_function("parseFloat(getComputedStyle(document.querySelector('.lp.off .x')).opacity) > 0.9", timeout=3000)
+    bx = board.evaluate("(()=>{const r=document.querySelector('.lp.off .x').getBoundingClientRect(); return [r.width, r.height, getComputedStyle(document.querySelector('.lp.off .x')).opacity]})()")
+    check(bx[0] >= 44 and bx[1] >= 44 and float(bx[2]) > 0.9, f"✕ у офлайн-игрока виден и не меньше 44×44 ({bx[0]:.0f}×{bx[1]:.0f})")
+    board.click(".lp.off .x")
+    check(board.evaluate("wvBoard.state.players.length") == 5, "первое касание ✕ только взводит")
+    board.wait_for_selector(".lp.off .x[data-armed]", timeout=2000)
+    board.click(".lp.off .x")
+    board.wait_for_function("wvBoard.state.players.length === 4", timeout=5000)
+    check(True, "второе касание ✕ убирает игрока")
+    phones = phones[:4]
+    board.evaluate("wvBoard.send({type:'start'})")
+    p0 = phones[0][1]
+    p0.wait_for_function("wvPhone.state && wvPhone.state.phase === 'vote'", timeout=15000)
+    # телефон 0 — ландшафт 915×412
+    p0.set_viewport_size({"width": 915, "height": 412})
+    p0.wait_for_selector(".side", timeout=5000)
+    p0.evaluate("document.querySelector('.side[data-s=a]').click()")
+    if p0.evaluate("!!document.getElementById('bank')"):
+        off_t = p0.evaluate("document.getElementById('bsw').textContent.trim()")
+        p0.evaluate("document.getElementById('bank').click()")
+        on_t = p0.evaluate("document.getElementById('bsw').textContent.trim()")
+        check(bool(off_t) and bool(on_t) and off_t != on_t and p0.evaluate("document.getElementById('bank').getAttribute('aria-pressed')") == "true", f"тумблер ва-банка пишет состояние: «{off_t}» → «{on_t}»")
+    p0.evaluate("document.getElementById('done').click()")
+    p0.wait_for_selector(".mine", timeout=5000)
+    ov = p0.evaluate("(()=>{const a=document.querySelector('.mine .ico').getBoundingClientRect(), b=document.querySelector('.mine .sm').getBoundingClientRect(); return !(a.right<=b.left||b.right<=a.left||a.bottom<=b.top||b.bottom<=a.top)})()")
+    check(not ov, "ландшафт 915×412: иконка выбора не перекрывает подпись «Ты выбрал»")
+    for _, p in phones[1:]:
+        p.evaluate("(s)=>{const b=document.querySelector('.side[data-s=\"'+s+'\"]'); if(b) b.click(); const d=document.getElementById('done'); if(d&&!d.disabled) d.click();}", "b")
+    board.wait_for_function("wvBoard.state.phase === 'opinion'", timeout=40000)
+    p0.wait_for_function("wvPhone.state.me && wvPhone.state.me.asked", timeout=5000)
+    p0.wait_for_timeout(500)
+    p0.evaluate("document.querySelector('.skip').click()")
+    p0.wait_for_function("wvPhone.state.me && wvPhone.state.me.opinion === 'skip'", timeout=5000)
+    p0.wait_for_timeout(300)
+    t_skip = p0.evaluate("document.querySelector('.note h2').textContent.trim()")
+    check(norm(t_skip) == norm(p0.evaluate("T('op_sent_skip')")) and norm(t_skip) != norm(p0.evaluate("T('op_sent')")), f"после «Не скажу» — свой ответ: «{t_skip}»")
+    p0.set_viewport_size({"width": 390, "height": 780})
+    # доигрываем до итогов
+    deadline = time.time() + 240
+    seen = set()
+    while time.time() < deadline:
+        st = board.evaluate("({ph: wvBoard.state.phase, n: wvBoard.state.n})")
+        if st["ph"] == "finished":
+            break
+        key = (st["ph"], st["n"])
+        if st["ph"] == "vote" and key not in seen:
+            seen.add(key)
+            for _, p in phones:
+                p.evaluate("(s)=>{const b=document.querySelector('.side[data-s=\"'+s+'\"]'); if(b) b.click(); const d=document.getElementById('done'); if(d&&!d.disabled) d.click();}", random.choice("ab"))
+        elif st["ph"] == "opinion" and key not in seen:
+            seen.add(key)
+            time.sleep(0.5)
+            for _, p in phones:
+                p.evaluate("(s)=>{const b=document.querySelector('.side[data-s=\"'+s+'\"]'); if(b) b.click();}", random.choice("ab"))
+        time.sleep(0.25)
+    board.wait_for_function("wvBoard.state.phase === 'finished'", timeout=5000)
+    # итоги телефона: влезают в 320×568 без прокрутки, «Выйти» в видимой области, строка «я» есть
+    p1 = phones[1][1]
+    p1.set_viewport_size({"width": 320, "height": 568})
+    p1.wait_for_selector(".standings", timeout=5000)
+    r = p1.evaluate("({sh: document.documentElement.scrollHeight, ih: innerHeight, leave: document.getElementById('leave').getBoundingClientRect().bottom, me: !!document.querySelector('.standings li.me')})")
+    check(r["sh"] <= r["ih"] + 1 and r["leave"] <= r["ih"] + 1 and r["me"], f"итоги телефона 320×568: без прокрутки ({r['sh']}/{r['ih']}), «Выйти» видна, своя строка есть")
+    # «Ещё партию» с теми же тумблерами и подписью «Играть: …»
+    board.wait_for_selector("#fshort", timeout=5000)
+    before = board.evaluate("wvBoard.state.settings.short")
+    play0 = board.evaluate("document.getElementById('fplay').textContent.trim()")
+    board.click("#fshort")
+    board.wait_for_function(f"wvBoard.state.settings.short === {str(not before).lower()}", timeout=5000)
+    play1 = board.evaluate("document.getElementById('fplay').textContent.trim()")
+    check(bool(play0) and play0 != play1, f"«Ещё партию»: тумблер «Короткая» меняет подпись «{play0}» → «{play1}»")
+    board.click("#fshort")
+    for c, _ in phones:
+        c.close()
+    bctx.close()
 
 
 def pause_stage(browser, lang_script, errs):
