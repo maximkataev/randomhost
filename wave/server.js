@@ -49,6 +49,9 @@ const GAME_DEAD_MS = Math.max(20000, Number(process.env.GAME_DEAD_MS || 20000));
 const GHOST_TTL_MS = presence.ghostTtlMs();
 // U-08, класс B: «Поехали» без тех, кто сейчас офлайн (по умолчанию выкл. — как в спеке)
 const GHOST_OUT = /^(1|true|on|yes)$/i.test(String(process.env.RULE_U08_GHOST_OUT || ""));
+// U-34/35/36, класс B (по умолчанию выкл. — как в спеке): строгий валидатор (числа словом, перевод-заимствование),
+// «Изменить» отправленную подсказку, выдержка раскрытия 2,8 с и заставка ×2 на 5 с (+≈9 с на партию из пяти шкал)
+const WAVE_RULES = /^(1|true|on|yes)$/i.test(String(process.env.RULE_U34_WAVE_RULES || ""));
 // Токенов на игрока — не больше этого: каждый подхват по имени выдаёт новый (см. fibs/server.js)
 const TOKENS_PER_PLAYER = 3;
 const SEND_BUFFER_LIMIT = Number(process.env.SEND_BUFFER_LIMIT || 1048576);
@@ -161,6 +164,7 @@ function newRoom({ code, ip = "", hostToken, game, tokens = {}, touched = Date.n
 
 function newGame(g) {
   g.ghostOut = GHOST_OUT;
+  g.waveRules = WAVE_RULES;
   return g;
 }
 
@@ -502,7 +506,8 @@ function handle(room, client, msg) {
   if (due.length) afterChange(room, due);
   // ответ на действие игрока: отказ — только ему, успех — всем
   const act = (action, r) => {
-    if (!r.ok) return reply({ type: "rejected", action, reason: r.reason });
+    // word — какое именно слово подсказки с шкалы (оно же написано самим игроком: секрета в нём нет)
+    if (!r.ok) return reply(r.word ? { type: "rejected", action, reason: r.reason, word: r.word } : { type: "rejected", action, reason: r.reason });
     return afterChange(room, r.events || []);
   };
 
