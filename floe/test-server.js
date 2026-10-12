@@ -325,6 +325,31 @@ function rawWs(code) {
       assert.notStrictEqual(runaway.st, "ice", "контроль (потолок 60 с): без «мёртвой руки» пингвин добегает до края");
     });
 
+    await test("сверх лимита ввод не теряется: рывок в сообщении №90 из пачки применяется; флуд 5000/с — сервер жив", async () => {
+      const r = await NetBot.createRoom(BASE);
+      const host = await NetBot.connect({ base: BASE, code: r.code, name: "Хост", hostToken: r.hostToken, think: false });
+      const ws = await rawWs(r.code);
+      ws.send(JSON.stringify({ type: "join", name: "Спамер" }));
+      await wait(300);
+      const me = ws.msgs.find((m) => m.type === "joined").playerId;
+      host.send({ type: "start" });
+      for (let i = 0; i < 100 && !ws.msgs.some((m) => m.type === "s" && m.ph === "fight"); i++) await wait(50);
+      await wait(2300);   // защита старта: рывок раньше 2 с боя не сработает
+      const dashes = () => ws.msgs.filter((m) => m.type === "ev").flatMap((m) => m.list).filter((e) => e.type === "dash" && e.id === me).length;
+      assert.strictEqual(dashes(), 0);
+      // пачка в один тик: первые 70 принимаются сразу, дальше — сверх общего лимита; рывок — в №90
+      for (let i = 1; i <= 100; i++) ws.send(JSON.stringify({ type: "i", mx: i === 100 ? 0 : 1, my: 0, d: i === 90 ? 1 : 0, s: i }));
+      await wait(400);
+      assert.strictEqual(dashes(), 1, "рывок из сообщения сверх лимита применён");
+      // флуд: потолок не снят, процесс и тики живы
+      for (let i = 0; i < 5000; i++) ws.send(JSON.stringify({ type: "i", mx: 1, my: 0, d: 1, s: 1000 + i }));
+      await wait(500);
+      const h = await (await fetch(BASE + "/floe/api/health")).json();
+      assert.strictEqual(h.ok, true);
+      assert(dashes() <= 4, "рывков за флуд: " + dashes() + " (перезарядка держит)");
+      ws.close(); host.close();
+    });
+
     await test("рестарт сервера: комната и токены живы, партия отменена", async () => {
       const r4 = await NetBot.createRoom(BASE);
       const a = await NetBot.connect({ base: BASE, code: r4.code, name: "Ася", hostToken: r4.hostToken, think: false });

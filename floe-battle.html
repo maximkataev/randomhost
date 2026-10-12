@@ -716,7 +716,10 @@ window.I18N_DICT = {
     input.dash = false;
     const t = performance.now();
     const changed = input.ix !== input.sentX || input.iy !== input.sentY;
-    if (net.me && (changed || dash || t - input.sentAt > 500)) {
+    // движение — не чаще раза в 33 мс (на 120 Гц иначе до 120 сообщений/с упиралось в лимит сервера и терялось «0,0»);
+    // рывок и обнуление ввода уходят сразу; пульс раз в 0,5 с
+    const zeroing = changed && input.ix === 0 && input.iy === 0;
+    if (net.me && ((changed && t - input.sentAt >= 33) || zeroing || dash || t - input.sentAt > 500)) {
       send({ type: "i", mx: input.ix, my: input.iy, d: dash ? 1 : 0, s: ++input.seq });
       input.sentX = input.ix; input.sentY = input.iy; input.sentAt = t;
     }

@@ -61,7 +61,11 @@ const GAME_ENV = {};
 if (process.env.OFFLINE_FALL_GRACE != null && process.env.OFFLINE_FALL_GRACE !== "") GAME_ENV.OFFLINE_FALL_GRACE = envNum("OFFLINE_FALL_GRACE", 0, 0, 10);
 const { INPUT_STALE_MS, GHOST_TTL_MS, PONG_MISSES, ANON_TTL_MS, MAX_ANON_PER_IP } = PROD_ENV;
 const SEND_BUFFER_LIMIT = Number(process.env.SEND_BUFFER_LIMIT || 262144);
-const MSG_RATE = Number(process.env.MSG_RATE || 70);             // ввод до 30/с + пинги
+const MSG_RATE = Number(process.env.MSG_RATE || 70);
+// Сверх общего MSG_RATE ввод `i` не выбрасывается молча (иначе пропадали рывок и финальный «0» — floe-014/rapids-036), а
+// запоминается: последнее значение применится в ближайшем тике. Разбирать JSON разрешено только до жёсткого потолка в секунду;
+// дальше — отбрасываем, как и раньше (защита от флуда не ослаблена, общий лимитер не отключён)
+const MSG_HARD = Math.max(MSG_RATE, Number(process.env.MSG_HARD || 120));             // ввод до 30/с + пинги
 const MAX_MSG_BYTES = 1024;
 const LOG = "[floe]";
 // только в разработке: FLOE_CFG='{"FIGHT_T":20}' — короткие партии для тестов
@@ -250,6 +254,7 @@ function tickRoom(room, t) {
   // игра не прыгает; пол 0,02 с — два тика подряд не удваивают время
   const dt = room.lastTickAt ? Math.min(MAX_DT, Math.max(MIN_DT, (t - room.lastTickAt) / 1000)) : TICK_MS / 1000;
   room.lastTickAt = t;
+  flushPendingInput(room);
   const s0 = performance.now();
   g.step(dt);
   const s1 = performance.now();
@@ -413,7 +418,7 @@ function onConnection(room, ws, ip) {
   send(ws, { type: "hello", code: room.code, cfg: cfgFor(room.game), tick: TICK_MS, max: MAX_PLAYERS });
   send(ws, rosterMsg(room));
   ws.on("message", (raw) => {
-    if (!rateOk(client)) return;
+    if (!rateOk(client)) return coalesceOver(client, raw);
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     try { handle(room, client, msg); } catch (err) { console.error(`${LOG} ${room.code}: обработка упала:`, err); send(ws, { type: "error", error: "server_error" }); }
@@ -442,6 +447,26 @@ function releasePlayer(room, client, id) {
 }
 
 const rateOk = (client) => netRateOk(client, MSG_RATE);
+
+// сообщение пришло сверх MSG_RATE: если это ввод и до потолка MSG_HARD ещё есть запас — запоминаем последний ввод
+// (рывок «залипает» до применения: d:1 из любого пропущенного сообщения не теряется)
+function coalesceOver(client, raw) {
+  if (!client.playerId || !client.rl || client.rl.n > MSG_HARD) return;
+  let msg;
+  try { msg = JSON.parse(raw); } catch { return; }
+  if (!msg || typeof msg !== "object" || msg.type !== "i") return;
+  const prev = client.pendingI;
+  client.pendingI = { mx: msg.mx, my: msg.my, d: (prev && prev.d) || msg.d === 1 ? 1 : 0, s: msg.s };
+}
+// применяем отложенный ввод раз за тик (после этого очередь пуста)
+function flushPendingInput(room) {
+  for (const c of room.sockets) {
+    if (!c.pendingI) continue;
+    const m = c.pendingI;
+    c.pendingI = null;
+    if (c.playerId) handle(room, c, { type: "i", mx: m.mx, my: m.my, d: m.d, s: m.s });
+  }
+}
 
 // вход/reload в фазе «итог»: событие over и повтор шли один раз при финише — повторяем их вошедшему (late)
 function sendLateOver(room, client) {
