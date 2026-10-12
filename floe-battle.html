@@ -994,6 +994,13 @@ window.I18N_DICT = {
     redraw();
   }
   // играю / смотрю / панель: зависит и от фазы, и от списка игроков — зовётся на обоих
+  // текст плашки «выбыл»: снят (нет связи) / ведущий дейлика (неудачник) / просто в воде
+  function outPillText() {
+    if (ui.mySt === "gone") return T("out_pill_removed");
+    const lastSnap = net.snaps[net.snaps.length - 1];
+    const iHost = !!(lastSnap && lastSnap.host && lastSnap.host.id === net.me);
+    return iHost ? T("out_pill_host") : T("out_pill");
+  }
   function applyMode() {
     const ph = ui.phase;
     const inGame = net.roster.find((p) => p.id === net.me)?.inGame;
@@ -1004,9 +1011,7 @@ window.I18N_DICT = {
     document.body.classList.toggle("with-panel", !play && !(ph === "over" && ui.replay));
     // свой пингвин не на льду (упал/плывёт/снят) — экран «в воде» по снимку, в том числе сразу после reload
     if (play && inGame && ui.mySt && ui.mySt !== "ice") {
-      const lastSnap = net.snaps[net.snaps.length - 1];
-      const iHost = !!(lastSnap && lastSnap.host && lastSnap.host.id === net.me);
-      $("outpill").textContent = ui.mySt === "gone" ? T("out_pill_removed") : iHost ? T("out_pill_host") : T("out_pill");
+      $("outpill").textContent = outPillText();
       document.body.classList.add("out");
     } else if (ui.mySt === "ice" && document.body.classList.contains("out") && play) document.body.classList.remove("out");
     $("tag").classList.toggle("show", play && !inGame && !!net.me);
@@ -1019,7 +1024,7 @@ window.I18N_DICT = {
   function onEvents(list) {
     for (const e of list) {
       if (e.type === "fall" && !e.practice && e.id === net.me) document.body.classList.add("out");
-      if (e.type === "host") $("outpill").textContent = e.id === net.me ? T("out_pill_host") : T("out_pill");
+      if (e.type === "host" && ui.mySt !== "gone") $("outpill").textContent = e.id === net.me ? T("out_pill_host") : T("out_pill");
       if (e.type === "fall" && !e.practice) {
         const mine = e.id === net.me || e.by === net.me;
         if (e.offline) pushFeed(`📡 ${tag(e.id)} ${esc(T("feed_off"))}`);
@@ -1255,7 +1260,7 @@ window.I18N_DICT = {
     $("stickHintT").textContent = T("stick_hint");
     try { if (sessionStorage.getItem("floe-stick-seen")) $("stickHint").classList.add("gone"); } catch (e) {}
     $("rotate").innerHTML = `<i class="rot-ph" aria-hidden="true"></i><b>${esc(T("rotate"))}</b><span>${esc(T("rotate_why"))}</span><small>${esc(T("rotate_lock"))}</small>`;
-    if (document.body.classList.contains("out")) $("outpill").textContent = T("out_pill");
+    if (document.body.classList.contains("out")) $("outpill").textContent = outPillText();
     $("skip").textContent = T("skip") + " ›";
     render.setWords(WORDS());
     placeSound();
