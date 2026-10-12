@@ -239,6 +239,12 @@
   .bet { background: var(--infield); border-left: 8px solid var(--pc); padding: 8px 10px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; align-items: center; }
   .bet .who { display: flex; align-items: center; gap: 8px; min-width: 0; font: 800 20px/1.1 var(--font); }
   .bet .who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  /* подпись испытания под именем (высокие экраны) и только иконка — на низких, чтобы пять узников не росли в высоту (lastq-018) */
+  .bet .wn { display: grid; min-width: 0; }
+  .bet .tyl { font: 600 14px/1.15 var(--font); color: var(--chalk-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bet .tyi { flex: none; font-style: normal; font-size: 20px; line-height: 1; }
+  @media (max-height: 699px) { .bet .tyl { display: none; } }
+  @media (min-height: 700px) { .bet .tyi { display: none; } }
   .bet .mini { display: flex; gap: 4px; }
   .bet .mini i { width: 14px; height: 10px; border: 2px solid var(--chalk-2); }
   .bet .mini i.on { background: var(--ok); border-color: var(--ok); }
@@ -428,7 +434,7 @@ window.I18N_DICT = {
     cell_t: `Камера`, cell_final: `Камера`, cell_go: `Выбирайся!`,
     esc_title: `Свобода!`, esc_sub: `Смотри на экран: остальные ещё сидят`,
     gone_t: `Время вышло`,
-    bets_t: `Кто выберется?`, bets_sub: `Одна ставка на каждого, угадал — +20`,
+    bets_t: `Кто выберется?`, bets_sub: `Одна ставка на каждого, угадал — +20`, bet_cells: `Камер до этого: {n}`,
     bet_y: `Спасётся`, bet_n: `Сгорит`, bet_none: `Без ставки`, bets_closed: `Ставки сделаны — смотри, кто выберется`, cell_ready: `Приготовься…`, betleft: `ещё {s} с`,
     pass_h: `{name} ждёт передачку — продиктуй код вслух!`, pass_bet: `Твоя ставка: {b}`, pass_nobet: `ставки нет`,
     watch_t: `Смотри на экран`, watch_sub: `В этот раз ты не участвуешь — со следующего вопроса`,
@@ -493,7 +499,7 @@ window.I18N_DICT = {
     cell_t: `The Cell`, cell_final: `The Cell`, cell_go: `Break out!`,
     esc_title: `Free!`, esc_sub: `Watch the screen: the others are still inside`,
     gone_t: `Time's up`,
-    bets_t: `Who breaks out?`, bets_sub: `One bet each, call it right — +20`,
+    bets_t: `Who breaks out?`, bets_sub: `One bet each, call it right — +20`, bet_cells: `Cells before: {n}`,
     bet_y: `Escapes`, bet_n: `Busted`, bet_none: `No bet`, bets_closed: `Bets are in — see who breaks out`, cell_ready: `Get ready…`, betleft: `{s} s left`,
     pass_h: `{name} is waiting for a message — read the code out loud!`, pass_bet: `Your bet: {b}`, pass_nobet: `no bet`,
     watch_t: `Watch the screen`, watch_sub: `You're not in this one — you play from the next question`,
@@ -558,7 +564,7 @@ window.I18N_DICT = {
     cell_t: `Το Κελί`, cell_final: `Το Κελί`, cell_go: `Σκάσ' το!`,
     esc_title: `Ελευθερία!`, esc_sub: `Κοίτα την οθόνη: οι άλλοι είναι ακόμα μέσα`,
     gone_t: `Τέλος χρόνου`,
-    bets_t: `Ποιος θα το σκάσει;`, bets_sub: `Ένα στοίχημα για τον καθένα, σωστό — +20`,
+    bets_t: `Ποιος θα το σκάσει;`, bets_sub: `Ένα στοίχημα για τον καθένα, σωστό — +20`, bet_cells: `Κελιά μέχρι τώρα: {n}`, //EL:unverified
     bet_y: `Θα το σκάσει`, bet_n: `Θα πιαστεί`, bet_none: `Χωρίς στοίχημα`, bets_closed: `Τα στοιχήματα έκλεισαν — δες ποιος θα το σκάσει`, cell_ready: `Ετοιμάσου…`, betleft: `ακόμα {s} δ`,
     pass_h: `Ο/Η {name} περιμένει μήνυμα — πες τον κωδικό δυνατά!`, pass_bet: `Το στοίχημά σου: {b}`, pass_nobet: `κανένα`,
     watch_t: `Κοίτα την οθόνη`, watch_sub: `Αυτή τη φορά δεν παίζεις — από την επόμενη ερώτηση`,
@@ -872,9 +878,11 @@ function bindAvatars() {
     x.onclick = () => { conn.send({ type: "avatar", avatar: x.dataset.a }); lqVibrate(10); avOpen = false; screenKey = ""; render(); };
   });
 }
+// номер на груди постоянный: порядок среди всех игроков партии, ушедшие остаются в списке до лобби (lastq-053)
+const chestNo = () => state.players.findIndex((x) => x.id === me) + 1;
 function meBadge() {
   const p = mine();
-  const no = state.players.filter((x) => !x.left).findIndex((x) => x.id === me) + 1;
+  const no = chestNo();
   return `<div class="me-badge" style="--pc:${p.color}">${avBtnHtml(emo(p))}<div style="min-width:0"><span class="kicker">${T("lobby_in")}</span><b>${escapeHtml(p.name)}</b></div><span class="bibno" aria-label="${escapeHtml(tpl("bib_no", { n: no }))}">${no || ""}</span></div>`;
 }
 const timerHtml = () => `<div class="timer" id="timer"><i></i></div>`;
@@ -887,7 +895,7 @@ function whereHtml() {
 // номер дорожки (как на общем экране) — маленькой плашкой цвета игрока
 function myNoHtml() {
   const p = mine();
-  const no = state.players.filter((x) => !x.left).findIndex((x) => x.id === me) + 1;
+  const no = chestNo();
   return p && no ? `<span class="myno" style="--pc:${p.color}" title="${escapeHtml(tpl("bib_no", { n: no }))}">${no}</span>` : "";
 }
 const headHtml = () => `<div class="qhead">${myNoHtml()}<span class="where">${whereHtml()}</span><span class="tl" id="tleft"></span></div>${timerHtml()}`;
@@ -1185,7 +1193,7 @@ function renderBets() {
       const btn = (v, cls, label) => `<button type="button" class="${cls}${my === v ? " on" : ""}" data-v="${v ? 1 : 0}"${locked ? " disabled" : ""}>${label}</button>`;
       const off = !!x.offline && my == null;
       const body = off ? `<div class="done off">${T("bet_off")}</div>` : !open && my == null ? `<div class="done">${T("bet_none")}</div>` : `<div class="two">${btn(true, "y", T("bet_y"))}${btn(false, "n", T("bet_n"))}</div>`;
-      return `<div class="bet${off ? " off" : ""}" style="--pc:${p.color}" data-id="${escapeHtml(x.id)}"><div class="who">${emo(p)}<b>${escapeHtml(p.name)}</b></div><div class="mini">${progressDots(x.done, x.need)}</div>${body}</div>`;
+      return `<div class="bet${off ? " off" : ""}" style="--pc:${p.color}" data-id="${escapeHtml(x.id)}"><div class="who">${emo(p)}<span class="wn"><b>${escapeHtml(p.name)}</b><span class="tyl" data-tyl></span></span><i class="tyi" data-tyi></i></div><div class="mini">${progressDots(x.done, x.need)}</div>${body}</div>`;
     }).join("");
     const sub = open ? `${T("bets_sub")} · <b id="betleft"></b>` : T("bets_closed");
     show(`${headHtml()}${hintHtml}<div><h2 style="font:900 26px/1.05 var(--font)">${T("bets_t")}</h2><p class="fine" style="margin:4px 0 0">${sub}</p></div><div class="bets">${rows}</div>`, key, true);
@@ -1213,6 +1221,18 @@ function renderBets() {
   for (const x of cell) {
     const row = app.querySelector(`.bet[data-id="${CSS.escape(x.id)}"] .mini`);
     if (row) row.innerHTML = x.escaped ? `<b style="color:var(--green)">${escapeHtml(T("escaped"))}</b>` : progressDots(x.done, x.need);
+    // чем занят узник: иконка и подпись испытания (тип известен всей комнате — подписи плиток на доске), и сколько Камер за партию уже было;
+    // исход не раскрывает — на баланс Камеры не влияет (lastq-018)
+    const bet = app.querySelector(`.bet[data-id="${CSS.escape(x.id)}"]`);
+    if (bet) {
+      const ic = x.type ? (LQ_CH_ICON[x.type] || "") : "";
+      const lab = x.type ? lqChLabel(x.type) : "";
+      const prev = x.cellsBefore > 0 ? " · " + tpl("bet_cells", { n: x.cellsBefore }) : "";
+      const ti = bet.querySelector("[data-tyi]"), tl = bet.querySelector("[data-tyl]");
+      if (ti && ti.textContent !== ic) { ti.textContent = ic; ti.title = lab; }
+      const tt = (ic ? ic + " " : "") + lab + prev;
+      if (tl && tl.textContent !== tt) tl.textContent = tt;
+    }
   }
 }
 function renderCell() {

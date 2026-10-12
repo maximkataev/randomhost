@@ -123,6 +123,11 @@ const lqSigned = (n) => (n > 0 ? "+" + n : n < 0 ? "−" + Math.abs(n) : "0");
 const lqTopic = (t) => { const k = "t_" + t; const v = lqT(k); return v === k ? String(t || "") : v; };
 const lqGroup = (g) => lqT("g_" + g);
 const lqActName = (act) => lqT("act" + act);
+// иконки испытаний: плитки узников на доске и строки ставок на телефоне
+const LQ_CH_ICON = { wires: "✂️", swipe: "👆", hold: "✊", order: "🔢", nopress: "🚫", catch: "🔑", color: "🎨", odd: "🔍", code: "🔢", count: "🦆", letter: "🔤", sad: "😢",
+  quiz: "❓", sudoku: "🔢", seq: "➡️", math: "➕", tf: "⚖️", heavy: "🏋️", chrono: "📜", spark: "⚡", rhythm: "🧱", coward: "🏃", shells: "🥤", simon: "🚥", blink: "👁️",
+  flashes: "💡", diff: "🔍", manual: "📋", rebus: "🧩", oddmeaning: "🤔", dice: "🎲", dig: "⛏️", saw: "🪚", lockpick: "🔓", searchlight: "🔦", lineup: "🕵️",
+  rollcall: "📢", keys: "🗝️", cipher: "🔣", codelock: "🔐", scales: "⚖️", clock: "🕰️", guard: "💂", pass: "📨", tunnel: "🕳️", sneak: "🤫", shake: "📳", torch: "🔦", rustkeys: "🗝️", signals: "🚥", decode: "🔣", cells: "🚪", shift: "📅" };
 // подпись испытания для доски: «режет провода» (строки ch_* — из lastq-challenges.js)
 const lqChLabel = (type) => { const k = "ch_" + type; const v = lqT(k); return v === k ? "…" : v; };
 const LQ_REACTIONS = ["😂", "😱", "😈", "👏", "🙏"];

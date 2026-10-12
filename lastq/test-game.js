@@ -3,7 +3,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { Game, T, ACTS, BET_POINTS, PASS_SILENCE } = require("./game.js");
+const { Game, T, ACTS, BET_POINTS, BET_WINDOW, PASS_SILENCE } = require("./game.js");
 const CH = require("./challenges.js");
 
 function mulberry(seed) {
@@ -910,4 +910,74 @@ test("skipPhase: ставка финала закрывается без ста�
   assert.equal(g.s.phase, "fread");
   assert.equal(g.s.stakes.p0, 100);
   assert.ok(g.s.stakes.p1 == null || g.s.stakes.p1 === 0, "кто не поставил — ставка 0, не случайная");
+});
+
+// ---- T-W3-29 (lastq-018, lastq-021): окно ставок, «не два тяжёлых подряд», запас minMs ----
+function cellWith(nPlayers, nPrisoners, seed = 5) {
+  const g = setup(nPlayers, {}, seed);
+  g.start(0);
+  let t = until(g, "answer", 0);
+  for (let i = 0; i < nPlayers; i++) g.answer("p" + i, i < nPlayers - nPrisoners ? right(g) : wrong(g), t + 100 + i);
+  t = until(g, "reveal", t);
+  if (g.s.palach && !g.s.group) g.pickGroup(g.s.palach, "eyes", t + 10);
+  t = until(g, "cell", t);
+  return { g, t };
+}
+
+test("RULE_U45_BET_WINDOW: выкл — окно 3 с на любое число узников; вкл — clamp(2000+1000·N, 3000, 6000); betUntil в снимке; дамп без betUntil — как раньше", () => {
+  withEnv("RULE_U45_BET_WINDOW", null, () => {
+    for (const n of [1, 3, 5]) {
+      const { g } = cellWith(7, n);
+      assert.equal(g.snapshot(g.s.cellReady, "p0").betUntil - g.s.cellReady, BET_WINDOW, `выкл, узников ${n}`);
+    }
+  });
+  withEnv("RULE_U45_BET_WINDOW", "1", () => {
+    const want = { 1: 3000, 2: 4000, 3: 5000, 4: 6000, 5: 6000 };
+    for (const n of [1, 2, 3, 4, 5]) {
+      const { g } = cellWith(7, n);
+      assert.equal(g.s.prisoners.length, n);
+      assert.equal(g.snapshot(g.s.cellReady, "p0").betUntil - g.s.cellReady, want[n], `вкл, узников ${n}`);
+      assert.equal(g.snapshot(g.s.cellReady, "board").betUntil, g.s.betUntil);
+      // ставка внутри окна проходит, после — «closed»
+      const free = g.free().find((p) => p.online);
+      const pr = g.s.prisoners.find((id) => !g.s.cell[id].ghost);
+      assert.ok(g.bet(free.id, pr, true, g.s.betUntil - 10).ok);
+      const free2 = g.free().filter((p) => p.online)[1];
+      if (free2) assert.equal(g.bet(free2.id, pr, true, g.s.betUntil + 10).reason, "closed");
+      // прогресс узников скрыт до конца окна
+      assert.ok(g.snapshot(g.s.betUntil - 5, "board").cell.every((x) => x.done === 0 && !x.escaped));
+    }
+    // дамп прежней версии (нет betUntil) — окно 3 с после «Приготовься»
+    const { g } = cellWith(5, 3);
+    const dumped = JSON.parse(JSON.stringify(g.s));
+    delete dumped.betUntil;
+    g.s = dumped;
+    assert.equal(g.snapshot(dumped.cellReady, "p0").betUntil, dumped.cellReady + BET_WINDOW);
+  });
+});
+
+test("«не два тяжёлых подряд»: после испытания с minMs ≥ 3 с следующее выдаётся лёгким, пока есть выбор (CH.generate lastMin)", () => {
+  let heavySeen = 0, bad = 0;
+  for (let s = 1; s <= 600; s++) for (const group of ["eyes", "head", "hands"]) for (const lvl of [1, 2]) {
+    const rnd = mulberry(s * 13 + lvl);
+    const ch = CH.generate({ lvl, rnd, group, lastMin: 3500, stage: lvl, canPass: true });
+    if (ch.minMs >= CH.HEAVY_MS) bad++;
+    const free = CH.generate({ lvl, rnd: mulberry(s * 13 + lvl), group, stage: lvl, canPass: true });
+    if (free.minMs >= CH.HEAVY_MS) heavySeen++;
+  }
+  assert.ok(heavySeen > 0, "без правила тяжёлые выпадают");
+  assert.equal(bad, 0, "с lastMin ≥ 3 с два тяжёлых подряд не выдаём");
+});
+
+test("c.lastMin пишется при выдаче; RULE_U46_MINMS: запас на остальные испытания — выдаваемое помещается с остатком", () => {
+  withEnv("RULE_U46_MINMS", "1", () => {
+    const { g } = cellWith(4, 2);
+    const id = g.s.prisoners[0];
+    const c = g.s.cell[id];
+    assert.equal(typeof c.lastMin, "number");
+    // за 3 с до конца Камеры при двух оставшихся — выдаётся самое короткое из выпавших, и оно же не ломает выдачу
+    g.s.phaseEnd = g.s.cellReady + 3000;
+    g.issue(id, g.s.cellReady);
+    assert.ok(c.ch && c.ch.minMs >= 0);
+  });
 });

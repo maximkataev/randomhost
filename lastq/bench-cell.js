@@ -136,11 +136,12 @@ function lognorm(rnd, mean) {
 
 // одна Камера: need испытаний за budget мс; mode — "honest" | "tapper"
 function cell({ lvl, stage, group, need, budget, mode, rnd, canPass }) {
-  let t = 0, done = 0, last = null;
+  let t = 0, done = 0, last = null, lastMin = 0;
   const seen = [], used = {};
   while (t < budget) {
-    const ch = C.generate({ lvl, stage, rnd, group, last, seen, used, canPass });
-    seen.push(ch.type); last = ch.type;
+    // lastMin — как в game.issue(): два «тяжёлых» (minMs ≥ 3 с) подряд узнику не выдаём (T-W3-29, lastq-021)
+    const ch = C.generate({ lvl, stage, rnd, group, last, seen, used, canPass, lastMin: process.env.BENCH_NO_LASTMIN ? 0 : lastMin });
+    seen.push(ch.type); last = ch.type; lastMin = ch.minMs;
     const n = choices(ch);
     let dt, ok;
     if (mode === "tapper" && n > 0) {

@@ -931,7 +931,10 @@ function poolFor({ lvl, group, canPass, stage = 3 }) {
     return true;
   });
 }
-function generate({ lvl, rnd, group, last, seen, used, canPass, only, stage }) {
+// «тяжёлое» испытание: обязательная задержка minMs не меньше 3 с (перекличка, ржавые ключи, сигналы, стаканы, светофор).
+// lastMin — minMs прошлого испытания этого узника: два тяжёлых подряд не даём, пока есть выбор (lastq-021, T-W3-29)
+const HEAVY_MS = 3000;
+function generate({ lvl, rnd, group, last, seen, used, canPass, only, stage, lastMin }) {
   used = used || {};
   for (const k of QUIZ_TYPES) if (!Array.isArray(used[k])) used[k] = [];
   let types = only ? [only] : poolFor({ lvl, group, canPass, stage });
@@ -950,10 +953,14 @@ function generate({ lvl, rnd, group, last, seen, used, canPass, only, stage }) {
     order.push(t);
     left = left.filter((u) => u !== t);
   }
+  let heavy = null;
   for (const t of order) {
     const c = GEN[t](lvl, rnd, used);
-    if (c) return { type: t, group: TYPE_GROUP[t], lvl, ...c };
+    if (!c) continue;
+    if (lastMin >= HEAVY_MS && c.minMs >= HEAVY_MS && !only) { if (!heavy) heavy = { type: t, group: TYPE_GROUP[t], lvl, ...c }; continue; }
+    return { type: t, group: TYPE_GROUP[t], lvl, ...c };
   }
+  if (heavy) return heavy;
   const c = GEN.dig(lvl, rnd);
   return { type: "dig", group: "hands", lvl, ...c };
 }
@@ -1043,5 +1050,5 @@ function verdict(ch, ans, elapsed) {
   }
 }
 
-return { LEVELS, CELL, CELL_READY_MS, levelFor, cellMs, GROUPS, TYPE_GROUP, OWN, SLOW, MEMORY_TYPES, QUIZ_TYPES, MIN_FAST, MIN_HEAD, WRONG_LOCK_MS, GLYPH_COUNT, COLOR_KEYS, WIRE_KEYS, MANUAL, MEANING, GEN, tri, clueOk, poolFor, generate, check, setBank, bank };
+return { LEVELS, CELL, CELL_READY_MS, levelFor, cellMs, GROUPS, TYPE_GROUP, OWN, SLOW, MEMORY_TYPES, QUIZ_TYPES, MIN_FAST, MIN_HEAD, HEAVY_MS, WRONG_LOCK_MS, GLYPH_COUNT, COLOR_KEYS, WIRE_KEYS, MANUAL, MEANING, GEN, tri, clueOk, poolFor, generate, check, setBank, bank };
 });

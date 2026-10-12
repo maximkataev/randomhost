@@ -421,6 +421,8 @@ async function run() {
           const ok = await waitFor(b, "document.querySelectorAll('.bet .two button:not(:disabled)').length >= 2", 3000, 50);
           check(!!ok, `${b.name}: ставки на спасение`);
           await layout([b], "ставки", true);
+          // T-W3-29 (lastq-018): у каждого узника на ставках — чем занят (иконка/подпись испытания)
+          check((await b.evaluate("(() => { const r = [...document.querySelectorAll('.bet')]; return r.length > 0 && r.every((x) => { const i = x.querySelector('[data-tyi]'), l = x.querySelector('[data-tyl]'); return (i && i.textContent.trim()) || (l && l.textContent.trim()); }); })()")) === true, `${b.name}: на ставках у каждого узника иконка/подпись испытания`);
           await mustTap(b, ".bet .two button.y", 0, "ставка «спасётся»");
           check(!!(await waitFor(b, "Object.keys(window.lqPhone.state.me.bets).length === 1", 3000)), `${b.name}: ставка принята сервером`);
           check((await b.evaluate("document.querySelectorAll('.bet .two button:not(:disabled)').length")) === 0, `${b.name}: после ставки кнопки закрыты (одна ставка на узника)`);

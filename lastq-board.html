@@ -824,10 +824,7 @@ const hostKey = () => "lastq-host-" + CODE;
 const stage = $("stage");
 const GROUP_ICON = { hands: "✋", eyes: "👁️", head: "🧠" };
 // иконки испытаний для плиток узников (спека §4.1): по ним зал видит, кто чем занят
-const CH_ICON = { wires: "✂️", swipe: "👆", hold: "✊", order: "🔢", nopress: "🚫", catch: "🔑", color: "🎨", odd: "🔍", code: "🔢", count: "🦆", letter: "🔤", sad: "😢",
-  quiz: "❓", sudoku: "🔢", seq: "➡️", math: "➕", tf: "⚖️", heavy: "🏋️", chrono: "📜", spark: "⚡", rhythm: "🧱", coward: "🏃", shells: "🥤", simon: "🚥", blink: "👁️",
-  flashes: "💡", diff: "🔍", manual: "📋", rebus: "🧩", oddmeaning: "🤔", dice: "🎲", dig: "⛏️", saw: "🪚", lockpick: "🔓", searchlight: "🔦", lineup: "🕵️",
-  rollcall: "📢", keys: "🗝️", cipher: "🔣", codelock: "🔐", scales: "⚖️", clock: "🕰️", guard: "💂", pass: "📨", tunnel: "🕳️", sneak: "🤫", shake: "📳", torch: "🔦", rustkeys: "🗝️", signals: "🚥", decode: "🔣", cells: "🚪", shift: "📅" };
+const CH_ICON = LQ_CH_ICON; // таблица — в lastq-shared.js (её же берёт телефон на экране ставок)
 const FSTEP_MS = 3000;
 window.lqQrReady = () => { if (state && state.phase === "lobby") { qrDrawn = false; drawLobby(); } };
 
@@ -1354,7 +1351,7 @@ function markPlaces(list) {
     const no = document.querySelector(`#ln_${CSS.escape(id)} .no`);
     if (!no) return;
     const pl = list ? place[id] : null;
-    no.textContent = pl ? pl : i + 1;
+    no.textContent = pl ? pl : chestNo(id) || i + 1;
     no.classList.toggle("place", !!pl);
     no.classList.toggle("p1", pl === 1);
   });
@@ -1372,6 +1369,8 @@ function trackDomain(scores) {
   const hi = Math.max(1000, Math.ceil((max * 1.12 + 50) / 500) * 500);
   return [lo, hi];
 }
+// номер на груди — место в списке игроков партии, а не среди «оставшихся»: ушёл игрок — номера остальных не прыгают (lastq-053)
+const chestNo = (id) => state.players.findIndex((p) => p.id === id) + 1;
 function buildTrack(ids) {
   trk = { ids, lo: trk ? trk.lo : -300, hi: trk ? trk.hi : 1000, toks: {}, game: state.game };
   const n = ids.length;
@@ -1387,7 +1386,7 @@ function buildTrack(ids) {
   track.style.setProperty("--n", Math.max(1, n));
   track.innerHTML = `<div class="road" id="road"><div class="pit" id="pit"><span>${escapeHtml(T("pit"))}</span></div><div id="ticks"></div></div>` + ids.map((id, i) => {
     const p = player(id) || {};
-    return `<div class="lane" style="--pc:${p.color || "#999"}"><div class="lname" id="ln_${escapeHtml(id)}"><span class="no">${i + 1}</span>${emo(p)}<b>${escapeHtml(p.name || "?")}</b><span class="sc">0</span></div><div class="lroad" id="lr_${escapeHtml(id)}"><div class="tok" id="tk_${escapeHtml(id)}">${escapeHtml(p.avatar || "❔")}</div></div></div>`;
+    return `<div class="lane" style="--pc:${p.color || "#999"}"><div class="lname" id="ln_${escapeHtml(id)}"><span class="no">${chestNo(id) || i + 1}</span>${emo(p)}<b>${escapeHtml(p.name || "?")}</b><span class="sc">0</span></div><div class="lroad" id="lr_${escapeHtml(id)}"><div class="tok" id="tk_${escapeHtml(id)}">${escapeHtml(p.avatar || "❔")}</div></div></div>`;
   }).join("");
   drawScale();
 }
