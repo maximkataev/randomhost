@@ -213,6 +213,55 @@ const SOLVER = String.raw`(async () => {
     check((await board.evaluate(OVERLAP)) === true, "доска: звук и языки не накладываются");
     check((await board.evaluate(ALIGN)) === true, "доска: звук и языки на одной линии");
 
+    // --- 2a. «🔑 Ссылка ведущего» (bomb-001): кнопка в лобби, токен не на экране, ссылка открывает управление с чистого устройства
+    const linkInfo = await board.evaluate(`(() => {
+      const b = document.querySelector("#hostbar .linkbtn");
+      if (!b) return null;
+      const r = b.getBoundingClientRect();
+      return { w: r.width, h: r.height, text: document.body.innerText, search: location.search };
+    })()`);
+    check(!!linkInfo, "доска ведущего: кнопка «Ссылка ведущего» есть в лобби");
+    check(linkInfo && linkInfo.w >= 44 && linkInfo.h >= 44, "кнопка «Ссылка ведущего» не меньше 44×44" + (linkInfo ? ` (${Math.round(linkInfo.w)}×${Math.round(linkInfo.h)})` : ""));
+    check(linkInfo && linkInfo.search === `?r=${room.code}`, "после применения ?h= токена нет в адресной строке");
+    check(linkInfo && !linkInfo.text.includes(room.hostToken), "токен ведущего не нарисован на экране доски");
+    await board.evaluate(`(() => { window.__copied = null; Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: (t) => { window.__copied = t; return Promise.resolve(); } } }); document.querySelector("#hostbar .linkbtn").click(); })()`);
+    await wait(300);
+    const copied = await board.evaluate("window.__copied");
+    check(copied === `${BASE}/bomb-board.html?r=${room.code}&h=${room.hostToken}`, "кнопка копирует ссылку …/bomb-board.html?r=КОД&h=ТОКЕН" + (copied ? "" : " (буфер пуст)"));
+    check(!(await board.evaluate("document.body.innerText")).includes(room.hostToken), "после копирования токен тоже не на экране");
+
+    // чистый контекст (другой origin = другое хранилище) по ссылке получает управление, адрес очищается
+    const cleanHost = await cdp(`http://127.0.0.1:${SRV}/bomb-board.html?r=${room.code}&h=${room.hostToken}`);
+    pages.push(cleanHost);
+    await wait(2000);
+    check((await cleanHost.evaluate("!!document.getElementById('startbtn') && isHost === true")) === true, "чистый контекст по ссылке: доска с кнопкой старта (управление)");
+    check((await cleanHost.evaluate("location.search")) === `?r=${room.code}`, "чистый контекст: токен убран из адресной строки");
+    // прежняя доска ушла в зрители: «Забрать»
+    await wait(500);
+    check((await board.evaluate("isHost === false && !!document.querySelector('#hostbar .linkbtn')")) === true, "прежняя доска стала зрителем и показала «Забрать»");
+    await board.evaluate("document.querySelector('#hostbar .linkbtn').click()");
+    await wait(800);
+    check((await board.evaluate("isHost === true")) === true, "«Забрать» возвращает управление");
+    // без токена: «Я ведущий» вместо кнопок, поле вставки принимает ссылку
+    const viewer = await cdp(`http://[::1]:${SRV}/bomb-board.html?r=${room.code}`);
+    pages.push(viewer);
+    await wait(2000);
+    check((await viewer.evaluate("document.getElementById('startbtn').classList.contains('hidden') && !!document.querySelector('#hostbar .linkbtn')")) === true, "доска без токена: управления нет, есть «Я ведущий»");
+    await viewer.evaluate("document.querySelector('#hostbar .linkbtn').click()");
+    await wait(200);
+    await viewer.evaluate(`(() => { const i = document.querySelector("#hostbar input"); i.value = "${BASE}/bomb-board.html?r=${room.code}&h=${room.hostToken}"; document.querySelector("#hostbar .linkbtn").click(); })()`);
+    await wait(1200);
+    check((await viewer.evaluate("isHost === true && !!document.getElementById('startbtn')")) === true, "«Я ведущий» + вставленная ссылка: управление получено");
+    await viewer.close();
+    await cleanHost.close();
+    await wait(300);
+    // «Я ведущий» отобрал управление у основной доски — возвращаем её, остальные проверки идут с неё
+    check((await board.evaluate("isHost === false")) === true, "основная доска ушла в зрители после вставки ссылки");
+    await board.evaluate("document.querySelector('#hostbar .linkbtn').click()");
+    await wait(800);
+    check((await board.evaluate("isHost === true && !!document.getElementById('startbtn')")) === true, "основная доска снова ведёт");
+    await board.call("Page.bringToFront");
+
     const names = ["Аня", "Петя", "Оля"];
     const phones = [];
     for (const [i, name] of names.entries()) {
@@ -329,7 +378,7 @@ const SOLVER = String.raw`(async () => {
     check((await board.evaluate("state.challenges && Object.keys(state.challenges).length >= 0")) === true, "доска видит испытания держателя");
 
     // --- 5. ведущий останавливает раунд → итоги, печать сверяется в браузере
-    await board.evaluate("document.querySelector('#hostbar button').click()");
+    await board.evaluate("document.querySelector('#hostbar button:not(.linkbtn)').click()");
     await wait(2000);
     check((await board.evaluate("state.phase")) === "finished", "раунд остановлен ведущим");
     const boardSeal = await board.evaluate("(document.querySelector('.sealrow .chk')||{}).textContent || ''");
@@ -370,7 +419,7 @@ const SOLVER = String.raw`(async () => {
       const armed = await hp.evaluate("!!window.bmPhone.state.me.armed");
       check(armed, `«Зал» (${ch.view.where}): держатель ввёл код и может кидать`);
       if (armed) crowdDone++;
-      await board.evaluate("document.querySelector('#hostbar button').click()");
+      await board.evaluate("document.querySelector('#hostbar button:not(.linkbtn)').click()");
       await wait(1500);
     }
     check(crowdDone >= 1, "«Зал» пройден по-настоящему");

@@ -153,6 +153,11 @@
   body.hot main::before { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(232, 50, 43, .09); animation: pulse 1.1s ease-in-out infinite; pointer-events: none; }
   /* «Остановить раунд» живёт в шапке рядом с кодом: внизу арены она закрывала карточку игрока в углу */
   .hostbar { display: flex; gap: 8px; }
+  .hostbar { align-items: center; }
+  .hostbar .linkbtn { min-height: 44px; min-width: 44px; }
+  .hostbar input { font: 700 16px/1 var(--font); border: var(--line); background: #fff; color: var(--ink); padding: 6px 8px; min-height: 44px; width: 190px; min-width: 0; border-radius: 0; }
+  .hostbar .note { font-size: 14px; font-weight: 700; max-width: 240px; }
+  @media (max-width: 640px) { .hostbar .lt { display: none; } .hostbar .note { display: none; } }
   .hostbar button { border: var(--line); background: var(--paper); font-weight: 700; padding: 6px 12px; box-shadow: var(--shift); font-size: 16px; white-space: nowrap; }
 
   /* отсчёт: печать на весь центр */
@@ -333,6 +338,7 @@
   }
 </style>
 <script src="legacy-compat.js"></script>
+<script src="mp-common.js"></script>
 </head>
 <body>
 <header class="top">
@@ -359,6 +365,9 @@ window.I18N_DICT = {
     logo: `Бомба`,
     creating: `Создаём комнату…`,
     expired: `Комната закрылась. Создай новую на странице игры.`,
+    host_link: `Ссылка ведущего`, link_copied: `Ссылка скопирована. Не показывай её игрокам`, link_shared: `Ссылка отправлена. Не показывай её игрокам`, link_none: `На этом экране нет ключа ведущего`,
+    link_prompt_hint: `Скопируй ссылку и не показывай её игрокам`,
+    btn_im_host: `Я ведущий`, host_paste_ph: `Вставь ссылку ведущего`, btn_ok: `OK`, host_bad: `Это не ссылка ведущего`, btn_take: `Забрать управление`, host_lost_msg: `Управление перешло к другому экрану`,
     viewer: `Этот экран — зритель: управляет другая вкладка`,
     lobby_who: `В игре`, lobby_n: `{n} из 16`, lobby_free: `свободно`,
     lobby_scan: `Наведи камеру телефона на QR или открой ссылку и введи имя.`,
@@ -399,6 +408,9 @@ window.I18N_DICT = {
     logo: `Bomb`,
     creating: `Creating a room…`,
     expired: `The room has closed. Create a new one on the game page.`,
+    host_link: `Host link`, link_copied: `Link copied. Don't show it to players`, link_shared: `Link sent. Don't show it to players`, link_none: `This screen has no host key`,
+    link_prompt_hint: `Copy the link and keep it from the players`,
+    btn_im_host: `I'm the host`, host_paste_ph: `Paste the host link`, btn_ok: `OK`, host_bad: `That is not a host link`, btn_take: `Take control`, host_lost_msg: `Another screen took control`,
     viewer: `This screen is a viewer: another tab is in control`,
     lobby_who: `Players`, lobby_n: `{n} of 16`, lobby_free: `free`,
     lobby_scan: `Point your phone camera at the QR or open the link and type your name.`,
@@ -439,6 +451,9 @@ window.I18N_DICT = {
     logo: `Βόμβα`,
     creating: `Δημιουργούμε δωμάτιο…`,
     expired: `Το δωμάτιο έκλεισε. Φτιάξε νέο στη σελίδα του παιχνιδιού.`,
+    host_link: `Σύνδεσμος οικοδεσπότη`, link_copied: `Ο σύνδεσμος αντιγράφηκε. Μην τον δείχνεις στους παίκτες`, link_shared: `Ο σύνδεσμος στάλθηκε. Μην τον δείχνεις στους παίκτες`, link_none: `Αυτή η οθόνη δεν έχει κλειδί οικοδεσπότη`,
+    link_prompt_hint: `Αντίγραψε τον σύνδεσμο και μην τον δείχνεις στους παίκτες`,
+    btn_im_host: `Είμαι ο οικοδεσπότης`, host_paste_ph: `Επικόλλησε τον σύνδεσμο οικοδεσπότη`, btn_ok: `OK`, host_bad: `Αυτός δεν είναι σύνδεσμος οικοδεσπότη`, btn_take: `Πάρε τον έλεγχο`, host_lost_msg: `Τον έλεγχο πήρε άλλη οθόνη`,
     viewer: `Αυτή η οθόνη είναι θεατής: ελέγχει άλλη καρτέλα`,
     lobby_who: `Παίκτες`, lobby_n: `{n} από 16`, lobby_free: `ελεύθερο`,
     lobby_scan: `Στρέψε την κάμερα του κινητού στο QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.`,
@@ -772,7 +787,6 @@ function drawArena() {
   const key = `${arena.clientWidth}x${arena.clientHeight}:${$("center").offsetHeight}:${list.map((p) => p.id).join(",")}`;
   if (key !== arenaSize) { arenaSize = key; layout(); }
   drawBombs();
-  drawHostbar();
 }
 
 function lastVictim() {
@@ -941,15 +955,85 @@ function seqText(v) {
   return v.items.join(", ");
 }
 
+// «🔑 Ссылка ведущего»: ключ ведущего живёт только в localStorage этого экрана; кнопка копирует ссылку
+// …?r=КОД&h=ТОКЕН в буфер, токен на экране не рисуется (доска видна всем). Без MP работает как раньше.
+let hostNote = "", hostNoteT = 0, pasteOpen = false, hostLost = false, hostBarKey = "";
+const HL = window.MP && MP.hostLink ? MP.hostLink({
+  hostKeyFn: hostKey,
+  boardPath: "bomb-board.html",
+  getRoom: () => CODE,
+  sendHost: (t) => { if (conn) conn.send({ type: "host", token: t }); },
+  onToast: (kind) => {
+    if (kind === "copied") setHostNote(T("link_copied"));
+    else if (kind === "shared") setHostNote(T("link_shared"));
+    else if (kind === "none") setHostNote(T("link_none"));
+  },
+  prompt: (m, v) => window.prompt(T("link_prompt_hint"), v),
+}) : null;
+function setHostNote(text) {
+  hostNote = text;
+  clearTimeout(hostNoteT);
+  if (text) hostNoteT = setTimeout(() => { hostNote = ""; drawHostbar(); }, 5000);
+  drawHostbar();
+}
+function hasHostToken() {
+  try { return !!localStorage.getItem(hostKey()); } catch (e) { return false; }
+}
 function drawHostbar() {
   const bar = $("hostbar");
-  const show = isHost && (state.phase === "live" || state.phase === "countdown");
-  if (!show) { bar.replaceChildren(); return; }
-  if (bar.childElementCount) return;
-  const b = el("button", null, T("btn_end"));
-  b.type = "button";
-  b.onclick = () => conn.send({ type: "end" });
-  bar.append(b);
+  if (dead || !state) { bar.innerHTML = ""; hostBarKey = ""; return; }
+  const showEnd = isHost && (state.phase === "live" || state.phase === "countdown");
+  const claim = !isHost && HL && (hostLost || !hasHostToken());
+  const key = [isHost, showEnd, hostLost, claim, pasteOpen, hostNote, bmLang()].join("|");
+  if (key === hostBarKey) return;
+  hostBarKey = key;
+  bar.innerHTML = "";
+  if (isHost && HL) {
+    const lb = el("button", "linkbtn");
+    lb.type = "button";
+    lb.title = T("host_link");
+    lb.setAttribute("aria-label", T("host_link"));
+    lb.append("🔑", el("span", "lt", " " + T("host_link")));
+    lb.onclick = () => { HL.copy(); };
+    bar.append(lb);
+  }
+  if (showEnd) {
+    const b = el("button", null, T("btn_end"));
+    b.type = "button";
+    b.onclick = () => conn.send({ type: "end" });
+    bar.append(b);
+  }
+  if (claim && hostLost && hasHostToken()) {
+    const note = el("span", "note", T("host_lost_msg"));
+    const tk = el("button", "linkbtn", T("btn_take"));
+    tk.type = "button";
+    tk.onclick = () => { HL.take(); };
+    bar.append(note, tk);
+  } else if (claim) {
+    if (pasteOpen) {
+      const inp = el("input");
+      inp.type = "text";
+      inp.placeholder = T("host_paste_ph");
+      inp.autocomplete = "off";
+      const ok = el("button", "linkbtn", T("btn_ok"));
+      ok.type = "button";
+      const submit = () => {
+        if (!MP.hostLink.parseToken(inp.value)) { setHostNote(T("host_bad")); return; }
+        HL.take(Date.now(), inp.value);
+        pasteOpen = false;
+      };
+      ok.onclick = submit;
+      inp.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+      bar.append(inp, ok);
+      setTimeout(() => inp.focus(), 0);
+    } else {
+      const im = el("button", "linkbtn", T("btn_im_host"));
+      im.type = "button";
+      im.onclick = () => { pasteOpen = true; drawHostbar(); };
+      bar.append(im);
+    }
+  }
+  if (hostNote) bar.append(el("span", "note", hostNote));
 }
 
 // ---------- итоги ----------
@@ -1104,6 +1188,7 @@ function render() {
   drawSeal();
   drawLobby();
   drawArena();
+  drawHostbar();
   drawResult();
   effects();
   prev = state;
@@ -1130,12 +1215,15 @@ function onMessage(m) {
       break;
     case "host_ok":
       isHost = true;
+      hostLost = false;
+      pasteOpen = false;
       document.body.classList.add("host");
       $("lobby").dataset.lang = "";
       resultKey = "";
       break;
     case "host_lost":
       isHost = false;
+      hostLost = true;
       document.body.classList.remove("host");
       $("lobby").dataset.lang = "";
       resultKey = "";
@@ -1146,6 +1234,12 @@ function onMessage(m) {
       break;
     case "error":
       if (m.error === "room_expired") gone();
+      if (m.error === "bad host token") {
+        hostLost = false;
+        try { localStorage.removeItem(hostKey()); } catch (e) {}
+        pasteOpen = true;
+        setHostNote(T("host_bad"));
+      }
       break;
   }
 }

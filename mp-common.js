@@ -14,7 +14,7 @@
  *   • сервер шлёт hello.mp === false (env MP_OFF=1)  -> MP.applyHello(hello) возвращает false,
  *     MP.off = true, все модули становятся пустыми (joinFlow.handle -> false, nameCounter без DOM).
  *
- * ПУБЛИЧНЫЙ API (MP.version = "1.0.0")
+ * ПУБЛИЧНЫЙ API (MP.version = "1.1.0")
  *   MP.store.get(k) / set(k,v) / del(k)      localStorage в try/catch (null при недоступности)
  *   MP.applyHello(hello) -> bool             hello.mp === false -> выключить; иначе запомнить hello.limits
  *   MP.limits                                 {name, answer, item, clue, …} из hello.limits ({} по умолч.)
@@ -50,11 +50,21 @@
  *     api.canAutoReturn(now) -> bool   auto && ≥ autoMinMs с прошлого авто-возврата && за claimQuietMs не было
  *                                      claim с другого устройства (api.noteClaimElsewhere(now))
  *     api.isReplaced()
+ *
+ *   MP.hostLink({hostKeyFn, boardPath, getRoom, onToast, sendHost, navigator, location, prompt, takeMinMs = 3000})
+ *     -> api   «🔑 Ссылка ведущего» (T-W1-10, U-03 вариант A). Токен ведущего НЕ рисуется на экране.
+ *     hostKeyFn() -> ключ localStorage с токеном (bomb: "bomb-host-КОД"); getRoom() -> код; boardPath -> "bomb-board.html"
+ *     api.url() -> "…/bomb-board.html?r=КОД&h=ТОКЕН" | null (нет токена или кода)
+ *     api.copy() -> Promise<"copied"|"shared"|"prompt"|"cancelled"|"none">   clipboard -> Web Share -> prompt();
+ *                                          onToast(kind) вызывается с тем же значением
+ *     api.adopt(text) -> токен | null      «Я ведущий»: из вставленной ссылки (?h=) или голого токена; кладёт в localStorage
+ *     api.take(now?, text?) -> bool        «Забрать»: sendHost(токен) не чаще раза в takeMinMs (3 с)
+ *     MP.hostLink.build(href, boardPath, code, token), MP.hostLink.parseToken(text)
  */
 (function (root) {
   'use strict';
 
-  var VERSION = '1.0.0';
+  var VERSION = '1.1.0';
 
   function safeGet(k) {
     try { return root.localStorage ? root.localStorage.getItem(k) : null; } catch (e) { return null; }
@@ -286,6 +296,92 @@
     };
     return api;
   };
+
+  // ── hostLink ───────────────────────────────────────────────────────────────────────────────────
+  var TOKEN_RE = /^[A-Za-z0-9_-]{6,64}$/;
+
+  function buildHostUrl(href, boardPath, code, token) {
+    var base = String(href || '').split('#')[0].split('?')[0];
+    base = base.slice(0, base.lastIndexOf('/') + 1) + boardPath;
+    return base + '?r=' + encodeURIComponent(code) + '&h=' + encodeURIComponent(token);
+  }
+  function parseHostToken(text) {
+    var s = String(text == null ? '' : text).trim();
+    if (!s) return null;
+    var m = /[?&]h=([^&#\s]+)/.exec(s);
+    if (m) {
+      var v = m[1];
+      try { v = decodeURIComponent(v); } catch (e) { /* оставляем как есть */ }
+      return TOKEN_RE.test(v) ? v : null;
+    }
+    return TOKEN_RE.test(s) ? s : null;
+  }
+
+  MP.hostLink = function (opts) {
+    var o = opts || {};
+    var minMs = typeof o.takeMinMs === 'number' ? o.takeMinMs : 3000;
+    var lastTake = -Infinity;
+    function env(k) { return o[k] || root[k]; }
+    function key() { return typeof o.hostKeyFn === 'function' ? o.hostKeyFn() : null; }
+    function token() { var k = key(); return k ? safeGet(k) : null; }
+    function toast(kind) { if (typeof o.onToast === 'function') o.onToast(kind); return kind; }
+
+    var api = {
+      url: function () {
+        var t = token();
+        var code = typeof o.getRoom === 'function' ? o.getRoom() : '';
+        var loc = env('location');
+        if (!t || !code || !loc) return null;
+        return buildHostUrl(loc.href, o.boardPath || 'bomb-board.html', code, t);
+      },
+      copy: function () {
+        if (MP.off) return Promise.resolve('none');
+        var url = api.url();
+        if (!url) return Promise.resolve(toast('none'));
+        var nav = env('navigator') || {};
+        function viaPrompt() {
+          var pr = env('prompt');
+          if (typeof pr === 'function') { try { pr('', url); } catch (e) { /* ignore */ } }
+          return toast('prompt');
+        }
+        function viaShare() {
+          if (typeof nav.share !== 'function') return Promise.resolve(viaPrompt());
+          var p;
+          try { p = nav.share({ url: url }); } catch (e) { return Promise.resolve(viaPrompt()); }
+          return Promise.resolve(p).then(function () { return toast('shared'); }, function (e) {
+            if (e && e.name === 'AbortError') return toast('cancelled'); // игрок закрыл меню — не спорим
+            return viaPrompt();
+          });
+        }
+        if (nav.clipboard && typeof nav.clipboard.writeText === 'function') {
+          var w;
+          try { w = nav.clipboard.writeText(url); } catch (e) { return viaShare(); }
+          return Promise.resolve(w).then(function () { return toast('copied'); }, viaShare);
+        }
+        return viaShare();
+      },
+      adopt: function (text) {
+        var t = parseHostToken(text);
+        var k = key();
+        if (!t || !k) return null;
+        safeSet(k, t);
+        return t;
+      },
+      take: function (now, text) {
+        if (MP.off) return false;
+        var n = typeof now === 'number' ? now : Date.now();
+        if (n - lastTake < minMs) return false;
+        var t = text ? api.adopt(text) : token();
+        if (!t) return false;
+        lastTake = n;
+        if (typeof o.sendHost === 'function') o.sendHost(t);
+        return true;
+      }
+    };
+    return api;
+  };
+  MP.hostLink.build = buildHostUrl;
+  MP.hostLink.parseToken = parseHostToken;
 
   root.MP = MP;
 })(this);

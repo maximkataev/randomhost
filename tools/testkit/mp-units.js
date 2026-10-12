@@ -270,5 +270,96 @@ test("авто-возврат: выключен по умолчанию; ≥ 5 �
   assert.equal(rt.canAutoReturn(1e6 + 66000), true);
 });
 
-console.log("\n" + passed + " пройдено, " + failed + " провалено");
-process.exit(failed ? 1 : 0);
+// ── hostLink / roomGone (T-W1-10, T-W1-12) ───────────────────────────────────────────────────────
+const asyncTests = [];
+function atest(name, fn) { asyncTests.push({ name, fn }); }
+
+function hostEnv(extra) {
+  const store = { "bomb-host-BEAR74": "tok_ABCdef123456" };
+  const w = load({ storage: store });
+  const log = { toasts: [], sent: [], prompts: [], copied: [], shared: [] };
+  const o = Object.assign({
+    hostKeyFn: () => "bomb-host-BEAR74",
+    boardPath: "bomb-board.html",
+    getRoom: () => "BEAR74",
+    onToast: (k) => log.toasts.push(k),
+    sendHost: (t) => log.sent.push(t),
+    location: { href: "https://randomhost.online/bomb-board.html?r=BEAR74#x" },
+    prompt: (m, v) => log.prompts.push(v),
+    navigator: { clipboard: { writeText: (u) => { log.copied.push(u); return Promise.resolve(); } } },
+  }, extra || {});
+  return { w, log, store, hl: w.MP.hostLink(o) };
+}
+
+console.log("hostLink");
+test("hostLink.url: ?r=КОД&h=ТОКЕН рядом с доской, без хвоста старого адреса", () => {
+  const e = hostEnv();
+  assert.equal(e.hl.url(), "https://randomhost.online/bomb-board.html?r=BEAR74&h=tok_ABCdef123456");
+});
+test("hostLink.url: нет токена или кода -> null", () => {
+  assert.equal(hostEnv({ hostKeyFn: () => "nokey" }).hl.url(), null);
+  assert.equal(hostEnv({ getRoom: () => "" }).hl.url(), null);
+});
+test("hostLink.parseToken: ссылка с ?h=, голый токен, мусор", () => {
+  const w = load();
+  const P = w.MP.hostLink.parseToken;
+  assert.equal(P("https://x.y/bomb-board.html?r=BEAR74&h=tok_ABCdef123456"), "tok_ABCdef123456");
+  assert.equal(P("  tok_ABCdef123456 "), "tok_ABCdef123456");
+  assert.equal(P("?h=a b"), null);
+  assert.equal(P("привет"), null);
+  assert.equal(P(""), null);
+});
+test("hostLink.adopt кладёт токен в localStorage; мусор не кладёт", () => {
+  const e = hostEnv({ hostKeyFn: () => "bomb-host-NEW11" });
+  assert.equal(e.hl.adopt("???"), null);
+  assert.equal(e.store["bomb-host-NEW11"], undefined);
+  assert.equal(e.hl.adopt("https://a/b?r=NEW11&h=zzzzzzzz9"), "zzzzzzzz9");
+  assert.equal(e.store["bomb-host-NEW11"], "zzzzzzzz9");
+});
+test("hostLink.take: не чаще раза в 3 с, шлёт сохранённый токен; без токена — false", () => {
+  const e = hostEnv();
+  assert.equal(e.hl.take(1000), true);
+  assert.equal(e.hl.take(3999), false);
+  assert.equal(e.hl.take(4000), true);
+  assert.deepEqual(e.log.sent, ["tok_ABCdef123456", "tok_ABCdef123456"]);
+  assert.equal(hostEnv({ hostKeyFn: () => "nokey" }).hl.take(1), false);
+});
+atest("hostLink.copy: clipboard -> 'copied', токен не уходит в prompt", async () => {
+  const e = hostEnv();
+  assert.equal(await e.hl.copy(), "copied");
+  assert.deepEqual(e.log.copied, ["https://randomhost.online/bomb-board.html?r=BEAR74&h=tok_ABCdef123456"]);
+  assert.deepEqual(e.log.prompts, []);
+  assert.deepEqual(e.log.toasts, ["copied"]);
+});
+atest("hostLink.copy: clipboard отказал -> Web Share; отмена шеринга не открывает prompt", async () => {
+  const shared = [];
+  let e = hostEnv({ navigator: { clipboard: { writeText: () => Promise.reject(new Error("denied")) }, share: (d) => { shared.push(d.url); return Promise.resolve(); } } });
+  assert.equal(await e.hl.copy(), "shared");
+  assert.equal(shared.length, 1);
+  e = hostEnv({ navigator: { share: () => Promise.reject({ name: "AbortError" }) } });
+  assert.equal(await e.hl.copy(), "cancelled");
+  assert.deepEqual(e.log.prompts, []);
+});
+atest("hostLink.copy: ни clipboard, ни share -> prompt() с готовой ссылкой; без токена — 'none'", async () => {
+  let e = hostEnv({ navigator: {} });
+  assert.equal(await e.hl.copy(), "prompt");
+  assert.equal(e.log.prompts.length, 1);
+  assert.ok(e.log.prompts[0].indexOf("h=tok_ABCdef123456") > 0);
+  e = hostEnv({ hostKeyFn: () => "nokey" });
+  assert.equal(await e.hl.copy(), "none");
+  assert.deepEqual(e.log.copied, []);
+});
+test("hostLink при MP_OFF: copy и take ничего не делают", () => {
+  const e = hostEnv();
+  e.w.MP.applyHello({ mp: false });
+  assert.equal(e.hl.take(1), false);
+  assert.deepEqual(e.log.sent, []);
+});
+(async () => {
+  for (const t of asyncTests) {
+    try { await t.fn(); passed++; console.log("  ✓ " + t.name); }
+    catch (e) { failed++; console.log("  ✗ " + t.name + "\n    " + String(e && e.message || e).split("\n").slice(0, 3).join("\n    ")); }
+  }
+  console.log("\n" + passed + " пройдено, " + failed + " провалено");
+  process.exit(failed ? 1 : 0);
+})();
