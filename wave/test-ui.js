@@ -303,9 +303,24 @@ async function playGame(board, phones, label, silentRound2) {
     for (const ph of ps) if ((await ph.evaluate("window.wvPhone.state.me.myCard")) === false) gs.push(ph);
     check(gs.length === 2, `guess: двое угадывают (${gs.length})`);
     await waitFor(gs[0], "!!document.querySelector('.dial.grab')", 4000);
+    const a1 = await drag(gs[0], 37);
+    await wait(400);
+    await reloadAndWait(gs[0]);
+    await waitFor(gs[0], "!!document.querySelector('.dial.grab')", 6000);
+    const a1b = await gs[0].evaluate("window.wvPhone.needle");
+    check(Math.abs(a1b - a1) < 0.2 && Math.abs(a1b - 90) > 10, `guess: угол после reload ${a1b}° (был ${a1}°)`);
     await dropAndWait(gs[0]);
     await waitFor(gs[0], "!!document.querySelector('.dial.grab')", 6000);
+    check(Math.abs((await gs[0].evaluate("window.wvPhone.needle")) - a1) < 0.2, "guess: угол после ws.close() на месте");
+    await drag(gs[1], 141);
+    const a2 = await gs[1].evaluate("window.wvPhone.needle");
     await click(gs[1], "#lock");
+    await gs[1].evaluate("location.reload()");
+    await wait(300);
+    await waitFor(gs[1], "!!(window.wvPhone && window.wvPhone.state && window.wvPhone.state.me)", 10000);
+    const got = await waitFor(gs[1], "window.wvPhone.state.me.guess != null || window.wvPhone.state.phase !== 'guess'", 8000);
+    check(!!got, "guess: «Зафиксировать»+reload — действие дошло до сервера");
+    if (await gs[1].evaluate("window.wvPhone.state.phase === 'guess' && window.wvPhone.state.me.guess != null")) check(Math.abs((await gs[1].evaluate("window.wvPhone.state.me.guess")) - a2) < 0.2, `guess: зафиксирован тот же угол ${a2}°`);
     // reveal: обрыв при раскрытии
     await click(gs[0], "#lock");
     await waitFor(ps[0], "window.wvPhone.state.phase === 'reveal'", 10000);

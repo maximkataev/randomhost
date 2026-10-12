@@ -392,6 +392,22 @@ let needle = 90; // стрелка на экране угадывания, по�
 let needleKey = null;
 let sentLock = false;
 let waitJoin = true; // холодная загрузка с токеном: до подтверждения входа форму не показываем (≤ 4 с)
+let resumedLock = null; // для какой карточки уже повторили «Зафиксировать» после reload
+// угол стрелки и нажатый «Зафиксировать» переживают reload: {k: карточка, a: угол, locked?}
+const needleStoreKey = () => "wave-needle-" + CODE;
+function needleLoad() {
+  try { const v = JSON.parse(localStorage.getItem(needleStoreKey()) || "null"); return v && typeof v.a === "number" && v.k ? v : null; } catch (e) { return null; }
+}
+let needleWriteAt = 0, needleWriteT = null;
+function needleSave(locked) {
+  const put = () => {
+    needleWriteAt = Date.now();
+    try { localStorage.setItem(needleStoreKey(), JSON.stringify(locked ? { k: cardKey(), a: needle, locked: true } : { k: cardKey(), a: needle })); } catch (e) {}
+  };
+  clearTimeout(needleWriteT);
+  if (locked || Date.now() - needleWriteAt >= 150) return put();
+  needleWriteT = setTimeout(put, 150 - (Date.now() - needleWriteAt)); // не чаще раза в 150 мс, но последнее значение не теряем
+}
 let onKeys = null; // клавиатура на экране угадывания
 document.addEventListener("keydown", (e) => { if (onKeys && screenKey.startsWith("guess:")) onKeys(e); });
 const tokenKey = () => "wave-token-" + CODE;
@@ -745,7 +761,11 @@ function renderGuess() {
     document.getElementById("lw").textContent = tpl("locked_wait", { n, m });
     return;
   }
-  if (needleKey !== cardKey()) { needleKey = cardKey(); needle = 90; sentLock = false; }
+  if (needleKey !== cardKey()) {
+    needleKey = cardKey(); needle = 90; sentLock = false;
+    const sv = needleLoad();
+    if (sv && sv.k === needleKey && sv.a >= 0 && sv.a <= 180) needle = sv.a;
+  }
   const key = "guess:" + cardKey() + wvLang();
   if (screenKey === key) return;
   show(`${headHtml(roundLabel())}${clueBox(card)}${dialHtml({ needle }, card.l, card.r)}<div class="grow"></div>
@@ -758,6 +778,7 @@ function renderGuess() {
   let lastDetent = Math.round(needle / 3);
   const set = (a) => {
     needle = Math.round(Math.max(0, Math.min(180, a)) * 10) / 10;
+    needleSave(false);
     nd.style.setProperty("--a", needle);
     track.style.setProperty("--sx", (needle * 6).toFixed(0) + "px");
     const d = Math.round(needle / 3);
@@ -798,6 +819,7 @@ function renderGuess() {
     document.getElementById("lock").disabled = true;
     wvSfx.lock();
     wvVibrate(35);
+    needleSave(true);
     csend({ type: "lock", angle: needle });
     unlockLater(() => { sentLock = false; const b = document.getElementById("lock"); if (b) b.disabled = false; });
   };
@@ -928,6 +950,19 @@ function flushQueued() {
     }
   });
 }
+// после reload: «Зафиксировать» нажат, а сервер угла не получил — отправляем тот же угол ещё раз (сервер идемпотентен)
+function resumeLock() {
+  const mc = state && state.me;
+  if (!mc || state.phase !== "guess" || mc.myCard || mc.guess != null || sentLock) return;
+  const sv = needleLoad();
+  if (!sv || !sv.locked || sv.k !== cardKey() || resumedLock === sv.k) return;
+  resumedLock = sv.k;
+  needle = sv.a;
+  sentLock = true;
+  const b = document.getElementById("lock"); if (b) b.disabled = true;
+  csend({ type: "lock", angle: sv.a });
+  unlockLater(() => { sentLock = false; const bb = document.getElementById("lock"); if (bb) bb.disabled = false; });
+}
 function onMessage(m) {
   switch (m.type) {
     case "hello":
@@ -941,6 +976,7 @@ function onMessage(m) {
       render();
       // вернулись по токену: действия, нажатые в обрыв, отправляем, когда сервер снова признал нас
       if (pendingFlush && state.me) { pendingFlush = false; flushQueued(); }
+      resumeLock();
       break;
     case "joined": {
       const was = me;
@@ -967,7 +1003,7 @@ function onMessage(m) {
         if (b) b.disabled = false;
         break;
       }
-      if (m.action === "lock") { sentLock = false; screenKey = ""; }
+      if (m.action === "lock") { sentLock = false; screenKey = ""; needleSave(false); }
       if (m.action === "pick" || m.action === "reroll") screenKey = "";
       if (T("rj_" + m.reason) !== "rj_" + m.reason) toast(T("rj_" + m.reason));
       render();
