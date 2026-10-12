@@ -247,6 +247,53 @@ function rawWs(code) {
       list.forEach((w) => w.close());
     });
 
+    await test("игровое время по часам: паузы процесса по 100 мс не растягивают floe (clock ≈ wall ± 0,3 с)", async () => {
+      const r = await NetBot.createRoom(BASE);
+      const a = await NetBot.connect({ base: BASE, code: r.code, name: "А", hostToken: r.hostToken, think: false });
+      const b = await NetBot.connect({ base: BASE, code: r.code, name: "Б", think: false });
+      await a.until((x) => x.roster && x.roster.length === 2, 3000);
+      a.send({ type: "start" });
+      await a.until((x) => x.phase === "fight" && x.snap && x.snap.ph === "fight", 8000);
+      await wait(200);
+      const s1 = a.snap;
+      // 12 пауз процесса по 100 мс: старый код терял по ~0,1 с игрового времени на каждой
+      for (let i = 0; i < 12; i++) {
+        process.kill(srv.pid, "SIGSTOP");
+        await wait(100);
+        process.kill(srv.pid, "SIGCONT");
+        await wait(150);
+      }
+      await wait(200);
+      const s2 = a.snap;
+      assert.strictEqual(s2.ph, "fight", "ещё идёт: " + s2.ph);
+      const wall = (s2.t - s1.t) / 1000, game = s2.cl - s1.cl;
+      assert(Math.abs(wall - game) < 0.3, `по часам ${wall.toFixed(2)} с, в игре ${game.toFixed(2)} с`);
+      a.close(); b.close();
+    });
+
+    await test("PROD_ENV: в проде (NODE_ENV=production) env меняет политику — GHOST_TTL_MS=6000 убирает офлайн из лобби за ~6 с", async () => {
+      const port2 = PORT + 300;
+      const base2 = `http://localhost:${port2}`;
+      const env2 = Object.assign({}, process.env, { PORT: String(port2), NODE_ENV: "production", DUMP_FILE: path.join(require("os").tmpdir(), `floe-test-${port2}.json`), GHOST_TTL_MS: "6000", PONG_MISSES: "abc" }, {});
+      const s2 = spawn(process.execPath, [path.join(__dirname, "server.js")], { env: env2, stdio: ["ignore", "pipe", "pipe"] });
+      let log = "";
+      s2.stdout.on("data", (d) => (log += d)); s2.stderr.on("data", (d) => (log += d));
+      try {
+        for (let i = 0; i < 50; i++) { try { if ((await fetch(base2 + "/floe/api/health")).ok) break; } catch {} await wait(100); }
+        const r = await NetBot.createRoom(base2);
+        const a = await NetBot.connect({ base: base2, code: r.code, name: "А", hostToken: r.hostToken, think: false });
+        const b = await NetBot.connect({ base: base2, code: r.code, name: "Б", think: false });
+        await a.until((x) => x.roster && x.roster.length === 2, 3000);
+        const t0 = Date.now();
+        b.close();
+        await a.until((x) => x.roster.length === 1, 16000);
+        const dt = Date.now() - t0;
+        assert(dt < 12000, "убран за " + dt + " мс (по умолчанию было бы ≥ 60 с)");
+        assert(/PONG_MISSES="abc" вне диапазона/.test(log), "мусор в env отвергнут с предупреждением");
+        a.close();
+      } finally { s2.kill("SIGTERM"); }
+    });
+
     await test("рестарт сервера: комната и токены живы, партия отменена", async () => {
       const r4 = await NetBot.createRoom(BASE);
       const a = await NetBot.connect({ base: BASE, code: r4.code, name: "Ася", hostToken: r4.hostToken, think: false });
