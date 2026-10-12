@@ -708,7 +708,7 @@ window.I18N_DICT = {
     opt_short: `Короткое шоу`, opt_short_d: `Без эмодзи-сцены и «Наоборот»: дуэли и финал`,
     on: `Да`, off: `Нет`,
     btn_start: `Начать шоу`,
-    need_more: `Нужно хотя бы трое — ещё {n}`,
+    need_more: `Нужно хотя бы трое — ещё {n}`, need_online: `Нужно ещё {n} на связи`,
     ready: `Все на местах? Поехали`,
     viewer: `Настройки меняет ведущий — тот, кто открыл студию`,
     offline: `нет связи`, kick: `Убрать из комнаты`,
@@ -739,7 +739,7 @@ window.I18N_DICT = {
     opt_short: `Short show`, opt_short_d: `No emoji scene or Reverse: duels and final`,
     on: `Yes`, off: `No`,
     btn_start: `Start the show`,
-    need_more: `At least three needed — {n} more`,
+    need_more: `At least three needed — {n} more`, need_online: `{n} more need to be online`,
     ready: `Everyone here? Let's go`,
     viewer: `Settings are changed by the host — whoever opened the studio`,
     offline: `offline`, kick: `Remove from room`,
@@ -770,7 +770,7 @@ window.I18N_DICT = {
     opt_short: `Σύντομο σόου`, opt_short_d: `Χωρίς σκηνή emoji και «Ανάποδα»: μονομαχίες και τελικός`,
     on: `Ναι`, off: `Όχι`,
     btn_start: `Ξεκίνα το σόου`,
-    need_more: `Χρειάζονται τουλάχιστον τρεις — ακόμα {n}`,
+    need_more: `Χρειάζονται τουλάχιστον τρεις — ακόμα {n}`, need_online: `Χρειάζονται ακόμα {n} συνδεδεμένοι`,
     ready: `Είναι όλοι εδώ; Πάμε`,
     viewer: `Τις ρυθμίσεις τις αλλάζει ο οικοδεσπότης — όποιος άνοιξε το στούντιο`,
     offline: `εκτός σύνδεσης`, kick: `Αφαίρεση από το δωμάτιο`,
@@ -792,6 +792,7 @@ window.I18N_DICT = {
   },
 };
 </script>
+<script src="mp-common.js"></script>
 <script src="quip-shared.js"></script>
 <script src="i18n.js"></script>
 <script src="sound-toggle.js" defer></script>
@@ -905,7 +906,7 @@ function drawLobby() {
   const nodes = ps.map((p) => {
     const d = el("div", "seat" + (seen.has(p.id) ? "" : " new"));
     d.style.setProperty("--pc", p.color);
-    d.innerHTML = avatarName(p) + (p.online ? "" : `<span class="off">${escapeHtml(T("offline"))}</span>`);
+    d.innerHTML = avatarName(p) + (p.online ? "" : `<span class="off">📵 ${escapeHtml(T("offline"))}</span>`);
     if (isHost) { const x = el("button", "x", "✕"); x.type = "button"; x.title = T("kick"); x.setAttribute("aria-label", T("kick")); x.onclick = () => conn.send({ type: "kick", playerId: p.id }); d.append(x); }
     return d;
   });
@@ -920,10 +921,13 @@ function drawLobby() {
   ps.forEach((p) => seen.add(p.id));
   $("seatn").textContent = tpl("lobby_n", { n: ps.length });
   drawOpts();
-  const need = Math.max(0, state.minPlayers - ps.length);
+  // при RULE_U08_GHOST_OUT партия не встаёт без троих на связи: «нужно ещё N на связи» (T-W1-07)
+  const onlineN = ps.filter((p) => p.online).length;
+  const count = state.ghostOut ? onlineN : ps.length;
+  const need = Math.max(0, state.minPlayers - count);
   $("startbtn").disabled = !isHost || need > 0;
   $("startbtn").classList.toggle("hidden", !isHost);
-  $("starthint").textContent = !isHost ? T("viewer") : need ? tpl("need_more", { n: need }) : T("ready");
+  $("starthint").textContent = !isHost ? T("viewer") : need ? tpl(state.ghostOut && ps.length >= state.minPlayers ? "need_online" : "need_more", { n: need }) : T("ready");
 }
 
 function drawOpts() {
@@ -984,7 +988,7 @@ function drawAnswer() {
     if (pr) fit(pr, "--pfs", 60, 24);
   }
   const rev = state.roundKey === "rev" && (state.sharedPrompts || [{}]).every((pp) => !pp.q);
-  $("what").textContent = (rev ? T(state.small ? "answering_rev_all" : "answering_rev") : qpDuelKey(state.roundKey) && !state.small ? T("answering_duel") : T(state.sharedPrompts ? "answering_all_n" : "answering_all")) + " · " + tpl("done_n", { a: roster.filter((id) => { const [x, y] = prog[id].split("/"); return x === y; }).length, b: roster.length });
+  $("what").textContent = (rev ? T(state.small ? "answering_rev_all" : "answering_rev") : qpDuelKey(state.roundKey) && !state.small ? T("answering_duel") : T(state.sharedPrompts ? "answering_all_n" : "answering_all")) + " · " + tpl("done_n", state.answerProgress ? { a: state.answerProgress.done, b: state.answerProgress.total } : { a: roster.filter((id) => { const [x, y] = prog[id].split("/"); return x === y; }).length, b: roster.length });
   $("writers").replaceChildren(...roster.map((id) => {
     const p = player(id) || { name: "?", avatar: "?", color: "#777" };
     const [x, y] = prog[id].split("/");
@@ -1179,7 +1183,7 @@ function drawScores() {
   const from = (p) => (base && base[p.id] != null ? base[p.id] : p.score);
   main.innerHTML = `<div class="screen">
     <div class="bar"><div class="what sign">${escapeHtml(tpl("scores_after", { n: state.ri + 1 }))}</div><div class="clock" id="clock"></div></div>
-    <div class="board" style="--rowh:${rowh}px;gap:${gap}px">${list.map((p, i) => { const d = p.score - from(p); return `<div class="rowx${p.place === 1 && p.score > 0 ? " lead" : ""}" style="--pc:${p.color};--ri:${(i * 0.06).toFixed(2)}s"><span class="n">${p.place}</span><i class="av puck">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><span class="d" style="--dd:${(0.3 + i * 0.08).toFixed(2)}s">${d > 0 ? escapeHtml(tpl("pts", { n: d })) : ""}</span><span class="s" data-from="${from(p)}" data-to="${p.score}">${p.score}</span></div>`; }).join("")}</div></div>`;
+    <div class="board" style="--rowh:${rowh}px;gap:${gap}px">${list.map((p, i) => { const d = p.score - from(p); return `<div class="rowx${p.place === 1 && p.score > 0 ? " lead" : ""}" style="--pc:${p.color};--ri:${(i * 0.06).toFixed(2)}s"><span class="n">${escapeHtml(qpPlaceLabel(p))}</span><i class="av puck">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><span class="d" style="--dd:${(0.3 + i * 0.08).toFixed(2)}s">${d > 0 ? escapeHtml(tpl("pts", { n: d })) : ""}</span><span class="s" data-from="${from(p)}" data-to="${p.score}">${p.score}</span></div>`; }).join("")}</div></div>`;
   countUp();
   qpSfx.drumroll(0.6);
 }
@@ -1218,14 +1222,14 @@ function drawFinal() {
   const reason = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : "";
   main.innerHTML = `<div class="screen final">
     <div class="panel cast"><h2>${T("final_title")}<span${reason ? "" : ` class="hidden"`}>${escapeHtml(reason)}</span></h2>
-      <div class="podium">${top.map((p, i) => (p ? `<div class="step ${cls[i]}" style="--pc:${p.color}">${cls[i] === "p1" ? `<span class="crown" aria-hidden="true">👑</span>` : ""}<i class="av puck">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><div class="sc">${p.score}</div><div class="col">${p.place}</div></div>` : `<div class="step"></div>`)).join("")}</div>
+      <div class="podium">${top.map((p, i) => (p ? `<div class="step ${cls[i]}" style="--pc:${p.color}">${p.place === 1 ? `<span class="crown" aria-hidden="true">👑</span>` : ""}<i class="av puck">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><div class="sc">${p.score}</div><div class="col">${escapeHtml(qpPlaceLabel(p))}</div></div>` : `<div class="step"></div>`)).join("")}</div>
       <div class="hostbtns" style="margin-top:auto">${isHost ? `<button class="start" id="again" type="button">${T("btn_again")}</button><button class="ghostbtn" id="tolobby" type="button">${T("btn_lobby")}</button>` : ""}<a class="ghostbtn homebtn" id="homebtn" href="index.html">${T("btn_home")}</a></div>
     </div>
     <div class="awards">${award(T("best"), state.best) || `<div class="card award"><div class="a">${T("no_best")}</div></div>`}
       ${award(T("hint_star"), state.hintStar)}
       ${fast ? `<div class="card award"><div class="k">${T("fastest")}</div><div class="a">${escapeHtml(fast.avatar)} ${escapeHtml(fast.name)}</div><div class="by">${escapeHtml(tpl("avg_s", { s: qpSec(fast.avgMs) }))}</div></div>` : ""}
       <div class="setlist" id="setlist"><div class="k">${T("setlist")}</div>
-        <ol class="${list.length > 8 ? "two" : ""}" style="grid-template-rows:repeat(${list.length > 8 ? Math.ceil(list.length / 2) : list.length}, minmax(0, 1fr))">${list.map((p) => `<li><span class="n">${p.place}</span><i class="av">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><span class="dots"></span><span class="s">${p.score}</span></li>`).join("")}</ol></div>
+        <ol class="${list.length > 8 ? "two" : ""}" style="grid-template-rows:repeat(${list.length > 8 ? Math.ceil(list.length / 2) : list.length}, minmax(0, 1fr))">${list.map((p) => `<li><span class="n">${escapeHtml(qpPlaceLabel(p))}</span><i class="av">${escapeHtml(p.avatar)}</i><b>${escapeHtml(p.name)}</b><span class="dots"></span><span class="s">${p.score}</span></li>`).join("")}</ol></div>
     </div></div>`;
   // шрифт сет-листа — по высоте строки: трое — крупно, шестнадцать — мельче, но без обрезки
   const sl = $("setlist");
@@ -1368,12 +1372,19 @@ async function boot() {
   }
   if (!(await ensureRoom())) return;
   const banner = $("conn");
+  let netLost = false, netQuiet = false;
+  const showNet = () => {
+    banner.textContent = T(netLost ? "err_connect" : "conn_lost");
+    banner.classList.toggle("on", netLost || netQuiet);
+  };
+  window.addEventListener("langchange", showNet);
   conn = qpConnect({
     code: CODE,
     onMessage,
     onGone: gone,
     onOpen: () => { isHost = false; },
-    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+    onState: (st) => { netLost = st === "lost"; if (st === "open") netQuiet = false; showNet(); },
+    onQuiet: (q) => { netQuiet = !!q; showNet(); },
   });
   requestAnimationFrame(frame);
   // ручка для отладки и стенда: те же сообщения, что шлют кнопки доски

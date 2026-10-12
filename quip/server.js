@@ -37,6 +37,12 @@ const MAX_SOCKETS_PER_IP = Number(process.env.MAX_SOCKETS_PER_IP || 200);
 const EVICT_GRACE_MS = Number(process.env.EVICT_GRACE_MS || 10000);
 const OFFLINE_GRACE_MS = Number(process.env.OFFLINE_GRACE_MS || 8000);
 const PONG_MISSES = Number(process.env.PONG_MISSES || 3);
+// Быстрый пинг только для комнат «в игре» (T-W1-08, quip-007): общий цикл SWEEP — 25 с × 3 промаха, тихий обрыв
+// виден через 25–100 с. Свой цикл: PING_MS (8 с), GAME_PONG_MISSES промахов подряд И не меньше GAME_DEAD_MS
+// тишины (≥ 20 с: ложный офлайн по тишине стоил бы игроку раунда). Лобби и итоги этот цикл не трогает.
+const PING_MS = Math.max(1000, Number(process.env.PING_MS || 8000));
+const GAME_PONG_MISSES = Math.max(1, Number(process.env.GAME_PONG_MISSES || 2));
+const GAME_DEAD_MS = Math.max(20000, Number(process.env.GAME_DEAD_MS || 20000));
 // Снимок — до 6 КБ, так что 256 КБ в очереди — это 40+ непрочитанных снимков: клиент мёртв.
 // При 1 МБ 176 нечитающих сокетов с одного адреса подняли процесс до ~120 МБ (стенд) при лимите контейнера 128 МБ;
 // рвал их только пинг через 75–100 с. 256 КБ ограничивают такой адрес ~45 МБ.
@@ -260,7 +266,10 @@ function broadcastEvent(room, e) {
 }
 
 function sendHello(room, c) {
-  send(c.ws, { type: "hello", code: room.code, state: room.game.snapshot(clock(room), c.host ? "board" : c.playerId || null) });
+  // MP_OFF=1 — аварийный выключатель клиентского каркаса mp-common.js (T-W1-04): страницы возвращаются к прежнему коду
+  const hello = { type: "hello", code: room.code, state: room.game.snapshot(clock(room), c.host ? "board" : c.playerId || null) };
+  if (process.env.MP_OFF === "1") hello.mp = false;
+  send(c.ws, hello);
 }
 
 
@@ -449,9 +458,9 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 function onConnection(room, ws, opts = {}) {
-  const client = { ws, playerId: null, host: false, misses: 0, ip: opts.ip || "" };
+  const client = { ws, playerId: null, host: false, misses: 0, gameMisses: 0, alive: now(), ip: opts.ip || "" };
   room.sockets.add(client);
-  ws.on("pong", () => (client.misses = 0));
+  ws.on("pong", () => { client.misses = 0; client.gameMisses = 0; client.alive = now(); });
   // сюда приходим из колбэка handleUpgrade: исключение (например, снимок комнаты из битого дампа)
   // было бы непойманным и роняло процесс. Рвём только этот сокет.
   try {
@@ -463,6 +472,8 @@ function onConnection(room, ws, opts = {}) {
     return;
   }
   ws.on("message", (raw) => {
+    client.alive = now(); // любое сообщение — признак жизни (приложение шлёт свой ping раз в 5 с)
+    client.gameMisses = 0;
     if (!rateOk(client)) return;
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
@@ -636,6 +647,25 @@ setInterval(() => {
   statBlips = statBack = statDrops = 0;
   if (rssMb > 100) console.warn(`${LOG} ВНИМАНИЕ: RSS ${rssMb} МБ при лимите контейнера 128 МБ, комнат ${rooms.size}`);
 }, SWEEP);
+
+// Быстрый пинг комнат «в игре». SWEEP (TTL комнат, RSS-лог, медленный пинг) не трогаем.
+setInterval(() => {
+  const t = now();
+  for (const room of rooms.values()) {
+    const ph = room.game.s.phase;
+    if (ph === "lobby" || ph === "finished" || !room.sockets.size) continue;
+    for (const c of room.sockets) {
+      if (c.poll || !c.ws || c.ws.readyState !== 1) continue;
+      if (c.gameMisses >= GAME_PONG_MISSES && t - (c.alive || t) >= GAME_DEAD_MS) {
+        console.log(`${LOG} ${room.code}: сокет молчит ${Math.round((t - c.alive) / 1000)} с — закрываем`);
+        c.ws.terminate();
+        continue;
+      }
+      c.gameMisses = (c.gameMisses || 0) + 1;
+      try { c.ws.ping(); } catch {}
+    }
+  }
+}, PING_MS).unref();
 
 setInterval(() => {
   const t = now();

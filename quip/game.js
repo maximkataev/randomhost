@@ -13,6 +13,7 @@
  */
 
 const { normalize, normalizeList } = require("./normalize");
+const presence = require("../lib/presence");
 
 const DECKS = ["duel", "emoji", "rev", "fact", "final"];
 
@@ -90,6 +91,11 @@ function cleanText(text, max) {
 }
 const cleanName = (name) => cleanText(name, 16);
 
+// RULE_U08_GHOST_OUT (класс B, T-W1-07): игрок без связи к началу раунда пар не получает. По умолчанию выкл —
+// как в спеке §112 («вышедший остаётся в партии, за него работают автоподсказки 🐌»). Читаем при каждом вызове
+// (а не при загрузке модуля): флаг видно и в тестах, и после смены env без перепаковки.
+const ghostOut = () => process.env.RULE_U08_GHOST_OUT === "1";
+
 class Game {
   constructor(state, rnd, content) {
     this.s = state;
@@ -131,6 +137,21 @@ class Game {
 
   present() {
     return this.s.players.filter((p) => !p.left);
+  }
+
+  // Кому раздавать вопросы. По умолчанию — все не ушедшие. С RULE_U08_GHOST_OUT=1 — только на связи; если их
+  // меньше MIN_PLAYERS (К-13), играем всеми, иначе партия встала бы от одного моргнувшего телефона.
+  dealPool() {
+    const ps = this.present();
+    if (!ghostOut()) return ps;
+    const on = ps.filter(presence.isOnline);
+    return on.length >= MIN_PLAYERS ? on : ps;
+  }
+
+  // Хватает ли людей для партии (старт, уход игрока): по флагу — считаем только тех, кто на связи.
+  enoughPlayers() {
+    const n = ghostOut() ? this.present().filter(presence.isOnline).length : this.present().length;
+    return n >= MIN_PLAYERS;
   }
 
   addPlayer({ id, name }) {
@@ -176,7 +197,7 @@ class Game {
     if (played) p.left = true;
     else s.players = s.players.filter((x) => x !== p);
     const ev = [{ type: "left", playerId: id }];
-    if (this.present().length < MIN_PLAYERS) return ev.concat(this.finish("few", now));
+    if (!this.enoughPlayers()) return ev.concat(this.finish("few", now));
     // ушедший больше не держит фазу: может, теперь все ответили или проголосовали
     return ev.concat(this.maybeAdvance(now));
   }
@@ -216,7 +237,7 @@ class Game {
     const s = this.s;
     if (s.phase !== "lobby" && s.phase !== "finished") return { ok: false, reason: "started" };
     const ps = this.present();
-    if (ps.length < MIN_PLAYERS) return { ok: false, reason: "few_players" };
+    if (!this.enoughPlayers()) return { ok: false, reason: "few_players" };
     s.game++;
     s.plan = s.settings.short ? PLAN_SHORT.slice() : ["duel", this.pickMiddle(), "final"];
     s.ri = -1;
@@ -273,7 +294,7 @@ class Game {
     const R = ROUNDS[key];
     // колоды «Наоборот» на языке комнаты нет — играем этот раунд обычными вопросами, а не пустыми карточками
     const dk = this.deck(R.deck).length ? R.deck : "duel";
-    const ps = this.present();
+    const ps = this.dealPool();
     // порядок круга перемешан, чтобы соседи в лобби не играли всегда друг против друга
     let ring = ps.slice();
     for (let i = ring.length - 1; i > 0; i--) { const j = this.rnd(i + 1); [ring[i], ring[j]] = [ring[j], ring[i]]; }
@@ -400,6 +421,19 @@ class Game {
     return true;
   }
 
+  // сколько игроков раунда сдали все свои ответы и из скольких (на связи + уже сдавшие; ушедшие не в счёт)
+  answerProgress() {
+    let done = 0, total = 0;
+    for (const id of this.s.roster) {
+      const p = this.player(id);
+      if (!p || p.left) continue;
+      const mine = this.mine(id);
+      if (!mine.length) continue;
+      if (mine.every((m) => m.answers[id])) { done++; total++; } else if (p.online) total++;
+    }
+    return { done, total };
+  }
+
   closeAnswers(now) {
     const s = this.s;
     // не успел — случайная подсказка, лимит не тратит (§3)
@@ -514,7 +548,9 @@ class Game {
       if (p) p.score += m.result.points[i];
       const a = m.answers[id];
       const cand = { playerId: id, votes: tally[i], deck: m.deck, prompt: m.prompt, text: a.text, items: a.items, hint: a.hint };
-      if (!jinx.has(id) && tally[i] > 0) {
+      // 🐌-ответ (молчал, подсказку поставил сервер) в награды не идёт: ни «Ответ вечера», ни «Подсказка смешнее всех»
+      // (U-09, класс A). Очки за него — как были: полцены (LATE_SHARE).
+      if (!jinx.has(id) && tally[i] > 0 && !a.late) {
         // «Ответ вечера» при равенстве голосов — рукописному, а не подсказке
         if (!s.best || tally[i] > s.best.votes || (tally[i] === s.best.votes && s.best.hint && !a.hint)) s.best = cand;
         // «Подсказка смешнее всех» — ачивка, а не утешительный приз: от двух голосов
@@ -629,7 +665,10 @@ class Game {
         return x;
       });
       out.votedN = Object.keys(m.votes).length;
-      out.votersN = this.voters(m).length;
+      // знаменатель — те, кто на связи, плюс уже проголосовавшие (ушёл в офлайн после голоса — «4 из 3» не бывает)
+      const counted = new Set(this.voters(m).map((p) => p.id));
+      for (const id of Object.keys(m.votes)) counted.add(id);
+      out.votersN = counted.size;
       if (revealed) out.result = m.result;
     }
     return out;
@@ -684,13 +723,18 @@ class Game {
       // вопросы «на всех» (мало игроков: два вопроса в первом раунде) — доска показывает их списком
       sharedPrompts: s.phase === "answer" && s.matchups.length > 1 && s.matchups.every((m) => m.kind === "grid") ? s.matchups.map((m) => m.prompt) : null,
       // мало игроков: дуэлей нет, раунды дуэлей идут «на всех» (подписи на экранах другие)
-      small: this.present().length <= SMALL,
-      progress: s.phase === "answer" ? Object.fromEntries(s.roster.map((id) => [id, this.mine(id).filter((m) => m.answers[id]).length + "/" + this.mine(id).length])) : null,
+      small: this.dealPool().length <= SMALL,
+      // кто сколько ответил — только доске: на телефонах имена не ответивших были бы позором (T-W1-14)
+      progress: board && s.phase === "answer" ? Object.fromEntries(s.roster.map((id) => [id, this.mine(id).filter((m) => m.answers[id]).length + "/" + this.mine(id).length])) : null,
+      // «Ответили N из M» для всех: знаменатель — на связи плюс уже ответившие (U-29)
+      answerProgress: s.phase === "answer" ? this.answerProgress() : null,
       history: s.phase === "scores" ? s.matchups.map((m, i) => (i <= revealedUpTo ? { id: m.id, result: m.result } : null)).filter(Boolean) : null,
       best: s.phase === "finished" ? s.best : null,
       hintStar: s.phase === "finished" ? s.hintStar : null,
       finishedReason: s.phase === "finished" ? s.finishedReason : null,
       minPlayers: MIN_PLAYERS,
+      // правило «без связи пар не получает» включено: лобби считает «нужно ещё N на связи» (T-W1-07)
+      ghostOut: ghostOut(),
       avatarChoices: s.phase === "lobby" || s.phase === "finished" ? AVATAR_CHOICES : null,
       me: mePart,
       players: s.players.map((p) => ({
@@ -703,7 +747,8 @@ class Game {
         score: p.score,
         // Сколько подсказок взял и сколько написал руками — только в итогах: посреди партии эти
         // счётчики выдавали бы, кто сейчас ответил подсказкой (§4: «при голосовании не отличить»).
-        ...(s.phase === "finished" ? { hintsUsed: p.hintsUsed, answered: p.answered, avgMs: p.answered >= 2 ? Math.round(p.answerMs / p.answered) : null } : {}),
+        // «играл ли в этой партии» — только в итогах: вошедший после финала места не получает (U-11)
+        ...(s.phase === "finished" ? { played: p.played === s.game, hintsUsed: p.hintsUsed, answered: p.answered, avgMs: p.answered >= 2 ? Math.round(p.answerMs / p.answered) : null } : {}),
       })),
     };
   }

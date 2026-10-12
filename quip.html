@@ -2,8 +2,9 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<!-- maximum-scale=1: iOS не приближает страницу при фокусе в поле и не оставляет её «растянутой»; щипок в новых iOS работает -->
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<!-- без maximum-scale: масштаб щипком нужен слабовидящим; поля ввода ≥ 16px, iOS при фокусе их не приближает.
+     interactive-widget=resizes-content: клавиатура ужимает страницу (Chrome 108+), кнопки не уезжают под неё -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#3d0b16">
 <link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f3a4.svg" type="image/svg+xml">
@@ -85,7 +86,8 @@
   /* ссылка «все игры» не переносится на вторую строку (греческая длинная) — обрезается */
   .util a { color: var(--ink); text-decoration: none; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; padding: 8px 0; }
   .sound-toggle-btn { flex: none; width: calc(var(--lsh, 44px) * 1.25); height: var(--lsh, 44px); border: 2px solid rgba(255, 225, 77, .45); border-radius: 999px; background: var(--deep); color: var(--text); font-size: 17px; display: grid; place-items: center; padding: 0; }
-  .conn { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 30; background: var(--pink); color: #fff; font-weight: 700; padding: 7px 14px; visibility: hidden; white-space: nowrap; border-radius: 999px; }
+  /* баннер «нет связи»: под строкой с переключателем языка (--lsc — её центр), а не поверх него; клики сквозь */
+  .conn { position: fixed; left: 50%; top: calc(var(--lsc, 30px) * 2 + 4px); transform: translateX(-50%); z-index: 30; background: var(--pink); color: #fff; font-weight: 700; padding: 7px 14px; visibility: hidden; max-width: calc(100% - 32px); text-align: center; border-radius: 16px; pointer-events: none; }
   .conn.on { visibility: visible; }
   .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: var(--deep); color: #fff; font-weight: 700; padding: 12px 18px; max-width: calc(100% - 32px); visibility: hidden; border-radius: 16px; box-shadow: 0 6px 0 var(--ink); }
   .toast.on { visibility: visible; animation: toast .35s var(--boing); }
@@ -181,6 +183,7 @@
   .pl b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .pl.me { background: var(--bulb); color: var(--ink); }
   .pl.off { opacity: .55; }
+  .pl .nc { font-style: normal; font-size: 13px; line-height: 1; }
   .av { font-style: normal; font-size: 18px; line-height: 1; }
   /* аватар: эмодзи в кружке цвета игрока с белым ободком */
   .puck { flex: none; display: inline-grid; place-items: center; width: 1.7em; height: 1.7em; border-radius: 50%; background: var(--pc, var(--teal)); box-shadow: 0 0 0 .12em #fff; font-style: normal; line-height: 1; }
@@ -227,6 +230,9 @@
   .write .three .icnt { position: absolute; right: 8px; top: -8px; font: 700 11px/1 var(--font); color: var(--bulb); background: var(--deep); padding: 3px 6px; border-radius: 999px; pointer-events: none; }
   .write .three .icnt:empty { display: none; }
   .write .cnt { text-align: right; color: var(--ink); font-size: 13px; font-weight: 700; height: 18px; margin-top: 4px; }
+  /* «Ответили N из M»: высота занята всегда — текст появляется без сдвига соседей */
+  .prog { margin: 6px 0 0; min-height: 20px; font: 700 14px/20px var(--font); color: var(--tile-muted); font-variant-numeric: tabular-nums; }
+  .status.center .prog, .stage > .prog { color: var(--ink); }
   .num { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--deep); color: var(--bulb); font: var(--show-w) 16px/1 var(--show); font-variation-settings: var(--show-fvs); }
   .row2 { display: grid; gap: 10px; margin-top: 4px; }
   .dice { display: inline-block; letter-spacing: .1em; }
@@ -249,6 +255,8 @@
   .opt.own { opacity: .55; box-shadow: 0 6px 0 #9c7a70; }
   /* «Голосую» всегда под пальцем: при 8–9 ответах по три пункта кнопка уезжала на 2–3 экрана вниз */
   #votebtn { position: sticky; bottom: 12px; z-index: 5; }
+  /* запас под липкую кнопку: последний пункт при прокрутке не прячется под ней (quip-020) */
+  .opts:has(+ #votebtn) { padding-bottom: 76px; }
   /* ярлык «твой» — на кромке таблички, а не поверх первой строки ответа */
   .opt.own::after { content: attr(data-own); position: absolute; right: 10px; top: -9px; font: 700 11px/1 var(--font); text-transform: uppercase; background: var(--deep); color: #fff; padding: 4px 7px; border-radius: 999px; }
   .opt:not(:disabled):active { transform: translateY(4px); box-shadow: 0 2px 0 var(--teal-edge); }
@@ -281,7 +289,8 @@
   .setlist li b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .setlist li .dots { flex: 1; min-width: 10px; border-bottom: 3px dotted rgba(255, 225, 77, .35); margin-top: 10px; }
   .setlist li .s { font: var(--show-w) 16px/1 var(--show); font-variation-settings: var(--show-fvs); font-variant-numeric: tabular-nums; }
-  .setlist li.me { background: var(--bulb); color: var(--ink); }
+  .setlist li.me { background: var(--bulb); color: var(--ink); position: sticky; top: 6px; bottom: 6px; z-index: 1; }
+  .big.sm { font-size: clamp(26px, 8vw, 38px); }
   .setlist li.me .n { color: var(--ink); }
   .setlist li.me .dots { border-color: rgba(42, 8, 16, .35); }
   .howcard ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-weight: 600; }
@@ -360,6 +369,52 @@
     .sign.sm { font-size: 26px; }
     .center > .fine { margin: 6px 0 0; }
   }
+  /* Низкие окна без привязки к ширине (T-W1-16, quip-017): ландшафт телефона 915×412, 844×390, 667×375 не попадал
+     под правила выше (там max-width: 899px) — «Отправить» и «Подсказка» уезжали за край. «Голосую» — в потоке, а не
+     поверх пунктов (quip-020): на 375 px высоты липкая кнопка закрывала половину списка */
+  @media (max-height: 520px) {
+    .stage { gap: 10px; }
+    .ahead + .timer { margin-top: -2px; }
+    .card.qcard { padding: 12px 18px; }
+    .card.qcard::before { inset: 4px; }
+    .card .q { font-size: 20px; line-height: 1.18; }
+    .card .q .scene { font-size: 44px; padding: 0; }
+    .write textarea { height: clamp(56px, 17svh, 96px); }
+    .write .cnt { height: 0; margin: 0; padding-right: 14px; transform: translateY(-26px); pointer-events: none; }
+    .write .three { gap: 7px; }
+    .write .three input { padding: 8px 12px; }
+    .btn { padding: 11px 14px 12px; font-size: 20px; }
+    .row2 { grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .btn.ghost { font-size: 16px; }
+    #votebtn { position: static; }
+    .opts:has(+ #votebtn) { padding-bottom: 0; }
+    .introrow .rebrik { width: 88px; }
+    .burst { width: 96px; height: 96px; font-size: 36px; }
+  }
+  /* ландшафт: на экранах ввода две колонки — слева вопрос и таймер, справа поле и кнопки; варианты ответов — в два столбца */
+  @media (orientation: landscape) and (max-height: 520px) and (min-width: 560px) {
+    #app { max-width: none; }
+    .stage:has(> .write) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto 1fr; column-gap: 18px; row-gap: 10px; align-content: start; justify-content: stretch; }
+    .stage:has(> .write) > .ahead { grid-column: 1; grid-row: 1; }
+    .stage:has(> .write) > .timer { grid-column: 1; grid-row: 2; }
+    .stage:has(> .write) > .card.qcard { grid-column: 1; grid-row: 3; align-self: start; }
+    .stage:has(> .write) > .write { grid-column: 2; grid-row: 1 / span 3; }
+    .opts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  }
+  /* клавиатура открыта (MP.keyboardClass ставит html.kb; разметка не пересобирается — фокус поля жив):
+     шапка и стойка прячутся, кнопки «Отправить» и «Подсказка» — в ряд и прижаты к низу видимой области */
+  .kb .util, .kb .console { display: none; }
+  .kb #app { min-height: 0; padding-bottom: 8px; }
+  .kb .stage { gap: 8px; justify-content: flex-start; padding-top: 6px; }
+  .kb .card.qcard { padding: 8px 14px; }
+  .kb .card.qcard::before { inset: 3px; }
+  .kb .card .q { font-size: 18px; }
+  .kb .write textarea { height: 56px; }
+  .kb .write .three { gap: 6px; }
+  .kb .write .three input { padding: 7px 12px; }
+  .kb .row2 { position: sticky; bottom: var(--kb-h, 0px); z-index: 4; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; padding: 8px 0 4px; background: linear-gradient(to bottom, rgba(255, 122, 47, 0), var(--or-2) 10px); }
+  .kb .row2 .btn { margin-bottom: 0; padding: 10px 8px 11px; font-size: 18px; }
+  .kb .row2 .btn.ghost { font-size: 15px; }
   /* стартовый экран на ноутбуке: две колонки — слева вывеска и кнопка, справа пример схватки. Не узкая лента посередине */
   @media (min-width: 900px) {
     #app:has(.landing) { max-width: 1060px; }
@@ -402,6 +457,8 @@ window.I18N_DICT = {
     wait_title: `Подключаемся…`,
     av_pick: `Нажми на аватарку, чтобы сменить`, btn_home: `Главная`, rj_avatar_taken: `Эту аватарку уже взяли`, rj_game_started: `Сменить можно до начала шоу`,
     lobby_in: `Ты в игре`, lobby_wait: `Ждём, пока ведущий начнёт шоу. Нужно хотя бы трое`,
+    off_mark: `нет связи`, online_n: `На связи {a} из {b}`,
+    off_mark: `нет связи`, online_n: `На связи {a} из {b}`,
     intro_k: `Раунд {n} из {m}`,
     q_of: `Вопрос {i} из {n}`,
     ph_answer: `Твой ответ`, ph_item: `{n}…`, ph_caption: `Подпиши сцену`, ph_question: `Твой вопрос`, rev_k: `Придумай вопрос к ответу`, fact_k: `Допиши факт`, ph_fill: `Чем закончить?`,
@@ -447,6 +504,7 @@ window.I18N_DICT = {
     wait_title: `Connecting…`,
     av_pick: `Tap your avatar to change it`, btn_home: `Home`, rj_avatar_taken: `That avatar is taken`, rj_game_started: `You can change it before the show starts`,
     lobby_in: `You're in`, lobby_wait: `Waiting for the host to start the show. At least three players needed`,
+    off_mark: `no connection`, online_n: `{a} of {b} online`,
     intro_k: `Round {n} of {m}`,
     q_of: `Prompt {i} of {n}`,
     ph_answer: `Your answer`, ph_item: `{n}…`, ph_caption: `Write a caption`, ph_question: `Your question`, rev_k: `Write the question`, fact_k: `Finish the fact`, ph_fill: `What goes in the gap?`,
@@ -492,6 +550,7 @@ window.I18N_DICT = {
     wait_title: `Σύνδεση…`,
     av_pick: `Πάτα την εικόνα σου για να την αλλάξεις`, btn_home: `Αρχική`, rj_avatar_taken: `Αυτή η εικόνα είναι πιασμένη`, rj_game_started: `Αλλάζει μόνο πριν ξεκινήσει το σόου`,
     lobby_in: `Είσαι μέσα`, lobby_wait: `Περιμένουμε τον οικοδεσπότη να ξεκινήσει. Χρειάζονται τουλάχιστον τρεις`,
+    off_mark: `χωρίς σύνδεση`, online_n: `Συνδεδεμένοι {a} από {b}`, //EL:unverified
     intro_k: `Γύρος {n} από {m}`,
     q_of: `Ερώτηση {i} από {n}`,
     ph_answer: `Η απάντησή σου`, ph_item: `{n}η απάντηση`, ph_caption: `Γράψε λεζάντα`, ph_question: `Η ερώτησή σου`, rev_k: `Βρες την ερώτηση`, fact_k: `Συμπλήρωσε το γεγονός`, ph_fill: `Τι μπαίνει στο κενό;`,
@@ -521,6 +580,7 @@ window.I18N_DICT = {
   },
 };
 </script>
+<script src="mp-common.js"></script>
 <script src="quip-shared.js"></script>
 <script src="i18n.js"></script>
 <script src="sound-toggle.js" defer></script>
@@ -538,7 +598,7 @@ const limAnswer = () => (state && state.limits && state.limits.answer) || 80;
 const limItem = () => (state && state.limits && state.limits.item) || 50;
 
 let conn = null, state = null, me = null, token = null, dead = false;
-let screen = null, screenKey = "";
+let screen = null, screenKey = "", screenFam = null;
 let joinErr = null;
 const drafts = {}; // mid → черновик (строка или три строки): переживает перерисовки
 let hintArmed = null; // mid, для которого кнопка подсказки ждёт второго нажатия
@@ -565,6 +625,11 @@ function toast(text) {
 // o.reacts — на стойке кнопки реакций; o.cls — класс сцены. Стойка есть только у вошедшего в идущую игру
 function show(html, key, top, o) {
   o = o || {};
+  // другой экран (голосование → раскрытие → итоги) открывается сверху: прокрутка прежнего не должна прятать заголовок
+  // (quip-021). Тот же экран с новым ключом (отметка варианта, смена языка) позицию не трогает
+  const fam = String(key).split(":")[0];
+  if (screenFam !== null && fam !== screenFam) window.scrollTo(0, 0);
+  screenFam = fam;
   screenKey = key;
   app.classList.toggle("top", !!top);
   const p = state && me && state.phase !== "lobby" ? mine() : null;
@@ -651,7 +716,7 @@ function renderExpired() {
 
 // ---------- общие куски ----------
 function playersHtml() {
-  return `<div class="players">${state.players.filter((p) => !p.left).map((p) => `<span class="pl${p.id === me ? " me" : ""}${p.online ? "" : " off"}" style="--pc:${p.color}">${avHtml(p)}<b>${escapeHtml(p.name)}</b></span>`).join("")}</div>`;
+  return `<div class="players">${state.players.filter((p) => !p.left).map((p) => `<span class="pl${p.id === me ? " me" : ""}${p.online ? "" : " off"}" style="--pc:${p.color}"${p.online ? "" : ` title="${escapeHtml(T("off_mark"))}"`}>${avHtml(p)}<b>${escapeHtml(p.name)}</b>${p.online ? "" : `<i class="nc" aria-label="${escapeHtml(T("off_mark"))}">📵</i>`}</span>`).join("")}</div>`;
 }
 function reactsHtml() {
   return `<div class="reacts">${REACTIONS.map((e) => `<button type="button" data-e="${e}" aria-label="${e}">${e}</button>`).join("")}</div>`;
@@ -683,12 +748,24 @@ function bindAvatars() {
   });
 }
 const timerHtml = () => `<div class="timer" id="timer"><i></i></div>`;
+// «Ответили N из M · ~40 с» / «Проголосовали N из M»: строка постоянной высоты, текст обновляет frame().
+// Имена не ответивших — только на доске (на телефоне это позор), здесь только числа.
+const progHtml = () => `<p class="prog" id="prog" aria-live="off"></p>`;
+function progText() {
+  if (!state || !window.MP || !MP.progress || MP.off) return "";
+  const left = state.phaseEnd ? (state.phaseEnd - qpNow()) / 1000 : null;
+  if (state.phase === "answer" && state.answerProgress) return MP.progress.text(state.answerProgress.done, state.answerProgress.total, left, { kind: "answered", lang: qpLang() });
+  const c = state.current;
+  if (state.phase === "vote" && c && typeof c.votersN === "number") return MP.progress.text(c.votedN || 0, c.votersN, left, { kind: "voted", lang: qpLang() });
+  return "";
+}
 
 // ---------- экраны по фазам ----------
 function renderLobby() {
   const key = "lobby:" + state.players.map((p) => p.id + p.online + p.avatar).join(",") + avOpen + qpLang();
   if (screenKey === key) return;
-  show(`${meBadge(true)}${avPickHtml()}<div class="status"><p>${T("lobby_wait")}</p></div>${playersHtml()}${reactsHtml()}
+  const here = state.players.filter((p) => !p.left), onl = here.filter((p) => p.online).length;
+  show(`${meBadge(true)}${avPickHtml()}<div class="status"><p>${T("lobby_wait")}</p>${onl < here.length ? `<p class="fine" style="margin-top:4px">${escapeHtml(tpl("online_n", { a: onl, b: here.length }))}</p>` : ""}</div>${playersHtml()}${reactsHtml()}
     <div class="card howcard"><div class="k">${T("how_k")}</div><ul><li>${T("how_fast")}</li><li>${T("rule2")}</li><li>${T("rule3")}</li></ul></div>`, key, true);
   bindReacts();
   bindAvatars();
@@ -709,7 +786,7 @@ function renderAnswer() {
   if (!s || !s.inRound) {
     const key = "late:" + state.ri + qpLang();
     if (screenKey === key) return;
-    show(`<div class="card status"><h2>${T("late_title")}</h2><p style="margin:0;color:var(--tile-muted)">${T("late_sub")}</p></div>`, key, false, { reacts: true });
+    show(`<div class="card status"><h2>${T("late_title")}</h2><p style="margin:0;color:var(--tile-muted)">${T("late_sub")}</p>${progHtml()}</div>`, key, false, { reacts: true });
     return;
   }
   const list = s.prompts;
@@ -732,7 +809,7 @@ function renderAnswer() {
   if (!cur) {
     const key = "done:" + state.ri + qpLang();
     if (screenKey === key) return;
-    show(`<div class="status center"><h2>${T("done_title")}</h2><p>${T("done_sub")}</p></div>
+    show(`<div class="status center"><h2>${T("done_title")}</h2><p>${T("done_sub")}</p>${progHtml()}</div>
       <div class="opts">${list.map((p) => `<div class="card"><div class="k">${qpPromptHtml(p.prompt.e ? { q: p.prompt.e } : p.prompt)}</div><div class="gotit">${qpAnswerHtml(p.answer)} ${p.hint ? `<span class="tag">🎲</span>` : ""}</div></div>`).join("")}</div>`, key, true, { reacts: true });
     return;
   }
@@ -814,20 +891,20 @@ function renderVote() {
   const promptSm = `<div class="card qcard sm"><div class="q">${qpPromptHtml(c.prompt)}</div></div>`;
   const mineCard = (label, list) => (list.length ? `<div class="card mine"><div class="k">${escapeHtml(label)}</div>${list.map((a) => `<div class="gotit">${qpAnswerHtml(a)}</div>`).join("")}</div>` : "");
   if (s && s.author && c.kind === "duel") {
-    show(`${timerHtml()}<div class="card status">${qpHostSvg()}<h2>${T("author_title")}</h2><p style="margin:0;color:var(--tile-muted)">${T("author_sub")}</p></div>
+    show(`${timerHtml()}<div class="card status">${qpHostSvg()}<h2>${T("author_title")}</h2><p style="margin:0;color:var(--tile-muted)">${T("author_sub")}</p>${progHtml()}</div>
       ${promptSm}${mineCard(T("your_answer"), c.answers.filter((a) => a.mine))}`, key, true, { reacts: true });
     return;
   }
   if (voted || !s || !s.canVote) {
     const picked = voted ? picks.map((i) => c.answers[i]).filter(Boolean) : [];
-    show(`${timerHtml()}<div class="card status">${qpHostSvg()}<h2>${T(voted ? "voted_title" : "novote_title")}</h2><p style="margin:0;color:var(--tile-muted)">${T(voted ? "voted_sub" : "novote_sub")}</p></div>
+    show(`${timerHtml()}<div class="card status">${qpHostSvg()}<h2>${T(voted ? "voted_title" : "novote_title")}</h2><p style="margin:0;color:var(--tile-muted)">${T(voted ? "voted_sub" : "novote_sub")}</p>${progHtml()}</div>
       ${promptSm}${mineCard(T("your_vote"), picked)}`, key, true, { reacts: true });
     return;
   }
   const n = s.votesFor;
   // отмеченное до перезагрузки/переподключения — с сервера
   if (!picks.length && s.myDraft) picks = s.myDraft.slice();
-  show(`${timerHtml()}${s.inRound ? "" : `<div class="eyebrow">${escapeHtml(T("late_vote"))}</div>`}<div class="card qcard"><div class="k">${T("vote_title")}</div><div class="q" style="font-size:19px">${qpPromptHtml(c.prompt)}</div></div>
+  show(`${timerHtml()}${progHtml()}${s.inRound ? "" : `<div class="eyebrow">${escapeHtml(T("late_vote"))}</div>`}<div class="card qcard"><div class="k">${T("vote_title")}</div><div class="q" style="font-size:19px">${qpPromptHtml(c.prompt)}</div></div>
     <div class="eyebrow">${escapeHtml(n > 1 ? tpl("vote_many", { n }) : T("vote_one"))}</div>
     <div class="opts">${c.answers.map((a, i) => `<button type="button" class="opt${a.mine ? " own" : ""}${picks.includes(i) ? " sel" : ""}" data-i="${i}" data-own="${escapeHtml(T("own"))}"${a.mine ? " disabled" : ""}><span class="l">${String.fromCharCode(65 + i)}</span>${qpAnswerHtml(a)}</button>`).join("")}</div>
     ${n > 1 ? `<button class="btn" type="button" id="votebtn"${picks.length ? "" : " disabled"}>${escapeHtml(tpl("btn_vote", { n: `${picks.length}/${n}` }))}</button>` : ""}`, key, true);
@@ -883,12 +960,14 @@ function renderReveal() {
 // места с ничьими и порядок — как на доске (qpRanked)
 function standing() {
   const list = qpRanked(state.players);
-  const p = list.find((x) => x.id === me) || mine();
-  return { list, place: p.place || 1, p };
+  const inList = list.find((x) => x.id === me);
+  const p = inList || mine();
+  // вошёл после финала: в таблице его нет, места не получает (T-W1-15, U-11)
+  return { list, place: inList ? p.place : 0, p, out: !inList && state.phase === "finished" };
 }
 
 function setlistHtml(list) {
-  return `<div class="card setlist"><div class="k">${T("setlist")}</div><ol>${list.map((x) => `<li class="${x.id === me ? "me" : ""}"><span class="n">${x.place}</span>${avHtml(x)}<b>${escapeHtml(x.name)}</b><span class="dots"></span><span class="s">${x.score}</span></li>`).join("")}</ol></div>`;
+  return `<div class="card setlist"><div class="k">${T("setlist")}</div><ol>${list.map((x) => `<li class="${x.id === me ? "me" : ""}"><span class="n">${escapeHtml(qpPlaceLabel(x))}</span>${avHtml(x)}<b>${escapeHtml(x.name)}</b><span class="dots"></span><span class="s">${x.score}</span></li>`).join("")}</ol></div>`;
 }
 
 function renderScores() {
@@ -896,20 +975,20 @@ function renderScores() {
   if (screenKey === key) return;
   const { list, place, p } = standing();
   show(`<div class="center"><div class="eyebrow">${escapeHtml(tpl("scores_title", { n: state.ri + 1 }))}</div>
-    <div class="big" style="margin:10px 0">${escapeHtml(qpPlace(place))}</div><div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div></div>${setlistHtml(list)}`, key, true, { reacts: true });
+    <div class="big" style="margin:10px 0">${escapeHtml(qpPlaceTie(p))}</div><div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div></div>${setlistHtml(list)}`, key, true, { reacts: true });
 }
 
 function renderFinal() {
   const key = "final:" + state.game + ":" + state.finishedReason + qpLang();
   if (screenKey === key) return;
-  const { list, place, p } = standing();
+  const { list, place, p, out } = standing();
   const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : T("final_sub");
   show(`<div class="center"><h1 class="sign sm">${T("final_title")}</h1>
-    <div class="big" style="margin:14px 0 6px">${escapeHtml(qpPlace(place))}</div>
+    <div class="big${out ? " sm" : ""}" style="margin:14px 0 6px">${escapeHtml(out ? T("final_late") : qpPlaceTie(p))}</div>
     <div class="lede">${escapeHtml(p.avatar)} ${escapeHtml(p.name)} · <b>${p.score}</b></div>
     <p class="fine">${escapeHtml(sub)}</p></div>${setlistHtml(list)}
     <a class="btn ghost" id="homebtn" href="index.html">${T("btn_home")}</a>`, key, true, { reacts: true });
-  if (place === 1 && state.finishedReason === "done") setTimeout(() => qpConfetti({ mode: "rain", n: 120 }), 300);
+  if (!out && place === 1 && state.finishedReason === "done") setTimeout(() => qpConfetti({ mode: "rain", n: 120 }), 300);
 }
 
 // ---------- выбор экрана ----------
@@ -947,6 +1026,8 @@ function frame() {
   }
   const tl = document.getElementById("tleft");
   if (tl) tl.textContent = tpl("sec", { s: Math.max(0, Math.ceil(left / 1000)) });
+  const pe = document.getElementById("prog");
+  if (pe) { const pt = progText(); if (pe.textContent !== pt) pe.textContent = pt; }
   if ((state.phase === "answer" || state.phase === "vote") && left < 5000 && left > 0) {
     const sec = Math.ceil(left / 1000);
     if (sec !== lastTickSec) { lastTickSec = sec; qpSfx.tick(true); }
@@ -1074,6 +1155,12 @@ function start() {
   if (!CODE) return renderLanding();
   renderCenter("wait_title");
   const banner = document.getElementById("conn");
+  let netLost = false, netQuiet = false;
+  const showNet = () => {
+    banner.textContent = T(netLost ? "err_connect" : "conn_lost");
+    banner.classList.toggle("on", netLost || netQuiet);
+  };
+  window.addEventListener("langchange", showNet);
   conn = qpConnect({
     code: CODE,
     onMessage,
@@ -1081,9 +1168,13 @@ function start() {
     onDrop: lostAction,
     // переподключились — снова входим своим токеном (hello придёт первым)
     onOpen: () => { needJoin = true; if (token) conn.gated = true; },
-    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+    // «lost» — сокет закрыт, переподключаемся; «quiet» — сокет жив, но молчит дольше 10 с (MP.conn): только предупреждение
+    onState: (st) => { netLost = st === "lost"; if (st === "open") netQuiet = false; showNet(); },
+    onQuiet: (q) => { netQuiet = !!q; showNet(); },
   });
   requestAnimationFrame(frame);
+  // клавиатура открыта → html.kb (только CSS, форма не пересобирается)
+  if (window.MP && MP.keyboardClass && !MP.off) MP.keyboardClass();
   // ручка для стенда: состояние и отправка
   window.qpPhone = { send: (msg) => conn.send(msg), get state() { return state; }, get me() { return me; } };
 }

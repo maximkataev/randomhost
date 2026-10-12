@@ -617,3 +617,123 @@ test("аватарка: свою можно сменить в лобби и ме
   assert.strictEqual(g.setAvatar("P1", AVATAR_CHOICES[AVATAR_CHOICES.length - 1]).reason, "game_started");
   assert.strictEqual(g.snapshot(0, "P1").avatarChoices, null);
 });
+
+// ---------- T-W1-15: played в итогах ----------
+
+test("played в снимке итогов: вошедший после финала — false; посреди партии поля нет", () => {
+  const g = game(3, { short: true });
+  assert.ok(!("played" in g.snapshot(1, "board").players[0]), "посреди партии поле не нужно");
+  g.abort(100);
+  assert.strictEqual(g.s.phase, "finished");
+  assert.ok(g.addPlayer({ id: "late", name: "late" }).ok);
+  const ps = g.snapshot(200, "board").players;
+  assert.strictEqual(ps.find((p) => p.id === "late").played, false);
+  assert.ok(ps.filter((p) => p.id !== "late").every((p) => p.played === true));
+});
+
+// ---------- T-W1-14: «Ответили N из M» ----------
+
+test("answerProgress: знаменатель — на связи плюс уже ответившие; «4 из 3» не бывает; имена только доске", () => {
+  const g = game(5);
+  assert.deepStrictEqual(g.snapshot(1, "board").answerProgress, { done: 0, total: 5 });
+  assert.deepStrictEqual(g.snapshot(1, "P1").answerProgress, { done: 0, total: 5 });
+  assert.strictEqual(g.snapshot(1, "P1").progress, null, "карта «кто сколько» — только доске");
+  assert.ok(g.snapshot(1, "board").progress && g.snapshot(1, "board").progress.P1);
+  // P1 сдал все свои ответы
+  for (const m of g.mine("P1")) g.answer("P1", m.id, "ответ P1 " + m.id, 2000);
+  assert.deepStrictEqual(g.snapshot(2000, "P2").answerProgress, { done: 1, total: 5 });
+  // P2 не сдал и ушёл в офлайн — из знаменателя выпал; P1 ушёл в офлайн после сдачи — остался
+  g.setOnline("P2", false, 2100);
+  g.setOnline("P1", false, 2100);
+  assert.deepStrictEqual(g.snapshot(2200, "P3").answerProgress, { done: 1, total: 4 });
+  assert.strictEqual(g.snapshot(2200, "board").answerProgress.done <= g.snapshot(2200, "board").answerProgress.total, true);
+  assert.strictEqual(g.snapshot(1, "board").phase, "answer");
+});
+
+test("голосование: votersN включает уже проголосовавших, ушедших в офлайн", () => {
+  const g = game(5);
+  answerAll(g);
+  assert.strictEqual(g.s.phase, "vote");
+  const m = g.s.matchups[g.s.mi];
+  const voter = g.voters(m)[0];
+  const pick = m.order.findIndex((id) => id !== voter.id);
+  assert.ok(g.vote(voter.id, m.id, [pick], 9000).ok);
+  g.setOnline(voter.id, false, 9100);
+  const c = g.snapshot(9100, "board").current;
+  assert.ok(c.votedN <= c.votersN, `${c.votedN} из ${c.votersN}`);
+  assert.strictEqual(c.votedN, 1);
+});
+
+// ---------- T-W1-07: призрак и RULE_U08_GHOST_OUT ----------
+
+// RULE_U08_GHOST_OUT читается при каждом вызове — переключаем в самом тесте и всегда возвращаем
+function withGhostOut(value, fn) {
+  const prev = process.env.RULE_U08_GHOST_OUT;
+  if (value == null) delete process.env.RULE_U08_GHOST_OUT; else process.env.RULE_U08_GHOST_OUT = value;
+  try { return fn(); } finally { if (prev == null) delete process.env.RULE_U08_GHOST_OUT; else process.env.RULE_U08_GHOST_OUT = prev; }
+}
+function lobbyWith(n, offline) {
+  const g = Game.create({ settings: {}, code: "TEST22", rnd: rig(), content: fixture() });
+  names(n).forEach((id) => assert.ok(g.addPlayer({ id, name: id }).ok));
+  offline.forEach((id) => g.setOnline(id, false, 0));
+  return g;
+}
+
+test("RULE_U08_GHOST_OUT выкл (по умолчанию): призрак получает пару, как в спеке", () => {
+  withGhostOut(null, () => {
+    const g = lobbyWith(5, ["P5"]);
+    assert.ok(g.start(0).ok);
+    g.tick(T.intro);
+    assert.ok(g.s.roster.includes("P5"));
+    assert.strictEqual(g.snapshot(1, "board").ghostOut, false);
+  });
+});
+
+test("RULE_U08_GHOST_OUT=1: вопросы раздаются только тем, кто на связи", () => {
+  withGhostOut("1", () => {
+    const g = lobbyWith(5, ["P5"]);
+    assert.ok(g.start(0).ok);
+    g.tick(T.intro);
+    assert.deepStrictEqual([...g.s.roster].sort(), ["P1", "P2", "P3", "P4"]);
+    assert.ok(g.s.matchups.every((m) => !m.authors.includes("P5")));
+    assert.strictEqual(g.snapshot(1, "board").ghostOut, true);
+    // вернулся посреди раунда — «со следующего раунда»
+    g.setOnline("P5", true, 100);
+    assert.strictEqual(g.snapshot(100, "P5").me.inRound, false);
+  });
+});
+
+test("RULE_U08_GHOST_OUT=1: на связи меньше троих — раздаём всем присутствующим (К-13); старт без троих на связи не идёт", () => {
+  withGhostOut("1", () => {
+    const g = lobbyWith(4, ["P3", "P4"]);
+    assert.strictEqual(g.start(0).reason, "few_players");
+    g.setOnline("P3", true, 1);
+    assert.ok(g.start(2).ok);
+    g.tick(2 + T.intro);
+    assert.strictEqual(g.s.roster.length, 3);
+    g.setOnline("P1", false, 40);
+    g.setOnline("P2", false, 40);
+    assert.strictEqual(g.dealPool().length, 4); // на связи 1 < 3 — все присутствующие
+    withGhostOut(null, () => assert.strictEqual(lobbyWith(4, ["P3", "P4"]).start(0).ok, true)); // флаг выкл — стартует
+  });
+});
+
+test("🐌-ответ не становится «Ответом вечера» и «Подсказкой смешнее всех» (U-09)", () => {
+  withGhostOut(null, () => {
+    const g = game(3, { short: true });
+    for (const m of g.s.matchups) for (const id of m.authors) if (id !== "P3") g.answer(id, m.id, `ответ ${id}${m.id}`, 5000);
+    g.tick(g.s.phaseEnd);
+    assert.strictEqual(g.s.phase, "vote");
+    const m = g.s.matchups[g.s.mi];
+    assert.ok(m.answers.P3.late);
+    // все, кто может, голосуют за 🐌-ответ
+    const pick = m.order.indexOf("P3");
+    for (const p of g.s.players) if (p.id !== "P3") g.vote(p.id, m.id, [pick], 6000);
+    g.tick(g.s.phaseEnd);
+    assert.ok(m.result.tally[pick] > 0, "голоса за 🐌 есть");
+    assert.ok(g.s.best == null || g.s.best.playerId !== "P3", "🐌 стал ответом вечера");
+    assert.ok(g.s.hintStar == null || g.s.hintStar.playerId !== "P3");
+    // очки за 🐌 остались как были: полцены, без бонуса победителя (правило не менялось)
+    assert.strictEqual(m.result.points[pick], Math.round(m.result.tally[pick] * POINTS * ROUNDS.duel.mult * 0.5));
+  });
+});

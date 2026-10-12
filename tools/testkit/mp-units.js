@@ -274,6 +274,180 @@ test("авто-возврат: выключен по умолчанию; ≥ 5 �
   assert.equal(rt.canAutoReturn(1e6 + 66000), true);
 });
 
+console.log("conn");
+test("тишина: >10 с — onOffline один раз, >22 с — onDead один раз; сообщение возвращает onOnline", () => {
+  const w = load();
+  const ev = [];
+  let hidden = false;
+  const c = w.MP.conn({ ping: () => ev.push("ping"), inGame: () => true, hidden: () => hidden,
+    onOffline: () => ev.push("off"), onOnline: () => ev.push("on"), onDead: () => ev.push("dead") });
+  c.seen(0);
+  for (let t = 1000; t <= 10000; t += 1000) c.tick(t);
+  assert.ok(!ev.includes("off"), "до 10 с баннера нет");
+  c.tick(10500); c.tick(11000);
+  assert.equal(ev.filter((x) => x === "off").length, 1);
+  for (let t = 12000; t <= 22000; t += 1000) c.tick(t);
+  assert.ok(!ev.includes("dead"));
+  c.tick(22500); c.tick(23000);
+  assert.equal(ev.filter((x) => x === "dead").length, 1);
+  c.seen(24000);
+  assert.equal(ev[ev.length - 1], "on");
+  assert.equal(c.offline(), false);
+});
+test("пинг: 5 с в игре, 10 с в лобби", () => {
+  const w = load();
+  let game = true, n = 0;
+  const c = w.MP.conn({ ping: () => n++, inGame: () => game });
+  c.seen(0);
+  for (let t = 0; t <= 20000; t += 1000) { c.seen(t); c.tick(t); }
+  assert.equal(n, 5); // 0, 5, 10, 15, 20
+  game = false; n = 0;
+  const l = w.MP.conn({ ping: () => n++, inGame: () => game });
+  for (let t = 0; t <= 20000; t += 1000) { l.seen(t); l.tick(t); }
+  assert.equal(n, 3); // 0, 10, 20
+});
+test("вкладка скрыта — тишина не считается; после возврата отсчёт заново", () => {
+  const w = load();
+  const ev = [];
+  let hidden = false;
+  const c = w.MP.conn({ hidden: () => hidden, onOffline: () => ev.push("off"), onDead: () => ev.push("dead") });
+  c.seen(0);
+  hidden = true;
+  c.tick(5000); c.tick(60000);
+  assert.deepEqual(ev, []);
+  hidden = false;
+  c.visible(60000);
+  c.tick(61000); c.tick(65000);
+  assert.deepEqual(ev, []);
+  c.tick(70500);
+  assert.deepEqual(ev, ["off"]);
+});
+test("MP.off — conn молчит", () => {
+  const w = load({ storage: {} });
+  w.MP.applyHello({ mp: false });
+  const ev = [];
+  const c = w.MP.conn({ ping: () => ev.push("ping"), onOffline: () => ev.push("off") });
+  c.tick(1000); c.tick(99000);
+  assert.deepEqual(ev, []);
+  assert.equal(c.start(), false);
+});
+
+console.log("progress");
+test("MP.progress.text: «Ответили 4 из 6 · ~40 с», done не больше total, три языка", () => {
+  const w = load();
+  const P = w.MP.progress;
+  assert.equal(P.text(4, 6, 40), "Ответили 4 из 6 · ~40 с");
+  assert.equal(P.text(4, 6, 42), "Ответили 4 из 6 · ~40 с");
+  assert.equal(P.text(4, 6, 7.2), "Ответили 4 из 6 · ~8 с");
+  assert.equal(P.text(4, 3, null), "Ответили 4 из 4");
+  assert.equal(P.text(2, 5, 0), "Ответили 2 из 5");
+  assert.equal(P.text(2, 5, 20, { lang: "en" }), "2 of 5 answered · ~20 s");
+  assert.equal(P.text(2, 5, 20, { lang: "en", kind: "voted" }), "2 of 5 voted · ~20 s");
+  assert.equal(P.text(2, 5, null, { lang: "el" }), "Απάντησαν 2 από 5");
+  assert.equal(P.text(1, 2, null, { lang: "xx", kind: "voted" }), "Проголосовали 1 из 2");
+});
+
+console.log("rank");
+test("MP.rank: ничья 1,1,3; порядок внутри ничьей — по имени; winnerIds — все первые", () => {
+  const w = load();
+  const r = w.MP.rank([
+    { id: "a", name: "Яна", score: 100 }, { id: "b", name: "Аня", score: 100 },
+    { id: "c", name: "Боря", score: 70 }, { id: "d", name: "Вика", score: 70 }, { id: "e", name: "Глеб", score: 10 },
+  ]);
+  assert.deepEqual(r.list.map((e) => e.id), ["b", "a", "c", "d", "e"]);
+  assert.deepEqual(r.list.map((e) => e.place), [1, 1, 3, 3, 5]);
+  assert.deepEqual(r.list.map((e) => e.tie), [true, true, true, true, false]);
+  assert.deepEqual(r.winnerIds, ["b", "a"]);
+  assert.equal(r.byId.e.place, 5);
+});
+test("MP.rank: ушедшие и played === false (вошёл после финала) не получают места; нет поля — участвует", () => {
+  const w = load();
+  const r = w.MP.rank([
+    { id: "a", name: "A", score: 50, played: true }, { id: "b", name: "B", score: 0, played: false },
+    { id: "c", name: "C", score: 40, left: true }, { id: "d", name: "D", score: 30 },
+  ]);
+  assert.deepEqual(r.list.map((e) => e.id), ["a", "d"]);
+  assert.deepEqual(r.excluded.sort(), ["b", "c"]);
+  assert.deepEqual(r.list.map((e) => e.place), [1, 2]);
+});
+test("MP.rank: не играл никто — таблица по всем не ушедшим; свой tiebreak и ключ очков", () => {
+  const w = load();
+  const r = w.MP.rank([{ id: "a", name: "A", score: 0, played: false }, { id: "b", name: "B", score: 0, played: false, left: true }]);
+  assert.deepEqual(r.list.map((e) => e.id), ["a"]);
+  const q = w.MP.rank([{ id: "x", pts: 5 }, { id: "y", pts: 5 }, { id: "z", pts: 9 }], { score: "pts", tiebreak: (a, b) => (a.id < b.id ? 1 : -1) });
+  assert.deepEqual(q.list.map((e) => e.id), ["z", "y", "x"]);
+  assert.deepEqual(q.list.map((e) => e.place), [1, 2, 2]);
+});
+
+console.log("vibrate / keyboardClass");
+test("MP.vibrate: без жеста не вызывает; после жеста вызывает; нет API или исключение — false", () => {
+  const w = load();
+  let calls = 0;
+  w.navigator = { userActivation: { hasBeenActive: false }, vibrate: () => { calls++; return true; } };
+  assert.equal(w.MP.vibrate(30), false);
+  assert.equal(calls, 0);
+  w.navigator.userActivation.hasBeenActive = true;
+  assert.equal(w.MP.vibrate([10, 30, 10]), true);
+  assert.equal(calls, 1);
+  w.navigator = { vibrate: () => { throw new Error("blocked"); } }; // нет userActivation, жеста не было
+  assert.equal(w.MP.vibrate(5), false);
+  w.navigator = {};
+  assert.equal(w.MP.vibrate(5), false);
+  w.navigator = undefined;
+  assert.equal(w.MP.vibrate(5), false);
+});
+test("MP.vibrate: нет userActivation — решает первое касание", () => {
+  const listeners = {};
+  const w = load();
+  // перезагружаем каркас с документом, чтобы поймать подписку на жест
+  const vm2 = require("vm");
+  const sb = { console, Date, Array, String, Object, setTimeout, clearTimeout, localStorage: undefined };
+  sb.window = sb;
+  sb.document = { addEventListener: (t, fn) => { listeners[t] = fn; } };
+  sb.navigator = { vibrate: () => true };
+  vm2.runInNewContext(SRC, sb, { filename: "mp-common.js" });
+  assert.equal(sb.MP.vibrate(5), false);
+  listeners.pointerdown();
+  assert.equal(sb.MP.vibrate(5), true);
+  void w;
+});
+test("MP.keyboardClass: kb при потере > 120 px высоты; Chrome с resizes-content (innerHeight тоже ужался) — тоже; щипок-масштаб не клавиатура", () => {
+  const w = load();
+  const classes = new Set();
+  const vars = {};
+  const el = { classList: { add: (c) => classes.add(c), remove: (c) => classes.delete(c) }, style: { setProperty: (k, v) => { vars[k] = v; } } };
+  const vvL = {};
+  w.innerHeight = 800; w.innerWidth = 400;
+  w.visualViewport = { height: 800, offsetTop: 0, scale: 1, addEventListener: (t, fn) => { vvL[t] = fn; }, removeEventListener() {} };
+  w.addEventListener = () => {};
+  const kb = w.MP.keyboardClass({ element: el });
+  assert.equal(kb.active(), false);
+  // iOS: layout viewport не меняется, visual — ужат на 300
+  w.visualViewport.height = 500; vvL.resize();
+  assert.equal(kb.active(), true);
+  assert.ok(classes.has("kb"));
+  assert.equal(vars["--kb-h"], "300px");
+  w.visualViewport.height = 800; vvL.resize();
+  assert.equal(kb.active(), false);
+  assert.ok(!classes.has("kb"));
+  assert.equal(vars["--kb-h"], "0px");
+  // Android Chrome: ужаты оба
+  w.innerHeight = 520; w.visualViewport.height = 520; vvL.resize();
+  assert.equal(kb.active(), true);
+  assert.equal(vars["--kb-h"], "0px");
+  // небольшое изменение (панель браузера) — не клавиатура
+  w.innerHeight = 800; w.visualViewport.height = 800; vvL.resize();
+  w.visualViewport.height = 720; vvL.resize();
+  assert.equal(kb.active(), false);
+  // щипок: scale > 1 — состояние не меняется
+  w.visualViewport.height = 300; w.visualViewport.scale = 2; vvL.resize();
+  assert.equal(kb.active(), false);
+  // поворот (ширина другая) — база пересчитывается
+  w.visualViewport.scale = 1; w.innerWidth = 800; w.innerHeight = 360; w.visualViewport.height = 360; vvL.resize();
+  assert.equal(kb.active(), false);
+  kb.stop();
+});
+
 console.log("followRoomLang (U-17, за флагом)");
 function i18nStub(lang) {
   const st = { lang, calls: [] };

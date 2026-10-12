@@ -155,6 +155,37 @@ async function answerRound(phones, opts = {}) {
   return n;
 }
 
+// T-W1-16 (S-34, quip-017): «Отправить» и «Подсказка» целиком внутри окна на низких экранах и при клавиатуре.
+// Пары [полный размер → размер с клавиатурой]: клавиатуру эмулируем уменьшением высоты (innerHeight и visualViewport
+// ужимаются вместе — это то, что делает Chrome с interactive-widget=resizes-content); iOS — только вручную.
+const KB_SIZES = [
+  [[320, 568], [320, 300]], [[360, 740], [360, 440]], [[390, 844], [390, 520]], [[412, 915], [412, 600]],
+  [[915, 412], [915, 200]], [[844, 390], [844, 190]], [[667, 375], null], [[915, 412], null], [[320, 460], null],
+];
+async function kbMatrix(ph, label, orig) {
+  const FITS = `(() => { const r = (id) => { const b = document.getElementById(id); if (!b) return null; const q = b.getBoundingClientRect(); return { t: q.top, b: q.bottom, l: q.left, r: q.right }; };
+    const s = r("sendbtn"), h = r("hintbtn"), vv = window.visualViewport, H = vv ? vv.height : innerHeight;
+    const bad = (x) => !x || x.t < -1 || x.b > H + 1 || x.l < -1 || x.r > innerWidth + 1;
+    return JSON.stringify({ kb: document.documentElement.classList.contains("kb"), send: s, hint: h, H, W: innerWidth, bad: [bad(s) && "send", bad(h) && "hint"].filter(Boolean), hs: document.documentElement.scrollWidth > innerWidth }); })()`;
+  for (const [full, small] of KB_SIZES) {
+    await ph.call("Emulation.setDeviceMetricsOverride", { width: full[0], height: full[1], deviceScaleFactor: 2, mobile: true });
+    await wait(250);
+    if (small) {
+      // фокус в поле, потом «клавиатура»
+      await ph.evaluate("(document.getElementById('ta') || document.querySelector('.three input')).focus()");
+      await ph.call("Emulation.setDeviceMetricsOverride", { width: small[0], height: small[1], deviceScaleFactor: 2, mobile: true });
+      await wait(300);
+    }
+    await ph.evaluate("window.scrollTo(0, 0)");
+    const v = JSON.parse(await ph.evaluate(FITS));
+    const size = small ? `${full[0]}×${full[1]} → клавиатура ${small[0]}×${small[1]}` : `${full[0]}×${full[1]}`;
+    check(v.bad.length === 0 && !v.hs, `${label}: ${size} — «Отправить» и «Подсказка» в окне${v.kb ? " (kb)" : ""}${v.bad.length ? " нарушено: " + JSON.stringify(v) : ""}`);
+    if (small) check(v.kb === true, `${label}: ${size} — html.kb включён`);
+  }
+  await ph.call("Emulation.setDeviceMetricsOverride", { width: orig[0], height: orig[1], deviceScaleFactor: 2, mobile: true });
+  await wait(250);
+}
+
 async function voteRound(phones) {
   let n = 0;
   for (const ph of phones) {
@@ -174,7 +205,8 @@ async function voteRound(phones) {
 }
 
 async function playGame(board, phones, label, plan) {
-  let rounds = 0, sawJinx = false, sawLate = false, sawHint = false;
+  let rounds = 0, sawJinx = false, sawLate = false, sawHint = false, progAnswerChecked = false, progVoteChecked = false;
+  const kbDone = new Set();
   const revealed = new Set();
   const shotOnce = new Set();
   const once = async (page, name) => { if (shotOnce.has(name)) return; shotOnce.add(name); await page.shot(name); };
@@ -206,7 +238,22 @@ async function playGame(board, phones, label, plan) {
           if (shared != null) { jinx = { [shared]: { [a]: "Кота в мешке", [b]: "кот в МЕШКЕ!" } }; break outer; }
         }
       }
+      // матрица низких экранов и клавиатуры — в дуэли (textarea) и в финале (три поля); на phones[0], размер 390×844
+      if (!kbDone.has(ri) && (Number(ri) === 0 || (await board.evaluate("state.roundKey")) === "final") && phones.length >= 5) {
+        kbDone.add(ri);
+        const cur0 = await phones[0].evaluate("(() => { const s = window.qpPhone.state; return s && s.me && s.me.prompts.find((p) => !p.done) ? 1 : 0; })()");
+        if (cur0) await kbMatrix(phones[0], `${label} раунд ${Number(ri) + 1}`, [390, 844]);
+      }
       await answerRound(phones, { ...key, jinx });
+      // «Ответили N из M» (T-W1-14): телефон и доска показывают одно и то же, N не больше M, M — все на связи
+      if (!progAnswerChecked && key.silent) {
+        progAnswerChecked = true;
+        const ap = await board.evaluate("JSON.stringify(state.phase === 'answer' ? state.answerProgress : null)");
+        const txt = await waitFor(phones[0], "(document.getElementById('prog') || {}).textContent", 2000);
+        const mm = /^Ответили (\d+) из (\d+)/.exec(String(txt || ""));
+        const want = JSON.parse(ap || "null");
+        check(!!mm && Number(mm[1]) <= Number(mm[2]) && (!want || Number(mm[2]) === want.total) && Number(mm[2]) === phones.length, `${label}: на телефоне «${String(txt || "").trim()}» (всего ${phones.length} на связи)`);
+      }
       const moved = await waitFor(board, "state.phase !== 'answer'", key.silent ? (45000 + EXTRA_MS) / SPEED + 5000 : 8000);
       check(!!moved, `${label}: раунд ${Number(ri) + 1} — ответы собраны`);
       rounds++;
@@ -219,6 +266,14 @@ async function playGame(board, phones, label, plan) {
       const fits = await board.evaluate(WALL_FITS);
       check(fits === true, `${label}: доска, голосование раунда ${Number(ri) + 1} — ответы влезают (${fits})`);
       for (const p of phones) { const h = await p.evaluate(NO_HSCROLL); if (h !== true) check(false, `${p.name}: голосование без прокрутки вбок`); }
+      // «Проголосовали N из M» (T-W1-14): знаменатель совпадает с числом голосующих на доске, строка есть и у автора дуэли
+      if (!progVoteChecked) {
+        progVoteChecked = true;
+        const want = await board.evaluate("state.current && state.current.votersN");
+        const txt = await waitFor(phones[0], "(document.getElementById('prog') || {}).textContent", 3000);
+        const mm = /^Проголосовали (\d+) из (\d+)/.exec(String(txt || ""));
+        check(!!mm && Number(mm[1]) <= Number(mm[2]) && Number(mm[2]) === want, `${label}: на телефоне «${String(txt || "").trim()}» — знаменатель = голосующих на доске (${want})`);
+      }
       await voteRound(phones);
       await wait(200);
       await once(phones[0], `${label}_p_voted_${ri}`);
@@ -335,6 +390,14 @@ async function main() {
     check((await board.evaluate("!!document.getElementById('homebtn')")) === true, "доска: кнопка «Главная» на итогах");
     for (const p of phones) check((await p.evaluate("(document.getElementById('homebtn') || {}).getAttribute && document.getElementById('homebtn').getAttribute('href')")) === "index.html", `${p.name}: кнопка «Главная» на итогах`);
 
+    // вошёл после финала (T-W1-15, U-11): места не получает, в таблице доски его нет, на телефоне — «играем со следующей партии»
+    const tableN = await board.evaluate("document.querySelectorAll('#setlist li').length");
+    const [lateP] = await joinPhones(room.code, ["Опоздун"], [[390, 844]]);
+    pages.push(lateP);
+    check(!!(await waitFor(lateP, "/Играем со следующей/.test((document.querySelector('.big') || {}).textContent || '')", 5000)), "вошедший после финала: «Играем со следующей партии» вместо места");
+    check((await board.evaluate("document.querySelectorAll('#setlist li').length")) === tableN, `вошедший после финала: в таблице доски не появился (${tableN})`);
+    check((await lateP.evaluate(NO_HSCROLL)) === true, "вошедший после финала: без прокрутки вбок");
+
     // ---------- 3. короткая партия втроём ----------
     await click(board, "#tolobby");
     await waitFor(board, "state.phase === 'lobby'", 5000);
@@ -342,6 +405,7 @@ async function main() {
     await board.evaluate("document.querySelector('.seg button[data-k=short][data-v=\"true\"]').click()");
     await waitFor(board, "state.settings.short === true && state.players.length === 3", 5000);
     check((await board.evaluate("state.players.length")) === 3, "лобби: двое убраны, осталось трое");
+    await wait(1300); // команды ведущего — не чаще 5 в секунду: три «убрать» + настройка + старт в одну секунду упёрлись бы в лимит
     await click(board, "#startbtn");
     const small = await playGame(board, phones.slice(0, 3), "g3", [{}, {}]);
     check(small.rounds === 2, `короткая партия втроём: два раунда (${small.rounds})`);
