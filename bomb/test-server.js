@@ -187,6 +187,16 @@ test("тайна фитиля не уходит ни в одно сообщен�
     assert.ok(!before.includes('"fuseMs"'), "fuseMs ушёл до взрыва");
     assert.ok(!before.includes('"explodeAt"'), "explodeAt ушёл до взрыва");
     assert.ok(!before.includes('"answer"'), "ответ испытания ушёл клиенту");
+    // диапазон фитиля (правило владельца 04.10): ни «min»/«max» у бомб и печатей, ни state.fuse в кадрах до взрыва
+    for (const r of c.raw.slice(0, boomAt)) {
+      let m; try { m = JSON.parse(r); } catch { continue; }
+      const st = m.state || (m.type === "state" ? m : null);
+      if (!st || st.phase === "lobby") continue;
+      assert.strictEqual(st.fuse, undefined, "state.fuse ушёл клиенту");
+      for (const x of [...(st.bombs || []), ...(st.seals || [])]) {
+        assert.ok(!("min" in x) && !("max" in x), "min/max фитиля ушли клиенту");
+      }
+    }
   }
   assert.ok(Number(fuseMs) >= 20000 && Number(fuseMs) <= 45000);
   const boom = b.events.find((e) => e.type === "boom");

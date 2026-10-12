@@ -65,6 +65,37 @@ test("печать: хеш до старта совпадает с раскры�
   assert.strictEqual(after.seal, sealString("TEST22", 1, 0, b.fuseMs, b.salt));
 });
 
+// Правило владельца 04.10: диапазон фитиля не показываем нигде — ни до, ни после взрыва.
+// Ключи диапазона (min/max/fuse) не должны встречаться ни в одном снимке в фазе игры.
+function rangeKeysIn(obj, path = "") {
+  const found = [];
+  if (obj && typeof obj === "object") {
+    for (const [k, v] of Object.entries(obj)) {
+      if (k === "min" || k === "max") found.push(path + "." + k);
+      found.push(...rangeKeysIn(v, path + "." + k));
+    }
+  }
+  return found;
+}
+
+test("диапазон фитиля (min/max/fuse) не уходит ни в один снимок игры", () => {
+  const g = game(["A", "B", "C", "D", "E", "F"], { mode: "two", fuse: "short" });
+  for (const view of ["board", "A", "B", null]) {
+    const snap = JSON.parse(JSON.stringify(g.snapshot(5000, view)));
+    assert.deepStrictEqual(rangeKeysIn(snap.bombs, "bombs").concat(rangeKeysIn(snap.seals, "seals")), [], "min/max в bombs/seals, вид " + view);
+    assert.strictEqual(snap.fuse, undefined, "state.fuse в снимке, вид " + view);
+    if (view !== "board") assert.strictEqual(snap.settings.fuse, undefined, "режим фитиля телефону в игре, вид " + view);
+  }
+  // после взрыва раскрытая печать содержит fuseMs/salt, но не диапазон
+  const b = g.s.bombs[0];
+  g.tick(b.explodeAt);
+  for (const view of ["board", "A"]) {
+    const snap = JSON.parse(JSON.stringify(g.snapshot(b.explodeAt, view)));
+    assert.deepStrictEqual(rangeKeysIn(snap.seals, "seals"), [], "min/max в раскрытой печати, вид " + view);
+    assert.strictEqual(snap.fuse, undefined);
+  }
+});
+
 test("до взрыва тайна не уходит ни в один снимок", () => {
   const g = game(["A", "B", "C", "D", "E", "F"], { mode: "two" });
   assert.strictEqual(g.s.bombs.length, 2);

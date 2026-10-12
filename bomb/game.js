@@ -493,15 +493,18 @@ class Game {
       phase: s.phase,
       serverNow: now,
       code: s.code,
-      settings: s.settings,
+      // режим фитиля (короткий/обычный/длинный) выдаёт диапазон косвенно: вне лобби и итогов — только доске (правило владельца 04.10)
+      settings: s.phase === "lobby" || s.phase === "finished" || board ? s.settings : { ...s.settings, fuse: undefined },
       game: s.game,
       round: s.round,
       roundInGame: s.roundInGame,
       phaseEnd: s.phase === "countdown" || s.phase === "boom" ? s.phaseEnd : null,
       startedAt: s.startedAt,
-      fuse: { min: this.range()[0], max: this.range()[1] },
-      bombs: s.bombs.map((b) => ({ id: b.id, holder: b.holder, from: b.from, since: b.since, alive: b.alive, commit: b.commit, min: b.min, max: b.max })),
-      seals: s.seals.map((x) => (x.revealed ? { ...x, seal: sealString(s.code, x.round, x.bomb, x.fuseMs, x.salt) } : { round: x.round, bomb: x.bomb, commit: x.commit, min: x.min, max: x.max, revealed: false })),
+      bombs: s.bombs.map((b) => ({ id: b.id, holder: b.holder, from: b.from, since: b.since, alive: b.alive, commit: b.commit })),
+      // печать: диапазон фитиля (min/max) наружу не отдаём ни до, ни после взрыва
+      seals: s.seals.map((x) => (x.revealed
+        ? { round: x.round, bomb: x.bomb, commit: x.commit, revealed: true, fuseMs: x.fuseMs, salt: x.salt, seal: sealString(s.code, x.round, x.bomb, x.fuseMs, x.salt) }
+        : { round: x.round, bomb: x.bomb, commit: x.commit, revealed: false })),
       booms: s.booms,
       passes: s.log.length,
       lastPass: s.log.length ? s.log[s.log.length - 1] : null,
