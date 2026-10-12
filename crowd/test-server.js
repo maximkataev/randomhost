@@ -430,4 +430,52 @@ test("сервер", async (t) => {
       assert.equal(stats.get()["cap-q"].n - before, 6, "через сутки окно новое");
     } finally { Date.now = real; stats._resetRoomWindow(); }
   });
+
+  // ---- T-W0-05: сканер секретов (tools/testkit/scan.js) по трём видам: доска, игрок, сокет без токена ----
+  await t.test("секреты не в кадрах: чужие голоса, мнения и ва-банки до раскрытия; токены — доска / игрок / сокет без токена", async () => {
+    const { scanFrames } = require("../tools/testkit/scan");
+    const room = await createRoom({ lang: "ru", opinion: true, short: true });
+    const b = await board(room.code, room.hostToken);
+    const ps = [];
+    for (const n of ["Оля", "Петя", "Вася", "Маша", "Гоша"]) ps.push(await player(room.code, n));
+    const anon = client(room.code); // сокет без join/host
+    await anon.open;
+    b.send({ type: "start" });
+    await b.wait(statePred((s) => s.phase === "vote"));
+    ps.forEach((p, i) => p.send({ type: "vote", side: i % 2 ? "b" : "a" }));
+    ps[0].send({ type: "bank", on: true });
+    await ps[0].wait(statePred((s) => s.me && s.me.bank === true));
+    for (const p of ps) p.send({ type: "confirm" });
+    // мнения (если фаза opinion есть) — каждый опрошенный отвечает «b»
+    let guard = 0;
+    while (guard++ < 100 && b.state.phase !== "reveal") {
+      for (const p of ps) { const s = p.state; if (s && s.phase === "opinion" && s.me && s.me.asked && !s.me.opinion) p.send({ type: "opinion", side: "b" }); }
+      await sleep(100);
+    }
+    assert.strictEqual(b.state.phase, "reveal", "дошли до раскрытия");
+    await sleep(200);
+
+    const clients = [["board", b], ["player", ps[0]], ["player", ps[1]], ["player", ps[2]], ["player", ps[3]], ["player", ps[4]], ["anon", anon]];
+    let scanned = 0, voteFrames = 0, opinionFrames = 0;
+    for (const [view, c] of clients) {
+      const frames = c.raw.map((r) => JSON.parse(r));
+      scanned += frames.length;
+      voteFrames += frames.filter((f) => f.state && f.state.phase === "vote").length;
+      opinionFrames += frames.filter((f) => f.state && f.state.phase === "opinion").length;
+      const foreign = ps.map((p) => p.token).filter((x) => x && x !== c.token);
+      // до раскрытия (lobby/intro/vote/opinion): массивы/карты votes, order, seed, banked, opinions, bank — нигде; свой выбор — только в me.vote / me.bank / me.opinion
+      const own = (p) => view === "player" && /^state\.me\.(vote|bank|opinion)$/.test(p);
+      const v = scanFrames(frames.map((f) => ({ view, frame: f })), {
+        phases: ["lobby", "intro", "vote", "opinion"],
+        forbiddenKeys: ["votes", "order", "seed", "banked", "opinions", "hostToken", "result",
+          (p, k) => /^(vote|bank|opinion)$/.test(k) && !/^state\.settings\./.test(p) && !own(p) && "чужой выбор до раскрытия",
+          (p, k) => k === "pts" && "очки до раскрытия"],
+        forbiddenSubstrings: view === "board" ? foreign : foreign.concat(room.hostToken),
+      });
+      assert.deepStrictEqual(v, [], `${view}: ${JSON.stringify(v.slice(0, 3))}`);
+    }
+    assert.ok(scanned > 30 && voteFrames > 5, `кадров мало — проверка пустая: ${scanned}/${voteFrames}`);
+    assert.ok(opinionFrames > 0, "фазы opinion не было — проверка мнений пустая");
+    for (const c of [b, anon, ...ps]) c.close();
+  });
 });
