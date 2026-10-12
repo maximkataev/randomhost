@@ -47,6 +47,7 @@ const FB_SHARED_I18N = {
     aw_gullible: "Верит всему", aw_gullible_d: "ловушек игры: {n}",
     aw_best: "Любимая ложь зала", likes_n: "👍 {n}",
     err_connect: "Нет связи с сервером, переподключаемся…",
+    conn_lost: "Нет связи — проверяем…",
   },
   en: {
     game_name: "No Way!",
@@ -68,6 +69,7 @@ const FB_SHARED_I18N = {
     aw_gullible: "Believes anything", aw_gullible_d: "game traps: {n}",
     aw_best: "Crowd's favourite lie", likes_n: "👍 {n}",
     err_connect: "No connection, reconnecting…",
+    conn_lost: "No connection — checking…",
   },
   el: {
     game_name: "Δεν το πιστεύω!",
@@ -89,6 +91,7 @@ const FB_SHARED_I18N = {
     aw_gullible: "Αφελής", aw_gullible_d: "έπεσε στην παγίδα {n} φορές",
     aw_best: "Το αγαπημένο ψέμα", likes_n: "👍 {n}",
     err_connect: "Χωρίς σύνδεση, επανασύνδεση…",
+    conn_lost: "Χωρίς σύνδεση — έλεγχος…", //EL:unverified
   },
 };
 (function mergeSharedDict() {
@@ -251,11 +254,12 @@ const BM_WS_HANDSHAKE_MS = 5000;
 const BM_POLL_FETCH_MS = 28000;
 const BM_PROBE_MS = 3000;
 
-function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone }) {
+function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone, onQuiet }) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   let closed = false, opened = false, sid = null, ws = null, polling = false, pollAbort = null;
   let lastSeen = 0, beat = null, notified = false, probeTimer = null;
-  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } clearTimeout(probeTimer); probeTimer = null; };
+  let mpConn = null, inGame = false; // MP.conn (T-W2-03, fibs-024): пинг 5 с в игре, «нет связи» ≤ 12 с, закрытие по тишине
+  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } if (mpConn) { mpConn.stop(); mpConn = null; } clearTimeout(probeTimer); probeTimer = null; };
   const fireClose = () => {
     if (closed || notified) return;
     notified = true;
@@ -270,14 +274,31 @@ function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
   const deliver = (m) => {
     if (closed) return;
     lastSeen = Date.now();
+    // сервер выключил каркас (MP_OFF=1): возвращаемся к прежнему циклу пингов
+    if (m && m.type === "hello" && window.MP && MP.applyHello && !MP.applyHello(m) && mpConn) startBeat();
+    if (mpConn) mpConn.seen(lastSeen);
     if (m && m.type === "pong") { if (typeof m.c === "number") qpClockSample(m.t, m.c); return; }
-    if (m && (m.type === "state" || m.type === "hello") && m.state) qpStateSample(m.state.serverNow);
+    if (m && (m.type === "state" || m.type === "hello") && m.state) {
+      qpStateSample(m.state.serverNow);
+      inGame = !!m.state.phase && m.state.phase !== "lobby" && m.state.phase !== "finished";
+    }
     onMessage(m);
   };
   const startBeat = () => {
     stopBeat();
     lastSeen = Date.now();
     ping(); setTimeout(ping, 400); setTimeout(ping, 1500);
+    if (window.MP && typeof MP.conn === "function" && !MP.off) {
+      mpConn = MP.conn({
+        ping: () => { if (!closed) ping(); },
+        inGame: () => inGame,
+        onOffline: () => { if (onQuiet) onQuiet(true); },
+        onOnline: () => { if (onQuiet) onQuiet(false); },
+        onDead: () => fireClose(),
+      });
+      mpConn.start();
+      return;
+    }
     beat = setInterval(() => {
       if (closed) return stopBeat();
       if (Date.now() - lastSeen > 45000) { fireClose(); return; }
@@ -302,6 +323,8 @@ function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
         });
     },
     close() { closed = true; stopBeat(); try { if (ws) ws.close(); } catch (e) {} try { if (pollAbort) pollAbort.abort(); } catch (e) {} sid = null; },
+    // вкладка снова видна: тишину, пока она была скрыта, MP.conn не считает
+    visible() { if (mpConn) mpConn.visible(Date.now()); },
     probe(ms) {
       if (closed || !opened) return;
       clearTimeout(probeTimer);
@@ -369,84 +392,79 @@ function qpOpenTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone 
   return api;
 }
 
-// Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
-const QP_QUEUE_MS = 30000; // сколько действие, нажатое в обрыв, ждёт связи
+// Потолок возраста действия в очереди — по ТИПУ (MP.sendQueue, T-W2-03). Ответы и выборы нужны, пока идёт их фаза
+// (решает keep страницы по метке факта), поэтому 90 с — только страховка от залежавшегося; быстрые — лайк и реакция —
+// не ждут: через 5 и 3 с они уже ни к чему, а сервер ответил бы «отказ» на давнее действие.
+const QP_QUEUE_CEILING_MS = { "*": 30000, lie: 90000, hint: 90000, choose: 90000, topic: 90000, like: 5000, react: 3000 };
 const QP_QUEUE_MAX = 8;
-function qpConnect({ code, onMessage, onOpen, onGone, onState, onDrop, tag }) {
-  let t = null, delay = 500, stopped = false, expireT = null;
+// Переподключение с нарастающей паузой: сеть моргнула — вернуться сразу, сервер лежит — не долбить
+function qpConnect({ code, onMessage, onOpen, onGone, onState, onDrop, onQuiet, keep, tag }) {
+  let t = null, delay = 500, stopped = false;
   // Действие, нажатое между обрывом и возвращением связи, раньше терялось молча (а кнопка уже горела «ушло»).
-  // Теперь оно ждёт в очереди (до 8 штук и до 30 с) и уходит после входа по токену: сокет без игрока действие бы отбросил.
-  // Ушедшее по опросу, но не дошедшее (onSendFail транспорта) возвращается в очередь с прежним временем нажатия.
-  // tag() — метка контекста (факт) на момент нажатия: к другому факту действие не уходит. Не дошло → onDrop(m).
-  const queue = [];
-  const meta = typeof WeakMap === "function" ? new WeakMap() : null;
-  const drop = (m) => { if (onDrop) onDrop(m); };
-  const armExpire = () => {
-    clearTimeout(expireT);
-    if (!queue.length) return;
-    const wait = Math.max(200, QP_QUEUE_MS - (Date.now() - queue[0].at) + 50);
-    expireT = setTimeout(() => {
-      const now = Date.now();
-      const dead = queue.filter((it) => now - it.at > QP_QUEUE_MS);
-      for (const it of dead) queue.splice(queue.indexOf(it), 1);
-      dead.forEach((it) => drop(it.m));
-      armExpire();
-    }, wait);
-  };
-  const enqueue = (m, at, tg) => {
-    queue.push({ m, at, tag: tg });
-    if (queue.length > QP_QUEUE_MAX) { const old = queue.shift(); drop(old.m); }
-    armExpire();
-  };
+  // Теперь оно ждёт в очереди MP.sendQueue (до 8, потолок по типу) и уходит после входа по токену: сокет без игрока
+  // действие бы отбросил. Не дошло/устарело/не нужно -> onDrop(m, причина, время). tag() — метка контекста (факт) на момент
+  // нажатия: к другому факту действие не уходит. Если общего каркаса нет (mp-off) — очереди нет: без связи сразу «не дошло».
+  const tags = typeof WeakMap === "function" ? new WeakMap() : null;
+  const tagOf = (m) => (tags && m && typeof m === "object" ? tags.get(m) || null : null);
+  const keepFn = (m) => (typeof keep === "function" ? !!keep(m, tagOf(m)) : true);
+  const queue = window.MP && MP.sendQueue ? MP.sendQueue({
+    send: (m) => { if (holder.api) holder.api.send(m); },
+    keep: keepFn,
+    onDrop: (m, why, at) => { if (onDrop) onDrop(m, why, at); },
+    ceilingMs: QP_QUEUE_CEILING_MS,
+    // новое действие того же вида заменяет прежнее (замена — не потеря); лайки разных вариантов друг друга не заменяют
+    replace: (m) => (m.type === "like" ? "like:" + m.opt : ["lie", "hint", "choose", "topic", "avatar", "react"].indexOf(m.type) >= 0 ? m.type : null),
+    max: QP_QUEUE_MAX,
+    minGapMs: 250,
+    probe: (ms) => { if (holder.api) holder.api.probe(ms); },
+  }) : null;
   const queueable = (m) => m && m.type !== "ping" && m.type !== "join" && m.type !== "host";
+  const enqueue = (m) => {
+    if (queue) return queue.push(m);
+    if (onDrop) onDrop(m, "off", Date.now());
+    return false;
+  };
   const holder = {
     api: null,
+    queue,
     gated: false, // страница держит действия до входа по токену и сама снимает флаг через flush
     send(m) {
       const a = holder.api;
-      const tg = tag ? tag() : null;
-      if (queueable(m) && meta) meta.set(m, { at: Date.now(), tag: tg });
-      if (queueable(m) && (holder.gated || !a || a.mode === "none" || a.mode === "connecting")) {
-        enqueue(m, Date.now(), tg);
+      if (queueable(m) && tags && tag) tags.set(m, tag());
+      // пока очередь разгребается (шаг 4/с), новое действие встаёт за ней: порядок не нарушаем
+      if (queueable(m) && (holder.gated || !a || a.mode === "none" || a.mode === "connecting" || (queue && queue.isFlushing()))) {
+        enqueue(m);
         return;
       }
       if (a) a.send(m);
     },
-    // keep(m, tag) — нужно ли это действие ещё; просроченные и ненужные отбрасываются через onDrop
-    flush(keep, onDropNow) {
+    // keepNow(m, tag) — нужно ли действие ещё; ненужные и залежавшиеся отбрасываются через onDrop
+    flush(keepNow, dropNow) {
       holder.gated = false;
-      const items = queue.splice(0);
-      clearTimeout(expireT);
-      for (const it of items) {
-        if (Date.now() - it.at > QP_QUEUE_MS || (keep && !keep(it.m, it.tag))) { (onDropNow || drop)(it.m); continue; }
-        if (holder.api) holder.api.send(it.m);
-      }
+      if (queue) queue.flush(typeof keepNow === "function" ? (m) => keepNow(m, tagOf(m)) : keepFn, dropNow);
     },
-    stop() { stopped = true; clearTimeout(t); clearTimeout(expireT); queue.length = 0; if (holder.api) holder.api.close(); },
+    // «тишина»: проверить, жив ли сокет (страница зовёт, когда кнопка отпущена без ответа)
+    probe(ms) { if (holder.api && holder.api.mode !== "none") holder.api.probe(ms); },
+    stop() { stopped = true; clearTimeout(t); if (queue) queue.clear(); if (holder.api) holder.api.close(); },
   };
   const open = () => {
     if (stopped) return;
     if (onState) onState("connecting");
     holder.api = qpOpenTransport({
       code,
-      onMessage,
+      onQuiet,
+      onMessage: (m) => { if (queue) queue.heard(); onMessage(m); },
       onOpen: () => { delay = 500; if (onState) onState("open"); if (onOpen) onOpen(); },
       onClose: () => { if (stopped) return; if (onState) onState("lost"); t = setTimeout(open, delay); delay = Math.min(delay * 2, 8000); },
       onGone: () => { stopped = true; if (onGone) onGone(); },
       // транспорт не смог отправить (сокета нет, опрос не прошёл после трёх попыток): не теряем, а ждём следующего входа
-      onSendFail: (m) => {
-        if (stopped || !queueable(m)) return;
-        const mt = meta && meta.get(m);
-        if (mt && Date.now() - mt.at > QP_QUEUE_MS) return drop(m);
-        enqueue(m, mt ? mt.at : Date.now(), mt ? mt.tag : null);
-      },
+      onSendFail: (m) => { if (stopped || !queueable(m)) return; enqueue(m); },
     });
   };
   open();
-  // вернулись в вкладку или сеть появилась — проверяем, жив ли сокет, не дожидаясь 45 с тишины
+  // вернулись в вкладку или сеть появилась — проверяем, жив ли сокет, не дожидаясь тишины
   const wake = () => { if (holder.api && holder.api.mode !== "none") holder.api.probe(); };
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (holder.api && holder.api.visible) holder.api.visible(); wake(); } });
   window.addEventListener("online", wake);
   return holder;
 }
-

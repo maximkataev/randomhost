@@ -630,15 +630,15 @@ test("played: дамп прошлой версии без поля — прис�
   assert.ok(g2.snapshot(0, "board").players.every((p) => typeof p.played === "number"));
 });
 
-// ---------- T-W0-29: очередь неотправленных действий на телефоне (fibs-shared.js) ----------
+// ---------- T-W0-29 / T-W2-03: очередь неотправленных действий на телефоне (fibs-shared.js + MP.sendQueue) ----------
 
-// Берём из fibs-shared.js транспорт и qpConnect и гоняем их с поддельными сокетом/таймерами браузера.
+// Берём из fibs-shared.js транспорт и qpConnect, из mp-common.js — MP, и гоняем их с поддельными сокетом/таймерами браузера.
 function loadConnect(opts = {}) {
   const fs = require("fs");
   const vm = require("vm");
   const src = fs.readFileSync(require("path").join(__dirname, "..", "fibs-shared.js"), "utf8");
   let code = src.slice(src.indexOf("const qpClock = {"));
-  if (opts.queueMs) code = code.replace("const QP_QUEUE_MS = 30000;", `const QP_QUEUE_MS = ${opts.queueMs};`);
+  if (opts.queueMs) code = code.replace(/const QP_QUEUE_CEILING_MS = \{[^}]*\};/, `const QP_QUEUE_CEILING_MS = { "*": ${opts.queueMs} };`);
   const sockets = [];
   class FakeWS {
     constructor() { this.readyState = 0; this.sent = []; sockets.push(this); }
@@ -647,11 +647,14 @@ function loadConnect(opts = {}) {
     open() { this.readyState = 1; this.onopen(); }
     drop() { this.readyState = 3; this.onclose({}); }
   }
+  const win = { addEventListener() {} };
   const ctx = {
     location: { protocol: "http:", host: "x" }, WebSocket: FakeWS, console, setTimeout, clearTimeout, setInterval, clearInterval, Date, JSON, Math,
-    document: { addEventListener() {}, hidden: false }, window: { addEventListener() {} }, fetch: () => Promise.reject(new Error("offline")), AbortController: undefined,
+    document: { addEventListener() {}, hidden: false }, window: win, fetch: () => Promise.reject(new Error("offline")), AbortController: undefined,
   };
   vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(require("path").join(__dirname, "..", "mp-common.js"), "utf8"), ctx);
+  win.MP = ctx.MP;
   vm.runInContext(code + "\n;this.qpConnect = qpConnect;", ctx);
   return { qpConnect: ctx.qpConnect, sockets };
 }
@@ -680,16 +683,39 @@ test("телефон: тап в обрыве ждёт в очереди и ух�
   conn.stop();
 });
 
-test("телефон: обрыв дольше срока очереди — onDrop («Не дошло»), очередь ограничена 8", async () => {
+test("телефон: очередь ограничена 8; залежавшееся действие при возврате связи — onDrop «expired» (потолок по типу)", async () => {
   const { qpConnect, sockets } = loadConnect({ queueMs: 400 });
   const dropped = [];
-  const conn = qpConnect({ code: "X", onMessage() {}, onDrop: (m) => dropped.push(m.n), tag: () => "f" });
+  const conn = qpConnect({ code: "X", onMessage() {}, onDrop: (m, why) => dropped.push([m.n, why]), tag: () => "f" });
   sockets[0].open();
   sockets[0].drop();
-  for (let n = 1; n <= 10; n++) conn.send({ type: "like", opt: 0, n });
-  assert.deepStrictEqual(dropped, [1, 2], "переполнение выталкивает самые старые");
+  for (let n = 1; n <= 10; n++) conn.send({ type: "like", opt: n, n });
+  assert.deepStrictEqual(dropped, [[1, "overflow"], [2, "overflow"]], "переполнение выталкивает самые старые");
   await sleepMs(900);
-  assert.deepStrictEqual(dropped.slice(2).sort((a, b) => a - b), [3, 4, 5, 6, 7, 8, 9, 10], "просроченные — через onDrop");
+  sockets[1].open();
+  conn.flush();
+  assert.deepStrictEqual(dropped.slice(2).map((d) => d[0]).sort((a, b) => a - b), [3, 4, 5, 6, 7, 8, 9, 10], "просроченные — через onDrop");
+  assert.ok(dropped.slice(2).every((d) => d[1] === "expired"), "причина — expired");
+  conn.stop();
+});
+
+test("телефон: потолок очереди по типу — лайк живёт секунды, ложь — 90 с; новое действие того же вида заменяет прежнее", async () => {
+  const { qpConnect, sockets } = loadConnect();
+  const dropped = [];
+  const conn = qpConnect({ code: "X", onMessage() {}, onDrop: (m, why) => dropped.push(m.type + ":" + why), tag: () => "f" });
+  sockets[0].open();
+  sockets[0].drop();
+  conn.send({ type: "lie", text: "первая" });
+  conn.send({ type: "lie", text: "вторая" });
+  conn.send({ type: "like", opt: 1 });
+  assert.strictEqual(conn.queue.size(), 2, "ложь заменила ложь, лайк рядом");
+  assert.deepStrictEqual(dropped, [], "замена — не потеря");
+  await sleepMs(700);
+  sockets[1].open();
+  conn.flush();
+  await sleepMs(450); // шаг очереди — 4 действия в секунду
+  const sent = sockets[1].sent.filter((m) => m.type !== "ping");
+  assert.deepStrictEqual(sent.map((m) => m.type + ":" + (m.text || m.opt)), ["lie:вторая", "like:1"]);
   conn.stop();
 });
 

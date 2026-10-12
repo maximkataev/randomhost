@@ -75,7 +75,7 @@ async function cdp(url, phone) {
     return r.result?.value;
   };
   const shot = async (name) => { const r = await call("Page.captureScreenshot", { format: "png" }); if (r && r.data) fs.writeFileSync(path.join(OUT, name + ".png"), Buffer.from(r.data, "base64")); };
-  return { call, evaluate, shot, errors, name: "" };
+  return { call, evaluate, shot, errors, name: "", targetId: t.targetId };
 }
 
 async function type(page, selector, text) {
@@ -386,6 +386,123 @@ async function main() {
     // ---------- 4. перезагрузка телефона: возвращается по токену ----------
     await phones[0].call("Page.reload");
     check(!!(await waitFor(phones[0], "window.qpPhone && window.qpPhone.me", 8000)), "телефон после перезагрузки вернулся по токену");
+
+
+    // ---------- 5. W2: неверный код, вход по имени, черновик, ссылка ведущего, язык комнаты (T-W2-04/05/20/21) ----------
+    {
+      const hdr = { "Content-Type": "application/json" };
+      // 5a. неверный код — «Такой комнаты нет» с полем, не «закрыта» (fibs-028)
+      const bad = await cdp(`${BASE}/fibs.html?r=ZZZZ99`, [390, 844]);
+      bad.name = "неверный код";
+      pages.push(bad);
+      check(!!(await waitFor(bad, "!!document.getElementById('codeform')", 12000)), "неверный код: поле кода на экране «Такой комнаты нет»");
+      check((await bad.evaluate("document.getElementById('app').textContent.includes('Такой комнаты нет') && !document.getElementById('app').textContent.includes('закрыта')")) === true, "неверный код: «Такой комнаты нет», а не «закрыта»");
+      await bad.shot("w2_noroom");
+
+      const r2 = await (await fetch(BASE + "/fibs/api/rooms", { method: "POST", headers: hdr, body: JSON.stringify({ settings: { lang: "ru" } }) })).json();
+      // 5b. ссылка ведущего: токен не на экране, ссылка собирается, второй экран «Я ведущий» вставляет ссылку
+      const hb = await cdp(`${BASE}/fibs-board.html?r=${r2.code}&h=${r2.hostToken}`);
+      hb.name = "доска W2";
+      pages.push(hb);
+      check(!!(await waitFor(hb, "document.body.classList.contains('host')", 8000)), "доска по ?h=: ведущий");
+      const url = await hb.evaluate("HL && HL.url()");
+      check(typeof url === "string" && url.includes("fibs-board.html") && url.includes("h=" + r2.hostToken), "ссылка ведущего собирается из ключа");
+      check((await hb.evaluate(`!document.body.innerHTML.includes(${JSON.stringify(r2.hostToken)})`)) === true, "токен ведущего на экране не рисуется");
+      check((await hb.evaluate("!!document.querySelector('#hostbar .linkbtn')")) === true, "доска: кнопка «Ссылка ведущего»");
+      check((await hb.evaluate("document.querySelector('#hostbar .linkbtn').getBoundingClientRect().height >= 44")) === true, "«Ссылка ведущего» ≥ 44 px");
+      const hb2 = await cdp(`${BASE}/fibs-board.html?r=${r2.code}`);
+      hb2.name = "вторая доска";
+      pages.push(hb2);
+      check(!!(await waitFor(hb2, "!!document.querySelector('#hostbar .linkbtn') && !document.body.classList.contains('host')", 8000)), "вторая доска без ключа: «Я ведущий»");
+      await click(hb2, "#hostbar .linkbtn");
+      await waitFor(hb2, "!!document.querySelector('#hostbar input')", 3000);
+      await type(hb2, "#hostbar input", url);
+      await click(hb2, "#hostbar button");
+      check(!!(await waitFor(hb2, "document.body.classList.contains('host')", 6000)), "вторая доска: после вставки ссылки — ведущий");
+
+      // 5c. вход по имени: тёзка онлайн → «Маша (2)» с тостом; офлайн → «Это ты?»
+      const mk = async (name, size) => {
+        const ph = await cdp(`${BASE}/fibs.html?r=${r2.code}`, size || [390, 844]);
+        ph.name = name;
+        pages.push(ph);
+        await waitFor(ph, "!!document.getElementById('name')", 8000);
+        await type(ph, "#name", name);
+        await click(ph, "#enterform button[type=submit]");
+        return ph;
+      };
+      const a = await mk("Маша");
+      check(!!(await waitFor(a, "window.qpPhone && window.qpPhone.me", 6000)), "Маша: вошла");
+      const b = await mk("Маша");
+      check(!!(await waitFor(b, "window.qpPhone && window.qpPhone.me", 6000)), "тёзка онлайн: вошёл");
+      check((await b.evaluate("window.qpPhone.state.players.some((p) => p.name === 'Маша (2)')")) === true, "тёзка онлайн: «Маша (2)», а не «Маша 2» или перехват");
+      check((await b.evaluate("document.getElementById('toast').textContent.includes('Маша (2)')")) === true, "тёзка онлайн: тост «Имя занято: ты теперь «Маша (2)»»");
+      await browserCall("Target.closeTarget", { targetId: a.targetId });
+      pages.splice(pages.indexOf(a), 1);
+      await wait(2600);
+      const c = await cdp(`${BASE}/fibs.html?r=${r2.code}`, [390, 844]);
+      c.name = "Маша (после)";
+      pages.push(c);
+      await waitFor(c, "!!document.getElementById('name')", 8000);
+      await type(c, "#name", "Маша");
+      await click(c, "#enterform button[type=submit]");
+      check(!!(await waitFor(c, "!!document.getElementById('claimyes')", 6000)), "офлайн-тёзка: экран «Это ты, Маша?»");
+      await c.shot("w2_claim");
+      check((await c.evaluate("document.getElementById('claimyes').getBoundingClientRect().height >= 44")) === true, "«Занять место» ≥ 44 px");
+      await click(c, "#claimyes");
+      check(!!(await waitFor(c, "window.qpPhone && window.qpPhone.me", 6000)), "«Занять место»: вошла на своё место");
+      check((await c.evaluate("window.qpPhone.state.players.filter((p) => !p.left).length")) === 2, "«Занять место»: игроков по-прежнему двое");
+      // 5d. счётчик «N/16» у имени
+      const cnt = await cdp(`${BASE}/fibs.html?r=${r2.code}`, [390, 844]);
+      cnt.name = "счётчик имени";
+      pages.push(cnt);
+      await waitFor(cnt, "!!document.getElementById('name')", 8000);
+      await type(cnt, "#name", "Двенадцатибуква");
+      check((await cnt.evaluate("document.getElementById('ncnt').textContent")) === "15/16", "счётчик имени: «15/16» с 12 символов");
+
+      // 5e. черновик лжи переживает reload (fibs-018)
+      const d = await mk("Витя");
+      await waitFor(d, "window.qpPhone && window.qpPhone.me", 6000);
+      await hb2.evaluate("window.qpBoard.send({ type: 'start' })");
+      const ph3 = [c, b, d];
+      let inLie = false;
+      for (let i = 0; i < 100 && !inLie; i++) {
+        for (const p of ph3) {
+          const st = await p.evaluate("(() => { const s = window.qpPhone.state; return s ? { phase: s.phase, chooser: !!(s.me && s.me.chooser), topic: s.topics && s.topics[0] } : null; })()");
+          if (st && st.phase === "topic" && st.chooser && !p.sentTopic) { p.sentTopic = true; await p.evaluate(`window.qpPhone.send({ type: "topic", topic: ${JSON.stringify(st.topic)} })`); }
+        }
+        inLie = (await c.evaluate("(() => { const s = window.qpPhone.state; return !!s && s.phase === 'lie' && !!s.me && s.me.inRound && !s.me.lie; })()")) === true;
+        if (!inLie) await wait(400);
+      }
+      check(inLie, "партия втроём дошла до фазы лжи");
+      if (inLie) {
+        await waitFor(c, "!!document.getElementById('lie')", 5000);
+        await type(c, "#lie", "черновичок");
+        await wait(400);
+        await c.call("Page.reload");
+        check(!!(await waitFor(c, "window.qpPhone && window.qpPhone.me", 8000)), "после reload: вернулась по токену");
+        const kept = await waitFor(c, "(document.getElementById('lie') || {}).value === 'черновичок'", 6000);
+        check(!!kept, "после reload: черновик лжи на месте");
+      }
+
+      // 5f. подсказка языка комнаты: телефон открыт по-английски, комната русская (U-17, подсказка, не принуждение)
+      const en = await cdp(`${BASE}/fibs.html?r=${r2.code}`, [390, 844]);
+      en.name = "телефон en";
+      pages.push(en);
+      await waitFor(en, "!!document.getElementById('name')", 8000);
+      await en.evaluate("window.I18N.setLang('en', { persist: false })");
+      await en.evaluate("sessionStorage.removeItem('mp-lang-manual')");
+      await en.call("Page.reload");
+      await waitFor(en, "!!document.getElementById('name')", 8000);
+      await en.evaluate("window.I18N.setLang('en', { persist: false })");
+      await en.evaluate("checkRoomLang()");
+      const hint = await waitFor(en, "(() => { const h = document.getElementById('langhint'); return h && !h.hidden && h.textContent; })()", 6000);
+      check(!!hint && /RU/.test(hint), "язык комнаты: подсказка «Room language: RU. Switch?» (" + String(hint).slice(0, 40) + ")");
+      if (hint) {
+        check((await en.evaluate("window.I18N.lang")) === "en", "язык комнаты: сам не переключается");
+        await en.evaluate("document.querySelector('#langhint [data-y]').click()");
+        check((await waitFor(en, "window.I18N.lang === 'ru'", 3000)) === true, "язык комнаты: «Переключить» — русский");
+      }
+    }
 
     for (const p of pages) check(p.errors.length === 0, `${p.name || "страница"}: без JS-ошибок` + (p.errors[0] ? ": " + p.errors[0] : ""));
   } catch (err) {

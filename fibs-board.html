@@ -71,6 +71,23 @@
   .conn.on { visibility: visible; }
   .endbtn { flex: none; border: 1.5px dashed var(--ink); background: var(--sheet); padding: 8px 14px; min-height: 44px; font: 700 20px/1 var(--mono); color: var(--ink-2); cursor: pointer; }
   .endbtn.skipbtn { border-style: solid; color: var(--ink); }
+  /* «🔑 Ссылка ведущего»: токен на экране не рисуется, кнопка копирует ссылку (MP.hostLink, T-W2-21) */
+  .hostbar { flex: none; display: inline-flex; align-items: center; gap: 8px; }
+  .hostbar .linkbtn { flex: none; border: 1.5px solid var(--ink); background: var(--sheet); padding: 8px 12px; min-height: 44px; min-width: 44px; font: 700 16px/1 var(--mono); color: var(--ink); cursor: pointer; white-space: nowrap; }
+  .hostbar input { font: 700 16px/1 var(--mono); border: 1.5px solid var(--ink); background: #fff; color: var(--ink); padding: 6px 8px; min-height: 44px; width: 190px; min-width: 0; border-radius: 0; }
+  .hostbar .note { font: 700 14px/1.2 var(--mono); color: var(--ink-2); max-width: 260px; }
+  @media (max-width: 640px) { .hostbar .lt, .hostbar .note { display: none; } }
+  .gonebox { display: grid; gap: 10px; justify-items: center; }
+  .gonebox .t { font-size: 24px; font-weight: 900; }
+  .gonebox form { display: flex; gap: 8px; }
+  .gonebox input { font: 700 20px/1 var(--mono); border: 1.5px solid var(--ink); background: #fff; color: var(--ink); padding: 8px 10px; min-height: 44px; width: 180px; text-transform: uppercase; border-radius: 0; }
+  .gonebox button { border: 1.5px solid var(--ink); background: var(--sheet); color: var(--ink); font: 700 18px/1 var(--mono); padding: 6px 14px; min-height: 44px; }
+  /* QR ведущего на 60 с (только при RULE_U03_HOST_QR): по нажатию, с подписью и автоскрытием */
+  .hqr { position: fixed; inset: 0; z-index: 60; background: rgba(21, 20, 18, .88); display: grid; place-items: center; padding: 16px; }
+  .hqr .box { background: var(--sheet); border: 3px double var(--ink); padding: 18px; display: grid; gap: 12px; justify-items: center; max-width: 340px; text-align: center; }
+  .hqr .warn { font: 700 16px/1.25 var(--mono); color: var(--red); }
+  .hqr .qrbox { background: #fff; padding: 8px; }
+  .hqr button { min-height: 44px; padding: 8px 16px; font: 700 18px/1 var(--mono); border: 1.5px solid var(--ink); background: var(--sheet); color: var(--ink); cursor: pointer; }
   /* двухтактные команды ведущего (MP.twoTap): взведённая кнопка красная и подписана «Точно …?», через 3 с сама остывает */
   .endbtn[data-armed], .kickx[data-armed] { background: var(--red); border-color: var(--red); color: #fff; }
   .kickx { flex: none; min-width: 44px; min-height: 44px; border: 1.5px solid var(--ink-2); background: var(--sheet); color: var(--ink-2); font: 700 16px/1 var(--mono); padding: 0 8px; cursor: pointer; }
@@ -474,6 +491,7 @@
   <h1 id="brand" data-i18n="game_name">Не верю<em>!</em></h1>
   <span class="chip hidden" id="roundchip"></span>
   <span class="grow"></span>
+  <span class="hostbar" id="hostbar"></span>
   <button class="endbtn skipbtn hidden" id="skipbtn" type="button"></button>
   <button class="endbtn hidden" id="endbtn" type="button"></button>
   <span class="chip hidden" id="codechip"></span>
@@ -504,6 +522,11 @@ window.I18N_DICT = {
     scores_what: `Сводка`,
     final_title: `Номер сдан`, final_few: `игроков меньше трёх`, final_host: `ведущий закончил`,
     btn_home: `Главная`, btn_again: `Ещё выпуск`, btn_lobby: `В лобби`, btn_end: `Закончить`, end_sure: `Точно завершить?`, btn_skip: `Дальше`, skip_sure: `Точно дальше?`, kick_sure: `Точно убрать?`,
+    host_link: `Ссылка ведущего`, link_copied: `Ссылка скопирована. Не показывай её игрокам`, link_shared: `Ссылка отправлена. Не показывай её игрокам`, link_none: `На этом экране нет ключа ведущего`,
+    link_prompt_hint: `Скопируй ссылку и не показывай её игрокам`,
+    btn_im_host: `Я ведущий`, host_paste_ph: `Вставь ссылку ведущего`, btn_ok: `OK`, host_bad: `Это не ссылка ведущего`, btn_take: `Забрать управление`, host_lost_msg: `Управление перешло к другому экрану`,
+    qr_btn: `QR на 60 с`, qr_warn: `Не показывай камерам: по этому коду забирают управление`, qr_close: `Скрыть`, qr_left: `Скроется через {s} с`,
+    noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код: в нём слово и две цифры`, code_ph: `Код комнаты`, btn_go: `Перейти`,
     expired: `Комната закрыта: она пустовала полчаса или ведущий её закрыл`,
     no_awards: `Наград нет — все играли честно`,
   },
@@ -526,6 +549,11 @@ window.I18N_DICT = {
     scores_what: `Standings`,
     final_title: `That's a wrap`, final_few: `fewer than three players`, final_host: `the host ended it`,
     btn_home: `Home`, btn_again: `Another issue`, btn_lobby: `To lobby`, btn_end: `End game`, end_sure: `Really end?`, btn_skip: `Next`, skip_sure: `Skip for real?`, kick_sure: `Really remove?`,
+    host_link: `Host link`, link_copied: `Link copied. Don't show it to players`, link_shared: `Link sent. Don't show it to players`, link_none: `This screen has no host key`,
+    link_prompt_hint: `Copy the link and keep it from the players`,
+    btn_im_host: `I'm the host`, host_paste_ph: `Paste the host link`, btn_ok: `OK`, host_bad: `That is not a host link`, btn_take: `Take control`, host_lost_msg: `Another screen took control`,
+    qr_btn: `QR for 60 s`, qr_warn: `Keep it from cameras: this code takes over the controls`, qr_close: `Hide`, qr_left: `Hides in {s} s`,
+    noroom_title: `There is no such room`, noroom_text: `Check the code: a word and two digits`, code_ph: `Room code`, btn_go: `Go`,
     expired: `Room closed: it sat empty for half an hour or the host closed it`,
     no_awards: `No awards — everyone played it straight`,
   },
@@ -548,6 +576,11 @@ window.I18N_DICT = {
     scores_what: `Κατάταξη`,
     final_title: `Το φύλλο κλείνει`, final_few: `λιγότεροι από τρεις`, final_host: `τελείωσε ο οικοδεσπότης`,
     btn_home: `Αρχική`, btn_again: `Νέο φύλλο`, btn_lobby: `Στο λόμπι`, btn_end: `Τέλος`, end_sure: `Σίγουρα τέλος;`, btn_skip: `Επόμενο`, skip_sure: `Σίγουρα επόμενο;`, kick_sure: `Σίγουρα αφαίρεση;`,
+    host_link: `Σύνδεσμος οικοδεσπότη`, link_copied: `Ο σύνδεσμος αντιγράφηκε. Μην τον δείχνεις στους παίκτες`, link_shared: `Ο σύνδεσμος στάλθηκε. Μην τον δείχνεις στους παίκτες`, link_none: `Αυτή η οθόνη δεν έχει κλειδί οικοδεσπότη`, //EL:unverified
+    link_prompt_hint: `Αντίγραψε τον σύνδεσμο και μην τον δείχνεις στους παίκτες`, //EL:unverified
+    btn_im_host: `Είμαι ο οικοδεσπότης`, host_paste_ph: `Επικόλλησε τον σύνδεσμο οικοδεσπότη`, btn_ok: `OK`, host_bad: `Αυτός δεν είναι σύνδεσμος οικοδεσπότη`, btn_take: `Πάρε τον έλεγχο`, host_lost_msg: `Τον έλεγχο πήρε άλλη οθόνη`, //EL:unverified
+    qr_btn: `QR για 60 δ`, qr_warn: `Μην το δείχνεις στις κάμερες: με αυτόν τον κωδικό παίρνουν τον έλεγχο`, qr_close: `Απόκρυψη`, qr_left: `Κρύβεται σε {s} δ`, //EL:unverified
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό: μια λέξη και δύο ψηφία`, code_ph: `Κωδικός δωματίου`, btn_go: `Πήγαινε`, //EL:unverified
     expired: `Το δωμάτιο έκλεισε: έμεινε άδειο μισή ώρα ή το έκλεισε ο οικοδεσπότης`,
     no_awards: `Χωρίς βραβεία — όλοι έπαιξαν τίμια`,
   },
@@ -1004,6 +1037,7 @@ function render() {
   $("skipbtn").classList.toggle("hidden", !canSkip);
   if (!canSkip) hostTap.disarm();
   syncHostBtns();
+  drawHostbar();
   // класс вместо :has() — старые движки (проекторы) его не знают
   document.body.classList.toggle("in-lobby", state.phase === "lobby");
   main.classList.toggle("in-lobby", state.phase === "lobby");
@@ -1082,6 +1116,9 @@ function onMessage(m) {
   switch (m.type) {
     case "hello":
       state = m.state;
+      if (goneFlow) goneFlow.hello();
+      if (window.MP && MP.applyHello) MP.applyHello(m);
+      hostQrFlag = !!(m.flags && m.flags.RULE_U03_HOST_QR);
       if (!isHost) {
         let token = null;
         try { token = localStorage.getItem(hostKey()); } catch (e) {}
@@ -1095,6 +1132,8 @@ function onMessage(m) {
       break;
     case "host_ok":
       isHost = true;
+      hostLost = false;
+      pasteOpen = false;
       document.body.classList.add("host");
       viewKey = "";
       // язык доски главнее: комнату создали на одном языке, а доску переключили — синхронизируем
@@ -1103,6 +1142,8 @@ function onMessage(m) {
       break;
     case "host_lost":
       isHost = false;
+      hostLost = true;
+      closeHostQr();
       document.body.classList.remove("host");
       viewKey = "";
       render();
@@ -1113,14 +1154,158 @@ function onMessage(m) {
       break;
     case "error":
       if (m.error === "room_expired") gone();
+      if (m.error === "bad host token") {
+        hostLost = false;
+        try { localStorage.removeItem(hostKey()); } catch (e) {}
+        pasteOpen = true;
+        setHostNote(T("host_bad"));
+      }
       break;
   }
 }
 
+// «Такой комнаты нет» (404 до первого hello) и «Комната закрыта» (после) — разные экраны (T-W2-04, fibs-028).
+// Серверного различителя нет: опечатка в коде и комната, убранная по сроку, до hello выглядят одинаково.
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({ showForm: noRoom, onClosed: closedScreen }) : null;
 function gone() {
+  if (goneFlow) goneFlow.gone(); else closedScreen();
+}
+function closedScreen() {
   dead = true;
   main.innerHTML = "";
+  $("hostbar").innerHTML = "";
+  closeHostQr();
   showBanner(T("expired"));
+}
+function noRoom() {
+  dead = true;
+  main.innerHTML = "";
+  $("hostbar").innerHTML = "";
+  const b = $("banner");
+  b.classList.remove("hidden");
+  b.innerHTML = `<div class="gonebox"><div class="t">${escapeHtml(T("noroom_title"))}</div><div>${escapeHtml(T("noroom_text"))}</div>
+    <form id="goneform" autocomplete="off"><input id="gonecode" maxlength="24" placeholder="${escapeHtml(T("code_ph"))}" aria-label="${escapeHtml(T("code_ph"))}" value="${escapeHtml(CODE)}" autocapitalize="characters"><button type="submit">${escapeHtml(T("btn_go"))}</button></form></div>`;
+  $("goneform").onsubmit = (e) => {
+    e.preventDefault();
+    const raw = $("gonecode").value;
+    const c = window.MP && MP.roomGone ? MP.roomGone.normalize(raw) : String(raw || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+    if (c) location.href = `fibs-board.html?r=${encodeURIComponent(c)}`;
+  };
+}
+
+// «🔑 Ссылка ведущего» (T-W2-21, fibs-001, U-03 вариант A): ключ живёт в localStorage этого экрана; кнопка копирует
+// …/fibs-board.html?r=КОД&h=ТОКЕН, токен на экране не рисуется (доска видна всем). Без MP работает как раньше.
+let hostNote = "", hostNoteT = 0, pasteOpen = false, hostLost = false, hostBarKey = "", hostQrFlag = false;
+const HL = window.MP && MP.hostLink ? MP.hostLink({
+  hostKeyFn: hostKey,
+  boardPath: "fibs-board.html",
+  getRoom: () => CODE,
+  sendHost: (t) => { if (conn) conn.send({ type: "host", token: t }); },
+  onToast: (kind) => {
+    if (kind === "copied") setHostNote(T("link_copied"));
+    else if (kind === "shared") setHostNote(T("link_shared"));
+    else if (kind === "none") setHostNote(T("link_none"));
+  },
+  prompt: (m, v) => window.prompt(T("link_prompt_hint"), v),
+}) : null;
+function setHostNote(text) {
+  hostNote = text;
+  clearTimeout(hostNoteT);
+  if (text) hostNoteT = setTimeout(() => { hostNote = ""; drawHostbar(); }, 5000);
+  drawHostbar();
+}
+function hasHostToken() {
+  try { return !!localStorage.getItem(hostKey()); } catch (e) { return false; }
+}
+function drawHostbar() {
+  const bar = $("hostbar");
+  if (!bar) return;
+  if (dead || !state || !HL) { bar.innerHTML = ""; hostBarKey = ""; return; }
+  const claim = !isHost && (hostLost || !hasHostToken());
+  const key = [isHost, hostLost, claim, pasteOpen, hostNote, hostQrFlag, qpLang()].join("|");
+  if (key === hostBarKey) return;
+  hostBarKey = key;
+  bar.innerHTML = "";
+  if (isHost) {
+    const lb = el("button", "linkbtn");
+    lb.type = "button";
+    lb.title = T("host_link");
+    lb.setAttribute("aria-label", T("host_link"));
+    lb.append("🔑", el("span", "lt", " " + T("host_link")));
+    lb.onclick = () => { HL.copy(); };
+    bar.append(lb);
+    if (hostQrFlag && window.QRCode) {
+      const qb = el("button", "linkbtn", T("qr_btn"));
+      qb.type = "button";
+      qb.onclick = () => openHostQr();
+      bar.append(qb);
+    }
+  }
+  if (claim && hostLost && hasHostToken()) {
+    const tk = el("button", "linkbtn", T("btn_take"));
+    tk.type = "button";
+    tk.title = T("host_lost_msg");
+    tk.onclick = () => { HL.take(); };
+    bar.append(el("span", "note", T("host_lost_msg")), tk);
+  } else if (claim) {
+    if (pasteOpen) {
+      const inp = el("input");
+      inp.type = "text";
+      inp.placeholder = T("host_paste_ph");
+      inp.autocomplete = "off";
+      inp.setAttribute("aria-label", T("host_paste_ph"));
+      const ok = el("button", "linkbtn", T("btn_ok"));
+      ok.type = "button";
+      const submit = () => {
+        if (!MP.hostLink.parseToken(inp.value)) { setHostNote(T("host_bad")); return; }
+        HL.take(Date.now(), inp.value);
+        pasteOpen = false;
+      };
+      ok.onclick = submit;
+      inp.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+      bar.append(inp, ok);
+      setTimeout(() => inp.focus(), 0);
+    } else {
+      const im = el("button", "linkbtn", T("btn_im_host"));
+      im.type = "button";
+      im.onclick = () => { pasteOpen = true; drawHostbar(); };
+      bar.append(im);
+    }
+  }
+  if (hostNote) bar.append(el("span", "note", hostNote));
+}
+window.addEventListener("langchange", () => { hostBarKey = ""; drawHostbar(); });
+
+// QR ссылки ведущего на 60 с — ТОЛЬКО при RULE_U03_HOST_QR (hello.flags): секрет на проекторе, поэтому по нажатию,
+// с подписью «не показывай камерам», отсчётом и автоскрытием; любая смена ведущего его закрывает.
+let hqrNode = null, hqrTimer = 0;
+function closeHostQr() {
+  clearInterval(hqrTimer);
+  hqrTimer = 0;
+  if (hqrNode) { hqrNode.remove(); hqrNode = null; }
+}
+function openHostQr() {
+  const url = HL && HL.url();
+  if (!url || !window.QRCode) return setHostNote(T("link_none"));
+  closeHostQr();
+  hqrNode = el("div", "hqr");
+  const box = el("div", "box");
+  const qr = el("div", "qrbox");
+  const left = el("div", "warn");
+  const close = el("button", null, T("qr_close"));
+  close.type = "button";
+  close.onclick = closeHostQr;
+  box.append(el("div", "warn", T("qr_warn")), qr, left, close);
+  hqrNode.append(box);
+  document.body.append(hqrNode);
+  new QRCode(qr, { text: url, width: 240, height: 240, colorDark: "#151412", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+  let s = 60;
+  left.textContent = tpl("qr_left", { s });
+  hqrTimer = setInterval(() => {
+    s--;
+    if (s <= 0) return closeHostQr();
+    left.textContent = tpl("qr_left", { s });
+  }, 1000);
 }
 
 async function boot() {
@@ -1132,12 +1317,20 @@ async function boot() {
   }
   if (!(await ensureRoom())) return;
   const banner = $("conn");
+  let netLost = false, netQuiet = false;
+  const showNet = () => {
+    banner.textContent = T(netLost ? "err_connect" : "conn_lost");
+    banner.classList.toggle("on", netLost || netQuiet);
+  };
+  window.addEventListener("langchange", showNet);
   conn = qpConnect({
     code: CODE,
     onMessage,
     onGone: gone,
     onOpen: () => { isHost = false; },
-    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+    // «lost» — сокет закрыт, переподключаемся; «quiet» — сокет жив, но молчит дольше 10 с (MP.conn): только предупреждение
+    onState: (st) => { netLost = st === "lost"; if (st === "open") netQuiet = false; showNet(); },
+    onQuiet: (q) => { netQuiet = !!q; showNet(); },
   });
   requestAnimationFrame(frame);
   // ручка для отладки и стенда: те же сообщения, что шлют кнопки доски
