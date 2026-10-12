@@ -303,6 +303,17 @@ async function playGame(board, phones, label, silentRound2) {
     for (const ph of ps) if ((await ph.evaluate("window.wvPhone.state.me.myCard")) === false) gs.push(ph);
     check(gs.length === 2, `guess: двое угадывают (${gs.length})`);
     await waitFor(gs[0], "!!document.querySelector('.dial.grab')", 4000);
+    // потерянный тап: «Зафиксировать» ушёл в очередь (вход по токену не подтверждён) и просрочился — об этом сказано словами
+    if (await gs[0].evaluate("window.wvPhone.state.phase === 'guess' && window.wvPhone.state.me.guess == null")) {
+      await wait(4500); // страховочный таймер входа по токену (4 с после onOpen) уже отработал
+      await gs[0].evaluate("conn.gated = true");
+      await click(gs[0], "#lock");
+      await wait(6500);
+      await gs[0].evaluate("flushQueued()");
+      const toastTxt = await gs[0].evaluate("document.getElementById('toast').classList.contains('on') ? document.getElementById('toast').textContent : ''");
+      check(toastTxt === (await gs[0].evaluate("T('lost_tap')")), `guess: просроченный «Зафиксировать» не пропал молча: «${toastTxt}»`);
+      check((await gs[0].evaluate("!document.getElementById('lock') || !document.getElementById('lock').disabled")) === true, "guess: кнопка «Зафиксировать» снова живая");
+    }
     const a1 = await drag(gs[0], 37);
     await wait(400);
     await reloadAndWait(gs[0]);
