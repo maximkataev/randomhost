@@ -54,6 +54,29 @@
   /* «Закончить» — видна на ТВ, поэтому тихая: квадрат ■ с подписью по наведению */
   .endbtn { flex: none; width: var(--lsh, 44px); height: var(--lsh, 44px); border: 3px solid var(--ink); background: transparent; padding: 0; font-size: 16px; display: grid; place-items: center; }
   .endbtn:hover { background: var(--ink); color: var(--paper); }
+  .endbtn.skipbtn { width: auto; min-width: var(--lsh, 44px); min-height: 44px; padding: 0 14px; font-weight: 900; font-size: 17px; white-space: nowrap; border-style: solid; }
+  /* двухтактные команды ведущего (MP.twoTap): взведённая кнопка красная и подписана «Точно …?», через 3 с сама остывает */
+  .endbtn[data-armed], .kickx[data-armed] { background: var(--hot); border-color: var(--hot); color: #fff; width: auto; padding: 0 12px; font-weight: 900; white-space: nowrap; }
+  .endbtn { min-height: 44px; }
+  /* ✕ у игрока: тап-цель не меньше 44 px (раньше 26×27 и только по hover — на ТВ без мыши недостижима) */
+  .kickx { flex: none; min-width: 44px; min-height: 44px; border: 3px solid var(--ink); background: var(--paper); color: var(--ink); font-weight: 1000; font-size: 18px; line-height: 1; padding: 0 8px; }
+  .pc .kickx { margin: -4px -8px -4px 0; }
+  .brow.kickable { grid-template-columns: 2.2em 2.2em minmax(0, 11em) 1fr 4.2em auto; }
+  .brow.off b, .pc.off b { text-decoration: none; }
+  .brow.off { opacity: .55; }
+  small.offn { flex: none; font-size: .5em; font-weight: 800; opacity: .75; white-space: nowrap; }
+  .sn { font-size: .7em; font-weight: 900; white-space: nowrap; margin-left: .3em; }
+  /* «🔑 Ссылка ведущего» — только у ведущего; токен на экране не рисуется (доска видна всем) */
+  .hostbar { display: flex; gap: 8px; align-items: center; min-width: 0; }
+  .hostbar button { border: 3px solid var(--ink); background: var(--paper); font-weight: 900; padding: 0 12px; min-height: 44px; min-width: 44px; font-size: 16px; white-space: nowrap; }
+  .hostbar input { font: 700 16px/1 var(--f); border: 3px solid var(--ink); background: #fff; color: var(--ink); padding: 6px 8px; min-height: 44px; width: 190px; min-width: 0; border-radius: 0; }
+  .hostbar .note { font-size: 14px; font-weight: 800; max-width: 240px; }
+  @media (max-width: 760px) { .hostbar .lt, .hostbar .note { display: none; } }
+  .gonebox { display: grid; gap: 10px; justify-items: center; }
+  .gonebox .t { font-size: 28px; font-weight: 1000; }
+  .gonebox form { display: flex; gap: 8px; }
+  .gonebox input { font: 700 22px/1 var(--f); border: 4px solid var(--ink); background: #fff; color: var(--ink); padding: 8px 10px; min-height: 44px; width: 180px; text-transform: uppercase; border-radius: 0; }
+  .gonebox button { border: 4px solid var(--ink); background: var(--paper); font-weight: 900; padding: 6px 14px; min-height: 44px; font-size: 18px; }
   .banner { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 50; background: var(--ink); color: var(--paper); padding: 8px 14px; font-weight: 800; }
   .conn { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 50; background: var(--ink); color: var(--paper); padding: 6px 12px; font-weight: 800; visibility: hidden; }
   .conn.on { visibility: visible; }
@@ -129,8 +152,8 @@
   .seat { position: relative; display: flex; align-items: center; gap: 14px; min-width: 0; animation: slam .45s var(--press); }
   .seat .av { width: clamp(44px, 7vh, 80px); height: clamp(44px, 7vh, 80px); font-size: clamp(24px, 4vh, 46px); border-width: 4px; }
   .seat b { font-weight: 1000; font-size: clamp(20px, 3.4vh, 40px); line-height: 1.05; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; padding-bottom: .1em; }
-  .seat .x { background: none; border: 0; padding: 2px 6px; font-weight: 900; visibility: hidden; }
-  .host .seat:hover .x, .host .seat:focus-within .x { visibility: visible; }
+  .seat .x { visibility: hidden; margin-left: auto; }
+  .host .seat:hover .x, .host .seat:focus-within .x, .host .seat.off .x { visibility: visible; }
   .seat.off { opacity: .5; }
   .free { display: flex; gap: 6px; align-items: center; font-weight: 900; font-size: clamp(15px, 2vh, 22px); }
   .free i { width: 1.1em; height: 1.1em; border: 3px solid var(--ink); display: inline-block; }
@@ -443,6 +466,8 @@
   <div class="brand"><svg viewBox="0 0 44 18" aria-hidden="true"><path d="M2 9 Q 7.5 1 13 9 T 24 9 T 35 9 T 46 9" fill="none" stroke="#111" stroke-width="4" stroke-linecap="round"/></svg><span id="brand" data-i18n="game_name">На одной волне</span></div>
   <span class="chip hidden" id="codechip"></span>
   <span class="grow"></span>
+  <div class="hostbar" id="hostbar"></div>
+  <button class="endbtn skipbtn hidden" id="skipbtn" type="button"></button>
   <button class="endbtn hidden" id="endbtn" type="button">■</button>
   <button class="sound-toggle-btn" type="button"></button>
 </div>
@@ -466,6 +491,11 @@ window.I18N_DICT = {
     scores_title: `Счёт после раунда {n}`,
     final_title: `Финиш!`, final_few: `Осталось меньше трёх игроков`, final_host: `Ведущий закончил партию`,
     btn_again: `Ещё партия`, btn_lobby: `В лобби`, btn_home: `Главная`,
+    end_label: `■`, end_sure: `Точно закончить?`, btn_skip: `Дальше ▶`, skip_sure: `Точно дальше?`, kick_sure: `Точно убрать?`,
+    host_link: `Ссылка ведущего`, link_copied: `Ссылка скопирована. Не показывай её игрокам`, link_shared: `Ссылка отправлена. Не показывай её игрокам`, link_none: `На этом экране нет ключа ведущего`,
+    link_prompt_hint: `Скопируй ссылку и не показывай её игрокам`,
+    btn_im_host: `Я ведущий`, host_paste_ph: `Вставь ссылку ведущего`, btn_ok: `OK`, host_bad: `Это не ссылка ведущего`, btn_take: `Забрать управление`, host_lost_msg: `Управление перешло к другому экрану`,
+    noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код — в нём слово и две цифры`, btn_go: `Перейти`, code_ph: `Код комнаты`,
   },
   en: {
     _title: `Same Wave — shared screen`,
@@ -480,6 +510,11 @@ window.I18N_DICT = {
     scores_title: `Scores after round {n}`,
     final_title: `Finish!`, final_few: `Fewer than three players left`, final_host: `The host ended the game`,
     btn_again: `Play again`, btn_lobby: `To lobby`, btn_home: `Home`,
+    end_label: `■`, end_sure: `Really end?`, btn_skip: `Next ▶`, skip_sure: `Skip for real?`, kick_sure: `Really remove?`,
+    host_link: `Host link`, link_copied: `Link copied. Don't show it to players`, link_shared: `Link sent. Don't show it to players`, link_none: `This screen has no host key`,
+    link_prompt_hint: `Copy the link and keep it from the players`,
+    btn_im_host: `I'm the host`, host_paste_ph: `Paste the host link`, btn_ok: `OK`, host_bad: `That is not a host link`, btn_take: `Take control`, host_lost_msg: `Another screen took control`,
+    noroom_title: `There is no such room`, noroom_text: `Check the code: a word and two digits`, btn_go: `Go`, code_ph: `Room code`,
   },
   el: {
     _title: `Στο ίδιο κύμα — κοινή οθόνη`,
@@ -494,6 +529,11 @@ window.I18N_DICT = {
     scores_title: `Σκορ μετά τον γύρο {n}`,
     final_title: `Τέλος!`, final_few: `Έμειναν λιγότεροι από τρεις`, final_host: `Ο οικοδεσπότης τερμάτισε`,
     btn_again: `Νέα παρτίδα`, btn_lobby: `Στο λόμπι`, btn_home: `Αρχική`,
+    end_label: `■`, end_sure: `Σίγουρα τέλος;`, btn_skip: `Επόμενο ▶`, skip_sure: `Σίγουρα επόμενο;`, kick_sure: `Σίγουρα αφαίρεση;`, //EL:unverified
+    host_link: `Σύνδεσμος οικοδεσπότη`, link_copied: `Ο σύνδεσμος αντιγράφηκε. Μην τον δείχνεις στους παίκτες`, link_shared: `Ο σύνδεσμος στάλθηκε. Μην τον δείχνεις στους παίκτες`, link_none: `Αυτή η οθόνη δεν έχει κλειδί οικοδεσπότη`,
+    link_prompt_hint: `Αντίγραψε τον σύνδεσμο και μην τον δείχνεις στους παίκτες`,
+    btn_im_host: `Είμαι ο οικοδεσπότης`, host_paste_ph: `Επικόλλησε τον σύνδεσμο οικοδεσπότη`, btn_ok: `OK`, host_bad: `Αυτός δεν είναι σύνδεσμος οικοδεσπότη`, btn_take: `Πάρε τον έλεγχο`, host_lost_msg: `Τον έλεγχο πήρε άλλη οθόνη`,
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό: μια λέξη και δύο ψηφία`, btn_go: `Πήγαινε`, code_ph: `Κωδικός δωματίου`,
   },
 };
 </script>
@@ -525,6 +565,43 @@ const roundKey = () => state.game + ":" + state.ri;
 const cardKey = () => roundKey() + ":" + (state.card ? state.card.n : 0);
 const avHtml = (p) => `<i class="av" style="--pc:${p.color}">${escapeHtml(p.avatar)}</i>`;
 const cardColor = (ri, n) => wvColor(ri * 5 + n);
+
+// ---------- команды ведущего: двухтактные (MP.twoTap, U-12) ----------
+// Первый тап взводит на 3 с, второй выполняет. Если mp-common.js не загрузился или выключен — один тап, как раньше.
+let hostTap = null;
+function makeHostTap() {
+  const mk = window.MP && MP.twoTap && MP.twoTap.create ? MP.twoTap.create : null;
+  return (mk || (() => ({ tap: () => true, armed: () => null, isArmed: () => false, disarm() {} })))({ armedMs: 3000, onChange: () => syncHostBtns() });
+}
+hostTap = makeHostTap();
+// ✕ у игрока без связи (всегда виден, ≥ 44 px) и у онлайн-игрока в лобби (по hover); в игре — только у офлайн
+function kickBtnHtml(p, cls) {
+  if (!isHost || p.left) return "";
+  const on = hostTap.isArmed("kick:" + p.id);
+  return `<button class="kickx${cls ? " " + cls : ""}" type="button" data-kick="${escapeHtml(p.id)}"${on ? ` data-armed="1"` : ""} title="${escapeHtml(T("kick"))}" aria-label="${escapeHtml(T("kick"))}">${on ? escapeHtml(T("kick_sure")) : "✕"}</button>`;
+}
+function syncHostBtns() {
+  const set = (id, key, label, sure) => {
+    const b = $(id);
+    if (!b) return;
+    const on = hostTap.isArmed(key);
+    b.textContent = on ? T(sure) : T(label);
+    if (on) b.setAttribute("data-armed", "1"); else b.removeAttribute("data-armed");
+  };
+  set("endbtn", "end", "end_label", "end_sure");
+  set("skipbtn", "skip", "btn_skip", "skip_sure");
+  for (const b of main.querySelectorAll("[data-kick]")) {
+    const on = hostTap.isArmed("kick:" + b.dataset.kick);
+    b.textContent = on ? T("kick_sure") : "✕";
+    if (on) b.setAttribute("data-armed", "1"); else b.removeAttribute("data-armed");
+  }
+}
+// игроки без связи, которых нет среди показанных (в «N из M» они не входят), — отдельными серыми плитками с ✕
+function ghostChipsHtml(shownIds) {
+  const shown = new Set(shownIds);
+  return present().filter((p) => p.online === false && !shown.has(p.id)).map((p) => `<span class="pc off" data-ghost="${escapeHtml(p.id)}">${avHtml(p)}<b>${escapeHtml(p.name)}</b><small class="offn">${escapeHtml(T("off_note"))}</small>${kickBtnHtml(p)}</span>`).join("");
+}
+const snail = (p) => (p.skipped ? `<span class="sn" title="${escapeHtml(tpl("snail_t", { n: p.skipped }))}">🐌${p.skipped}</span>` : "");
 
 // ---------- создание комнаты, если доску открыли без кода ----------
 async function ensureRoom() {
@@ -704,8 +781,7 @@ function drawLobby() {
   }
   $("pn").textContent = ps.length + " / 12";
   const seats = $("seats");
-  seats.innerHTML = ps.map((p) => `<div class="seat${p.online ? "" : " off"}">${avHtml(p)}<b>${escapeHtml(p.name)}</b>${isHost ? `<button class="x" type="button" data-kick="${escapeHtml(p.id)}" aria-label="${escapeHtml(T("kick"))}">✕</button>` : ""}</div>`).join("");
-  seats.querySelectorAll("[data-kick]").forEach((b) => (b.onclick = () => conn.send({ type: "kick", playerId: b.dataset.kick })));
+  seats.innerHTML = ps.map((p) => `<div class="seat${p.online ? "" : " off"}">${avHtml(p)}<b>${escapeHtml(p.name)}</b>${p.online ? "" : `<small class="offn">${escapeHtml(T("off_note"))}</small>`}${kickBtnHtml(p, "x")}</div>`).join("");
   const free = 12 - ps.length;
   $("free").innerHTML = free ? `${"<i></i>".repeat(Math.min(free, 12))}<span>${escapeHtml(tpl("lobby_free", { n: free }))}</span>` : "";
   $("tshort").setAttribute("aria-pressed", String(!!state.settings.short));
@@ -759,7 +835,7 @@ function drawClues() {
   }
   const done = new Set(state.clued);
   $("cn").innerHTML = `<small>${T("written")}</small>${state.clued.length}/${state.roster.length}`;
-  $("chips").innerHTML = state.roster.map((id) => { const p = player(id); return p ? `<span class="pc${done.has(id) ? " on" : ""}${p.online ? "" : " off"}">${avHtml(p)}<b>${escapeHtml(p.name)}</b></span>` : ""; }).join("");
+  $("chips").innerHTML = state.roster.map((id) => { const p = player(id); return p ? `<span class="pc${done.has(id) ? " on" : ""}${p.online ? "" : " off"}">${avHtml(p)}<b>${escapeHtml(p.name)}</b></span>` : ""; }).join("") + ghostChipsHtml(state.roster);
 }
 
 // ---------- угадывание: шкала под ширмой ----------
@@ -778,7 +854,9 @@ function drawGuess() {
   const chips = state.guessers.map((id) => { const p = player(id); return p ? `<span class="pc${locked.has(id) ? " on" : ""}" data-id="${escapeHtml(id)}">${avHtml(p)}<b>${escapeHtml(p.name)}</b></span>` : ""; });
   if (a) chips.unshift(`<span class="pc author">${avHtml(a)}<b>${escapeHtml(a.name)}</b></span>`);
   // перерисовываем только если поменялся состав — иначе «слэм» замка проигрывался бы у всех заново
-  const sig = state.guessers.join(",") + "|" + state.locked.join(",");
+  const gh = ghostChipsHtml(state.guessers.concat([card.author]));
+  chips.push(gh);
+  const sig = state.guessers.join(",") + "|" + state.locked.join(",") + "|" + present().filter((p) => p.online === false).map((p) => p.id).join(",") + "|" + isHost;
   const box = $("chips");
   if (box.dataset.sig !== sig) {
     const before = new Set((box.dataset.sig || "").split("|")[1]?.split(",").filter(Boolean) || []);
@@ -855,7 +933,8 @@ function drawScores() {
   main.innerHTML = `<div class="screen"><h1 class="shout" style="font-size:clamp(40px,8vh,110px)">${escapeHtml(tpl("scores_title", { n: state.ri + 1 }))}</h1>
     <div class="board" style="--next:${next}">${list.map((p, i) => {
       const old = Math.min(was[p.id] || 0, p.score), g = p.score - old;
-      return `<div class="brow"><span class="n">${wvRank(list, p)}</span>${avHtml(p)}<b>${escapeHtml(p.name)}</b><div class="bar"><div class="old" style="--o:${(old / max) * 100}%"></div><div class="add${g > 0 ? "" : " empty"}" style="--g:${(g / max) * 100}%">${g > 0 ? "+" + g : ""}</div></div><span class="s" data-to="${p.score}" data-from="${old}">${old}</span></div>`;
+      const kb = isHost && p.online === false ? kickBtnHtml(p) : "";
+      return `<div class="brow${p.online === false ? " off" : ""}${kb ? " kickable" : ""}"><span class="n">${wvRank(list, p)}</span>${avHtml(p)}<b>${escapeHtml(p.name)}${snail(p)}</b><div class="bar"><div class="old" style="--o:${(old / max) * 100}%"></div><div class="add${g > 0 ? "" : " empty"}" style="--g:${(g / max) * 100}%">${g > 0 ? "+" + g : ""}</div></div><span class="s" data-to="${p.score}" data-from="${old}">${old}</span>${kb}</div>`;
     }).join("")}</div></div>`;
   fitShout(main.querySelector(".screen > h1"));
   prevScores.by = Object.fromEntries(list.map((p) => [p.id, p.score]));
@@ -877,7 +956,10 @@ function drawFinal() {
   const key = "final:" + state.game + wvLang() + isHost;
   if (viewKey === key) return;
   viewKey = key;
-  const list = present().slice().sort((a, b) => b.score - a.score);
+  // вошедший после финала (played === false) в итогах не участвует; не играл никто — таблица по всем
+  let pl = present().filter((p) => p.played !== false);
+  if (!pl.length) pl = present();
+  const list = pl.slice().sort((a, b) => b.score - a.score);
   const top = [list[1], list[0], list[2]];
   const heights = ["max(15vh, calc(var(--pod) * .75))", "max(18vh, var(--pod))", "max(13vh, calc(var(--pod) * .54))"];
   const places = top.map((p) => (p ? wvRank(list, p) : 0));
@@ -904,7 +986,7 @@ function drawFinal() {
   }
   const sub = state.finishedReason === "few" ? T("final_few") : state.finishedReason === "host" ? T("final_host") : "";
   main.innerHTML = `<div class="screen"><h1 class="shout" style="font-size:clamp(44px,9vh,120px)">${T("final_title")}</h1>${sub ? `<div class="fine">${escapeHtml(sub)}</div>` : ""}
-    <div class="final"><div class="podium">${top.map((p, i) => p ? `<div class="step"><div class="who">${avHtml(p)}${escapeHtml(p.name)}</div><div class="col" style="height:${heights[i]};animation-delay:${[0.5, 1, 0][i]}s">${places[i]}<small>${p.score}</small></div></div>` : `<div class="step"></div>`).join("")}</div>
+    <div class="final"><div class="podium">${top.map((p, i) => p ? `<div class="step"><div class="who">${avHtml(p)}${escapeHtml(p.name)}${snail(p)}</div><div class="col" style="height:${heights[i]};animation-delay:${[0.5, 1, 0][i]}s">${places[i]}<small>${p.score}</small></div></div>` : `<div class="step"></div>`).join("")}</div>
     <div class="awards">${rows.join("")}${replay}<div class="hostbtns">${isHost ? `<button class="start" id="again" type="button">${T("btn_again")}</button><button class="ghostbtn" id="tolobby" type="button">${T("btn_lobby")}</button>` : ""}<a class="ghostbtn" href="index.html">${T("btn_home")}</a></div></div></div></div>`;
   fitShout(main.querySelector(".screen > h1"));
   // на низком экране шкала повтора схлопывается в ноль, а полюса вылезают из рамки — оставляем одну строку с подсказкой
@@ -932,6 +1014,13 @@ function render() {
   $("endbtn").classList.toggle("hidden", !(isHost && inGame));
   $("endbtn").title = T("btn_end");
   $("endbtn").setAttribute("aria-label", T("btn_end"));
+  // «Дальше» — когда фазу есть что закрывать (в заставке и лобби нет)
+  const canSkip = isHost && ["clue", "guess", "reveal", "scores"].includes(state.phase);
+  $("skipbtn").classList.toggle("hidden", !canSkip);
+  $("skipbtn").title = T("btn_skip");
+  if (!canSkip || !inGame) hostTap.disarm();
+  syncHostBtns();
+  drawHostbar();
   if (state.phase !== "lobby") clearTimeout(demoTimer);
   switch (state.phase) {
     case "lobby": drawLobby(); break;
@@ -944,7 +1033,13 @@ function render() {
   }
   fixDials();
 }
-$("endbtn").onclick = () => { if (confirm(T("btn_end") + "?")) conn.send({ type: "end" }); };
+// «■» и «Дальше» — двухтактные: случайный тап по ТВ-пульту не обрывает партию и не пролистывает шкалу
+$("endbtn").onclick = () => { if (hostTap.tap("end")) conn.send({ type: "end" }); };
+$("skipbtn").onclick = () => { if (hostTap.tap("skip")) conn.send({ type: "skip" }); };
+main.addEventListener("click", (e) => {
+  const b = e.target && e.target.closest ? e.target.closest("[data-kick]") : null;
+  if (b && isHost && hostTap.tap("kick:" + b.dataset.kick)) conn.send({ type: "kick", playerId: b.dataset.kick });
+});
 
 // таймер, секунды, тиканье, волна
 let lastTickSec = null, lastFrame = performance.now();
@@ -1001,11 +1096,87 @@ function floatReact(playerId, emoji) {
   setTimeout(() => f.remove(), 2700);
 }
 
+// ---------- «🔑 Ссылка ведущего» (MP.hostLink, U-03 вариант A) ----------
+// Ключ ведущего живёт только в localStorage этого экрана: закрыл вкладку — пропал управляющий. Кнопка копирует
+// ссылку …?r=КОД&h=ТОКЕН в буфер (токен на экране не рисуется: доска видна всем); «Я ведущий» принимает такую ссылку.
+let hostNote = "", hostNoteT = 0, pasteOpen = false, hostLost = false, hostBarKey = "";
+const HL = window.MP && MP.hostLink ? MP.hostLink({
+  hostKeyFn: hostKey,
+  boardPath: "wave-board.html",
+  getRoom: () => CODE,
+  sendHost: (t) => { if (conn) conn.send({ type: "host", token: t }); },
+  onToast: (kind) => {
+    if (kind === "copied") setHostNote(T("link_copied"));
+    else if (kind === "shared") setHostNote(T("link_shared"));
+    else if (kind === "none") setHostNote(T("link_none"));
+  },
+  prompt: (m, v) => window.prompt(T("link_prompt_hint"), v),
+}) : null;
+function setHostNote(text) {
+  hostNote = text;
+  clearTimeout(hostNoteT);
+  if (text) hostNoteT = setTimeout(() => { hostNote = ""; drawHostbar(); }, 5000);
+  drawHostbar();
+}
+function hasHostToken() {
+  try { return !!localStorage.getItem(hostKey()); } catch (e) { return false; }
+}
+function drawHostbar() {
+  const bar = $("hostbar");
+  if (dead || !state || !HL) { bar.innerHTML = ""; hostBarKey = ""; return; }
+  const claim = !isHost && (hostLost || !hasHostToken());
+  const key = [isHost, hostLost, claim, pasteOpen, hostNote, wvLang()].join("|");
+  if (key === hostBarKey) return;
+  hostBarKey = key;
+  bar.innerHTML = "";
+  if (isHost) {
+    const lb = el("button", "linkbtn");
+    lb.type = "button";
+    lb.title = T("host_link");
+    lb.setAttribute("aria-label", T("host_link"));
+    lb.append("🔑", el("span", "lt", " " + T("host_link")));
+    lb.onclick = () => { HL.copy(); };
+    bar.append(lb);
+  }
+  if (claim && hostLost && hasHostToken()) {
+    const note = el("span", "note", T("host_lost_msg"));
+    const tk = el("button", "linkbtn", T("btn_take"));
+    tk.type = "button";
+    tk.onclick = () => { HL.take(); };
+    bar.append(note, tk);
+  } else if (claim) {
+    if (pasteOpen) {
+      const inp = el("input");
+      inp.type = "text";
+      inp.placeholder = T("host_paste_ph");
+      inp.autocomplete = "off";
+      const ok = el("button", "linkbtn", T("btn_ok"));
+      ok.type = "button";
+      const submit = () => {
+        if (!MP.hostLink.parseToken(inp.value)) { setHostNote(T("host_bad")); return; }
+        HL.take(Date.now(), inp.value);
+        pasteOpen = false;
+      };
+      ok.onclick = submit;
+      inp.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+      bar.append(inp, ok);
+      setTimeout(() => inp.focus(), 0);
+    } else {
+      const im = el("button", "linkbtn", T("btn_im_host"));
+      im.type = "button";
+      im.onclick = () => { pasteOpen = true; drawHostbar(); };
+      bar.append(im);
+    }
+  }
+  if (hostNote) bar.append(el("span", "note", hostNote));
+}
+
 // ---------- связь ----------
 function onMessage(m) {
   switch (m.type) {
     case "hello":
       state = m.state;
+      if (gone$) gone$.hello();
       if (!isHost) {
         let token = null;
         try { token = localStorage.getItem(hostKey()); } catch (e) {}
@@ -1019,6 +1190,8 @@ function onMessage(m) {
       break;
     case "host_ok":
       isHost = true;
+      hostLost = false;
+      pasteOpen = false;
       document.body.classList.add("host");
       viewKey = "";
       if (state && state.phase === "lobby" && state.settings.lang !== wvLang()) conn.send({ type: "settings", settings: { lang: wvLang() } });
@@ -1026,6 +1199,7 @@ function onMessage(m) {
       break;
     case "host_lost":
       isHost = false;
+      hostLost = true;
       document.body.classList.remove("host");
       viewKey = "";
       render();
@@ -1039,14 +1213,43 @@ function onMessage(m) {
     }
     case "error":
       if (m.error === "room_expired") gone();
+      if (m.error === "bad host token") {
+        hostLost = false;
+        try { localStorage.removeItem(hostKey()); } catch (e) {}
+        pasteOpen = true;
+        setHostNote(T("host_bad"));
+      }
       break;
   }
 }
 
+// Комнаты нет (404 до первого hello) и «закрылась» (после) — разные экраны. Серверного различителя нет:
+// опечатка в коде и комната, убранная по сроку, до hello выглядят одинаково (К-11).
+const gone$ = window.MP && MP.roomGone ? MP.roomGone({ showForm: noRoom, onClosed: closed }) : null;
 function gone() {
+  if (gone$) gone$.gone(); else closed();
+}
+function endScreen() {
   dead = true;
   main.innerHTML = "";
+  $("hostbar").innerHTML = "";
+  for (const id of ["endbtn", "skipbtn"]) $(id).classList.add("hidden");
+}
+function closed() {
+  endScreen();
   showBanner(T("expired"));
+}
+function noRoom() {
+  endScreen();
+  const b = $("banner");
+  b.classList.remove("hidden");
+  b.innerHTML = `<div class="gonebox"><div class="t">${escapeHtml(T("noroom_title"))}</div><div>${escapeHtml(T("noroom_text"))}</div>
+    <form id="goneform" autocomplete="off"><input id="gonecode" maxlength="24" placeholder="${escapeHtml(T("code_ph"))}" aria-label="${escapeHtml(T("code_ph"))}" value="${escapeHtml(CODE)}"><button type="submit">${escapeHtml(T("btn_go"))}</button></form></div>`;
+  $("goneform").onsubmit = (e) => {
+    e.preventDefault();
+    const c = MP.roomGone.normalize($("gonecode").value);
+    if (c) location.href = `wave-board.html?r=${encodeURIComponent(c)}`;
+  };
 }
 
 async function boot() {
@@ -1059,12 +1262,20 @@ async function boot() {
   paint(WV_HOME);
   if (!(await ensureRoom())) return;
   const banner = $("conn");
+  let netLost = false, netQuiet = false;
+  const showNet = () => {
+    banner.textContent = T(netLost ? "err_connect" : "conn_lost");
+    banner.classList.toggle("on", netLost || netQuiet);
+  };
+  window.addEventListener("langchange", showNet);
   conn = wvConnect({
     code: CODE,
     onMessage,
     onGone: gone,
     onOpen: () => { isHost = false; },
-    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+    // «lost» — сокет закрыт, переподключаемся; «quiet» — сокет жив, но молчит дольше 10 с (MP.conn): только предупреждение
+    onState: (st) => { netLost = st === "lost"; if (st === "open") netQuiet = false; showNet(); },
+    onQuiet: (q) => { netQuiet = !!q; showNet(); },
   });
   requestAnimationFrame(frame);
   // ручка для отладки и стенда: те же сообщения, что шлют кнопки доски

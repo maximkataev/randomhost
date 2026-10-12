@@ -13,6 +13,7 @@
  */
 
 const { normalize } = require("./normalize");
+const presence = require("../lib/presence");
 
 const ROUNDS = [{ mult: 1 }, { mult: 2 }];
 
@@ -54,6 +55,7 @@ const WAVE_BONUS = 200; // «На одной волне!» — все угада
 const WAVE_MIN = 300;
 const REVEAL_STEP = 450;
 const REACT_GAP = 2000;
+const SKIP_MIN_MS = 800; // «Дальше» не раньше чем через столько от старта фазы
 const REACTIONS = ["😂", "😱", "🤯", "👏", "🙈"];
 
 // цвета игроков — заметны на любой заливке фона и на белой шкале; чёрного нет: он сливается с центром сектора и стрелкой
@@ -155,6 +157,7 @@ class Game {
     this.s = state;
     this.rnd = rnd;
     this.content = content || {};
+    this.ghostOut = false; // RULE_U08_GHOST_OUT: старт без тех, кто сейчас офлайн (выставляет сервер из env)
   }
 
   static create({ settings, code = "", rnd, content } = {}) {
@@ -198,7 +201,13 @@ class Game {
     const s = this.s;
     const have = this.player(id);
     if (have) return { ok: true, player: have };
-    if (this.present().length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
+    if (this.present().length >= MAX_PLAYERS) {
+      // в лобби и итогах место, давно оставленное офлайн-игроком, уступаем новому (U-07); в игре — никогда
+      const stage = s.phase === "lobby" ? "lobby" : s.phase === "finished" ? "finished" : null;
+      const victim = stage && Number.isFinite(now) ? presence.evictOldestGhost(this.present(), { now, stage }) : null;
+      if (!victim) return { ok: false, reason: "room_full" };
+      this.removePlayer(victim, now);
+    }
     name = cleanName(name);
     if (!name) return { ok: false, reason: "bad_name" };
     const used = new Set(this.present().map((p) => p.color));
@@ -214,6 +223,7 @@ class Game {
       stats: this.freshStats(),
       lastReact: null,
       joinedAt: now,
+      played: 0, // в скольких раундах получил свою карточку: вошедший после финала (0) в итогах не участвует
     };
     // ушедшие посреди партии копятся в списке (их очки нужны итогам); но не бесконечно — иначе пара join/leave в цикле раздувает каждый снимок
     if (s.players.length >= MAX_PLAYERS * 3) return { ok: false, reason: "room_full" };
@@ -245,8 +255,20 @@ class Game {
 
   setOnline(id, online, now) {
     const p = this.player(id);
-    if (p) p.online = online;
+    if (p) presence.setOnline(p, online, now); // offSince — для GHOST_TTL_MS и очистки перед новой партией
     return online ? [] : this.maybeAdvance(now);
+  }
+
+  // Офлайн-места, у которых вышел GHOST_TTL_MS (U-07): в лобби уходят, в итогах — только без участия и очков;
+  // в игре не освобождаются никогда. Зовёт сервер из своего sweep.
+  purgeGhosts(now, ttlMs) {
+    const s = this.s;
+    const stage = s.phase === "lobby" ? "lobby" : s.phase === "finished" ? "finished" : null;
+    if (!stage) return [];
+    const ids = presence.ghostsToDrop({ players: this.present(), now, stage, ttlMs, earnedKeys: ["score"] });
+    let ev = [];
+    for (const id of ids) ev = ev.concat(this.removePlayer(id, now));
+    return ev;
   }
 
   // ---------- банк ----------
@@ -275,7 +297,11 @@ class Game {
   start(now) {
     const s = this.s;
     if (s.phase !== "lobby" && s.phase !== "finished") return { ok: false, reason: "started" };
-    const ps = this.present();
+    // «Ещё партию»/«Поехали»: оставшиеся без связи дольше грации в новую партию не переходят (U-07, wave-026);
+    // при RULE_U08_GHOST_OUT=1 — вообще любой, кто сейчас не на связи (U-08, класс B, по умолчанию выкл.)
+    presence.pruneOfflineForNewGame(this.present(), { now });
+    let ps = this.present();
+    if (this.ghostOut) ps = ps.filter((p) => p.online !== false);
     if (ps.length < MIN_PLAYERS) return { ok: false, reason: "few_players" };
     if (this.bank().length < 2) return { ok: false, reason: "no_content" };
     s.game++;
@@ -284,7 +310,7 @@ class Game {
     s.worstMiss = null;
     s.finishedReason = null;
     s.players = ps; // ушедшие в прошлой партии больше не нужны
-    for (const p of ps) { p.score = 0; p.stats = this.freshStats(); }
+    for (const p of ps) { p.score = 0; p.stats = this.freshStats(); p.played = 0; }
     return { ok: true, events: [{ type: "started", game: s.game }, ...this.nextRound(now)] };
   }
 
@@ -323,6 +349,7 @@ class Game {
     const scales = this.takeScales(ps.length * OPTIONS);
     s.cards = {};
     ps.forEach((p, i) => {
+      p.played = (p.played || 0) + 1;
       const options = scales.slice(i * OPTIONS, (i + 1) * OPTIONS);
       while (options.length < 2) options.push(scales[options.length % scales.length]);
       s.cards[p.id] = { options, pick: null, rerolls: 0, target: TARGET_MIN + this.rnd(TARGET_MAX - TARGET_MIN + 1), clue: null, at: null };
@@ -572,6 +599,17 @@ class Game {
     return ev.concat([{ type: "lobby" }]);
   }
 
+  // «Дальше» ведущего (T-W2-23, wave-025): фаза закрывается как по таймеру — тот же путь tick, без бонусов.
+  // В clue не написавшие получают 🐌, в guess раскрытие идёт по зафиксировавшим. Не раньше SKIP_MIN_MS от старта фазы:
+  // двойной тап не пролистает две шкалы.
+  skip(now) {
+    const s = this.s;
+    if (!["clue", "guess", "reveal", "scores"].includes(s.phase) || s.phaseEnd == null) return { ok: false, reason: "bad_phase", events: [] };
+    if (now - s.phaseStart < SKIP_MIN_MS) return { ok: false, reason: "too_early", events: [] };
+    s.phaseEnd = now;
+    return { ok: true, events: this.tick(now) };
+  }
+
   abort(now) {
     const s = this.s;
     if (s.phase === "lobby" || s.phase === "finished") return [];
@@ -638,6 +676,9 @@ class Game {
         gain: revealed ? (authorId === me.id ? s.result.authorPts : s.result.pts[me.id] ?? null) : null,
       };
     }
+    // кто на связи (или уже ответил) — знаменатель «N из M»; ушедшие насовсем в счётчики не входят
+    const roster = s.phase === "clue" ? Object.keys(s.cards).filter((id) => { const p = this.player(id); return !!p && !p.left && (p.online !== false || !!s.cards[id].clue); }) : null;
+    const guessIds = new Set(s.phase === "guess" ? this.guessers().filter((p) => p.online !== false || s.guesses[p.id] != null).map((p) => p.id) : []);
     return {
       phase: s.phase,
       serverNow: now,
@@ -649,11 +690,12 @@ class Game {
       mult: s.ri >= 0 ? this.mult() : 1,
       phaseStart: s.phaseStart,
       phaseEnd: s.phaseEnd,
-      clued: s.phase === "clue" ? Object.keys(s.cards).filter((id) => s.cards[id].clue) : null,
-      roster: s.phase === "clue" ? Object.keys(s.cards) : null,
+      // «N из M» считаем по тем, кто на связи, плюс уже ответившие: призрак знаменатель не раздувает (U-08, wave-019/020)
+      clued: roster ? roster.filter((id) => !!s.cards[id].clue) : null,
+      roster,
       card,
-      locked: s.phase === "guess" ? Object.keys(s.guesses) : null,
-      guessers: s.phase === "guess" ? this.guessers().filter((p) => p.online).map((p) => p.id) : null,
+      locked: s.phase === "guess" ? Object.keys(s.guesses).filter((id) => guessIds.has(id)) : null,
+      guessers: s.phase === "guess" ? Array.from(guessIds) : null,
       history: s.phase === "finished" ? s.history : null,
       awards: s.phase === "finished" ? s.awards || null : null,
       finishedReason: s.phase === "finished" ? s.finishedReason : null,
@@ -670,6 +712,9 @@ class Game {
         online: p.online,
         left: p.left,
         score: p.score,
+        skipped: p.stats ? p.stats.skipped || 0 : 0, // 🐌: сколько раз не успел с подсказкой (спека §3)
+        // вошедший после финала (ни одной карточки) — не участник итогов; снимок прошлой версии без поля — участник
+        ...(s.phase === "finished" ? { played: p.played === undefined ? true : p.played > 0 || p.score > 0 } : {}),
       })),
     };
   }

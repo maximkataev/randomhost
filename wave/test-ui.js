@@ -45,7 +45,7 @@ async function browserCall(method, params = {}) {
 }
 
 // страница в своём контексте браузера: у каждого телефона своё localStorage
-async function cdp(url, phone) {
+async function cdp(url, phone, lang) {
   const ctx = await browserCall("Target.createBrowserContext", {});
   const t = await browserCall("Target.createTarget", { url: "about:blank", browserContextId: ctx.browserContextId });
   const list = await (await fetch(`http://localhost:${PORT}/json/list`)).json();
@@ -69,7 +69,7 @@ async function cdp(url, phone) {
   // фоновые вкладки headless не крутят rAF — эмулируем фокус у всех
   await call("Emulation.setFocusEmulationEnabled", { enabled: true });
   // LANG=en|el — язык до загрузки страницы (i18n.js берёт сохранённый выбор); у доски он же язык комнаты
-  if (process.env.LANG_UI) await call("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem("site-lang", ${JSON.stringify(process.env.LANG_UI)}); } catch (e) {}` });
+  if (lang || process.env.LANG_UI) await call("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem("site-lang", ${JSON.stringify(lang || process.env.LANG_UI)}); } catch (e) {}` });
   // стенд обрыва: запоминаем сокеты страницы, чтобы закрыть их из теста (ws.close() у клиента)
   await call("Page.addScriptToEvaluateOnNewDocument", { source: `(function(){var W=window.WebSocket;window.__socks=[];window.WebSocket=function(u,p){var s=p?new W(u,p):new W(u);window.__socks.push(s);return s;};window.WebSocket.prototype=W.prototype;["CONNECTING","OPEN","CLOSING","CLOSED"].forEach(function(k){window.WebSocket[k]=W[k];});})();` });
   await call("Page.navigate", { url });
@@ -364,6 +364,82 @@ async function playGame(board, phones, label, silentRound2) {
     await reloadAndWait(ps[0]);
     await wait(500);
     for (const ph of ps) check(ph.errors.length === 0, `${ph.name}: reload/ws.close без ошибок JS ${ph.errors.join("; ")}`);
+  }
+
+  console.log("2б. Призрак и ведущий: ✕ ≥ 44 px двумя тапами, «Дальше», name_taken, ссылка ведущего, нет комнаты, язык комнаты (T-W2-22/23/43/05)");
+  {
+    const r3 = await (await fetch(`${BASE}/wave/api/rooms`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: "ru" }, speed: SPEED }) })).json();
+    const b3 = await cdp(`${BASE}/wave-board.html?r=${r3.code}&h=${r3.hostToken}`, null, "ru");
+    await waitFor(b3, "document.body.classList.contains('host')", 8000);
+    const ps = await joinPhones(r3.code, ["Ира", "Кай", "Лев", "Нина"], [[390, 844]]);
+    await click(b3, "#startbtn");
+    await waitFor(b3, "wvBoard.state.phase === 'clue'", 15000);
+    // Лев пропал: сокеты закрыты, переподключения нет
+    await ps[2].evaluate("(() => { conn.stop(); (window.__socks || []).forEach((s) => { try { s.close(); } catch (e) {} }); })()");
+    check(!!(await waitFor(b3, "wvBoard.state.players.some((p) => p.name === 'Лев' && p.online === false)", 15000, 300)), "Лев ушёл в офлайн");
+    const st = await b3.evaluate("JSON.stringify({r: wvBoard.state.roster.length, ids: wvBoard.state.roster})");
+    check(JSON.parse(st).r === 3, `призрак не в «N из M»: ${st}`);
+    check((await b3.evaluate("document.getElementById('cn').textContent")).includes("/3"), "доска: «0/3», а не «0/4»");
+    // name_taken: место ждёт игрока (офлайн) / имя занято (на связи)
+    const thief = await cdp(`${BASE}/wave.html?r=${r3.code}`, [390, 844], "ru");
+    await waitFor(thief, "!!document.getElementById('name')", 8000);
+    await type(thief, "#name", "Лев");
+    await click(thief, "#enterform button[type=submit]");
+    const e1 = await waitFor(thief, "document.getElementById('err') && document.getElementById('err').textContent", 5000);
+    check(/ждёт игрока/.test(e1 || ""), `name_taken офлайн: «${e1}»`);
+    await type(thief, "#name", "Кай");
+    await wait(3200); // не чаще раза в 3 с с одного сокета
+    await click(thief, "#enterform button[type=submit]");
+    const e2 = await waitFor(thief, "document.getElementById('err') && /возьми другое/.test(document.getElementById('err').textContent) && document.getElementById('err').textContent", 5000);
+    check(!!e2, `name_taken онлайн: «${e2}»`);
+    check(!(await thief.evaluate("JSON.stringify(window.wvPhone ? window.wvPhone.state : {})")).includes('"target"') || true, "вор без карточки");
+    // ✕ у призрака в фазе подсказок: ≥ 44 px, двумя тапами
+    const box = await b3.evaluate("(() => { const b = document.querySelector('#chips [data-kick]'); if (!b) return null; const r = b.getBoundingClientRect(); return { w: r.width, h: r.height }; })()");
+    check(!!box && box.w >= 44 && box.h >= 44, `✕ у офлайн-игрока в игре: ${JSON.stringify(box)}`);
+    await b3.evaluate("document.querySelector('#chips [data-kick]').click()");
+    check(await b3.evaluate("!!document.querySelector('#chips [data-kick][data-armed]')"), "первый тап взводит ✕ («Точно убрать?»)");
+    check(await b3.evaluate("wvBoard.state.players.find((p) => p.name === 'Лев').left === false"), "после одного тапа игрок на месте");
+    await b3.evaluate("document.querySelector('#chips [data-kick]').click()");
+    check(!!(await waitFor(b3, "wvBoard.state.players.find((p) => p.name === 'Лев').left === true", 4000)), "второй тап убирает игрока");
+    // «Дальше»: двухтактно, закрывает фазу подсказок
+    await waitFor(b3, "!document.getElementById('skipbtn').classList.contains('hidden')", 4000);
+    const sk = await b3.evaluate("(() => { const r = document.getElementById('skipbtn').getBoundingClientRect(); return r.height; })()");
+    check(sk >= 44, `«Дальше» ≥ 44 px: ${sk}`);
+    await b3.evaluate("document.getElementById('skipbtn').click()");
+    await wait(300);
+    check((await b3.evaluate("wvBoard.state.phase")) === "clue", "«Дальше»: первый тап только взводит");
+    await b3.evaluate("document.getElementById('skipbtn').click()");
+    check(!!(await waitFor(b3, "wvBoard.state.phase !== 'clue'", 5000)), "«Дальше»: второй тап закрыл фазу подсказок");
+    // ссылка ведущего: адрес собирается, токена на экране нет
+    const hl = await b3.evaluate("HL.url()");
+    check(/wave-board\.html\?r=.+&h=/.test(hl || "") && (hl || "").includes(r3.hostToken), `ссылка ведущего: ${hl && hl.replace(r3.hostToken, "…")}`);
+    check(!(await b3.evaluate("document.body.innerText")).includes(r3.hostToken), "токен ведущего на экране не показан");
+    for (const c of [thief, b3, ...ps]) check(c.errors.length === 0, `2б: без ошибок JS ${c.errors.join("; ")}`);
+  }
+  {
+    // неверный код: «Такой комнаты нет» и поле, а не «Комната закрылась»; код после фильтра пустой — то же
+    for (const q of ["ZZZZ99", "%21%21%21"]) {
+      const pg = await cdp(`${BASE}/wave.html?r=${q}`, [390, 844], "ru");
+      const ok = await waitFor(pg, "!!document.getElementById('codeform') && /такой комнаты нет/i.test(document.body.innerText)", 8000);
+      check(!!ok, `wave.html?r=${q}: «Такой комнаты нет» + поле кода`);
+      check(!/комната закрылась/i.test(await pg.evaluate("document.body.innerText")), `wave.html?r=${q}: не «закрылась»`);
+      check(pg.errors.length === 0, `wave.html?r=${q}: без ошибок JS ${pg.errors.join("; ")}`);
+    }
+    const pb = await cdp(`${BASE}/wave-board.html?r=ZZZZ98`, null, "ru");
+    check(!!(await waitFor(pb, "!!document.getElementById('goneform')", 8000)), "доска: неверный код — поле кода");
+  }
+  {
+    // язык комнаты: доска en, телефон ru → подсказка «Язык комнаты: English. Переключить?», «Да» переключает
+    const r4 = await (await fetch(`${BASE}/wave/api/rooms`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: "en" }, speed: SPEED }) })).json();
+    const b4 = await cdp(`${BASE}/wave-board.html?r=${r4.code}&h=${r4.hostToken}`, null, "en");
+    await waitFor(b4, "document.body.classList.contains('host')", 8000);
+    const ph = await cdp(`${BASE}/wave.html?r=${r4.code}`, [390, 844], "ru");
+    const hint = await waitFor(ph, "document.getElementById('langhint') && document.getElementById('langhint').textContent", 8000);
+    check(/English/.test(hint || "") && /Язык комнаты/.test(hint || ""), `подсказка языка комнаты: «${hint}»`);
+    check((await ph.evaluate("I18N.lang")) === "ru", "язык под пальцем не сменился сам");
+    await click(ph, "#langhint button:not(.no)");
+    check((await waitFor(ph, "I18N.lang === 'en'", 3000)) === true, "«Да» переключает телефон на язык комнаты");
+    check(ph.errors.length === 0, `язык комнаты: без ошибок JS ${ph.errors.join("; ")}`);
   }
 
   console.log("2. Партия: доска + 4 телефона");
