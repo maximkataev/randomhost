@@ -413,6 +413,48 @@ const SOLVER = String.raw`(async () => {
     check(w311 && /^normal/.test(w311.verdictBreak) && /^[0-9a-f]{8}…$/.test(w311.finishedHash), "итоги: вердикт печати без разрыва внутри слова, хеш короткий");
     await gallery.shot("w311_320");
 
+    // --- 3в. T-W4-09 (P2): передачи вместо часов, порядок вылета, «Найди отличие» в ландшафте 915×412
+    await gallery.call("Emulation.setDeviceMetricsOverride", { width: 360, height: 640, deviceScaleFactor: 2, mobile: true });
+    const p2 = await gallery.evaluate(`(() => {
+      const me = window.bmPhone.me, real = window.bmPhone.state;
+      const o = real.players.find((p) => p.id !== me) || real.players[0];
+      const fake = JSON.parse(JSON.stringify(real));
+      Object.assign(fake, { phase: "live", passes: 3, lastPass: { b: 0, from: me, to: o.id, at: Date.now(), held: 900 },
+        bombs: [{ id: 0, holder: o.id, from: me, since: Date.now(), alive: true, commit: "0".repeat(64) }], me: { id: me, challenge: null, armed: false, holding: [] } });
+      screen = null; state = fake; calmKey = ""; renderCalm();
+      const line = (document.querySelector(".mini .pl_line") || {}).textContent || "";
+      const t = document.querySelector(".mini .t").textContent;
+      return { line, clock: /\\d:\\d\\d/.test(t) };
+    })()`);
+    check(p2 && /\d/.test(p2.line) && p2.line.includes("→") && !p2.clock, `спокойный экран: «передач: N · кто→кому», без часов (${p2 && p2.line})`);
+    const ord = await gallery.evaluate(`(() => {
+      const me = window.bmPhone.me, real = window.bmPhone.state;
+      const ids = real.players.map((p) => p.id);
+      const fake = JSON.parse(JSON.stringify(real));
+      Object.assign(fake, { phase: "finished", round: 9, winnerId: ids[0], loserId: ids[1], settings: Object.assign({}, real.settings, { mode: "elim" }),
+        booms: [{ round: 8, bomb: 0, playerId: ids[1], at: 1 }, { round: 9, bomb: 0, playerId: ids[2], at: 2 }],
+        seals: [{ round: 9, bomb: 0, commit: "ab".repeat(32), revealed: true, fuseMs: 47000, salt: "00", seal: "x" }], bombs: [] });
+      boomKey = ""; screen = null; state = fake; renderBoom();
+      const txt = document.getElementById("app").textContent;
+      const at = (id) => txt.indexOf(real.players.find((p) => p.id === id).name);
+      return { has: /1\\./.test(txt) && txt.includes("🏆"), inOrder: txt.indexOf("1. ") >= 0 && txt.indexOf("2. ") > txt.indexOf("1. "), fits: document.documentElement.scrollWidth <= innerWidth };
+    })()`);
+    check(ord && ord.has && ord.inOrder && ord.fits, "итоги elim: порядок вылета «1. … 2. … 🏆»");
+    await gallery.call("Emulation.setDeviceMetricsOverride", { width: 915, height: 412, deviceScaleFactor: 2, mobile: true });
+    const dpub = (() => { const c = CH.generate({ lvl: 3, rnd, groups: {}, used: { quiz: [], tf: [], heavy: [], chrono: [] }, only: "diff" }); return { id: 910001, type: c.type, group: c.group, lvl: c.lvl, view: c.view, at: Date.now() + 60000, minMs: c.minMs, ttl: 12000 }; })();
+    const dl = await gallery.evaluate(`(() => {
+      const real = window.bmPhone.state;
+      const fake = JSON.parse(JSON.stringify(real));
+      fake.phase = "live"; fake.startedAt = Date.now();
+      fake.bombs = [{ id: 0, holder: window.bmPhone.me, from: null, since: Date.now(), alive: true, commit: "0".repeat(64) }];
+      fake.me = { id: window.bmPhone.me, challenge: ${JSON.stringify(dpub)}, armed: false, holding: [0] };
+      screen = null; state = fake; renderHot();
+      const cells = [...document.querySelectorAll("#pad .grid:not(.ref) button")];
+      const min = Math.min(...cells.map((b) => Math.min(b.getBoundingClientRect().width, b.getBoundingClientRect().height)));
+      return { n: cells.length, min: Math.round(min), fits: document.documentElement.scrollHeight <= innerHeight + 1 && document.documentElement.scrollWidth <= innerWidth };
+    })()`);
+    check(dl && dl.n > 0 && dl.min >= 44 && dl.fits, `ландшафт 915×412: «Найди отличие» — клетки ≥44 px (${dl && dl.min}), влезает`);
+    await gallery.shot("diff_915");
     check(gallery.errors.length === 0, "галерея без JS-ошибок" + (gallery.errors[0] ? ": " + gallery.errors[0] : ""));
     // вернуть настоящее состояние
     await gallery.call("Emulation.setDeviceMetricsOverride", { width: 360, height: 640, deviceScaleFactor: 2, mobile: true });

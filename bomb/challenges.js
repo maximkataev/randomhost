@@ -371,7 +371,7 @@ const GEN = {
     const pool = shuffle(["😀", "😎", "🤓", "😴", "🤠", "😇", "🥸", "😜", "🤔", "😬", "🙃", "😏", "🤖", "👽", "🐸", "🐵", "🦊", "🐼"], rnd);
     const items = pool.slice(0, n);
     const at = rnd(n);
-    const showAt = 700 + rnd(1200), dur = by(lvl, 700, 450, 300);
+    const showAt = 700 + rnd(1200), dur = by(lvl, 800, 550, 380);
     // какая клетка моргнёт, телефону знать приходится — иначе нечего показывать (как цифры в «Коде»)
     return { view: { items, to: pool[n], showAt, dur, cell: at }, answer: at, minMs: showAt + dur };
   },

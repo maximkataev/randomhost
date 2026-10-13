@@ -176,7 +176,7 @@ const bmSec = (ms) => (Math.max(0, ms) / 1000).toFixed(1).replace(".", bmLang() 
 const BM_WIRE = { red: "#e0271f", blue: "#1f5fd6", yellow: "#ffc21a", green: "#16924a", white: "#ffffff", black: "#16120c" };
 
 // Цвета испытания «Цвет»: чернила должны читаться на бумаге
-const BM_INK = { red: "#e0271f", blue: "#1f5fd6", green: "#16924a", yellow: "#e2a400", purple: "#8a3fd1", orange: "#f06a0f" };
+const BM_INK = { red: "#e0271f", blue: "#1f5fd6", green: "#16924a", yellow: "#b88700", purple: "#8a3fd1", orange: "#f06a0f" };
 
 // ---------- бомба (SVG) ----------
 // Фитиль укорачивается неравномерно и границ не выдаёт — см. bmFuseLeft.
