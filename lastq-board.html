@@ -499,10 +499,28 @@
   /* «Внимание»/«Ловкость»: стены «Головы» нет — колонка не пустая, а показывает, сколько уже вырвалось (lastq-026) */
   .escbox { grid-column: 1 / -1; min-height: 0; display: grid; place-content: center; justify-items: center; gap: 8px; padding: 10px 14px; text-align: center; }
   .escbox .k { font: 800 clamp(18px, calc(2.4 * var(--vh)), 28px)/1.1 var(--font); color: var(--chalk-2); text-transform: uppercase; letter-spacing: .08em; }
-  .escbox .big { font: 900 clamp(48px, calc(10 * var(--vh)), 120px)/1 var(--mono); color: var(--gold); }
+  .escbox .big { font: 900 var(--bgf, clamp(48px, calc(10 * var(--vh)), 120px))/1 var(--mono); color: var(--gold); }
   .escbox .big span { color: var(--chalk-2); font-size: .55em; }
-  .escbox .who { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 10px; font: 800 clamp(18px, calc(2.6 * var(--vh)), 30px)/1.1 var(--font); }
+  .escbox .who { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 10px; font: 800 var(--esf, clamp(18px, calc(2.6 * var(--vh)), 30px))/1.1 var(--font); }
   .escbox .who b { min-width: 0; max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Камера с кодами «Передачки»: колонка не переполняется (W5, T-W3-32). Код — справа от подписи, кегль кодов
+     (--pcs), подписи (--pcf) и списка сбежавших (--esf) подгоняет fitSide(); «Сбежали» — одной компактной плашкой */
+  .side.tight { grid-template-rows: auto auto auto; }
+  .side.tight.hq-on { grid-template-rows: auto auto minmax(0, 1fr); }
+  .side.tight .warden .kicker { display: none; }
+  .side.tight .warden { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) auto; padding: 6px 12px; }
+  .side.tight .warden .wp, .side.tight .warden .wg { font-size: clamp(18px, calc(2.8 * var(--vh)), 30px); }
+  .side.tight .betbox { grid-column: 1 / -1; padding: 4px 12px; font-size: clamp(16px, calc(2.2 * var(--vh)), 22px); }
+  .side.tight .betbox small { display: inline; margin-left: 10px; font-size: .8em; }
+  .cellwrap.dense .side.has-pass { width: min(460px, calc(33 * var(--vw))); }
+  .side.has-pass #passes { gap: 4px !important; min-height: auto; }
+  .side.has-pass .passcode { display: flex; align-items: center; gap: 0 10px; padding: 2px 12px; }
+  .side.has-pass .passcode .h { flex: 1 1 0; font-size: var(--pcf, 18px); line-height: 1.15; min-width: 0; overflow-wrap: anywhere; }
+  .side.has-pass .passcode .code { flex: none; font-size: var(--pcs, 56px); letter-spacing: .08em; }
+  .side.tight .escbox { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; gap: 0 10px; padding: 3px 10px; text-align: left; min-height: 0; }
+  .side.tight .escbox .k { font-size: var(--esf, 16px); }
+  .side.tight .escbox .big { font-size: calc(var(--esf, 16px) * 1.8); }
+  .side.tight .escbox .who { flex: 1 0 100%; justify-content: flex-start; font-size: var(--esf, 16px); gap: 2px 10px; }
   .cellwrap.few { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
   .cellwrap.few .side { width: auto; }
   .headq .pad { padding: 10px; gap: 10px; width: 100%; }
@@ -1176,13 +1194,52 @@ function drawCellData(cell, open, late) {
     $("passes").dataset.k = pk;
     $("passes").innerHTML = passes.map((x) => `<div class="passcode"><div class="h">${escapeHtml(tpl("pass_h", { name: nameOf(x.id) }))}</div><div class="code">${escapeHtml(x.passCode)}</div></div>`).join("");
   }
+  const sd = stage.querySelector(".side");
+  if (sd) { sd.classList.toggle("has-pass", passes.length > 0); sd.classList.toggle("tight", passes.length > 0 || esc.length >= 3); fitSide(); }
+}
+// колонка Камеры с кодами: уменьшаем кегль кодов, подписей и списка сбежавших, пока всё не встанет в колонку (минимумы читаемы)
+function fitSide() {
+  const side = stage.querySelector(".side");
+  if (!side) return;
+  const hq = side.classList.contains("hq-on");
+  const set = (n, v) => side.style.setProperty(n, v + "px");
+  let pcs = Math.min(64, Math.round(LH() / 12)), pcf = Math.min(20, Math.max(14, Math.round(LH() / 38))), esf = Math.min(26, Math.max(15, Math.round(LH() / 38)));
+  const over = () => {
+    if (side.scrollHeight > side.clientHeight + 1) return true;
+    const ps = $("passes");
+    if (hq && ps && ps.offsetHeight > side.clientHeight * 0.45) return true;
+    const eb = $("escbox");
+    return !!(eb && eb.offsetHeight && eb.scrollHeight > eb.clientHeight + 1);
+  };
+  const apply = () => { set("--pcs", pcs); set("--pcf", pcf); set("--esf", esf); };
+  let bgf = Math.min(120, Math.max(48, Math.round(LH() / 10)));
+  const withPass = side.classList.contains("tight");
+  const hasCodes = side.classList.contains("has-pass");
+  const apply2 = () => { apply(); if (withPass) side.style.removeProperty("--bgf"); else set("--bgf", bgf); };
+  apply2();
+  for (let i = 0; i < 60 && over(); i++) {
+    if (!withPass && bgf > 36) bgf -= 6;
+    else if (!withPass && esf > 12) esf -= 1;
+    else if (!withPass) break;
+    else if (esf > 15) esf -= 1;
+    else if (hasCodes && pcs > 44) pcs -= 3;
+    else if (hasCodes && pcf > 14) pcf -= 1;
+    else if (hasCodes && pcs > 22) pcs -= 2;
+    else if (hasCodes && pcf > 12) pcf -= 1;
+    else if (esf > 12) esf -= 1;
+    else break;
+    apply2();
+  }
 }
 // состояние боковой колонки — классами (вместо :has(), которого нет в старых Chromium на проекторах)
 function syncSide() {
   const side = stage.querySelector(".side");
   if (!side) return;
   const hq = $("headq"), bb = $("betbox");
-  side.classList.toggle("hq-on", !!hq && !hq.classList.contains("hidden"));
+  const hqOn = !!hq && !hq.classList.contains("hidden");
+  const hqChanged = side.classList.contains("hq-on") !== hqOn;
+  side.classList.toggle("hq-on", hqOn);
+  if (hqChanged) fitSide();
   side.classList.toggle("bet-off", !!bb && bb.classList.contains("hidden"));
   const eb = $("escbox");
   if (eb) eb.classList.toggle("hidden", !!hq && !hq.classList.contains("hidden"));
