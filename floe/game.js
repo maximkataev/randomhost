@@ -236,6 +236,9 @@
     const cfg = Object.assign({}, DEFAULTS, opts.cfg || {});
     const rng = opts.rng || mulberry32((opts.seed ?? (Math.random() * 4294967296)) >>> 0);
     const rr = (a, b) => a + (b - a) * rng();
+    // жребий (рассадка, тай-брейки): по умолчанию тот же rng, сервер подаёт криптостойкий draw (floe-016);
+    // сид льдины и физика остаются на детерминированном rng — seed нужен клиенту
+    const draw = opts.draw || rng;
 
     const g = {
       cfg,
@@ -537,8 +540,8 @@
       g.lastCrackAt = -9;
       // по кругу на равном расстоянии от центра, порядок и поворот — жребий
       const order = list.slice();
-      for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
-      const rot = rng() * TAU, rad = g.floe.R * cfg.START_RING;
+      for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(draw() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+      const rot = draw() * TAU, rad = g.floe.R * cfg.START_RING;
       g.players.forEach(p => { p.inGame = false; p.st = 'gone'; });
       order.forEach((p, k) => {
         const a = rot + (k / order.length) * TAU;
@@ -728,7 +731,7 @@
         let pool = falls.filter(p => p.hits === minHits);
         tie = 'hits';
         if (pool.length > 1) {
-          pool = [pool[Math.floor(rng() * pool.length)]];
+          pool = [pool[Math.floor(draw() * pool.length)]];
           tie = 'lottery';
         }
         ids = [pool[0].id];
@@ -745,7 +748,7 @@
         // остальные сняты без падений (сеть, ушли) — ведущего решает жребий среди снятых
         const removed = g.players.filter(p => p.inGame && p.removed);
         if (removed.length) {
-          const p = removed[Math.floor(rng() * removed.length)];
+          const p = removed[Math.floor(draw() * removed.length)];
           // of — сколько снято: при одном «все отвалились — жребий» врал (floe-025); нет поля = как раньше
           g.host = { id: p.id, tie: 'lottery', at: g.clock, lottery: true, of: removed.length };
           emit('host', { id: p.id, tie: 'lottery', lottery: true, of: removed.length });
@@ -758,7 +761,7 @@
         const pool = live.length ? live : g.players.filter(p => p.inGame);
         const minHits = Math.min(...pool.map(p => p.hits));
         const cand = pool.filter(p => p.hits === minHits);
-        const p = cand[Math.floor(rng() * cand.length)];
+        const p = cand[Math.floor(draw() * cand.length)];
         g.host = { id: p.id, tie: 'lottery', at: g.clock, lottery: true };
         emit('host', { id: p.id, tie: 'lottery', lottery: true });
         return finish(live.filter(x => x !== p));

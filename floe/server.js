@@ -109,7 +109,7 @@ const isActive = (room) => room.game.phase === "countdown" || room.game.phase ==
 function newRoom({ code, ip = "", hostToken, seed }) {
   const room = {
     code, ip, hostToken,
-    game: createGame({ rng: rngFor(seed), cfg: GAME_CFG }),
+    game: createGame({ rng: rngFor(seed), draw: cryptoDraw, cfg: GAME_CFG }),
     tokens: {},              // token → playerId
     meta: new Map(),         // playerId → { joinedAt, ping, lastSeq, offlineAt, left }
     hostId: null,
@@ -135,6 +135,9 @@ function rngFor(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+// Жребий (рассадка, «ничья — жребий») — из crypto: состояние mulberry32 восстановимо по seed льдины (floe-016)
+function cryptoDraw() { return crypto.randomInt(0, 2 ** 32) / 4294967296; }
 
 function createRoom(ip) {
   if (ip) {
@@ -227,7 +230,7 @@ function snapMsg(room, t) {
     type: "s", t, ph: s.phase, pt: s.phaseT, cl: s.clock, sd: s.seed, R: s.R,
     host: s.host, kings: s.kings,
     p: s.players.filter((p) => p.st !== "gone" || p.inGame).map((p) => [
-      p.id, p.x, p.y, p.vx, p.vy, p.dir, p.st, p.dash, p.cd, p.fallT, p.online ? 1 : 0, room.meta.get(p.id)?.lastSeq || 0,
+      p.id, p.x, p.y, p.vx, p.vy, p.dir, p.st, p.dash, p.cd, p.fallT, p.online ? 1 : 0,
     ]),
   };
   if (s.sh !== room.shVer || force) { msg.sh = s.sh; room.shVer = s.sh; room.shSentAt = t; }
@@ -539,7 +542,7 @@ function handle(room, client, msg) {
       if (id && me && id !== me) releasePlayer(room, client, me);
       let joinName = null, renamed = false, resumed = !!id;
       if (!id) {
-        if (client.joinedAt && now() - client.joinedAt < 2000) return;
+        if (client.joinedAt && now() - client.joinedAt < 2000) return reply({ type: "error", error: "too_fast" });
         const name = cleanName(msg.name);
         if (!name) return reply({ type: "error", error: "bad_name" });
         const live = g.players.filter((p) => !room.meta.get(p.id)?.left);

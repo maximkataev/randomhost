@@ -469,6 +469,28 @@ test('повтор первого падения: 3 с до и ~1 с после'
   assert(t1 - r.at >= 1.0, `после: ${(t1 - r.at).toFixed(2)}`);
 });
 
+console.log('Жребий (floe-016)');
+test('opts.draw: рассадка берётся из draw, seed льдины остаётся детерминированным', () => {
+  const mk = (extra) => {
+    const g = createGame(Object.assign({ seed: 77 }, extra));
+    for (let i = 0; i < 6; i++) g.addPlayer('p' + i, 'P' + i, i);
+    assert(g.start());
+    return g;
+  };
+  const a = mk({});
+  let calls = 0;
+  const b = mk({ draw: () => { calls++; return 0.123; } });
+  assert.strictEqual(a.seed, b.seed, 'seed льдины не зависит от draw');
+  assert.deepStrictEqual(a.floe.shards.map(s => s.poly), b.floe.shards.map(s => s.poly));
+  assert(calls >= 6, 'draw вызван на перестановку и поворот: ' + calls);
+  const posA = a.players.map(p => [p.x.toFixed(2), p.y.toFixed(2)].join()).join('|');
+  const posB = b.players.map(p => [p.x.toFixed(2), p.y.toFixed(2)].join()).join('|');
+  assert.notStrictEqual(posA, posB, 'рассадка другая');
+  // по умолчанию draw = rng: два одинаковых создания дают одну и ту же рассадку
+  const c = mk({});
+  assert.strictEqual(posA, c.players.map(p => [p.x.toFixed(2), p.y.toFixed(2)].join()).join('|'));
+});
+
 console.log('Боты');
 test('партия ботов всегда заканчивается и укладывается в ~70 с', () => {
   for (let s = 0; s < 30; s++) {
