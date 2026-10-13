@@ -6,7 +6,7 @@ const assert = require("node:assert");
 const CONTENT = require("./content");
 
 const MIN = 350;
-const Q_MAX = 90;
+const Q_MAX = 80; // T-W4-02 (crowd-019): было 90; ≤ 70 — цель, см. docs/crowd-spec.md §6
 const OPT_MAX = 20;
 const FORBIDDEN = {
   ru: /(путин|навальн|зеленск|трамп|байден|украин|израил|палестин|хамас|\bвойн[аыеуой]\b|ислам|христиан|иудаи|мусульман|евре[йяи]|\bнегр|\bгеи\b|\bгей[а-я]*|лесби|трансгенд|трансфоб|аборт|изнасил|суицид|самоубий|наркот|героин|кокаин)/i,
@@ -14,6 +14,14 @@ const FORBIDDEN = {
   el: /(πούτιν|τραμπ|μπάιντεν|ουκρανία|ισραήλ|παλαιστίν|χαμάς|πόλεμο|ισλάμ|χριστιαν|εβραί|μουσουλμ|αμβλωσ|βιασμ|αυτοκτον|ηρωίν|κοκαΐν)/i,
 };
 const YES = { ru: ["да", "нет"], en: ["yes", "no"], el: ["ναι", "όχι"] };
+// заголовок — законченный вопрос (T-W4-02, crowd-016): «?» (в греческом «;»), у греческого А/Б допустимо продолжение «Ώρα:» / «Στο σπίτι...»
+const ENDS_Q = /[?;]$/;
+const ENDS_CONT = /(:|…|\.\.\.)$/;
+// у А/Б заголовок начинается с вопросительного слова, не со слова-сравнения («Worse», «Better», «Pick one»)
+const AB_START = {
+  en: /^(which|what|what's|who|whom|whose|would|do|does|did|how|when|where|is|are|can|will|should)(?=[\s']|$)/i,
+  ru: /^(что|кого|кому|кем|какой|какая|какое|какую|какие|кто|чья|чьи|куда|где|чего|с кем|на что|до скольки|от чего|к кому|как|сколько|когда|почему|зачем)(?=\s|$)/iu,
+};
 const norm = (s) => String(s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
 for (const lang of CONTENT.LANGS) {
@@ -43,6 +51,14 @@ for (const lang of CONTENT.LANGS) {
       }
       assert.ok(!FORBIDDEN[lang].test(x.q + " " + x.a + " " + x.b), `${x.id}: запретная тема «${x.q}»`);
       assert.ok(typeof x.sensitive === "boolean", `${x.id}: sensitive`);
+    }
+  });
+
+  test(`${lang}: заголовок — законченный вопрос (crowd-016)`, () => {
+    for (const x of CONTENT[lang]) {
+      const ok = ENDS_Q.test(x.q) || (lang === "el" && x.kind === "ab" && ENDS_CONT.test(x.q));
+      assert.ok(ok, `${x.id}: заголовок без «?»: «${x.q}»`);
+      if (x.kind === "ab" && AB_START[lang]) assert.ok(AB_START[lang].test(x.q), `${x.id}: заголовок А/Б без вопросительного слова: «${x.q}»`);
     }
   });
 
@@ -86,4 +102,22 @@ test("склонения «N раз»: RU 1/2/5/11/21/22, EN once/twice/times, E
   assert.strictEqual(form("en", 3), "base");
   assert.strictEqual(form("el", 1), "_one");
   assert.strictEqual(form("el", 2), "base");
+});
+
+// решающий и финальный вопросы — только не sensitive, на настоящих колодах (crowd-018; логика takeQuestion — T-W2-37)
+test("настоящие колоды: решающий и финал никогда не sensitive (3000 партий на язык)", () => {
+  const { Game } = require("./game");
+  const rndFrom = (seed) => { let a = seed; return (n) => { a = (a * 1664525 + 1013904223) >>> 0; return a % n; }; };
+  for (const lang of CONTENT.LANGS) {
+    const byId = new Map(CONTENT[lang].map((x) => [x.id, x]));
+    let bad = 0;
+    for (let seed = 1; seed <= 3000; seed++) {
+      const g = Game.create({ settings: { opinion: false, lang, short: seed % 2 === 0 }, code: "T", rnd: rndFrom(seed), content: { [lang]: CONTENT[lang] } });
+      for (const id of ["a", "b", "c"]) g.addPlayer({ id, name: "И" + id, now: 0 });
+      g.start(0);
+      g.s.n = g.total() - 1;
+      for (const kind of ["final", "decider"]) if (byId.get(g.takeQuestion(kind).id).sensitive) bad++;
+    }
+    assert.strictEqual(bad, 0, `${lang}: sensitive в final/decider: ${bad}`);
+  }
 });

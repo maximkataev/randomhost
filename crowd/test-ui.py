@@ -193,6 +193,8 @@ def run(pw, code, token):
         handoff_stage(browser, lang_script, errs)
     if os.environ.get("W3_STAGE", "1") != "0":
         w3_stage(browser, lang_script, errs)
+    if os.environ.get("P2_STAGE", "1") != "0":
+        p2_stage(browser, lang_script, errs)
     if os.environ.get("PAUSE_STAGE", "1") != "0":
         pause_stage(browser, lang_script, errs)
     check(not errs, "нет JS-ошибок на страницах" + (": " + "; ".join(errs[:3]) if errs else ""))
@@ -422,6 +424,42 @@ def pause_stage(browser, lang_script, errs):
     check(board.evaluate("document.querySelectorAll('#upper [data-k]').length") == 3, "ведущему предложено убрать молчунов")
     board.wait_for_function("wvBoard.state.phase === 'vote'", timeout=15000)
     check(True, "после короткой паузы игра идёт дальше (не 60 с)")
+    bctx.close()
+
+
+def p2_stage(browser, lang_script, errs):
+    """T-W4-15 (crowd P2-4, P2-5): «Ведущий закончил партию» читается на телефоне (finishedReason=host), а имя после «Выйти»
+    и перезахода остаётся в поле входа (crowd-name не очищается)."""
+    room = json.loads(urllib.request.urlopen(urllib.request.Request(f"{BASE}/crowd/api/rooms", data=json.dumps({"settings": {"lang": LANG, "short": True, "opinion": False}, "speed": 3}).encode(), method="POST")).read())
+    code, token = room["code"], room["hostToken"]
+    bctx, board = mk_page(browser, BW, BH, False, lang_script + f"try{{localStorage.setItem('crowd-host-{code}','{token}')}}catch(e){{}}", errs, "boardP2")
+    board.goto(f"{BASE}/crowd-board.html?r={code}", wait_until="domcontentloaded")
+    board.wait_for_function("window.wvBoard && wvBoard.state")
+    phones = []
+    for i in range(3):
+        ctx, p = mk_page(browser, 390, 780, True, lang_script, errs, f"pP2-{i}")
+        p.goto(f"{BASE}/crowd.html?r={code}", wait_until="domcontentloaded")
+        p.wait_for_selector("#name")
+        p.fill("#name", f"Выходной{i + 1}")
+        p.evaluate("document.getElementById('enterform').requestSubmit()")
+        p.wait_for_function("window.wvPhone && wvPhone.me", timeout=10000)
+        phones.append((ctx, p))
+    board.wait_for_function("wvBoard.state.players.length === 3")
+    board.evaluate("wvBoard.send({type:'start'})")
+    board.wait_for_function("wvBoard.state.phase === 'vote' || wvBoard.state.phase === 'intro'", timeout=8000)
+    board.evaluate("wvBoard.send({type:'end'})")
+    board.wait_for_function("wvBoard.state.phase === 'finished' && wvBoard.state.finishedReason === 'host'", timeout=8000)
+    p0 = phones[0][1]
+    p0.wait_for_function("wvPhone.state && wvPhone.state.phase === 'finished'", timeout=8000)
+    txt = p0.evaluate("document.getElementById('app').innerText")
+    check(norm(p0.evaluate("T('final_host')")) in norm(txt), "после «Закончить» ведущим на телефоне написано, что ведущий закончил партию")
+    p0.click("#leave")
+    p0.wait_for_timeout(300)
+    p0.reload(wait_until="domcontentloaded")
+    p0.wait_for_selector("#name", timeout=8000)
+    check(p0.evaluate("document.getElementById('name').value") == "Выходной1", "после «Выйти» и перезахода имя в поле входа сохранено")
+    for c, _ in phones:
+        c.close()
     bctx.close()
 
 

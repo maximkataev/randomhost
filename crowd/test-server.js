@@ -289,6 +289,29 @@ test("сервер", async (t) => {
     stale.close(); again.close(); b.close(); ps.forEach((p) => p.close());
   });
 
+  await t.test("команды ведущего без токена ведущего — явный rejected not_host, состояние не меняется (T-W4-15, crowd-043)", async () => {
+    const room = await createRoom({ lang: "ru" });
+    const b = await board(room.code, room.hostToken);
+    const ps = [await player(room.code, "Оля"), await player(room.code, "Петя")];
+    const rnd = await player(room.code, "Чужой");
+    for (const type of ["start", "kick", "settings", "end", "lobby"]) {
+      const before = rnd.msgs.length;
+      rnd.send({ type, playerId: ps[0].id, settings: { short: true } });
+      const m = await rnd.wait((x) => x.type === "rejected" && x.action === type);
+      assert.strictEqual(m.reason, "not_host", type);
+      assert.ok(rnd.msgs.length > before);
+    }
+    // рассылки нет: у других участников rejected не приходит, партия не стартовала, Оля на месте
+    await sleep(100);
+    assert.ok(!ps[0].msgs.some((m) => m.type === "rejected" || m.type === "kicked"));
+    assert.strictEqual(b.state.phase, "lobby");
+    assert.ok(b.state.players.some((p) => p.id === ps[0].id));
+    // настоящий ведущий по-прежнему может
+    b.send({ type: "start" });
+    await b.wait(statePred((s) => s.phase === "vote"));
+    b.close(); rnd.close(); ps.forEach((p) => p.close());
+  });
+
   await t.test("тихих отказов нет: частый join и флуд командами получают rejected/rate, «Готово» доходит", async () => {
     const room = await createRoom({ lang: "ru", opinion: false });
     const b = await board(room.code, room.hostToken);
