@@ -356,6 +356,27 @@ function rawWs(code) {
       assert(!off.ev || off.lottery, "по умолчанию отключённый — не по падению (в паре — жребий среди снятых)");
     });
 
+    await test("MP_OFF=1: hello.mp === false (аварийный выключатель каркаса); без флага поля нет", async () => {
+      const helloOf = async (extraEnv, port2) => {
+        const base2 = `http://localhost:${port2}`;
+        const env2 = Object.assign({}, process.env, { PORT: String(port2), NODE_ENV: "development", DUMP_FILE: path.join(require("os").tmpdir(), `floe-test-${port2}.json`) }, extraEnv);
+        const s2 = spawn(process.execPath, [path.join(__dirname, "server.js")], { env: env2, stdio: ["ignore", "pipe", "pipe"] });
+        try {
+          for (let i = 0; i < 50; i++) { try { if ((await fetch(base2 + "/floe/api/health")).ok) break; } catch {} await wait(100); }
+          const r = await NetBot.createRoom(base2);
+          return await new Promise((res, rej) => {
+            const w = new WebSocket(`ws://localhost:${port2}/floe/ws?r=${r.code}`);
+            w.on("message", (m) => { const j = JSON.parse(m); if (j.type === "hello") { w.close(); res(j); } });
+            w.on("error", rej);
+          });
+        } finally { s2.kill("SIGTERM"); }
+      };
+      const on = await helloOf({ MP_OFF: "1" }, PORT + 340);
+      assert.strictEqual(on.mp, false, "hello.mp при MP_OFF=1");
+      const off = await helloOf({}, PORT + 341);
+      assert.strictEqual(off.mp, undefined, "hello.mp без флага отсутствует");
+    });
+
     await test("снятый (офлайн > OFFLINE_T) вернулся по токену: inGame true, st gone в снимке (floe-001/002)", async () => {
       const port2 = PORT + 320;
       const base2 = `http://localhost:${port2}`;

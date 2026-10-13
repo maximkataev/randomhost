@@ -440,7 +440,10 @@ function onConnection(room, ws, ip) {
   const client = { ws, playerId: null, misses: 0, ip, opened: now(), createdAt: now() };
   room.sockets.add(client);
   ws.on("pong", () => (client.misses = 0));
-  send(ws, { type: "hello", code: room.code, cfg: cfgFor(room.game), tick: TICK_MS, max: MAX_PLAYERS, limits: { name: NAME_MAX } });
+  const helloMsg = { type: "hello", code: room.code, cfg: cfgFor(room.game), tick: TICK_MS, max: MAX_PLAYERS, limits: { name: NAME_MAX } };
+  // MP_OFF=1 — аварийный выключатель клиентского каркаса mp-common.js: страницы возвращаются к прежнему коду
+  if (process.env.MP_OFF === "1") helloMsg.mp = false;
+  send(ws, helloMsg);
   send(ws, rosterMsg(room));
   ws.on("message", (raw) => {
     if (!rateOk(client)) return coalesceOver(client, raw);
