@@ -301,19 +301,23 @@ test("deciderRuns: старый дамп с deciderDone: true считается
   assert.strictEqual(ctx.g.deciderRuns(), 0);
 });
 
-test("решающий и финальный вопросы не sensitive (3000 партий)", () => {
-  let sens = 0;
-  for (let seed = 1; seed <= 3000; seed++) {
-    const g = Game.create({ settings: { opinion: false, short: seed % 2 === 0 }, code: "T", rnd: rndFrom(seed), content: { ru: bank() } });
-    for (const id of ["a", "b", "c"]) g.addPlayer({ id, name: "И" + id, now: 0 });
-    g.start(0);
-    g.s.n = g.total() - 1; // последний основной вопрос
-    for (const kind of ["final", "decider", "extra"]) {
-      const q = g.takeQuestion(kind);
-      const src = bank().find((x) => x.id === q.id);
-      if (src.sensitive && kind !== "extra") sens++;
+test("решающий, финальный и допвопрос не sensitive (3000 партий на язык)", () => {
+  let sens = 0, n = 0;
+  for (const lang of ["ru", "en", "el"]) {
+    for (let seed = 1; seed <= 3000; seed++) {
+      const g = Game.create({ settings: { opinion: false, short: seed % 2 === 0, lang }, code: "T", rnd: rndFrom(seed), content: { ru: bank(), en: bank(), el: bank() } });
+      for (const id of ["a", "b", "c"]) g.addPlayer({ id, name: "И" + id, now: 0 });
+      g.start(0);
+      g.s.n = g.total() - 1; // последний основной вопрос
+      for (const kind of ["final", "decider", "extra"]) {
+        const q = g.takeQuestion(kind);
+        const src = bank().find((x) => x.id === q.id);
+        n++;
+        if (src.sensitive) sens++;
+      }
     }
   }
+  assert.strictEqual(n, 27000);
   assert.strictEqual(sens, 0);
 });
 

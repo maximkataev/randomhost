@@ -353,8 +353,8 @@ class Game {
       let pool = list, miss = false;
       // forced: условие обязательное — если в свободных нет подходящего, это «промах» (тогда банк забываем и пробуем снова)
       const take = (f, forced) => { const sub = pool.filter(f); if (sub.length) pool = sub; else if (forced) miss = true; };
-      // «чувствительный» вопрос — не больше одного за партию, не в первых двух, не в финал и не в решающий (T-W2-37)
-      const sensBlocked = (s.sensUsed || 0) >= 1 || (main && (s.drawn || 0) < 2) || kind === "final" || kind === "decider";
+      // «чувствительный» вопрос — не больше одного за партию, не в первых двух, не в финал, не в допвопрос после «Раскола» и не в решающий (T-W2-37, W5)
+      const sensBlocked = (s.sensUsed || 0) >= 1 || (main && (s.drawn || 0) < 2) || kind === "final" || kind === "decider" || kind === "extra";
       if (sensBlocked) take((x) => !x.sensitive);
       const tu = s.tagUsed || {};
       take((x) => !((x.tag === "pick" || x.tag === "edge") && (tu[x.tag] || 0) >= CAP_TAG));
