@@ -345,7 +345,7 @@
   // ===================================================================
   function createGame(opts = {}) {
     const cfg = Object.assign({}, DEFAULTS, opts.cfg || {});
-    const rng = opts.rng || mulberry32((opts.seed ?? (Math.random() * 4294967296)) >>> 0);
+    const rng = opts.rng || mulberry32((opts.seed != null ? opts.seed : (Math.random() * 4294967296)) >>> 0);
 
     const g = {
       cfg,

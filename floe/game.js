@@ -234,7 +234,7 @@
   // ===================================================================
   function createGame(opts = {}) {
     const cfg = Object.assign({}, DEFAULTS, opts.cfg || {});
-    const rng = opts.rng || mulberry32((opts.seed ?? (Math.random() * 4294967296)) >>> 0);
+    const rng = opts.rng || mulberry32((opts.seed != null ? opts.seed : (Math.random() * 4294967296)) >>> 0);
     const rr = (a, b) => a + (b - a) * rng();
     // жребий (рассадка, тай-брейки): по умолчанию тот же rng, сервер подаёт криптостойкий draw (floe-016);
     // сид льдины и физика остаются на детерминированном rng — seed нужен клиенту

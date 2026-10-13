@@ -119,10 +119,13 @@
   .pl .ping.bad { color: var(--gold); }
   .pl .x { width: 22px; height: 22px; border-radius: 6px; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
   .pl .x:hover { background: rgba(255,90,90,0.2); color: #fff; }
-  body.is-touch .pl .x { width: 40px; height: 40px; margin: -9px -8px -9px 0; font-size: 16px; }
+  body.is-touch .pl .x { width: 44px; height: 44px; margin: -11px -8px -11px 0; font-size: 16px; }
   /* тач: цели не меньше 40 px (было 21 px у цветов утки, 28 px у «Скопировать ссылку») */
   body.is-touch .colors { grid-template-columns: repeat(5, 1fr); gap: 8px; }
   body.is-touch .link, body.is-touch .back { display: inline-flex; align-items: center; min-height: 44px; padding-top: 0; padding-bottom: 0; }
+  /* W5 (T-W3-32): все кнопки и звук на телефоне — тап-цель не меньше 44 px (в ландшафте отступы btn ужаты до 9–10 px) */
+  body.is-touch .btn, body.is-touch .btn.ghost { min-height: 44px; }
+  body.is-touch .sound-toggle-btn { width: 44px; height: 44px; }
   .keys { display: grid; grid-template-columns: auto 1fr; gap: 7px 10px; align-items: center; font-size: 12.5px; color: var(--muted); }
   .keys b { color: var(--ink); }
   .kk { display: flex; gap: 3px; }
@@ -166,7 +169,7 @@
   .timer { font-variant-numeric: tabular-nums; font-size: 18px; min-width: 72px; text-align: center; }
   .timer.low { color: var(--gold); }
   .pos b { font-size: 18px; }
-  .quit { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: calc(12px + env(safe-area-inset-left, 0px)); z-index: 6; display: none; width: 40px; height: 38px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 16px; }
+  .quit { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: calc(12px + env(safe-area-inset-left, 0px)); z-index: 6; display: none; width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 16px; }
   body.playing .quit { display: block; }
   /* первый тап — «Сойти? ✕» на 3 с, второй — выход (вместо confirm(), который в WebView/PWA глушится) */
   .quit[data-armed] { width: auto; padding: 0 12px; background: rgba(205, 48, 58, 0.96); border-color: transparent; color: #fff; font-weight: 800; font-size: 14px; white-space: nowrap; }
@@ -459,9 +462,9 @@ window.I18N_DICT = {
   "use strict";
   const $ = (id) => document.getElementById(id);
   const T = (k) => (window.I18N ? I18N.t(k) : k);
-  const tpl = (k, v) => String(T(k)).replace(/\{(\w+)\}/g, (_, n) => (v[n] ?? ""));
+  const tpl = (k, v) => String(T(k)).replace(/\{(\w+)\}/g, (_, n) => (v[n] != null ? v[n] : ""));
   // rapids-033: имя ведущего вводит игрок — в строке ожидания оно в кавычках и жирным, чтобы не читалось как роль
-  const waitLine = (k, name) => esc(tpl(k, { name: "\u0001" })).replace("\u0001", () => `<b>${esc(String(T("q_name")).replace("{n}", name))}</b>`);
+  const waitLine = (k, name) => esc(tpl(k, { name: "\u0001" })).replace("\u0001", () => `<b>${esc(String(T("q_name")).replace("{n}", () => name))}</b>`);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const { createGame, makeCourse, moveDuck, DEFAULTS } = window.RapidsGame;
   const COLORS = window.RapidsRender.DUCK_COLORS;
@@ -628,7 +631,7 @@ window.I18N_DICT = {
           if (ui.phase === "over") redraw();
         }
         const rest = late.length ? m.list.filter((e) => !(e.type === "over" && e.late)) : m.list;
-        if (rest.length) net.events.push({ at: performance.now() + INTERP_MS + Math.max(0, (net.lastD ?? 0) - (net.offset ?? 0)), list: rest });
+        if (rest.length) net.events.push({ at: performance.now() + INTERP_MS + Math.max(0, (net.lastD != null ? net.lastD : 0) - (net.offset != null ? net.offset : 0)), list: rest });
         break;
       }
       case "pong": {
@@ -1134,7 +1137,8 @@ window.I18N_DICT = {
   // играю / смотрю / панель: зависит и от фазы, и от списка игроков — зовётся на обоих
   function applyMode() {
     const ph = ui.phase;
-    const inGame = net.roster.find((p) => p.id === net.me)?.inGame;
+    const meRow = net.roster.find((p) => p.id === net.me);
+    const inGame = meRow ? meRow.inGame : undefined;
     const play = ph === "countdown" || ph === "race";
     document.body.classList.toggle("inlobby", ph === "lobby" && !!net.me && !net.dead);
     document.body.classList.toggle("playing", play && !!inGame);
@@ -1336,7 +1340,7 @@ window.I18N_DICT = {
   const doQuit = () => { send({ type: "leave" }); store.set(tokenKey(), ""); location.href = "duck-rapids.html"; };
   // двойной тап вместо confirm(): работает в WebView/PWA и в автотестах; без mp-common — прежний confirm
   let quitTap = null;
-  if (window.MP && MP.twoTap) quitTap = MP.twoTap($("quit"), { armedMs: 3000, label: "✕", armedLabel: T("quit_arm"), onArm: () => toast(T("quit_confirm")), onConfirm: doQuit });
+  if (window.MP && MP.twoTap) quitTap = MP.twoTap($("quit"), { armedMs: 3000, label: "✕", armedLabel: T("quit_arm"), onArm: (el) => { el.textContent = T("quit_arm"); toast(T("quit_confirm")); }, onConfirm: doQuit });
   else $("quit").onclick = () => { if (confirm(T("quit_confirm"))) doQuit(); };
   addEventListener("popstate", () => location.reload());
   addEventListener("langchange", () => { render.setMe(net.me); applyStatic(); redraw(); });
@@ -1345,7 +1349,8 @@ window.I18N_DICT = {
     render.setWords(WORDS());
     render.setSuffix(T("you"));
     $("quit").setAttribute("aria-label", T("quit_aria"));
-    if (quitTap && !quitTap.isArmed()) $("quit").textContent = "✕";
+    // подпись взведённой ✕ берём в момент показа и при смене языка — не при загрузке страницы
+    if (quitTap) $("quit").textContent = quitTap.isArmed() ? T("quit_arm") : "✕";
     placeSound();
   }
   // кнопка звука — сразу слева от переключателя языка, ширина которого зависит от языка
