@@ -287,6 +287,21 @@ async function playGame(board, phones, label, silentRound2) {
     const b2 = await cdp(`${BASE}/wave-board.html?r=${r2.code}&h=${r2.hostToken}`);
     await waitFor(b2, "document.body.classList.contains('host')", 8000);
     const ps = await joinPhones(r2.code, ["Анна", "Борис", "Вера"], [[390, 844]]);
+    // P2-1 (wave-021/022): смена имени в лобби и счётчик «N/16»
+    {
+      await waitFor(ps[0], "!!document.getElementById('renbtn')", 6000);
+      await click(ps[0], "#renbtn");
+      await waitFor(ps[0], "!!document.getElementById('renin')", 3000);
+      await type(ps[0], "#renin", "Анна-Мария Иванова");
+      const cnt = await ps[0].evaluate("document.getElementById('rencnt').textContent");
+      check(/^\d+\/16$/.test(cnt), "счётчик имени с 12 знаков: " + cnt);
+      await ps[0].evaluate("document.getElementById('renin').value = 'Борис'; document.getElementById('renform').requestSubmit()");
+      await wait(500);
+      await ps[0].evaluate("(() => { const b = document.getElementById('renbtn'); if (b) b.click(); })()");
+      await waitFor(ps[0], "!!document.getElementById('renin')", 3000);
+      await ps[0].evaluate("document.getElementById('renin').value = 'Анюта'; document.getElementById('renform').requestSubmit()");
+      check(!!(await waitFor(ps[0], "document.querySelector('#app h2.shout') && document.querySelector('#app h2.shout').textContent.indexOf('Анюта') >= 0", 4000)), "имя сменилось на «Анюта»");
+    }
     await click(b2, "#startbtn");
     const reloadAndWait = async (ph) => { await ph.evaluate("location.reload()"); await wait(300); await waitFor(ph, "!!(window.wvPhone && window.wvPhone.state && window.wvPhone.state.me)", 10000); };
     const dropAndWait = async (ph) => { await ph.evaluate("(window.__socks || []).forEach((s) => { try { s.close(); } catch (e) {} })"); await wait(300); await waitFor(ph, "!!(window.wvPhone && window.wvPhone.state && window.wvPhone.state.me)", 10000); };
@@ -294,6 +309,18 @@ async function playGame(board, phones, label, silentRound2) {
     await waitFor(ps[0], "window.wvPhone.state.phase === 'clue' && !!document.querySelector('.pick button')", 15000);
     await reloadAndWait(ps[0]);
     check(!!(await waitFor(ps[0], "!!document.querySelector('.pick button')", 6000)), "clue: после reload снова выбор шкалы");
+    // P2-7 (wave-050/051): цифры полос у края шкалы и на ×2; P2-9 (wave-058): штамп без наклона
+    {
+      const nums = await ps[0].evaluate(`(() => { const d = document.createElement("div"); const B = [[4, 400], [12, 300], [20, 200]];
+        const read = (target, mult) => { d.innerHTML = wvDialSvg({ uid: "t" + Math.random(), target: target, bands: B, mult: mult }); return Array.prototype.map.call(d.querySelectorAll(".bandnum"), (n) => n.textContent).join(","); };
+        const r = { x1: read(90, 1), x2: read(90, 2), edge: read(4, 1) }; return JSON.stringify(r); })()`);
+      const n = JSON.parse(nums);
+      check(n.x1.split(",").length === 5, "цифры полос ×1: пять штук (" + n.x1 + ")");
+      check(n.x2.split(",").map(Number).sort((a, b) => b - a)[0] === 8, "цифры полос на ×2: максимум 8 (" + n.x2 + ")");
+      check(n.edge.split(",").length === 2, "у края шкалы (сектор на 4°) цифры не лезут за границу: " + n.edge);
+      const tr = await ps[0].evaluate(`(() => { const s = document.createElement("span"); s.className = "stamp"; document.body.appendChild(s); const t = getComputedStyle(s).transform; s.remove(); return t; })()`);
+      check(tr === "none", ".stamp без transform (" + tr + ")");
+    }
     await dropAndWait(ps[1]);
     check(!!(await waitFor(ps[1], "!!document.querySelector('.pick button')", 6000)), "clue: после ws.close() снова выбор шкалы");
     // черновик подсказки переживает reload (MP.draft), в localStorage нет сектора

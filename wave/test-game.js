@@ -380,6 +380,20 @@ test("аватар: меняется в лобби, чужой занять не
   assert.strictEqual(g.snapshot(0, {}).avatarChoices, null);
 });
 
+test("rename: своё имя в лобби; чужое и пустое отвергаются; в игре нельзя (wave P2-1)", () => {
+  const g = Game.create({ settings: {}, code: "TESTRN", rnd: rig(), content: fixture() });
+  g.addPlayer({ id: "a", name: "Аня", now: 0 });
+  g.addPlayer({ id: "b", name: "Боб", now: 0 });
+  assert.strictEqual(g.rename("a", "Анна").ok, true);
+  assert.strictEqual(g.player("a").name, "Анна");
+  assert.strictEqual(g.rename("b", " анна ").reason, "name_taken");
+  assert.strictEqual(g.rename("a", "АННА").ok, true, "свой же ключ имени — не «занято»");
+  assert.strictEqual(g.rename("b", "   ").reason, "bad_name");
+  assert.strictEqual(g.rename("zz", "Х").reason, "not_player");
+  g.s.phase = "clue";
+  assert.strictEqual(g.rename("b", "Борис").reason, "game_started");
+});
+
 // ---------- T-W2-22: призраки, played, skipped ----------
 
 test("призрак не в «N из M»: roster и guessers по онлайн + ответившие, locked не больше guessers", () => {

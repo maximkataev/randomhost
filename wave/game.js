@@ -729,6 +729,19 @@ class Game {
     return { ok: true, events: [{ type: "avatar", playerId: id }] };
   }
 
+  // Своё имя: в лобби и между партиями; уникальность — по nameKey, как при входе (wave P2-1)
+  rename(id, name) {
+    const s = this.s;
+    const p = this.player(id);
+    if (!p || p.left) return { ok: false, reason: "not_player" };
+    if (s.phase !== "lobby" && s.phase !== "finished") return { ok: false, reason: "game_started" };
+    const n = cleanName(name);
+    if (!n) return { ok: false, reason: "bad_name" };
+    if (this.present().some((x) => x !== p && nameKey(x.name) === nameKey(n))) return { ok: false, reason: "name_taken" };
+    p.name = n;
+    return { ok: true, events: [{ type: "rename", playerId: id }] };
+  }
+
   snapshot(now, view) {
     const s = this.s;
     const board = view === "board";
