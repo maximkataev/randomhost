@@ -92,14 +92,17 @@ function betPos(key) {
   return nums.length ? [x / nums.length, z / nums.length] : [0, 0];
 }
 
-// инициалы — как на аватарке рельса доски: первые буквы слов, без эмодзи бота, максимум две
+// инициалы — как на аватарке рельса доски (initials из roulette-shared.js): первый буква/цифра/эмодзи слова,
+// без эмодзи бота, максимум две (roulette-049: у «<b>Bold</b>» было «<»)
 function initialsOf(p) {
   if (p && p.initials) return String(p.initials).slice(0, 3);
-  let n = String((p && p.name) || "?").replace(/^\p{Extended_Pictographic}\s*/u, "");
+  let n = String((p && p.name) || "?").replace(/^🤖\s*/, "");
   let idx = "";
   const m = n.match(/^(.*\S)\s+\((\d{1,2})\)$/); // «Маша (2)» → «М2», как на фишке
   if (m) { n = m[1]; idx = m[2]; }
-  return (n.split(/\s+/).filter(Boolean).map((w) => [...w][0]).join("").slice(0, idx ? 1 : 2).toUpperCase() + idx) || "?";
+  const mark = /[\p{L}\p{N}\p{Extended_Pictographic}]/u;
+  const out = n.split(/\s+/).map((w) => [...w].find((c) => mark.test(c)) || "").join("");
+  return ([...out].slice(0, idx ? 1 : 2).join("").toUpperCase() + idx) || "?";
 }
 // сумма ставки: разделители по языку страницы (rlAmount из roulette-shared.js)
 function rlAmount(n) {

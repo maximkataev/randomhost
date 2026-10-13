@@ -78,6 +78,22 @@ test("initials: слова, эмодзи бота, кодовые точки", (
   assert.strictEqual(ev(`initials("Agent 7")`), "A7");
 });
 
+test("initials: «<», скобки и знаки не становятся аватаркой; initialsOf колеса даёт то же (roulette-049)", () => {
+  const { ev } = load();
+  const WHEEL = fs.readFileSync(path.join(__dirname, "..", "roulette-wheel.js"), "utf8");
+  const i0 = WHEEL.indexOf("function initialsOf(p)");
+  assert.ok(i0 > 0, "initialsOf в roulette-wheel.js");
+  const i1 = WHEEL.indexOf("\n}\n", i0) + 3;
+  const wheelCtx = vm.createContext({});
+  vm.runInContext(WHEEL.slice(i0, i1), wheelCtx);
+  const names = ["<b>Bold</b>😀😀", "<<<", "!!!", "(Маша)", "«Саша» Иванов", "  ", "😀😀", "🤖 Бот Боб", "😀 Emoji Cat", "Маша (2)", "-=Vasya=-", "#1 Fan", "Agent 7"];
+  const want = ["B", "?", "?", "М", "СИ", "?", "😀", "ББ", "😀E", "М2", "V", "1F", "A7"];
+  names.forEach((nm, i) => {
+    assert.strictEqual(ev(`initials(${JSON.stringify(nm)})`), want[i], "board: " + nm);
+    assert.strictEqual(wheelCtx.initialsOf({ name: nm }), want[i], "wheel: " + nm);
+  });
+});
+
 test("rlAmount: разделители по языку", () => {
   const { ev } = load();
   const norm = (s) => s.replace(/[   ]/g, " ");
