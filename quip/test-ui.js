@@ -136,14 +136,22 @@ async function answerRound(phones, opts = {}) {
       await waitFor(ph, "!!document.getElementById('sendbtn') && !document.getElementById('sendbtn').disabled", 4000);
       if (opts.hint && opts.hint.includes(ph.name) && !ph.hinted) {
         ph.hinted = true;
+        // quip-035: у двух вопросов общий таймер — это сказано на экране
+        check((await ph.evaluate("(() => { const s = window.qpPhone.state; return s.me.prompts.length < 2 || !!document.querySelector('.ahead .shared'); })()")) === true, `${ph.name}: «один таймер на все вопросы» под номером вопроса`);
         await click(ph, "#hintbtn");
         await wait(150);
+        check(/Тапни ещё раз|Tap again|Πάτα ξανά/.test(await ph.evaluate("document.getElementById('hintbtn').textContent")), `${ph.name}: подсказка — «тапни ещё раз, заменить нельзя»`);
         check((await ph.evaluate("document.getElementById('hintbtn').classList.contains('sure')")) === true, `${ph.name}: подсказка просит подтверждения`);
         await click(ph, "#hintbtn");
         const got = await waitFor(ph, "(document.querySelector('.gotit')||{}).textContent", 3000);
         check(!!got, `${ph.name}: подсказка перевернулась: «${String(got || "").trim().slice(0, 40)}»`);
-        await ph.shot("p_hint_" + ph.name);
-        await wait(2000);
+        const tHint = Date.now();
+        // quip-036: карточка держится, пока не нажмут «Дальше»; кнопка есть
+        check((await ph.evaluate("!!document.getElementById('hintnext')")) === true, `${ph.name}: у карточки «Выпало» есть кнопка «Дальше»`);
+        await wait(Math.max(0, 2100 - (Date.now() - tHint)));
+        check((await ph.evaluate("!!document.getElementById('hintnext')")) === true, `${ph.name}: карточка «Выпало» живёт дольше 2 с`);
+        await click(ph, "#hintnext");
+        check(!!(await waitFor(ph, "!document.getElementById('hintnext')", 2000)), `${ph.name}: «Дальше» уводит к следующему вопросу`);
         n++;
         continue;
       }
@@ -212,7 +220,7 @@ async function voteRound(phones) {
 }
 
 async function playGame(board, phones, label, plan) {
-  let rounds = 0, sawJinx = false, sawLate = false, sawHint = false, progAnswerChecked = false, progVoteChecked = false;
+  let rounds = 0, sawJinx = false, sawLate = false, sawHint = false, progAnswerChecked = false, progVoteChecked = false, toastProbe = false;
   const kbDone = new Set();
   const revealed = new Set();
   const shotOnce = new Set();
@@ -227,7 +235,7 @@ async function playGame(board, phones, label, plan) {
       await wait(500);
       await once(board, `${label}_b_answer_${ri}`);
       // «Наоборот»: на экране и на телефоне — ответ, поле просит вопрос
-      if (key.rev) {
+      if (key.rev && (await board.evaluate("state.roundKey")) === "rev") {
         const rv = await phones[0].evaluate("String(!!document.querySelector('.qcard .given')) + '/' + (document.getElementById('ta') || {}).placeholder + '/' + (document.querySelector('.qcard') || {}).textContent");
         check(/^true\/(Твой вопрос|Your question|Η ερώτησή σου)\//.test(rv), `${label}: «Наоборот» — на телефоне ответ и поле «Твой вопрос» (${rv})`);
         await once(phones[0], `${label}_p_rev`);
@@ -260,9 +268,17 @@ async function playGame(board, phones, label, plan) {
         const mm = /^Ответили (\d+) из (\d+)/.exec(String(txt || ""));
         const want = JSON.parse(ap || "null");
         check(!!mm && Number(mm[1]) <= Number(mm[2]) && (!want || Number(mm[2]) === want.total) && Number(mm[2]) === phones.length, `${label}: на телефоне «${String(txt || "").trim()}» (всего ${phones.length} на связи)`);
+        // quip-037: тост прошлого экрана не переживает смену фазы (держим его вручную, без таймера гашения)
+        await phones[0].evaluate("(() => { const t = document.getElementById('toast'); t.textContent = 'All three items, please'; t.classList.add('on'); })()");
+        toastProbe = true;
       }
-      const moved = await waitFor(board, "state.phase !== 'answer'", key.silent ? (45000 + EXTRA_MS) / SPEED + 5000 : 8000);
+      const moved = await waitFor(board, "state.phase !== 'answer'", key.silent ? (2 * (30000 + EXTRA_MS)) / SPEED + 8000 : 8000);
       check(!!moved, `${label}: раунд ${Number(ri) + 1} — ответы собраны`);
+      if (toastProbe) {
+        toastProbe = false;
+        await wait(300);
+        check((await phones[0].evaluate("document.getElementById('toast').classList.contains('on')")) === false, `${label}: тост не переживает смену фазы`);
+      }
       rounds++;
       continue;
     }
@@ -294,6 +310,11 @@ async function playGame(board, phones, label, plan) {
       if (!cur || revealed.has(cur.id)) { await wait(200); continue; }
       revealed.add(cur.id);
       if (cur && cur.result) {
+        if (cur.result.jinx.length) {
+          await wait(300);
+          check((await board.evaluate("(() => { const j = [...document.querySelectorAll('.ans.jx .vn')]; return j.length > 0 && j.every((e) => !/\\b0\\b/.test(e.textContent) && /одинаковые/.test(e.textContent)); })()")) === true, `${label}: у джинкса на доске подпись не содержит «0 голосов»`);
+          check((await phones[1].evaluate("(() => { const w = [...document.querySelectorAll('.r .who')].map((e) => e.textContent); return w.some((t) => /одинаковые — ноль/.test(t)) && !w.some((t) => /· 0 голос/.test(t)); })()")) === true, `${label}: у джинкса на телефоне подпись «одинаковые — ноль»`);
+        }
         if (cur.result.jinx.length) { sawJinx = true; await once(board, `${label}_b_jinx`); check((await board.evaluate("[...document.querySelectorAll('.ans.stamped .stamp')].some((s) => /ДЖИНКС/.test(s.textContent))")) === true, `${label}: на доске штамп «ДЖИНКС!»`); }
         if (cur.answers.some((a) => a.late)) { sawLate = true; await once(board, `${label}_b_late`); }
         if (cur.answers.some((a) => a.hint && !a.late)) sawHint = true;
@@ -378,11 +399,17 @@ async function main() {
     await phones[0].evaluate("document.querySelector('.avpick button:not(:disabled):not(.on)').click()");
     check(!!(await waitFor(board, `state.players.some((p) => p.avatar === ${JSON.stringify(want)})`, 3000)), `аватарка: сменилась ${avBefore} → ${want}, доска видит`);
     for (const p of phones) check((await p.evaluate(NO_HSCROLL)) === true, `${p.name}: лобби без прокрутки вбок`);
+    // quip-038: правила над списком игроков, без пустой половины экрана
+    check((await phones[0].evaluate("!!(document.querySelector('.howcard').compareDocumentPosition(document.querySelector('.players')) & 4)")) === true, "телефон: лобби — правила выше списка игроков (quip-038)");
+    // quip-023: два ответа подряд в «Твой голос» разделены пунктирной чертой
+    check((await phones[0].evaluate("(() => { const w = document.createElement('div'); w.innerHTML = '<div class=\"card\"><div class=\"gotit\">a</div><div class=\"gotit\" id=\"g2\">b</div></div>'; document.body.appendChild(w); const st = getComputedStyle(document.getElementById('g2')); const ok = st.borderTopStyle === 'dotted' && parseFloat(st.marginTop) > 0; w.remove(); return ok; })()")) === true, "телефон: второй .gotit отделён чертой (quip-023)");
+    // quip-039: «ОТВЕТ:» в шапке вопроса отделён от строки «Схватка N из M»
+    check((await board.evaluate("(() => { const w = document.createElement('div'); w.className = 'prompt'; w.innerHTML = '<div class=\"q\"><span class=\"given-k\" id=\"gk\">x</span></div>'; document.body.appendChild(w); const ok = parseFloat(getComputedStyle(document.getElementById('gk')).marginTop) > 0; w.remove(); return ok; })()")) === true, "доска: «ОТВЕТ:» отделён отступом от шапки (quip-039)");
 
     await click(board, "#startbtn");
-    const res = await playGame(board, phones, "g5", [{ jinx: true, hint: ["Оля"] }, { silent: ["Петя"] }, { rev: true }, {}]);
-    check(res.rounds === 4, `партия впятером: четыре раунда (${res.rounds})`);
-    check(res.reveals >= 12, `партия впятером: раскрытий ${res.reveals} (5 дуэлей + сцена + 5 «Наоборот» + финал)`);
+    const res = await playGame(board, phones, "g5", [{ jinx: true, hint: ["Оля"] }, { silent: ["Петя"], rev: true }, {}]);
+    check(res.rounds === 3, `партия впятером: три раунда — дуэли, средний, финал (${res.rounds})`);
+    check(res.reveals >= 7, `партия впятером: раскрытий ${res.reveals} (5 дуэлей + средний раунд (1 сцена или 5 дуэлей) + финал)`);
     check(res.sawJinx, "джинкс случился на одинаковых ответах в разных падежах");
     check(res.sawLate, "молчавший получил 🐌-подсказку");
     check(res.sawHint, "вытянутая подсказка отмечена 🎲 после раскрытия");
