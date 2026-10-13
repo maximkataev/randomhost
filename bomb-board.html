@@ -205,7 +205,7 @@
   @media (max-width: 700px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } } /* 3+1 с сиротой внизу выглядело кривовато */
   .stat { border: 2.5px solid var(--ink); background: #fff; padding: 8px 10px; text-align: center; }
   .stat .k { font-size: 14px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: .03em; }
-  .stat .v { font-size: 22px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat .v { font-size: 22px; font-weight: 900; line-height: 1.15; overflow-wrap: anywhere; } /* имя + «· 2 раза» переносится, а не обрезается многоточием (T-W3-32) */
   .seals { display: grid; gap: 8px; }
   .sealrow { border: 2.5px solid var(--ink); background: #fff; padding: 8px 12px; display: grid; gap: 4px; text-align: left; }
   .sealrow .top2 { display: flex; justify-content: space-between; gap: 12px; font-weight: 700; }
@@ -638,6 +638,7 @@ function drawLobby() {
   const free = Math.max(0, 16 - players.length);
   for (let i = 0; i < free; i++) { const d = el("div", "seat empty"); d.append(el("i", "av"), el("b", null, T("lobby_free"))); nodes.push(d); }
   $("seats").replaceChildren(...nodes);
+  fitNames($("seats"), ".seat b");
   $("seatn").textContent = tpl("lobby_n", { n: players.length });
   drawOpts(players);
   const enough = players.filter((p) => p.online).length >= 2;
@@ -727,6 +728,20 @@ function spotsOverlap(spots, W, H, cw) {
   }
   return false;
 }
+// имя целиком, где помещается: если не влезло — кегль мельче (не ниже ~70%), крайний случай — многоточие + title (T-W3-32)
+function fitName(b) {
+  b.style.fontSize = "";
+  if (b.clientWidth < 8) return;
+  b.title = b.textContent;
+  if (b.scrollWidth <= b.clientWidth + 1) return;
+  const base = parseFloat(getComputedStyle(b).fontSize) || 20;
+  let fs = base;
+  while (b.scrollWidth > b.clientWidth + 1 && fs > base * 0.7) { fs -= 1; b.style.fontSize = fs + "px"; }
+}
+function fitNames(root, sel) {
+  const bs = root.querySelectorAll(sel);
+  for (let i = 0; i < bs.length; i++) fitName(bs[i]);
+}
 function layout() {
   const arena = $("arena");
   const W = arena.clientWidth, H = arena.clientHeight;
@@ -784,6 +799,7 @@ function layout() {
     const c = cards.get(p.id);
     if (c) c.style.transform = `translate(${x - cw / 2}px, ${y - ch / 2}px)`;
   });
+  fitNames(arena, ".pc b");
 }
 
 function drawArena() {
@@ -1229,6 +1245,7 @@ function frame() {
       const st = c.querySelector(".st");
       const hb = state.bombs.find((x) => x.alive && x.holder === p.id);
       st.textContent = hb ? (p.online === false ? "🧨 ⚡ " + T("nolink") : "🧨 " + tpl("sec_s", { s: bmSec(now - hb.since) })) : p.out ? T("out_mark") : !p.online ? T("offline") : "";
+      if (!!hb !== !!c._hasSt) { c._hasSt = !!hb; fitName(c.querySelector("b")); } // у держателя справа секундомер — имя ужимается под него
       c.classList.toggle("hot", !!hb && now - hb.since > 6000);
     }
   } else if (state.phase === "countdown") {

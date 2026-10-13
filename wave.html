@@ -86,8 +86,8 @@
   .lede { overflow-wrap: anywhere; }
   /* узкий экран: вместо «← Все и…» — просто стрелка */
   @media (max-width: 380px) { .util a { font-size: 0; } .util a::before { content: "←"; font-size: 24px; } }
-  /* «← Все игры» — под палец: не меньше 36 px в обе стороны (стрелка на узком экране была 24×32) */
-  .util a { min-height: 36px; min-width: 36px; display: inline-flex; align-items: center; }
+  /* «← Все игры» — под палец: не меньше 44 px в обе стороны (стрелка на узком экране была 24×32, потом 36) */
+  .util a { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; }
   /* переключатель языка (i18n.js ставит его fixed) уезжает вместе с шапкой, а не висит поверх прокрученного экрана;
      пока в поле набирают подсказку (html.kb), его нет вообще: он закрывал дугу и поле на низком окне (T-W3-03, wave-045/047) */
   html .lang-switch { position: absolute !important; }
@@ -300,6 +300,8 @@
   .avbtn { position: relative; }
   .renbtn { border: 0; background: none; font: inherit; font-size: .7em; min-width: 44px; min-height: 44px; padding: 0; cursor: pointer; color: inherit; vertical-align: middle; }
   .namecnt { min-height: 1.3em; text-align: right; margin: 0; }
+  /* и сама кнопка 44×44 (меряется по рамке): поля компенсированы отрицательным margin — вёрстка строки прежняя */
+  .avbtn { padding: 7px; margin: -7px; }
   .avbtn::after { content: ""; position: absolute; inset: -8px; }
   .avpick { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
   .avpick button { aspect-ratio: 1; border: 0; border-radius: 50%; background: var(--paper); font-size: 22px; line-height: 1; padding: 0; cursor: pointer; }
@@ -562,9 +564,24 @@ function show(html, key, mid) {
   app.dataset.screen = key.split(":")[0]; // для CSS: компактные правила отдельных экранов на низких телефонах
   app.innerHTML = html;
   fitShouts();
+  fitWho();
   fitDial();
   // счётчики («Зафиксировали 2 из 3», секунды) вписываются уже после show — перемеряем перед отрисовкой кадра
   requestAnimationFrame(fitDial);
+}
+// имя в таблицах: целиком, где помещается; не влезло — кегль мельче (не ниже 70%), потом многоточие + title (T-W3-32)
+function fitWho() {
+  const bs = app.querySelectorAll(".who b");
+  for (let i = 0; i < bs.length; i++) {
+    const b = bs[i];
+    b.style.fontSize = "";
+    if (b.clientWidth < 8) continue;
+    b.title = b.textContent;
+    if (b.scrollWidth <= b.clientWidth + 1) continue;
+    const base = parseFloat(getComputedStyle(b).fontSize) || 16;
+    let fs = base;
+    while (b.scrollWidth > b.clientWidth + 1 && fs > base * 0.7) { fs -= 1; b.style.fontSize = fs + "px"; }
+  }
 }
 // крупные заголовки не шире экрана: «НАСТРОЙКА» широким кеглем на 360 px уезжала вбок
 function fitShouts() {
