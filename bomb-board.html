@@ -408,6 +408,7 @@ window.I18N_DICT = {
     st_times1: `{n} раз`, st_times: `{n} раза`, st_times5: `{n} раз`, st_none: `—`,
     fin_few: `Раунд остановлен: осталось меньше двух игроков`,
     fin_host: `Раунд остановлен ведущим`,
+    out_order: `Порядок вылета`,
     seals_title: `Печати`, seal_round: `Раунд {n}`, seal_bomb: `бомба {n}`,
     round_n: `Раунд {n}`,
     wait_host: `Ждём ведущего`,
@@ -452,6 +453,7 @@ window.I18N_DICT = {
     st_times1: `{n} time`, st_times: `{n} times`, st_times5: `{n} times`, st_none: `—`,
     fin_few: `Round stopped: fewer than two players left`,
     fin_host: `Round stopped by the host`,
+    out_order: `Elimination order`,
     seals_title: `Seals`, seal_round: `Round {n}`, seal_bomb: `bomb {n}`,
     round_n: `Round {n}`,
     wait_host: `Waiting for the host`,
@@ -496,6 +498,7 @@ window.I18N_DICT = {
     st_times1: `{n} φορά`, st_times: `{n} φορές`, st_times5: `{n} φορές`, st_none: `—`,
     fin_few: `Ο γύρος σταμάτησε: έμειναν λιγότεροι από δύο παίκτες`,
     fin_host: `Ο γύρος σταμάτησε από τον οικοδεσπότη`,
+    out_order: `Σειρά αποκλεισμού`,
     seals_title: `Σφραγίδες`, seal_round: `Γύρος {n}`, seal_bomb: `βόμβα {n}`,
     round_n: `Γύρος {n}`,
     wait_host: `Περιμένουμε τον οικοδεσπότη`,
@@ -1092,12 +1095,16 @@ function drawResult() {
       <div class="stat"><div class="k">${T("st_fastest")}</div><div class="v">${who(st.fastest)}${st.fastest ? " · " + escapeHtml(tpl("sec_s", { s: bmSec(st.fastest.ms) })) : ""}</div></div>
       <div class="stat"><div class="k">${T("st_passes")}</div><div class="v">${st.passes}</div></div>
     </div>` : "";
+  // порядок вылета (bomb-014): по взрывам партии, победитель — последним
+  const order = state.settings.mode === "elim" && state.winnerId
+    ? `<div class="stat"><div class="k">${T("out_order")}</div><div class="v" style="white-space:normal">${state.booms.map((x, i) => `${i + 1}. ${escapeHtml(nameOf(x.playerId))}`).concat(`🏆 ${escapeHtml((player(state.winnerId) || {}).name || "?")}`).join(" · ")}</div></div>`
+    : "";
   // номер раунда внутри партии; у двух бомб одного раунда — ещё и номер бомбы
   const rounds = [...new Set(state.seals.map((x) => x.round))];
   const twoOf = (x) => state.seals.filter((y) => y.round === x.round).length > 1;
   const seals = state.seals.map((x, i) => `<div class="sealrow"><div class="top2"><span>${escapeHtml(tpl("seal_round", { n: rounds.indexOf(x.round) + 1 }))}${twoOf(x) ? " · " + escapeHtml(tpl("seal_bomb", { n: x.bomb + 1 })) : ""} · ${escapeHtml(tpl("seal_fuse", { n: x.revealed ? x.fuseMs / 1000 : "?" }))}</span><span class="chk" data-i="${i}">${T("seal_check")}</span></div>
       <code>sha256(${escapeHtml(x.seal || "")})</code><code>= ${escapeHtml(x.commit)}</code></div>`).join("");
-  box.innerHTML = `<div class="rcard">${verdict}${stats}
+  box.innerHTML = `<div class="rcard">${verdict}${stats}${order}
     <div class="seals"><div class="stat" style="border:0;background:none;padding:0"><div class="k">${T("seals_title")} · ${escapeHtml(T("seal_line"))}</div></div>${seals}</div>
     ${isHost ? `<div class="rbtns"><button class="main" id="again" type="button">${T("btn_again")}</button><button id="tolobby" type="button">${T("btn_lobby")}</button></div>` : `<div class="fine">${T("wait_host")}</div>`}</div>`;
   if (isHost) {
@@ -1219,7 +1226,7 @@ function frame() {
       if (!c) continue;
       const st = c.querySelector(".st");
       const hb = state.bombs.find((x) => x.alive && x.holder === p.id);
-      st.textContent = hb ? (p.online === false ? "🧨 ⚡ " + T("nolink") : "🧨 " + bmSec(now - hb.since)) : p.out ? T("out_mark") : !p.online ? T("offline") : "";
+      st.textContent = hb ? (p.online === false ? "🧨 ⚡ " + T("nolink") : "🧨 " + tpl("sec_s", { s: bmSec(now - hb.since) })) : p.out ? T("out_mark") : !p.online ? T("offline") : "";
       c.classList.toggle("hot", !!hb && now - hb.since > 6000);
     }
   } else if (state.phase === "countdown") {

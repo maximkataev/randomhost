@@ -740,3 +740,13 @@ test("N1: removePlayer в лобби удаляет, как раньше", () =>
   g.removePlayer("A", 0);
   assert.strictEqual(g.player("A"), undefined);
 });
+
+test("bomb-024: «Моргнуло» — окно 800/550/380 мс, minMs растёт вместе с ним", () => {
+  const durs = [1, 2, 3].map((lvl) => {
+    const c = CH.generate({ lvl, rnd: rig([], 5 + lvl), groups: {}, used: { quiz: [], tf: [], heavy: [], chrono: [] }, only: "blink" });
+    assert.strictEqual(c.type, "blink");
+    assert.strictEqual(c.minMs, c.view.showAt + c.view.dur);
+    return c.view.dur;
+  });
+  assert.deepStrictEqual(durs, [800, 550, 380]);
+});
