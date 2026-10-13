@@ -310,6 +310,64 @@ async function typeText(page, text) {
     check(ownbid === "ok", "пульт: «Своя сумма» не закрывается на новом state (" + ownbid + ")");
     const frac = await evaluateSafe(remote, `(() => { const i = document.getElementById("ownbid"); if (!i) return ""; i.value = "7.5"; document.querySelector("#ownwrap .go").click(); return document.querySelector("#ownwrap .note").textContent; })()`);
     check(hasFrag(frac || "", await i18nFrag(remote, "own_bid_int")), "пульт: дробная сумма не округляется молча (" + frac + ")");
+    // T-W4-06: P2-мелочи пульта (E-33…E-41) — состояние подменяем в странице и возвращаем обратно
+    const w4 = JSON.parse(await evaluateSafe(remote, `(() => {
+      const out = {}, s = state, p = s.players.find((x) => x.id === me);
+      const keep = { phase: s.phase, leaderId: s.leaderId, price: s.price, deadline: s.deadline, money: p.money, full: p.full, lots: p.lots };
+      const note = () => (document.getElementById("note") || {}).textContent || "";
+      try {
+        // E-41: $0 и свободные слоты — плашка «На мели», а не кнопка ставки
+        s.phase = "bidding"; s.leaderId = null; s.price = 0; p.money = 0; p.full = false; p.lots = []; render();
+        const act = (document.querySelector(".actions") || {}).textContent || "";
+        out.broke = act.includes(I18N.t("broke_title")) && !document.getElementById("bid");
+        p.money = keep.money;
+        // E-34: «Перебили!» не висит под «Ты лидер» после ответной ставки быстрее 1,5 с
+        s.phase = "bidding"; s.leaderId = "x-other"; s.price = 2; render();
+        flashButton(I18N.t("note_outbid"), "outbid");
+        out.noteSet = note() === I18N.t("note_outbid");
+        s.leaderId = me; s.price = 3; render();
+        out.noteGone = note() === "";
+        // E-32: после продажи — тихая строка «Следующий лот…», а не пустая рамка
+        s.phase = "sold"; s.leaderId = "x-other"; render();
+        const idle = document.querySelector(".actions .plate.idle");
+        out.idle = !!idle && getComputedStyle(idle).borderTopColor.split(" ").join("").includes("0,0,0,0") && idle.textContent === I18N.t("next_lot");
+        // E-35: кольцо «Мимо» считает от реальной длительности (≤ 1 с), а не от 2 с
+        s.phase = "unsold"; out.total = timerTotal(s);
+        // E-38: подпись «Мимо» нейтральная — про добор ни слова
+        s.leaderId = null; render();
+        const cap = (document.querySelector("#lead .cap") || {}).textContent || "", who = (document.querySelector("#lead .who") || {}).textContent || "";
+        out.cap = cap; out.who = who; out.capOk = cap === I18N.t("cap_unsold") && who === I18N.t("nobody_took") && !/добор|draft|προσθ/i.test(cap + who);
+        // E-38: «+N с» после продления таймера
+        s.phase = "bidding"; s.leaderId = "x-other"; s.price = 4; s.deadline = Date.now() + 4000; noteTimerBonus(s);
+        s.deadline = Date.now() + 10000; noteTimerBonus(s);
+        const tb = document.getElementById("tbonus");
+        out.bonus = tb ? tb.textContent : null; out.bonusOn = !!(tb && tb.classList.contains("on"));
+        // E-33: счёт — шрифтом тела (в Unbounded «0» похож на «О»), цифры табличные
+        const sc = document.createElement("div"); sc.className = "score"; sc.textContent = "10"; document.getElementById("app").append(sc);
+        const cs = getComputedStyle(sc); out.scoreFont = cs.fontFamily; out.scoreNum = cs.fontVariantNumeric; sc.remove();
+      } finally {
+        Object.assign(s, { phase: keep.phase, leaderId: keep.leaderId, price: keep.price, deadline: keep.deadline });
+        p.money = keep.money; p.full = keep.full; p.lots = keep.lots; render();
+      }
+      return JSON.stringify(out);
+    })()`) || "{}");
+    check(w4.broke === true, "пульт: $0 и свободные слоты — плашка «На мели» вместо ставки (E-41)");
+    check(w4.noteSet === true && w4.noteGone === true, "пульт: «Перебили!» снимается, когда лидер снова я (E-34)");
+    check(w4.idle === true, "пульт: после продажи «Следующий лот…» без рамки (E-32)");
+    check(w4.total > 0 && w4.total <= 1000, "пульт: кольцо «Мимо» считает от ≤ 1 с (E-35, " + w4.total + ")");
+    check(w4.capOk === true, "пульт: «Никто не взял» с нейтральной подписью без «добора» (E-38: «" + w4.cap + "» / «" + w4.who + "»)");
+    check(w4.bonusOn === true && /^\+\d+/.test(w4.bonus || ""), "пульт: после продления таймера над кольцом «+N с» (E-38: " + w4.bonus + ")");
+    check(/Onest/.test(w4.scoreFont || "") && /tabular/.test(w4.scoreNum || ""), ".score: шрифт тела с табличными цифрами (E-33: " + w4.scoreFont + " / " + w4.scoreNum + ")");
+    // E-43: 24 символа кириллицы на доске — одна строка с многоточием, ряд не раздвигается
+    const longName = JSON.parse(await evaluateSafe(board, `(() => {
+      const p = state.players[0], was = p.name; p.name = "Ш".repeat(24); render();
+      const n = [...document.querySelectorAll(".p-name")].find((x) => x.textContent === p.name);
+      const row = n && n.closest(".p, .player, li, div:not(.p-name)");
+      const r = { found: !!n, ellipsis: n ? getComputedStyle(n).textOverflow === "ellipsis" && getComputedStyle(n).whiteSpace === "nowrap" : false,
+        inside: n && n.parentElement ? n.getBoundingClientRect().right <= n.parentElement.getBoundingClientRect().right + 1 : false };
+      p.name = was; render(); return JSON.stringify(r);
+    })()`) || "{}");
+    check(longName.found && longName.ellipsis && longName.inside, "доска: имя в 24 символа в одну строку с многоточием, не раздвигает ряд (E-43)");
     // ставка с пульта
     await remote.call("Runtime.evaluate", { expression: "(document.getElementById('bid') || {click(){}}).click()" });
     await wait(1200);
