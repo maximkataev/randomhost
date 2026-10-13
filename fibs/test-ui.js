@@ -591,12 +591,31 @@ async function main() {
       await p6[0].evaluate("window.qpPhone.send({ type: 'lie', text: 'мой обман' })");
       check(await driveTo("choose"), "phone-matrix: дошли до выбора");
       await waitFor(p6[0], "document.querySelectorAll('.opt').length > 1", 4000);
-      for (const [w, h] of [[320, 568], [375, 667], [390, 844], [412, 915], [568, 320], [667, 375], [844, 390], [915, 412]]) {
-        await p6[0].call("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
-        await wait(250);
-        const m = await p6[0].evaluate(`(() => { const hb = document.getElementById("hedge").getBoundingClientRect(); const o = document.querySelector(".opt").getBoundingClientRect();
-          return { hscroll: document.documentElement.scrollWidth > innerWidth, hedgeBottom: hb.bottom, ih: innerHeight, optTap: o.height >= 40, hedgeAbove: hb.top < o.top || hb.left < o.left }; })()`);
-        check(!m.hscroll && m.hedgeBottom <= m.ih && m.optTap && m.hedgeAbove, `phone-matrix ${w}x${h}: выбор — «Подстраховка» в первом экране над списком (${Math.round(m.hedgeBottom)}/${m.ih})`);
+      // W5: «Подстраховка» и «Это правда · n/2» — липкая полоса у нижнего края; проверяем без прокрутки, при коротком и длинном факте
+      // (раньше «Подстраховка» стояла над списком и на 568×320 с длинным фактом уезжала за край: детерминированно от длины факта)
+      const measureChoose = `(() => { const r = (e) => e.getBoundingClientRect(); const hb = r(document.getElementById("hedge")); const pk = document.getElementById("pickbtn");
+        const o = document.querySelector(".opt"); const op = [...document.querySelectorAll(".opt")]; const re = [...document.querySelectorAll(".reacts button")].map((b) => r(b));
+        return { hscroll: document.documentElement.scrollWidth > innerWidth, y: scrollY, hedgeBottom: hb.bottom, hedgeH: hb.height, pickBottom: pk ? r(pk).bottom : 0, pickH: pk ? r(pk).height : 99,
+          ih: innerHeight, optH: Math.min(...op.map((b) => r(b).height)), reactsOk: re.every((b) => b.width >= 43.5 && b.height >= 43.5) }; })()`;
+      for (const long of [false, true]) {
+        if (long) await p6[0].evaluate("(() => { const f = document.querySelector('.fact'); f.textContent = (f.textContent + ' ').repeat(3); })()");
+        for (const [w, h] of [[320, 568], [375, 667], [390, 844], [412, 915], [568, 320], [667, 375], [844, 390], [915, 412]]) {
+          await p6[0].call("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
+          await wait(250);
+          await p6[0].evaluate("window.scrollTo(0, 0)");
+          const m = await p6[0].evaluate(measureChoose);
+          check(!m.hscroll && m.y === 0 && m.hedgeBottom <= m.ih && m.hedgeH >= 43.5 && m.optH >= 43.5,
+            `phone-matrix ${w}x${h}${long ? " (длинный факт)" : ""}: выбор — «Подстраховка» в первом экране без прокрутки, тап ≥ 44 (${Math.round(m.hedgeBottom)}/${m.ih}, ${Math.round(m.hedgeH)} px, вариант ${Math.round(m.optH)} px)`);
+          if (!long) {
+            await p6[0].evaluate("document.getElementById('hedge').click()");
+            await wait(150);
+            await p6[0].evaluate("window.scrollTo(0, 0)");
+            const on = await p6[0].evaluate(measureChoose);
+            check(on.pickBottom <= on.ih && on.hedgeBottom <= on.ih && on.pickH >= 43.5, `phone-matrix ${w}x${h}: подстраховка включена — «Это правда · 0/2» видна без прокрутки (${Math.round(on.pickBottom)}/${on.ih})`);
+            await p6[0].evaluate("document.getElementById('hedge').click()");
+            await wait(150);
+          }
+        }
       }
     }
 
