@@ -61,7 +61,7 @@
   /* ✕ у игрока: тап-цель не меньше 44 px (раньше 26×27 и только по hover — на ТВ без мыши недостижима) */
   .kickx { flex: none; min-width: 44px; min-height: 44px; border: 3px solid var(--ink); background: var(--paper); color: var(--ink); font-weight: 1000; font-size: 18px; line-height: 1; padding: 0 8px; }
   .pc .kickx { margin: -4px -8px -4px 0; }
-  .brow.kickable { grid-template-columns: 2.2em 2.2em minmax(0, 11em) 1fr 4.2em auto; }
+  .brow.kickable { grid-template-columns: 2.2em 2.2em minmax(0, 13em) 1fr 4.2em auto; }
   .brow.off b, .pc.off b { text-decoration: none; }
   .brow.off { opacity: .55; }
   small.offn { flex: none; font-size: .5em; font-weight: 800; opacity: .75; white-space: nowrap; }
@@ -119,7 +119,7 @@
   /* нижняя строка: игроки, «зафиксировали», секунды */
   .foot { flex: none; display: flex; align-items: center; gap: 18px; min-height: 7vh; }
   .chips { flex: 1; display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; align-items: center; }
-  .pc { display: inline-flex; align-items: center; gap: 8px; border: 3px solid var(--ink); background: var(--paper); padding: 4px 12px 4px 4px; font-weight: 800; font-size: clamp(17px, 2.6vh, 30px); max-width: 16em; }
+  .pc { display: inline-flex; align-items: center; gap: 8px; border: 3px solid var(--ink); background: var(--paper); padding: 4px 12px 4px 4px; font-weight: 800; font-size: clamp(17px, 2.6vh, 30px); max-width: 20em; }
   .pc b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .pc.on { background: var(--ink); color: var(--paper); animation: slam .35s var(--press); }
   /* замок место держит всегда: плитка не шире после «клац», соседи не прыгают */
@@ -202,7 +202,7 @@
 
   /* ---------- счёт: полоса из двух частей — прежний счёт чёрным и прибавка цветом, вырастающая из конца ---------- */
   .board { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 1.2vh; }
-  .brow { flex: 0 1 13vh; min-height: 0; display: grid; grid-template-columns: 2.2em 2.2em minmax(0, 11em) 1fr 4.2em; align-items: center; gap: 1vw; font-size: clamp(18px, 3.6vh, 44px); font-weight: 1000; }
+  .brow { flex: 0 1 13vh; min-height: 0; display: grid; grid-template-columns: 2.2em 2.2em minmax(0, 13em) 1fr 4.2em; align-items: center; gap: 1vw; font-size: clamp(18px, 3.6vh, 44px); font-weight: 1000; }
   .brow .n { font-stretch: 151%; font-variation-settings: "wdth" 151; }
   .brow .av { width: 1.8em; height: 1.8em; font-size: .9em; }
   .brow b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -271,7 +271,7 @@
     .awards { gap: 1.2vh; }
     .aw .av { width: 48px; height: 48px; font-size: 26px; }
     .aw p { font-size: clamp(15px, 2vh, 22px); margin-top: 0; }
-    .brow { grid-template-columns: 1.6em 1.6em minmax(0, 8em) 1fr 3.6em; font-size: clamp(16px, 2.6vh, 32px); }
+    .brow { grid-template-columns: 1.6em 1.6em minmax(0, 10em) 1fr 3.6em; font-size: clamp(16px, 2.6vh, 32px); }
   }
   @media (max-width: 900px) and (min-aspect-ratio: 1/1) {
     .seats { gap: 1vh 10px; }
@@ -1337,6 +1337,26 @@ async function boot() {
   // ручка для отладки и стенда: те же сообщения, что шлют кнопки доски
   window.wvBoard = { send: (m) => conn.send(m), get state() { return state; }, get code() { return CODE; } };
 }
+// имена на доске: целиком, где помещаются. Не влезло — кегль мельче (не ниже 70%), в крайнем случае многоточие + title (T-W3-32)
+const FIT_SEL = ".seat b, .brow b, .pc b, .rest li b";
+function fitNameEl(b) {
+  b.style.fontSize = "";
+  if (b.clientWidth < 8) return;
+  b.title = b.textContent;
+  if (b.scrollWidth <= b.clientWidth + 1) return;
+  const base = parseFloat(getComputedStyle(b).fontSize) || 20;
+  let fs = base;
+  while (b.scrollWidth > b.clientWidth + 1 && fs > base * 0.7) { fs -= 1; b.style.fontSize = fs + "px"; }
+}
+let fitQueued = false;
+function fitAllNames() {
+  fitQueued = false;
+  const bs = document.querySelectorAll(FIT_SEL);
+  for (let i = 0; i < bs.length; i++) fitNameEl(bs[i]);
+}
+function queueFit() { if (!fitQueued) { fitQueued = true; requestAnimationFrame(fitAllNames); } }
+if (window.MutationObserver) new MutationObserver(queueFit).observe(document.body, { childList: true, subtree: true, characterData: true });
+window.addEventListener("resize", queueFit);
 boot();
 </script>
 </body>
