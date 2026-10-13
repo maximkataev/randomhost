@@ -858,7 +858,8 @@ class Game {
     return {
       unkillable: pos(best((p) => p.stats.escapes)),
       regular: pos(best((p) => p.stats.cells)),
-      rocket: best((p) => p.stats.msSum / p.stats.right, (p) => p.stats.right >= 3, true),
+      // среднее время — целое число мс (lastq-052: дробь уезжала на доску и в JSON)
+      rocket: (() => { const r = best((p) => p.stats.msSum / p.stats.right, (p) => p.stats.right >= 3, true); return r && { ids: r.ids, n: Math.round(r.n) }; })(),
       kamikaze: s.settings.final ? pos(best((p) => p.stats.stake)) : null,
       seer: pos(best((p) => p.stats.betHits)),
       // «Дно» считаем по всем, кто был в партии, включая ушедших: иначе «выйти на дне» стирало бы награду (lastq-008)

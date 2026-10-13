@@ -331,3 +331,31 @@ test("Фонарик: 🔑 вне стартового пятна света (в
   }
   assert.equal(C.generate({ lvl: 1, rnd: mulberry(1), only: "torch" }).view.light, 0.2);
 });
+
+// ---------- T-W4-14: RULE_U46_MINMS — minMs «ловкости» не ниже человеческого потолка (lastq-022, D10=A) ----------
+function withFlag(v, fn) {
+  const prev = process.env.RULE_U46_MINMS;
+  if (v == null) delete process.env.RULE_U46_MINMS; else process.env.RULE_U46_MINMS = v;
+  try { return fn(); } finally { if (prev == null) delete process.env.RULE_U46_MINMS; else process.env.RULE_U46_MINMS = prev; }
+}
+test("RULE_U46_MINMS: выкл — прежние пороги (dig 60, saw 120, wires 90, order 110); вкл — 100/200/150/170 мс на единицу", () => {
+  const per = { dig: (v) => v.n, saw: (v) => v.bars * v.strokes, wires: (v) => v.n, order: (v) => v.n };
+  const base = { dig: [60, 100], saw: [120, 200], wires: [90, 150], order: [110, 170] };
+  for (const type of Object.keys(per)) for (const lvl of [1, 2, 3]) for (const [flag, k] of [[null, 0], ["1", 1]]) {
+    const ch = withFlag(flag, () => C.generate({ lvl, rnd: mulberry(7 + lvl), only: type }));
+    const n = per[type](ch.view);
+    const add = type === "wires" || type === "order" ? 400 : 0;
+    assert.equal(ch.minMs, add + n * base[type][k], `${type} ур.${lvl} флаг=${flag}`);
+    // человек быстрее порога не успеет: ответ на 1 мс раньше — «early», на minMs — «ok»
+    assert.equal(C.check(ch, rightAns(ch), ch.minMs - 1), "early");
+    assert.equal(C.check(ch, rightAns(ch), ch.minMs), "ok");
+  }
+});
+test("Труба: старт в пределах r·1,3 принимается, дальше — нет (lastq-043)", () => {
+  const ch = C.generate({ lvl: 2, rnd: mulberry(3), only: "tunnel" });
+  const r = tunnelTrace(ch, 1.3);
+  assert.equal(C.check(ch, r, 99999), "ok");
+  const far = JSON.parse(JSON.stringify(r));
+  far.p[0] = [far.p[0][0], far.p[0][1] + ch.view.r * 1.5 + 0.05];
+  assert.equal(C.check(ch, far, 99999), "wrong");
+});
