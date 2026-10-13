@@ -238,6 +238,8 @@ async function playGame(board, phones, label, plan) {
       check(fits === true, `${label}: доска, факт ${facts} — вырезки влезают (${fits})`);
       await once(board, `${label}_b_choose_${ri}`);
       await once(phones[0], `${label}_p_choose`);
+      const secs = await phones[0].evaluate("(document.getElementById('tleft') || {}).textContent || ''");
+      if (!/\d/.test(secs)) check(false, `${label}: в фазе выбора на телефоне нет секунд (${secs})`);
       for (const p of phones) { const h = await p.evaluate(NO_HSCROLL); if (h !== true) check(false, `${p.name}: выбор без прокрутки вбок`); }
       await chooseRound(phones, plan[facts - 1] || {}, label);
       await waitFor(board, "state.phase !== 'choose'", 15000 / SPEED + 3000);
@@ -333,6 +335,7 @@ async function main() {
     await board.shot("b_lobby");
     await phones[3].shot("p_lobby_longname");
     for (const p of phones) check((await p.evaluate(NO_HSCROLL)) === true, `${p.name}: лобби без прокрутки вбок`);
+    check(/5/.test(await phones[0].evaluate("(document.getElementById('lobbyn') || {}).textContent || ''")), "телефон: в лобби счётчик «Нас N» (fibs-044)");
 
     await click(board, "#startbtn");
     const plan = [

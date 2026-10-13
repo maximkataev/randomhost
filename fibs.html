@@ -384,7 +384,7 @@ window.I18N_DICT = {
     err_name: `Напиши имя`, err_room_full: `В комнате уже 16 игроков`, err_token_gone: `Тебя нет в этой партии — войди заново`,
     wait_title: `Подключаемся…`,
     btn_home: `Главная`,
-    lobby_in: `Ты в игре`, av_pick: `Нажми на аватарку, чтобы сменить`, rj_avatar_taken: `Эту аватарку уже взяли`, rj_game_started: `Сменить можно до начала игры`, lobby_wait: `Ждём, пока ведущий начнёт. Нужно хотя бы трое`,
+    lobby_in: `Ты в игре`, av_pick: `Нажми на аватарку, чтобы сменить`, rj_avatar_taken: `Эту аватарку уже взяли`, rj_game_started: `Сменить можно до начала игры`, lobby_wait: `Ждём, пока ведущий начнёт. Нужно хотя бы трое`, lobby_count: `Нас {n} из 3`, lobby_count_ok: `Нас {n} — можно начинать`,
     intro_k: `Раунд {n} из {m}`,
     topic_you: `Выбирай тему`, topic_wait: `Тему выбирает {name}`,
     fact_of: `Факт {i} из {n}`,
@@ -440,13 +440,13 @@ window.I18N_DICT = {
     err_name: `Type a name`, err_room_full: `The room already has 16 players`, err_token_gone: `You're not in this game — join again`,
     wait_title: `Connecting…`,
     btn_home: `Home`,
-    lobby_in: `You're in`, av_pick: `Tap your avatar to change it`, rj_avatar_taken: `That avatar is taken`, rj_game_started: `You can change it before the game starts`, lobby_wait: `Waiting for the host to start. At least three players needed`,
+    lobby_in: `You're in`, av_pick: `Tap your avatar to change it`, rj_avatar_taken: `That avatar is taken`, rj_game_started: `You can change it before the game starts`, lobby_wait: `Waiting for the host to start. At least three players needed`, lobby_count: `{n} of 3 players`, lobby_count_ok: `{n} players — ready to start`,
     intro_k: `Round {n} of {m}`,
     topic_you: `Pick a topic`, topic_wait: `{name} is picking the topic`,
     fact_of: `Fact {i} of {n}`,
     lie_title: `Lie`, ph_lie: `Your lie`,
     btn_send: `Send`,
-    btn_hint: `🎲 Lie for me · {n} left`, btn_hint_sure: `Take a ready one? No take-backs`, btn_hint_none: `🎲 No hints left`,
+    btn_hint: `🎲 Lie for me · {n} left`, btn_hint_sure: `Use a ready-made lie? Final.`, btn_hint_none: `🎲 No hints left`,
     got_hint: `Your lie:`,
     truth_rj: `That's the truth! Make up a lie`,
     done_title: `Lie sent to print`, done_sub: `Waiting for the others — watch the shared screen`,
@@ -496,7 +496,7 @@ window.I18N_DICT = {
     err_name: `Γράψε όνομα`, err_room_full: `Το δωμάτιο έχει ήδη 16 παίκτες`, err_token_gone: `Δεν είσαι σε αυτή την παρτίδα — μπες ξανά`,
     wait_title: `Σύνδεση…`,
     btn_home: `Αρχική`,
-    lobby_in: `Είσαι μέσα`, av_pick: `Πάτα την εικόνα σου για να την αλλάξεις`, rj_avatar_taken: `Αυτή η εικόνα είναι πιασμένη`, rj_game_started: `Αλλάζει μόνο πριν ξεκινήσει το παιχνίδι`, lobby_wait: `Περιμένουμε τον οικοδεσπότη. Χρειάζονται τουλάχιστον τρεις`,
+    lobby_in: `Είσαι μέσα`, av_pick: `Πάτα την εικόνα σου για να την αλλάξεις`, rj_avatar_taken: `Αυτή η εικόνα είναι πιασμένη`, rj_game_started: `Αλλάζει μόνο πριν ξεκινήσει το παιχνίδι`, lobby_wait: `Περιμένουμε τον οικοδεσπότη. Χρειάζονται τουλάχιστον τρεις`, lobby_count: `Είμαστε {n} από 3`, lobby_count_ok: `Είμαστε {n} — μπορούμε να ξεκινήσουμε`,
     intro_k: `Γύρος {n} από {m}`,
     topic_you: `Διάλεξε θέμα`, topic_wait: `Θέμα διαλέγει: {name}`,
     fact_of: `Γεγονός {i} από {n}`,
@@ -840,14 +840,17 @@ function meBadge() {
   return `<div class="me-badge">${avBtnHtml(avHtml(p))}<div><span class="eyebrow">${T("lobby_in")}</span><b>${escapeHtml(p.name)}</b></div></div>`;
 }
 const timerHtml = () => `<div class="timer" id="timer"><i></i></div>`;
+// секунды под полоской в фазе выбора (fibs-038): #tleft обновляет общий тик
+const timerSecs = () => `<div class="ahead" style="justify-content:flex-end"><span id="tleft"></span></div>`;
 const factHead = () => `<div class="ahead"><span>${escapeHtml(tpl("fact_of", { i: state.fi + 1, n: state.factsInRound }))} · <b>${escapeHtml(qpRoundName(state.roundKey))}</b></span><span id="tleft"></span></div>`;
 const factCard = (ans) => `<div class="card"><div class="k">${escapeHtml(state.fact.final ? T("r_final") : qpTopic(state.fact.topic))}</div><div class="fact${state.fact.text.length > 110 ? " long" : ""}">${qpFactHtml(state.fact.text, ans)}</div></div>`;
 
 // ---------- экраны по фазам ----------
 function renderLobby() {
-  const key = "lobby:" + state.players.map((p) => p.id + p.online).join(",") + avKey() + qpLang();
+  const lobbyN = state.players.filter((p) => !p.left).length;
+  const key = "lobby:" + state.players.map((p) => p.id + p.online + (p.left ? "x" : "")).join(",") + avKey() + qpLang();
   if (screenKey === key) return;
-  show(`${meBadge()}${avPickHtml()}<div class="status"><p>${T("lobby_wait")}</p></div>${playersHtml()}${reactsHtml()}
+  show(`${meBadge()}${avPickHtml()}<div class="status"><p>${T("lobby_wait")}</p><p class="fine" id="lobbyn">${escapeHtml(tpl(lobbyN >= 3 ? "lobby_count_ok" : "lobby_count", { n: lobbyN }))}</p></div>${playersHtml()}${reactsHtml()}
     <div class="card howcard"><div class="k">${T("how_k")}</div><ul><li>${T("how_lie")}</li><li>${T("rule2")}</li><li>${T("rule3")}</li></ul></div>`, key, true);
   bindReacts();
   bindAvatars();
@@ -970,7 +973,7 @@ function renderChoose() {
     if (likePendFact !== factId()) { likePendFact = factId(); likePend = []; }
     const likedSet = s.likes.concat(likePend.filter((x) => s.likes.indexOf(x) < 0));
     const left = 2 - likedSet.length;
-    show(`${timerHtml()}<div class="status"><h2>${T("chose_title")}</h2><p>${T("chose_sub")}</p><p class="fine" style="margin-top:4px">${T("chose_burn")}</p></div>${progHtml()}
+    show(`${timerHtml()}${timerSecs()}<div class="status"><h2>${T("chose_title")}</h2><p>${T("chose_sub")}</p><p class="fine" style="margin-top:4px">${T("chose_burn")}</p></div>${progHtml()}
       <div class="eyebrow">${escapeHtml(tpl("likes_left", { n: left }))}</div>
       <div class="opts">${state.options.map((o, i) => {
         const liked = likedSet.indexOf(i) >= 0;
@@ -992,7 +995,7 @@ function renderChoose() {
   }
   const need = hedge ? 2 : 1;
   // «Подстраховка» сразу под подсказкой, над списком: на SE (320×568) список с 6–7 вариантами уходит под сгиб (fibs-033)
-  show(`${timerHtml()}<div class="mini">${factCard()}</div>
+  show(`${timerHtml()}${timerSecs()}<div class="mini">${factCard()}</div>
     <div class="eyebrow">${escapeHtml(hedge ? T("choose_two") : T("choose_one"))}</div>
     <div class="hedge"><button class="btn ghost${hedge ? " on" : ""}" type="button" id="hedge">${escapeHtml(hedge ? T("btn_hedge_on") : T("btn_hedge"))}</button></div>
     <div class="opts">${state.options.map((o, i) => `<button type="button" class="opt${o.mine ? " own" : ""}${picks.includes(i) ? " sel" : ""}" data-i="${i}" data-own="${escapeHtml(T("own"))}"${o.mine ? " disabled" : ""}><span class="l">${letter(i)}</span><span class="t">${escapeHtml(o.text)}</span></button>`).join("")}</div>
