@@ -200,7 +200,10 @@ function initials(name) {
   let idx = "";
   const m = n.match(/^(.*\S)\s+\((\d{1,2})\)$/);
   if (m) { n = m[1]; idx = m[2]; }
-  return Array.from(n.split(/\s+/).map((w) => Array.from(w)[0] || "").join("")).slice(0, idx ? 1 : 2).join("").toUpperCase() + idx;
+  // у слова берём первый символ-«носитель» (буква, цифра, эмодзи): «<b>Bold</b>😀» → «B», а не «<» (roulette-049)
+  const mark = /[\p{L}\p{N}\p{Extended_Pictographic}]/u;
+  const out = n.split(/\s+/).map((w) => Array.from(w).find((c) => mark.test(c)) || "").join("");
+  return (Array.from(out).slice(0, idx ? 1 : 2).join("").toUpperCase() + idx) || "?";
 }
 
 // Геометрия стола: зона чисел — 3 колонки × 13 строк (строка 0 — зеро). Координаты в долях зоны.
