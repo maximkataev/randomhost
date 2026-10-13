@@ -573,6 +573,8 @@ function handle(room, client, msg) {
   if (msg.type === "ping") return send(client.ws, { type: "pong", t, c: typeof msg.c === "number" ? msg.c : undefined });
   room.touched = now();
   const reply = (obj) => send(client.ws, obj);
+  // команда ведущего без токена ведущего — явный отказ только этому сокету (T-W4-15, crowd-043); состояние не меняется, рассылки нет
+  const notHost = (action) => reply({ type: "rejected", action, reason: "not_host" });
   const me = client.playerId;
   // Срок наступил, а таймер ещё не проснулся: сначала закрываем фазу, потом действие.
   // Иначе ответ или голос, пришедший после звонка, успел бы проскочить.
@@ -739,19 +741,19 @@ function handle(room, client, msg) {
       return act("confirm", g.confirm(me, t));
     // ---- ведущий (только доска) ----
     case "settings": {
-      if (!client.host) return;
+      if (!client.host) return notHost(msg.type);
       if (g.s.phase !== "lobby" && g.s.phase !== "finished") return reply({ type: "error", error: "game_started" });
       g.s.settings = clampSettings({ ...g.s.settings, ...(msg.settings || {}) });
       return afterChange(room, []);
     }
     case "start": {
-      if (!client.host) return;
+      if (!client.host) return notHost(msg.type);
       const r = g.start(t);
       if (!r.ok) return reply({ type: "rejected", action: "start", reason: r.reason });
       return afterChange(room, r.events);
     }
     case "kick": {
-      if (!client.host) return;
+      if (!client.host) return notHost(msg.type);
       const kid = String(msg.playerId || "");
       // U-06 (класс A): кик — не бан. Имя по-прежнему занимается заново («Сесть снова»): бан по имени обходится
       // переименованием, а общий Wi-Fi вечеринки по IP не отделить. Старые баны из дампа (room.bans) не пополняются.
@@ -760,9 +762,9 @@ function handle(room, client, msg) {
       for (const c of room.sockets) if (c.playerId === msg.playerId) { c.playerId = null; send(c.ws, { type: "kicked" }); }
       return afterChange(room, events);
     }
-    case "end": return client.host ? afterChange(room, g.abort(t)) : undefined;
+    case "end": return client.host ? afterChange(room, g.abort(t)) : notHost("end");
     case "lobby": {
-      if (!client.host) return;
+      if (!client.host) return notHost(msg.type);
       const events = g.toLobby(t);
       for (const p of g.s.players) p.online = [...room.sockets].some((c) => c.playerId === p.id);
       pruneTokens(room);
