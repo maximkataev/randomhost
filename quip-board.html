@@ -325,7 +325,9 @@
   .fitting .ans .t { overflow-wrap: normal; }
   /* табличка автора: выезжает снизу в цвет игрока */
   .ans .foot { flex: none; height: 44px; display: flex; align-items: center; gap: 12px; margin: 8px -8px 0 -12px; padding: 0 10px; border-radius: 12px; background: var(--pc, #ddd); visibility: hidden; }
-  .ans .who { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 22px; min-width: 0; flex: 1; }
+  .ans .who { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 22px; min-width: 0; flex: 1 1 auto; }
+  /* в узкой табличке (ТВ 1024) пометка «поздно/подсказка» уступает место имени первой */
+  .ans .tags { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .ans .who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ans .who i { font-style: normal; font-size: 26px; }
   .ans .who .mk { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: #fff; font-size: 18px; }
@@ -1505,6 +1507,27 @@ function drawHostbar() {
   }
   if (hostNote) bar.append(el("span", "note", hostNote));
 }
+
+// имена на доске: целиком, где помещаются. Не влезло — кегль мельче (не ниже 70%), в крайнем случае многоточие + title (T-W3-32)
+const FIT_SEL = ".writer b, .rowx b, .step b, .ans .who span, .setlist li b, .seat:not(.empty) b";
+function fitNameEl(b) {
+  b.style.fontSize = "";
+  if (b.clientWidth < 8) return;
+  b.title = b.textContent;
+  if (b.scrollWidth <= b.clientWidth + 1) return;
+  const base = parseFloat(getComputedStyle(b).fontSize) || 20;
+  let fs = base;
+  while (b.scrollWidth > b.clientWidth + 1 && fs > base * 0.7) { fs -= 1; b.style.fontSize = fs + "px"; }
+}
+let fitQueued = false;
+function fitAllNames() {
+  fitQueued = false;
+  const bs = document.querySelectorAll(FIT_SEL);
+  for (let i = 0; i < bs.length; i++) fitNameEl(bs[i]);
+}
+function queueFit() { if (!fitQueued) { fitQueued = true; requestAnimationFrame(fitAllNames); } }
+if (window.MutationObserver) new MutationObserver(queueFit).observe(document.body, { childList: true, subtree: true, characterData: true });
+window.addEventListener("resize", queueFit);
 
 window.addEventListener("resize", () => { fitScreen(); viewKey = ""; if (state) render(); });
 window.addEventListener("langchange", () => {
