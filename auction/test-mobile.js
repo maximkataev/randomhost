@@ -122,6 +122,8 @@ const hasFrag = (text, frag) => norm(text).includes(norm(frag));
       check(await p.ev("document.documentElement.scrollHeight <= innerHeight + 1 || document.body.classList.contains('kbd')"), "экран входа не выше экрана без клавиатуры (E-24)");
       await typeText(p, "Аня");
       check((await p.ev("document.getElementById('name').value")) === "Аня", "имя вводится");
+      // T-W4-06 (E-37): «C» и «T» в «AUCTION» не слипаются — трекинг h1 не туже -.02em (≈ -0.64px при 32px)
+      check(await p.ev(`(() => { const h = document.querySelector("h1"); if (!h) return false; const ls = parseFloat(getComputedStyle(h).letterSpacing), fs = parseFloat(getComputedStyle(h).fontSize); return ls >= -0.02 * fs - 0.01; })()`), "заголовок входа: трекинг не слипает буквы (E-37)");
       // страница должна скроллиться, иначе клавиатура закроет поле
       check(await p.ev("document.documentElement.scrollHeight > innerHeight || getComputedStyle(document.body).overflowY === 'auto'"), "экран входа скроллится (место под клавиатуру)");
       await p.shot(`${dev.name.replace(/\W+/g, "_")}_enter`);
@@ -160,6 +162,12 @@ const hasFrag = (text, frag) => norm(text).includes(norm(frag));
       // E-23: страховка позднего тапа — ставка в первые 350 мс нового лота с кнопок не уходит
       check(await p.ev(`(() => { const old = window.sendMsg; let n = 0; window.sendMsg = (m) => { if (m && m.type === "bid") n++; };
         const was = lotShownAt; lotShownAt = Date.now(); act({ type: "bid", amount: 99, expectedPrice: 0, round: state.round }); const guarded = n; lotShownAt = was; window.sendMsg = old; return guarded === 0; })()`), "поздний тап: ставка в первые 350 мс лота не уходит");
+      // T-W4-06 (E-40/E-29): плитка лота (эмодзи или фото) на высоких экранах крупнее, на низких — компактная
+      const tile = await p.ev(`(() => { const t = document.querySelector("#lot .thumb.on") || document.querySelector("#lot .emoji"); return t ? Math.round(t.getBoundingClientRect().width) : 0; })()`);
+      if (dev.h >= 800) check(tile >= 120, "лот: плитка фото/эмодзи на высоком экране не мельче 120px (E-40, " + tile + "px)");
+      else check(tile > 0, "лот: плитка фото/эмодзи на экране (E-29, " + tile + "px)");
+      // E-31: на узком экране подпись поля — короткая «Сумма»
+      if (dev.w <= 380) check(await p.ev(`(document.getElementById("ownbid") || {}).placeholder === I18N.t("own_bid_short")`), "своя сумма: на ≤ 380px короткая подпись (E-31)");
       // «Своя сумма»: подпись помещается в поле (на 320px — короткая «Сумма»)
       check(await p.ev(`(() => { const i = document.getElementById("ownbid"); if (!i) return true; const c = document.createElement("canvas").getContext("2d"), st = getComputedStyle(i);
         const ph = getComputedStyle(i, "::placeholder"); c.font = ph.fontWeight + " " + ph.fontSize + " " + st.fontFamily;
