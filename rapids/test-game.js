@@ -304,6 +304,21 @@ test('первый за линией — чемпион; заплыв конча
   assert.strictEqual(over.stats.players[2].time, null);
   assert(over.stats.players[0].time > 0);
 });
+test('после over неоконченная утка гаснет и не дотекает за ленту (rapids-014)', () => {
+  const g = race(3, 42);
+  const [a, b, c] = [P(g, 0), P(g, 1), P(g, 2)];
+  const F = g.course.FINISH_Y;
+  place(a, g.course.riverCx(F - 30), F - 30);
+  place(b, g.course.riverCx(F - 200) - 30, F - 200);
+  place(c, g.course.riverCx(F - 600), F - 600);
+  run(g, 4);
+  assert.strictEqual(g.phase, 'over');
+  assert.strictEqual(c.st, 'w');
+  c.y = F - 50; c.x = g.course.riverCx(F - 50); c.vx = 0; c.vy = 300;
+  run(g, 5, () => {});
+  assert(c.y <= F, 'утка за лентой: ' + c.y);
+  assert(Math.hypot(c.vx, c.vy) < 5, 'утка не остановилась');
+});
 test('по пределу времени — места по пройденному пути', () => {
   const g = race(3, 42, { RACE_T: 2 });
   const [a, b, c] = [P(g, 0), P(g, 1), P(g, 2)];

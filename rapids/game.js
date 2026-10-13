@@ -626,6 +626,8 @@
         d.inPool = false;
         for (const p of c.pools) swirl(d, p, dt);
         if (d.cap) continue;
+        // rapids-014: после конца заплыва не доплывшие утки не дотекают за ленту, а гаснут на месте
+        if (g.phase === 'over' && d.st === 'w') { coastOver(d, c, dt); continue; }
         const controlled = (g.phase === 'lobby' || g.phase === 'race') && d.online;
         const hit = moveDuck(d, c, cfg, dt, d.steer, controlled, gateOpen);
         if (hit && g.phase === 'race' && g.time - d.lastHit > 0.8) {
@@ -637,6 +639,17 @@
       collideDucks();
       for (const d of g.players) if ((g.phase === 'lobby' || d.inGame) && d.st !== 'f') bankAndGate(d, c, cfg, gateOpen);
       if (g.phase === 'race') { checkFinish(); checkEnd(); }
+    }
+
+    // неоконченная утка после `over`: скорость гаснет, течение больше не разгоняет, ленту не пересекает
+    function coastOver(d, c, dt) {
+      const k = Math.exp(-dt * 2.5);
+      d.vx *= k; d.vy *= k;
+      d.x += d.vx * dt; d.y += d.vy * dt;
+      d.ang += d.spin * dt; d.spin *= Math.exp(-dt * 2.2);
+      collideStatic(d, c, cfg);
+      bankAndGate(d, c, cfg, true);
+      if (d.y > c.FINISH_Y - cfg.DR) { d.y = c.FINISH_Y - cfg.DR; if (d.vy > 0) d.vy = 0; }
     }
 
     // доплывшие уходят в заводь к берегам и никому не мешают
