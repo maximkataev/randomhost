@@ -84,6 +84,43 @@ test("alts закрывают транслит и формы короткого 
   assert.ok(isTruth("a bear", bear) && isTruth("bears", bear), "a bear / bears");
 });
 
+// T-W4-01: прогон банка через isTruth с типовыми вариантами (tools/audit-alts.js) и поиск синонимов правды в лжи
+test("isTruth принимает типовые варианты правды (регистр, артикль, число, беглая гласная, br/am) и в лжи нет синонимов", () => {
+  const { run } = require("./tools/audit-alts");
+  const r = run();
+  for (const lang of LANGS) {
+    const d = r.langs[lang];
+    const bad = Object.entries(d.byClass).flatMap(([cls, l]) => l.map((x) => `${cls}: ${x.id} «${x.answer}» ← «${x.variant}»`));
+    assert.deepStrictEqual(bad, [], `${lang}: isTruth не принял вариант правды`);
+    assert.deepStrictEqual(d.lieSyn, [], `${lang}: синоним правды в лжи`);
+  }
+});
+
+test("haggis заменён: факт про Kit Kat на месте, старого id нет ни в одном языке (fibs-051)", () => {
+  for (const lang of LANGS) {
+    assert.ok(!C[lang].some((f) => f.id === "food-haggis-lungs"), lang);
+    assert.ok(C[lang].some((f) => f.id === "food-kitkat-club"), lang);
+  }
+});
+
+test("в одном факте нет двух лжей-синонимов из списка (томаты/помидоры — fibs-052)", () => {
+  const groups = { ru: [["томат", "помидор"], ["картошка", "картофель"], ["машина", "автомобиль"], ["конь", "лошадь"], ["пёс", "собака"]], en: [["car", "automobile"], ["bike", "bicycle"], ["sofa", "couch"]], el: [["ντομάτα", "τομάτα"], ["αυτοκίνητο", "αμάξι"]] };
+  const lit = (s) => String(s).toLowerCase().replace(/ё/g, "е").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  for (const lang of LANGS) {
+    for (const f of C[lang]) {
+      const truth = [f.answer, ...(f.alts || [])].map(lit);
+      const lies = f.lies.map(lit);
+      for (const g of groups[lang]) {
+        const has = (list, w) => list.some((p) => p === w || p === w + "s" || (lang !== "en" && p.startsWith(w)));
+        const inLies = g.filter((w) => has(lies, w));
+        const inTruth = g.filter((w) => has(truth, w));
+        // синоним правды в лжи или два синонима среди лжей; синонимы внутри alts — нормально
+        assert.ok(inLies.length === 0 || (inLies.length < 2 && inTruth.length === 0), `${lang} ${f.id}: синонимы ${[...inTruth, ...inLies].join("/")}`);
+      }
+    }
+  }
+});
+
 test("id совпадают во всех языках", () => {
   const ru = C.ru.map((f) => f.id).sort().join();
   for (const lang of LANGS) assert.strictEqual(C[lang].map((f) => f.id).sort().join(), ru, lang);

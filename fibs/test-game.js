@@ -841,3 +841,53 @@ test("skipPhase: тема/ложь/выбор закрываются как та
   const l = Game.create({ settings: {}, code: "LOBBY2", rnd: rig(), content: fixture() });
   assert.strictEqual(l.skipPhase(1e6).reason, "bad_phase");
 });
+
+// ---------- T-W4-01 / T-W4-11 ----------
+
+test("isTruth (EN): артикль и число не делают правду ложью — «the dogs» = «dog» (T-W4-01)", () => {
+  const dog = { answer: "dog", alts: [] };
+  for (const t of ["the dog", "A Dog", "dogs", "the dogs!"]) assert.ok(isTruth(t, dog), t);
+  assert.ok(!isTruth("cat", dog));
+  assert.ok(!isTruth("the cat", dog));
+  assert.ok(!isTruth("hot dog", dog));
+  const hosp = { answer: "a children's hospital", alts: [] };
+  assert.ok(isTruth("children's hospital", hosp));
+  assert.ok(isTruth("the children's hospital", hosp));
+  assert.ok(!isTruth("children's school", hosp));
+  assert.ok(isTruth("berries", { answer: "berry", alts: [] }));
+  const glass = { answer: "glass", alts: [] };
+  assert.ok(isTruth("glasses", glass) && !isTruth("brass", glass));
+  const bus = { answer: "bus", alts: [] };
+  assert.ok(isTruth("buses", bus) && isTruth("the bus", bus));
+  assert.ok(!isTruth("the", { answer: "the end", alts: [] }));
+});
+
+test("«заимствованная» ложь: только из фактов той же темы и с тем же окончанием ответа (fibs-050)", () => {
+  const mk = (id, topic, answer, lies) => ({ id, topic, final: false, text: "x ______", answer, alts: [], lies, source: "https://e.org" });
+  const content = {
+    ru: [
+      mk("a", "sport", "кошек", ["мышей", "крыс", "ворон"]),
+      mk("b", "sport", "собак", ["лисиц", "сов", "белок"]), // та же тема, окончание «ак» — не подходит
+      mk("c", "sport", "кубков", ["мячей", "тяжёлых металлов"]), // «ов» — не подходит
+      mk("d", "sport", "мышек", ["лягушек", "уток"]), // «ек» — подходит
+      mk("e", "food", "белок", ["сов", "ежей"]), // чужая тема
+      mk("g", "space", "рыбок", ["чаек"]), // чужая тема
+    ],
+  };
+  const g = Game.create({ settings: { lang: "ru" }, code: "TEST22", rnd: rig(), content });
+  g.s.fact = { id: "a", topic: "sport", answer: "кошек", alts: [], pool: [], poolUsed: [] };
+  const seen = new Set();
+  for (let i = 0; i < 30; i++) {
+    const c = g.pickCanned();
+    seen.add(c.text);
+    g.s.lies["P" + i] = { key: c.key };
+  }
+  for (const t of seen) assert.ok(["лягушек", "уток", "…"].includes(t), "чужая тема/падеж: " + t);
+  assert.ok(seen.has("лягушек") && seen.has("уток"));
+  // ни одного подходящего факта — многоточие, а не чужая грамматика
+  g.s.fact = { id: "c", topic: "sport", answer: "кубков", alts: [], pool: [], poolUsed: [] };
+  g.s.lies = {};
+  const only = new Set();
+  for (let i = 0; i < 5; i++) { const c = g.pickCanned(); only.add(c.text); g.s.lies["Q" + i] = { key: c.key }; }
+  assert.deepStrictEqual([...only], ["…"]);
+});

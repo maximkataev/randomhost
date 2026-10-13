@@ -132,9 +132,31 @@ function literal(text) {
  * «Правда внутри» («бобровой железы» при ответе «бобров») — только для ответа и alts из двух слов и больше:
  * однословный alt («носорога» при «шерстистого носорога») — часть ответа, а не он сам, и «белого носорога» — ложь.
  */
+// Английская «свёртка» ответа (T-W4-01): без ведущего the/a/an и с последним словом в единственном числе —
+// «the dogs» = «dog». Только для латиницы; нужна, потому что короткие эталоны (<5 букв) стеммером не сравниваются.
+const EN_ART = /^(the|a|an) (?=\S)/;
+function enFold(l) {
+  if (!/^[a-z0-9 ]+$/.test(l)) return null;
+  const w = l.replace(EN_ART, "").split(" ");
+  let x = w[w.length - 1];
+  if (/[^aeiou]ies$/.test(x)) x = x.slice(0, -3) + "y";
+  else if (/(ss|us)$/.test(x)) x = x; // class, bus — не множественное
+  else if (/(s|x|ch|sh|z)es$/.test(x)) x = x.slice(0, -2);
+  else if (/[^s]s$/.test(x)) x = x.slice(0, -1);
+  w[w.length - 1] = x;
+  return w.join(" ");
+}
+
 function isTruth(text, fact) {
   const lit = literal(text);
   if (!lit) return false;
+  const fold = enFold(lit);
+  if (fold) {
+    for (const t of [fact.answer, ...(fact.alts || [])]) {
+      const tl = literal(t);
+      if (tl && enFold(tl) === fold) return true;
+    }
+  }
   const lc = lit.replace(/ /g, "");
   const key = normalize(text);
   const have = key.split(" ");
@@ -476,7 +498,7 @@ class Game {
     return { ok: true, events: [{ type: "lied", playerId: id }, ...this.maybeAdvance(now)] };
   }
 
-  // заготовленная ложь из пула факта, не совпадающая с уже поданной; пул кончился — ложь соседнего факта того же языка
+  // заготовленная ложь из пула факта, не совпадающая с уже поданной; пул кончился — ложь факта той же темы и того же окончания ответа
   pickCanned() {
     const s = this.s;
     const f = s.fact;
@@ -487,11 +509,19 @@ class Game {
       f.poolUsed.push(i);
       return { text: optText(f.pool[i]), key: normalize(f.pool[i]) };
     }
-    const bank = this.bank().filter((x) => x.id !== f.id && (x.lies || []).length);
-    for (let tries = 0; tries < 30 && bank.length; tries++) {
-      const other = bank[this.rnd(bank.length)];
-      const cand = other.lies[this.rnd(other.lies.length)];
-      if (!taken.has(normalize(cand)) && !isTruth(cand, f)) return { text: optText(cand), key: normalize(cand) };
+    // чужая ложь подходит по смыслу и по падежу только у факта той же темы и с тем же окончанием ответа (fibs-050);
+    // иначе «…» лучше, чем «выращивать тяжёлых металлов»
+    const ending = (a) => Array.from(String(a || "").toLowerCase().trim().split(/\s+/).pop().replace(/[^\p{L}\p{N}]/gu, "")).slice(-2).join("");
+    const lang = s.settings.lang;
+    const mine = ending(f.answer);
+    const cands = [];
+    for (const x of this.bank()) {
+      if (x.id === f.id || x.topic !== f.topic || (lang !== "en" && ending(x.answer) !== mine)) continue;
+      for (const cand of x.lies || []) if (!taken.has(normalize(cand)) && !isTruth(cand, f)) cands.push(cand);
+    }
+    if (cands.length) {
+      const cand = cands[this.rnd(cands.length)];
+      return { text: optText(cand), key: normalize(cand) };
     }
     return { text: "…", key: "…" + s.seq++ };
   }
