@@ -95,6 +95,11 @@
   }
   .lotbox::-webkit-scrollbar { display: none; }
   .lotbox > * { flex: none; max-width: 100%; }
+  /* W5: содержимое карточки прокручивается внутри .lotbody, а «подробнее» лежит под ним и не режется */
+  .lotbox { overflow: hidden; }
+  .lotbox > .lotbody { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: safe center; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+  .lotbox > .lotbody::-webkit-scrollbar { display: none; }
+  .lotbody > * { flex: none; max-width: 100%; min-width: 0; }
   /* картинка и подписи считают высоту экрана: на 568px и в ландшафте карточка не выдавливает соседей */
   .lotbox { --thumb: clamp(72px, 17vh, 120px); }
   .lotbox .thumb { width: var(--thumb); height: var(--thumb); border-radius: 22px; object-fit: cover; background: rgba(255, 255, 255, .06); margin-bottom: 10px; display: none; }
@@ -107,7 +112,7 @@
   /* мета без среза (E-12): плашки не режутся по высоте, лишние целиком убирает fitMeta() */
   .lotbox .meta { justify-content: center; margin-bottom: 8px; }
   .lotbox .meta span { max-width: 100%; overflow-wrap: anywhere; text-align: center; }
-  .lotbox .short { font-size: 14px; line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 340px; }
+  .lotbox .short { font-size: 14px; line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 340px; overflow-wrap: anywhere; }
   .lotbox .more { min-height: 44px; display: inline-flex; align-items: center; font: 600 12.5px var(--body); color: var(--c1); margin-top: 8px; background: none; border: 1px solid var(--glass-line); border-radius: 999px; padding: 0 16px; }
   .lotbox .lotno { font-size: 12px; color: var(--muted); margin-top: 8px; }
   /* высокие экраны: места хватает — показываем имя лота и описание целиком */
@@ -198,7 +203,7 @@
   .langhint { position: fixed; left: 16px; right: 16px; top: 58px; z-index: 41; display: none; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 14px; background: rgba(20, 18, 34, .96); border: 1px solid var(--c1); box-shadow: 0 8px 28px rgba(0, 0, 0, .45); font: 600 14px/1.3 var(--body); color: var(--text); }
   .langhint.on { display: flex; }
   .langhint .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-  .langhint button { flex: none; border: 0; border-radius: 10px; padding: 8px 11px; font: 800 13px var(--body); background: rgba(255, 255, 255, .12); color: var(--text); }
+  .langhint button { flex: none; min-height: 44px; border: 0; border-radius: 10px; padding: 8px 12px; font: 800 13px var(--body); background: rgba(255, 255, 255, .12); color: var(--text); }
   .langhint button.go { background: var(--c1); color: #0a0a0f; }
   .codeform { display: grid; gap: 10px; }
   .codeform input { text-transform: uppercase; }
@@ -515,7 +520,7 @@
 
   /* Имя лидера — одной строкой: «Константинопол» рвалось посреди слова («Константи/нопол»).
      fitLead() уменьшает кегль, пока имя не влезет; если и так не влезло — многоточие */
-  .lead .who b { display: inline-block; max-width: 100%; vertical-align: top; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lead .who b { display: inline-block; max-width: 100%; vertical-align: top; padding-bottom: 4px; margin-bottom: -4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* в «продано/забрали» «Скипа» нет — его пустое место отдаём имени и печати */
   .bidinfo.sold .skipbtn { display: none; }
 
@@ -2118,7 +2123,9 @@ function renderLot(lot, kind) {
   box.onclick = () => openSheet(lot);
   // хит после серии пустых лотов (game.js, HOT_AFTER) — пометка в той же строке, что и категория
   const kindLine = (auctionKind(kind, uiLang()).label || kind) + (state.hot ? " · " + I18N.t("hot_tag") : "");
-  box.append(img, el("div", "emoji", lot.emoji), el("div", "kind", kindLine), el("div", "name", lot.name), meta, el("div", "short", lot.description), more);
+  const body = el("div", "lotbody");
+  body.append(img, el("div", "emoji", lot.emoji), el("div", "kind", kindLine), el("div", "name", lot.name), meta, el("div", "short", lot.description));
+  box.append(body, more);
   fitMeta();
   // E-16: шторка «подробнее» предыдущего лота не остаётся на новом (ведущая шторка — не трогаем)
   if (!hostSheetOpen) { const sh = document.getElementById("sheet"); if (sh) sh.classList.remove("on"); }
@@ -2139,13 +2146,14 @@ function fitMeta() {
   const box = document.getElementById("lot");
   const meta = box && box.querySelector(".meta");
   if (!meta || !box.clientHeight) return;
+  const body = box.querySelector(".lotbody") || box;
   const spans = Array.from(meta.children);
   spans.forEach((s) => { s.hidden = false; });
   const tops = Array.from(new Set(spans.map((s) => s.offsetTop))).sort((a, b) => a - b);
   const rowOf = spans.map((s) => tops.indexOf(s.offsetTop));
   for (let cap = tops.length; cap >= 1; cap--) {
     spans.forEach((s, i) => { s.hidden = rowOf[i] >= cap; });
-    if (box.scrollHeight <= box.clientHeight + 1) break;
+    if (body.scrollHeight <= body.clientHeight + 1) break;
   }
 }
 window.addEventListener("resize", fitMeta);
