@@ -160,7 +160,7 @@
     let view = { w: 0, h: 0, dpr: 1, base: 1, cy: 0, cx: 0 };
     // заслонённые края экрана (лист панели снизу в портрете, таймер сверху): льдина вписывается
     // и центрируется в оставшемся окне; к новым значениям камера подъезжает плавно, без скачка
-    const inset = { t: 0, b: 0, l: 0, tt: 0, tb: 0, tl: 0, set: false };
+    const inset = { t: 0, b: 0, l: 0, r: 0, tt: 0, tb: 0, tl: 0, tr: 0, set: false };
     let topGap = opts.topGap || 52;       // низ HUD страницы: подписи не заезжают под таймер (T-W3-08)
     let meSuffix = opts.meSuffix || ' · вы'; // подпись «вы» — меняется на лету при смене языка
     const cam = { x: 0, y: 0, zoom: 1 };
@@ -204,13 +204,14 @@
     function resize(dt) {
       const w = Math.max(200, canvas.clientWidth);
       const h = Math.max(150, canvas.clientHeight);
-      if (!inset.set || !dt) { inset.t = inset.tt; inset.b = inset.tb; inset.l = inset.tl; inset.set = true; }
+      if (!inset.set || !dt) { inset.t = inset.tt; inset.b = inset.tb; inset.l = inset.tl; inset.r = inset.tr; inset.set = true; }
       else {
         const k = 1 - Math.exp(-dt * 6);
-        inset.t += (inset.tt - inset.t) * k; inset.b += (inset.tb - inset.b) * k; inset.l += (inset.tl - inset.l) * k;
+        inset.t += (inset.tt - inset.t) * k; inset.b += (inset.tb - inset.b) * k; inset.l += (inset.tl - inset.l) * k; inset.r += (inset.tr - inset.r) * k;
         if (Math.abs(inset.t - inset.tt) < 0.5) inset.t = inset.tt;
         if (Math.abs(inset.b - inset.tb) < 0.5) inset.b = inset.tb;
         if (Math.abs(inset.l - inset.tl) < 0.5) inset.l = inset.tl;
+        if (Math.abs(inset.r - inset.tr) < 0.5) inset.r = inset.tr;
       }
       // на телефонах плотность пикселей ограничена 1,5: разница на глаз мала, а кадр вдвое дешевле
       const coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
@@ -218,7 +219,7 @@
       const R = floe ? floe.R : 150;
       const top = Math.max(h < 500 ? 48 : 70, inset.t);   // место под таймер сверху
       const avail = Math.max(90, h - top - inset.b);
-      const availW = Math.max(120, w - inset.l);   // панель слева (лобби/итог на ландшафте) закрывает часть арены
+      const availW = Math.max(120, w - inset.l - inset.r);   // панель слева (лобби/итог на ландшафте) закрывает часть арены
       const base = Math.min(availW / (R * 2 * 1.14), avail / (R * 2 * YS * 1.08 + 30));
       const cx = inset.l + availW / 2;
       // без заслонок — как раньше (центр чуть ниже середины); с листом снизу — середина открытого окна
@@ -522,7 +523,7 @@
         const x0 = Math.min(c[0] - frad, fp.x - 26), x1 = Math.max(c[0] + frad, fp.x + 26);
         const y0 = Math.min(c[1] - frad, fp.y - 56), y1 = Math.max(c[1] + frad, fp.y + 16);
         tx = (x0 + x1) / 2; ty = (y0 + y1) / 2;
-        const aw = Math.max(90, view.w - inset.l) * 0.76;
+        const aw = Math.max(90, view.w - inset.l - inset.r) * 0.76;
         const ah = Math.max(90, view.h - Math.max(view.h < 500 ? 48 : 70, inset.t) - inset.b) * 0.76;
         const zFit = Math.min(aw / ((x1 - x0) * view.base), ah / ((y1 - y0) * YS * view.base));
         const zHost = (Math.max(90, view.h - Math.max(inset.t, 0) - inset.b) * 0.42) / ((Math.hypot(fp.x - c[0], (fp.y - c[1]) * YS) * 0.6 + 60) * view.base);
@@ -950,6 +951,16 @@
           ctx.beginPath(); ctx.ellipse(X, Y, R + 20 * k * s, (R + 20 * k * s) * YS, 0, 0, TAU); ctx.stroke();
           ctx.globalAlpha = 1;
         }
+        // обратный отсчёт: кольцо под своим пингвином расходится раз в секунду — «смотри на себя», а цифры сверху (floe-039)
+        if (mine && snap.phase === 'countdown') {
+          const k = ((snap.phaseT || 0) % 1 + 1) % 1;
+          ctx.globalAlpha = 0.9 * (1 - k);
+          ctx.lineWidth = 4 * (1 - k) + 1.5;
+          ctx.strokeStyle = '#ffffff';
+          ctx.beginPath(); ctx.ellipse(X, Y, R + (6 + 30 * k) * s, (R + (6 + 30 * k) * s) * YS, 0, 0, TAU); ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        }
         if (mine) {
           ctx.globalAlpha = 0.45 + 0.25 * Math.sin(t * 5);
           ctx.beginPath(); ctx.ellipse(X, Y, R + 4 * s, (R + 4 * s) * YS, 0, 0, TAU); ctx.stroke();
@@ -1205,7 +1216,7 @@
       get perf() { return perf.last; },
       setMe(id) { me = id; },
       // top/bottom — сколько пикселей сверху и снизу холста закрыто интерфейсом
-      setInsets(top, bottom, left) { inset.tt = Math.max(0, top || 0); inset.tb = Math.max(0, bottom || 0); inset.tl = Math.max(0, left || 0); },
+      setInsets(top, bottom, left, right) { inset.tt = Math.max(0, top || 0); inset.tb = Math.max(0, bottom || 0); inset.tl = Math.max(0, left || 0); inset.tr = Math.max(0, right || 0); },
       setTopGap(px) { if (px > 0) topGap = px; },
       setSuffix(s) { meSuffix = s || ' · вы'; },
       setWords(w) { Object.assign(words, w); },

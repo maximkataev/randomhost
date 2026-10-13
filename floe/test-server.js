@@ -60,6 +60,24 @@ function rawWs(code) {
       assert(r.hostToken.length > 10);
     });
 
+    await test("join сразу после leave — явный отказ too_fast; строка игрока в снимке без lastSeq (floe-017, floe-018)", async () => {
+      const r = await NetBot.createRoom(BASE);
+      const ws = await rawWs(r.code);
+      ws.send(JSON.stringify({ type: "join", name: "Аня" }));
+      for (let i = 0; i < 40 && !ws.msgs.some((m) => m.type === "joined"); i++) await wait(50);
+      assert(ws.msgs.some((m) => m.type === "joined"), "не вошёл");
+      for (let i = 0; i < 60 && !ws.msgs.some((m) => m.type === "s"); i++) await wait(50);
+      const snap = ws.msgs.find((m) => m.type === "s");
+      assert(snap && snap.p.length, "снимка нет");
+      assert.strictEqual(snap.p[0].length, 11, "в строке игрока ровно 11 полей");
+      ws.send(JSON.stringify({ type: "leave" }));
+      await wait(100);
+      ws.send(JSON.stringify({ type: "join", name: "Боря" }));
+      for (let i = 0; i < 40 && !ws.msgs.some((m) => m.type === "error" && m.error === "too_fast"); i++) await wait(50);
+      assert(ws.msgs.some((m) => m.type === "error" && m.error === "too_fast"), "нет too_fast");
+      ws.close();
+    });
+
     await test("неверный код — 404 на ws", async () => {
       await assert.rejects(rawWs("NOPE99"));
     });
