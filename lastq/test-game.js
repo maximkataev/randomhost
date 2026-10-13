@@ -981,3 +981,17 @@ test("c.lastMin пишется при выдаче; RULE_U46_MINMS: запас �
     assert.ok(c.ch && c.ch.minMs >= 0);
   });
 });
+
+// ---------- T-W4-14 (lastq-052): награда «Ракета» — среднее время целое ----------
+test("awards().rocket.n — целое число мс, даже если среднее дробное", () => {
+  const g = setup(3);
+  g.start(0);
+  const [a, b, c] = g.s.players;
+  a.stats.right = 3; a.stats.msSum = 1000; // 333,33…
+  b.stats.right = 3; b.stats.msSum = 2500;
+  c.stats.right = 1; c.stats.msSum = 10; // меньше трёх верных — не участвует
+  const r = g.awards().rocket;
+  assert.deepEqual(r.ids, [a.id]);
+  assert.equal(r.n, 333);
+  assert.ok(Number.isInteger(r.n));
+});

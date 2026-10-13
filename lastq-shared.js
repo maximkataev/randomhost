@@ -46,7 +46,7 @@ const LQ_SHARED_I18N = {
     aw_rocket: "Ракета", aw_rocket_d: "верный ответ в среднем за {s} с",
     aw_kamikaze: "Камикадзе", aw_kamikaze_d: "ставка {n}",
     aw_seer: "Провидец", aw_seer_d: "угаданных ставок: {n}",
-    aw_bottom: "Дно", aw_bottom_d: "дно: {n}",
+    aw_bottom: "Дно", aw_bottom_d: "ушёл на {n}",
     podium: "Итоги",
     err_connect: "Нет связи с сервером, переподключаемся…",
     conn_lost: "Нет связи — проверяем…",
@@ -96,7 +96,7 @@ const LQ_SHARED_I18N = {
     aw_rocket: "Πύραυλος", aw_rocket_d: "σωστή απάντηση σε {s} δ κατά μέσο όρο",
     aw_kamikaze: "Καμικάζι", aw_kamikaze_d: "ποντάρισμα {n}",
     aw_seer: "Μάντης", aw_seer_d: "σωστά στοιχήματα: {n}",
-    aw_bottom: "Πάτος", aw_bottom_d: "πάτος: {n}",
+    aw_bottom: "Πάτος", aw_bottom_d: "έφτασε στο {n}",
     podium: "Αποτελέσματα",
     err_connect: "Χωρίς σύνδεση, επανασύνδεση…",
     conn_lost: "Χωρίς σύνδεση — έλεγχος…", //EL:unverified

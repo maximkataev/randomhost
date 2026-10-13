@@ -59,3 +59,25 @@ test("на каждый акт хватает уровней: Акт 1 — lvl 1
   assert.ok(new Set(reg.map((q) => q.tag)).size >= 5);
   assert.ok(new Set(C.ru.filter((q) => q.final).map((q) => q.tag)).size >= 5);
 });
+
+// T-W4-14 (lastq-033): русские «ёлочки» в английском банке — только “…”
+test("в en нет «» (lastq-033)", () => {
+  const bad = C.en.filter((q) => /[«»]/.test(q.q + q.a.join("")));
+  assert.deepEqual(bad.map((q) => q.id), []);
+});
+
+// T-W4-03 (lastq-061/062): число из стебля повторяется в верном варианте — подсказка. Известные срабатывания отдельно,
+// чтобы тест ловил НОВЫЕ: body-020 — реальная подсказка (кандидат на правку владельцем); weird-004 («12 ударов» — «12
+// виноградин») и weird-229 (WD-40) — число в названии/обряде, ответ не выдают.
+const STEM_KNOWN = new Set(["body-020", "weird-004", "weird-229"]);
+test("число из стебля не повторяется в верном варианте (кроме известных, lastq-062)", () => {
+  for (const l of C.LANGS) {
+    const bad = [];
+    for (const q of C[l]) {
+      const nums = q.q.match(/\d+/g) || [];
+      const rn = String(q.a[0]).match(/\d+/g) || [];
+      if (nums.some((n) => rn.includes(n)) && !STEM_KNOWN.has(q.id)) bad.push(q.id);
+    }
+    assert.deepEqual(bad, [], l);
+  }
+});

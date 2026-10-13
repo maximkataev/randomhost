@@ -228,10 +228,29 @@ function cancelOffline(room, playerId) {
   statBack++;
 }
 
+// Телеметрия трудности (T-W4-03, lastq-061/062, D8): по одной строке JSON на раскрытие вопроса — id банка, уровень,
+// сколько отвечало и сколько ответило верно. Только в лог сервера: ни имён, ни кода комнаты, в UI не уходит.
+// Сбор доли верных: grep "qstat" по логу контейнера (`node tools/…` не нужен — строка самодостаточна).
+function logQuestionStat(room, e) {
+  if (!e || e.type !== "reveal") return;
+  const s = room.game && room.game.s;
+  if (!s || !s.q || !s.result || !Array.isArray(s.result.picks)) return;
+  const picks = s.result.picks;
+  const answered = picks.reduce((n, a) => n + a.length, 0);
+  const rec = {
+    qid: s.q.id, lvl: s.q.lvl, final: !!s.q.final, lang: s.settings && s.settings.lang,
+    n: s.eligible.length, answered, right: (picks[s.q.right] || []).length,
+  };
+  console.log(`${LOG} qstat ${JSON.stringify(rec)}`);
+}
+
 function afterChange(room, events = []) {
   room.touched = now();
   broadcastState(room);
-  for (const e of events) broadcastEvent(room, e);
+  for (const e of events) {
+    try { logQuestionStat(room, e); } catch {}
+    broadcastEvent(room, e);
+  }
   schedule(room);
 }
 

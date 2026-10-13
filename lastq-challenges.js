@@ -1050,7 +1050,7 @@ const RENDER = {
     field.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true">
       <path d="${d}" fill="none" stroke="#15191c" stroke-width="${2 * R + 8}" stroke-linecap="round" stroke-linejoin="round"/>
       <path d="${d}" fill="none" stroke="#e9e5da" stroke-width="${2 * R}" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="${P[0][0]}" cy="${P[0][1]}" r="${Math.max(16, R * 0.9)}" fill="#17864a" stroke="#15191c" stroke-width="3"/>
+      <circle cx="${P[0][0]}" cy="${P[0][1]}" r="${Math.max(20, R)}" fill="#17864a" stroke="#15191c" stroke-width="3"/>
       <polyline class="trail" points="" fill="none" stroke="#17864a" stroke-width="${Math.max(6, R * 0.6)}" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/>
     </svg>`;
     const trail = field.querySelector(".trail");
@@ -1083,7 +1083,8 @@ const RENDER = {
       e.preventDefault();
       if (done) return;
       const [x, y] = at(e);
-      if (Math.hypot(x - P[0][0], y - P[0][1]) > Math.max(30, R * 1.4)) return;
+      // старт принимаем в пределах нарисованного круга (+ запас под палец): круг на экране = круг в проверке (lastq-043)
+      if (Math.hypot(x - P[0][0], y - P[0][1]) > Math.max(26, R * 1.1) + 4) return;
       rec = []; lastRec = null; recPush(x, y);
       try { field.setPointerCapture(e.pointerId); } catch (er) {}
       active = true; last = [x, y]; pts = [[x, y]];

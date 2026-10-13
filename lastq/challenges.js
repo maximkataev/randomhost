@@ -40,6 +40,10 @@ const BANK_TYPES = new Set(QUIZ_TYPES);
 // Минимальное время ответа: руки и глаза — 400 мс, голова — 1200 мс (§4.1, против тыканья наугад)
 const MIN_FAST = 400;
 const MIN_HEAD = 1200;
+// RULE_U46_MINMS (класс B, T-W4-14, lastq-022, D10=A): нижние пороги «ловкости», у которых ответ вычисляется из view,
+// не ниже человеческого потолка: dig 100 мс/тап, saw 200 мс/смена, wires 150, order 170 мс на единицу.
+// По умолчанию выкл — прежние пороги (60/120/90/110); читается при каждой генерации.
+const humanMs = () => process.env.RULE_U46_MINMS === "1";
 // Ошибся — решётка захлопывается на 1,5 с, потом следующее испытание (§4.1)
 const WRONG_LOCK_MS = 1500;
 // Баланс наборов (стенд bench-cell.js, §4.3): ступень Камеры (1 — Акт 1, 2 — Акт 2, 3 — финал) → уровень испытаний набора.
@@ -161,7 +165,7 @@ const GEN = {
   // ---- ловкость ----
   wires(lvl) {
     const n = by(lvl, 3, 5, 7);
-    return { view: { n }, answer: n, minMs: MIN_FAST + n * 90 };
+    return { view: { n }, answer: n, minMs: MIN_FAST + n * (humanMs() ? 150 : 90) };
   },
   swipe(lvl, rnd) {
     const n = by(lvl, 1, 2, 3);
@@ -178,7 +182,7 @@ const GEN = {
   },
   order(lvl) {
     const n = by(lvl, 5, 7, 9);
-    return { view: { n }, answer: range(1, n), minMs: MIN_FAST + n * 110 };
+    return { view: { n }, answer: range(1, n), minMs: MIN_FAST + n * (humanMs() ? 170 : 110) };
   },
   nopress(lvl, rnd) {
     const wait = 1800 + rnd(by(lvl, 600, 1000, 1400));
@@ -489,12 +493,12 @@ const GEN = {
   dig(lvl) {
     // подкоп: барабанить по лопате n раз
     const n = by(lvl, 12, 18, 24);
-    return { view: { n }, answer: n, minMs: n * 60 };
+    return { view: { n }, answer: n, minMs: n * (humanMs() ? 100 : 60) };
   },
   saw(lvl) {
     // пила: каждый прут — strokes смен направления пальца
     const bars = by(lvl, 1, 2, 3), strokes = 4;
-    return { view: { bars, strokes }, answer: bars * strokes, minMs: bars * strokes * 120 };
+    return { view: { bars, strokes }, answer: bars * strokes, minMs: bars * strokes * (humanMs() ? 200 : 120) };
   },
   lockpick(lvl, rnd) {
     // штифты скачут вверх-вниз (треугольная волна 0…1); тапнуть, когда штифт в щели, по очереди.
@@ -1006,7 +1010,7 @@ function verdict(ch, ans, elapsed) {
         if (i) run += Math.hypot(q[0] - p[i - 1][0], q[1] - p[i - 1][1]);
       }
       const near = (q, A, r) => Math.hypot(q[0] - A[0], q[1] - A[1]) <= r;
-      if (!near(p[0], P[0], w.r * 1.7 + 0.03) || !near(p[p.length - 1], P[P.length - 1], w.r * 1.2 + 0.03)) return "wrong";
+      if (!near(p[0], P[0], w.r * 1.3 + 0.03) || !near(p[p.length - 1], P[P.length - 1], w.r * 1.2 + 0.03)) return "wrong";
       return run >= len * 0.7 ? "ok" : "wrong";
     }
     case "sneak": {
