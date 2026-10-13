@@ -606,5 +606,30 @@ test("skip: только ведущий; ответ закрывается ка�
   const rv = await b.phase("reveal", 5000);
   assert.ok(rv.state.right != null);
   assert.ok(rv.state.prisoners.length >= 1 || rv.state.picks, "никто не отвечал — все в Камере");
+  // T-W4-03: телеметрия — одна строка qstat с id вопроса и долей верных; в снимки доске и телефонам не уходит
+  const line = proc.log().split("\n").filter((l) => l.includes("qstat ")).pop();
+  assert.ok(line, "в логе нет qstat");
+  const rec = JSON.parse(line.slice(line.indexOf("qstat ") + 6));
+  assert.match(rec.qid, /^q\d+$/);
+  assert.equal(rec.n, 2);
+  assert.ok(rec.right >= 0 && rec.right <= rec.answered && rec.answered <= rec.n);
+  assert.ok(!JSON.stringify(rec).includes("Аня"), "в строке нет имён");
+  assert.ok(![b, a, z].some((c) => c.raw.some((r) => r.includes("qstat"))), "qstat не уходит клиентам");
   for (const c of [b, a, z, watcher]) c.close();
+});
+
+test("qstat.js: сводка доли верных по строкам лога; фильтр лёгких/трудных", () => {
+  const { spawnSync } = require("node:child_process");
+  const input = [
+    `[lastq] qstat ${JSON.stringify({ qid: "a-1", lvl: 2, final: false, lang: "ru", n: 4, answered: 4, right: 4 })}`,
+    `[lastq] qstat ${JSON.stringify({ qid: "a-1", lvl: 2, final: false, lang: "ru", n: 3, answered: 3, right: 3 })}`,
+    `[lastq] qstat ${JSON.stringify({ qid: "b-2", lvl: 3, final: true, lang: "en", n: 4, answered: 3, right: 1 })}`,
+    "[lastq] комнат 1",
+  ].join("\n");
+  const all = spawnSync(process.execPath, [path.join(__dirname, "qstat.js")], { input, encoding: "utf8" });
+  assert.match(all.stdout, /a-1\t2\t\t2\t7\t100/);
+  assert.match(all.stdout, /b-2\t3\tF\t1\t4\t25/);
+  const easy = spawnSync(process.execPath, [path.join(__dirname, "qstat.js"), "--easy", "0.9", "--min", "2"], { input, encoding: "utf8" });
+  assert.match(easy.stdout, /a-1/);
+  assert.doesNotMatch(easy.stdout, /b-2/);
 });
