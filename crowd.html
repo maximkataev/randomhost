@@ -186,7 +186,7 @@
   .me-badge { display: flex; align-items: center; gap: 12px; background: var(--panel); border-left: 6px solid var(--pc, var(--paper)); padding: 10px 14px; }
   .av { width: 42px; height: 42px; flex: none; border-radius: 50%; background: var(--panel2); border: 3px solid var(--pc, var(--line)); display: grid; place-items: center; font-size: 22px; font-style: normal; line-height: 1; }
   .me-badge b { font: 800 18px/1.15 var(--display); overflow-wrap: anywhere; min-width: 0; }
-  .avbtn { border: 0; background: none; padding: 0; cursor: pointer; border-radius: 50%; font: inherit; color: inherit; line-height: 0; flex: none; }
+  .avbtn { border: 0; background: none; padding: 0; cursor: pointer; border-radius: 50%; font: inherit; color: inherit; line-height: 0; flex: none; display: grid; place-items: center; min-width: 44px; min-height: 44px; margin: -1px; /* тап-цель ≥ 44 px (W5) */ }
   .avpick { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
   .avpick button { aspect-ratio: 1; border: 0; border-radius: var(--r); background: var(--panel2); font-size: 22px; line-height: 1; padding: 0; cursor: pointer; }
   .avpick button.on { box-shadow: 0 0 0 3px var(--paper); }
@@ -231,6 +231,26 @@
   .roster .plist li { min-height: 46px; font-size: 15px; padding: 6px 10px; }
   .roster .plist .av { width: 32px; height: 32px; font-size: 18px; }
   .plist li.empty { border: 2px dashed var(--line); background: transparent; justify-content: center; color: var(--muted); font-size: 22px; }
+  .lobgrid { display: contents; }
+  .lobgrid > .roster .plist { min-height: 0; }
+  /* ландшафт телефона: лобби в две колонки — слева бейдж, код и «Выйти», справа список игроков (W5): без прокрутки при 12 игроках */
+  @media (max-height: 520px) and (min-aspect-ratio: 3/2) {
+    .lobgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); grid-auto-rows: min-content; column-gap: 8px; row-gap: 6px; align-items: start; }
+    .lobgrid > * { grid-column: 1; }
+    .lobgrid > .roster { grid-column: 2; grid-row: 1 / span 5; align-self: stretch; padding: 8px 10px; gap: 6px; }
+    .lobgrid .roster .plist { gap: 4px; }
+    .lobgrid .roster .plist li { min-height: 32px; padding: 3px 8px; }
+    .lobgrid .roster .plist .av { width: 24px; height: 24px; font-size: 14px; }
+    .lobgrid > .link.leave { margin-top: 0; }
+  }
+  @media (max-height: 360px) and (min-aspect-ratio: 3/2) {
+    .lobgrid > p.fine, .lobgrid .me-badge .fine { display: none; }
+    .lobgrid .me-badge b { font-size: 16px; }
+    .lobgrid .note.lobcode { padding: 6px 12px; gap: 2px; }
+    .lobgrid .lobcode .signcode { font-size: 26px; padding: 4px 10px; }
+    .lobgrid .lobcode h2 { font-size: 16px; }
+    .lobgrid .lobcode .fine { font-size: 12px; }
+  }
   /* после «Готово»: кто уже ответил (без выбора) */
   .waitbox { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; background: var(--panel); border-top: 4px solid var(--line); padding: 12px; }
   .waith { display: flex; align-items: center; gap: 8px; font: 800 15px/1.1 var(--body); }
@@ -300,7 +320,7 @@
   }
   /* низкие экраны (320×568 и ландшафт): лобби и итоги собраны плотнее, «Выйти» прилипает к низу */
   @media (max-height: 600px) {
-    .me-badge { padding: 6px 12px; } .me-badge .av { width: 34px; height: 34px; font-size: 18px; }
+    .me-badge { padding: 6px 12px; } .me-badge .av { width: 34px; height: 34px; font-size: 18px; } .avbtn { margin: -5px; }
     .note.lobcode { padding: 10px 14px; gap: 4px; }
     .lobcode .signcode { padding: 6px 12px; font-size: clamp(24px, 9vw, 34px); }
     .lobcode h2 { font-size: 20px; }
@@ -324,14 +344,14 @@
   @media (max-height: 360px) {
     #app { padding-bottom: calc(4px + env(safe-area-inset-bottom)); gap: 5px; }
     .meta { margin-bottom: 0; }
-    .bankrow { min-height: 38px; }
+    .bankrow { min-height: 44px; }
     .mine { min-height: 64px; }
     .rv { width: 28px; height: 28px; font-size: 14px; }
     .waitbox .count, .count { padding: 4px; }
     .sides { min-height: 64px; } .side { padding-top: 28px; min-height: 64px; }
     .side .ico { top: 6px; left: 8px; width: 24px; height: 24px; font-size: 13px; line-height: 24px; }
     .side .big { font-size: clamp(18px, 6vh, 26px); }
-    .done { min-height: 48px; } .bankrow { min-height: 40px; padding: 2px 12px; } .bankrow .bh { margin-top: 1px; }
+    .done { min-height: 48px; } .bankrow { min-height: 44px; padding: 2px 12px; } .bankrow .bh { margin-top: 1px; }
     .skip { min-height: 44px; }
     .opnote { min-height: 0; }
   }
@@ -887,11 +907,11 @@ function renderLobby() {
   const p = mine();
   const list = state.players.filter((x) => !x.left);
   const need = Math.max(0, state.minPlayers - list.length);
-  const html = `<div class="me-badge">${avBtnHtml(avHtml(p))}<div style="min-width:0"><div class="fine">${escapeHtml(T("lobby_in"))}</div><b>${escapeHtml(p.name)}</b></div></div>
+  const html = `<div class="lobgrid"><div class="me-badge">${avBtnHtml(avHtml(p))}<div style="min-width:0"><div class="fine">${escapeHtml(T("lobby_in"))}</div><b>${escapeHtml(p.name)}</b></div></div>
     ${avPickHtml()}
     <div class="note lobcode" style="flex:0 0 auto"><div class="eyebrow">${escapeHtml(T("code_ph"))}</div><div class="signcode">${escapeHtml(CODE)}</div><h2>${escapeHtml(T("lobby_wait"))}</h2><p class="fine" id="lobnote"></p><p class="fine" id="langdeck"></p></div>
     <section class="roster"><div class="roster-h"><span>${escapeHtml(T("lobby_players"))}</span><b id="lobcnt"></b></div><ul class="plist" id="plist"></ul></section>
-    <button class="link leave" id="leave" type="button">${escapeHtml(T("btn_leave"))}</button>`;
+    <button class="link leave" id="leave" type="button">${escapeHtml(T("btn_leave"))}</button></div>`;
   show(html, "lobby:" + avKey());
   bindAvatars();
   document.getElementById("lobnote").textContent = need ? tpl("lobby_need", { n: need }) : T("lobby_look");
@@ -901,7 +921,7 @@ function renderLobby() {
   document.getElementById("langdeck").textContent = deckLang && deckLang !== wvLang() && LANG_NAMES[deckLang] ? tpl("lang_deck", { lang: LANG_NAMES[deckLang] }) : "";
   const ul = document.getElementById("plist");
   const empties = Math.max(need, (innerHeight < 600 ? 2 : 8) - list.length);
-  ul.innerHTML = list.map((x) => `<li class="${x.id === me ? "me" : ""} ${x.online ? "" : "off"}">${avHtml(x)}<span>${escapeHtml(x.name)}</span></li>`).join("") +
+  ul.innerHTML = list.map((x) => `<li class="${x.id === me ? "me" : ""} ${x.online ? "" : "off"}" title="${escapeHtml(x.name)}">${avHtml(x)}<span>${escapeHtml(x.name)}</span></li>`).join("") +
     Array.from({ length: Math.min(empties, innerHeight < 600 ? 4 : 8) }, () => `<li class="empty"><span>+</span></li>`).join("");
   document.getElementById("leave").onclick = leave;
 }
