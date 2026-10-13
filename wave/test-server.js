@@ -102,6 +102,23 @@ test("сервер", async (t) => {
   await startServer();
   t.after(() => stopServer());
 
+  await t.test("rename в лобби: своё имя меняется, чужое — rejected name_taken, в игре — game_started (wave P2-1)", async () => {
+    const room = await createRoom({ lang: "ru" });
+    const b = await board(room.code, room.hostToken);
+    const ps = [await player(room.code, "Оля"), await player(room.code, "Петя"), await player(room.code, "Вася")];
+    ps[0].send({ type: "rename", name: "Ольга" });
+    await b.wait(statePred((s) => s.players.some((p) => p.name === "Ольга")));
+    ps[0].send({ type: "rename", name: "петя" });
+    const r = await ps[0].wait((m) => m.type === "rejected" && m.action === "rename");
+    assert.strictEqual(r.reason, "name_taken");
+    b.send({ type: "start" });
+    await ps[1].wait(statePred((s) => s.phase === "clue"));
+    ps[1].send({ type: "rename", name: "Пётр" });
+    const r2 = await ps[1].wait((m) => m.type === "rejected" && m.action === "rename");
+    assert.strictEqual(r2.reason, "game_started");
+    b.close(); ps.forEach((p) => p.close());
+  });
+
   await t.test("подхват по имени: не посреди раунда и не у того, кто на связи", async () => {
     const room = await createRoom({ lang: "ru" });
     const b = await board(room.code, room.hostToken);

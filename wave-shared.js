@@ -552,9 +552,9 @@ function wvDialSvg(o) {
       const inner = i > 0 ? b[i - 1][0] : -b[0][0];
       const mid = i === 0 ? [t] : [t - (b[i][0] + inner) / 2, t + (b[i][0] + inner) / 2];
       for (const a of mid) {
-        if (a < 1 || a > 179) continue;
+        if (a < 6 || a > 174) continue;
         const p = wvPt(a, R - 52);
-        sec += `<text x="${p[0].toFixed(1)}" y="${p[1].toFixed(1)}" class="bandnum" fill="${i === 0 ? "#fff" : "#111"}" transform="rotate(${(a - 90).toFixed(1)} ${p[0].toFixed(1)} ${p[1].toFixed(1)})">${b[i][1] / 100}</text>`;
+        sec += `<text x="${p[0].toFixed(1)}" y="${p[1].toFixed(1)}" class="bandnum" fill="${i === 0 ? "#fff" : "#111"}" transform="rotate(${(a - 90).toFixed(1)} ${p[0].toFixed(1)} ${p[1].toFixed(1)})">${b[i][1] * (o.mult > 1 ? o.mult : 1) / 100}</text>`;
       }
     }
     parts.push(`<g class="sector" clip-path="url(#face-${uid})">${sec}</g>`);
