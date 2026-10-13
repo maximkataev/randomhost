@@ -1241,3 +1241,25 @@ test("U-20: продажа обрывает серию; settings.t1 < 10 с не
   emptyLot(h); emptyLot(h);
   assert.equal(h.s.deadline - h.s.lotStartedAt, 6000);
 });
+
+// T-W4-06 (E-39, auction-044): эмодзи данных — капибара не хомяк, собаки различимы
+test("данные: капибара не 🐹, бигль и доберман с разными эмодзи — во всех трёх языках", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const load = (...p) => JSON.parse(fs.readFileSync(path.join(__dirname, ...p), "utf8"));
+  const ru = load("data", "animal.json");
+  const langs = [["ru", ru, "Капибара", "Бигль", "Доберман"], ["en", load("data", "en", "animal.json"), "Capybara", "Beagle", "Dobermann"], ["el", load("data", "el", "animal.json"), null, null, null]];
+  for (const [lang, list, capy, beagle, dob] of langs) {
+    if (capy) {
+      const f = (n) => list.find((x) => x.name === n);
+      assert.ok(f(capy) && f(capy).emoji !== "🐹", lang + ": капибара");
+      assert.notEqual(f(beagle).emoji, f(dob).emoji, lang + ": бигль и доберман");
+    }
+    // колоды переведены позиционно: эмодзи по индексу совпадают во всех языках
+    for (const i of [24, 159, 161, 162, 163, 164, 165]) assert.equal(list[i].emoji, ru[i].emoji, lang + " #" + i);
+  }
+  assert.equal(ru[24].emoji, "🦫");
+  // браузерная копия (auction-data/animal.js) совпадает с серверным JSON
+  const raw = fs.readFileSync(path.join(__dirname, "..", "auction-data", "animal.js"), "utf8");
+  assert.deepEqual(JSON.parse(raw.slice(raw.indexOf("= [") + 2).replace(/;\s*$/, "")), ru);
+});
