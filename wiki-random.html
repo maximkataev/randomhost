@@ -668,6 +668,14 @@
     .host-switch[aria-checked="true"]::after { transform: translateX(16px); border-color: var(--link); }
     .host-switch:disabled { opacity: 0.5; cursor: default; }
 
+    .prob-input.rule { font-weight: 700; color: var(--link); background: #eaf3ff; border-color: var(--link); }
+    .host-chip.hot { background: var(--link); border-color: var(--link); color: #fff; }
+    .host-day.hit { background: #eaf3ff; box-shadow: inset 0 0 0 2px var(--link); }
+    .host-rule-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; }
+    .host-rule-stepper { display: grid; grid-template-columns: 26px 64px 26px; gap: 3px; }
+    .host-rule-stepper .prob-input { height: 28px; }
+    .host-rule-hint { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+    .host-rule-hint:empty { display: none; }
     .name-field { position: relative; display: flex; min-width: 0; }
     .name-field .name-input { flex: 1 1 auto; }
     .plist:not(.chips-corner) .name-field.has-chip .name-input { padding-right: calc(var(--chip-w, 48px) + 12px); }
@@ -807,6 +815,20 @@
           </div>
           <div class="hosts-week" id="hostsWeek"></div>
           <div class="host-rule">
+            <div class="host-rule-row">
+              <label class="host-rule-label">
+                <button class="host-switch host-ui" id="hostRuleSwitch" type="button" role="switch" aria-checked="true" aria-labelledby="hostRuleText"></button>
+                <span id="hostRuleText" data-i18n="host_rule">Прошлому ведущему</span>
+              </label>
+              <div class="host-rule-stepper">
+                <button class="prob-btn" id="hostRuleDec" type="button" aria-label="Уменьшить вероятность" data-i18n-attr="aria-label:aria_dec">−</button>
+                <input type="text" inputmode="decimal" class="prob-input rule" id="hostRuleInput" aria-label="Шанс прошлого ведущего, %" data-i18n-attr="aria-label:host_rule_aria">
+                <button class="prob-btn" id="hostRuleInc" type="button" aria-label="Увеличить вероятность" data-i18n-attr="aria-label:aria_inc">+</button>
+              </div>
+            </div>
+            <p class="host-rule-hint" id="hostRuleHint"></p>
+          </div>
+          <div class="host-rule">
             <label class="host-rule-label">
               <button class="host-switch host-ui" id="hostChipsSwitch" type="button" role="switch" aria-checked="true" aria-labelledby="hostChipsText"></button>
               <span id="hostChipsText" data-i18n="host_chips">Метки у участников</span>
@@ -929,11 +951,15 @@
     const PROB_KEY   = 'shared_probabilities_v2';
     const LOCKED_KEY = 'shared_locked_v1';
     const AWAY_KEY   = 'shared_away_v1';
-    // Ведущие: общая история со всеми рандомайзерами. Правило «прошлому ведущему» (shared_host_rule_v1)
-    // здесь не действует и не записывается — победителя решает правка Википедии
+    // Ведущие: общая история со всеми рандомайзерами и общее правило «прошлому ведущему»
     const HOSTS_KEY       = 'shared_hosts_v1';
     const HOSTS_OPEN_KEY  = 'hosts_panel_open_v1';
     const HOSTS_CHIPS_KEY = 'hosts_chips_visible_v1';
+    const HOST_RULE_KEY   = 'shared_host_rule_v1';
+    // лимиты шанса на этой странице: поле принимает 1–99%, остальным остаётся минимум по 1%
+    const HOST_RULE_MIN  = 1;
+    const HOST_RULE_MAX  = 99;
+    const HOST_MIN_SHARE = 0.01;
 
     const hostsBtn        = document.getElementById('hostsBtn');
     const hostsBox        = document.getElementById('hostsBox');
@@ -942,6 +968,11 @@
     const hostsPrev       = document.getElementById('hostsPrev');
     const hostsNext       = document.getElementById('hostsNext');
     const hostChipsSwitch = document.getElementById('hostChipsSwitch');
+    const hostRuleSwitch  = document.getElementById('hostRuleSwitch');
+    const hostRuleInput   = document.getElementById('hostRuleInput');
+    const hostRuleDec     = document.getElementById('hostRuleDec');
+    const hostRuleInc     = document.getElementById('hostRuleInc');
+    const hostRuleHint    = document.getElementById('hostRuleHint');
 
     const guessLang = () => {
       try {
@@ -967,6 +998,7 @@
     let hostLog = [];
     let hostWeekPage = 0;
     let hostChipsVisible = true; // метки 🎙 у участников — переключатель в блоке «Ведущие»
+    let hostRule = { on: true, p: 5 };
 
     const t = (k) => I18N.t(k);
     const fill = (k, map) => {
@@ -1018,7 +1050,7 @@
         awayList.some((a) => a.name.toLowerCase() === low);
     }
 
-    /* ── ВЕДУЩИЕ: ИСТОРИЯ ────────────────────────────── */
+    /* ── ВЕДУЩИЕ: ИСТОРИЯ И ПРАВИЛО ПРОШЛОГО ВЕДУЩЕГО ─── */
     function loadHostLog() {
       try {
         const saved = JSON.parse(localStorage.getItem(HOSTS_KEY) || '[]');
@@ -1028,6 +1060,13 @@
       } catch (e) {}
     }
     loadHostLog();
+    try {
+      const savedRule = JSON.parse(localStorage.getItem(HOST_RULE_KEY) || 'null');
+      if (savedRule && typeof savedRule === 'object') {
+        hostRule.on = savedRule.on !== false;
+        if (Number.isFinite(savedRule.p)) hostRule.p = savedRule.p;
+      }
+    } catch (e) {}
     try { hostChipsVisible = localStorage.getItem(HOSTS_CHIPS_KEY) !== '0'; } catch (e) {}
 
     const saveHostLog = () => {
@@ -1036,6 +1075,12 @@
         hostLog.sort((a, b) => a.t - b.t);
         localStorage.setItem(HOSTS_KEY, JSON.stringify(hostLog));
       } catch (e) {}
+    };
+
+    const escHtml = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    const saveHostRule = () => {
+      try { localStorage.setItem(HOST_RULE_KEY, JSON.stringify(hostRule)); } catch (e) {}
     };
 
     // Локальная дата вида 2026-09-14 — строки сравниваются как даты
@@ -1059,6 +1104,66 @@
       return map;
     }
 
+    // Прошлый ведущий — из последнего дня до сегодняшнего, в котором есть запись (в понедельник это пятница,
+    // а если в пятницу не играли — четверг)
+    function previousHost() {
+      const today = dayKey(Date.now());
+      let best = null;
+      hostLog.forEach((e) => {
+        if (e.host && dayKey(e.t) < today && (!best || e.t > best.t)) best = e;
+      });
+      return best;
+    }
+
+    // На кого сегодня действует правило: прошлый ведущий участвует, и его шанс не задан вручную
+    function hostRuleTarget() {
+      if (!hostRule.on) return null;
+      const prev = previousHost();
+      if (!prev || !names.includes(prev.name)) return null;
+      if (hasCustomProbabilities && lockedParticipants[prev.name]) return null;
+      return prev.name;
+    }
+
+    // Максимум для прошлого ведущего, при котором остальным незафиксированным остаётся минимум страницы
+    function hostRuleMaxPercent(target) {
+      const others = names.filter((n) => n !== target);
+      const locked = hasCustomProbabilities ? others.filter((n) => lockedParticipants[n]) : [];
+      const free = others.length - locked.length;
+      if (!free) return 0;
+      const lockedSum = locked.reduce((s, n) => s + (probabilities[n] || 0), 0);
+      return Math.min(HOST_RULE_MAX, (1 - lockedSum - free * HOST_MIN_SHARE) * 100);
+    }
+
+    function hostRuleLimitPercent() {
+      const target = hostRuleTarget() || (previousHost() || {}).name;
+      const max = target && names.includes(target) ? hostRuleMaxPercent(target) : Math.min(HOST_RULE_MAX, 100 - (names.length - 1) * HOST_MIN_SHARE * 100);
+      return Math.max(HOST_RULE_MIN, Math.floor(max * 10) / 10);
+    }
+
+    // Шансы, по которым раздаются билеты: сохранённые вероятности + правило прошлого ведущего.
+    // Сами сохранённые вероятности не меняются — выключили правило, и всё как было.
+    function getEffectiveProbabilities() {
+      const eff = {};
+      names.forEach((n) => eff[n] = hasCustomProbabilities ? (probabilities[n] || 0) : 1 / (names.length || 1));
+
+      const target = hostRuleTarget();
+      if (!target) return eff;
+
+      // процент правила общий для всех страниц — подводим его к границам этой страницы, а не выключаем правило
+      const maxShare = hostRuleMaxPercent(target) / 100;
+      if (maxShare < HOST_RULE_MIN / 100 - 1e-9) return eff;
+      const p = Math.max(HOST_RULE_MIN / 100, Math.min(hostRule.p / 100, maxShare));
+
+      const others = names.filter((n) => n !== target);
+      const locked = hasCustomProbabilities ? others.filter((n) => lockedParticipants[n]) : [];
+      const free = others.filter((n) => !locked.includes(n));
+      const lockedSum = locked.reduce((s, n) => s + eff[n], 0);
+
+      eff[target] = p;
+      free.forEach((n) => eff[n] = (1 - lockedSum - p) / free.length);
+      return eff;
+    }
+
     // Чип 🎙 с днём, когда человек вёл, внутри уже созданного поля имени
     function setHostChip(field, name, chips) {
       field.dataset.hostName = name;
@@ -1067,24 +1172,29 @@
       const old = field.querySelector('.host-chip');
       if (old) old.remove();
 
-      const entry = chips[name];
+      const hot = !!name && name === hostRuleTarget();
+      const entry = hot ? previousHost() : chips[name];
       if (!name || !entry || !hostChipsVisible) return;
 
       const lang = I18N.lang || 'ru';
       const d = new Date(entry.t);
       field.classList.add('has-chip');
-      field.title = fill('host_chip_title', {
+      field.title = fill(hot ? 'host_chip_last' : 'host_chip_title', {
         date: new Intl.DateTimeFormat(lang, { weekday: 'long', day: 'numeric', month: 'long' }).format(d)
       });
 
       const chip = document.createElement('span');
-      chip.className = 'host-chip';
+      chip.className = 'host-chip' + (hot ? ' hot' : '');
       chip.setAttribute('aria-hidden', 'true');
+      const now = new Date();
+      const weekAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
       const day = document.createElement('span');
       day.className = 'host-chip-day';
-      day.textContent = dayKey(entry.t) === dayKey(Date.now())
+      day.textContent = dayKey(entry.t) === dayKey(now.getTime())
         ? t('host_chip_today')
-        : new Intl.DateTimeFormat(lang, { weekday: 'short' }).format(d).replace(/\.$/, '');
+        : entry.t >= weekAgo
+        ? new Intl.DateTimeFormat(lang, { weekday: 'short' }).format(d).replace(/\.$/, '')
+        : new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'numeric' }).format(d);
       chip.append('🎙', day);
       field.appendChild(chip);
     }
@@ -1175,6 +1285,32 @@
       hostsNext.disabled = running || hostWeekPage === 0;
       hostChipsSwitch.disabled = running;
       hostChipsSwitch.setAttribute('aria-checked', String(hostChipsVisible));
+      hostRuleSwitch.disabled = running;
+      hostRuleSwitch.setAttribute('aria-checked', String(hostRule.on));
+      hostRuleInput.disabled = hostRuleDec.disabled = hostRuleInc.disabled = running || !hostRule.on;
+      if (document.activeElement !== hostRuleInput) hostRuleInput.value = hostRule.p.toFixed(1);
+
+      const prev = previousHost();
+      const target = hostRuleTarget();
+      let hint = '';
+      if (hostRule.on) {
+        if (!prev) {
+          // сегодняшний ведущий не влияет на сегодняшние шансы — говорим, что правило сработает завтра
+          const todayHost = hostEntryOn(todayKey);
+          hint = todayHost
+            ? fill('host_hint_today', { name: escHtml(todayHost.name), p: hostRule.p.toFixed(1) })
+            : t('host_hint_empty');
+        } else {
+          const vars = {
+            name: escHtml(prev.name),
+            day: escHtml(new Intl.DateTimeFormat(lang, { weekday: 'short', day: 'numeric', month: 'numeric' }).format(new Date(prev.t)))
+          };
+          if (!names.includes(prev.name)) hint = fill('host_hint_absent', vars);
+          else if (!target) hint = fill('host_hint_manual', vars);
+          else hint = fill('host_hint', { ...vars, p: shownPercent(target) });
+        }
+      }
+      hostRuleHint.innerHTML = hint;
 
       const wdFmt = new Intl.DateTimeFormat(lang, { weekday: 'short' });
       const longFmt = new Intl.DateTimeFormat(lang, { weekday: 'long', day: 'numeric', month: 'long' });
@@ -1191,6 +1327,7 @@
         if (!entry) cell.classList.add('empty');
         if (d.getDay() === 0 || d.getDay() === 6) cell.classList.add('weekend');
         if (key === todayKey) cell.classList.add('today');
+        if (target && prev && dayKey(prev.t) === key) cell.classList.add('hit');
 
         const label = fill('host_day_aria', { date: longFmt.format(d) });
         cell.title = entry ? label + ' — ' + entry.name : label;
@@ -1234,14 +1371,42 @@
         const noon = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12).getTime();
         hostLog.push({ name, t: noon, host: true });
       }
-      commitHostChange();
+      commitHostChange(true);
     }
 
-    // На шансы история здесь не влияет — обновляем только чипы и полоску недели
-    function commitHostChange() {
+    // redraw — когда могли поменяться шансы (правка прошлых дней), а не только сегодняшняя запись
+    function commitHostChange(redraw) {
       saveHostLog();
+      if (redraw && !running) {
+        if (done) softReset();
+        renderList();
+        return;
+      }
       refreshHostChips();
       renderHostsBox();
+    }
+
+    function applyHostRule() {
+      if (done) softReset();
+      renderList();
+    }
+
+    function setHostRulePercent(v) {
+      const max = hostRuleLimitPercent();
+      // неверное значение — откат к прежнему
+      if (!Number.isFinite(v) || v < HOST_RULE_MIN || v > max) { renderHostsBox(); return; }
+      hostRule.p = Math.round(v * 10) / 10;
+      saveHostRule();
+      applyHostRule();
+    }
+
+    function stepHostRule(delta) {
+      const max = hostRuleLimitPercent();
+      const next = Math.max(HOST_RULE_MIN, Math.min(max, hostRule.p + delta));
+      if (Math.abs(next - hostRule.p) < 0.01) return;
+      hostRule.p = Math.round(next * 10) / 10;
+      saveHostRule();
+      applyHostRule();
     }
 
     // Ведущий дня — последний победитель: каждая новая фиксация времени заменяет сегодняшнюю запись
@@ -1333,8 +1498,13 @@
       return (((probabilities[name] || 0) * 100).toFixed(1));
     }
 
+    // Показанный шанс — с правилом прошлого ведущего; ± и ручной ввод отталкиваются от него
+    function shownPercent(name) {
+      return ((getEffectiveProbabilities()[name] || 0) * 100).toFixed(1);
+    }
+
     function adjustProbability(name, delta) {
-      const cur = parseFloat(getProbabilityPercent(name)) || 0;
+      const cur = parseFloat(shownPercent(name)) || 0;
       const maxPossible = 100 - (names.length - 1) * MIN_P * 100;
       const next = Math.max(MIN_P * 100, Math.min(maxPossible, cur + delta));
       setProbabilityManually(name, next);
@@ -1414,8 +1584,9 @@
     }
 
     /* ── БИЛЕТЫ: одна операция Σ mod T ───────────────── */
-    const shares = () => names.map(n => hasCustomProbabilities ? (probabilities[n] || 0) : 1 / names.length);
-    const equalOdds = () => !hasCustomProbabilities;
+    const shares = () => { const eff = getEffectiveProbabilities(); return names.map(n => eff[n] || 0); };
+    // правило прошлого ведущего делает шансы разными — тогда билеты по долям, как при ручных шансах
+    const equalOdds = () => !hasCustomProbabilities && !hostRuleTarget();
 
     // Накликали одинаковые проценты — это то же самое, что нажать «Уравнять»:
     // сбрасываем ручной режим, и делитель снова равен числу участников
@@ -1475,6 +1646,7 @@
       collapseIfEqual();
       const plan = ticketPlan();
       const chips = hostChips();
+      const ruleTarget = hostRuleTarget();
       plist.innerHTML = '';
 
       names.forEach((name, idx) => {
@@ -1544,10 +1716,11 @@
         const probInput = document.createElement('input');
         probInput.type = 'text';
         probInput.inputMode = 'decimal';
-        probInput.className = 'prob-input' + (lockedParticipants[name] ? ' manual' : '');
-        probInput.value = getProbabilityPercent(name) + '%';
+        const manual = hasCustomProbabilities && lockedParticipants[name];
+        probInput.className = 'prob-input' + (manual ? ' manual' : (name === ruleTarget ? ' rule' : ''));
+        probInput.value = shownPercent(name) + '%';
         probInput.setAttribute('aria-label', t('aria_prob'));
-        let lastValid = getProbabilityPercent(name);
+        let lastValid = shownPercent(name);
 
         probInput.addEventListener('focus', () => {
           probInput.value = probInput.value.replace('%', '');
@@ -1774,6 +1947,21 @@
     });
     hostsPrev.addEventListener('click', () => { hostWeekPage++; renderHostsBox(); });
     hostsNext.addEventListener('click', () => { hostWeekPage = Math.max(0, hostWeekPage - 1); renderHostsBox(); });
+    hostRuleSwitch.addEventListener('click', () => {
+      hostRule.on = !hostRule.on;
+      saveHostRule();
+      applyHostRule();
+    });
+    hostRuleDec.addEventListener('click', () => stepHostRule(-1));
+    hostRuleInc.addEventListener('click', () => stepHostRule(1));
+    hostRuleInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); hostRuleInput.blur(); }
+    });
+    hostRuleInput.addEventListener('blur', () => {
+      const val = hostRuleInput.value.replace('%', '').replace(',', '.').trim();
+      if (val === '' || val === hostRule.p.toFixed(1)) { renderHostsBox(); return; }
+      setHostRulePercent(parseFloat(val));
+    });
     hostChipsSwitch.addEventListener('click', () => {
       hostChipsVisible = !hostChipsVisible;
       try { localStorage.setItem(HOSTS_CHIPS_KEY, hostChipsVisible ? '1' : '0'); } catch (e) {}
@@ -2497,6 +2685,14 @@
       away_badge: `🌴 нет на месте`,
       hosts_title: `Ведущие`, hosts_prev: `Неделя назад`, hosts_next: `Неделя вперёд`, host_nobody: `— никто`,
       host_day_aria: `Ведущий: {date}`, host_chip_title: `Ведущий: {date}`,
+      host_rule: `Прошлому ведущему`, host_rule_aria: `Шанс прошлого ведущего, %`,
+      host_chip_last: `Прошлый ведущий: {date}`,
+      host_hint: `Прошлый ведущий — <b>{name}</b> ({day}): шанс <b>{p}%</b>, остальные делят оставшееся.`,
+      host_hint_manual: `Прошлый ведущий — <b>{name}</b> ({day}). Шанс задан вручную, правило его не трогает.`,
+      host_hint_absent: `Прошлый ведущий — <b>{name}</b> ({day}) — сейчас не участвует, шансы обычные.`,
+      host_hint_empty: `Пока никто не записан ведущим.`,
+      host_hint_today: `Сегодня ведёт <b>{name}</b>. Правило сработает со следующего дня: тогда шанс будет <b>{p}%</b>.`,
+      
       host_chip_today: `сегодня`, host_chips: `Метки у участников`,
       err_min: `Нужно минимум 2 участника.`,
       err_max: `Максимум {n} участников.`,
@@ -2578,6 +2774,14 @@
       away_badge: `🌴 away`,
       hosts_title: `Hosts`, hosts_prev: `Previous week`, hosts_next: `Next week`, host_nobody: `— nobody`,
       host_day_aria: `Host: {date}`, host_chip_title: `Hosted: {date}`,
+      host_rule: `Last host's chance`, host_rule_aria: `Last host's chance, %`,
+      host_chip_last: `Last host: {date}`,
+      host_hint: `Last host — <b>{name}</b> ({day}): chance <b>{p}%</b>, the rest share what's left.`,
+      host_hint_manual: `Last host — <b>{name}</b> ({day}). The chance is set manually, the rule leaves it alone.`,
+      host_hint_absent: `Last host — <b>{name}</b> ({day}) — not playing now, odds are as usual.`,
+      host_hint_empty: `No one has been recorded as host yet.`,
+      host_hint_today: `<b>{name}</b> hosts today. The rule kicks in from the next day: the chance will be <b>{p}%</b>.`,
+      
       host_chip_today: `today`, host_chips: `Labels on participants`,
       err_min: `At least 2 participants are needed.`,
       err_max: `{n} participants max.`,
@@ -2659,6 +2863,14 @@
       away_badge: `🌴 απών`,
       hosts_title: `Παρουσιαστές`, hosts_prev: `Προηγούμενη εβδομάδα`, hosts_next: `Επόμενη εβδομάδα`, host_nobody: `— κανείς`,
       host_day_aria: `Παρουσιαστής: {date}`, host_chip_title: `Παρουσίασε: {date}`,
+      host_rule: `Προηγούμενος παρουσιαστής`, host_rule_aria: `Πιθανότητα προηγούμενου παρουσιαστή, %`,
+      host_chip_last: `Προηγούμενος παρουσιαστής: {date}`,
+      host_hint: `Προηγούμενος παρουσιαστής — <b>{name}</b> ({day}): πιθανότητα <b>{p}%</b>, οι υπόλοιποι μοιράζονται τα υπόλοιπα.`,
+      host_hint_manual: `Προηγούμενος παρουσιαστής — <b>{name}</b> ({day}). Η πιθανότητα ορίστηκε χειροκίνητα, ο κανόνας δεν την αγγίζει.`,
+      host_hint_absent: `Προηγούμενος παρουσιαστής — <b>{name}</b> ({day}) — δεν συμμετέχει τώρα, οι πιθανότητες είναι οι συνήθεις.`,
+      host_hint_empty: `Κανείς δεν έχει καταγραφεί ακόμα ως παρουσιαστής.`,
+      host_hint_today: `Σήμερα παρουσιάζει ο/η <b>{name}</b>. Ο κανόνας ισχύει από την επόμενη μέρα: τότε η πιθανότητα θα είναι <b>{p}%</b>.`,
+      
       host_chip_today: `σήμερα`, host_chips: `Ετικέτες στους συμμετέχοντες`,
       err_min: `Χρειάζονται τουλάχιστον 2 συμμετέχοντες.`,
       err_max: `Το πολύ {n} συμμετέχοντες.`,
