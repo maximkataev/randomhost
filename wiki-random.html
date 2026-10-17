@@ -1115,12 +1115,12 @@
       return best;
     }
 
-    // На кого сегодня действует правило: прошлый ведущий участвует, и его шанс не задан вручную
+    // На кого сегодня действует правило: прошлый ведущий участвует. Ручной шанс правилу не мешает —
+    // у прошлого ведущего всегда процент правила, в строке и в блоке 🎙 одно число
     function hostRuleTarget() {
       if (!hostRule.on) return null;
       const prev = previousHost();
       if (!prev || !names.includes(prev.name)) return null;
-      if (hasCustomProbabilities && lockedParticipants[prev.name]) return null;
       return prev.name;
     }
 
@@ -1512,6 +1512,12 @@
     }
 
     function setProbabilityManually(name, percentValue) {
+      // шанс прошлого ведущего и процент правила — одно число: правка в строке меняет правило
+      if (name === hostRuleTarget()) {
+        const before = hostRule.p;
+        setHostRulePercent(percentValue);
+        return hostRule.p !== before;
+      }
       if (isNaN(percentValue) || percentValue < 1 || percentValue > 99) return false;
 
       hasCustomProbabilities = true;
@@ -1717,7 +1723,7 @@
         probInput.type = 'text';
         probInput.inputMode = 'decimal';
         const manual = hasCustomProbabilities && lockedParticipants[name];
-        probInput.className = 'prob-input' + (manual ? ' manual' : (name === ruleTarget ? ' rule' : ''));
+        probInput.className = 'prob-input' + (name === ruleTarget ? ' rule' : (manual ? ' manual' : ''));
         probInput.value = shownPercent(name) + '%';
         probInput.setAttribute('aria-label', t('aria_prob'));
         let lastValid = shownPercent(name);

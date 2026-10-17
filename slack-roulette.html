@@ -3306,6 +3306,12 @@
     }
 
     function setProbabilityManually(name, percentValue) {
+      // шанс прошлого ведущего и процент правила — одно число: правка в строке меняет правило
+      if (name === hostRuleTarget()) {
+        const before = hostRule.p;
+        setHostRulePercent(percentValue);
+        return hostRule.p !== before;
+      }
       const maxPossible = getRealisticMaxPercent(name);
 
       if (isNaN(percentValue) || percentValue < 4.999 || percentValue > maxPossible + 0.001) {
@@ -3682,12 +3688,12 @@
       return best;
     }
 
-    // На кого сегодня действует правило: прошлый ведущий участвует, и его шанс не задан вручную
+    // На кого сегодня действует правило: прошлый ведущий участвует. Ручной шанс правилу не мешает —
+    // у прошлого ведущего всегда процент правила, в строке и в блоке 🎙 одно число
     function hostRuleTarget() {
       if (!hostRule.on) return null;
       const prev = previousHost();
       if (!prev || !names.includes(prev.name)) return null;
-      if (hasCustomProbabilities && lockedParticipants[prev.name]) return null;
       return prev.name;
     }
 
@@ -4074,7 +4080,7 @@
         const prob = item.querySelector('.probability-input');
         input.value = name;
         if (document.activeElement !== prob) prob.value = getProbabilityPercent(name);
-        prob.classList.toggle('manual', !!lockedParticipants[name]);
+        prob.classList.toggle('manual', !!lockedParticipants[name] && name !== view.target);
         prob.classList.toggle('rule', !!name && name === view.target);
         field.replaceWith(buildHostNameField(input, name, view));
       });
@@ -4116,6 +4122,7 @@
           probInput.classList.add('manual');
         }
         if (name && name === hostView.target) {
+          probInput.classList.remove('manual');
           probInput.classList.add('rule');
         }
         let lastValid = probInput.value;
