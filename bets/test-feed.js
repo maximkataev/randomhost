@@ -358,7 +358,7 @@ const STREAMS = gz("streams-synth.json.gz");
 const BASE = 1_790_100_000_000;
 
 test("дуэль счётчиков: EWMA-оценки λ + φ скина дают калиброванные P(A>B), P(B>A), ничья (допуск 3,5 п.п.)", () => {
-  for (const [a, b, phi] of [["laugh", "heart", 1.6], ["dewiki", "frwiki", 1.8], ["frwiki", "ruwiki", 1.8]]) {
+  for (const [a, b, phi] of [["laugh", "heart", 1.4], ["dewiki", "frwiki", 1.4], ["frwiki", "ruwiki", 1.4]]) {
     const ta = new RateTracker({ keep: 10 * 60 * 1000 }), tb = new RateTracker({ keep: 10 * 60 * 1000 });
     const ea = STREAMS.events[a], eb = STREAMS.events[b];
     let ia = 0, ib = 0, n = 0, sA = 0, sB = 0, sT = 0, rA = 0, rB = 0, rT = 0;
@@ -403,7 +403,7 @@ test("категориальные доли языков: p=(n+1)/(N+K) по 5 �
   for (const l of ["en", "ja"]) assert.ok(Math.abs(pred[l] / n - real[l] / n) < 0.03, `${l}: модель ${(pred[l] / n).toFixed(3)}, факт ${(real[l] / n).toFixed(3)}`);
 });
 
-test("киты: пороговые рынки по λ за час: P(≥1 за 20 с) ≈ доле окон с китом (допуск 5 п.п.; φ=1,2)", () => {
+test("киты: пороговые рынки по λ за час: P(≥1 за 20 с) ≈ доле окон с китом (допуск 5 п.п.; φ=1,7)", () => {
   const clock = new Clock(BASE);
   const mod = whales.create(mkDeps(clock));
   mod._setConn({ endpoint: () => "x", isLive: () => true, lastMsgAt: () => clock.now() });
@@ -461,7 +461,7 @@ test("emoji.prepare: пара подбирается по |μ_d| ≤ 0,6σ_d; λ
   assert.ok(p, "пара найдена");
   assert.ok(Math.abs(p.input.lamA - 0.55) < 0.15 && Math.abs(p.input.lamB - 0.45) < 0.15, JSON.stringify(p.input));
   assert.equal(p.input.T, 20);
-  assert.equal(p.input.phi, 1.6);
+  assert.equal(p.input.phi, 1.4);
   assert.deepEqual(p.meta.labels, { A: "😂", B: "❤️" });
   const ev = R.rebuild("emoji", p.input);
   assert.deepEqual(ev.markets.map((m) => m.id).sort(), ["A", "B", "tie"].sort());
@@ -708,20 +708,30 @@ test("whales: дубликаты по хешу не считаются, исхо
 
 // ================= drand =================
 const crypto = require("crypto");
-function mkRound(r, seedByte = 1) {
-  const sig = crypto.createHash("sha256").update("sig" + r + ":" + seedByte).digest("hex") + crypto.createHash("sha256").update("s2" + r).digest("hex").slice(0, 32);   // 96 hex
+// 5 реальных раундов quicknet с подписями (снято с api.drand.sh, сверено с drand.cloudflare.com) + ответ /info
+const DR = JSON.parse(require("fs").readFileSync(require("path").join(__dirname, "fixtures", "drand-rounds.json"), "utf8"));
+const DRB = new Map(DR.rounds.map((o) => [o.round, o]));
+const R0 = DR.rounds[0].round;
+// «подделка»: подпись другая (96 hex), randomness честно посчитан от неё — проходит sha256, но не BLS
+const forge = (r) => {
+  const sig = crypto.createHash("sha256").update("forged" + r).digest("hex") + crypto.createHash("sha256").update("f2" + r).digest("hex").slice(0, 32);
   return { round: r, signature: sig, randomness: drand.sha256hex(sig) };
-}
-// fetch по relay/chain/public/N: раунд доступен только после времени публикации
-function drandFetch(clock, { down = [], bad = [], skew = [] } = {}) {
+};
+// fetch по relay/chain/public/N и /info: раунд доступен только после времени публикации; доступны только раунды фикстуры
+function drandFetch(clock, { down = [], bad = [], forged = [], info = DR.info } = {}) {
   return async (url) => {
-    const m = /^(https:\/\/[^/]+)\/([0-9a-f]{64})\/public\/(latest|\d+)$/.exec(url);
+    const m = /^(https:\/\/[^/]+)\/([0-9a-f]{64})\/(info|public\/(?:latest|\d+))$/.exec(url);
     if (!m || m[2] !== drand.CHAIN) return notFound;
     const relay = m[1];
     if (down.includes(relay)) throw new Error("ECONNREFUSED");
-    const r = m[3] === "latest" ? drand.roundAt(clock.now()) : Number(m[3]);
+    if (m[3] === "info") return okJson(info);
+    const q = m[3].slice(7);
+    let r = q === "latest" ? Math.min(drand.roundAt(clock.now()), R0 + 4) : Number(q);
     if (drand.roundTime(r) > clock.now()) return notFound;
-    const o = mkRound(r, skew.includes(relay) ? 2 : 1);
+    let o = DRB.get(r);
+    if (!o) return notFound;
+    if (forged.includes(relay)) o = forge(r);
+    o = { ...o };
     if (bad.includes(relay)) o.randomness = "0".repeat(64);
     return okJson(o);
   };
@@ -737,15 +747,39 @@ test("drand: номер раунда — первый, опубликованн�
   assert.equal(drand.roundAt(drand.roundTime(55) + 2999), 55);
 });
 
-test("drand: реальные ответы трёх ретрансляторов (фикстура) проходят проверку sha256(signature) = randomness", () => {
-  assert.equal(SAMPLES.drand.length, 3);
+test("drand: реальные раунды (фикстура) проходят BLS; испорченная подпись/рандомность/номер раунда — нет", () => {
+  assert.equal(DR.rounds.length, 5);
+  assert.equal(DR.info.public_key, drand.PUBLIC_KEY, "зашитый ключ = ключ из /info");
+  for (const o of DR.rounds) {
+    assert.ok(drand.verifySig(o.round, o.signature), "BLS " + o.round);
+    assert.ok(drand.validRound(o, o.round), "validRound " + o.round);
+  }
   for (const o of SAMPLES.drand) assert.ok(drand.validRound(o, o.round), o.relay);
-  assert.ok(!drand.validRound({ ...SAMPLES.drand[0], randomness: "00".repeat(32) }, SAMPLES.drand[0].round));
-  assert.ok(!drand.validRound(SAMPLES.drand[0], SAMPLES.drand[0].round + 1), "чужой номер раунда");
+  const o = DR.rounds[0], r = o.round;
+  // randomness не от этой подписи
+  assert.ok(!drand.validRound({ ...o, randomness: "00".repeat(32) }, r));
+  // один бит подписи изменён (и randomness пересчитан, чтобы sha256 сошёлся) — BLS не проходит
+  const flip = (hex) => hex.slice(0, 10) + ((parseInt(hex[10], 16) ^ 1).toString(16)) + hex.slice(11);
+  const sig2 = flip(o.signature);
+  assert.ok(!drand.verifySig(r, sig2));
+  assert.ok(!drand.validRound({ round: r, signature: sig2, randomness: drand.sha256hex(sig2) }, r));
+  // подмена номера раунда: ответ другого раунда, выданный за r (с переписанным полем round — как и без)
+  const other = DR.rounds[1];
+  assert.ok(!drand.validRound(other, r), "чужой номер раунда");
+  assert.ok(!drand.validRound({ ...other, round: r }, r), "подпись чужого раунда с подставленным номером");
+  assert.ok(!drand.verifySig(r + 1, o.signature));
+  assert.ok(!drand.validRound(o, r + 1));
+  // подделка целиком (валидный sha256, чужая подпись), мусор и не-hex
+  assert.ok(!drand.validRound(forge(r), r));
+  assert.ok(!drand.verifySig(r, "00".repeat(48)), "нулевая подпись");
+  assert.ok(!drand.verifySig(r, "zz".repeat(48)));
+  assert.ok(!drand.verifySig(r, o.signature.slice(2)), "обрезанная");
+  assert.ok(!drand.verifySig(0, o.signature));
+  assert.ok(!drand.verifySig(r, null));
 });
 
-test("drand.begin: ждёт публикации раунда, берёт randomness, подтверждает вторым ретранслятором; hex идёт в рынки digit/even/quarter", async () => {
-  const clock = new Clock(drand.roundTime(1000) + 500);
+test("drand.begin: ждёт публикации раунда, проверяет BLS, берёт randomness, подтверждает вторым ретранслятором; hex идёт в рынки digit/even/quarter", async () => {
+  const clock = new Clock(drand.roundTime(R0 + 1) + 500);
   const mod = drand.create(mkDeps(clock, { fetch: drandFetch(clock) }));
   mod.start();
   await clock.advance(10);
@@ -757,8 +791,9 @@ test("drand.begin: ждёт публикации раунда, берёт random
   assert.equal(s.done, undefined, "раунд ещё не опубликован");
   await clock.advance(4000);
   const r = drand.targetRound(closeAt);
+  assert.equal(r, R0 + 3);
   assert.equal(s.done, "resolve", String(s.aborted));
-  assert.equal(s.resolved, mkRound(r).randomness);
+  assert.equal(s.resolved, DRB.get(r).randomness);
   assert.ok(drand.roundTime(r) >= closeAt + 3000);
   const last = s.live[s.live.length - 1];
   assert.deepEqual([last.kind, last.n, last.randomness], ["round", r, s.resolved]);
@@ -767,41 +802,90 @@ test("drand.begin: ждёт публикации раунда, берёт random
   assert.ok(ev.markets.find((m) => m.id === "digit:" + lastDigit).test(s.resolved));
   assert.equal(ev.markets.filter((m) => m.group === "digit" && m.test(s.resolved)).length, 1);
   assert.match(mod.status().note, /подтверждено (двумя|тремя)/);
+  assert.match(mod.status().note, /BLS/);
   mod.stop();
 });
 
-test("drand: падение первого ретранслятора не мешает; расхождение значений и все недоступны → abort", async () => {
-  // первый лежит, второй отвечает
-  let clock = new Clock(drand.roundTime(2000) + 100);
-  let mod = drand.create(mkDeps(clock, { fetch: drandFetch(clock, { down: ["https://api.drand.sh"] }) }));
-  let s = sink();
+async function runDrand(opts, extraDeps = {}, adv = 10000) {
+  const clock = new Clock(drand.roundTime(R0 + 1) + 100);
+  const mod = drand.create(mkDeps(clock, { fetch: drandFetch(clock, opts), ...extraDeps }));
+  const s = sink();
   mod.begin("drand", { closeAt: clock.now(), ...s.opts });
-  await clock.advance(10000);
-  assert.equal(s.done, "resolve", String(s.aborted));
-  // подпись не сходится с randomness (подмена) у первого → его ответ отвергнут, берём второй
-  clock = new Clock(drand.roundTime(2000) + 100);
-  mod = drand.create(mkDeps(clock, { fetch: drandFetch(clock, { bad: ["https://api.drand.sh"] }) }));
-  s = sink();
-  mod.begin("drand", { closeAt: clock.now(), ...s.opts });
-  await clock.advance(10000);
-  assert.equal(s.done, "resolve");
-  assert.ok(/^[0-9a-f]{64}$/.test(s.resolved));
-  // оба валидны по sha256, но разные значения (разные подписи) → abort
-  clock = new Clock(drand.roundTime(2000) + 100);
-  mod = drand.create(mkDeps(clock, { fetch: drandFetch(clock, { skew: ["https://drand.cloudflare.com"] }) }));
-  s = sink();
-  mod.begin("drand", { closeAt: clock.now(), ...s.opts });
-  await clock.advance(10000);
-  assert.equal(s.done, "abort", "ретрансляторы разошлись");
+  await clock.advance(adv);
+  return { clock, mod, s };
+}
+
+test("drand: падение/подделка одного ретранслятора не мешают; подделка у всех, расхождение, недоступность → abort", async () => {
+  const ALL = ["https://api.drand.sh", "https://drand.cloudflare.com", "https://api2.drand.sh"];
+  // первый лежит, остальные отвечают
+  let x = await runDrand({ down: [ALL[0]] });
+  assert.equal(x.s.done, "resolve", String(x.s.aborted));
+  // у первого randomness не от подписи → его ответ отвергнут, берём остальные
+  x = await runDrand({ bad: [ALL[0]] });
+  assert.equal(x.s.done, "resolve");
+  assert.equal(x.s.resolved, DRB.get(R0 + 3).randomness);
+  // у первого подпись подделана (sha256 сходится, BLS нет) → отвергнут
+  x = await runDrand({ forged: [ALL[0]] });
+  assert.equal(x.s.done, "resolve");
+  assert.equal(x.s.resolved, DRB.get(R0 + 3).randomness);
+  // подделка у ВСЕХ ретрансляторов — «сойдёт» нельзя: abort, ставки возвращаются
+  x = await runDrand({ forged: ALL }, {}, 13000);
+  assert.equal(x.s.done, "abort");
+  assert.match(String(x.s.aborted), /BLS/);
+  // два валидных, но разных значения (недостижимо в жизни: проверка подменена) → abort «разошлись»
+  x = await runDrand({ forged: [ALL[1]] }, { drandVerify: (o) => /^[0-9a-f]{96}$/.test(o.signature) });
+  assert.equal(x.s.done, "abort", "ретрансляторы разошлись");
+  assert.match(String(x.s.aborted), /разошлись/);
   // все недоступны → таймаут
-  clock = new Clock(drand.roundTime(2000) + 100);
-  mod = drand.create(mkDeps(clock, { fetch: drandFetch(clock, { down: ["https://api.drand.sh", "https://drand.cloudflare.com", "https://api2.drand.sh"] }) }));
-  s = sink();
-  mod.begin("drand", { closeAt: clock.now(), ...s.opts });
-  await clock.advance(13000);
-  assert.equal(s.done, "abort");
+  x = await runDrand({ down: ALL }, {}, 13000);
+  assert.equal(x.s.done, "abort");
+  x.mod.start(); await x.clock.advance(50);
+  assert.equal(x.mod.prepare(), null, "источник мёртв — слот заменяется");
+  x.mod.stop();
+});
+
+test("drand: сверка /info — совпадает: работает; ключ или параметры иные: событие выключено, лог, abort; нет ответа /info — не мешает", async () => {
+  const logs = [];
+  // совпадает
+  let clock = new Clock(drand.roundTime(R0 + 1) + 100);
+  let mod = drand.create(mkDeps(clock, { fetch: drandFetch(clock), log: (m) => logs.push(m) }));
   mod.start(); await clock.advance(50);
-  assert.equal(mod.prepare(), null, "источник мёртв — слот заменяется");
+  assert.ok(mod.prepare());
+  mod.stop();
+  assert.deepEqual(logs, []);
+  // чужой публичный ключ
+  clock = new Clock(drand.roundTime(R0 + 1) + 100);
+  mod = drand.create(mkDeps(clock, { fetch: drandFetch(clock, { info: { ...DR.info, public_key: "a" + DR.info.public_key.slice(1) } }), log: (m) => logs.push(m) }));
+  mod.start(); await clock.advance(50);
+  assert.equal(mod.prepare(), null, "ключ расходится — событие выключено");
+  assert.equal(mod.status().ok, false);
+  assert.match(mod.status().note, /public_key/);
+  assert.ok(logs.some((m) => /drand/.test(m) && /public_key/.test(m)));
+  const s = sink();
+  mod.begin("drand", { closeAt: clock.now(), ...s.opts });
+  await clock.advance(10000);
+  assert.equal(s.done, "abort", "идущее событие тоже abort");
+  // период другой
+  clock = new Clock(drand.roundTime(R0 + 1) + 100);
+  mod = drand.create(mkDeps(clock, { fetch: drandFetch(clock, { info: { ...DR.info, period: 30 } }) }));
+  mod.start(); await clock.advance(50);
+  assert.equal(mod.prepare(), null);
+  // восстановление: через сутки /info снова верен
+  let flip = true;
+  clock = new Clock(drand.roundTime(R0 + 1) + 100);
+  mod = drand.create(mkDeps(clock, { fetch: (u) => (/\/info$/.test(u) && flip ? drandFetch(clock, { info: { ...DR.info, schemeID: "pedersen-bls-chained" } })(u) : drandFetch(clock)(u)) }));
+  mod.start(); await clock.advance(50);
+  assert.equal(mod.prepare(), null);
+  flip = false;
+  await clock.advance(24 * 3600 * 1000 + 100);
+  assert.ok(mod.prepare(), "через сутки сверка прошла — событие снова включено");
+  mod.stop();
+  // /info недоступен совсем — не повод выключать (подпись всё равно проверяется зашитым ключом)
+  clock = new Clock(drand.roundTime(R0 + 1) + 100);
+  const f2 = drandFetch(clock);
+  mod = drand.create(mkDeps(clock, { fetch: (u) => (/\/info$/.test(u) ? notFound : f2(u)) }));
+  mod.start(); await clock.advance(50);
+  assert.ok(mod.prepare());
   mod.stop();
 });
 
@@ -913,13 +997,218 @@ test("lightning: окно после closeAt, прореженные точки 
   mod.stop();
 });
 
-test("airport: честная заглушка — prepare null, begin abort", async () => {
+// ================= ✈ Аэропорт-дуэль: ADS-B (adsb.lol + adsb.fi) =================
+const airportMod = require("./feed-airport");
+const AGEN = require("./fixtures/gen-airport");
+const ASYNTH = gz("airport-synth.json.gz");
+const ALOL = JSON.parse(fs.readFileSync(path.join(FX, "airport-lol-lhr.json"), "utf8"));
+const AFI = JSON.parse(fs.readFileSync(path.join(FX, "airport-fi-fra.json"), "utf8"));
+const A_AP = airportMod.AIRPORTS;
+const acJson = (lat, hexv, o) => Object.assign({ hex: hexv, lat, lon: 0, category: "A3" }, o);
+
+test("airport/detect: реальные образцы (lol и fi) — один кадр взлётов не даёт, суда на земле запоминаются", () => {
+  for (const [ap, r] of [["LHR", ALOL], ["FRA", AFI]]) {
+    const st = new Map();
+    const ev = airportMod.detect(ap, r, 1000, st);
+    // по ground-пути (земля → набор) один кадр взлёта не даёт; «climb» допустим только для судна, реально набирающего высоту у земли
+    assert.equal(ev.filter((e) => e.kind === "ground").length, 0, "в одном кадре земля→воздух не видна");
+    for (const e of ev) { const a = (r.ac || r.aircraft).find((x) => x.hex === e.hex); assert.ok(a.baro_rate >= 700 && a.gs >= 110 && a.alt_baro < 2500, "climb только при крутом наборе"); }
+    assert.ok([...st.values()].filter((x) => x.g).length >= 3, `${ap}: на земле запомнены`);
+    // тот же кадр ещё раз — тоже ничего
+    assert.equal(airportMod.detect(ap, r, 3400, st).length, 0, "тот же кадр повторно: дублей нет");
+  }
+});
+
+test("airport/detect: ground→набор высоты = взлёт один раз; посадка, пролёт, вертолёт, чужая зона и дубль — нет", () => {
+  const A = A_AP.LHR, lat = A.lat, st = new Map();
+  const g = (hexv, extra) => acJson(lat, hexv, Object.assign({ lon: A.lon, alt_baro: "ground", gs: 5 }, extra));
+  const air = (hexv, extra) => acJson(lat + 0.02, hexv, Object.assign({ lon: A.lon, alt_baro: 400, gs: 150, baro_rate: 2000 }, extra));
+  // кадр 1: на земле стоят «взлетающий», «садящийся», вертолёт
+  assert.equal(airportMod.detect("LHR", { ac: [g("t1"), g("l1", { gs: 60 }), g("h1", { category: "A7" })] }, 1000, st).length, 0);
+  // кадр 2: взлетел; садящийся остался на земле; вертолёт «взлетел» (не считаем); пролёт на эшелоне; снижающийся на подходе; далёкий взлёт
+  const ev = airportMod.detect("LHR", { ac: [
+    air("t1", { flight: "BAW123 " }), g("l1", { gs: 30 }), air("h1", { category: "A7" }),
+    air("o1", { alt_baro: 12000, baro_rate: 0, gs: 420 }), air("a1", { alt_baro: 1200, baro_rate: -700, gs: 140 }),
+    acJson(lat + 0.5, "far", { lon: A.lon, alt_baro: 300, gs: 150, baro_rate: 2000 }),
+  ] }, 3400, st);
+  assert.deepEqual(ev.map((e) => [e.hex, e.flight, e.kind]), [["t1", "BAW123", "ground"]]);
+  // повторный кадр: дубль не считается
+  assert.equal(airportMod.detect("LHR", { ac: [air("t1", { alt_baro: 900 })] }, 5800, st).length, 0);
+  // судно без координат и с мусорной высотой — тихо пропускается
+  assert.equal(airportMod.detect("LHR", { ac: [{ hex: "zz" }, g("n1", { lat: undefined }), air("x", { alt_baro: "??" })] }, 8200, st).length, 0);
+  // нет земли, но впервые увидели низко и круто в наборе — «climb»
+  const c = airportMod.detect("LHR", { ac: [air("c1", { alt_baro: 700 })] }, 9000, st);
+  assert.equal(c.length, 1); assert.equal(c[0].kind, "climb");
+  // а медленный/пологий — нет
+  assert.equal(airportMod.detect("LHR", { ac: [air("c2", { alt_baro: 700, baro_rate: 200 }), air("c3", { gs: 80 })] }, 9500, st).length, 0);
+  // fi-формат ({aircraft})
+  assert.equal(airportMod.detect("LHR", { aircraft: [g("f1")] }, 10000, st).length, 0);
+});
+
+// Стенд: createFeed поверх моков, ответы строятся из истины fixtures/airport-synth.json.gz
+function airportRig({ fail = () => null, env = { BETS_LIVE: "airport" } } = {}) {
   const clock = new Clock();
-  const f = createFeed(mkDeps(clock, { env: { BETS_LIVE: "airport" } }));
-  f.start();
-  assert.equal(f.prepare("airport"), null);
-  assert.equal(f.status().airport.ok, false);
-  f.stop();
+  const t0 = clock.now();
+  const reqs = [];
+  const byLat = Object.entries(A_AP).map(([ap, a]) => [ap, a]);
+  const fetch = async (url, o) => {
+    reqs.push({ url, t: clock.now(), ua: o && o.headers && o.headers["User-Agent"] });
+    const style = /adsb\.fi/.test(url) ? "fi" : "lol";
+    const m = style === "fi" ? /lat\/([\d.-]+)\/lon\/([\d.-]+)\/dist/.exec(url) : /point\/([\d.-]+)\/([\d.-]+)\//.exec(url);
+    const hit = byLat.find(([, a]) => Math.abs(a.lat - +m[1]) < 1e-6 && Math.abs(a.lon - +m[2]) < 1e-6);
+    const bad = fail(clock.now() - t0, style, hit[0]);
+    if (bad) return bad;
+    return okJson(AGEN.snapshot(ASYNTH, hit[1], hit[0], (clock.now() - t0) / 1000, style));
+  };
+  const f = createFeed(mkDeps(clock, { env, fetch }));
+  return { clock, f, reqs, t0, mod: () => f._mods.get("airport") };
+}
+const takeoffsIn = (ap, from, to) => ASYNTH.truth[ap].filter((e) => e.kind === "takeoff" && e.t0 + 40 > from && e.t0 + 40 <= to).length;
+
+test("airport: опрос вежлив (≥5 с между запросами к adsb.lol и ≥2,4 с к adsb.fi, UA с адресом), оба источника чередуются, взлёты находятся без дублей", async () => {
+  const rig = airportRig();
+  rig.f.start();
+  await rig.clock.advance(20 * 60 * 1000);
+  const mod = rig.mod();
+  for (const [host, gap] of [[/api\.adsb\.lol/, 5000], [/opendata\.adsb\.fi/, 2400]]) {
+    const ts = rig.reqs.filter((r) => host.test(r.url)).map((r) => r.t);
+    assert.ok(ts.length > 100, `${host}: ${ts.length} запросов`);
+    for (let i = 1; i < ts.length; i++) assert.ok(ts[i] - ts[i - 1] >= gap, `${host}: зазор ${ts[i] - ts[i - 1]}`);
+  }
+  assert.ok(rig.reqs.every((r) => /randomhost\.online/.test(r.ua)), "User-Agent с адресом проекта");
+  // сверка с истиной: окно 20 минут, у каждого аэропорта
+  let truth = 0, found = 0;
+  for (const ap of Object.keys(A_AP)) {
+    const got = mod._hist.filter((e) => e.ap === ap);
+    assert.equal(new Set(got.map((e) => e.hex)).size, got.length, `${ap}: дубли`);
+    const tr = ASYNTH.truth[ap].filter((e) => e.kind === "takeoff" && e.t0 + 40 > 0 && e.t0 + 40 <= 20 * 60);
+    truth += tr.length; found += got.length;
+    const ids = new Set(tr.map((e) => e.hex));
+    assert.ok(got.every((e) => ASYNTH.truth[ap].some((x) => x.hex === e.hex && x.kind === "takeoff")), `${ap}: ложные срабатывания на посадках/пролётах`);
+    void ids;
+  }
+  assert.ok(truth > 120, `истина ${truth}`);
+  assert.ok(found >= truth * 0.85 && found <= truth * 1.15, `найдено ${found} из ${truth}`);
+  assert.ok(mod._total.ground > mod._total.climb, "основной путь — ground");
+  assert.equal(rig.f.status().airport.ok, true);
+  assert.match(rig.f.status().airport.note, /adsb\.lol\+adsb\.fi|adsb\.fi\+adsb\.lol/);
+  rig.f.stop();
+});
+
+test("airport: prepare — null, пока источник не прогрет; потом пара с метками ✈ IATA, T=90, φ, |μ|≤0,6σ", async () => {
+  const rig = airportRig();
+  rig.f.start();
+  await rig.clock.advance(2 * 60 * 1000);
+  assert.equal(rig.f.prepare("airport"), null, "через 2 минуты оценка ещё не стоит");
+  await rig.clock.advance(10 * 60 * 1000);
+  const p = rig.f.prepare("airport");
+  assert.ok(p, "через 12 минут пара готова");
+  assert.equal(p.input.T, 90);
+  assert.equal(p.input.phi, airportMod.PHI_AIRPORT);
+  assert.ok(p.input.phi >= 1 && p.input.phi <= 1.3);
+  assert.match(p.meta.labels.A, /^✈ [A-Z]{3}$/);
+  assert.match(p.meta.labels.B, /^✈ [A-Z]{3}$/);
+  assert.notEqual(p.meta.labels.A, p.meta.labels.B);
+  assert.equal(p.meta.skin, `${p.meta.labels.A.slice(2)}-${p.meta.labels.B.slice(2)}`);
+  const { lamA, lamB, T, phi } = p.input;
+  assert.ok(lamA > 0.004 && lamA < 0.04 && lamB > 0.004 && lamB < 0.04, `λ ${lamA} ${lamB} (взлётов/с)`);
+  const muD = (lamA - lamB) * T, sd = Math.sqrt(phi * (lamA + lamB) * T);
+  assert.ok(Math.abs(muD) <= 0.6 * sd + 1e-9, "подбор пары по §10.2");
+  const ev = live.duel(p.input);
+  assert.ok(ev.markets.find((m) => m.id === "A") && ev.markets.find((m) => m.id === "B"));
+  rig.f.stop();
+});
+
+test("airport: begin считает только взлёты после closeAt (90 с), шлёт count/item, resolve = истина окна", async () => {
+  const rig = airportRig();
+  rig.f.start();
+  await rig.clock.advance(12 * 60 * 1000);
+  const p = rig.f.prepare("airport");
+  assert.ok(p);
+  const [A, B] = [p.meta.labels.A.slice(2), p.meta.labels.B.slice(2)];
+  await rig.clock.advance(20000);
+  const closeAt = rig.clock.now(), c0 = (closeAt - rig.t0) / 1000;
+  const s = sink();
+  rig.f.begin("airport", { closeAt, skin: p.meta.skin, ...s.opts });
+  await rig.clock.advance(90000 + 5000);
+  assert.equal(s.done, "resolve", String(s.aborted));
+  const wantA = takeoffsIn(A, c0, c0 + 90), wantB = takeoffsIn(B, c0, c0 + 90);
+  // допуск ±1 на край окна: взлёт засчитывается в момент обнаружения (ответ опроса), а не момент отрыва
+  assert.ok(Math.abs(s.resolved.nA - wantA) <= 1 && Math.abs(s.resolved.nB - wantB) <= 1, `${JSON.stringify(s.resolved)} vs ${wantA}/${wantB}`);
+  const counts = s.live.filter((x) => x.kind === "count");
+  assert.ok(counts.length >= 50, "счёт идёт раз в 1,5 с");
+  const last = counts[counts.length - 1];
+  assert.deepEqual([last.a, last.b], [s.resolved.nA, s.resolved.nB]);
+  for (let i = 1; i < counts.length; i++) assert.ok(counts[i].a >= counts[i - 1].a && counts[i].b >= counts[i - 1].b, "счёт не убывает");
+  const items = s.live.filter((x) => x.kind === "item");
+  assert.equal(items.length > 0, s.resolved.nA + s.resolved.nB > 0);
+  for (const it of items) assert.match(it.text, new RegExp(`^✈ (${A}|${B}) · \\S+$`));
+  assert.equal(items.filter((x) => x.side === "a").every((x) => x.text.startsWith(`✈ ${A} `)), true);
+  rig.f.stop();
+});
+
+test("airport: отказ одного источника (403) — работаем на втором; потеря обоих в окне — abort без вранья про ноль", async () => {
+  // adsb.lol отдаёт отказ: остаётся adsb.fi
+  const rig = airportRig({ fail: (t, style) => (style === "lol" ? { ok: false, status: 403, json: async () => ({}), text: async () => "" } : null) });
+  rig.f.start();
+  await rig.clock.advance(14 * 60 * 1000);
+  assert.equal(rig.f.status().airport.ok, true);
+  assert.match(rig.f.status().airport.note, /adsb\.fi/);
+  assert.ok(rig.mod()._total.ground > 10, "взлёты считаются и на одном источнике");
+  const lolReqs = rig.reqs.filter((r) => /adsb\.lol/.test(r.url)).length;
+  assert.ok(lolReqs < 20, `отказавший источник не долбим: ${lolReqs}`);
+  assert.ok(rig.f.prepare("airport"), "пара подобрана на одном источнике");
+  // оба молчат с 13-й минуты 30 с: окно должно прерваться
+  let dead = false;
+  const rig2 = airportRig({ fail: () => (dead ? { ok: false, status: 503, json: async () => ({}), text: async () => "" } : null) });
+  rig2.f.start();
+  await rig2.clock.advance(12 * 60 * 1000);
+  const p = rig2.f.prepare("airport");
+  assert.ok(p);
+  const closeAt = rig2.clock.now() + 1000;
+  const s = sink();
+  rig2.f.begin("airport", { closeAt, skin: p.meta.skin, ...s.opts });
+  await rig2.clock.advance(30000);
+  dead = true;
+  await rig2.clock.advance(60000);
+  assert.equal(s.done, "abort", "потеря источника → abort");
+  assert.match(String(s.aborted), /ADS-B/);
+  assert.equal(s.resolved, null);
+  rig2.f.stop(); rig.f.stop();
+});
+
+test("airport: 429 от adsb.lol — источник отдыхает по Retry-After, дальше только adsb.fi", async () => {
+  let lolHits = 0;
+  const rig = airportRig({ fail: (t, style) => { if (style !== "lol") return null; lolHits++; return { ok: false, status: 429, headers: { get: () => "300" }, json: async () => ({}), text: async () => "" }; } });
+  rig.f.start();
+  await rig.clock.advance(4 * 60 * 1000);
+  assert.equal(lolHits, 1, "после первого 429 — тишина на 300 с");
+  assert.equal(rig.f.status().airport.ok, true);
+  await rig.clock.advance(2 * 60 * 1000);
+  assert.equal(lolHits, 2, "через 300 с пробуем снова");
+  rig.f.stop();
+});
+
+test("airport: cancel до конца окна — тишина; без prepare begin → abort; выключенный тип → prepare null", async () => {
+  const rig = airportRig();
+  rig.f.start();
+  await rig.clock.advance(12 * 60 * 1000);
+  const p = rig.f.prepare("airport");
+  const s = sink();
+  const h = rig.f.begin("airport", { closeAt: rig.clock.now() + 1000, skin: p.meta.skin, ...s.opts });
+  await rig.clock.advance(10000);
+  h.cancel();
+  await rig.clock.advance(120000);
+  assert.equal(s.done, undefined);
+  rig.f.stop();
+  const off = airportRig({ env: { BETS_LIVE: "btc" } });
+  assert.equal(off.f.prepare("airport"), null);
+  const c2 = new Clock();
+  const m2 = airportMod.create(mkDeps(c2));
+  const s3 = sink();
+  m2.begin("airport", { closeAt: c2.now(), skin: "xx", ...s3.opts });
+  await c2.advance(10);
+  assert.equal(s3.done, "abort");
 });
 
 // ================= весь feed на реальных образцах потоков =================

@@ -11,14 +11,20 @@ const { withDefaults, RateTracker, managedSse, duelOk, round, makeHandle } = req
 const live = require("./events/live");
 
 const URL = "https://stream.wikimedia.org/v2/stream/recentchange";
-const T_SEC = 20, PHI_DUEL = 1.8, PHI_EDIT = 1.5;
+// φ по записи 18.10 (42 мин recentchange; tools/record-feed.js, tools/fit-phi.js; спека §12):
+//  wikiduel — 1035 пар-окон (260 непересекающихся): лог-потери дают 1,3 (90% ИИ 1,0–2,0), дисперсия 1,71 (1,26–2,22);
+//    пары без Wikidata/Commons: дисперсия 1,05 (0,92–1,18), лог-потери 1,3; пары с ботовыми Wikidata/Commons (φ потока 14–19,
+//    но у пары общие всплески) — лог-потери 1,7. Было 1,8; берём 1,4.
+//  wikiedit — 4508 рыночных окон (1132 непересекающихся), 17 тем: лог-потери 1,2 (ИИ 1,0–1,5), дисперсия 0,95. Было 1,5; берём 1,2.
+const T_SEC = 20, PHI_DUEL = 1.4, PHI_EDIT = 1.2;
 const NEXT_WINDOW = 300000, NEXT_MIN_TOTAL = 300;
 const EDIT_HISTORY = 30 * 60 * 1000;
 
 // участники дуэли: код wiki → подпись
 const WIKIS = {
   enwiki: "en", dewiki: "de", frwiki: "fr", ruwiki: "ru", eswiki: "es", itwiki: "it", jawiki: "ja", ptwiki: "pt", zhwiki: "zh",
-  plwiki: "pl", ukwiki: "uk", arwiki: "ar", nlwiki: "nl", svwiki: "sv", wikidatawiki: "Wikidata", commonswiki: "Commons",
+  plwiki: "pl", ukwiki: "uk", arwiki: "ar", nlwiki: "nl", svwiki: "sv",
+  // Wikidata и Commons убраны из дуэли: их потоки всплесковые (φ 14–19 по записи 18.10), пары без них φ≈1,05
 };
 
 // каталог тем для wikiedit (по названию статьи, любой язык Википедии, основное пространство)

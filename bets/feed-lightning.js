@@ -15,7 +15,10 @@
 const { withDefaults, duelOk, round, makeHandle } = require("./feed-util");
 const live = require("./events/live");
 
-const T_SEC = 20, PHI = 3, MIN_WINDOWS = 3, POLL_MS = 8000;
+// φ по записи 18.10 (124 окна GLM по 20 с из storm API за 41 минуту, ≈358 вспышек на окно, 240 пар-окон): счёт стороны
+// недодисперсный (дисперсия 0,67 от пуассоновской, ИИ 0,55–0,83), минимум лог-потерь на нижней границе φ = 1 (ИИ 1,0–2,4);
+// ничьих было 2,5% против 1,2% у модели при φ = 3. Было 3; берём 1,3 — одна гроза за один вечер, запас на другие условия.
+const T_SEC = 20, PHI = 1.3, MIN_WINDOWS = 3, POLL_MS = 8000;
 
 function median(a) { const s = a.slice().sort((x, y) => x - y); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : NaN; }
 

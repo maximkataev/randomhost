@@ -13,7 +13,9 @@ const zlib = require("zlib");
 const path = require("path");
 
 function mulberry32(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-const rnd = mulberry32(20261018);
+const rngMain = mulberry32(20261018), rngAlt = mulberry32(18102026);
+let rng = rngMain;                      // переключается на время генерации пачек китов, чтобы остальные потоки не сдвигались
+const rnd = () => rng();
 const normal = () => { const u = 1 - rnd(), v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
 function chi2(k) { let s = 0; for (let i = 0; i < k; i++) { const z = normal(); s += z * z; } return s; }
 const tdist = (df) => normal() / Math.sqrt(chi2(df) / df) * Math.sqrt((df - 2) / df);   // единичная дисперсия
@@ -49,6 +51,7 @@ const kinds = {
   laugh: 0.55, heart: 0.45, dewiki: 0.9, frwiki: 0.8, ruwiki: 0.6, w100: 0.012, w500: 0.002, post: 4,
 };
 const PHI_BLOCK = 0.1;   // дисперсия множителя гамма-модуляции: для 20 с при λ=0,5 даёт φ ≈ 1,5
+const CLUSTER = { w100: 0.45, w500: 0.45 };   // средний «хвост» пачки китов; φ синтетики ≈ 1,7 как на записи
 const streams = { durationSec: DUR, events: {} };
 for (const [name, lam] of Object.entries(kinds)) {
   const ts = [];
@@ -56,6 +59,19 @@ for (const [name, lam] of Object.entries(kinds)) {
     const mult = gamma(1 / PHI_BLOCK) * PHI_BLOCK;     // среднее 1, дисперсия PHI_BLOCK
     const cnt = poisson(lam * 10 * mult);
     for (let k = 0; k < cnt; k++) ts.push(Math.round((b * 10 + rnd() * 10) * 1000));
+  }
+  if (CLUSTER[name]) {
+    // киты приходят пачками (калибровка 18.10: φ ≈ 1,7 при реальных ≥ 10 BTC): кластер = 1 + Пуассон(c) транзакций за ≤ 2 с.
+    // Прежние обращения к ГПСЧ выше сделаны, поэтому языки и другие потоки остаются теми же, что до правки.
+    rng = rngAlt;
+    ts.length = 0;
+    const c = CLUSTER[name];
+    for (let b = 0; b < DUR / 10; b++) {
+      const mult = gamma(1 / PHI_BLOCK) * PHI_BLOCK;
+      const nCl = poisson(lam * 10 * mult / (1 + c));
+      for (let k = 0; k < nCl; k++) { const t0 = b * 10 + rnd() * 10, sz = 1 + poisson(c); for (let j = 0; j < sz; j++) ts.push(Math.round((t0 + rnd() * 2) * 1000)); }
+    }
+    rng = rngMain;
   }
   ts.sort((a, b) => a - b);
   streams.events[name] = ts;

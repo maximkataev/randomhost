@@ -13,7 +13,11 @@ const live = require("./events/live");
 const HOSTS = ["jetstream2.us-east", "jetstream1.us-west", "jetstream2.us-west", "jetstream1.us-east"];
 const PATH = "/subscribe?wantedCollections=app.bsky.feed.post";
 
-const T_SEC = 20, PHI_EMOJI = 1.6;
+// φ эмодзи-дуэли: калибровка по записи 18.10 (42 мин Jetstream, 465 пар-окон по 20 с, из них 117 непересекающихся;
+// проходит отбор duelOk фактически одна пара 😂/❤️). Дисперсия (N−λ̂T)²/(λ̂T) = 1,31 (90% ИИ 1,12–1,52), по широкому
+// отбору 1,21; минимум лог-потерь размазан (2,2, ИИ 1,2–4,0). Было 1,6; берём 1,4 (с запасом к хвостам). Раздел
+// «Калибровка по записям, 18.10» в docs/bets-spec.md §12; инструменты tools/record-feed.js, tools/fit-phi.js.
+const T_SEC = 20, PHI_EMOJI = 1.4;
 const LANG_WINDOW = 300000, LANG_MIN_TOTAL = 500;
 const LANGS = ["en", "ja", "pt", "es", "de", "ru"];
 const LANG_LABEL = { en: "English", ja: "日本語", pt: "Português", es: "Español", de: "Deutsch", ru: "Русский", other: "Другой" };
@@ -187,4 +191,4 @@ function create(d) {
   };
 }
 
-module.exports = { create, PAIRS, LANGS };
+module.exports = { create, PAIRS, LANGS, M };

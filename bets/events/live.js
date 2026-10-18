@@ -8,14 +8,18 @@
 const { MARGIN, market, clean } = require("../odds");
 const { Phi, countPmf, countSupport } = require("../mathx");
 
+const TAIL_INFL = 1.2; // запас по хвосту цены (калибровка 18.10, docs/bets-spec.md §12)
+
 // ---- ₿ Биткоин: выше или ниже за 20 с (§4.5) ----
 // sigma — σ_T в долларах. Пороги: Δ = округлённое до цента z·σ + полцента (точной ничьей по порогу не бывает).
 function btc(sigma, zs = [0, 0.5, 1, 1.5, 2]) {
   const list = [];
   for (const z of zs) {
     const delta = Math.round(z * sigma * 100) / 100 + 0.005;
-    // цены в центах: исход «d ≥ Δ+0,005» имеет вероятность 1 − Φ(Δ/σ) (центовая сетка, непрерывная поправка)
-    const p = 1 - Phi(delta / sigma);
+    // цены в центах: исход «d ≥ Δ+0,005» имеет вероятность 1 − Φ(Δ/σ) (центовая сетка, непрерывная поправка).
+    // Пороги дальше нуля считаем с запасом по хвосту: по записи 18.10 доли |ΔS|>1,5σ и >2σ выше нормальных (20% против 13%,
+    // 7,8% против 4,6%), поэтому σ в формуле вероятности завышена на TAIL_INFL. Рынок «выше/ниже нуля» от σ не зависит.
+    const p = 1 - Phi(delta / (z > 0 ? sigma * TAIL_INFL : sigma));
     const cls = z >= 1 ? "liveTail" : "live";
     list.push(market(`up:${z}`, "price", p, MARGIN[cls], (d) => d > delta));
     list.push(market(`down:${z}`, "price", p, MARGIN[cls], (d) => d < -delta));
@@ -35,7 +39,7 @@ function btcEth(sigB, sigE, rho, zs = [0.5, 1, 1.5]) {
     market("ethBeats", "duel", 0.5, MARGIN.live, (o) => o.rE - o.rB > 0),
   ];
   for (const z of zs) {
-    const p = 1 - Phi(z);
+    const p = 1 - Phi(z / TAIL_INFL); // тот же запас по хвосту, что у btc
     list.push(market(`btcGap:${z}`, "gap", p, MARGIN.liveTail, (o) => o.rB - o.rE > z * sd));
     list.push(market(`ethGap:${z}`, "gap", p, MARGIN.liveTail, (o) => o.rE - o.rB > z * sd));
   }
