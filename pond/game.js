@@ -33,6 +33,7 @@ const DEFAULTS = Object.assign({}, P.DEFAULTS, {
   OFFLINE_HOLD: 0.5,    // кувшинка над офлайн-лягушкой откладывает погружение
   RETURN_GRACE: 1.5,    // вернувшейся лягушке даётся столько до погружения её кувшинки
   STOMP_GUARD: 8,       // первые секунды вытеснять нельзя: прилёт на занятый лист отскакивает назад (иначе неудачник известен на 4-й секунде)
+  LINK_JUMP: 0.98,      // листья связаны, если расстояние между центрами ≤ LINK_JUMP * JUMP_MAX
   REACH_K: 0.9,         // волна не оставляет лягушку без достижимой свободной кувшинки: достижимо = до REACH_K * JUMP_MAX
   REACH_UNTIL: 10,      // за столько секунд до MAX_T проверка достижимости отключается (иначе «стулья» не закончить)
   STAY_T: 9,            // лист «устаёт»: кто сидит на нём дольше (с разбросом ±15%), тот его топит — на месте не отсидеться
@@ -187,6 +188,20 @@ function createGame(opts) {
     return true;
   }
 
+  // Оставшиеся кувшинки должны быть связаны прыжками: иначе в финале две лягушки сидят слишком далеко друг от друга и исход
+  // решает не навык, а то, чей лист пометят. Волны и цапля не убирают лист, если это разорвёт связность.
+  function connectedWithout(exclude) {
+    const alive = g.pads.filter((p) => p.state === 'ok' && (p.sinkAt == null || p.cause === 'shrink') && !exclude.includes(p));
+    if (alive.length <= 1) return true;
+    const reach = g.jmax * cfg.LINK_JUMP;
+    const seen = new Set([alive[0].id]), q = [alive[0]];
+    while (q.length) {
+      const a = q.pop();
+      for (const b of alive) if (!seen.has(b.id) && Math.hypot(a.x - b.x, a.y - b.y) <= reach) { seen.add(b.id); q.push(b); }
+    }
+    return seen.size === alive.length;
+  }
+
   // есть ли у лягушки куда уйти с усталого листа: свободная достижимая кувшинка, которую никто не топит
   function hasFreeReach(f, pad) {
     const reach = g.jmax * cfg.REACH_K;
@@ -232,7 +247,7 @@ function createGame(opts) {
       const pool = chairs ? ok.slice() : ok.filter((p) => !occupants(p.id).length);
       for (const p of shuffle(pool)) {
         // метки погружения чуть разнесены по времени: листья уходят каскадом, а не все на одном тике
-        if (capLeft - p.cap >= target && reachOk(p, chosen, t, chairs, k)) { chosen.push(p); capLeft -= p.cap; mark(p, t + cfg.TELEGRAPH + (chosen.length - 1) * cfg.STAGGER, 'wave'); }
+        if (capLeft - p.cap >= target && reachOk(p, chosen, t, chairs, k) && (t >= cfg.MAX_T - cfg.REACH_UNTIL || connectedWithout(chosen.concat(p)))) { chosen.push(p); capLeft -= p.cap; mark(p, t + cfg.TELEGRAPH + (chosen.length - 1) * cfg.STAGGER, 'wave'); }
       }
       // позже выбранный лист мог оказаться единственным спасением для лягушки с раньше выбранного: возвращаем такие листы
       for (let again = true; again;) {
@@ -275,6 +290,10 @@ function createGame(opts) {
     const hit = g.pads.filter(p => p.state === 'ok' && Math.hypot(p.x - h.x, p.y - h.y) <= h.r + 8);
     const rest = okPads().filter(p => !hit.includes(p));
     if (!rest.length && hit.length) hit.length = Math.max(0, hit.length - 1); // пруд не вычищаем до нуля
+    // цапля тоже не рвёт связность пруда
+    const kept = [];
+    for (const p of hit.slice().sort((a, b) => Math.hypot(a.x - h.x, a.y - h.y) - Math.hypot(b.x - h.x, b.y - h.y))) if (connectedWithout(kept.concat(p))) kept.push(p);
+    hit.length = 0; hit.push(...kept);
     for (const p of hit) mark(p, h.strikeAt + Math.hypot(p.x - h.x, p.y - h.y) / 400, 'heron'); // волна от центра наружу
     push({ type: 'strike', x: h.x, y: h.y, r: h.r, t: h.strikeAt, pads: hit.map(p => p.id) });
     g.heron = null;

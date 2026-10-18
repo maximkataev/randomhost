@@ -212,6 +212,28 @@ test('прыжок на новый лист сбрасывает усталос�
   assert.strictEqual(f.st, 'pad');
   assert(f.tireAt > g.t + 3.5, 'таймер заведён заново: ' + (f.tireAt - g.t));
 });
+test('волны и цапля не рвут связность пруда (в финале две лягушки достают друг до друга)', () => {
+  const connected = (g) => {
+    const al = g.pads.filter(p => p.state === 'ok' && (p.sinkAt == null || p.cause === 'shrink'));
+    if (al.length <= 1) return true;
+    const seen = new Set([al[0].id]), q = [al[0]];
+    while (q.length) { const a = q.pop(); for (const b of al) if (!seen.has(b.id) && Math.hypot(a.x - b.x, a.y - b.y) <= g.jmax * DEFAULTS.LINK_JUMP) { seen.add(b.id); q.push(b); } }
+    return seen.size === al.length;
+  };
+  for (let r = 0; r < 30; r++) {
+    const g = createGame({ seed: 600 + r, rng: seeded(r + 9) });
+    const bots = new Map();
+    for (let i = 0; i < 4; i++) { g.addPlayer('b' + i, 'B' + i, i); bots.set('b' + i, createBot(STYLE_KEYS[(i + r) % 3], r * 7 + i)); }
+    g.start();
+    for (let k = 0; k < 20 * 70 && g.phase !== 'over'; k++) {
+      for (const f of g.players) { const m = think(g, f, bots.get(f.id), 0.05); if (m) g.input(f.id, m, 0.05); }
+      g.step(0.05);
+      for (const e of g.drainEvents()) if ((e.type === 'wave' && !e.tired) || e.type === 'strike') {
+        if (g.t < g.cfg.MAX_T - g.cfg.REACH_UNTIL) assert(connected(g), `seed ${r}: после ${e.type} на ${g.t.toFixed(1)} с пруд распался`);
+      }
+    }
+  }
+});
 test('одна кувшинка = одна лягушка, большая вмещает двух без вытеснения', () => {
   const g = fight(3, {});
   const big = g.pads.find(p => p.big);

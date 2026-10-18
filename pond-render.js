@@ -558,6 +558,15 @@
       const placed = [];
       for (const n of r.names) {
         const s = r.w2s(n.x + (r.shake ? 0 : 0), n.y - 26 * r.cam.s / r.cam.s);
+        if (r.compact) {
+          // телефон: без имён, только маркер над своей лягушкой (и значок связи у чужих, кто отвалился)
+          if (n.mine) {
+            const bob = Math.sin(performance.now() / 260) * 3;
+            cx.fillStyle = 'rgba(2,20,28,0.65)'; cx.beginPath(); cx.moveTo(s.x - 9, s.y - 15 + bob); cx.lineTo(s.x + 9, s.y - 15 + bob); cx.lineTo(s.x, s.y - 1 + bob); cx.closePath(); cx.fill();
+            cx.fillStyle = '#ffd23f'; cx.beginPath(); cx.moveTo(s.x - 7, s.y - 13 + bob); cx.lineTo(s.x + 7, s.y - 13 + bob); cx.lineTo(s.x, s.y - 3 + bob); cx.closePath(); cx.fill();
+          } else if (n.f.online === false) { cx.font = '14px sans-serif'; cx.fillText('📡', s.x, s.y); cx.font = '700 12px Montserrat, sans-serif'; }
+          continue;
+        }
         // две лягушки на одном листе: подписи не налезают друг на друга — вторая поднимается выше
         for (let k = 0; k < 4; k++) { const hit = placed.some((p) => Math.abs(p.x - s.x) < 78 && Math.abs(p.y - s.y) < 20); if (!hit) break; s.y -= 20; }
         placed.push({ x: s.x, y: s.y });

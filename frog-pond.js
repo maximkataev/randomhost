@@ -43,6 +43,7 @@
   };
 
   const render = PR.create($('arena'));
+render.compact = isTouch;   // на телефоне имён над лягушками нет: подсвечивается только своя
   const aim = { active: false, ang: 0, pow: 0 };
 
   // ===================================================================
@@ -54,7 +55,7 @@
   const cur = () => (useOnline() ? online : local ? local.model : online);
 
   function startLocal(mode) {
-    const cfg = mode === 'demo' ? { COUNTDOWN: 0.01 } : { COUNTDOWN: 0.01, WAVE_FIRST: 1e9, HERON_FIRST: 1e9, LETHAL_T: 1e9, MAX_T: 1e9, FLY_FIRST: 2 };
+    const cfg = mode === 'demo' ? { COUNTDOWN: 0.01 } : { COUNTDOWN: 0.01, WAVE_FIRST: 1e9, HERON_FIRST: 1e9, LETHAL_T: 1e9, MAX_T: 1e9, FLY_FIRST: 2, STAY_T: 1e9 };   // тренировка: листья не устают и не тонут
     const g = PG.createGame({ seed: Math.floor(Math.random() * 4294967295) + 1, cfg, rng: Math.random });
     const model = PM.createModel({ delay: 0, onEvent: (e) => onEvent(e, model, true) });
     const L = { g, model, mode, bots: new Map(), meId: mode === 'practice' ? 'me' : null, restartAt: 0, acc: 0 };
@@ -262,7 +263,17 @@
   // ===================================================================
   const canvas = $('arena');
   let drag = null;
-  const maxPull = () => clamp(Math.min(innerWidth, innerHeight) * 0.3, 90, 210);
+  // Оттяжка привязана к масштабу на экране: палец на 0,7 экранной длины прыжка = прыжок на эту длину, поэтому дальней кувшинки
+  // достаёшь коротким движением большого пальца (раньше на телефоне нужно было тянуть ~120 px и цель почти не двигалась)
+  const PULL_K = 0.7;
+  function pullToPow(len) {
+    const m = cur(), f = mine(m), s = render.cam.s || 1;
+    if (!m || !m.R) return 0;
+    const jmax = P.jumpMax(m.R, m.cfg), jmin = m.cfg.JUMP_MIN;
+    let D = len / (PULL_K * s);
+    if (f && f.boost) D /= m.cfg.FLY_BOOST;
+    return clamp((D - jmin) / (jmax - jmin), 0, 1);
+  }
   const DEAD = 12;
   function mine(m) { return m && m.myId ? m.frogs.get(m.myId) : null; }
   function canPlay() {
@@ -283,7 +294,7 @@
   function updateAimFromDrag(x, y) {
     const vx = drag.x0 - x, vy = drag.y0 - y, len = Math.hypot(vx, vy);
     if (len < DEAD) { aim.active = false; document.body.classList.remove('aimed'); setPull(true, drag.x0, drag.y0, x, y, 0); return; }
-    aim.active = true; aim.ang = Math.atan2(vy, vx); aim.pow = clamp((len - DEAD) / (maxPull() - DEAD), 0, 1);
+    aim.active = true; aim.ang = Math.atan2(vy, vx); aim.pow = pullToPow(len);
     document.body.classList.add('aimed');
     setPull(true, drag.x0, drag.y0, x, y, aim.pow);
   }
