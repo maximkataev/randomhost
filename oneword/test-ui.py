@@ -19,7 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 N = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get("PHONES", 4))
 LANG = os.environ.get("LANG_UI", "ru")
 BW, BH = [int(x) for x in os.environ.get("BOARD", "1600x900").split("x")]
-PORT = int(os.environ.get("UI_PORT", 5800 + random.randint(0, 400)))
+PORT = int(os.environ.get("UI_PORT", random.choice([x for x in range(5800, 6200) if x != 6000])))  # 6000 — «небезопасный» порт Chrome (ERR_UNSAFE_PORT)
 BASE = f"http://127.0.0.1:{PORT}"
 UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
 WIDTHS = [390, 360, 320, 390, 360, 390, 320, 390]
@@ -99,6 +99,72 @@ def submit_word(p, word):
     p.fill("#word", word)
     p.wait_for_function("!document.getElementById('lockbtn').disabled", timeout=5000)
     p.click("#lockbtn")
+
+
+def entry_flow(browser, lang_script):
+    """Вход без комнаты: экран входа с главной кнопкой «Создать комнату», доска без/с неверным кодом — меловые
+    экраны с рабочей кнопкой (не «…»), никаких прокруток на 320×460 и ошибок консоли."""
+    errs = []
+    ws_bad = []
+    SCROLL = "({sw: document.documentElement.scrollWidth, iw: innerWidth, sh: document.documentElement.scrollHeight, ih: innerHeight})"
+
+    def noscroll(p):
+        o = p.evaluate(SCROLL)
+        return o["sw"] <= o["iw"] + 1 and o["sh"] <= o["ih"] + 1
+
+    # 1. телефон 320×460, без ?r=
+    ctx, p = mk_page(browser, 320, 460, True, lang_script, errs, "entry")
+    p.on("websocket", lambda w: ws_bad.append(w.url))
+    p.goto(f"{BASE}/oneword.html", wait_until="domcontentloaded")
+    p.wait_for_selector("#create")
+    p.wait_for_timeout(600)
+    txt = p.evaluate("document.getElementById('app').innerText")
+    check(p.is_visible("#create") and not p.is_visible("#joinpart"), "вход без ?r=: главная кнопка «Создать комнату», поля кода спрятаны")
+    check(not any(x in txt.lower() for x in ("такой комнаты нет", "no such room", "δεν υπάρχει")), "вход без ?r=: нет текста «такой комнаты нет»")
+    check(noscroll(p), "вход без ?r= на 320×460 без прокрутки")
+    p.click("#havecode")
+    check(p.is_visible("#name") and p.is_visible("#code") and noscroll(p), "«У меня есть код» открывает имя+код, 320×460 без прокрутки")
+    p.click("#havecode")
+    check(not ws_bad, "вход без ?r=: нет попыток WebSocket" + (f" {ws_bad}" if ws_bad else ""))
+    p.click("#create")
+    p.wait_for_url("**/oneword-board.html?r=*", timeout=10000)
+    code = p.url.split("r=")[1]
+    p.wait_for_function("window.owBoard && owBoard.state() && owBoard.state().phase === 'lobby'", timeout=10000)
+    check(True, f"«Создать комнату» ведёт на доску {code} с рабочим лобби")
+    ctx.close()
+
+    # 2. неверный код на телефоне: карточка «нет такой» без прокрутки; другие статусы форсируем
+    ctx, p = mk_page(browser, 320, 460, True, lang_script, errs, "noroom")
+    p.goto(f"{BASE}/oneword.html?r=ZZZ99", wait_until="domcontentloaded")
+    p.wait_for_selector("#codeform", timeout=10000)
+    check(p.is_visible(".status .ico") and noscroll(p), "неверный код на телефоне: меловая карточка с рисунком, 320×460 без прокрутки")
+    w_ = p.evaluate("(()=>{const f=document.getElementById('codeform').getBoundingClientRect(), c=document.querySelector('.status').getBoundingClientRect(); return [f.width, c.width];})()")
+    check(w_[0] > w_[1] - 50, "форма в карточке растянута на всю ширину")
+    for name, js in (("expired", "renderExpired()"), ("replaced", "showReplaced()"),
+                     ("claim", "claimPrompt={name:'Аня',summary:{score:3},accept(){},decline(){}};screenKey='';renderClaim()"),
+                     ("pause", "me='x';state={phase:'pause',minPlayers:3,players:[],settings:{lang:'ru'}};screenKey='';render()")):
+        p.evaluate("dead=false;replacedHere=false;claimPrompt=null;screenKey=''")
+        p.evaluate(js)
+        p.wait_for_timeout(200)
+        check(p.is_visible(".status .ico") and noscroll(p), f"экран «{name}» на 320×460: рисунок есть, без прокрутки")
+    ctx.close()
+
+    # 3. доска без ?r= и с неверным кодом
+    for path, label in (("oneword-board.html", "без ?r="), ("oneword-board.html?r=BADCODE", "с неверным кодом")):
+        ctx, b = mk_page(browser, 1600, 900, False, lang_script, errs, "bgate")
+        b.goto(f"{BASE}/{path}", wait_until="domcontentloaded")
+        b.wait_for_selector("#gcreate", timeout=10000)
+        t = b.evaluate("document.getElementById('main').innerText")
+        check("…" != t.strip() and not b.is_visible("#takebtn") and not b.is_visible("#linkbtn") and not b.is_visible("#endbtn"), f"доска {label}: меловой экран, кнопок ведущего нет")
+        b.click("#gcreate")
+        b.wait_for_url("**/oneword-board.html?r=*", timeout=10000)
+        b.wait_for_function("window.owBoard && owBoard.state() && owBoard.state().phase === 'lobby'", timeout=10000)
+        b.wait_for_selector("#linkbtn", timeout=10000)
+        check(True, f"доска {label}: «Создать комнату» ведёт в рабочее лобби")
+        ctx.close()
+    # 404 рукопожатия WS на заведомо неверный код — штатный сигнал «комнаты нет», браузер пишет его в консоль
+    errs = [e for e in errs if not ("WebSocket connection" in e and ("r=ZZZ99" in e or "r=BADCODE" in e))]
+    check(not errs, "вход/статусы: нет JS-ошибок" + (": " + "; ".join(errs[:3]) if errs else ""))
 
 
 def run(pw, code, token):
@@ -258,6 +324,7 @@ def run(pw, code, token):
         board.wait_for_function("owBoard.state().phase === 'finished'", timeout=10000)
         check(True, "ведущий может досрочно закончить партию")
 
+    entry_flow(browser, lang_script)
     check(not errs, "нет JS-ошибок на страницах" + (": " + "; ".join(errs[:3]) if errs else ""))
     browser.close()
 
