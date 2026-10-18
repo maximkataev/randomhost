@@ -10,12 +10,14 @@
 <title>Сто к одному — общий экран</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playpen+Sans:wght@400..800&family=Roboto+Condensed:wght@500..800&display=swap">
 <link rel="stylesheet" href="oneword-theme.css">
 <style>
   /* oneword, общий экран — школьная доска мела: тема раунда мелом сверху, ответы встают считалками-пучками
-     |||| с диагональной пятой. Токены и компонент считалки — oneword-theme.css; тут раскладка экранов доски. */
+     |||| с диагональной пятой. Токены и компонент считалки — oneword-theme.css; тут раскладка экранов доски.
+     Шапка — деревянная планка (цвет рамки доски) с меловыми буквами, не жёлтый баннер. */
   :root {
-    --lang-switch-bg: var(--board2); --lang-switch-border: var(--line); --lang-switch-fg: var(--text);
+    --lang-switch-bg: var(--frame-ink); --lang-switch-border: rgba(242, 239, 226, .4); --lang-switch-fg: var(--chalk);
     --lang-switch-active-bg: var(--chalk); --lang-switch-active-fg: var(--ink); --lang-switch-active-border: var(--chalk);
     --lang-switch-font: var(--body);
   }
@@ -28,108 +30,137 @@
   .hidden { display: none !important; }
   b, strong { font-weight: 800; }
 
-  /* верхняя плата — меловая плита во всю ширину: корпус доски начинается отсюда, а не только у панелей сцены */
-  .top { position: fixed; left: 0; right: 0; top: 0; z-index: 30; display: flex; align-items: center; gap: 16px; height: 64px; padding: 0 var(--lsw, 160px) 0 20px; border-bottom: 6px solid var(--bg); }
-  .brand { font: 700 26px/1 var(--display); letter-spacing: 0; }
-  .chip { flex: none; font: 800 20px/1 var(--body); padding: 8px 16px; background: var(--bg); color: var(--chalk-yellow); border: 2px solid var(--ink); border-radius: var(--r); letter-spacing: .1em; }
+  .top { position: fixed; left: 0; right: 0; top: 0; z-index: 30; display: flex; align-items: center; gap: 16px; height: 64px; padding: 0 var(--lsw, 160px) 0 20px; border-bottom: 6px solid var(--frame-ink); }
+  .brand { font: 700 26px/1 var(--display); letter-spacing: 0; color: var(--chalk); }
+  .chip { flex: none; font: 800 20px/1 var(--body); padding: 8px 16px; letter-spacing: .1em; }
   .grow { flex: 1; }
   .hostctl { display: flex; align-items: center; gap: 10px; }
-  .hostctl button { height: 44px; border: 2px solid var(--ink); border-radius: var(--r); background: transparent; color: var(--ink); font: 700 16px/1 var(--body); padding: 0 14px; }
-  .hostctl button:hover { background: rgba(0, 0, 0, .08); }
-  .hostctl .note { font: 700 16px/1.2 var(--body); color: var(--ink); opacity: .7; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .endbtn { height: 44px; border: 2px solid var(--ink); border-radius: var(--r); background: transparent; color: var(--ink); padding: 0 16px; font: 800 16px/1 var(--body); }
-  .sound-toggle-btn { flex: none; height: 44px; width: 44px; border: 2px solid var(--ink); border-radius: var(--r); background: transparent; color: var(--ink); padding: 0; display: grid; place-items: center; font-size: 16px; }
+  .hostctl button, .endbtn, .sound-toggle-btn { height: 44px; border: 2px solid rgba(242, 239, 226, .7); border-radius: var(--r); background: transparent; color: var(--chalk); font: 700 16px/1 var(--body); padding: 0 14px; }
+  .hostctl button:hover, .endbtn:hover { background: rgba(242, 239, 226, .12); }
+  .hostctl .note { font: 700 16px/1.2 var(--body); color: var(--chalk); opacity: .85; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .endbtn { padding: 0 16px; font-weight: 800; }
+  .sound-toggle-btn { flex: none; width: 44px; padding: 0; display: grid; place-items: center; font-size: 16px; }
 
   main { position: fixed; left: 0; right: 0; top: 64px; bottom: 0; padding: 26px 40px 30px; overflow: auto; }
   .scr { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; height: 100%; }
 
   .meta { display: flex; justify-content: space-between; align-items: baseline; font: 800 16px/1 var(--body); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
-  .meta b { font: 900 32px/1 var(--body); color: var(--chalk); font-variant-numeric: tabular-nums; }
-  .timer { flex: none; height: 16px; background: var(--board2); border: 2px solid var(--line); border-radius: var(--r); overflow: hidden; }
+  .meta b { font: 700 32px/1 var(--display); color: var(--chalk); font-variant-numeric: tabular-nums; }
+  .timer { flex: none; height: 16px; background: var(--board); border: 2px solid var(--line); border-radius: var(--r); overflow: hidden; }
   .timer i { display: block; height: 100%; background: var(--chalk); transform-origin: left; }
   .timer.hot i { background: var(--hot); }
-  .topic { padding: 26px 32px; display: flex; flex-direction: column; gap: 14px; flex: none; }
-  .topictxt { font: 700 clamp(30px, 5.2vw, 58px)/1.18 var(--display); letter-spacing: 0; text-wrap: balance; }
-  /* подсказка — не просто цветной текст (жалоба владельца: "цвета простые"), а сплошная меловая плита */
-  .prompt { align-self: flex-start; background: var(--a); color: var(--a-ink); font: 800 18px/1 var(--body); text-transform: uppercase; letter-spacing: .08em; padding: 7px 14px; border-radius: var(--r); }
-  .progress { font: 700 22px/1.2 var(--body); color: var(--muted); }
-  .progress b { color: var(--text); font-weight: 900; }
-  .segdots { margin-top: 4px; }
-  .segdots i { width: 7px; height: 20px; }
+  .topic { padding: 22px 32px; display: flex; flex-direction: column; gap: 12px; flex: none; }
+  .topictxt { font: 700 clamp(26px, min(4.8vw, 6.6vh), 54px)/1.2 var(--display); letter-spacing: 0; text-wrap: balance; }
+  /* подсказка фазы — меловая рамка цвета фазы (белая / жёлтая «популярное» / голубая «редкое»), не плита */
+  .prompt { --pc: var(--chalk); align-self: flex-start; border: 3px solid var(--pc); color: var(--pc); font: 700 22px/1.1 var(--display); padding: 6px 16px 8px; border-radius: var(--r); }
+  .prompt.guessPopular { --pc: var(--chalk-yellow); }
+  .prompt.guessRare { --pc: var(--chalk-blue); }
+
+  /* ---------- стена-считалка (ответ/угадывание): большая цифра «N из M» и палочки по одной на каждого,
+     кто уже записал. Анонимно: никаких слов, только число штрихов (секретность). Штрихи ещё не написаны
+     просто не видны — рамок-заглушек нет. ---------- */
+  .wordwrap { display: flex; flex-direction: column; gap: 18px; flex: 1; min-height: 0; }
+  .wall { flex: 1; min-height: 0; container-type: size; display: flex; align-items: center; justify-content: center; gap: 6cqw; padding: 0 2cqw; }
+  .wallnum { display: flex; align-items: center; gap: 2.6cqw; flex: none; }
+  .wallnum b { font: 700 min(80cqh, 21cqw)/1 var(--display); color: var(--chalk); font-variant-numeric: tabular-nums; min-width: 2ch; text-align: right; }
+  .wallof { display: flex; flex-direction: column; gap: .6em; font: 700 min(15cqh, 6cqw)/1.05 var(--display); color: var(--text); }
+  .wallof em { font: 800 min(7cqh, 2.2cqw)/1.1 var(--body); font-style: normal; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+  svg.wallsvg { flex: none; height: min(82cqh, 340px, calc(40cqw * 30 / var(--vbw, 30))); overflow: visible; display: block; }
+  svg.wallsvg path { fill: none; stroke: var(--chalk); stroke-width: 2.3; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; opacity: 0; transition: stroke-dashoffset .3s ease-out, opacity 0s; }
+  svg.wallsvg path.on { stroke-dashoffset: 0; opacity: 1; }
+
+  /* ---------- раскрытие: пучки подгоняются под сцену (JS fitReveal подбирает --s по реальному размеру) ---------- */
+  .reveal-grid { --s: 1; flex: 1; min-height: 0; margin-top: -4px; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; align-items: flex-start; gap: calc(14px * var(--s)) calc(30px * var(--s)); overflow: hidden; padding: 10px 4px 4px; }
+  .reveal-grid .tslot { --th: calc(58px * var(--s)); --tsw: 2.6; width: auto; min-width: max(calc(var(--th) * var(--asp, 2)), calc(90px * var(--s))); max-width: calc(330px * var(--s)); height: auto; padding: 0; gap: calc(7px * var(--s)); justify-content: flex-start; }
+  .reveal-grid .tslot svg.tally { width: calc(var(--th) * var(--asp, 2)); height: var(--th); }
+  .reveal-grid .tslot .tword { font-size: min(calc(21px * var(--s)), 76px); }
+  .reveal-grid .tslot .tcount { font-size: min(calc(28px * var(--s)), 84px); }
+  .revealtopic { font-size: clamp(20px, min(3vw, 4.2vh), 32px); }
 
   .lobbywrap { display: flex; flex-direction: column; gap: 18px; flex: 1; min-height: 0; }
-  .boardrest { justify-content: center; padding: 10px 0 0; }
-  .boardrest .tslot { --sw: 72px; --sh: 86px; --stw: 58px; --sth: 22px; --sword: 12px; --scount: 13px; }
-  /* тот же ряд слотов-считалок, что в раскрытии, но пустых (пунктирная рамка) — стоит на месте будущих
-     кластеров уже во время ответа/угадывания, а не только в момент реального раскрытия. Снимает скачок
-     (DESIGNER-SKILL §4: итоговый размер слота резервируется с первой отрисовки) и держит "доску" на виду. */
-  .wordwrap { display: flex; flex-direction: column; gap: 18px; flex: 1; min-height: 0; }
-  .lobby { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(0, 1.3fr); gap: 30px; flex: 1; min-height: 0; }
-  .lobcard { padding: 26px 30px; display: flex; flex-direction: column; gap: 14px; }
+  .lobby { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(0, 1.25fr); gap: 30px; flex: 1; min-height: 0; }
+  .lobcard { padding: 22px 30px 24px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
   .lobcard .eyebrow { font: 800 14px/1 var(--body); text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
-  .bigcode { font: 900 clamp(32px, 5.2vw, 56px)/1.08 var(--body); letter-spacing: .02em; color: var(--chalk); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; word-break: break-word; max-width: 100%; }
-  .joinbox { display: flex; align-items: center; gap: 16px; }
-  #qr { flex: none; width: clamp(96px, 16vh, 150px); height: clamp(96px, 16vh, 150px); background: #fff; border-radius: var(--r); overflow: hidden; border: 4px solid var(--frame); }
+  .bigcode { font: 700 clamp(32px, min(5vw, 7vh), 56px)/1.08 var(--display); letter-spacing: .02em; color: var(--chalk); overflow-wrap: anywhere; word-break: break-word; max-width: 100%; }
+  .joinbox { display: flex; align-items: center; gap: 18px; }
+  #qr { flex: none; width: clamp(110px, 24vh, 236px); height: clamp(110px, 24vh, 236px); background: #fff; border-radius: var(--r); overflow: hidden; border: 4px solid var(--frame); }
   #qr img, #qr canvas { width: 100% !important; height: 100% !important; display: block; image-rendering: pixelated; }
-  .joininfo { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; }
-  .url { font: 600 18px/1.3 var(--body); color: var(--muted); overflow-wrap: anywhere; }
-  .scan { font: 600 15px/1.25 var(--body); color: var(--muted); }
+  .joininfo { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .url { font: 700 20px/1.25 var(--body); color: var(--chalk); overflow-wrap: anywhere; }
+  .scan { font: 600 16px/1.25 var(--body); color: var(--muted); }
   .opts { display: flex; flex-direction: column; gap: 10px; }
-  .opt { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 16px; background: var(--board2); border-radius: var(--r); }
-  .opt b { font: 800 18px/1.1 var(--body); }
+  .opt { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 16px; background: var(--board); border-radius: var(--r); }
+  .opt b { font: 700 20px/1.1 var(--display); }
   .stepper { display: flex; align-items: center; gap: 10px; }
-  .stepper button { width: 40px; height: 40px; border-radius: var(--r); border: 2px solid var(--chalk); background: transparent; color: var(--text); font: 900 20px/1 var(--body); }
-  .stepper .n { min-width: 2.4ch; text-align: center; font: 900 22px/1 var(--body); }
-  .start { border: 0; border-radius: var(--r); font: 700 26px/1 var(--display); letter-spacing: .01em; padding: 18px; color: var(--ink); background: var(--chalk); }
-  .start:not(:disabled):hover { background: var(--a); }
+  .stepper button { width: 44px; height: 44px; border-radius: var(--r); border: 2px solid var(--chalk); background: transparent; color: var(--text); font: 800 22px/1 var(--body); }
+  .stepper .n { min-width: 2.4ch; text-align: center; font: 700 26px/1 var(--display); }
+  .start { border: 0; border-radius: var(--r); font: 700 26px/1 var(--display); letter-spacing: 0; padding: 16px; color: var(--ink); background: var(--chalk); }
+  .start:not(:disabled):hover { background: #fff; }
   .hint { font: 700 18px/1.3 var(--body); color: var(--muted); min-height: 1.3em; }
+  /* как играть — три меловые строки на свободном месте карточки; на низких экранах уступают место */
+  .howto { list-style: none; margin: 0; padding: 0; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; justify-content: space-evenly; gap: 6px; counter-reset: h; border-top: 2px dashed var(--line); padding-top: 10px; overflow: hidden; }
+  .howto li { counter-increment: h; display: grid; grid-template-columns: 1.3em minmax(0, 1fr); align-items: baseline; gap: 10px; font: 600 clamp(16px, 2.2vh, 21px)/1.2 var(--display); color: var(--text); }
+  .howto li::before { content: counter(h); font: 700 1.5em/1 var(--display); color: var(--chalk-yellow); text-align: center; }
+  @media (max-height: 820px) { .howto { display: none; } }
 
-  .players { padding: 26px 30px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  .players { padding: 22px 30px 18px; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
   .players-h { display: flex; justify-content: space-between; align-items: baseline; font: 800 14px/1 var(--body); text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
-  .players-h b { font: 900 24px/1 var(--body); color: var(--text); }
-  .plist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; overflow: auto; }
-  .plist li { position: relative; display: flex; align-items: center; gap: 10px; background: var(--board2); border-left: 6px solid var(--pc, var(--chalk)); border-radius: var(--r); padding: 10px 14px; }
+  .players-h b { font: 700 28px/1 var(--display); color: var(--text); letter-spacing: 0; }
+  /* перекличка: имена записаны мелом столбиком (до 6) или двумя столбцами, высота строки и шрифт растут при малом числе игроков */
+  .plist { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; display: flex; flex-direction: column; counter-reset: pl; }
+  .plist.few { justify-content: center; }
+  .plist li { position: relative; flex: 1 1 0; min-height: 0; max-height: 170px; container-type: size; display: flex; align-items: center; gap: 14px; border-bottom: 2px dashed var(--line); padding: 0 52px 0 4px; }
+    .plist li::before { content: attr(data-n) "."; flex: none; width: 1.6em; text-align: right; font: 600 clamp(14px, 40cqh, 44px)/1 var(--display); color: var(--muted); }
   .plist li.off { opacity: .55; }
-  .av { width: 38px; height: 38px; flex: none; border-radius: 50%; background: var(--bg); border: 3px solid var(--pc, var(--line)); display: grid; place-items: center; font-size: 20px; font-style: normal; }
-  .plist li b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 800 18px/1.1 var(--body); }
-  .plist li .x { position: absolute; right: 8px; top: 50%; margin-top: -18px; width: 36px; height: 36px; border: 0; border-radius: var(--r); background: var(--bad); color: #1a0509; font: 900 16px/1 var(--body); display: none; }
-  body.host .plist li .x { display: block; opacity: 0; transition: opacity .15s; }
-  body.host .plist li:hover .x, body.host .plist li .x[data-armed] { opacity: 1; }
-  body.host .plist li .x[data-armed] { background: var(--chalk); color: var(--ink); font-size: 13px; }
+  .av { width: clamp(28px, 70cqh, 100px); height: clamp(28px, 70cqh, 100px); flex: none; border-radius: 50%; background: var(--bg); border: 3px solid var(--pc, var(--line)); display: grid; place-items: center; font-size: clamp(14px, 36cqh, 52px); font-style: normal; }
+  .plist li b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 clamp(18px, 44cqh, 54px)/1.2 var(--display); }
+  .rollempty { margin: auto; text-align: center; font: 600 26px/1.3 var(--display); color: var(--muted); }
+  /* кнопка «убрать»: ведущему видна всегда (на тач-экране нет hover), цель 44px */
+  .plist li .x { display: none; position: absolute; right: 2px; top: 50%; margin-top: -22px; width: 44px; height: 44px; border: 2px solid var(--line); border-radius: var(--r); background: transparent; color: var(--muted); font: 800 18px/1 var(--body); padding: 0; }
+  body.host .plist li .x { display: block; }
+  body.host .plist li:hover .x { background: var(--bad); border-color: var(--bad); color: #1a0509; }
+  body.host .plist li .x[data-armed] { background: var(--chalk); border-color: var(--chalk); color: var(--ink); font-size: 13px; width: 84px; margin-right: 0; }
+  body.host .plist li:has(.x[data-armed]) { padding-right: 92px; }
 
-  /* размер слота — от числа слотов (--k считает slotScale() в JS, одна и та же функция для пустых рамок во время
-     ответа и для раскрытия): мало кластеров — крупные пучки и слова; --u урезает всё на низких/узких экранах */
-  .reveal-grid { --k: 1; --u: min(1px, .1111vh, .0625vw); flex: 1; min-height: 0; align-content: flex-start; justify-content: center; overflow: auto; gap: calc(18 * var(--u) * var(--k)); padding: 6px 2px; }
-  .reveal-grid .tslot { --sw: calc(150 * var(--u) * var(--k)); --sh: calc(220 * var(--u) * var(--k)); --stw: calc(130 * var(--u) * var(--k)); --sth: calc(80 * var(--u) * var(--k)); --sword: calc(20 * var(--u) * var(--k)); --scount: calc(24 * var(--u) * var(--k)); }
-  /* штрихи тоньше шага между ними: в крупном масштабе пучок читается как |||| с диагональю, а не как сплошной блок */
-  .reveal-grid .tslot svg.tally path { stroke-width: 3; }
-  .revealnames { font: 600 14px/1.25 var(--body); color: var(--muted); margin-top: 6px; max-width: 320px; }
-
-  /* мало игроков — строки не прилипают кучкой к верху над текстурой доски, а стоят по центру
-     отведённого места: то же правило §4 "никаких пустот", применённое к короткому списку, а не только к фазам */
-  /* строки растут на всю высоту сцены (flex 1 1 0, потолок --rowmax) и прижаты к плите сверху; шрифты и аватар
-     считаются от высоты самой строки (container query units), поэтому 2-3 игрока читаются крупно, 12 — компактно */
-  .sc-tab { --rowmax: 240px; flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; justify-content: flex-start; gap: 6px; }
-  .row { flex: 1 1 0; min-height: 32px; max-height: var(--rowmax); container-type: size; display: grid; grid-template-columns: 1.2em minmax(0, auto) minmax(0, 1fr) 2.6em 2.4em; align-items: center; gap: 18px; background: var(--board2); border: 2px solid var(--line); border-left: 8px solid var(--chalk); border-radius: var(--r); padding: 0 24px; }
-  .row .rk { text-align: center; font: 900 clamp(16px, 34cqh, 60px)/1 var(--body); color: var(--muted); }
-  .row .av { width: clamp(30px, 66cqh, 150px); height: clamp(30px, 66cqh, 150px); font-size: clamp(16px, 34cqh, 64px); }
-  .row .nm { font: 800 clamp(18px, 42cqh, 100px)/1.1 var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .dl { text-align: right; font: 800 clamp(16px, 34cqh, 60px)/1 var(--body); font-variant-numeric: tabular-nums; color: var(--ok); }
+  /* ---------- счёт раунда / итоги: список класса ---------- */
+  .sc-tab { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-start; gap: 0; }
+  .row { flex: 1 1 0; min-height: 28px; max-height: 190px; container-type: size; display: grid; grid-template-columns: 1.5em minmax(0, auto) minmax(0, 1fr) minmax(2.6em, max-content) minmax(2.4em, max-content); align-items: center; gap: 18px; border-bottom: 2px dashed var(--line); padding: 0 18px; }
+  .row .rk { text-align: center; font: 700 clamp(16px, 40cqh, 70px)/1 var(--display); color: var(--muted); }
+  .row .av { width: clamp(24px, 62cqh, 130px); height: clamp(24px, 62cqh, 130px); font-size: clamp(14px, 32cqh, 60px); }
+  .nmw { position: relative; justify-self: start; max-width: 100%; min-width: 0; }
+  .row .nm { display: block; font: 700 clamp(17px, 44cqh, 92px)/1.2 var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nmw svg.chalk-ul { position: absolute; left: -2%; width: 104%; bottom: -2px; height: .3em; }
+  .row .dl { text-align: right; font: 700 clamp(16px, 36cqh, 64px)/1 var(--display); font-variant-numeric: tabular-nums; color: var(--ok); }
   .row .dl.zero { color: var(--muted); }
-  .row .tot { text-align: right; font: 900 clamp(22px, 50cqh, 120px)/1 var(--body); font-variant-numeric: tabular-nums; }
-  .row.lead { border-left-color: var(--chalk-yellow); box-shadow: inset 0 0 0 2px var(--chalk-yellow); }
+  .row .tot { text-align: right; font: 800 clamp(22px, 52cqh, 110px)/1 var(--display); font-variant-numeric: tabular-nums; }
+  .row.lead .rk { color: var(--chalk); }
+  .fin .sc-tab { flex: 1 1 0; }
+  .fin .row { flex: 1 1 0; max-height: 72px; }
+  .row.fr { grid-template-columns: 1.5em minmax(0, auto) minmax(0, max-content) minmax(0, 1fr) minmax(2.6em, max-content); }
+  .row.fr .tl { justify-self: start; margin-left: 14px; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font: 700 clamp(12px, 28cqh, 20px)/1 var(--body); }
+  .row.fr svg.tline { height: clamp(14px, 56cqh, 64px); width: auto; display: block; flex: none; }
+  svg.tline path { fill: none; stroke: var(--chalk); stroke-width: 3; stroke-linecap: round; }
 
   .fin { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; }
-  .fin .sc-tab { --rowmax: 160px; }
-  .fin .topic { flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 6px 24px; padding: 10px 32px; }
-  .fin .topic .hint { margin: 0; }
-  .fin h1 { margin: 0; font: 700 clamp(36px, 6vh, 56px)/1.1 var(--display); color: var(--chalk); }
+  .finhead { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; flex: none; }
+  .finhead h1 { margin: 0; font: 700 clamp(28px, 4.6vh, 44px)/1.1 var(--display); color: var(--muted); }
+  .finhead .hint { margin: 0; }
+  .winners { flex: none; min-height: 0; overflow: hidden; display: flex; flex-wrap: wrap; align-items: center; align-content: center; justify-content: center; gap: 4px 40px; padding: 4px 0 6px; }
+  .winner { --wf: var(--wfit, 72px); display: flex; align-items: center; gap: .3em; font-size: var(--wf); max-width: 100%; min-width: 0; }
+  .rank1 { position: relative; flex: none; width: 1.3em; height: 1.3em; display: grid; place-items: center; font: 700 .8em/1 var(--display); color: var(--chalk); }
+  .rank1 svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .wnt { display: block; font: 700 1em/1.2 var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 .05em; }
+  .winner .nmw { max-width: 11em; }
+  .winner .nmw svg.chalk-ul { left: -1%; width: 102%; bottom: .02em; height: .26em; }
+  .winner .wpts { font: 600 .42em/1 var(--display); color: var(--muted); align-self: flex-end; padding-bottom: .5em; }
+  .wlabel { flex: none; text-align: center; font: 700 clamp(18px, 2.8vh, 26px)/1 var(--display); color: var(--chalk-pink); margin-top: -4px; }
   .awards { display: flex; gap: 14px; flex-wrap: wrap; flex: none; }
-  .aw { flex: 1 1 340px; display: flex; align-items: center; gap: 20px; background: var(--board2); border-left: 8px solid var(--a); border-radius: var(--r); padding: clamp(8px, 1.4vh, 16px) 24px; }
-  .aw .rosette { width: clamp(44px, 6.4vh, 64px); height: clamp(44px, 6.4vh, 64px); border-radius: var(--r); background: var(--a); color: var(--a-ink); display: grid; place-items: center; font-size: clamp(22px, 3.4vh, 32px); flex: none; }
-  .aw b { display: block; font: 800 clamp(18px, 2.7vh, 26px)/1.15 var(--body); }
-  .aw span { font: 700 clamp(16px, 2.4vh, 24px)/1.2 var(--display); color: var(--chalk); }
-  .fbtn { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+  .aw { flex: 1 1 340px; display: flex; align-items: center; gap: 14px; border: 2px dashed var(--line); border-radius: var(--r); padding: clamp(6px, 1vh, 12px) 18px; }
+  .aw .rosette { font-size: clamp(22px, 3.2vh, 30px); flex: none; }
+  .aw b { display: block; font: 800 clamp(14px, 2.1vh, 19px)/1.15 var(--body); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .aw span { font: 700 clamp(18px, 2.8vh, 26px)/1.2 var(--display); color: var(--chalk); }
+  .fbtn { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; flex: none; }
+  @media (max-height: 820px) { .awards { display: none; } }
 
   .full { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; }
   .full h1 { font: 700 clamp(38px, 6.5vw, 64px)/1.15 var(--display); color: var(--chalk); margin: 0; }
@@ -155,6 +186,7 @@
 <script>
 window.I18N_DICT = {
   ru: {
+    of_total: `из {m}`, answered_lbl: `ответили`, how1: `На доске тема. Каждый пишет на телефоне одно слово.`, how2: `Потом вслепую угадай слово, которое написали чаще всех.`, how3: `И слово, которое написал только один человек.`, roll_empty: `Пока никого. Наведи камеру на QR-код`, tie_label: `делят победу`,
     game_name: `Сто к одному`,
     code_label: `Код комнаты`, join_hint: `Заходите на randomhost.online/oneword.html`,
     lobby_scan: `Наведи камеру телефона на QR или открой ссылку и введи имя.`,
@@ -171,6 +203,7 @@ window.I18N_DICT = {
     kick_confirm: `Убрать?`,
   },
   en: {
+    of_total: `of {m}`, answered_lbl: `answered`, how1: `A topic goes on the board. Everyone writes one word on their phone.`, how2: `Then guess, blind, the word most people wrote.`, how3: `And the word that only one person wrote.`, roll_empty: `Nobody yet. Point your camera at the QR code`, tie_label: `share the win`,
     game_name: `100 to 1`,
     code_label: `Room code`, join_hint: `Go to randomhost.online/oneword.html`,
     lobby_scan: `Point your phone camera at the QR or open the link and type your name.`,
@@ -187,6 +220,7 @@ window.I18N_DICT = {
     kick_confirm: `Remove?`,
   },
   el: {
+    of_total: `από {m}`, answered_lbl: `απάντησαν`, how1: `Στον πίνακα βγαίνει θέμα. Όλοι γράφουν μία λέξη στο κινητό.`, how2: `Μετά μάντεψε τυφλά τη λέξη που έγραψαν οι περισσότεροι.`, how3: `Και τη λέξη που έγραψε μόνο ένας.`, roll_empty: `Κανείς ακόμα. Στρέψε την κάμερα στο QR`, tie_label: `μοιράζονται τη νίκη`,
     game_name: `100 προς 1`,
     code_label: `Κωδικός δωματίου`, join_hint: `Πήγαινε στο randomhost.online/oneword.html`,
     lobby_scan: `Στρέψε την κάμερα του κινητού στο QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.`,
@@ -380,38 +414,53 @@ const avHtml = (p) => `<i class="av" style="--pc:${p.color}">${escapeHtml(p.avat
 window.owBoard = { state: () => state, send: (m) => conn && conn.send(m) };
 
 // ---------- считалка-пучок: четыре палочки + диагональная пятая, следующий пучок рядом ----------
-// viewBox фиксирован на максимум вместимости комнаты (12 игроков = 3 пучка), чтобы графика считалки
-// не меняла размер слота от раунда к раунду (DESIGNER-SKILL §4) — пучки рисуются только до нужного count.
-const CHALK_CYCLE = ["var(--chalk)", "var(--chalk-yellow)", "var(--chalk-pink)", "var(--chalk-blue)"];
-function tallySVG(count, stepMs) {
-  const step = stepMs || 70;
-  let left = Math.max(0, count | 0), stroke = 0, paths = [];
+// Геометрия одна для раскрытия (крупные пучки), стены «N из M» (по штриху на игрока) и строк итогов.
+// Штрихи чуть «дрожат» (детерминированный разброс по номеру штриха) — рука, а не линейка.
+const TALLY_PITCH = 27;
+function jit(i, k) { const r = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return (r - Math.floor(r) - 0.5) * 1.1; }
+function tallyGeom(count) {
+  const total = Math.max(0, count | 0), nb = Math.ceil(total / 5);
+  let left = total, stroke = 0;
+  const paths = [];
   for (let bi = 0; left > 0; bi++) {
     const n = Math.min(5, left);
     left -= n;
-    const ox = 4 + bi * 24;
+    const ox = 4 + bi * TALLY_PITCH;
     for (let v = 0; v < Math.min(n, 4); v++) {
       const x = ox + v * 5;
-      paths.push(`<path pathLength="1" style="--sd:${stroke * step}ms" d="M${x} 4 L${x} 26"></path>`);
+      paths.push(`M${(x + jit(stroke, 1)).toFixed(1)} 4 L${(x + jit(stroke, 2)).toFixed(1)} 26`);
       stroke++;
     }
-    if (n === 5) {
-      paths.push(`<path pathLength="1" style="--sd:${stroke * step}ms" d="M${ox - 2} 25 L${ox + 17} 5"></path>`);
-      stroke++;
-    }
+    if (n === 5) { paths.push(`M${ox - 2.5} 24.5 L${ox + 17.5} 5.5`); stroke++; }
   }
-  // viewBox обрезан по содержимому (иначе одна палочка прилипает к левому краю бокса, а подпись по центру)
-  const total = Math.max(0, count | 0), nb = Math.ceil(total / 5), lastN = total - (nb - 1) * 5;
-  const right = total ? 4 + (nb - 1) * 24 + (lastN === 5 ? 20 : (lastN - 1) * 5 + 3) + 1 : 80;
-  return `<svg class="tally" viewBox="0 0 ${right} 30" aria-hidden="true">${paths.join("")}</svg>`;
+  const lastN = total - (nb - 1) * 5, lox = 4 + (nb - 1) * TALLY_PITCH;
+  const right = total ? (lastN === 5 ? lox + 19.5 : lox + (lastN - 1) * 5 + 3) : 8;
+  return { paths, vbw: Math.ceil(right) };
 }
-function tallySlotHtml(word, count, colorIdx, revealed, extra) {
-  const color = CHALK_CYCLE[(colorIdx || 0) % CHALK_CYCLE.length];
-  return `<div class="tslot${revealed ? " revealed" : ""}" style="--chalk-c:${color}"${extra || ""}>
-    <div class="trest"></div>${tallySVG(count || 0)}
+// цвет пучка по смыслу: самый популярный — жёлтый мелок («популярное»), одиночные — голубой («редкое»), остальные чередуют белый и розовый
+function clusterColor(c, i) { return i === 0 && c.count > 1 ? "var(--chalk-yellow)" : c.count === 1 ? "var(--chalk-blue)" : i % 2 ? "var(--chalk-pink)" : "var(--chalk)"; }
+function tallySlotHtml(word, count, color, extra) {
+  const g = tallyGeom(count || 0);
+  const paths = g.paths.map((d, i) => `<path pathLength="1" style="--sd:${i * 70}ms" d="${d}"></path>`).join("");
+  return `<div class="tslot" style="--chalk-c:${color};--asp:${g.vbw / 30}"${extra || ""}>
+    <svg class="tally" viewBox="0 0 ${g.vbw} 30" aria-hidden="true">${paths}</svg>
     <b class="tword">${escapeHtml(word || "")}</b><em class="tcount">${count || ""}</em></div>`;
 }
-function emptySlotHtml() { return `<div class="tslot" aria-hidden="true"><div class="trest"></div>${tallySVG(0)}<b class="tword"></b><em class="tcount"></em></div>`; }
+// маленькая статичная считалка в строке итогов; больше 40 очков — один штрих = unit очков (подпись ×unit)
+function tallyLineHtml(total) {
+  if (!(total > 0)) return `<span class="tl"></span>`;
+  let unit = 1;
+  while (Math.ceil(total / unit) > 40) unit++;
+  const g = tallyGeom(Math.ceil(total / unit));
+  return `<span class="tl"><svg class="tline" viewBox="0 0 ${g.vbw} 30" aria-hidden="true">${g.paths.map((d) => `<path d="${d}"></path>`).join("")}</svg>${unit > 1 ? `<small>×${unit}</small>` : ""}</span>`;
+}
+// «написано мелом»: подчёркивание (двойной штрих) и кружок вокруг цифры места; штрих-дэш рисует CSS при классе .drawn
+const UL_SVG = `<svg class="chalk-ul" viewBox="0 0 200 14" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M2 8 C 36 3, 84 12, 128 6 S 184 5, 198 8"></path><path pathLength="1" d="M14 12.5 C 62 9, 120 13, 186 10.5"></path></svg>`;
+const RING_SVG = `<svg class="chalk-ring" viewBox="0 0 60 60" aria-hidden="true"><path pathLength="1" d="M33 4 C 50 4, 58 19, 55 34 C 52 50, 36 58, 22 55 C 7 51, 2 33, 10 19 C 17 8, 30 4, 44 8"></path></svg>`;
+function drawChalk() {
+  setTimeout(() => { document.querySelectorAll(".chalk-ul, .chalk-ring").forEach((e) => e.classList.add("drawn")); }, 380);
+}
+const reducedMotion = () => !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
 
 const HL = window.MP && MP.hostLink ? MP.hostLink({
   hostKeyFn: hostKey,
@@ -458,24 +507,12 @@ function patchTimer() {
 setInterval(patchTimer, 250);
 
 let qrDrawn = "";
-// слоты-считалки в покое — мир без будущего раунда: пустые пунктирные рамки в фиксированном числе,
-// ничего не резервируем под контент, который ещё не существует
-const REST_TILES = 10;
-// масштаб слота по числу слотов: одна функция для пустых рамок (ответ/угадывание, n = число игроков в раунде)
-// и для раскрытия (n = число кластеров) — при одинаковом n размер одинаковый
-function slotScale(n) {
-  return n <= 1 ? 2.6 : n === 2 ? 2.6 : n === 3 ? 2.3 : n === 4 ? 1.75 : n === 5 ? 1.45 : n === 6 ? 1.3 : n <= 8 ? 1.15 : 1;
-}
-function restSlatsHtml() {
-  return `<div class="slats boardrest" aria-hidden="true">${Array.from({ length: REST_TILES }, emptySlotHtml).join("")}</div>`;
-}
 function renderLobby() {
   const list = state.players.filter((x) => !x.left);
   const rounds = state.settings.rounds;
   const need = Math.max(0, state.minPlayers - list.length);
   const url = `${location.origin}/oneword.html?r=${CODE}`;
   const fresh = show(`<div class="scr lobbywrap">
-    ${restSlatsHtml()}
     <div class="lobby">
     <div class="lobcard cabinet">
       <div class="eyebrow">${escapeHtml(T("code_label"))}</div>
@@ -484,24 +521,28 @@ function renderLobby() {
       <div class="opts"><div class="opt"><b>${escapeHtml(T("rounds_label"))}</b><div class="stepper"><button id="rm" type="button">−</button><span class="n" id="rn">${rounds}</span><button id="rp" type="button">+</button></div></div></div>
       <button class="start" id="startbtn" type="button"${isHost ? "" : " disabled"}>${escapeHtml(T("start_btn"))}</button>
       <div class="hint" id="hint"></div>
+      <ol class="howto"><li>${escapeHtml(T("how1"))}</li><li>${escapeHtml(T("how2"))}</li><li>${escapeHtml(T("how3"))}</li></ol>
     </div>
     <div class="players cabinet">
       <div class="players-h"><span>${escapeHtml(T("players_label"))}</span><b>${list.length} / 12</b></div>
-      <ul class="plist" id="plist"></ul>
-    </div></div></div>`, "lobby:" + list.map((p) => p.id + p.online + p.avatar).join(",") + ":" + rounds + ":" + isHost);
+      <ul class="plist${list.length <= 3 ? " few" : ""}" id="plist"></ul>
+    </div></div></div>`, "lobby:" + list.map((p) => p.id + p.online + p.avatar + p.name).join(",") + ":" + rounds + ":" + isHost);
   if (fresh) qrDrawn = "";
   if (qrDrawn !== CODE && window.QRCode) {
     qrDrawn = CODE;
     const qr = document.getElementById("qr");
     qr.replaceChildren();
-    new QRCode(qr, { text: url, width: 150, height: 150, colorDark: "#0a0a0f", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+    new QRCode(qr, { text: url, width: 240, height: 240, colorDark: "#0a0a0f", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
   }
   document.getElementById("hint").textContent = need ? tpl("start_need", { n: state.minPlayers }) : "";
   document.getElementById("startbtn").disabled = !isHost || need > 0;
   const ul = document.getElementById("plist");
-  ul.innerHTML = list.map((p) => `<li class="${p.online ? "" : "off"}" style="--pc:${p.color}">${avHtml(p)}<b>${escapeHtml(p.name)}</b><button class="x" data-id="${p.id}" type="button">${kickTap && kickTap.isArmed(p.id) ? T("kick_confirm") : "✕"}</button></li>`).join("");
+  ul.innerHTML = list.length
+    ? list.map((p, i) => `<li class="${p.online ? "" : "off"}" data-n="${i + 1}" style="--pc:${p.color}">${avHtml(p)}<b>${escapeHtml(p.name)}</b><button class="x" data-id="${p.id}" type="button" aria-label="${escapeHtml(T("kick_confirm"))}">${kickTap && kickTap.isArmed(p.id) ? T("kick_confirm") : "✕"}</button></li>`).join("")
+    : "";
+  if (!list.length) ul.outerHTML = `<div class="rollempty" id="plist">${escapeHtml(T("roll_empty"))}</div>`;
   if (isHost) {
-    ul.querySelectorAll(".x").forEach((b) => {
+    document.querySelectorAll("#plist .x").forEach((b) => {
       if (kickTap && kickTap.isArmed(b.dataset.id)) b.setAttribute("data-armed", "1");
       b.onclick = (ev) => {
         ev.stopPropagation();
@@ -518,35 +559,81 @@ function renderLobby() {
 }
 
 const PROMPT_KEY = { answer: "prompt_answer", guessPopular: "prompt_popular", guessRare: "prompt_rare" };
+// стена «N из M»: M штрихов считалки заранее в разметке (невидимы, пока не «написаны»), на каждого записавшего — один штрих.
+// Только число записавших, ни слов, ни кто именно (секретность §5).
+function wallHtml(voters) {
+  const g = tallyGeom(voters);
+  return `<div class="wall" id="wall" data-m="${voters}"><div class="wallnum"><b id="wn">0</b><div class="wallof"><span>${escapeHtml(tpl("of_total", { m: voters }))}</span><em>${escapeHtml(T("answered_lbl"))}</em></div></div>
+    <svg class="wallsvg" id="wallsvg" viewBox="0 0 ${g.vbw} 30" style="--vbw:${g.vbw};aspect-ratio:${g.vbw}/30" aria-hidden="true">${g.paths.map((d) => `<path pathLength="1" d="${d}"></path>`).join("")}</svg></div>`;
+}
+let wallSeen = -1;
+function patchWall(confirmed, voters) {
+  let wall = document.getElementById("wall");
+  if (wall && +wall.dataset.m !== voters) { wall.outerHTML = wallHtml(voters); wall = document.getElementById("wall"); }
+  document.getElementById("wn").textContent = confirmed;
+  document.querySelectorAll("#wallsvg path").forEach((p, i) => p.classList.toggle("on", i < confirmed));
+  if (wallSeen >= 0 && confirmed > wallSeen) wvSfx.tick();
+  wallSeen = confirmed;
+}
 function renderWordPhase() {
   const r = state.round;
   const confirmed = (r.confirmed[state.phase] || []).length;
   const voters = (r.voters || []).length;
-  // пустые слоты-считалки стоят здесь уже сейчас, в точности в той же сетке, что и после раскрытия —
-  // bounding box сцены не прыгает между "ответ/угадывание" и "раскрытие" (DESIGNER-SKILL §4)
-  const restCount = Math.max(voters, 1);
-  const restTiles = Array.from({ length: restCount }, emptySlotHtml).join("");
   const html = `<div class="scr wordwrap">
     <div class="topic cabinet">
       <div class="meta"><span>${escapeHtml(tpl("topic_of", { n: r.num, m: state.total }))}</span><b id="tsec"></b></div>
       ${timerHtml()}
       <div class="topictxt">${escapeHtml(r.topic.topic)}</div>
-      <div class="prompt">${escapeHtml(T(PROMPT_KEY[state.phase]))}</div>
-      <div class="progress" id="prog"></div>
-      <div class="segdots" id="segdots" aria-hidden="true"></div>
+      <div class="prompt ${state.phase}">${escapeHtml(T(PROMPT_KEY[state.phase]))}</div>
     </div>
-    <div class="slats reveal-grid" id="wordRest" aria-hidden="true" style="--k:${slotScale(restCount)}">${restTiles}</div></div>`;
+    ${wallHtml(Math.max(voters, 1))}</div>`;
   // новая тема раунда — короткий аккорд (только на первой фазе, не на каждом угадывании)
-  if (show(html, state.phase + ":" + r.num) && state.phase === "answer") wvSfx.chord();
-  document.getElementById("prog").innerHTML = escapeHtml(tpl("answered", { n: "\u0001", m: voters })).replace("\u0001", `<b>${confirmed}</b>`);
-  document.getElementById("segdots").innerHTML = Array.from({ length: voters }, (_, i) => `<i class="${i < confirmed ? "on" : ""}"></i>`).join("");
+  if (show(html, state.phase + ":" + r.num)) { wallSeen = -1; if (state.phase === "answer") wvSfx.chord(); }
+  patchWall(confirmed, Math.max(voters, 1));
   patchTimer();
 }
 
 // считалки раскрытия: слоты стоят в порядке кластеров (устойчиво по макету), но мел дорисовывается
 // в порядке round.order (сервер, §7 спеки: случайный порядок раскрытия от seed раунда) — так макет не прыгает,
-// а зрелище всё равно идёт вразнобой, не по величине кластера. Цвет мелка циклится по позиции в макете,
-// не по величине кластера — так соседние пучки разного цвета, не градиент по значимости.
+// а зрелище всё равно идёт вразнобой. Размер пучков подбирает fitReveal() под реальную высоту сцены.
+function fitReveal() {
+  const g = document.getElementById("revealGrid");
+  if (!g) return;
+  // центрирование (align-content:center) прячет переполнение вверх/влево от scrollHeight, поэтому меряем сами слоты
+  const over = () => {
+    const gr = g.getBoundingClientRect(), cs = getComputedStyle(g);
+    const top = gr.top + parseFloat(cs.paddingTop), bottom = gr.bottom - parseFloat(cs.paddingBottom);
+    const left = gr.left + parseFloat(cs.paddingLeft), right = gr.right - parseFloat(cs.paddingRight);
+    if (g.scrollHeight > g.clientHeight + 1 || g.scrollWidth > g.clientWidth + 1) return true; // хвосты букв и штрихов тоже не должны резаться
+    for (const k of g.children) {
+      const r = k.getBoundingClientRect();
+      if (r.top < top - 1 || r.bottom > bottom + 1 || r.left < left - 1 || r.right > right + 1) return true;
+    }
+    return false;
+  };
+  const oneRow = () => { const t0 = g.children[0].getBoundingClientRect().top; return Array.from(g.children).every((k) => Math.abs(k.getBoundingClientRect().top - t0) < 4); };
+  const best = (row) => {
+    const bad = () => over() || (row && !oneRow());
+    let lo = 0.3, hi = 4.6;
+    g.style.setProperty("--s", hi);
+    if (!bad()) return hi;
+    for (let i = 0; i < 14; i++) {
+      const mid = (lo + hi) / 2;
+      g.style.setProperty("--s", mid);
+      if (bad()) hi = mid; else lo = mid;
+    }
+    return lo;
+  };
+  // до трёх кластеров — одним рядом (композиция «три крупных пучка»), если так пучки всё ещё крупные; иначе переносим
+  const s = best(false);
+  if (g.children.length <= 3) {
+    const sRow = best(true);
+    if (sRow >= 1.8 || sRow >= s * 0.55) { g.style.setProperty("--s", (sRow * 0.99).toFixed(3)); return; }
+  }
+  g.style.setProperty("--s", (s * 0.99).toFixed(3));
+}
+window.addEventListener("resize", fitReveal);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitReveal);
 function renderReveal() {
   const r = state.round;
   const clusters = r.clusters;
@@ -554,53 +641,95 @@ function renderReveal() {
     .map((key) => clusters.findIndex((c) => c.key === key)).filter((i) => i >= 0);
   const slots = clusters.map((c, i) => {
     const names = c.players.map((id) => (player(id) || {}).name || "?").join(", ");
-    return tallySlotHtml(c.sample, c.count, i, false, ` data-idx="${i}" title="${escapeHtml(names)}"`);
+    return tallySlotHtml(c.sample, c.count, clusterColor(c, i), ` data-idx="${i}" title="${escapeHtml(names)}"`);
   }).join("");
   const html = `<div class="scr wordwrap">
     <div class="topic cabinet">
       <div class="meta"><span>${escapeHtml(T("reveal_title"))} · ${escapeHtml(tpl("topic_of", { n: r.num, m: state.total }))}</span></div>
-      <div class="topictxt" style="font-size:clamp(20px,3vw,32px)">${escapeHtml(r.topic.topic)}</div>
+      <div class="topictxt revealtopic">${escapeHtml(r.topic.topic)}</div>
     </div>
-    ${clusters.length ? `<div class="slats reveal-grid" id="revealGrid" style="--k:${slotScale(clusters.length)}">${slots}</div>` : `<div class="full"><h1>${escapeHtml(T("nobody"))}</h1></div>`}</div>`;
+    ${clusters.length ? `<div class="reveal-grid" id="revealGrid">${slots}</div>` : `<div class="full"><h1>${escapeHtml(T("nobody"))}</h1></div>`}</div>`;
   if (show(html, "reveal:" + r.num, true)) {
     wvSfx.pop();
+    fitReveal();
     const grid = document.getElementById("revealGrid");
+    const calm = reducedMotion();
     order.forEach((idx, step) => {
-      setTimeout(() => {
+      const go = () => {
         const el = grid && grid.querySelector(`.tslot[data-idx="${idx}"]`);
         if (el) { el.classList.add("revealed"); wvSfx.tick(); }
-      }, 500 + step * 480);
+      };
+      if (calm) go(); else setTimeout(go, 500 + step * 480);
     });
   }
 }
 
+function rankedPlayers() {
+  return window.MP && MP.rank ? MP.rank(state.players, { score: "score" }).list : state.players.slice().sort((a, b) => b.score - a.score);
+}
 function renderScores() {
   const r = state.round;
-  const ranked = window.MP && MP.rank ? MP.rank(state.players, { score: "score" }).list : state.players.slice().sort((a, b) => b.score - a.score);
+  const ranked = rankedPlayers();
   const topScore = Math.max(0, ...ranked.map((e) => (e.player || e).score));
   const rows = ranked.map((e, i) => {
     const p = e.player || e;
+    const lead = p.score > 0 && p.score === topScore;
     const delta = (r.popularPts[p.id] || 0) + (r.rarePts[p.id] || 0);
-    return `<div class="row${p.score > 0 && p.score === topScore ? " lead" : ""}"><span class="rk">${e.place || ""}</span>${avHtml(p)}<span class="nm">${escapeHtml(p.name)}</span><span class="dl ${delta ? "" : "zero"}">+${delta}</span><span class="tot">${p.score}</span></div>`;
+    return `<div class="row${lead ? " lead" : ""}"><span class="rk">${e.place || ""}</span>${avHtml(p)}<span class="nmw"><span class="nm">${escapeHtml(p.name)}</span>${lead ? UL_SVG : ""}</span><span class="dl ${delta ? "" : "zero"}">+${delta}</span><span class="tot">${p.score}</span></div>`;
   }).join("");
   const html = `<div class="scr wordwrap">
     <div class="topic cabinet">
       <div class="meta"><span>${escapeHtml(T("scores_title"))} · ${escapeHtml(tpl("topic_of", { n: r.num, m: state.total }))}</span></div>
     </div>
     <div class="sc-tab">${rows}</div></div>`;
-  show(html, "scores:" + r.num, true);
+  if (show(html, "scores:" + r.num, true)) drawChalk();
 }
 
 function renderPause() {
   show(`<div class="full"><h1>${escapeHtml(T("pause_title"))}</h1><p>${escapeHtml(tpl("pause_sub", { n: state.minPlayers }))}</p></div>`, "pause", true);
 }
 
+// итоги: победитель (или все, кто делит первое место) написан мелом крупно, подчёркнут, цифра 1 обведена кружком;
+// остальные — список класса с считалкой очков
+// блок победителей: высоту отдаём по остатку сцены (список остальных получает не меньше 30px на строку), а шрифт
+// подбираем самым крупным, при котором все победители (в т.ч. при ничьей, с переносом) влезают в этот блок
+function fitFinished() {
+  const fin = document.querySelector(".fin"), win = fin && fin.querySelector(".winners");
+  if (!win) return;
+  const others = fin.querySelectorAll(".sc-tab .row").length;
+  const gap = 12;
+  const kids = Array.from(fin.children).filter((e) => e !== win && !e.classList.contains("sc-tab") && getComputedStyle(e).display !== "none");
+  const used = kids.reduce((a, e) => a + e.offsetHeight + gap, 0) + gap;
+  const room = fin.clientHeight - used;
+  const listH = others ? Math.min(others * 64, Math.max(others * 30, room - 150)) + gap : 0;
+  win.style.height = Math.max(90, room - listH) + "px";
+  let lo = 18, hi = 104;
+  const bad = () => win.scrollHeight > win.clientHeight + 1 || win.scrollWidth > win.clientWidth + 1;
+  win.style.setProperty("--wfit", hi + "px");
+  if (bad()) {
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) / 2;
+      win.style.setProperty("--wfit", mid + "px");
+      if (bad()) hi = mid; else lo = mid;
+    }
+    win.style.setProperty("--wfit", Math.floor(lo) + "px");
+  }
+}
+window.addEventListener("resize", fitFinished);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitFinished);
 function renderFinished() {
-  const ranked = window.MP && MP.rank ? MP.rank(state.players, { score: "score" }).list : state.players.slice().sort((a, b) => b.score - a.score);
+  const ranked = rankedPlayers();
   const topScore = Math.max(0, ...ranked.map((e) => (e.player || e).score));
-  const rows = ranked.map((e, i) => {
+  const isWin = (e) => (e.player || e).score > 0 && (e.player || e).score === topScore;
+  const winners = ranked.filter(isWin);
+  const others = ranked.filter((e) => !isWin(e));
+  const winHtml = winners.map((e) => {
     const p = e.player || e;
-    return `<div class="row${p.score > 0 && p.score === topScore ? " lead" : ""}"><span class="rk">${e.place || ""}</span>${avHtml(p)}<span class="nm">${escapeHtml(p.name)}</span><span></span><span class="tot">${p.score}</span></div>`;
+    return `<div class="winner"><span class="rank1"><b>${e.place || 1}</b>${RING_SVG}</span><span class="nmw"><span class="wnt">${escapeHtml(p.name)}</span>${UL_SVG}</span><span class="wpts">${p.score}</span></div>`;
+  }).join("");
+  const rows = others.map((e) => {
+    const p = e.player || e;
+    return `<div class="row fr"><span class="rk">${e.place || ""}</span>${avHtml(p)}<span class="nmw"><span class="nm">${escapeHtml(p.name)}</span></span>${tallyLineHtml(p.score)}<span class="tot">${p.score}</span></div>`;
   }).join("");
   const nameOf = (id) => (player(id) || {}).name || "?";
   const awards = state.awards || {};
@@ -609,15 +738,17 @@ function renderFinished() {
     awards.rare ? `<div class="aw"><span class="rosette">🔎</span><div><b>${escapeHtml(T("aw_rare"))}</b><span>${escapeHtml(awards.rare.ids.map(nameOf).join(", "))}</span></div></div>` : "",
   ].join("");
   const reasonTxt = state.finishedReason === "host" ? T("final_host") : state.finishedReason === "few" || state.finishedReason === "paused" ? T("final_few") : "";
-  const html = `<div class="scr fin">
-    <div class="topic cabinet">
-      <h1>${escapeHtml(T("finished_title"))}</h1>
-      ${reasonTxt ? `<p class="hint">${escapeHtml(reasonTxt)}</p>` : ""}
-    </div>
+  const html = `<div class="scr fin${others.length ? "" : " solo"}">
+    <div class="finhead"><h1>${escapeHtml(T("finished_title"))}</h1>${reasonTxt ? `<p class="hint">${escapeHtml(reasonTxt)}</p>` : ""}</div>
+    ${winners.length ? `<div class="winners">${winHtml}</div>${winners.length > 1 ? `<div class="wlabel">${escapeHtml(T("tie_label"))}</div>` : ""}` : ""}
     <div class="awards">${awardsHtml}</div>
     <div class="sc-tab">${rows}</div>
     <div class="fbtn">${isHost ? `<button class="start" id="lobbybtn" type="button">${escapeHtml(T("lobby_btn"))}</button>` : ""}</div></div>`;
-  if (show(html, "finished:" + state.game, true) && state.finishedReason !== "few" && state.finishedReason !== "paused") wvSfx.fanfare();
+  if (show(html, "finished:" + state.game, true)) {
+    fitFinished();
+    drawChalk();
+    if (state.finishedReason !== "few" && state.finishedReason !== "paused") wvSfx.fanfare();
+  }
   if (isHost) document.getElementById("lobbybtn").onclick = () => conn.send({ type: "lobby" });
 }
 

@@ -139,6 +139,13 @@ def run(pw, code, token):
     overflow_bad = []
     strict_seen = set()
     bbox_bad = []
+    # внутренние контейнеры не должны прятать строки: последняя видимая строка списка целиком в окне, список не прокручивается внутри
+    CLIP_JS = """(()=>{const rows=[...document.querySelectorAll('.standings li, .barrow')].filter(e=>!e.hidden&&e.offsetParent);
+      const box=document.querySelector('.standings, .bars'); let bad=null;
+      if(rows.length){const b=rows[rows.length-1].getBoundingClientRect().bottom; if(b>innerHeight+1) bad='row bottom '+Math.round(b);}
+      if(box&&box.scrollHeight>box.clientHeight+1) bad=(bad||'')+' box scroll '+box.scrollHeight+'>'+box.clientHeight;
+      return bad;})()"""
+    clip_bad = []
     BOX_JS = "(()=>{const e=document.querySelector('%s'); if(!e) return null; const r=e.getBoundingClientRect(); return [r.x,r.y,r.width,r.height].map(Math.round);})()"
     answered_tags = set()
 
@@ -188,6 +195,10 @@ def run(pw, code, token):
             bad = o["sw"] > o["iw"] + 1 or (strict_h and o["sh"] > o["ih"] + 1)
             if bad:
                 overflow_bad.append((i, o["ph"], o))
+            if strict_h and o["ph"] in ("reveal", "scores", "finished"):
+                cl = p.evaluate(CLIP_JS)
+                if cl:
+                    clip_bad.append((i, o["ph"], cl))
         # сцена не прыгает между фазами (DESIGNER-SKILL §4): доска .scr = {200,90,1200,780} на 1600×900, телефон #app = {0,40,320,420} на 320×460
         if (BW, BH) == (1600, 900) and phase in ("answer", "guessPopular", "guessRare", "reveal", "scores", "finished"):
             bb = board.evaluate(BOX_JS % ".scr")
@@ -212,6 +223,9 @@ def run(pw, code, token):
                     strict_seen.add(o["ph"])
                     if o["sh"] > o["ih"] + 1 or o["sw"] > o["iw"] + 1:
                         overflow_bad.append((i, o["ph"], o))
+                    cl = p.evaluate(CLIP_JS)
+                    if cl:
+                        clip_bad.append((i, o["ph"], cl))
                 break
         elif phase == "finished" or rounds_completed >= 2:
             if phase == "finished" or (phase == "scores" and rounds_completed >= 2):
@@ -224,6 +238,8 @@ def run(pw, code, token):
     check(not bbox_bad, "сцена не меняет рамку между фазами (доска .scr, телефон #app)" + (f" {bbox_bad[:3]}" if bbox_bad else ""))
     if STRICT:
         check({"scores", "finished"} <= strict_seen, f"строгая проверка 320×460 охватила «Счёт раунда» и «Итоги» ({N} телефонов): {sorted(x for x in strict_seen if x)}")
+    if STRICT:
+        check(not clip_bad, "списки на телефонах 320×460 не обрезают строки (последняя строка в окне, без внутренней прокрутки)" + (f" {clip_bad[:3]}" if clip_bad else ""))
     check(not overflow_bad, "ни телефоны, ни доска не прокручиваются вбок" + (f" {overflow_bad[:3]}" if overflow_bad else ""))
 
     # если доиграли до конца — сверяем очки доски и телефонов
