@@ -461,7 +461,7 @@
     document.querySelectorAll('[data-kick]').forEach((b) => (b.onclick = () => send({ type: 'kick', playerId: b.dataset.kick })));
     if ($('colorOpen')) $('colorOpen').onclick = () => { ui.colorOpen = true; redraw(true); };
     document.querySelectorAll('.sw').forEach((b) => (b.onclick = () => { ui.ci = Number(b.dataset.ci); ui.colorOpen = false; store.set('pond-color', String(ui.ci)); send({ type: 'hat', ci: ui.ci }); }));
-    const mkQr = () => { if (window.QRCode && $('qr') && !$('qr').children.length) new QRCode($('qr'), { text: url, width: 84, height: 84, colorDark: '#06222c', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M }); };
+    const mkQr = () => { if (window.QRCode && $('qr') && !$('qr').children.length) new QRCode($('qr'), { text: url, width: 176, height: 176, colorDark: '#06222c', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M }); };
     mkQr(); setTimeout(mkQr, 800);
   }
   function copyLink(url) {
