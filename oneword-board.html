@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#121f16">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f3eb.svg" type="image/svg+xml">
+<title>Сто к одному — общий экран</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="oneword-theme.css">
+<style>
+  /* oneword, общий экран — школьная доска мела: тема раунда мелом сверху, ответы встают считалками-пучками
+     |||| с диагональной пятой. Токены и компонент считалки — oneword-theme.css; тут раскладка экранов доски. */
+  :root {
+    --lang-switch-bg: var(--board2); --lang-switch-border: var(--line); --lang-switch-fg: var(--text);
+    --lang-switch-active-bg: var(--chalk); --lang-switch-active-fg: var(--ink); --lang-switch-active-border: var(--chalk);
+    --lang-switch-font: var(--body);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { color: var(--text); font: 500 20px/1.3 var(--body); overflow: hidden; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  :focus-visible { outline: 3px solid var(--chalk); outline-offset: 3px; }
+  .hidden { display: none !important; }
+  b, strong { font-weight: 800; }
+
+  /* верхняя плата — меловая плита во всю ширину: корпус доски начинается отсюда, а не только у панелей сцены */
+  .top { position: fixed; left: 0; right: 0; top: 0; z-index: 30; display: flex; align-items: center; gap: 16px; height: 64px; padding: 0 var(--lsw, 160px) 0 20px; border-bottom: 6px solid var(--bg); }
+  .brand { font: 700 26px/1 var(--display); letter-spacing: 0; }
+  .chip { flex: none; font: 800 20px/1 var(--body); padding: 8px 16px; background: var(--bg); color: var(--chalk-yellow); border: 2px solid var(--ink); border-radius: var(--r); letter-spacing: .1em; }
+  .grow { flex: 1; }
+  .hostctl { display: flex; align-items: center; gap: 10px; }
+  .hostctl button { height: 44px; border: 2px solid var(--ink); border-radius: var(--r); background: transparent; color: var(--ink); font: 700 16px/1 var(--body); padding: 0 14px; }
+  .hostctl button:hover { background: rgba(0, 0, 0, .08); }
+  .hostctl .note { font: 700 16px/1.2 var(--body); color: var(--ink); opacity: .7; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .endbtn { height: 44px; border: 2px solid var(--ink); border-radius: var(--r); background: transparent; color: var(--ink); padding: 0 16px; font: 800 16px/1 var(--body); }
+  .sound-toggle-btn { flex: none; height: 44px; width: 44px; border: 2px solid var(--ink); border-radius: var(--r); background: transparent; color: var(--ink); padding: 0; display: grid; place-items: center; font-size: 16px; }
+
+  main { position: fixed; left: 0; right: 0; top: 64px; bottom: 0; padding: 26px 40px 30px; overflow: auto; }
+  .scr { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; height: 100%; }
+
+  .meta { display: flex; justify-content: space-between; align-items: baseline; font: 800 16px/1 var(--body); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+  .meta b { font: 900 32px/1 var(--body); color: var(--chalk); font-variant-numeric: tabular-nums; }
+  .timer { flex: none; height: 16px; background: var(--board2); border: 2px solid var(--line); border-radius: var(--r); overflow: hidden; }
+  .timer i { display: block; height: 100%; background: var(--chalk); transform-origin: left; }
+  .timer.hot i { background: var(--hot); }
+  .topic { padding: 26px 32px; display: flex; flex-direction: column; gap: 14px; flex: none; }
+  .topictxt { font: 700 clamp(30px, 5.2vw, 58px)/1.18 var(--display); letter-spacing: 0; text-wrap: balance; }
+  /* подсказка — не просто цветной текст (жалоба владельца: "цвета простые"), а сплошная меловая плита */
+  .prompt { align-self: flex-start; background: var(--a); color: var(--a-ink); font: 800 18px/1 var(--body); text-transform: uppercase; letter-spacing: .08em; padding: 7px 14px; border-radius: var(--r); }
+  .progress { font: 700 22px/1.2 var(--body); color: var(--muted); }
+  .progress b { color: var(--text); font-weight: 900; }
+  .segdots { margin-top: 4px; }
+  .segdots i { width: 7px; height: 20px; }
+
+  .lobbywrap { display: flex; flex-direction: column; gap: 18px; flex: 1; min-height: 0; }
+  .boardrest { justify-content: center; padding: 10px 0 0; }
+  .boardrest .tslot { --sw: 72px; --sh: 86px; --stw: 58px; --sth: 22px; --sword: 12px; --scount: 13px; }
+  /* тот же ряд слотов-считалок, что в раскрытии, но пустых (пунктирная рамка) — стоит на месте будущих
+     кластеров уже во время ответа/угадывания, а не только в момент реального раскрытия. Снимает скачок
+     (DESIGNER-SKILL §4: итоговый размер слота резервируется с первой отрисовки) и держит "доску" на виду. */
+  .wordwrap { display: flex; flex-direction: column; gap: 18px; flex: 1; min-height: 0; }
+  .lobby { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(0, 1.3fr); gap: 30px; flex: 1; min-height: 0; }
+  .lobcard { padding: 26px 30px; display: flex; flex-direction: column; gap: 14px; }
+  .lobcard .eyebrow { font: 800 14px/1 var(--body); text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+  .bigcode { font: 900 clamp(32px, 5.2vw, 56px)/1.08 var(--body); letter-spacing: .02em; color: var(--chalk); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; word-break: break-word; max-width: 100%; }
+  .joinbox { display: flex; align-items: center; gap: 16px; }
+  #qr { flex: none; width: clamp(96px, 16vh, 150px); height: clamp(96px, 16vh, 150px); background: #fff; border-radius: var(--r); overflow: hidden; border: 4px solid var(--frame); }
+  #qr img, #qr canvas { width: 100% !important; height: 100% !important; display: block; image-rendering: pixelated; }
+  .joininfo { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .url { font: 600 18px/1.3 var(--body); color: var(--muted); overflow-wrap: anywhere; }
+  .scan { font: 600 15px/1.25 var(--body); color: var(--muted); }
+  .opts { display: flex; flex-direction: column; gap: 10px; }
+  .opt { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 16px; background: var(--board2); border-radius: var(--r); }
+  .opt b { font: 800 18px/1.1 var(--body); }
+  .stepper { display: flex; align-items: center; gap: 10px; }
+  .stepper button { width: 40px; height: 40px; border-radius: var(--r); border: 2px solid var(--chalk); background: transparent; color: var(--text); font: 900 20px/1 var(--body); }
+  .stepper .n { min-width: 2.4ch; text-align: center; font: 900 22px/1 var(--body); }
+  .start { border: 0; border-radius: var(--r); font: 700 26px/1 var(--display); letter-spacing: .01em; padding: 18px; color: var(--ink); background: var(--chalk); }
+  .start:not(:disabled):hover { background: var(--a); }
+  .hint { font: 700 18px/1.3 var(--body); color: var(--muted); min-height: 1.3em; }
+
+  .players { padding: 26px 30px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  .players-h { display: flex; justify-content: space-between; align-items: baseline; font: 800 14px/1 var(--body); text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+  .players-h b { font: 900 24px/1 var(--body); color: var(--text); }
+  .plist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; overflow: auto; }
+  .plist li { position: relative; display: flex; align-items: center; gap: 10px; background: var(--board2); border-left: 6px solid var(--pc, var(--chalk)); border-radius: var(--r); padding: 10px 14px; }
+  .plist li.off { opacity: .55; }
+  .av { width: 38px; height: 38px; flex: none; border-radius: 50%; background: var(--bg); border: 3px solid var(--pc, var(--line)); display: grid; place-items: center; font-size: 20px; font-style: normal; }
+  .plist li b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 800 18px/1.1 var(--body); }
+  .plist li .x { position: absolute; right: 8px; top: 50%; margin-top: -18px; width: 36px; height: 36px; border: 0; border-radius: var(--r); background: var(--bad); color: #1a0509; font: 900 16px/1 var(--body); display: none; }
+  body.host .plist li .x { display: block; opacity: 0; transition: opacity .15s; }
+  body.host .plist li:hover .x, body.host .plist li .x[data-armed] { opacity: 1; }
+  body.host .plist li .x[data-armed] { background: var(--chalk); color: var(--ink); font-size: 13px; }
+
+  /* размер слота — от числа слотов (--k считает slotScale() в JS, одна и та же функция для пустых рамок во время
+     ответа и для раскрытия): мало кластеров — крупные пучки и слова; --u урезает всё на низких/узких экранах */
+  .reveal-grid { --k: 1; --u: min(1px, .1111vh, .0625vw); flex: 1; min-height: 0; align-content: flex-start; justify-content: center; overflow: auto; gap: calc(18 * var(--u) * var(--k)); padding: 6px 2px; }
+  .reveal-grid .tslot { --sw: calc(150 * var(--u) * var(--k)); --sh: calc(220 * var(--u) * var(--k)); --stw: calc(130 * var(--u) * var(--k)); --sth: calc(80 * var(--u) * var(--k)); --sword: calc(20 * var(--u) * var(--k)); --scount: calc(24 * var(--u) * var(--k)); }
+  /* штрихи тоньше шага между ними: в крупном масштабе пучок читается как |||| с диагональю, а не как сплошной блок */
+  .reveal-grid .tslot svg.tally path { stroke-width: 3; }
+  .revealnames { font: 600 14px/1.25 var(--body); color: var(--muted); margin-top: 6px; max-width: 320px; }
+
+  /* мало игроков — строки не прилипают кучкой к верху над текстурой доски, а стоят по центру
+     отведённого места: то же правило §4 "никаких пустот", применённое к короткому списку, а не только к фазам */
+  /* строки растут на всю высоту сцены (flex 1 1 0, потолок --rowmax) и прижаты к плите сверху; шрифты и аватар
+     считаются от высоты самой строки (container query units), поэтому 2-3 игрока читаются крупно, 12 — компактно */
+  .sc-tab { --rowmax: 240px; flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; justify-content: flex-start; gap: 6px; }
+  .row { flex: 1 1 0; min-height: 32px; max-height: var(--rowmax); container-type: size; display: grid; grid-template-columns: 1.2em minmax(0, auto) minmax(0, 1fr) 2.6em 2.4em; align-items: center; gap: 18px; background: var(--board2); border: 2px solid var(--line); border-left: 8px solid var(--chalk); border-radius: var(--r); padding: 0 24px; }
+  .row .rk { text-align: center; font: 900 clamp(16px, 34cqh, 60px)/1 var(--body); color: var(--muted); }
+  .row .av { width: clamp(30px, 66cqh, 150px); height: clamp(30px, 66cqh, 150px); font-size: clamp(16px, 34cqh, 64px); }
+  .row .nm { font: 800 clamp(18px, 42cqh, 100px)/1.1 var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .dl { text-align: right; font: 800 clamp(16px, 34cqh, 60px)/1 var(--body); font-variant-numeric: tabular-nums; color: var(--ok); }
+  .row .dl.zero { color: var(--muted); }
+  .row .tot { text-align: right; font: 900 clamp(22px, 50cqh, 120px)/1 var(--body); font-variant-numeric: tabular-nums; }
+  .row.lead { border-left-color: var(--chalk-yellow); box-shadow: inset 0 0 0 2px var(--chalk-yellow); }
+
+  .fin { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; }
+  .fin .sc-tab { --rowmax: 160px; }
+  .fin .topic { flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 6px 24px; padding: 10px 32px; }
+  .fin .topic .hint { margin: 0; }
+  .fin h1 { margin: 0; font: 700 clamp(36px, 6vh, 56px)/1.1 var(--display); color: var(--chalk); }
+  .awards { display: flex; gap: 14px; flex-wrap: wrap; flex: none; }
+  .aw { flex: 1 1 340px; display: flex; align-items: center; gap: 20px; background: var(--board2); border-left: 8px solid var(--a); border-radius: var(--r); padding: clamp(8px, 1.4vh, 16px) 24px; }
+  .aw .rosette { width: clamp(44px, 6.4vh, 64px); height: clamp(44px, 6.4vh, 64px); border-radius: var(--r); background: var(--a); color: var(--a-ink); display: grid; place-items: center; font-size: clamp(22px, 3.4vh, 32px); flex: none; }
+  .aw b { display: block; font: 800 clamp(18px, 2.7vh, 26px)/1.15 var(--body); }
+  .aw span { font: 700 clamp(16px, 2.4vh, 24px)/1.2 var(--display); color: var(--chalk); }
+  .fbtn { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+
+  .full { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; }
+  .full h1 { font: 700 clamp(38px, 6.5vw, 64px)/1.15 var(--display); color: var(--chalk); margin: 0; }
+  .full p { font: 700 24px/1.3 var(--body); color: var(--muted); margin: 0; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+<script src="legacy-compat.js"></script>
+<script src="mp-common.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="sound-toggle.js" defer></script>
+</head>
+<body class="chalkboard">
+<div class="top plate">
+  <span class="brand" id="brand" data-i18n="game_name">Сто к одному</span>
+  <span class="chip hidden" id="codechip"></span>
+  <span class="grow"></span>
+  <span class="hostctl" id="hostctl"></span>
+  <button class="endbtn hidden" id="endbtn" type="button">■</button>
+  <button class="sound-toggle-btn" type="button"></button>
+</div>
+<main id="main"></main>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    game_name: `Сто к одному`,
+    code_label: `Код комнаты`, join_hint: `Заходите на randomhost.online/oneword.html`,
+    lobby_scan: `Наведи камеру телефона на QR или открой ссылку и введи имя.`,
+    rounds_label: `Раундов`, start_btn: `Поднять мел`, start_need: `Нужно хотя бы {n} человека`,
+    players_label: `Игроки`, host_link: `🔑 Ссылка ведущего`, host_take: `Я ведущий`, host_copied: `Скопировано`, host_shared: `Отправлено`, host_prompt: `Скопируй ссылку`,
+    topic_of: `Раунд {n} из {m}`, answered: `Ответили {n} из {m}`,
+    prompt_answer: `Пишут ответ одним словом`, prompt_popular: `Угадывают: что ответило БОЛЬШЕ ВСЕХ?`, prompt_rare: `Угадывают: что ответил ТОЛЬКО ОДИН?`,
+    reveal_title: `Раскрытие`, nobody: `Никто не ответил`, scores_title: `Счёт раунда`,
+    finished_title: `Итоги`, aw_popular: `Лучше всех угадывает популярное`, aw_rare: `Лучше всех находит редкое`,
+    lobby_btn: `В лобби`, again_btn: `Ещё партию`,
+    pause_title: `Ждём игроков`, pause_sub: `Нужно хотя бы {n} человека онлайн`,
+    final_host: `Ведущий закончил партию`, final_few: `Партия остановлена: слишком мало игроков`,
+    end_btn: `Закончить`, end_confirm: `Точно закончить?`,
+    kick_confirm: `Убрать?`,
+  },
+  en: {
+    game_name: `100 to 1`,
+    code_label: `Room code`, join_hint: `Go to randomhost.online/oneword.html`,
+    lobby_scan: `Point your phone camera at the QR or open the link and type your name.`,
+    rounds_label: `Rounds`, start_btn: `Pick up the chalk`, start_need: `Need at least {n} people`,
+    players_label: `Players`, host_link: `🔑 Host link`, host_take: `I'm the host`, host_copied: `Copied`, host_shared: `Shared`, host_prompt: `Copy the link`,
+    topic_of: `Round {n} of {m}`, answered: `{n} of {m} answered`,
+    prompt_answer: `Writing a one-word answer`, prompt_popular: `Guessing: what did MOST people answer?`, prompt_rare: `Guessing: what did only ONE person answer?`,
+    reveal_title: `Reveal`, nobody: `Nobody answered`, scores_title: `Round score`,
+    finished_title: `Results`, aw_popular: `Best at guessing the popular one`, aw_rare: `Best at finding the rare one`,
+    lobby_btn: `To lobby`, again_btn: `Play again`,
+    pause_title: `Waiting for players`, pause_sub: `At least {n} people must be online`,
+    final_host: `The host ended the game`, final_few: `The game was stopped: too few players`,
+    end_btn: `End`, end_confirm: `End for real?`,
+    kick_confirm: `Remove?`,
+  },
+  el: {
+    game_name: `100 προς 1`,
+    code_label: `Κωδικός δωματίου`, join_hint: `Πήγαινε στο randomhost.online/oneword.html`,
+    lobby_scan: `Στρέψε την κάμερα του κινητού στο QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.`,
+    rounds_label: `Γύροι`, start_btn: `Πάρε την κιμωλία`, start_need: `Χρειάζονται τουλάχιστον {n} άτομα`,
+    players_label: `Παίκτες`, host_link: `🔑 Σύνδεσμος οικοδεσπότη`, host_take: `Είμαι ο οικοδεσπότης`, host_copied: `Αντιγράφηκε`, host_shared: `Στάλθηκε`, host_prompt: `Αντιγράψτε τον σύνδεσμο`,
+    topic_of: `Γύρος {n} από {m}`, answered: `Απάντησαν {n} από {m}`,
+    prompt_answer: `Γράφουν απάντηση με μία λέξη`, prompt_popular: `Μαντεύουν: τι απάντησαν ΟΙ ΠΕΡΙΣΣΟΤΕΡΟΙ;`, prompt_rare: `Μαντεύουν: τι απάντησε μόνο ΕΝΑ άτομο;`,
+    reveal_title: `Αποκάλυψη`, nobody: `Κανείς δεν απάντησε`, scores_title: `Πόντοι γύρου`,
+    finished_title: `Αποτελέσματα`, aw_popular: `Καλύτερος στη δημοφιλή`, aw_rare: `Καλύτερος στη σπάνια`,
+    lobby_btn: `Στο λόμπι`, again_btn: `Ξανά`,
+    pause_title: `Περιμένουμε παίκτες`, pause_sub: `Χρειάζονται τουλάχιστον {n} άτομα online`,
+    final_host: `Ο οικοδεσπότης τερμάτισε την παρτίδα`, final_few: `Η παρτίδα σταμάτησε: πολύ λίγοι παίκτες`,
+    end_btn: `Λήξη`, end_confirm: `Σίγουρα λήξη;`,
+    kick_confirm: `Αφαίρεση;`,
+  },
+};
+</script>
+<script src="i18n.js"></script>
+<script>
+"use strict";
+function escapeHtml(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function T(key) { if (window.I18N && I18N.t) return I18N.t(key); const d = (window.I18N_DICT || {}).ru || {}; return key in d ? d[key] : key; }
+function tpl(key, vars) { return String(T(key)).replace(/\{(\w+)\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m)); }
+
+// ---------- звуки: тот же беcфайловый синтез, что в oneword.html/crowd-shared.js (sound-toggle.js глушит общий выход) ----------
+const wvSfx = (function () {
+  let ctx = null;
+  function ac() {
+    if (ctx) { if (ctx.state === "suspended") ctx.resume().catch(() => {}); return ctx; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    try { ctx = new AC(); } catch (e) { return null; }
+    return ctx;
+  }
+  ["pointerdown", "keydown"].forEach((t) => window.addEventListener(t, () => ac(), { passive: true, capture: true }));
+  function env(g, t, a, d, v) {
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(v, t + a);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);
+  }
+  function tone(f0, f1, at, dur, type, vol) {
+    const c = ac(); if (!c || c.state !== "running") return;
+    const t = c.currentTime + at;
+    const o = c.createOscillator(); o.type = type || "sine";
+    o.frequency.setValueAtTime(f0, t);
+    if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    const g = c.createGain(); o.connect(g); g.connect(c.destination); env(g, t, 0.004, dur, vol);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+  return {
+    chord() { [392, 494, 587].forEach((f, i) => tone(f, f, i * 0.04, 0.4, "triangle", 0.1)); },
+    pop() { tone(300, 900, 0, 0.14, "triangle", 0.2); tone(900, 450, 0.12, 0.24, "triangle", 0.14); },
+    fanfare() { [523, 659, 784, 1046, 784, 1046].forEach((f, i) => tone(f, f, i * 0.1, 0.18, "triangle", 0.16)); },
+    // короткий стук мелка по доске — один пучок дорисован
+    tick() { tone(2200, 1500, 0, 0.025, "square", 0.045); },
+  };
+})();
+
+const params = new URLSearchParams(location.search);
+const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const hostKey = () => "oneword-host-" + CODE;
+{
+  const h = params.get("h");
+  if (h && CODE) { try { localStorage.setItem(hostKey(), h); } catch (e) {} history.replaceState(null, "", "?r=" + CODE); }
+}
+
+// ---------- транспорт (копия логики oneword.html, свой экземпляр) ----------
+let wsBroken = false;
+function openTransport({ code, onMessage, onClose, onOpen, onSendFail, onGone, onQuiet }) {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  let closed = false, opened = false, sid = null, ws = null, polling = false, pollAbort = null;
+  let beat = null, mpConn = null, inGame = false;
+  const stopBeat = () => { if (beat) { clearInterval(beat); beat = null; } if (mpConn) { mpConn.stop(); mpConn = null; } };
+  const fireClose = () => {
+    if (closed) return;
+    stopBeat(); closed = true;
+    try { if (ws) ws.close(); } catch (e) {}
+    try { if (pollAbort) pollAbort.abort(); } catch (e) {}
+    sid = null;
+    if (onClose) onClose();
+  };
+  const ping = () => api.send({ type: "ping", c: Date.now() });
+  const deliver = (m) => {
+    if (closed) return;
+    if (m && m.type === "hello" && window.MP && MP.applyHello) MP.applyHello(m);
+    if (mpConn) mpConn.seen(Date.now());
+    if (m && (m.type === "state" || m.type === "hello") && m.state) inGame = !!m.state.phase && m.state.phase !== "lobby" && m.state.phase !== "finished";
+    onMessage(m);
+  };
+  const startBeat = () => {
+    stopBeat();
+    ping();
+    if (window.MP && typeof MP.conn === "function" && !MP.off) {
+      mpConn = MP.conn({
+        ping: () => { if (!closed) ping(); },
+        inGame: () => inGame,
+        onOffline: () => { if (onQuiet) onQuiet(true); },
+        onOnline: () => { if (onQuiet) onQuiet(false); },
+        onDead: () => fireClose(),
+      });
+      mpConn.start();
+      return;
+    }
+    beat = setInterval(ping, 8000);
+  };
+  const api = {
+    send(msg, attempt) {
+      if (closed) { if (onSendFail && msg && msg.type !== "ping") onSendFail(msg); return; }
+      if (ws && ws.readyState === 1) return ws.send(JSON.stringify(msg));
+      if (!sid) { if (onSendFail && msg && msg.type !== "ping") onSendFail(msg); return; }
+      const tries = attempt || 0;
+      fetch("/oneword/api/msg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid, msg }) })
+        .then((r) => { if (r.ok || r.status === 410) return; if (tries < 2) setTimeout(() => api.send(msg, tries + 1), 400 * (tries + 1)); else if (onSendFail) onSendFail(msg); })
+        .catch(() => { if (tries < 2) setTimeout(() => api.send(msg, tries + 1), 400 * (tries + 1)); else if (onSendFail) onSendFail(msg); });
+    },
+    close() { closed = true; stopBeat(); try { if (ws) ws.close(); } catch (e) {} try { if (pollAbort) pollAbort.abort(); } catch (e) {} sid = null; },
+    visible() { if (mpConn) mpConn.visible(Date.now()); },
+    probe(ms) { if (closed || !opened) return; ping(); },
+    get mode() { if (closed) return "none"; if (ws && ws.readyState === 1) return "ws"; if (ws && ws.readyState === 0) return "connecting"; if (sid) return "poll"; if (polling) return "connecting"; return "none"; },
+  };
+  const timedFetch = (url, ms) => {
+    const ctl = typeof AbortController === "function" ? new AbortController() : null;
+    pollAbort = ctl;
+    const t = ctl ? setTimeout(() => ctl.abort(), ms) : null;
+    return fetch(url, ctl ? { signal: ctl.signal } : undefined).finally(() => clearTimeout(t));
+  };
+  async function startPolling() {
+    if (closed || polling) return;
+    polling = true;
+    try {
+      const res = await timedFetch(`/oneword/api/session?r=${encodeURIComponent(code)}`, 15000);
+      if (res.status === 404 && onGone) { closed = true; stopBeat(); polling = false; onGone(); return; }
+      if (!res.ok) throw new Error("session " + res.status);
+      const data = await res.json();
+      if (closed) return;
+      sid = data.sid; opened = true; startBeat(); if (onOpen) onOpen();
+      for (const m of data.messages) deliver(m);
+      while (!closed && sid) {
+        const r = await timedFetch(`/oneword/api/poll?sid=${sid}`, 28000);
+        if (r.status === 410) throw new Error("session gone");
+        if (!r.ok) { await new Promise((z) => setTimeout(z, 1500)); continue; }
+        const body = await r.json();
+        for (const m of body.messages) deliver(m);
+      }
+    } catch (e) { if (!closed) { sid = null; polling = false; fireClose(); } }
+  }
+  if (wsBroken || typeof WebSocket !== "function") { startPolling(); return api; }
+  try {
+    ws = new WebSocket(`${proto}://${location.host}/oneword/ws?r=${encodeURIComponent(code)}`);
+    const handshake = setTimeout(() => {
+      if (closed || opened || !ws || ws.readyState !== 0) return;
+      wsBroken = true;
+      const d = ws; ws = null;
+      d.onclose = d.onmessage = d.onopen = null;
+      try { d.close(); } catch (e) {}
+      startPolling();
+    }, 5000);
+    ws.onopen = () => { clearTimeout(handshake); opened = true; startBeat(); if (onOpen) onOpen(); };
+    ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch (err) { return; } deliver(m); };
+    ws.onclose = () => { clearTimeout(handshake); if (closed) return; if (!opened) { ws = null; startPolling(); } else fireClose(); };
+    ws.onerror = () => {};
+  } catch (e) { startPolling(); }
+  return api;
+}
+function connect({ code, onMessage, onOpen, onGone, onState, onQuiet }) {
+  let t = null, delay = 500, stopped = false;
+  const holder = { api: null, send(m) { if (holder.api) holder.api.send(m); }, stop() { stopped = true; clearTimeout(t); if (holder.api) holder.api.close(); } };
+  const open = () => {
+    if (stopped) return;
+    if (onState) onState("connecting");
+    holder.api = openTransport({
+      code, onMessage, onQuiet,
+      onOpen: () => { delay = 500; if (onState) onState("open"); if (onOpen) onOpen(); },
+      onClose: () => { if (stopped) return; if (onState) onState("lost"); t = setTimeout(open, delay); delay = Math.min(delay * 2, 8000); },
+      onGone: () => { stopped = true; if (onGone) onGone(); },
+    });
+  };
+  open();
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && holder.api) { holder.api.visible(); holder.api.probe(); } });
+  window.addEventListener("online", () => { if (holder.api) holder.api.probe(); });
+  return holder;
+}
+
+// ---------- состояние ----------
+const main = document.getElementById("main");
+let conn = null, state = null, isHost = false, dead = false;
+let viewKey = "";
+const player = (id) => state && state.players.find((p) => p.id === id);
+const avHtml = (p) => `<i class="av" style="--pc:${p.color}">${escapeHtml(p.avatar)}</i>`;
+
+window.owBoard = { state: () => state, send: (m) => conn && conn.send(m) };
+
+// ---------- считалка-пучок: четыре палочки + диагональная пятая, следующий пучок рядом ----------
+// viewBox фиксирован на максимум вместимости комнаты (12 игроков = 3 пучка), чтобы графика считалки
+// не меняла размер слота от раунда к раунду (DESIGNER-SKILL §4) — пучки рисуются только до нужного count.
+const CHALK_CYCLE = ["var(--chalk)", "var(--chalk-yellow)", "var(--chalk-pink)", "var(--chalk-blue)"];
+function tallySVG(count, stepMs) {
+  const step = stepMs || 70;
+  let left = Math.max(0, count | 0), stroke = 0, paths = [];
+  for (let bi = 0; left > 0; bi++) {
+    const n = Math.min(5, left);
+    left -= n;
+    const ox = 4 + bi * 24;
+    for (let v = 0; v < Math.min(n, 4); v++) {
+      const x = ox + v * 5;
+      paths.push(`<path pathLength="1" style="--sd:${stroke * step}ms" d="M${x} 4 L${x} 26"></path>`);
+      stroke++;
+    }
+    if (n === 5) {
+      paths.push(`<path pathLength="1" style="--sd:${stroke * step}ms" d="M${ox - 2} 25 L${ox + 17} 5"></path>`);
+      stroke++;
+    }
+  }
+  // viewBox обрезан по содержимому (иначе одна палочка прилипает к левому краю бокса, а подпись по центру)
+  const total = Math.max(0, count | 0), nb = Math.ceil(total / 5), lastN = total - (nb - 1) * 5;
+  const right = total ? 4 + (nb - 1) * 24 + (lastN === 5 ? 20 : (lastN - 1) * 5 + 3) + 1 : 80;
+  return `<svg class="tally" viewBox="0 0 ${right} 30" aria-hidden="true">${paths.join("")}</svg>`;
+}
+function tallySlotHtml(word, count, colorIdx, revealed, extra) {
+  const color = CHALK_CYCLE[(colorIdx || 0) % CHALK_CYCLE.length];
+  return `<div class="tslot${revealed ? " revealed" : ""}" style="--chalk-c:${color}"${extra || ""}>
+    <div class="trest"></div>${tallySVG(count || 0)}
+    <b class="tword">${escapeHtml(word || "")}</b><em class="tcount">${count || ""}</em></div>`;
+}
+function emptySlotHtml() { return `<div class="tslot" aria-hidden="true"><div class="trest"></div>${tallySVG(0)}<b class="tword"></b><em class="tcount"></em></div>`; }
+
+const HL = window.MP && MP.hostLink ? MP.hostLink({
+  hostKeyFn: hostKey,
+  boardPath: "oneword-board.html",
+  getRoom: () => CODE,
+  sendHost: (t) => { if (conn) conn.send({ type: "host", token: t }); },
+  onToast: (kind) => { setHostNote(kind === "copied" ? T("host_copied") : kind === "shared" ? T("host_shared") : kind === "prompt" ? T("host_prompt") : ""); },
+}) : null;
+function setHostNote(text) {
+  const n = document.querySelector("#hostctl .note");
+  if (n) { n.textContent = text; clearTimeout(setHostNote.t); setHostNote.t = setTimeout(() => { if (n) n.textContent = ""; }, 2600); }
+}
+const kickTap = window.MP && MP.twoTap && MP.twoTap.create ? MP.twoTap.create({ armedMs: 3000, onChange: () => render(true) }) : null;
+const endTap = window.MP && MP.twoTap ? null : null;
+
+function renderHostCtl() {
+  const el = document.getElementById("hostctl");
+  const endbtn = document.getElementById("endbtn");
+  if (!isHost) { el.innerHTML = HL ? `<button id="takebtn" type="button">${escapeHtml(T("host_take"))}</button>` : ""; endbtn.classList.add("hidden"); if (document.getElementById("takebtn")) document.getElementById("takebtn").onclick = () => HL.take(Date.now()); return; }
+  el.innerHTML = `<button id="linkbtn" type="button">${escapeHtml(T("host_link"))}</button><span class="note"></span>`;
+  if (document.getElementById("linkbtn")) document.getElementById("linkbtn").onclick = () => HL && HL.copy();
+  endbtn.classList.remove("hidden");
+  endbtn.textContent = T("end_btn");
+  if (window.MP && MP.twoTap) {
+    if (endbtn.__tt) endbtn.__tt.destroy();
+    endbtn.__tt = MP.twoTap(endbtn, { armedMs: 3000, label: T("end_btn"), armedLabel: T("end_confirm"), onConfirm: () => conn.send({ type: "end" }) });
+  } else {
+    endbtn.onclick = () => conn.send({ type: "end" });
+  }
+}
+
+function timerHtml() { return `<div class="timer" id="timer"><i></i></div>`; }
+function nowServer() { return (state && state.serverNow) || Date.now(); }
+function patchTimer() {
+  const bar = document.getElementById("timer");
+  if (!bar || !state || state.phaseStart == null || state.phaseEnd == null) return;
+  const total = Math.max(1, state.phaseEnd - state.phaseStart);
+  const left = Math.max(0, state.phaseEnd - nowServer());
+  const frac = Math.max(0, Math.min(1, left / total));
+  const i = bar.querySelector("i");
+  if (i) i.style.transform = "scaleX(" + frac + ")";
+  bar.classList.toggle("hot", left < 5000);
+}
+setInterval(patchTimer, 250);
+
+let qrDrawn = "";
+// слоты-считалки в покое — мир без будущего раунда: пустые пунктирные рамки в фиксированном числе,
+// ничего не резервируем под контент, который ещё не существует
+const REST_TILES = 10;
+// масштаб слота по числу слотов: одна функция для пустых рамок (ответ/угадывание, n = число игроков в раунде)
+// и для раскрытия (n = число кластеров) — при одинаковом n размер одинаковый
+function slotScale(n) {
+  return n <= 1 ? 2.6 : n === 2 ? 2.6 : n === 3 ? 2.3 : n === 4 ? 1.75 : n === 5 ? 1.45 : n === 6 ? 1.3 : n <= 8 ? 1.15 : 1;
+}
+function restSlatsHtml() {
+  return `<div class="slats boardrest" aria-hidden="true">${Array.from({ length: REST_TILES }, emptySlotHtml).join("")}</div>`;
+}
+function renderLobby() {
+  const list = state.players.filter((x) => !x.left);
+  const rounds = state.settings.rounds;
+  const need = Math.max(0, state.minPlayers - list.length);
+  const url = `${location.origin}/oneword.html?r=${CODE}`;
+  const fresh = show(`<div class="scr lobbywrap">
+    ${restSlatsHtml()}
+    <div class="lobby">
+    <div class="lobcard cabinet">
+      <div class="eyebrow">${escapeHtml(T("code_label"))}</div>
+      <div class="bigcode">${escapeHtml(CODE)}</div>
+      <div class="joinbox"><div id="qr"></div><div class="joininfo"><div class="url">${escapeHtml(url.replace(/^https?:\/\//, "")).replace("?r=", "<wbr>?r=")}</div><div class="scan">${escapeHtml(T("lobby_scan"))}</div></div></div>
+      <div class="opts"><div class="opt"><b>${escapeHtml(T("rounds_label"))}</b><div class="stepper"><button id="rm" type="button">−</button><span class="n" id="rn">${rounds}</span><button id="rp" type="button">+</button></div></div></div>
+      <button class="start" id="startbtn" type="button"${isHost ? "" : " disabled"}>${escapeHtml(T("start_btn"))}</button>
+      <div class="hint" id="hint"></div>
+    </div>
+    <div class="players cabinet">
+      <div class="players-h"><span>${escapeHtml(T("players_label"))}</span><b>${list.length} / 12</b></div>
+      <ul class="plist" id="plist"></ul>
+    </div></div></div>`, "lobby:" + list.map((p) => p.id + p.online + p.avatar).join(",") + ":" + rounds + ":" + isHost);
+  if (fresh) qrDrawn = "";
+  if (qrDrawn !== CODE && window.QRCode) {
+    qrDrawn = CODE;
+    const qr = document.getElementById("qr");
+    qr.replaceChildren();
+    new QRCode(qr, { text: url, width: 150, height: 150, colorDark: "#0a0a0f", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+  }
+  document.getElementById("hint").textContent = need ? tpl("start_need", { n: state.minPlayers }) : "";
+  document.getElementById("startbtn").disabled = !isHost || need > 0;
+  const ul = document.getElementById("plist");
+  ul.innerHTML = list.map((p) => `<li class="${p.online ? "" : "off"}" style="--pc:${p.color}">${avHtml(p)}<b>${escapeHtml(p.name)}</b><button class="x" data-id="${p.id}" type="button">${kickTap && kickTap.isArmed(p.id) ? T("kick_confirm") : "✕"}</button></li>`).join("");
+  if (isHost) {
+    ul.querySelectorAll(".x").forEach((b) => {
+      if (kickTap && kickTap.isArmed(b.dataset.id)) b.setAttribute("data-armed", "1");
+      b.onclick = (ev) => {
+        ev.stopPropagation();
+        if (kickTap) { if (kickTap.tap(b.dataset.id)) conn.send({ type: "kick", playerId: b.dataset.id }); }
+        else conn.send({ type: "kick", playerId: b.dataset.id });
+      };
+    });
+    document.getElementById("rm").onclick = () => conn.send({ type: "settings", settings: { rounds: Math.max(4, rounds - 1) } });
+    document.getElementById("rp").onclick = () => conn.send({ type: "settings", settings: { rounds: Math.min(16, rounds + 1) } });
+    document.getElementById("startbtn").onclick = () => conn.send({ type: "start" });
+  } else {
+    document.getElementById("rm").disabled = document.getElementById("rp").disabled = true;
+  }
+}
+
+const PROMPT_KEY = { answer: "prompt_answer", guessPopular: "prompt_popular", guessRare: "prompt_rare" };
+function renderWordPhase() {
+  const r = state.round;
+  const confirmed = (r.confirmed[state.phase] || []).length;
+  const voters = (r.voters || []).length;
+  // пустые слоты-считалки стоят здесь уже сейчас, в точности в той же сетке, что и после раскрытия —
+  // bounding box сцены не прыгает между "ответ/угадывание" и "раскрытие" (DESIGNER-SKILL §4)
+  const restCount = Math.max(voters, 1);
+  const restTiles = Array.from({ length: restCount }, emptySlotHtml).join("");
+  const html = `<div class="scr wordwrap">
+    <div class="topic cabinet">
+      <div class="meta"><span>${escapeHtml(tpl("topic_of", { n: r.num, m: state.total }))}</span><b id="tsec"></b></div>
+      ${timerHtml()}
+      <div class="topictxt">${escapeHtml(r.topic.topic)}</div>
+      <div class="prompt">${escapeHtml(T(PROMPT_KEY[state.phase]))}</div>
+      <div class="progress" id="prog"></div>
+      <div class="segdots" id="segdots" aria-hidden="true"></div>
+    </div>
+    <div class="slats reveal-grid" id="wordRest" aria-hidden="true" style="--k:${slotScale(restCount)}">${restTiles}</div></div>`;
+  // новая тема раунда — короткий аккорд (только на первой фазе, не на каждом угадывании)
+  if (show(html, state.phase + ":" + r.num) && state.phase === "answer") wvSfx.chord();
+  document.getElementById("prog").innerHTML = escapeHtml(tpl("answered", { n: "\u0001", m: voters })).replace("\u0001", `<b>${confirmed}</b>`);
+  document.getElementById("segdots").innerHTML = Array.from({ length: voters }, (_, i) => `<i class="${i < confirmed ? "on" : ""}"></i>`).join("");
+  patchTimer();
+}
+
+// считалки раскрытия: слоты стоят в порядке кластеров (устойчиво по макету), но мел дорисовывается
+// в порядке round.order (сервер, §7 спеки: случайный порядок раскрытия от seed раунда) — так макет не прыгает,
+// а зрелище всё равно идёт вразнобой, не по величине кластера. Цвет мелка циклится по позиции в макете,
+// не по величине кластера — так соседние пучки разного цвета, не градиент по значимости.
+function renderReveal() {
+  const r = state.round;
+  const clusters = r.clusters;
+  const order = (r.order && r.order.length ? r.order : clusters.map((c) => c.key))
+    .map((key) => clusters.findIndex((c) => c.key === key)).filter((i) => i >= 0);
+  const slots = clusters.map((c, i) => {
+    const names = c.players.map((id) => (player(id) || {}).name || "?").join(", ");
+    return tallySlotHtml(c.sample, c.count, i, false, ` data-idx="${i}" title="${escapeHtml(names)}"`);
+  }).join("");
+  const html = `<div class="scr wordwrap">
+    <div class="topic cabinet">
+      <div class="meta"><span>${escapeHtml(T("reveal_title"))} · ${escapeHtml(tpl("topic_of", { n: r.num, m: state.total }))}</span></div>
+      <div class="topictxt" style="font-size:clamp(20px,3vw,32px)">${escapeHtml(r.topic.topic)}</div>
+    </div>
+    ${clusters.length ? `<div class="slats reveal-grid" id="revealGrid" style="--k:${slotScale(clusters.length)}">${slots}</div>` : `<div class="full"><h1>${escapeHtml(T("nobody"))}</h1></div>`}</div>`;
+  if (show(html, "reveal:" + r.num, true)) {
+    wvSfx.pop();
+    const grid = document.getElementById("revealGrid");
+    order.forEach((idx, step) => {
+      setTimeout(() => {
+        const el = grid && grid.querySelector(`.tslot[data-idx="${idx}"]`);
+        if (el) { el.classList.add("revealed"); wvSfx.tick(); }
+      }, 500 + step * 480);
+    });
+  }
+}
+
+function renderScores() {
+  const r = state.round;
+  const ranked = window.MP && MP.rank ? MP.rank(state.players, { score: "score" }).list : state.players.slice().sort((a, b) => b.score - a.score);
+  const topScore = Math.max(0, ...ranked.map((e) => (e.player || e).score));
+  const rows = ranked.map((e, i) => {
+    const p = e.player || e;
+    const delta = (r.popularPts[p.id] || 0) + (r.rarePts[p.id] || 0);
+    return `<div class="row${p.score > 0 && p.score === topScore ? " lead" : ""}"><span class="rk">${e.place || ""}</span>${avHtml(p)}<span class="nm">${escapeHtml(p.name)}</span><span class="dl ${delta ? "" : "zero"}">+${delta}</span><span class="tot">${p.score}</span></div>`;
+  }).join("");
+  const html = `<div class="scr wordwrap">
+    <div class="topic cabinet">
+      <div class="meta"><span>${escapeHtml(T("scores_title"))} · ${escapeHtml(tpl("topic_of", { n: r.num, m: state.total }))}</span></div>
+    </div>
+    <div class="sc-tab">${rows}</div></div>`;
+  show(html, "scores:" + r.num, true);
+}
+
+function renderPause() {
+  show(`<div class="full"><h1>${escapeHtml(T("pause_title"))}</h1><p>${escapeHtml(tpl("pause_sub", { n: state.minPlayers }))}</p></div>`, "pause", true);
+}
+
+function renderFinished() {
+  const ranked = window.MP && MP.rank ? MP.rank(state.players, { score: "score" }).list : state.players.slice().sort((a, b) => b.score - a.score);
+  const topScore = Math.max(0, ...ranked.map((e) => (e.player || e).score));
+  const rows = ranked.map((e, i) => {
+    const p = e.player || e;
+    return `<div class="row${p.score > 0 && p.score === topScore ? " lead" : ""}"><span class="rk">${e.place || ""}</span>${avHtml(p)}<span class="nm">${escapeHtml(p.name)}</span><span></span><span class="tot">${p.score}</span></div>`;
+  }).join("");
+  const nameOf = (id) => (player(id) || {}).name || "?";
+  const awards = state.awards || {};
+  const awardsHtml = [
+    awards.popular ? `<div class="aw"><span class="rosette">🏆</span><div><b>${escapeHtml(T("aw_popular"))}</b><span>${escapeHtml(awards.popular.ids.map(nameOf).join(", "))}</span></div></div>` : "",
+    awards.rare ? `<div class="aw"><span class="rosette">🔎</span><div><b>${escapeHtml(T("aw_rare"))}</b><span>${escapeHtml(awards.rare.ids.map(nameOf).join(", "))}</span></div></div>` : "",
+  ].join("");
+  const reasonTxt = state.finishedReason === "host" ? T("final_host") : state.finishedReason === "few" || state.finishedReason === "paused" ? T("final_few") : "";
+  const html = `<div class="scr fin">
+    <div class="topic cabinet">
+      <h1>${escapeHtml(T("finished_title"))}</h1>
+      ${reasonTxt ? `<p class="hint">${escapeHtml(reasonTxt)}</p>` : ""}
+    </div>
+    <div class="awards">${awardsHtml}</div>
+    <div class="sc-tab">${rows}</div>
+    <div class="fbtn">${isHost ? `<button class="start" id="lobbybtn" type="button">${escapeHtml(T("lobby_btn"))}</button>` : ""}</div></div>`;
+  if (show(html, "finished:" + state.game, true) && state.finishedReason !== "few" && state.finishedReason !== "paused") wvSfx.fanfare();
+  if (isHost) document.getElementById("lobbybtn").onclick = () => conn.send({ type: "lobby" });
+}
+
+function show(html, key, skipAnim) {
+  if (key === viewKey) return false;
+  viewKey = key;
+  main.innerHTML = html;
+  return true;
+}
+
+function render(force) {
+  if (force) viewKey = "";
+  document.body.classList.toggle("host", isHost);
+  document.getElementById("codechip").classList.toggle("hidden", !CODE);
+  document.getElementById("codechip").textContent = CODE;
+  renderHostCtl();
+  if (dead || !state) { show(`<div class="full"><h1>…</h1></div>`, "wait", true); return; }
+  switch (state.phase) {
+    case "lobby": return renderLobby();
+    case "answer": case "guessPopular": case "guessRare": return renderWordPhase();
+    case "reveal": return renderReveal();
+    case "scores": return renderScores();
+    case "pause": return renderPause();
+    case "finished": return renderFinished();
+    default: return renderLobby();
+  }
+}
+
+function handleMessage(m) {
+  if (!m || typeof m !== "object") return;
+  switch (m.type) {
+    case "hello":
+      state = m.state;
+      if (!isHost) { let t = null; try { t = localStorage.getItem(hostKey()); } catch (e) {} if (t) conn.send({ type: "host", token: t }); }
+      render();
+      return;
+    case "state":
+      state = m.state;
+      render();
+      return;
+    case "host_ok":
+      isHost = true;
+      render(true);
+      return;
+    case "host_lost":
+      isHost = false;
+      render(true);
+      return;
+    case "error":
+      if (m.error === "bad host token") { try { localStorage.removeItem(hostKey()); } catch (e) {} }
+      if (m.error === "room_expired") { dead = true; render(); }
+      return;
+    case "room_expired":
+      dead = true;
+      render();
+      return;
+    default:
+      return;
+  }
+}
+
+conn = connect({
+  code: CODE,
+  onMessage: handleMessage,
+  onGone: () => { dead = true; render(); },
+});
+render();
+</script>
+</body>
+</html>

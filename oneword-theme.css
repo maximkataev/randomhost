@@ -1,0 +1,100 @@
+/* oneword («Сто к одному») — классная доска с мелом: тема раунда написана наверху, каждый уникальный ответ
+   получает пучок «палочек» (считалка |||| + диагональная зачёркивающая пятую), как считают голоса на перекличке.
+   Отличие от уток/пингвинов/выборов (Comfortaa+золото на тёмном) и от crowd (чёрный+жёлто-синие плиты+Inter Tight):
+   тёмно-зелёная доска мела (не чёрная, не петроль прежней версии), меловой почерк Kalam для заголовков и слов,
+   флэт-шум доски вместо латунных плашек-флипборда. Плоско: без градиентов, стекла, свечения — только статичный
+   SVG-шум и твёрдые полосы линовки как текстура мела, никакого blur/glow.
+   Доска и телефон подключают этот файл и рисуют свои компоненты (считалки-пучки, деревянная рамка). */
+@import url("https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Barlow:wght@500;600;700;800&display=swap");
+
+:root {
+  color-scheme: dark;
+  --bg: #121f16;           /* стена класса за доской — почти чёрный зелёный */
+  --board: #22392a;        /* сама доска мела — классический грифельно-зелёный, не чёрный и не прежний петроль */
+  --board2: #2b4432;       /* вложенная/активная зона на доске */
+  --frame: #5a4229;        /* деревянная рамка доски, плоский коричневый */
+  --frame-ink: #3a2c1a;    /* нижняя кромка рамки — тоже плоский цвет, не тень */
+  --chalk: #f2efe2;        /* белый мел — основной текст и палочки по умолчанию */
+  --chalk-yellow: #efc94c; /* мелок жёлтый — "самое популярное" */
+  --chalk-pink: #e39fbb;   /* мелок розовый — третий цвет кластера */
+  --chalk-blue: #8bc3e6;   /* мелок голубой — "самое редкое" / четвёртый цвет кластера */
+  --ink: #16241b;          /* тёмный текст на меловой плите-чипе */
+  --text: #ece7d7;         /* тёплый меловой почти-белый для обычного текста */
+  --muted: rgba(236, 231, 215, .6);
+  --line: rgba(236, 231, 215, .26);
+  --a: var(--chalk-yellow); /* популярное: активные элементы, подсказка-плита */
+  --a-ink: var(--ink);
+  --b: var(--chalk-blue);   /* редкое: второй акцент */
+  --b-ink: var(--ink);
+  --hot: #e2653c;          /* мелок красно-оранжевый: тревога таймера */
+  --ok: #8bd68f;
+  --bad: #e25a3c;
+  --display: "Kalam", "Comic Sans MS", cursive; /* меловой почерк — заголовки, тема, слова на доске */
+  --body: "Barlow", "Helvetica Neue", Arial, sans-serif; /* обычный гротеск — мелкий интерфейс, цифры */
+  --r: 7px;
+}
+
+html { background: var(--bg); touch-action: manipulation; }
+
+/* ---------- текстура доски: статичный флэт-шум (SVG feTurbulence) + твёрдая линовка ----------
+   Это и есть лечение «пусто/просто» — даже доска с парой пучков читается как конкретный физический
+   предмет, не большое пустое цветовое поле. Никакого blur/glow: шум статичный, линии жёсткие полосы. */
+.chalkboard {
+  position: relative;
+  background-color: var(--board);
+  background-image:
+    repeating-linear-gradient(to bottom, rgba(236, 231, 215, .05) 0, rgba(236, 231, 215, .05) 1px, transparent 1px, transparent 34px),
+    url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxNDAnIGhlaWdodD0nMTQwJz48ZmlsdGVyIGlkPSduJz48ZmVUdXJidWxlbmNlIHR5cGU9J2ZyYWN0YWxOb2lzZScgYmFzZUZyZXF1ZW5jeT0nMC44JyBudW1PY3RhdmVzPScyJyBzdGl0Y2hUaWxlcz0nc3RpdGNoJyByZXN1bHQ9J3QnLz48ZmVDb2xvck1hdHJpeCBpbj0ndCcgdHlwZT0nbWF0cml4JyB2YWx1ZXM9JzAgMCAwIDAgMSAgMCAwIDAgMCAxICAwIDAgMCAwIDEgIDAgMCAwIDAuMDYgMCcvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPScxMDAlJyBoZWlnaHQ9JzEwMCUnIGZpbHRlcj0ndXJsKCNuKScvPjwvc3ZnPgo=");
+  background-size: auto, 140px 140px;
+}
+/* пара меловых затёртых пятен-разводов тряпкой: плоские формы, не blur. overflow:hidden держит их
+   (и поворот transform) строго внутри рамки — иначе поворот у края даёт горизонтальный скролл страницы. */
+.chalkboard { overflow: hidden; }
+.chalkboard::before, .chalkboard::after {
+  content: ""; position: absolute; pointer-events: none; background: rgba(236, 231, 215, .05); border-radius: 50%;
+}
+.chalkboard::before { width: 40%; height: 26%; top: 2%; right: 4%; transform: rotate(-8deg); }
+.chalkboard::after { width: 26%; height: 18%; bottom: 3%; left: 8%; transform: rotate(6deg); }
+
+/* ---------- корпус: доска в деревянной рамке (замена латунной рамки с заклёпками) ----------
+   Приём мира: не карточка с цветной полоской, а предмет с настоящим бортом — толстая деревянная
+   рамка со всех сторон, более тёмная нижняя кромка (плоский цвет, не тень). Отличает панели oneword
+   от border-top-only приёма crowd/lastq и от латунных заклёпок прежней версии. */
+.cabinet { position: relative; background: var(--board2); border: 5px solid var(--frame); border-bottom-width: 9px; border-radius: 3px; overflow: hidden; }
+.cabinet::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxNDAnIGhlaWdodD0nMTQwJz48ZmlsdGVyIGlkPSduJz48ZmVUdXJidWxlbmNlIHR5cGU9J2ZyYWN0YWxOb2lzZScgYmFzZUZyZXF1ZW5jeT0nMC44JyBudW1PY3RhdmVzPScyJyBzdGl0Y2hUaWxlcz0nc3RpdGNoJyByZXN1bHQ9J3QnLz48ZmVDb2xvck1hdHJpeCBpbj0ndCcgdHlwZT0nbWF0cml4JyB2YWx1ZXM9JzAgMCAwIDAgMSAgMCAwIDAgMCAxICAwIDAgMCAwIDEgIDAgMCAwIDAuMDYgMCcvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPScxMDAlJyBoZWlnaHQ9JzEwMCUnIGZpbHRlcj0ndXJsKCNuKScvPjwvc3ZnPgo=");
+  background-size: 140px 140px; }
+.chip { display: inline-block; background: var(--chalk-yellow); color: var(--ink); border-radius: var(--r); padding: 4px 9px; font: 800 13px/1.2 var(--body); letter-spacing: .06em; }
+
+/* плата с именем игры — меловая плита на доске, тот же мир, что и остальной хром страницы.
+   Общий кусок хрома страницы (не часть игровых фаз), не участвует в проверке bounding box. */
+.plate { position: relative; background: var(--chalk-yellow); color: var(--ink); border-bottom: 5px solid var(--frame); }
+.plate b, .plate strong { font: 700 1.05em/1 var(--display); letter-spacing: .01em; }
+
+/* ---------- считалка-пучок: общий компонент доски и телефона ----------
+   Подпись значения: четыре вертикальные палочки + одна диагональная зачёркивающая пятую (классический
+   приём "четыре да перекладинка"), следующий пучок начинается рядом. pathLength="1" на каждом штрихе —
+   анимация "написания" через stroke-dashoffset не зависит от реальной геометрии пути. */
+.tslot { position: relative; width: var(--sw, 128px); height: var(--sh, 104px); flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 4px; }
+.tslot .trest { position: absolute; inset: 10px; border: 2px dashed var(--line); border-radius: 4px; opacity: .8; transition: opacity .25s; }
+.tslot.revealed .trest { opacity: 0; }
+.tslot .tword { font-family: var(--display); font-weight: 700; font-size: var(--sword, 16px); line-height: 1.08; text-align: center; max-width: 100%; overflow-wrap: anywhere; color: var(--chalk-c, var(--chalk)); opacity: 0; transition: opacity .2s; }
+.tslot.revealed .tword { opacity: 1; }
+.tslot svg.tally { width: var(--stw, 78px); height: var(--sth, 30px); overflow: visible; display: block; }
+.tslot svg.tally path { fill: none; stroke: var(--chalk-c, var(--chalk)); stroke-width: 6; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset .3s ease-out; transition-delay: var(--sd, 0s); }
+.tslot.revealed svg.tally path { stroke-dashoffset: 0; }
+.tslot .tcount { font: 800 var(--scount, 16px)/1 var(--body); color: var(--chalk-c, var(--chalk)); opacity: 0; transition: opacity .2s; transition-delay: calc(var(--sd, 0s) + .25s); }
+.tslot.revealed .tcount { opacity: 1; }
+
+/* полоса пучков-считалок: лобби/ожидание (в покое, пустые рамки-«слоты») и раскрытие (с мелом) */
+.slats { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* прогресс в духе считалки: не лампочки по рамке (приём quip) и не плашки табло (прежняя версия) —
+   короткие меловые штрихи в ряд, "включённый" = прочерчен мелом, "выключенный" = пунктирный контур */
+.segdots { display: flex; flex-wrap: wrap; gap: 6px; }
+.segdots i { width: 6px; height: 16px; flex: none; border-radius: 3px; border: 2px dashed var(--line); background: transparent; }
+.segdots i.on { background: var(--chalk); border: 2px solid var(--chalk); transform: rotate(4deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tslot svg.tally path, .tslot .tword, .tslot .tcount, .tslot .trest { transition: none !important; }
+}

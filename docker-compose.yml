@@ -39,6 +39,7 @@ services:
       - floe
       - rapids
       - storm
+      - oneword
 
   # сервер онлайн-аукциона (WebSocket + API); nginx проксирует в него /auction/ws и /auction/api/
   auction:
@@ -445,6 +446,41 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # сервер «Сто к одному» (oneword, WebSocket + API); nginx проксирует в него /oneword/ws и /oneword/api/.
+  # Устроен как crowd. В дампе — чужие ответы темы и guess'ы до раскрытия и кластеры с подсчитанным count: снимки их не отдают.
+  oneword:
+    build:
+      context: .
+      dockerfile: oneword/Dockerfile
+    image: randomhostoneword:latest
+    container_name: randomhost-oneword
+    cpuset: "2-5"
+    restart: always
+    mem_limit: 128m
+    # Политики мультиплеера (T-W2-01): значения = то, что сервер использует без env; сменить без пересборки кода можно в .env.
+    environment:
+      - GHOST_TTL_MS=${GHOST_TTL_MS:-120000}
+      - CLAIM_WAIT_MS=${CLAIM_WAIT_MS:-120000}
+      - ANON_TTL_MS=${ANON_TTL_MS:-30000}
+      - PONG_MISSES=${PONG_MISSES:-3}
+      - OFFLINE_GRACE_MS=${OFFLINE_GRACE_MS:-8000}
+      - PING_MS=${PING_MS:-8000}
+      - GAME_PONG_MISSES=${GAME_PONG_MISSES:-2}
+      - GAME_DEAD_MS=${GAME_DEAD_MS:-20000}
+    volumes:
+      - oneword-state:/app/state
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4000/oneword/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   auction-state:
   roulette-state:
@@ -456,3 +492,4 @@ volumes:
   crowd-state:
   floe-state:
   rapids-state:
+  oneword-state:
