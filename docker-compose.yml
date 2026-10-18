@@ -40,6 +40,7 @@ services:
       - rapids
       - storm
       - oneword
+      - pond
 
   # сервер онлайн-аукциона (WebSocket + API); nginx проксирует в него /auction/ws и /auction/api/
   auction:
@@ -481,6 +482,35 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # сервер «Кувшинок» (WebSocket, события с метками времени + снимок раз в секунду); nginx проксирует /pond/ws и /pond/api/.
+  # Устроен как floe: в дампе только комнаты с людьми и токенами, идущая партия после рестарта отменяется.
+  pond:
+    build:
+      context: .
+      dockerfile: pond/Dockerfile
+    image: randomhostpond:latest
+    container_name: randomhost-pond
+    cpuset: "2-5"
+    restart: always
+    mem_limit: 128m
+    environment:
+      - GHOST_TTL_MS=${GHOST_TTL_MS:-120000}
+      - CLAIM_WAIT_MS=${CLAIM_WAIT_MS:-120000}
+      - ANON_TTL_MS=${ANON_TTL_MS:-30000}
+    volumes:
+      - pond-state:/app/state
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4200/pond/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   auction-state:
   roulette-state:
@@ -493,3 +523,4 @@ volumes:
   floe-state:
   rapids-state:
   oneword-state:
+  pond-state:

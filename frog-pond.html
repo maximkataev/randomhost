@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#06222c">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f438.svg" type="image/svg+xml">
+<title>Кувшинки — кто неудачник: лягушки на тонущих листьях онлайн</title>
+<meta name="robots" content="index,follow">
+<meta name="description" content="🐸 Кувшинки: мультиплеерная игра с телефона. Лягушки прыгают по тонущим кувшинкам, можно сбросить соперника с листа. Партия — меньше минуты, кто первым упал в воду — неудачник." data-i18n-meta="_meta">
+<!-- ссылки на комнаты (?r=КОД) — та же страница: в выдаче должна быть одна, без кода -->
+<link rel="canonical" href="https://randomhost.online/frog-pond.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Кувшинки — кто неудачник">
+<meta property="og:description" content="Лягушки на тонущих кувшинках. Оттяни палец и прыгай — кто первым упал, тот неудачник.">
+<meta property="og:url" content="https://randomhost.online/frog-pond.html">
+<meta property="og:site_name" content="Рандомайзер Онлайн">
+<meta property="og:locale" content="ru_RU">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@700&family=Montserrat:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  /* Ночное болото. Арена — на весь экран, интерфейс — тёмное стекло поверх неё (frog-pond-spec.md §6, §8). */
+  :root {
+    --ink: #f1fff8; --muted: #8fc9b9; --panel: rgba(5, 28, 34, 0.92); --line: rgba(130, 230, 200, 0.2);
+    --gold: #ffd23f; --red: #ff5d5d; --leaf: #7ee06a; --water: #35c9d8;
+    --lang-switch-bg: rgba(5, 28, 34, 0.88); --lang-switch-border: rgba(130, 230, 200, 0.28); --lang-switch-font: Montserrat, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; background: #03141b; color: var(--ink); font: 500 15px/1.4 Montserrat, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overscroll-behavior: none; }
+  body { touch-action: manipulation; }
+  body.playing, body.watching { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  #arena { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  .util { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); right: 168px; z-index: 12; display: flex; gap: 8px; }
+  .sound-toggle-btn { width: 40px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); display: grid; place-items: center; }
+  body.playing .util, body.playing .lang-switch { display: none !important; }
+
+  /* ----- панель ----- */
+  .panel { position: fixed; top: 12px; left: calc(12px + env(safe-area-inset-left, 0px)); bottom: 12px; width: 316px; z-index: 10; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(9, 46, 52, 0.96), rgba(5, 26, 32, 0.96)); border: 1px solid var(--line); border-radius: 16px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 18px 50px rgba(0,0,0,0.4); overflow: hidden; transition: transform 0.3s ease, opacity 0.3s; }
+  body.playing .panel, body.watching .panel { transform: translateX(calc(-100% - 24px)); opacity: 0; pointer-events: none; }
+  .p-body { flex: 1; overflow-y: auto; padding: 16px 16px 8px; display: flex; flex-direction: column; gap: 14px; overscroll-behavior: contain; }
+  .p-foot { padding: 10px 16px calc(14px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); }
+  .brand { font: 700 24px Comfortaa, Montserrat, sans-serif; line-height: 1.1; color: var(--leaf); }
+  .brand small { display: block; font: 600 12px Montserrat, sans-serif; color: var(--muted); margin-top: 4px; letter-spacing: 0.02em; }
+  .back { color: var(--muted); font-size: 12px; text-decoration: none; }
+  .lede { color: #cfeee3; font-size: 14px; }
+  .sec h3 { font: 800 12px Montserrat, sans-serif; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 8px; display: flex; justify-content: space-between; }
+  .sec h3 span { color: var(--leaf); }
+  .fine { font-size: 12px; color: var(--muted); }
+  .btn { display: block; width: 100%; padding: 13px 16px; border-radius: 12px; border: 0; font: 800 15px Montserrat, sans-serif; text-align: center; text-decoration: none; background: linear-gradient(180deg, #8ef07a, #3fb34f); color: #05260f; box-shadow: 0 4px 0 #1f7a33, 0 10px 24px rgba(63, 179, 79, 0.28); }
+  .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #1f7a33; }
+  .btn:disabled { opacity: 0.45; box-shadow: none; }
+  .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); box-shadow: none; font-weight: 700; }
+  .field { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: rgba(0, 20, 26, 0.7); font-size: 16px; font-weight: 600; outline: none; }
+  .field:focus { border-color: var(--leaf); }
+  .err { color: #ff9a9a; font-size: 12px; font-weight: 700; }
+  .name-row { display: flex; justify-content: space-between; }
+  .link { background: none; border: 0; color: var(--water); font-weight: 700; font-size: 13px; padding: 4px 0; margin-right: 12px; text-decoration: underline; text-underline-offset: 3px; }
+  .code-box { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .code-box > div:first-child { min-width: 0; }
+  .code { font: 700 21px Comfortaa, Montserrat, sans-serif; letter-spacing: 0.04em; color: var(--gold); }
+  .qr { background: #fff; padding: 4px; border-radius: 8px; line-height: 0; min-width: 60px; min-height: 60px; }
+  .qr canvas, .qr img { width: 84px !important; height: 84px !important; }
+  .qr img { display: none; }
+  .plist { display: flex; flex-direction: column; gap: 5px; }
+  .pl { display: grid; grid-template-columns: 14px 1fr auto auto; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 10px; background: rgba(255,255,255,0.04); min-width: 0; }
+  .pl.me { background: rgba(126, 224, 106, 0.14); }
+  .pl.off { opacity: 0.5; }
+  .pl b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px rgba(255,255,255,0.18); }
+  .ping { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ping.bad { color: #ffb347; }
+  .x { background: none; border: 0; color: var(--muted); padding: 2px 6px; }
+  .swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+  .sw { aspect-ratio: 1; border-radius: 50%; border: 2px solid transparent; background: var(--c); }
+  .sw.on { border-color: #fff; box-shadow: 0 0 0 2px var(--c); }
+  .sw:disabled { opacity: 0.25; }
+  .waitline { text-align: center; color: var(--muted); font-size: 13px; padding: 4px 0; }
+  .rules { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #cfeee3; }
+  .rules div { display: grid; grid-template-columns: 22px 1fr; gap: 6px; }
+  .host-card { text-align: center; padding: 14px; border-radius: 14px; background: linear-gradient(180deg, rgba(255,93,93,0.18), rgba(255,93,93,0.06)); border: 1px solid rgba(255,120,120,0.35); }
+  .host-card .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #ffb3b3; }
+  .host-card .nm { font: 700 24px Comfortaa, Montserrat, sans-serif; margin-top: 4px; overflow-wrap: anywhere; }
+  .host-card .note { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .king-line { text-align: center; font-size: 15px; }
+  .king-line b { color: var(--gold); }
+  .table { display: flex; flex-direction: column; gap: 3px; }
+  .table .r { display: grid; grid-template-columns: 22px 14px 1fr auto; gap: 8px; align-items: center; padding: 5px 8px; border-radius: 8px; background: rgba(255,255,255,0.04); }
+  .table .r.me { background: rgba(126, 224, 106, 0.14); }
+  .table .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; min-width: 0; }
+  .table .ex { font-size: 12px; color: var(--muted); }
+  .noms { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  .noms > div { display: flex; justify-content: space-between; gap: 8px; }
+  .noms b { color: var(--gold); text-align: right; }
+  .res-btns { display: flex; flex-direction: column; gap: 8px; }
+
+  /* ----- поверх арены ----- */
+  .hud { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 6; display: none; gap: 8px; pointer-events: none; }
+  body.playing .hud, body.watching .hud { display: flex; }
+  .pill { padding: 6px 14px; border-radius: 999px; background: rgba(4, 24, 30, 0.78); border: 1px solid var(--line); font: 800 15px Montserrat, sans-serif; font-variant-numeric: tabular-nums; backdrop-filter: blur(4px); }
+  .big { position: fixed; left: 0; right: 0; top: 34%; z-index: 7; text-align: center; font: 700 clamp(56px, 16vw, 130px)/1 Comfortaa, Montserrat, sans-serif; color: #fff; text-shadow: 0 6px 30px rgba(0,0,0,0.5), 0 0 40px rgba(126,224,106,0.5); pointer-events: none; opacity: 0; }
+  .big.show { animation: pop 0.9s ease-out forwards; }
+  @keyframes pop { 0% { opacity: 0; transform: scale(0.4); } 25% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0; transform: scale(1); } }
+  .banner { position: fixed; left: 50%; top: calc(56px + env(safe-area-inset-top, 0px)); transform: translate(-50%, -20px); z-index: 7; padding: 10px 18px; border-radius: 14px; background: rgba(120, 20, 20, 0.88); border: 1px solid rgba(255,130,130,0.5); font: 800 17px Montserrat, sans-serif; opacity: 0; transition: opacity 0.25s, transform 0.25s; pointer-events: none; max-width: calc(100% - 24px); text-align: center; overflow-wrap: anywhere; }
+  .banner.show { opacity: 1; transform: translate(-50%, 0); }
+  .feed { position: fixed; left: 12px; top: calc(52px + env(safe-area-inset-top, 0px)); z-index: 5; display: none; flex-direction: column; gap: 4px; pointer-events: none; font-size: 12px; font-weight: 700; }
+  body.playing .feed, body.watching .feed { display: flex; }
+  .feed div { padding: 3px 9px; border-radius: 8px; background: rgba(4, 24, 30, 0.72); animation: fin 0.3s; }
+  @keyframes fin { from { opacity: 0; transform: translateX(-10px); } }
+  .hint { position: fixed; left: 70px; right: 70px; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 6; text-align: center; font-size: 14px; font-weight: 700; color: rgba(241, 255, 248, 0.8); pointer-events: none; display: none; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+  body.playing .hint { display: block; }
+  body.playing.aimed .hint { opacity: 0; }
+  .conn { position: fixed; left: 50%; top: calc(8px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 20; padding: 8px 16px; border-radius: 12px; background: rgba(150, 60, 20, 0.95); font-weight: 800; font-size: 13px; display: none; max-width: calc(100% - 24px); text-align: center; }
+  .conn.on { display: block; }
+  .net-chip { position: fixed; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 6; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: rgba(4,24,30,0.7); color: var(--muted); display: none; font-variant-numeric: tabular-nums; }
+  body.playing .net-chip, body.watching .net-chip { display: block; }
+  .net-chip.mid { color: #ffd23f; } .net-chip.bad { color: #ff7a6a; }
+  .outpill { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 6; display: none; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; background: rgba(4, 24, 30, 0.85); border: 1px solid var(--line); font-weight: 700; font-size: 13px; }
+  body.watching .outpill { display: flex; }
+  .outpill button { background: rgba(255,255,255,0.08); border: 0; border-radius: 50%; width: 36px; height: 36px; font-size: 18px; }
+  .toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%) translateY(20px); z-index: 30; padding: 9px 16px; border-radius: 12px; background: rgba(4,24,30,0.95); border: 1px solid var(--line); font-weight: 700; font-size: 13px; opacity: 0; transition: all 0.25s; pointer-events: none; max-width: calc(100% - 24px); text-align: center; }
+  .toast.show { opacity: 1; transform: translateX(-50%); }
+  #pull { position: fixed; inset: 0; z-index: 4; pointer-events: none; width: 100%; height: 100%; display: none; }
+  #pull.on { display: block; }
+  .verdict { position: fixed; left: 50%; top: calc(52px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 6; padding: 6px 14px; border-radius: 12px; background: rgba(120,20,20,0.88); font: 800 14px Montserrat, sans-serif; white-space: nowrap; display: none; text-align: center; max-width: calc(100% - 24px); overflow-wrap: anywhere; }
+  .verdict.show { display: block; }
+
+  /* ----- телефон в портрете: панель — нижний лист, пруд над ним ----- */
+  @media (max-width: 739px) {
+    .panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 56vh; max-height: 56svh; border-radius: 16px 16px 14px 14px; }
+    body.playing .panel, body.watching .panel { transform: translateY(calc(100% + 24px)); }
+    .util { right: 168px; }
+    .feed { top: calc(96px + env(safe-area-inset-top, 0px)); }
+    .p-body { padding: 12px 14px 6px; gap: 10px; }
+    .brand { font-size: 20px; }
+    .swatches { grid-template-columns: repeat(8, 1fr); gap: 5px; }
+  }
+  @media (max-height: 560px) and (orientation: landscape) {
+    .panel { top: 8px; bottom: 8px; left: 8px; right: auto; width: 290px; max-height: none; }
+    body.playing .panel, body.watching .panel { transform: translateX(calc(-100% - 24px)); }
+  }
+  @media (prefers-reduced-motion: reduce) { .big.show { animation-duration: 0.01s; } }
+</style>
+</head>
+<body>
+<canvas id="arena" aria-hidden="true"></canvas>
+<svg id="pull" aria-hidden="true"><circle id="pullA" r="22" fill="rgba(126,224,106,0.12)" stroke="rgba(126,224,106,0.8)" stroke-width="2"/><line id="pullL" stroke="rgba(255,240,200,0.7)" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 8"/><circle id="pullB" r="9" fill="#fff"/></svg>
+<div class="util"><button class="sound-toggle-btn" type="button"></button></div>
+<aside class="panel" id="panel"><div class="p-body" id="pbody"></div><div class="p-foot" id="pfoot"></div></aside>
+<div class="hud"><span class="pill" id="timer">0:00</span><span class="pill" id="alive">🐸</span></div>
+<div class="big" id="big"></div>
+<div class="banner" id="banner"></div>
+<div class="feed" id="feed"></div>
+<div class="hint" id="hint"></div>
+<div class="net-chip" id="chip"></div>
+<div class="outpill" id="outpill"></div>
+<div class="verdict" id="verdict"></div>
+<div class="conn" id="conn"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Кувшинки — кто неудачник: лягушки на тонущих листьях онлайн`,
+    _meta: `🐸 Кувшинки: мультиплеерная игра с телефона. Лягушки прыгают по тонущим кувшинкам, можно сбросить соперника с листа. Партия — меньше минуты, кто первым упал в воду — неудачник.`,
+    game: `Кувшинки`, sub: `лягушки на листьях · кто неудачник`, back: `← Все игры`,
+    lede: `Все заходят по ссылке, каждый — лягушка со своего телефона или компьютера. Кувшинки тонут, места всё меньше.`,
+    rule1: `Оттяни палец назад и отпусти: лягушка прыгнет в обратную сторону. Чем дальше оттянул, тем дальше прыжок.`,
+    rule2: `Красная кувшинка скоро утонет — перепрыгни на другую.`,
+    rule3: `Прыгнешь на занятую — сбросишь хозяина 💥. Внимание на цаплю 🐦 и мух 🪰 (дальний прыжок).`,
+    rule4: `Кто упал в воду первым — неудачник. Остальные борются за звание «Царь болота».`,
+    create: `Создать комнату`, have_code: `У меня есть код`, code_ph: `Код комнаты`, enter: `Войти`, room: `Комната`,
+    name_title: `Твоё имя`, name_ph: `Имя`, color: `Цвет лягушки`, players: `Лягушки`, of_max: `{n} из {m}`,
+    controls: `Управление`, ctrl_touch: `Телефон: коснись экрана, оттяни палец назад и отпусти.`, ctrl_kb: `Компьютер: мышью так же; или стрелки/WASD — направление, зажатый пробел — сила.`,
+    practice: `Пока ждёте — потренируйся справа: прыгай по листьям, они не тонут.`,
+    copy: `Скопировать ссылку`, copied: `Ссылка скопирована`, host_link: `🔑 Ссылка ведущего`, start: `Начать игру`, need_two: `Нужны хотя бы двое`,
+    wait_host: `Ждём, пока {name} начнёт игру…`, join: `Войти в игру`, join_later: `Партия уже идёт — вы будете смотреть и сыграете в следующей.`,
+    change_color: `Сменить цвет`, you: ` (ты)`, renamed_toast: `Имя занято — теперь ты «{name}»`,
+    hint_aim: `Коснись и оттяни палец назад — отпусти, чтобы прыгнуть`, hint_kb: `Мышь: оттяни и отпусти · Стрелки + пробел`,
+    conn_lost: `Связь потеряна — переподключаемся…`, conn_blocked: `Сеть блокирует соединение — попробуй мобильный интернет или другой Wi-Fi`, ping_bad: `может подлагивать`,
+    verdict: `😅 {name} — неудачник`, verdict_you: `😅 Ты — неудачник`, king: `Царь болота`,
+    res_host: `Неудачник`, res_first_at: `упал первым на {s} с`, res_lot: `ничья — жребий`, res_king: `Царь болота: {names}`, res_draw: `🤝 Упали одновременно — ничья`,
+    nom_stomp: `Больше всех сбросил:`, nom_self: `Сам себе враг:`, again: `Ещё партия`, to_lobby: `В лобби`, wait_again: `Ждём, пока {name} начнёт новую партию…`,
+    spectate: `Ты выбыл — смотри`, stomps: `💥×{n}`,
+    f_stomp: `{a} 💥→ {b}`, f_wave: `🌊 {n}`, f_heron: `🐦 {n}`, f_miss: `🙃 {n}`, f_stomped: `🦶 {n}`,
+    go_word: `КВАК!`, bad_name: `Введи имя`, name_taken: `Имя занято`, room_full: `В комнате нет мест`, too_many_rooms: `Слишком много комнат — попробуй позже`, busy: `Сервер занят — попробуй через минуту`, server_error: `Ошибка сервера`, token_gone: `Сессия устарела`,
+    no_room: `Такой комнаты нет`, no_room_text: `Проверь код или создай новую.`, room_closed: `Комната закрыта`, room_closed_text: `Она давно пустовала.`, kicked: `Тебя исключили из комнаты`, replaced: `Игра открыта в другой вкладке`, play_here: `Играть здесь`, new_game: `Новая игра`,
+    claim_title: `Это ты?`, claim_text: `«{name}» уже в комнате. Если это ты — вернись на своё место.`, btn_claim_yes: `Да, это я`, btn_claim_no: `Нет, я другой`,
+    sound_off: `Выключить звук`, sound_on: `Включить звук`,
+  },
+  en: {
+    _title: `Lily Pad Leap — who's the loser: frogs on sinking leaves online`,
+    _meta: `🐸 Lily Pad Leap: a multiplayer phone game. Frogs hop between sinking lily pads and can knock rivals off. A round takes under a minute; the first one in the water is the loser.`,
+    game: `Lily Pad Leap`, sub: `frogs on leaves · who's the loser`, back: `← All games`,
+    lede: `Everyone joins by link, each one a frog on their own phone or computer. The pads sink and room runs out.`,
+    rule1: `Pull your finger back and let go: the frog jumps the other way. The longer the pull, the longer the jump.`,
+    rule2: `A red pad is about to sink — hop to another one.`,
+    rule3: `Land on an occupied pad to knock its owner off 💥. Watch out for the heron 🐦 and catch flies 🪰 (longer jump).`,
+    rule4: `First one in the water is the loser. The rest fight for the title of King of the Pond.`,
+    create: `Create a room`, have_code: `I have a code`, code_ph: `Room code`, enter: `Enter`, room: `Room`,
+    name_title: `Your name`, name_ph: `Name`, color: `Frog colour`, players: `Frogs`, of_max: `{n} of {m}`,
+    controls: `Controls`, ctrl_touch: `Phone: touch the screen, pull back and let go.`, ctrl_kb: `Computer: same with the mouse; or arrows/WASD to aim and hold Space for power.`,
+    practice: `While you wait, practise on the right: the pads don't sink here.`,
+    copy: `Copy link`, copied: `Link copied`, host_link: `🔑 Host link`, start: `Start game`, need_two: `At least two players needed`,
+    wait_host: `Waiting for {name} to start the game…`, join: `Join the game`, join_later: `A round is already on — you'll watch and play the next one.`,
+    change_color: `Change colour`, you: ` (you)`, renamed_toast: `Name taken — you're now “{name}”`,
+    hint_aim: `Touch and pull back — release to jump`, hint_kb: `Mouse: pull and release · Arrows + Space`,
+    conn_lost: `Connection lost — reconnecting…`, conn_blocked: `The network blocks the connection — try mobile data or another Wi-Fi`, ping_bad: `may lag`,
+    verdict: `😅 {name} is the loser`, verdict_you: `😅 You're the loser`, king: `King of the Pond`,
+    res_host: `Loser`, res_first_at: `fell first at {s} s`, res_lot: `tie — drawn by lot`, res_king: `King of the Pond: {names}`, res_draw: `🤝 Fell at the same moment — a draw`,
+    nom_stomp: `Most knock-offs:`, nom_self: `Own worst enemy:`, again: `Another round`, to_lobby: `To lobby`, wait_again: `Waiting for {name} to start a new round…`,
+    spectate: `You're out — watch`, stomps: `💥×{n}`,
+    f_stomp: `{a} 💥→ {b}`, f_wave: `🌊 {n}`, f_heron: `🐦 {n}`, f_miss: `🙃 {n}`, f_stomped: `🦶 {n}`,
+    go_word: `RIBBIT!`, bad_name: `Enter a name`, name_taken: `Name is taken`, room_full: `The room is full`, too_many_rooms: `Too many rooms — try again later`, busy: `Server is busy — try in a minute`, server_error: `Server error`, token_gone: `Session expired`,
+    no_room: `No such room`, no_room_text: `Check the code or create a new one.`, room_closed: `Room closed`, room_closed_text: `It had been empty for a long time.`, kicked: `You were removed from the room`, replaced: `The game is open in another tab`, play_here: `Play here`, new_game: `New game`,
+    claim_title: `Is that you?`, claim_text: `“{name}” is already in the room. If that's you, take your seat back.`, btn_claim_yes: `Yes, it's me`, btn_claim_no: `No, someone else`,
+    sound_off: `Mute`, sound_on: `Unmute`,
+  },
+  el: {
+    _title: `Νούφαρα — ποιος χάνει: βάτραχοι σε βυθιζόμενα φύλλα online`,
+    _meta: `🐸 Νούφαρα: παιχνίδι για πολλούς από το κινητό. Οι βάτραχοι πηδούν σε βυθιζόμενα νούφαρα και μπορούν να ρίξουν τους αντιπάλους. Ο γύρος διαρκεί λιγότερο από ένα λεπτό· όποιος πέσει πρώτος στο νερό χάνει.`,
+    game: `Νούφαρα`, sub: `βάτραχοι σε φύλλα · ποιος χάνει`, back: `← Όλα τα παιχνίδια`,
+    lede: `Όλοι μπαίνουν από σύνδεσμο, ο καθένας βάτραχος από το κινητό ή τον υπολογιστή του. Τα νούφαρα βυθίζονται και ο χώρος στενεύει.`,
+    rule1: `Τράβηξε το δάχτυλο πίσω και άφησέ το: ο βάτραχος πηδά στην αντίθετη κατεύθυνση. Όσο πιο πολύ τραβάς, τόσο πιο μακριά πηδά.`,
+    rule2: `Ένα κόκκινο νούφαρο θα βυθιστεί σύντομα — πήδα σε άλλο.`,
+    rule3: `Αν προσγειωθείς σε κατειλημμένο, ρίχνεις τον ιδιοκτήτη 💥. Πρόσεχε τον ερωδιό 🐦 και πιάσε μύγες 🪰 (μακρύτερο άλμα).`,
+    rule4: `Όποιος πέσει πρώτος στο νερό χάνει. Οι υπόλοιποι παλεύουν για τον τίτλο «Βασιλιάς του βάλτου».`,
+    create: `Δημιουργία δωματίου`, have_code: `Έχω κωδικό`, code_ph: `Κωδικός δωματίου`, enter: `Είσοδος`, room: `Δωμάτιο`,
+    name_title: `Το όνομά σου`, name_ph: `Όνομα`, color: `Χρώμα βατράχου`, players: `Βάτραχοι`, of_max: `{n} από {m}`,
+    controls: `Χειρισμός`, ctrl_touch: `Κινητό: άγγιξε την οθόνη, τράβηξε πίσω και άφησε.`, ctrl_kb: `Υπολογιστής: το ίδιο με το ποντίκι· ή βέλη/WASD για κατεύθυνση και Space για δύναμη.`,
+    practice: `Όσο περιμένετε, εξασκήσου δεξιά: τα νούφαρα δεν βυθίζονται εδώ.`,
+    copy: `Αντιγραφή συνδέσμου`, copied: `Ο σύνδεσμος αντιγράφηκε`, host_link: `🔑 Σύνδεσμος διαχειριστή`, start: `Έναρξη παιχνιδιού`, need_two: `Χρειάζονται τουλάχιστον δύο`,
+    wait_host: `Περιμένουμε τον/την {name} να ξεκινήσει…`, join: `Είσοδος στο παιχνίδι`, join_later: `Ο γύρος έχει ήδη ξεκινήσει — θα παρακολουθήσεις και θα παίξεις στον επόμενο.`,
+    change_color: `Αλλαγή χρώματος`, you: ` (εσύ)`, renamed_toast: `Το όνομα πιάστηκε — τώρα είσαι «{name}»`,
+    hint_aim: `Άγγιξε και τράβηξε πίσω — άφησε για να πηδήξεις`, hint_kb: `Ποντίκι: τράβηξε και άφησε · Βέλη + Space`,
+    conn_lost: `Η σύνδεση χάθηκε — επανασύνδεση…`, conn_blocked: `Το δίκτυο μπλοκάρει τη σύνδεση — δοκίμασε δεδομένα κινητού ή άλλο Wi-Fi`, ping_bad: `ίσως καθυστερεί`,
+    verdict: `😅 Χάνει ο/η {name}`, verdict_you: `😅 Χάνεις εσύ`, king: `Βασιλιάς του βάλτου`,
+    res_host: `Χαμένος`, res_first_at: `έπεσε πρώτος στα {s} δ`, res_lot: `ισοπαλία — κλήρωση`, res_king: `Βασιλιάς του βάλτου: {names}`, res_draw: `🤝 Έπεσαν ταυτόχρονα — ισοπαλία`,
+    nom_stomp: `Περισσότερες ρίψεις:`, nom_self: `Ο χειρότερος εχθρός του εαυτού του:`, again: `Άλλος ένας γύρος`, to_lobby: `Στο λόμπι`, wait_again: `Περιμένουμε τον/την {name} να ξεκινήσει νέο γύρο…`,
+    spectate: `Βγήκες — παρακολούθησε`, stomps: `💥×{n}`,
+    f_stomp: `{a} 💥→ {b}`, f_wave: `🌊 {n}`, f_heron: `🐦 {n}`, f_miss: `🙃 {n}`, f_stomped: `🦶 {n}`,
+    go_word: `ΚΡΟΑ!`, bad_name: `Γράψε ένα όνομα`, name_taken: `Το όνομα χρησιμοποιείται`, room_full: `Το δωμάτιο είναι γεμάτο`, too_many_rooms: `Πολλά δωμάτια — δοκίμασε αργότερα`, busy: `Ο διακομιστής είναι απασχολημένος`, server_error: `Σφάλμα διακομιστή`, token_gone: `Η συνεδρία έληξε`,
+    no_room: `Δεν υπάρχει τέτοιο δωμάτιο`, no_room_text: `Έλεγξε τον κωδικό ή φτιάξε νέο.`, room_closed: `Το δωμάτιο έκλεισε`, room_closed_text: `Ήταν άδειο για πολύ.`, kicked: `Αποβλήθηκες από το δωμάτιο`, replaced: `Το παιχνίδι είναι ανοιχτό σε άλλη καρτέλα`, play_here: `Παίξε εδώ`, new_game: `Νέο παιχνίδι`,
+    claim_title: `Εσύ είσαι;`, claim_text: `Το «{name}» είναι ήδη στο δωμάτιο. Αν είσαι εσύ, πάρε πίσω τη θέση σου.`, btn_claim_yes: `Ναι, εγώ είμαι`, btn_claim_no: `Όχι, άλλος`,
+    sound_off: `Σίγαση`, sound_on: `Ήχος`,
+  },
+};
+</script>
+<script src="mp-common.js"></script>
+<script src="i18n.js"></script>
+<script src="pond/physics.js"></script>
+<script src="pond/model.js"></script>
+<script src="pond/game.js"></script>
+<script src="pond/bots.js"></script>
+<script src="pond-render.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+<script src="frog-pond.js"></script>
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+  ym(104849796, 'init', { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+</body>
+</html>
