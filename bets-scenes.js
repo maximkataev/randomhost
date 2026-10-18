@@ -1415,39 +1415,119 @@
       g.shadowColor = hit ? "#ff2e88" : "rgba(255,255,255,.4)"; g.shadowBlur = 8 + hit * 30;
       g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(c.x, c.y); g.lineTo(d.x, d.y); g.stroke(); g.shadowBlur = 0; g.lineCap = "butt";
     }
+    // ---- люди: сужающиеся конечности, форма с объёмом, голова с причёской. Координаты в метрах, y вниз, ноль у ног/бёдер ----
+    const SKINS = ["#f0c8a0", "#d9a07a", "#b98660", "#8d5d3f"];
+    const HAIRS = ["#241812", "#c9a24a", "#4a2c1a", "#16161a"];
+    function shade(hex, f) {
+      const n = parseInt(hex.slice(1), 16), r = Math.min(255, Math.round((n >> 16) * f)), gg = Math.min(255, Math.round(((n >> 8) & 255) * f)), bb = Math.min(255, Math.round((n & 255) * f));
+      return "rgb(" + r + "," + gg + "," + bb + ")";
+    }
+    function taper(x1, y1, x2, y2, w1, w2, fill) {
+      const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L, a = Math.atan2(ny, nx);
+      g.fillStyle = fill; g.beginPath();
+      g.moveTo(x1 + nx * w1 / 2, y1 + ny * w1 / 2); g.lineTo(x2 + nx * w2 / 2, y2 + ny * w2 / 2);
+      g.arc(x2, y2, w2 / 2, a, a - Math.PI, true); g.lineTo(x1 - nx * w1 / 2, y1 - ny * w1 / 2);
+      g.arc(x1, y1, w1 / 2, a + Math.PI, a, true); g.closePath(); g.fill();
+    }
+    function boot(x, y, side, col, lifted) {
+      g.save(); g.translate(x, y);
+      g.fillStyle = "#14181f"; g.beginPath(); g.ellipse(side * 0.01, -0.01, 0.085, 0.055, 0, 0, TAU); g.fill();
+      g.fillStyle = col; g.fillRect(-0.07, -0.045, 0.14, 0.018);                       // полоска цвета команды
+      if (lifted > 0.25) { g.fillStyle = "#c9ced6"; g.fillRect(-0.06, 0.02, 0.12, 0.018); } // видна подошва
+      g.restore();
+    }
+    function headBack(cx, cy, skin, hairC, style) {
+      g.fillStyle = skin; g.beginPath(); g.ellipse(cx - 0.105, cy, 0.03, 0.04, 0, 0, TAU); g.ellipse(cx + 0.105, cy, 0.03, 0.04, 0, 0, TAU); g.fill();   // уши
+      g.beginPath(); g.ellipse(cx, cy, 0.105, 0.125, 0, 0, TAU); g.fill();
+      g.fillStyle = hairC; g.beginPath();
+      if (style === 2) { g.globalAlpha = 0.45; g.ellipse(cx, cy - 0.025, 0.108, 0.1, 0, 0, TAU); g.fill(); g.globalAlpha = 1; }          // бритый: тень щетины
+      else { g.ellipse(cx, cy - 0.02, 0.112, 0.115, 0, 0, TAU); g.fill(); if (style === 1) { g.beginPath(); g.moveTo(cx - 0.1, cy); g.quadraticCurveTo(cx, cy + 0.17, cx + 0.1, cy); g.lineTo(cx + 0.09, cy - 0.04); g.lineTo(cx - 0.09, cy - 0.04); g.closePath(); g.fill(); } }
+    }
+    function headFront(cx, cy, skin, hairC, mouthOpen) {
+      g.fillStyle = skin; g.beginPath(); g.ellipse(cx - 0.115, cy + 0.01, 0.03, 0.042, 0, 0, TAU); g.ellipse(cx + 0.115, cy + 0.01, 0.03, 0.042, 0, 0, TAU); g.fill();
+      g.beginPath(); g.ellipse(cx, cy, 0.112, 0.13, 0, 0, TAU); g.fill();
+      g.fillStyle = hairC; g.beginPath(); g.ellipse(cx, cy - 0.06, 0.118, 0.085, 0, Math.PI, 0); g.fill();                       // чёлка
+      g.fillStyle = "#fff"; g.beginPath(); g.ellipse(cx - 0.045, cy - 0.012, 0.024, 0.018, 0, 0, TAU); g.ellipse(cx + 0.045, cy - 0.012, 0.024, 0.018, 0, 0, TAU); g.fill();
+      g.fillStyle = "#1b1f27"; g.beginPath(); g.arc(cx - 0.043, cy - 0.01, 0.011, 0, TAU); g.arc(cx + 0.047, cy - 0.01, 0.011, 0, TAU); g.fill();
+      g.strokeStyle = hairC; g.lineWidth = 0.012; g.beginPath(); g.moveTo(cx - 0.07, cy - 0.04); g.lineTo(cx - 0.02, cy - 0.034); g.moveTo(cx + 0.02, cy - 0.034); g.lineTo(cx + 0.07, cy - 0.04); g.stroke();
+      if (mouthOpen) { g.fillStyle = "#4a1018"; g.beginPath(); g.ellipse(cx, cy + 0.07, 0.03, 0.022 + 0.02 * mouthOpen, 0, 0, TAU); g.fill(); }
+      else { g.strokeStyle = "#7a4a3a"; g.lineWidth = 0.012; g.beginPath(); g.moveTo(cx - 0.03, cy + 0.07); g.lineTo(cx + 0.03, cy + 0.07); g.stroke(); }
+    }
+    // вратарь: вид спереди, бедро в нуле; s — степень «броска» (руки вытянуты вверх и в стороны)
     function drawKeeper(kp) {
       const z = GZ + 0.2, sc = P(0, 0, z).k, base = P(kp.x, 0, z);
       g.save(); g.translate(base.x, base.y - kp.y * sc); g.rotate(kp.rot); g.scale(sc, sc);
-      const jersey = "#ffd34d", glove = "#fff", pants = "#232a35", s = kp.dive;
-      g.lineCap = "round"; g.lineJoin = "round";
-      const limb = (x1, y1, x2, y2, w, col) => { g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.moveTo(x1, -y1); g.lineTo(x2, -y2); g.stroke(); };
-      limb(0, 0, -0.16 - 0.1 * s, -0.78, 0.2, pants); limb(0, 0, 0.16 + 0.1 * s, -0.8, 0.2, pants);
-      limb(-0.16 - 0.1 * s, -0.78, -0.2 - 0.12 * s, -0.95, 0.15, "#10151c"); limb(0.16 + 0.1 * s, -0.8, 0.2 + 0.12 * s, -0.97, 0.15, "#10151c");
-      limb(0, 0, 0, 0.62, 0.42, jersey);
-      g.fillStyle = "#f2c6a0"; g.beginPath(); g.arc(0, -0.78, 0.17, 0, TAU); g.fill();
-      g.fillStyle = "#1b1f27"; g.beginPath(); g.arc(0, -0.82, 0.17, Math.PI, 0); g.fill();
-      const lift = 0.2 + 0.75 * s;
-      limb(-0.18, 0.5, -0.38 - 0.3 * s, 0.5 + lift, 0.13, jersey); limb(0.18, 0.5, 0.38 + 0.3 * s, 0.5 + lift, 0.13, jersey);
-      g.fillStyle = glove; g.beginPath(); g.arc(-0.38 - 0.3 * s, -(0.5 + lift), 0.13, 0, TAU); g.fill(); g.beginPath(); g.arc(0.38 + 0.3 * s, -(0.5 + lift), 0.13, 0, TAU); g.fill();
+      const s = kp.dive, kit = "#ffd34d", kitDark = shade(kit, 0.78), pants = "#1a212b", skin = "#e3b58f", hairC = "#2a1c14";
+      g.lineJoin = "round";
+      // ноги: носки, бутсы, трусы
+      for (const d of [-1, 1]) {
+        const hx = d * 0.1, kx = d * (0.15 + 0.08 * s), fx = d * (0.2 + 0.12 * s);
+        taper(hx, 0.02, kx, 0.46, 0.2, 0.15, skin);
+        taper(kx, 0.46, fx, 0.9, 0.15, 0.11, kit);
+        boot(fx, 0.95, d, kit, 0);
+        taper(hx, 0.0, d * (0.13 + 0.05 * s), 0.34, 0.25, 0.22, pants);
+      }
+      g.fillStyle = pants; g.fillRect(-0.19, -0.06, 0.38, 0.16);
+      // майка с объёмом
+      const gr = g.createLinearGradient(-0.27, 0, 0.27, 0); gr.addColorStop(0, kitDark); gr.addColorStop(0.5, kit); gr.addColorStop(1, kitDark);
+      g.fillStyle = gr; g.beginPath(); g.moveTo(-0.19, 0.0); g.lineTo(-0.25, -0.34); g.quadraticCurveTo(-0.28, -0.5, -0.2, -0.58); g.lineTo(0.2, -0.58); g.quadraticCurveTo(0.28, -0.5, 0.25, -0.34); g.lineTo(0.19, 0.0); g.closePath(); g.fill();
+      g.fillStyle = "#1a212b"; g.font = "900 0.26px " + DISP; g.textAlign = "center"; g.fillText("1", 0, -0.22); g.textAlign = "left";
+      // руки: длинные рукава и большие перчатки
+      for (const d of [-1, 1]) {
+        const sx = d * 0.27, sy = -0.5, hx = d * (0.45 + 0.28 * s), hy = -(0.62 + 0.78 * s), ex = (sx + hx) / 2 + d * 0.03, ey = (sy + hy) / 2;
+        taper(sx, sy, ex, ey, 0.15, 0.13, kit); taper(ex, ey, hx, hy, 0.13, 0.1, kit);
+        g.fillStyle = "#f4f6f8"; g.beginPath(); g.arc(hx, hy, 0.1, 0, TAU); g.fill();                                                    // ладонь
+        g.fillStyle = "#e2e6ea"; for (let f = -1; f <= 1; f++) { g.beginPath(); g.arc(hx + f * 0.05, hy - 0.085, 0.032, 0, TAU); g.fill(); } // пальцы
+        g.fillStyle = "#14181f"; g.fillRect(hx - 0.08, hy + 0.04, 0.16, 0.026);                                                          // манжета
+      }
+      taper(0, -0.55, 0, -0.65, 0.12, 0.11, skin);
+      headFront(0, -0.78, skin, hairC, 0.4 + 0.6 * s);
       g.restore();
     }
+    // бьющий: вид со спины, у ног начало координат; бежит к мячу, бьёт правой
     function drawKicker(c) {
       const team = TEAM[c.team];
       const run = clamp((c.t - T_PREP) / T_RUN, 0, 1), e = run * run * (3 - 2 * run);
       const z = -3.6 + 2.9 * e, x = -2.6 + 1.6 * e;
       const sc = P(0, 0, z).k, base = P(x, 0, z);
-      const kickLeg = c.struck ? Math.max(0, 1 - (c.t - c.tK) * 3.2) : 0;
-      const gone = c.struck ? Math.min(1, (c.t - c.tK) / 0.35) : 0;
+      const kick = c.struck ? Math.max(0, 1 - (c.t - c.tK) * 2.6) : 0;
+      const gone = c.struck ? clamp((c.t - c.tK) / 0.5, 0, 1) : 0;
+      const moving = run > 0 && run < 1 && !c.struck;
+      const ph = run * 5 * TAU, bob = moving ? Math.abs(Math.sin(ph)) * 0.035 : 0;
+      const skin = SKINS[c.n % 4], hairC = HAIRS[(c.n + 1) % 4], hairStyle = c.n % 3;
+      const jersey = team.col, dark = shade(jersey, 0.72), shorts = "#101820";
       g.save(); g.globalAlpha = 1 - gone; g.translate(base.x - gone * 140, base.y); g.scale(sc, sc);
-      const step = Math.sin(run * 22) * (run > 0 && run < 1 ? 0.28 : 0);
-      g.lineCap = "round";
-      const limb = (x1, y1, x2, y2, w, col) => { g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.moveTo(x1, -y1); g.lineTo(x2, -y2); g.stroke(); };
-      limb(-0.12, 0.9, -0.12 + step * 0.4, 0.04, 0.2, "#e9edf2"); limb(0.12, 0.9, 0.14 - step * 0.4 + kickLeg * 0.3, 0.04 + kickLeg * 0.35, 0.2, "#e9edf2");
-      limb(-0.12 + step * 0.4, 0.04, -0.12 + step * 0.4, 0.0, 0.2, "#111");
-      limb(0, 0.9, 0, 1.55, 0.5, team.col);
-      g.fillStyle = team.dark; g.font = "900 0.36px " + DISP; g.textAlign = "center"; g.fillText(c.n + 7, 0, -1.12); g.textAlign = "left";
-      limb(-0.28, 1.5, -0.42, 1.0 + (1 - run) * 0.05, 0.14, team.col); limb(0.28, 1.5, 0.45, 1.05, 0.14, team.col);
-      g.fillStyle = "#231c1a"; g.beginPath(); g.arc(0, -1.78, 0.18, 0, TAU); g.fill();
+      g.lineJoin = "round"; g.lineCap = "round";
+      g.fillStyle = "rgba(0,0,0,.38)"; g.beginPath(); g.ellipse(0, 0.02, 0.44, 0.12, 0, 0, TAU); g.fill();       // тень под ногами
+      const hipY = -(0.97 - bob);
+      // ноги: шаг от фазы бега; бьющая правая уходит вперёд-вверх после удара
+      for (const sd of [-1, 1]) {
+        const sw = moving ? Math.sin(ph + (sd > 0 ? 0 : Math.PI)) : 0, fw = Math.max(0, sw), bk = Math.max(0, -sw), ka = sd > 0 ? kick : 0;
+        const fx = sd * (0.13 + 0.04 * ka), fy = -(0.07 + 0.3 * fw + 0.22 * bk + 0.55 * ka);
+        const kx = sd * (0.15 + 0.03 * fw), ky = -(0.52 + 0.1 * fw + 0.05 * bk + 0.28 * ka);
+        taper(sd * 0.1, hipY, kx, ky, 0.2, 0.16, skin);
+        taper(kx, ky, fx, fy, 0.16, 0.115, jersey);                                                               // гетры цвета команды
+        g.fillStyle = dark; g.fillRect(Math.min(kx, fx) - 0.09, (ky + fy) / 2 - 0.012, 0.18, 0.022);              // кольцо на гетре
+        boot(fx, fy, sd, jersey, fw + bk + ka);
+        taper(sd * 0.1, hipY, sd * (0.12 + 0.01 * fw), hipY + 0.2, 0.25, 0.22, shorts);                          // штанина трусов
+      }
+      g.fillStyle = shorts; g.beginPath(); g.moveTo(-0.2, hipY - 0.05); g.lineTo(0.2, hipY - 0.05); g.lineTo(0.2, hipY + 0.1); g.lineTo(-0.2, hipY + 0.1); g.closePath(); g.fill();
+      // майка со спины: градиент по ширине, шов по позвоночнику, номер
+      const gr = g.createLinearGradient(-0.27, 0, 0.27, 0); gr.addColorStop(0, dark); gr.addColorStop(0.45, jersey); gr.addColorStop(1, dark);
+      g.fillStyle = gr; g.beginPath(); g.moveTo(-0.19, hipY + 0.02); g.lineTo(-0.245, -1.3 - bob); g.quadraticCurveTo(-0.275, -1.46 - bob, -0.2, -1.53 - bob); g.lineTo(0.2, -1.53 - bob);
+      g.quadraticCurveTo(0.275, -1.46 - bob, 0.245, -1.3 - bob); g.lineTo(0.19, hipY + 0.02); g.closePath(); g.fill();
+      g.strokeStyle = "rgba(0,0,0,.16)"; g.lineWidth = 0.012; g.beginPath(); g.moveTo(0, -1.5 - bob); g.lineTo(0, hipY); g.stroke();
+      g.fillStyle = team.dark; g.font = "900 0.34px " + DISP; g.textAlign = "center"; g.fillText(String(c.n + 7), 0, -1.12 - bob); g.textAlign = "left";
+      // руки: размах против шага; перед ударом разведены
+      for (const sd of [-1, 1]) {
+        const an = moving ? Math.sin(ph + (sd > 0 ? 0 : Math.PI) + Math.PI) : 0, up = Math.max(0, an), open = c.struck ? Math.max(0.0, 1 - (c.t - c.tK) * 1.4) : 0;
+        const shx = sd * 0.27, shy = -1.47 - bob, ex = sd * (0.33 + 0.03 * up + 0.14 * open), ey = -1.2 + 0.1 * up, hx = sd * (0.31 + 0.26 * open), hy = -0.98 + 0.28 * up - 0.18 * open;
+        taper(shx, shy, (shx + ex) / 2, (shy + ey) / 2, 0.16, 0.14, jersey);                                   // короткий рукав
+        taper((shx + ex) / 2, (shy + ey) / 2, ex, ey, 0.1, 0.085, skin); taper(ex, ey, hx, hy, 0.085, 0.07, skin);
+        g.fillStyle = skin; g.beginPath(); g.arc(hx, hy, 0.045, 0, TAU); g.fill();
+      }
+      taper(0, -1.5 - bob, 0, -1.62 - bob, 0.12, 0.11, skin);
+      headBack(0, -1.74 - bob, skin, hairC, hairStyle);
       g.restore();
     }
     function drawBall(b) {

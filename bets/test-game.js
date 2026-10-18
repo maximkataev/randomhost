@@ -13,7 +13,7 @@ function mulberry(seed) {
 }
 
 function room(n = 3, opts = {}, settings = {}) {
-  const g = new Game(mulberry(opts.seed || 1), opts);
+  const g = new Game(mulberry(opts.seed || 1), { intro: () => 0, ...opts });
   g.setSettings({ mode: "scenic", ...settings });
   for (let i = 1; i <= n; i++) g.addPlayer("p" + i, "Игрок" + i);
   return g;
@@ -27,7 +27,7 @@ function advance(g, now, phase) {
 }
 
 test("лобби: нужно ≥ 2 игроков, дубли и лимит", () => {
-  const g = new Game(mulberry(1));
+  const g = new Game(mulberry(1), { intro: () => 0 });
   g.addPlayer("a", "А");
   assert.deepEqual(g.start(0), []);
   g.addPlayer("a", "А");
@@ -174,7 +174,7 @@ test("лимит событий: победа по фишкам", () => {
 });
 
 test("реальное событие: фолбэк на сценическое, если источник молчит", () => {
-  const g = new Game(mulberry(3), { prepareLive: () => null });
+  const g = new Game(mulberry(3), { prepareLive: () => null, intro: () => 0 });
   g.setSettings({ mode: "real" });
   g.addPlayer("a", "А"); g.addPlayer("b", "Б");
   g.start(0);
@@ -184,7 +184,7 @@ test("реальное событие: фолбэк на сценическое,
 
 test("реальное событие: исход приходит позже, ничья по порогу возвращается, таймаут — возврат ставок", () => {
   const prep = () => ({ input: { sigma: 40 }, meta: {} });
-  const g = new Game(mulberry(4), { prepareLive: prep });
+  const g = new Game(mulberry(4), { prepareLive: prep, intro: () => 0 });
   g.setSettings({ mode: "real" });
   g.addPlayer("a", "А"); g.addPlayer("b", "Б");
   g.start(0);
@@ -204,7 +204,7 @@ test("реальное событие: исход приходит позже, �
   assert.equal(a.last.lines.find((l) => l.id === "up:1").result, "lose");
   assert.equal(a.stack, 1000 - 100 + 0); // 100 вернулось, 100 проиграно
   // таймаут без исхода: всем возврат
-  const g2 = new Game(mulberry(4), { prepareLive: prep });
+  const g2 = new Game(mulberry(4), { prepareLive: prep, intro: () => 0 });
   g2.setSettings({ mode: "real" });
   g2.addPlayer("a", "А"); g2.addPlayer("b", "Б");
   g2.start(0);
@@ -289,4 +289,32 @@ test("минимальная ставка растёт по шкале и не �
   p.stack = 100;
   assert.equal(g.minStake(p), 100, "ва-банк: минимум = весь остаток");
   assert.equal(LEVELS[LEVELS.length - 1], 25);
+});
+
+test("знакомство перед ставками: клиенты видят окно ставок с флагом intro, ставки закрыты до его конца", () => {
+  const g = new Game(mulberry(21), { intro: (first) => (first ? 12000 : 6000) });
+  g.setSettings({ mode: "scenic" });
+  g.addPlayer("a", "А"); g.addPlayer("b", "Б");
+  g.start(1000);
+  assert.equal(g.s.phase, "intro");
+  const snap = g.snapshot(1000, "a");
+  assert.equal(snap.phase, "bets", "для клиента это окно ставок");
+  assert.equal(snap.intro, true);
+  assert.equal(snap.introMs, 12000, "первый показ типа события — длиннее");
+  assert.equal(snap.deadline, 13000);
+  assert.deepEqual(g.bet("a", g.cur.markets[0].id, 50), [], "ставка во время знакомства не принимается");
+  assert.deepEqual(g.submit("a", 1500), []);
+  assert.deepEqual(g.tick(5000), []);
+  const ev = g.tick(13000);
+  assert.equal(ev[0].type, "bets_open");
+  assert.equal(g.s.phase, "bets");
+  assert.equal(g.s.deadline, 13000 + g.s.settings.betMs, "окно ставок отсчитывается после знакомства");
+  const snap2 = g.snapshot(13000, "a");
+  assert.equal(snap2.intro, undefined);
+  assert.equal(g.bet("a", g.cur.markets[0].id, 50).length, 1);
+  // тот же тип события повторно — короче
+  g.bet("b", g.cur.markets[0].id, 50); g.submit("a", 13100); g.submit("b", 13100);
+  let now = 13100;
+  for (let i = 0; i < 30 && g.s.phase !== "intro"; i++) { now = Math.max(now, g.nextDeadline()); g.tick(now); }
+  assert.equal(g.s.phase, "intro");
 });

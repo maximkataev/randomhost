@@ -17,7 +17,9 @@ const MAX_PLAYERS = 12;
 const MAX_BETS = 6;          // разных рынков в купоне
 const LOCK_MS = 2000;
 const PAYOUT_MS = 7000;
-const LIVE_SCENE_MS = 3000;  // реальный исход пришёл: вспышка, проверка купонов
+const LIVE_SCENE_MS = 3000;
+// Знакомство перед окном ставок: время понять суть события и посмотреть рынки (дольше, когда тип встречается впервые)
+const INTRO_FIRST_MS = 12000, INTRO_NEXT_MS = 6000;  // реальный исход пришёл: вспышка, проверка купонов
 // минимальная ставка на событие в процентах от стартового стека (§6.3)
 const LEVELS = [3, 3, 4, 5, 6, 8, 10, 12, 16, 20, 25];
 
@@ -29,6 +31,8 @@ class Game {
     this.rnd = rnd;
     // prepareLive(type) → входные данные реального события из feed.js или null (источник недоступен)
     this.prepareLive = opts.prepareLive || (() => null);
+    // intro(first, type) → мс знакомства; 0 — без фазы (тесты движка)
+    this.intro = opts.intro || ((first) => (first ? INTRO_FIRST_MS : INTRO_NEXT_MS));
     // какие реальные события включены (сервер отдаёт список из feed); по умолчанию все — для тестов движка
     this.liveTypes = opts.liveTypes || (() => R.REAL);
     this.cur = null; // собранное событие с функциями test (в дамп не идёт)
@@ -131,8 +135,13 @@ class Game {
     }
     s.schedule[s.idx] = type;
     s.ev = { type, input, meta: this.cur.meta || R.describe(type, this.rnd), live: R.REAL.includes(type), fallback, outcome: null, hasOutcome: false, voidAll: false, voids: [], revealAt: 0, n: s.idx + 1 };
-    s.phase = "bets";
-    s.deadline = now + s.settings.betMs;
+    s.seen = s.seen || [];
+    const first = !s.seen.includes(type);
+    if (first) s.seen.push(type);
+    const introMs = Math.max(0, Number(this.intro(first, type)) || 0);
+    s.introMs = introMs;
+    if (introMs > 0) { s.phase = "intro"; s.deadline = now + introMs; }
+    else { s.phase = "bets"; s.deadline = now + s.settings.betMs; }
     for (const p of Object.values(s.players)) { p.draft = {}; p.submitted = false; p.coupon = null; p.last = null; p.stackBefore = p.stack; }
     return [{ type: "event", idx: s.idx, kind: type, fallback, min: this.alive().map((p) => [p.id, this.minStake(p)]) }];
   }
@@ -315,6 +324,11 @@ class Game {
   tick(now) {
     const s = this.s;
     switch (s.phase) {
+      case "intro":
+        if (now < s.deadline) return [];
+        s.phase = "bets";
+        s.deadline = now + s.settings.betMs;
+        return [{ type: "bets_open" }];
       case "bets":
         return now >= s.deadline ? this.lock(now) : [];
       case "locked":
@@ -348,23 +362,25 @@ class Game {
 
   snapshot(now, forPlayer) {
     const s = this.s, ev = s.ev;
+    const intro = s.phase === "intro";
+    const phase = intro ? "bets" : s.phase; // клиенты видят знакомство как окно ставок с флагом intro
     const board = forPlayer === undefined; // общий экран
-    const locked = s.phase !== "lobby" && s.phase !== "bets";
-    const revealed = s.phase === "payout" || s.phase === "done" || (board && ev && ev.hasOutcome && s.phase === "scene");
+    const locked = phase !== "lobby" && phase !== "bets";
+    const revealed = phase === "payout" || phase === "done" || (board && ev && ev.hasOutcome && phase === "scene");
     const players = s.order.map((id) => {
       const p = s.players[id];
       const own = id === forPlayer;
       return {
         id, name: p.name, stack: p.stack, alive: p.alive, online: p.online, maxWin: p.maxWin, outAt: p.outAt,
-        submitted: s.phase === "bets" ? p.submitted : undefined,
-        draft: own && s.phase === "bets" ? p.draft : undefined,
-        coupon: (locked && p.coupon) || (own && s.phase === "bets" ? { bets: [], draft: true } : null),
-        last: s.phase === "payout" || s.phase === "done" ? p.last : null,
-        min: s.phase === "bets" && p.alive ? this.minStake(p) : undefined,
+        submitted: phase === "bets" ? p.submitted : undefined,
+        draft: own && phase === "bets" ? p.draft : undefined,
+        coupon: (locked && p.coupon) || (own && phase === "bets" ? { bets: [], draft: true } : null),
+        last: phase === "payout" || phase === "done" ? p.last : null,
+        min: phase === "bets" && p.alive ? this.minStake(p) : undefined,
       };
     });
     return {
-      liveN: this.liveTypes().length, me: board ? undefined : forPlayer, phase: s.phase, settings: s.settings, now, deadline: s.deadline, idx: s.idx, total: s.settings.events || null,
+      intro: intro || undefined, introMs: s.introMs || undefined, liveN: this.liveTypes().length, me: board ? undefined : forPlayer, phase: phase, settings: s.settings, now, deadline: s.deadline, idx: s.idx, total: s.settings.events || null,
       players, winner: s.winner, stats: s.stats,
       ev: ev && {
         type: ev.type, live: ev.live, fallback: ev.fallback, n: ev.n, meta: ev.meta, input: ev.input,
@@ -376,7 +392,7 @@ class Game {
         sceneMs: ev.hasOutcome && !ev.live ? R.SCENE_MS[ev.type](ev.outcome) : undefined,
         voidAll: ev.voidAll || undefined,
         // выигравшие рынки видны всем с развязки: доска подсвечивает их на табло
-        winners: ev.hasOutcome && !ev.voidAll && (s.phase === "payout" || s.phase === "done") && this.cur
+        winners: ev.hasOutcome && !ev.voidAll && (phase === "payout" || phase === "done") && this.cur
           ? this.cur.markets.filter((m) => ev.voids.indexOf(m.id) < 0 && m.test(ev.outcome)).map((m) => m.id) : undefined,
       },
     };

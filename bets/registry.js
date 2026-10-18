@@ -22,7 +22,7 @@ const LIVE_KIND = {
 
 // длительность сцены сценических событий, мс (по исходу)
 const SCENE_MS = {
-  dice: () => 12000,
+  dice: () => 7500,
   dogs: () => 30000,
   penalties: (o) => 3000 + (o.kicks.length + 2 * o.sd.length) * 3300,
   rope: () => 34000,

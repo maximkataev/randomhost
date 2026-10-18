@@ -39,6 +39,7 @@ window.I18N_DICT = {
     host_link: "Ссылка ведущего", copied: "Ссылка ведущего скопирована", viewer: "Экран-зритель: игрой управляет ведущий", imhost: "Я ведущий", paste: "Вставь ссылку ведущего",
     creating: "Создаём комнату…", noroom: "Такой комнаты нет", expired: "Комната закрыта", conn: "Нет связи, переподключаемся…",
     void_all: "Событие не состоялось: ставки возвращены",
+    say_intro: "Знакомимся с событием. Ставки откроются через несколько секунд", alert_open: "СТАВКИ ОТКРЫТЫ!", ph_intro: "Знакомство",
     say_bets: "Делайте ставки!", say_locked: "Купоны открыты", say_scene: "Ждём исход…", say_payout: "Проверяем купоны", say_wait: "Ждём реальные данные…",
     idle_sub: "сцена загружается", wait_title: "Ждём игроков"
   },
@@ -63,6 +64,7 @@ window.I18N_DICT = {
     host_link: "Host link", copied: "Host link copied", viewer: "Viewer screen: the host runs the game", imhost: "I'm the host", paste: "Paste the host link",
     creating: "Creating a room…", noroom: "No such room", expired: "Room closed", conn: "No connection, reconnecting…",
     void_all: "Event void: bets returned",
+    say_intro: "Meet the event. Betting opens in a few seconds", alert_open: "BETS ARE OPEN!", ph_intro: "Intro",
     say_bets: "Place your bets!", say_locked: "Coupons revealed", say_scene: "Waiting for the result…", say_payout: "Checking coupons", say_wait: "Waiting for real-world data…",
     idle_sub: "loading the scene", wait_title: "Waiting for players"
   },
@@ -87,6 +89,7 @@ window.I18N_DICT = {
     host_link: "Σύνδεσμος οικοδεσπότη", copied: "Ο σύνδεσμος οικοδεσπότη αντιγράφηκε", viewer: "Οθόνη θεατή: το παιχνίδι το διαχειρίζεται ο οικοδεσπότης", imhost: "Είμαι ο οικοδεσπότης", paste: "Επικόλλησε τον σύνδεσμο οικοδεσπότη",
     creating: "Δημιουργία δωματίου…", noroom: "Δεν υπάρχει τέτοιο δωμάτιο", expired: "Το δωμάτιο έκλεισε", conn: "Δεν υπάρχει σύνδεση, επανασύνδεση…",
     void_all: "Το γεγονός δεν έγινε: τα στοιχήματα επιστράφηκαν",
+    say_intro: "Γνωρίστε το γεγονός. Τα στοιχήματα ανοίγουν σε λίγα δευτερόλεπτα", alert_open: "ΑΝΟΙΧΤΑ ΣΤΟΙΧΗΜΑΤΑ!", ph_intro: "Γνωριμία",
     say_bets: "Βάλτε τα στοιχήματά σας!", say_locked: "Τα δελτία αποκαλύφθηκαν", say_scene: "Περιμένουμε το αποτέλεσμα…", say_payout: "Έλεγχος δελτίων", say_wait: "Περιμένουμε πραγματικά δεδομένα…",
     idle_sub: "φορτώνει η σκηνή", wait_title: "Περιμένουμε παίκτες"
   }
@@ -110,6 +113,7 @@ window.I18N_DICT = {
         <div id="idle"><div><div class="big" id="idleBig"></div><div class="sub" id="idleSub"></div></div></div>
         <div id="alert"><span id="alertT"></span></div>
         <div id="stamp"></div>
+        <div id="rules"></div>
       </div></div>
       <div id="sbar"><div id="say">&nbsp;</div><div id="ctrl"><button class="sound-toggle-btn" type="button"></button></div></div>
     </section>
@@ -158,7 +162,7 @@ const PAYOUT_MS = 7000;
 
 let fails = 0, ws = null, wsTimer = null, wsDelay = 500, pingTimer = null, dead = false, stopped = false;
 let snap = null, recvPerf = 0, prev = null;
-let isHost = false, hostLost = false, chatHidden = false;
+let isHost = false, hostLost = false, hostSent = false, chatHidden = false;
 let sc = null;            // сцена BetsScenes
 const serverNow = () => (snap ? snap.now + (performance.now() - recvPerf) : Date.now());
 const remaining = () => (snap ? snap.deadline - serverNow() : 0);
@@ -174,6 +178,7 @@ function connect() {
   let opened = false;
   try { ws = new WebSocket(`${proto}://${location.host}/bets/ws?r=${CODE}`); } catch (e) { return retry(); }
   ws.onopen = () => {
+    hostSent = false;
     opened = true; wsDelay = 500; $("conn").classList.remove("on");
     clearInterval(pingTimer); pingTimer = setInterval(() => send({ type: "ping", c: Date.now() }), 8000);
   };
@@ -204,13 +209,14 @@ function gone(key) { stopped = true; dead = true; try { ws && ws.close(); } catc
 function onMessage(m) {
   switch (m.type) {
     case "hello": {
+      // host шлём один раз на соединение (hostSent сбрасывается в connect); доска, потерявшая роль (host_lost), не забирает её автоматически
       let token = null; try { token = localStorage.getItem(hostKey()); } catch (e) {}
-      if (token) send({ type: "host", token });
+      if (token && !hostSent && !hostLost) { hostSent = true; send({ type: "host", token }); }
       if (m.state) onState(m.state);
       break;
     }
     case "state": onState(m.state); break;
-    case "host_ok": isHost = true; hostLost = false; document.body.classList.add("host"); lobbyKey = ""; drawCtrl(); drawLobby(); break;
+    case "host_ok": { const was = isHost; isHost = true; hostLost = false; document.body.classList.add("host"); if (!was) lobbyKey = ""; drawCtrl(); drawLobby(); break; }
     case "host_lost": isHost = false; hostLost = true; document.body.classList.remove("host"); drawCtrl(); drawLobby(); break;
     case "event": onGameEvent(m.event || {}); break;
     case "live": if (sc && sc.live) { try { sc.live(m.data); } catch (e) { console.error(e); } } break;
@@ -223,8 +229,7 @@ function onMessage(m) {
   }
 }
 function onGameEvent(ev) {
-  if (ev.type === "join") snd("chip");
-  else if (ev.type === "submitted") snd("submit");
+  if (ev.type === "submitted") snd("submit");
   else if (ev.type === "out") { floatAt(ev.id, T("out"), "minus"); snd("out"); }
 }
 
@@ -242,7 +247,7 @@ function onState(s) {
   if (s.phase === "lobby") { stats.longest = null; saveStats(); }
   const newEv = s.ev ? s.idx + ":" + s.ev.type : "";
   const evChanged = newEv !== evKey;
-  const phaseChanged = !prev || prev.phase !== s.phase || evChanged;
+  const phaseChanged = !prev || prev.phase !== s.phase || evChanged || !!prev.intro !== !!s.intro;
   if (evChanged) { evKey = newEv; revealed.clear(); clearPayoutTimers(); landed.clear(); pending.clear(); rowsKey = ""; rowFlapDelay = true; rowNodes.clear(); }
   const first = !prev;
   render(phaseChanged, evChanged, first);
@@ -285,7 +290,7 @@ function drawTop() {
   }
   const ph = $("phase");
   ph.className = "phase " + (lobby ? "" : snap.phase);
-  ph.textContent = lobby || snap.phase === "done" ? "" : T("ph_" + snap.phase);
+  ph.textContent = lobby || snap.phase === "done" ? "" : T(snap.intro ? "ph_intro" : "ph_" + snap.phase);
   $("tote").querySelector("small").textContent = ev && ev.live ? T("est_note") : "";
 }
 let lastTick = -1;
@@ -295,8 +300,8 @@ function tickTimer() {
   const ev = snap.ev;
   let frac = 0, txt = "", hot = false, off = true;
   if (snap.phase === "bets") {
-    const r = Math.max(0, remaining()), tot = snap.settings.betMs || 20000;
-    frac = Math.min(1, r / tot); txt = String(Math.ceil(r / 1000)); hot = r <= 5000; off = false;
+    const r = Math.max(0, remaining()), tot = snap.intro ? (snap.introMs || 6000) : (snap.settings.betMs || 20000);
+    frac = Math.min(1, r / tot); txt = String(Math.ceil(r / 1000)); hot = !snap.intro && r <= 5000; off = false;
     if (hot && Math.ceil(r / 1000) !== lastTick && r > 0) snd("tick", true);
     lastTick = Math.ceil(r / 1000);
   } else if (snap.phase === "scene" && ev && ev.revealAt && ev.sceneMs) {
@@ -563,8 +568,9 @@ function onPhase(first, evChanged) {
   const ph = snap.phase;
   clearTimeout(sayT);
   if (ph === "bets") {
-    setSay(snap.ev && snap.ev.live ? T("say_bets") : T("say_bets"));
+    setSay(snap.intro ? T("say_intro") : T("say_bets"));
     if (!first) snd("bell");
+    if (!first && !snap.intro && prev && prev.intro) flashAlert(T("alert_open"));
   } else if (ph === "locked") {
     if (!first) { flashAlert(T("alert_lock")); snd("lock"); }
     setSay(T("say_locked"));
@@ -654,7 +660,18 @@ function ensureScene() {
   } catch (e) { console.error("[bets] сцена не создалась:", e); sc = null; }
   return sc;
 }
+const RULES_TITLE = { ru: "Как играем", en: "How it works", el: "Πώς παίζουμε" };
+function drawRules() {
+  const box = $("rules"), ev = snap && snap.ev;
+  if (!box) return;
+  if (!ev || snap.phase !== "bets") { box.classList.remove("on"); return; }
+  const l = lang(), r = BS.rules(ev.type, ev, l);
+  const key = ev.n + "|" + ev.type + "|" + l;
+  if (box._k !== key) { box._k = key; box.innerHTML = `<b>${esc(RULES_TITLE[l] || RULES_TITLE.ru)}</b><p>${esc(r.text)}</p><small>${esc(r.general)}</small>`; }
+  box.classList.add("on");
+}
 function syncScene(phaseChanged) {
+  drawRules();
   const ev = snap.ev;
   if (!ev || snap.phase === "lobby" || snap.phase === "done") {
     const s = ensureScene();
@@ -679,11 +696,18 @@ function syncScene(phaseChanged) {
     // зашли посреди события: декорация нужна, пока не начнётся сцена
     if (sceneKey === "") { try { s.show(ev.type, { input: ev.input, meta: ev.meta, markets: ev.markets }); } catch (e) { console.error(e); } }
   }
-  if (snap.phase === "payout") return;
+  if (snap.phase === "payout") {
+    // исход живого события так и не пришёл: сцена показывает «ставки возвращены»
+    if (ev.live && ev.voidAll && sceneKey !== k + ":void") { sceneKey = k + ":void"; try { s.play({ ...common, outcome: null, voidAll: true, durationMs: 3500, offsetMs: 0, live: ev.liveState }); } catch (e) { console.error(e); } }
+    return;
+  }
   // locked / scene: сцена стартует через 2 с после запирания (deadline фазы locked)
   const startAt = snap.phase === "locked" ? snap.deadline : (ev.sceneMs && ev.revealAt ? ev.revealAt - ev.sceneMs : sceneStartGuess);
   if (snap.phase === "locked") sceneStartGuess = snap.deadline;
   const doPlay = (outcomeKnown) => {
+    // реальное событие без исхода: сцена уже идёт после show() и получает поток через sc.live(); play(outcome:null) означает «исход не пришёл»,
+    // поэтому до прихода исхода (или возврата ставок) play не зовём — иначе через 2 с после запирания на экране мелькало «ставки возвращены»
+    if (ev.live && ev.outcome == null) return;
     const pk = k + (ev.live ? (ev.outcome != null ? ":liveout" : ":livewait") : ":play");
     if (sceneKey === pk) return;
     sceneKey = pk;
@@ -731,6 +755,8 @@ setInterval(() => { const now = Date.now(); for (const n of $("feed").children) 
 
 // ---------- лобби ----------
 let lobbyKey = "", qrDrawn = false;
+const knownPlayers = new Set();  // кто уже слышал «chip»: звук один раз на нового игрока, не на каждую перерисовку
+let lobbyHeard = false;
 const OPTS = [
   { k: "stack", label: "o_stack", vals: [500, 1000, 2000], fmt: (v) => num(v) },
   { k: "betMs", label: "o_bet", vals: [15000, 20000, 30000], fmt: (v) => T("sec", { n: v / 1000 }) },
@@ -782,7 +808,8 @@ function drawLobby() {
       n = el("div", "pill"); n.dataset.id = p.id;
       n.innerHTML = `<div class="av"></div><div class="nm"></div>${isHost ? '<button class="x" title="' + esc(T("kick")) + '">✕</button>' : ""}`;
       const x = n.querySelector(".x"); if (x) x.onclick = () => send({ type: "kick", playerId: p.id });
-      who.insertBefore(n, who.querySelector(".empty")); snd("chip");
+      who.insertBefore(n, who.querySelector(".empty"));
+      if (!knownPlayers.has(p.id)) { knownPlayers.add(p.id); if (lobbyHeard) snd("chip"); }
     }
     n.style.setProperty("--c", PC[i % PC.length]);
     const av = n.querySelector(".av"); av.textContent = initials(p.name); av.style.setProperty("--c", PC[i % PC.length]);
@@ -795,6 +822,8 @@ function drawLobby() {
   $("seatn").textContent = `${ps.length} / ${max}`;
   $("startbtn").disabled = !isHost || ps.length < 2;
   $("hint").textContent = ps.length < 2 ? T("need2") : !isHost ? T("host_only") : "";
+  ps.forEach((p) => knownPlayers.add(p.id));
+  lobbyHeard = true;
 }
 function patch(k, v) {
   if (!isHost) return;

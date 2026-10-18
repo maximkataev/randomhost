@@ -154,6 +154,111 @@
     return ids.map((id) => ({ id, title: type === "rope" && id === "winner" ? titles.win : titles[id] || id, markets: by.get(id) }));
   }
 
+  // ---- Правила события: коротко, что происходит и как выиграть (показываются в окне ставок на доске и на телефоне) ----
+  // Подстановки: {A}, {B} — подписи сторон из ev.meta.labels; {T} — длина окна в секундах.
+  const RULES = {
+    dice: {
+      ru: "Три кубика падают из стакана. Ставь на сумму, на число, на «больше/меньше» (11–17 против 4–10) или «чёт/нечёт». Если выпала тройка (три одинаковых), «больше/меньше» и «чёт/нечёт» проигрывают.",
+      en: "Three dice drop from the cup. Bet on the total, on a number, on big/small (11–17 vs 4–10) or odd/even. If all three match (a triple), big/small and odd/even lose.",
+      el: "Τρία ζάρια πέφτουν από το ποτήρι. Πόνταρε στο άθροισμα, σε αριθμό, μεγάλο/μικρό (11–17 ή 4–10) ή μονό/ζυγό. Αν έρθει τριάδα, χάνουν τα μεγάλο/μικρό και μονό/ζυγό.",
+    },
+    dogs: {
+      ru: "Три собаки бегут 400 метров. Ставь на победителя, на «в двойке» (первые два места), на последнего или на точную пару «первый, затем второй». Чем слабее собака, тем больше коэффициент.",
+      en: "Three greyhounds run 400 metres. Bet on the winner, on a top-2 finish, on the last one, or on the exact pair (first, then second). The weaker the dog, the bigger the odds.",
+      el: "Τρία γκρέιχαουντ τρέχουν 400 μέτρα. Πόνταρε στον νικητή, στους δύο πρώτους, στον τελευταίο ή στο ακριβές ζεύγος (πρώτος, μετά δεύτερος). Όσο πιο αδύναμος ο σκύλος, τόσο μεγαλύτερη η απόδοση.",
+    },
+    rocket: {
+      ru: "Ракета растёт от ×1 и взрывается в случайный момент. Выбери цель: ставка выигрывает, если ракета успела долететь до неё. Цель и есть коэффициент: чем выше, тем больше выигрыш и меньше шанс.",
+      en: "The rocket climbs from ×1 and explodes at a random moment. Pick a target: the bet wins if the rocket reaches it. The target is the payout: the higher it is, the bigger the win and the smaller the chance.",
+      el: "Ο πύραυλος ανεβαίνει από ×1 και εκρήγνυται σε τυχαία στιγμή. Διάλεξε στόχο: το στοίχημα κερδίζει αν ο πύραυλος τον φτάσει. Ο στόχος είναι η απόδοση: όσο ψηλότερα, τόσο μεγαλύτερο το κέρδος και μικρότερη η πιθανότητα.",
+    },
+    penalties: {
+      ru: "Две команды бьют по 5 пенальти, при ничьей — по одному удару до первой ошибки. Ставь на победителя серии, число голов, точный счёт, штангу или на конкретного бьющего.",
+      en: "Two teams take 5 penalties each; if tied, one kick each until someone misses. Bet on the winner, the number of goals, the exact score, a post hit or a particular shooter.",
+      el: "Δύο ομάδες εκτελούν από 5 πέναλτι· σε ισοπαλία, ένα σουτ η καθεμία μέχρι το πρώτο λάθος. Πόνταρε στον νικητή, στα γκολ, στο ακριβές σκορ, στο δοκάρι ή σε συγκεκριμένο εκτελεστή.",
+    },
+    rope: {
+      ru: "Канат, 41 рывок. Кто выиграл больше рывков, тот и победил. Ставь на победителя, на победу с перевесом 9+ рывков или на «камбэк» (победитель в какой-то момент отставал на 5+).",
+      en: "Tug of war, 41 pulls. Whoever wins more pulls wins. Bet on the winner, on a margin of 9+ pulls, or on a comeback (the winner trailed by 5+ at some point).",
+      el: "Διελκυστίνδα, 41 τραβήγματα. Όποιος κερδίσει τα περισσότερα νικά. Πόνταρε στον νικητή, σε διαφορά 9+ ή σε ανατροπή (ο νικητής έχανε με 5+ κάποια στιγμή).",
+    },
+    btc: {
+      ru: "Цена биткоина в момент закрытия ставок — точка отсчёта. Через 20 секунд сравниваем: выросла или упала. «Выше +N $» значит «вырастет больше чем на N долларов за 20 секунд».",
+      en: "The Bitcoin price at the moment betting closes is the starting point. After 20 seconds we compare: up or down. “Up +N $” means “rises by more than N dollars within 20 seconds”.",
+      el: "Η τιμή του Bitcoin τη στιγμή που κλείνουν τα στοιχήματα είναι το σημείο εκκίνησης. Μετά από 20 δευτερόλεπτα συγκρίνουμε: πάνω ή κάτω. «Πάνω +N $» σημαίνει άνοδο πάνω από N δολάρια σε 20 δευτερόλεπτα.",
+    },
+    btceth: {
+      ru: "BTC и ETH стартуют с нуля в момент закрытия ставок. Через 20 секунд смотрим: обе выросли, обе упали, разошлись в разные стороны — и какая монета выросла сильнее.",
+      en: "BTC and ETH start from zero when betting closes. After 20 seconds: did both rise, both fall, or split — and which coin gained more.",
+      el: "Τα BTC και ETH ξεκινούν από το μηδέν όταν κλείνουν τα στοιχήματα. Μετά από 20 δευτερόλεπτα: ανέβηκαν και τα δύο, έπεσαν ή χωρίστηκαν — και ποιο κέρδισε περισσότερο.",
+    },
+    emoji: {
+      ru: "Считаем настоящие посты в соцсети Bluesky за {T} секунд после закрытия ставок: чего больше, {A} или {B}. Поровну — отдельная ставка с большим коэффициентом.",
+      en: "We count real Bluesky posts for {T} seconds after betting closes: which shows up more, {A} or {B}. A tie is its own bet with a big payout.",
+      el: "Μετράμε πραγματικές αναρτήσεις στο Bluesky για {T} δευτερόλεπτα μετά το κλείσιμο: τι εμφανίζεται περισσότερο, {A} ή {B}. Η ισοπαλία είναι ξεχωριστό στοίχημα με μεγάλη απόδοση.",
+    },
+    wikiduel: {
+      ru: "Считаем настоящие правки Википедии за {T} секунд после закрытия ставок: в каком разделе их больше, {A} или {B}. Поровну — отдельная ставка.",
+      en: "We count real Wikipedia edits for {T} seconds after betting closes: which edition gets more, {A} or {B}. A tie is its own bet.",
+      el: "Μετράμε πραγματικές επεξεργασίες της Wikipedia για {T} δευτερόλεπτα: σε ποια έκδοση είναι περισσότερες, {A} ή {B}. Η ισοπαλία είναι ξεχωριστό στοίχημα.",
+    },
+    wikiedit: {
+      ru: "За {T} секунд после закрытия ставок: появится ли правка в статьях на эту тему в Википедии. Ставки независимы, можно ставить на несколько тем сразу.",
+      en: "Within {T} seconds after betting closes: will a Wikipedia article on this topic get edited. The bets are independent, so you can back several topics.",
+      el: "Μέσα σε {T} δευτερόλεπτα από το κλείσιμο: θα γίνει επεξεργασία σε άρθρο της Wikipedia για αυτό το θέμα. Τα στοιχήματα είναι ανεξάρτητα, μπορείς να παίξεις σε πολλά θέματα.",
+    },
+    whales: {
+      ru: "Появится ли за {T} секунд крупная транзакция биткоина больше указанной суммы. Ставки независимы.",
+      en: "Will a Bitcoin transaction larger than the stated amount appear within {T} seconds. The bets are independent.",
+      el: "Θα εμφανιστεί μέσα σε {T} δευτερόλεπτα συναλλαγή Bitcoin μεγαλύτερη από το ποσό; Τα στοιχήματα είναι ανεξάρτητα.",
+    },
+    lightning: {
+      ru: "Спутник считает молнии над Америкой. Где вспыхнет больше за период, {A} или {B}. Поровну — отдельная ставка.",
+      en: "A satellite counts lightning over the Americas. Which side flashes more over the period, {A} or {B}. A tie is its own bet.",
+      el: "Δορυφόρος μετρά αστραπές πάνω από την Αμερική. Ποια πλευρά έχει περισσότερες, {A} ή {B}. Η ισοπαλία είναι ξεχωριστό στοίχημα.",
+    },
+    airport: {
+      ru: "Считаем настоящие взлёты за {T} секунд у двух аэропортов по открытым данным самолётов: где взлетит больше, {A} или {B}. Поровну бывает часто — это отдельная ставка.",
+      en: "We count real take-offs for {T} seconds at two airports from open aircraft data: which gets more, {A} or {B}. Ties are common, so a tie is its own bet.",
+      el: "Μετράμε πραγματικές απογειώσεις για {T} δευτερόλεπτα σε δύο αεροδρόμια από ανοιχτά δεδομένα: πού περισσότερες, {A} ή {B}. Οι ισοπαλίες είναι συχνές και είναι ξεχωριστό στοίχημα.",
+    },
+    lang: {
+      ru: "Поток постов Bluesky замедлится и остановится. Ставь на язык поста, который окажется на экране в момент остановки.",
+      en: "The stream of Bluesky posts slows down and stops. Bet on the language of the post on screen at the moment it stops.",
+      el: "Η ροή αναρτήσεων του Bluesky επιβραδύνεται και σταματά. Πόνταρε στη γλώσσα της ανάρτησης τη στιγμή που σταματά.",
+    },
+    wikinext: {
+      ru: "Поток правок Википедии замедлится и остановится. Ставь на проект, в котором окажется правка в момент остановки.",
+      en: "The stream of Wikipedia edits slows down and stops. Bet on the project the edit belongs to at the moment it stops.",
+      el: "Η ροή επεξεργασιών της Wikipedia επιβραδύνεται και σταματά. Πόνταρε στο πρότζεκτ της επεξεργασίας τη στιγμή που σταματά.",
+    },
+    news: {
+      ru: "Первая новость после закрытия ставок. Ставь, из какой страны или о чём она будет.",
+      en: "The first news headline after betting closes. Bet on which country or topic it is about.",
+      el: "Η πρώτη είδηση μετά το κλείσιμο των στοιχημάτων. Πόνταρε σε ποια χώρα ή θέμα αφορά.",
+    },
+    drand: {
+      ru: "Публичный маяк случайности drand выдаёт число каждые 3 секунды. Ставь на последнюю цифру числа следующего раунда, чёт/нечёт или на «цифра/буква». Любой может проверить результат на сайте drand.",
+      en: "The public drand randomness beacon publishes a number every 3 seconds. Bet on the last digit of the next round, odd/even, or digit/letter. Anyone can verify the result on the drand site.",
+      el: "Ο δημόσιος φάρος τυχαιότητας drand δημοσιεύει έναν αριθμό κάθε 3 δευτερόλεπτα. Πόνταρε στο τελευταίο ψηφίο του επόμενου γύρου, μονό/ζυγό ή ψηφίο/γράμμα. Οποιοσδήποτε μπορεί να ελέγξει το αποτέλεσμα στο drand.",
+    },
+  };
+  const RULES_GENERAL = {
+    ru: "Ставки открыты ограниченное время. Выигрыш = ставка × коэффициент. Фишки виртуальные.",
+    en: "Betting is open for a limited time. Win = stake × odds. Chips are virtual.",
+    el: "Τα στοιχήματα είναι ανοιχτά για περιορισμένο χρόνο. Κέρδος = ποντάρισμα × απόδοση. Οι μάρκες είναι εικονικές.",
+  };
+
+  // Текст правил для события: { text, general }
+  function rules(type, ev, lang) {
+    lang = lang || LANG();
+    const r = RULES[type] || {};
+    const lb = (ev && ev.meta && ev.meta.labels) || {};
+    const T = (ev && ev.input && ev.input.T) || (type === "airport" ? 90 : 20);
+    const fill = (t) => String(t || "").replace(/\{A\}/g, lb.A || "A").replace(/\{B\}/g, lb.B || "B").replace(/\{T\}/g, T);
+    return { text: fill(r[lang] || r.ru || ""), general: RULES_GENERAL[lang] || RULES_GENERAL.ru };
+  }
+
   // Фишки для телефона: кратны 10, от минимума до не больше стека
   function chips(min, stack) {
     const base = Math.max(10, Math.ceil(min / 10) * 10);
@@ -172,7 +277,7 @@
   // Потенциальный выигрыш по правилам движка (floor, целые фишки)
   const payout = (stake, kc) => Math.floor((stake * kc) / 100);
 
-  const api = { TYPES, marketLabel, groupsFor, chips, kcStr, payout, mulberry32, PLAYER_COLORS, REACTIONS, typeTitle: (t, lang) => pick((TYPES[t] || { title: { ru: t } }).title, lang || LANG()), typeIcon: (t) => (TYPES[t] || {}).icon || "🎯" };
+  const api = { TYPES, rules, marketLabel, groupsFor, chips, kcStr, payout, mulberry32, PLAYER_COLORS, REACTIONS, typeTitle: (t, lang) => pick((TYPES[t] || { title: { ru: t } }).title, lang || LANG()), typeIcon: (t) => (TYPES[t] || {}).icon || "🎯" };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.BetsShared = api;
 })(typeof window !== "undefined" ? window : globalThis);

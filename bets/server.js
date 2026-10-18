@@ -162,7 +162,7 @@ function pruneTokens(room) {
 }
 
 function newGame(state) {
-  const opts = { prepareLive, liveTypes: () => (feed ? (typeof feed.enabled === "function" ? feed.enabled() : require("./registry").REAL) : []) };
+  const opts = { intro: process.env.BETS_INTRO_MS !== undefined ? () => Math.max(0, Number(process.env.BETS_INTRO_MS) || 0) : undefined, prepareLive, liveTypes: () => (feed ? (typeof feed.enabled === "function" ? feed.enabled() : require("./registry").REAL) : []) };
   return state ? Game.restore(state, rnd, opts) : new Game(rnd, opts);
 }
 
@@ -722,7 +722,8 @@ function handle(room, client, msg) {
       client.host = true;
       client.wasHost = true;
       reply({ type: "host_ok" });
-      sendHello(room, client); // доске — полный снимок, с исходом
+      // доске — полный снимок, с исходом. Именно state, а не hello: на hello доска шлёт host снова — получался бесконечный цикл host↔hello (мигание лобби и звук)
+      send(client.ws, { type: "state", state: snapshotFor(room, client) });
       for (const m of room.chat) send(client.ws, { type: "chat", ...m, replay: true }); // лента для вновь подключённой доски
       return;
     }

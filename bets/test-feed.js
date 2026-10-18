@@ -308,7 +308,7 @@ test("btc.begin: точная ничья (цена не сдвинулась) �
   assert.equal(s.resolved, 0);
   assert.deepEqual(s.voids, ["up:0", "down:0"]);
   // Game: ставки на up:0 возвращаются, остальные проигрывают
-  const g = new Game(mulberry(4), { prepareLive: () => ({ input: { sigma: 40 }, meta: {} }) });
+  const g = new Game(mulberry(4), { intro: () => 0, prepareLive: () => ({ input: { sigma: 40 }, meta: {} }) });
   g.setSettings({ mode: "real" });
   g.addPlayer("a", "А"); g.addPlayer("b", "Б");
   g.start(0);

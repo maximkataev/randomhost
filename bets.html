@@ -155,7 +155,9 @@ window.I18N_DICT = {
     "bets_rj": "Не принято",
     "bets_rj_too_fast": "Слишком часто",
     "bets_rj_phase": "Окно ставок уже закрыто",
-    "bets_ph_bets": "ставки"
+    "bets_ph_bets": "ставки",
+    "bets_intro_note": "Знакомься с событием: ставки откроются, когда таймер дойдёт до нуля",
+    "bets_intro_label": "до ставок"
   },
   en: {
     "_title": "Bets — a multiplayer game for your group",
@@ -277,7 +279,9 @@ window.I18N_DICT = {
     "bets_rj": "Not accepted",
     "bets_rj_too_fast": "Too often",
     "bets_rj_phase": "The betting window is already closed",
-    "bets_ph_bets": "bets"
+    "bets_ph_bets": "bets",
+    "bets_intro_note": "Get to know the event: betting opens when the timer hits zero",
+    "bets_intro_label": "until bets"
   },
   el: {
     "_title": "Στοίχημα — παιχνίδι για παρέες",
@@ -399,7 +403,9 @@ window.I18N_DICT = {
     "bets_rj": "Δεν έγινε δεκτό",
     "bets_rj_too_fast": "Πολύ συχνά",
     "bets_rj_phase": "Το παράθυρο στοιχημάτων έχει ήδη κλείσει",
-    "bets_ph_bets": "στοιχήματα"
+    "bets_ph_bets": "στοιχήματα",
+    "bets_intro_note": "Δες το γεγονός: τα στοιχήματα ανοίγουν όταν το χρονόμετρο φτάσει στο μηδέν",
+    "bets_intro_label": "έως τα στοιχήματα"
   }
 };
 </script>
@@ -449,6 +455,8 @@ const S = {
   conn_lost: "Нет связи — переподключаюсь…", conn_quiet: "Связь тормозит…", conn_dropped: "Не успело уйти — нажми ещё раз", conn_queued: "Нет связи — отправлю, как вернётся",
   rj: "Не принято", rj_too_fast: "Слишком часто", rj_phase: "Окно ставок уже закрыто",
   ph_bets: "ставки",
+  intro_note: "Знакомься с событием: ставки откроются, когда таймер дойдёт до нуля",
+  intro_label: "до ставок",
 };
 const T = (k, v) => {
   let s = S[k];
@@ -766,7 +774,7 @@ const kcOf = (id) => {
 const labelOf = (id) => BS.marketLabel(state.ev.type, id, state.ev);
 const myMin = () => { const p = mine(); return p && p.min != null ? p.min : 10; };
 function penaltyOf(total) { const p = mine(); return p ? Math.min(Math.max(0, p.stack - total), Math.max(0, myMin() - total)) : 0; }
-function canEdit() { const p = mine(); return !!(state && p && p.alive && state.phase === "bets" && !p.submitted && !submittedLocal); }
+function canEdit() { const p = mine(); return !!(state && p && p.alive && state.phase === "bets" && !state.intro && !p.submitted && !submittedLocal); }
 const chipsList = () => { const p = mine(); return BS.chips(myMin(), p ? p.stack : 0); };
 function curChip() { const l = chipsList(); if (!l.includes(chipVal)) chipVal = l[0]; return chipVal; }
 
@@ -780,7 +788,7 @@ function afterAction() {
 // сервер — источник правды: если спустя секунду-две купон не совпал с локальным, принимаем серверный
 function resync() {
   const p = mine();
-  if (!state || state.phase !== "bets" || !p || p.submitted) return;
+  if (!state || state.phase !== "bets" || state.intro || !p || p.submitted) return;
   pendingUntil = 0;
   const sd = p.draft || {};
   const same = Object.keys(sd).length === Object.keys(draft).length && Object.keys(sd).every((k) => sd[k] === draft[k]);
@@ -1026,6 +1034,7 @@ function renderGame(p) {
 function modeOf(p) {
   const ph = state.phase;
   if (!p.alive) return "spec";
+  if (ph === "bets" && state.intro) return "intro";
   if (ph === "bets") return p.submitted || submittedLocal ? "sent" : "edit";
   if (ph === "locked" || ph === "scene") return "scene";
   return "payout";
@@ -1037,7 +1046,7 @@ function paintGame() {
   const mode = modeOf(p), ev = state.ev;
   els.game.classList.toggle("spec", mode === "spec");
   paintTop(p, mode);
-  const betsUi = mode === "edit" || mode === "sent";
+  const betsUi = mode === "edit" || mode === "sent" || mode === "intro";
   // вкладки
   els.tabs.hidden = !betsUi;
   if (betsUi) {
@@ -1078,7 +1087,7 @@ function paintTop(p, mode) {
   const alive = state.players.filter((x) => x.alive);
   if (state.phase === "bets") {
     const done = alive.filter((x) => x.submitted).length;
-    els.t2l.innerHTML = p.alive ? `${esc(T("min"))} <b>${fmt(myMin())}</b>` : "";
+    els.t2l.innerHTML = state.intro ? esc(T("intro_label")) : p.alive ? `${esc(T("min"))} <b>${fmt(myMin())}</b>` : "";
     els.whos.innerHTML = alive.map((x) => `<span class="dotp${x.submitted ? " ok" : ""}" style="background:${colorOf(x.id)}" title="${esc(x.name)}">${esc(initial(x.name))}</span>`).join("") + `<span class="cnt2">${esc(T("submitted_of", { a: done, b: alive.length }))}</span>`;
   } else {
     els.t2l.textContent = "";
@@ -1091,10 +1100,10 @@ function paintClock() {
   const ph = state.phase;
   if (ph === "bets") {
     const rem = Math.max(0, state.deadline - srvNow());
-    const sec = Math.ceil(rem / 1000), tot = (state.settings.betMs || 20000);
-    els.clock.className = "clock" + (sec <= 5 ? " hot" : "");
+    const sec = Math.ceil(rem / 1000), tot = state.intro ? (state.introMs || 6000) : (state.settings.betMs || 20000);
+    els.clock.className = "clock" + (state.intro ? " intro" : sec <= 5 ? " hot" : "");
     if (els.clock.textContent !== String(sec)) els.clock.textContent = String(sec);
-    els.tbar.classList.toggle("hot", sec <= 5);
+    els.tbar.classList.toggle("hot", !state.intro && sec <= 5);
     els.tbar.firstElementChild.style.transform = `scaleX(${Math.max(0, Math.min(1, rem / tot))})`;
   } else {
     els.clock.className = "clock txt";
@@ -1109,6 +1118,7 @@ setInterval(safe(paintClock), 150);
 function buildBetsMid() {
   const ev = state.ev, mid = els.mid;
   mid.innerHTML = "";
+  mid.append(rulesCard());
   const gs = groups();
   const g = gs.find((x) => x.id === activeTab);
   if (!g) { mid.append(el("div", "empty", "—")); return; }
@@ -1130,6 +1140,23 @@ function buildBetsMid() {
   });
   mid.append(grid);
 }
+// Правила события: карточка сверху рынков; при первом показе типа события раскрыта, дальше сворачивается по тапу
+const RULES_T = { ru: "Как играем", en: "How it works", el: "Πώς παίζουμε" };
+function rulesCard() {
+  const ev = state.ev, lang = (document.documentElement.lang || "ru").slice(0, 2);
+  const box = el("div", "rules");
+  if (!ev) return box;
+  const key = "bets-rules-" + ev.type;
+  let seen = false; try { seen = sessionStorage.getItem(key) === "1"; } catch (e) {}
+  const open = rulesOpen[ev.type] !== undefined ? rulesOpen[ev.type] : !seen;
+  const r = BS.rules(ev.type, ev, lang);
+  box.classList.toggle("open", open);
+  box.innerHTML = `<button type="button" class="rh"><span>${esc(RULES_T[lang] || RULES_T.ru)}</span><i>${open ? "−" : "?"}</i></button>${open ? `<p>${esc(r.text)}</p><small>${esc(r.general)}</small>` : ""}`;
+  if (open && !seen) { try { sessionStorage.setItem(key, "1"); } catch (e) {} }
+  box.querySelector(".rh").onclick = () => { rulesOpen[ev.type] = !open; paintMarkets(); };
+  return box;
+}
+const rulesOpen = {};
 function paintMarkets() {
   const cards = els.mid.querySelectorAll(".mk");
   cards.forEach((c) => {
@@ -1152,6 +1179,12 @@ function paintSlip(p, mode) {
   const sl = els.slip;
   if (mode === "payout" || mode === "spec") { sl.hidden = true; slipKey = "hidden"; return; }
   sl.hidden = false;
+  if (mode === "intro") {
+    const key = "intro:" + curEv + lang();
+    if (key === slipKey) return; slipKey = key;
+    sl.innerHTML = `<div class="introbar">${esc(T("intro_note"))}</div>`;
+    return;
+  }
   if (mode === "scene") {
     const c = p.coupon || { bets: [], staked: 0, penalty: 0, min: 0 };
     const key = "scene:" + curEv + ":" + JSON.stringify(c) + lang();

@@ -14,7 +14,7 @@ const FACE_VAL = [3, 4, 2, 5, 1, 6];       // +x, −x, +y, −y, +z, −z: пр
 const NORMALS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].map((a) => new THREE.Vector3(a[0], a[1], a[2]));
 const PIPS = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] };
 const REST_Y = 0.5;
-const SHAKE_T = 2.2, LIFT_T = 0.5, RELEASE_T = SHAKE_T + 0.28, HOLD_T = 2.8;
+const SHAKE_T = 1.2, LIFT_T = 0.4, RELEASE_T = SHAKE_T + 0.22, HOLD_T = 1.6; // сцена ~5 с: тряска, полёт, сумма (раньше ~9,7 с — игроки ждали)
 const CAM_BASE = new THREE.Vector3(0, 7.9, 8.6), LOOK_BASE = new THREE.Vector3(0, 0.3, 0.4);
 const LAND = [new THREE.Vector3(-1.9, REST_Y, 0.5), new THREE.Vector3(0.1, REST_Y, -1.1), new THREE.Vector3(1.9, REST_Y, 0.7)];
 const NP = 220;
@@ -175,7 +175,7 @@ export default function factory(host, ctx) {
     for (let i = 2; i > 0; i--) { const j = Math.floor(R() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; }
     return o.map((v, i) => {
       const Lp = LAND[order[i]].clone(); Lp.x += rand(-0.25, 0.25); Lp.z += rand(-0.25, 0.25);
-      const T = [1.8, 2.1, 2.7][i] * rand(0.95, 1.05);      // последний кубик катится дольше
+      const T = [1.2, 1.4, 1.8][i] * rand(0.95, 1.05);      // последний кубик катится дольше
       const Rl = new THREE.Vector3(rand(-0.4, 0.4) - 2.2, 3.3, rand(-0.5, 0.5) - 1.0);
       const dirx = Lp.x - Rl.x, dirz = Lp.z - Rl.z;
       const perp = new THREE.Vector3(-dirz, 0, dirx).normalize();
@@ -238,7 +238,7 @@ export default function factory(host, ctx) {
       let target = 1;
       if (S.phase === "throw" && S.released) {
         const p = plan[2], s = (S.t - RELEASE_T - p.delay) / p.T;
-        if (s > 0.62 && s < 0.97) target *= 0.38;
+        if (s > 0.62 && s < 0.97) target *= 0.5;
       }
       S.ts += (target - S.ts) * Math.min(1, dt * 7);
       const sdt = dt * S.ts;

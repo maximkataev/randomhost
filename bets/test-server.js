@@ -17,7 +17,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "bets-test-"));
 
 // ---------- сервер ----------
 
-const BASE_ENV = { BETS_TIME_SCALE: "3", OFFLINE_GRACE_MS: "300", GHOST_TTL_MS: "2000", CHAT_GAP_MS: "400", REACT_GAP_MS: "300" };
+const BASE_ENV = { BETS_INTRO_MS: "0", BETS_TIME_SCALE: "3", OFFLINE_GRACE_MS: "300", GHOST_TTL_MS: "2000", CHAT_GAP_MS: "400", REACT_GAP_MS: "300" };
 
 async function withServer(env, fn) {
   const port = nextPort++;
@@ -90,7 +90,7 @@ async function board(srv, code, hostToken) {
   const b = srv.client(code);
   await b.open;
   b.send({ type: "host", token: hostToken });
-  for (let i = 0; i < 100 && !(b.msgs.some((m) => m.type === "host_ok") && b.msgs.filter((m) => m.type === "hello").length >= 2); i++) await sleep(30);
+  for (let i = 0; i < 100 && !(b.msgs.some((m) => m.type === "host_ok") && b.msgs.some((m) => m.type === "state")); i++) await sleep(30);
   assert.ok(b.msgs.some((m) => m.type === "host_ok"), "доска не получила host_ok");
   return b;
 }
@@ -433,7 +433,7 @@ exports.createFeed = () => ({
 `;
 const MOCK_PATH = path.join(TMP, "mock-feed.js");
 fs.writeFileSync(MOCK_PATH, MOCK_FEED);
-const liveEnv = (mode, extra = {}) => ({ BETS_TIME_SCALE: "10", BETS_LIVE: "all", BETS_FEED_MODULE: MOCK_PATH, MOCK_FEED: mode, ...extra });
+const liveEnv = (mode, extra = {}) => ({ BETS_INTRO_MS: "0", BETS_TIME_SCALE: "10", BETS_LIVE: "all", BETS_FEED_MODULE: MOCK_PATH, MOCK_FEED: mode, ...extra });
 
 async function twoPlayersToLocked(srv, settings) {
   const { code, hostToken } = await srv.createRoom({ mode: "real", betMs: 30000, ...settings });
@@ -675,3 +675,21 @@ test("long-poll запасной путь: сессия, вход, ставка,
 });
 
 test.after(() => { try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {} });
+
+test("доска: host даёт один host_ok и состояние, а не новый hello (регрессия: цикл host↔hello мигал лобби и пищал)", async () => {
+  await withServer({}, async (srv) => {
+    const { code, hostToken } = await srv.createRoom({});
+    const b = await board(srv, code, hostToken);
+    await sleep(600);
+    assert.equal(b.msgs.filter((m) => m.type === "hello").length, 1, "hello приходит один раз — при подключении");
+    assert.equal(b.msgs.filter((m) => m.type === "host_ok").length, 1);
+    const a = await player(srv, code, "Аня");
+    await sleep(300);
+    assert.equal(b.msgs.filter((m) => m.type === "hello").length, 1, "вход игрока не порождает hello на доске");
+    // две доски: прежняя узнаёт о потере роли один раз и не забирает её сама
+    const b2 = srv.client(code); await b2.open; b2.send({ type: "host", token: hostToken });
+    await sleep(600);
+    assert.equal(b.msgs.filter((m) => m.type === "host_lost").length, 1);
+    assert.equal(b2.msgs.filter((m) => m.type === "host_ok").length, 1);
+  });
+});
