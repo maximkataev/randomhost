@@ -504,6 +504,19 @@
           const u = air ? clamp(((mine ? nowT : renderT) - f.jump.t0) / f.jump.dur, 0, 1) : 0;
           if (f.boost) { const g = cx.createRadialGradient(pos.x, pos.y, 4, pos.x, pos.y, 34); g.addColorStop(0, 'rgba(255,225,90,0.5)'); g.addColorStop(1, 'rgba(255,225,90,0)'); cx.fillStyle = g; cx.beginPath(); cx.arc(pos.x, pos.y, 34, 0, TAU); cx.fill(); }
           if (mine) { cx.strokeStyle = 'rgba(255,255,255,0.8)'; cx.lineWidth = 2; cx.setLineDash([5, 4]); cx.lineDashOffset = -t * 14; cx.beginPath(); cx.ellipse(pos.x, pos.y + 2, 24, 20, 0, 0, TAU); cx.stroke(); cx.setLineDash([]); }
+          // кольцо усталости: лист под лягушкой «устаёт», дойдёт круг — лист начнёт тонуть (на месте не отсидеться)
+          if (f.st === 'pad' && f.tireAt > 0 && m.phase === 'fight') {
+            const pd = m.pads[f.pad], tn = mine ? nowT : renderT;
+            if (pd && pd.state === 'ok' && pd.sinkAt == null) {
+              const u = clamp(1 - (f.tireAt - tn) / (m.cfg.STAY_T || 9), 0, 1);
+              if (u > 0.12) {
+                const pulse = u > 0.82 ? 0.5 + 0.5 * Math.sin(t * 16) : 1;
+                cx.lineWidth = 3.5; cx.lineCap = 'round';
+                cx.strokeStyle = u < 0.6 ? 'rgba(255,230,120,0.6)' : u < 0.82 ? 'rgba(255,170,70,0.8)' : `rgba(255,80,70,${0.5 + 0.5 * pulse})`;
+                cx.beginPath(); cx.arc(pd.x, pd.y, (pd._dr || pd.r) + 5, -Math.PI / 2, -Math.PI / 2 + u * TAU); cx.stroke();
+              }
+            }
+          }
           drawFrog(f, pos, face, { air, u, crouch: aim ? aim.pow * 0.9 : cr, t, scale: mine ? 1.08 : 1, croak: f._croak > t ? 1 : 0, look: aim ? 1 : 0 });
           r.names.push({ f, x: pos.x, y: pos.y - (pos.z || 0) * 0.55, mine });
         }

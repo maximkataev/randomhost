@@ -78,7 +78,7 @@
         let o = m.frogs.get(f.id);
         const wasPred = o && m.pred && f.id === m.myId;
         if (!o) { o = { id: f.id }; m.frogs.set(f.id, o); }
-        Object.assign(o, { name: f.name, ci: f.ci, inGame: !!f.ig, st: f.st, pad: f.pad, boost: !!f.boost, online: !!f.on, stomps: f.s || 0, readyAt: f.rd });
+        Object.assign(o, { name: f.name, ci: f.ci, inGame: !!f.ig, st: f.st, pad: f.pad, boost: !!f.boost, online: !!f.on, stomps: f.s || 0, readyAt: f.rd, tireAt: f.ta || 0 });
         if (!wasPred || f.st !== 'pad') { o.x = f.x; o.y = f.y; }
         o.jump = f.j ? jumpOf(f.j) : null;
         if (wasPred && f.j) m.pred = null;
@@ -87,8 +87,8 @@
     }
 
     // ---------- события ----------
-    function seatFrog(f, pad, x, y, t, boost) {
-      f.st = 'pad'; f.pad = pad; f.x = x; f.y = y; f.jump = null; f.readyAt = t + m.cfg.CROUCH; f.boost = !!boost;
+    function seatFrog(f, pad, x, y, t, boost, ta) {
+      f.tireAt = ta || 0; f.st = 'pad'; f.pad = pad; f.x = x; f.y = y; f.jump = null; f.readyAt = t + m.cfg.CROUCH; f.boost = !!boost;
       const p = m.pads[pad];
       if (p) p.flyUntil = 0;
     }
@@ -107,7 +107,7 @@
             if (e.id === m.myId && m.pred) m.pred = null;
           }
           break;
-        case 'land': if (f) seatFrog(f, e.pad, e.x, e.y, e.t, e.boost); break;
+        case 'land': if (f) seatFrog(f, e.pad, e.x, e.y, e.t, e.boost, e.ta); break;
         case 'fall': if (f) { f.st = 'out'; f.pad = -1; f.jump = null; if (e.x != null) { f.x = e.x; f.y = e.y; } if (e.id === m.myId) m.pred = null; } break;
         case 'wave': {
           const ids = e.pads.concat(e.shrink || []);

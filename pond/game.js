@@ -35,6 +35,8 @@ const DEFAULTS = Object.assign({}, P.DEFAULTS, {
   STOMP_GUARD: 8,       // первые секунды вытеснять нельзя: прилёт на занятый лист отскакивает назад (иначе неудачник известен на 4-й секунде)
   REACH_K: 0.9,         // волна не оставляет лягушку без достижимой свободной кувшинки: достижимо = до REACH_K * JUMP_MAX
   REACH_UNTIL: 10,      // за столько секунд до MAX_T проверка достижимости отключается (иначе «стулья» не закончить)
+  STAY_T: 9,            // лист «устаёт»: кто сидит на нём дольше (с разбросом ±15%), тот его топит — на месте не отсидеться
+  TIRE_WARN: 2.0,       // от красной метки усталого листа до погружения
   JUMP_RATE: 0.2,       // не чаще одного прыжка за столько секунд на игрока
   TIE_EPS: 1e-6,
 });
@@ -69,6 +71,8 @@ function createGame(opts) {
     f.st = 'pad'; f.pad = pad.id; f.jump = null;
     const s = slotFor(pad, f);
     f.x = s.x; f.y = s.y; f.seatedAt = t; f.readyAt = t + cfg.CROUCH;
+    // разброс: ±15%; на старте (все сели одновременно) шире, чтобы не прыгали все разом
+    f.tireAt = t + cfg.STAY_T * (t === 0 ? 0.9 + 0.7 * rng() : 0.85 + 0.3 * rng());
     if (pad.fly && pad.fly.until > t) {
       pad.fly = null; f.boost = true;
       push({ type: 'flyGot', id: f.id, pad: pad.id, t });
@@ -109,7 +113,7 @@ function createGame(opts) {
     const capEff = shrinking && L >= pad.sinkAt ? 1 : pad.cap;
     if (occ.length < capEff) {
       seat(f, pad, L);
-      return push({ type: 'land', id: f.id, pad: pad.id, x: f.x, y: f.y, t: L, boost: f.boost });
+      return push({ type: 'land', id: f.id, pad: pad.id, x: f.x, y: f.y, t: L, boost: f.boost, ta: f.tireAt });
     }
     if (j.forced) { f.x = j.tx; f.y = j.ty; return fall(f, L, 'stomp', j.by); }
     if (!occ.length) return; // (недостижимо)
@@ -118,7 +122,7 @@ function createGame(opts) {
       const home = j.from >= 0 ? g.pads[j.from] : null;
       if (home && home.state === 'ok' && !(home.sinkAt != null && L >= home.sinkAt) && occupants(home.id).filter(o => o !== f).length < home.cap) {
         seat(f, home, L);
-        return push({ type: 'land', id: f.id, pad: home.id, x: f.x, y: f.y, t: L, boost: f.boost, bounce: pad.id });
+        return push({ type: 'land', id: f.id, pad: home.id, x: f.x, y: f.y, t: L, boost: f.boost, bounce: pad.id, ta: f.tireAt });
       }
       f.x = j.tx; f.y = j.ty;
       return fall(f, L, 'miss');
@@ -129,7 +133,7 @@ function createGame(opts) {
     startJump(victim, L, j.ang, 0, true, cfg.JUMP_MIN * (1 + 0.5 * rng()), 0, 0, f.id);
     seat(f, pad, L);
     f.stomps++;
-    push({ type: 'land', id: f.id, pad: pad.id, x: f.x, y: f.y, t: L, boost: f.boost, stomp: victim.id });
+    push({ type: 'land', id: f.id, pad: pad.id, x: f.x, y: f.y, t: L, boost: f.boost, stomp: victim.id, ta: f.tireAt });
     push({ type: 'stomp', by: f.id, id: victim.id, pad: pad.id, t: L });
   }
 
@@ -179,6 +183,26 @@ function createGame(opts) {
       if (!ok) return false;
     }
     return true;
+  }
+
+  // есть ли у лягушки куда уйти с усталого листа: свободная достижимая кувшинка, которую никто не топит
+  function hasFreeReach(f, pad) {
+    const reach = g.jmax * cfg.REACH_K;
+    return g.pads.some((q) => {
+      if (q === pad || q.state !== 'ok' || (q.sinkAt != null && q.cause !== 'shrink')) return false;
+      const d = Math.hypot(q.x - f.x, q.y - f.y);
+      return d >= cfg.JUMP_MIN && d <= reach && occupants(q.id).length < q.cap;
+    });
+  }
+  function tire(f, t) {
+    const pad = g.pads[f.pad];
+    if (!pad || pad.state !== 'ok' || pad.sinkAt != null) { f.tireAt = Infinity; return; }
+    const chairs = !!g.loser || t >= Math.min(cfg.LETHAL_T, 15 + 5 * g.n0);
+    // до «стульев» не топим лист, с которого некуда уйти: ждём, пока освободится место
+    if (!chairs && !hasFreeReach(f, pad)) { f.tireAt = t + 0.7; return; }
+    mark(pad, t + cfg.TIRE_WARN, 'wave');
+    f.tireAt = Infinity;
+    push({ type: 'wave', t, pads: [pad.id], shrink: [], sinkAt: pad.sinkAt, sinkAts: [pad.sinkAt], tired: f.id });
   }
 
   function doWave(t) {
@@ -267,7 +291,7 @@ function createGame(opts) {
     if (g.byId.has(id)) return g.byId.get(id);
     const f = {
       id, name, ci: ci | 0, idx: g.players.length, inGame: false, st: g.phase === 'lobby' ? 'lobby' : 'watch', pad: -1, x: 0, y: 0, jump: null,
-      readyAt: 0, seatedAt: 0, queued: null, boost: false, online: true, offSince: null,
+      readyAt: 0, seatedAt: 0, tireAt: Infinity, queued: null, boost: false, online: true, offSince: null,
       stomps: 0, jumps: 0, lastIn: -9, fellAt: null, cause: null, by: null, place: null, removed: false,
     };
     g.players.push(f); g.byId.set(id, f);
@@ -363,6 +387,7 @@ function createGame(opts) {
     for (const f of g.players) {
       if (f.st === 'air') take(f.jump.L, 'land', f, 1 + f.idx * 1e-3);
       else if (f.st === 'pad' && f.queued) take(f.readyAt, 'queued', f, 2);
+      if (f.st === 'pad' && f.online && f.tireAt !== Infinity) take(f.tireAt, 'tire', f, 2.2);
       if ((f.st === 'pad' || f.st === 'air') && !f.online && f.offSince != null) take(f.offSince + cfg.OFFLINE_T, 'remove', f, 0.5);
     }
     for (const p of g.pads) {
@@ -376,7 +401,7 @@ function createGame(opts) {
   }
 
   function finish(t) {
-    checkLoser();
+    checkLoser(true);
     const left = alive();
     g.phase = 'over';
     const out = g.falls.filter(f => f.fellAt != null);
@@ -405,9 +430,12 @@ function createGame(opts) {
     push({ type: 'over', ...g.over });
   }
 
-  function checkLoser() {
+  // Неудачник назначается чуть позже первого падения: падение от погружения обрабатывается на GRACE позже своей метки,
+  // и «более раннее» падение может ещё прийти. При конце партии назначаем сразу (force).
+  function checkLoser(force) {
     if (g.loser || !g.falls.length) return;
     const first = Math.min(...g.falls.map(f => f.fellAt));
+    if (!force && g.t < first + cfg.GRACE + 0.05) return;
     let c = g.falls.filter(f => f.fellAt - first <= cfg.TIE_EPS);
     let lot = false;
     if (c.length > 1) {
@@ -445,6 +473,7 @@ function createGame(opts) {
         const q = ref.queued; ref.queued = null; ref.jumps++;
         startJump(ref, Math.max(ref.readyAt, time), q.ang, q.pow, false, null, 0, q.seq);
       } else if (kind === 'remove') drop(ref, time);
+      else if (kind === 'tire') tire(ref, time);
       else if (kind === 'sink') {
         if (sinkBlocked(ref, tNew)) ref.sinkAt = tNew + cfg.OFFLINE_HOLD - cfg.GRACE; // ждём вернувшегося или снятого
         else sink(ref);
@@ -455,7 +484,7 @@ function createGame(opts) {
       else if (kind === 'strike') strikeHeron(ref);
       // конец: остался один (если в ту же секунду ничего не случится)
       if (alive().length <= 1 && !soleInAir()) {
-        const more = nextDue(Math.min(tNew, time + cfg.TIE_EPS));
+        const more = nextDue(Math.min(tNew, time + cfg.GRACE + cfg.TIE_EPS)); // погружения обрабатываются на GRACE позже метки: одновременные не пропускаем
         if (!more) { g.t = time; checkLoser(); return finish(time); }
       }
     }
@@ -493,7 +522,7 @@ function createGame(opts) {
       frogs: g.players.map(f => ({
         id: f.id, name: f.name, ci: f.ci, ig: f.inGame ? 1 : 0, st: f.st, pad: f.pad, x: f.x, y: f.y, boost: f.boost, on: f.online,
         j: f.jump ? { t0: f.jump.t0, x0: f.jump.x0, y0: f.jump.y0, ang: f.jump.ang, dist: f.jump.dist, dur: f.jump.dur, forced: f.jump.forced } : null,
-        rd: f.readyAt, s: f.stomps,
+        rd: f.readyAt, s: f.stomps, ta: f.tireAt === Infinity ? 0 : f.tireAt,
       })),
       heron: g.heron,
       over: g.over,

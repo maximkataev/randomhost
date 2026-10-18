@@ -28,7 +28,9 @@ function think(g, f, bot, dt) {
   if (f.st !== 'pad' || g.phase !== 'fight') { bot.due = null; return null; }
   if (g.t < f.readyAt) return null;
   const pad = g.pads[f.pad];
-  const threatened = pad && pad.sinkAt != null;
+  // боты не ждут красной метки: усталость листа видна заранее (tireAt), уходят за ~2 с
+  const tiring = f.tireAt > 0 && f.tireAt !== Infinity && f.tireAt - g.t < 2.2;
+  const threatened = pad && (pad.sinkAt != null || tiring);
   if (!threatened) { bot.due = null; return null; }
   if (bot.due == null) bot.due = g.t + bot.style.react[0] + bot.rnd() * (bot.style.react[1] - bot.style.react[0]);
   if (g.t < bot.due) return null;

@@ -183,6 +183,33 @@ test('волна не оставляет лягушку без достижим�
     }
   }
 });
+test('усталость листа: кто сидит дольше STAY_T, тому лист краснеет и тонет — отсидеться нельзя', () => {
+  const g = fight(3, { STAY_T: 4, TIRE_WARN: 1.5, LETHAL_T: 1e9 });
+  const f = F(g, 0);
+  assert(f.tireAt > 0 && f.tireAt < 8, 'таймер усталости выставлен');
+  run(g, 6);
+  const ev = g.drainEvents();
+  const w = ev.find(e => e.type === 'wave' && e.tired === 'p0');
+  assert(w, 'усталый лист помечен');
+  run(g, 3);
+  assert(g.falls.length >= 1 && g.falls.every(x => x.cause === 'wave'), 'отсидевшиеся упали вместе с листом');
+  assert(f.st === 'out' || g.phase === 'over', 'либо упал, либо партия уже решена');
+});
+test('усталый лист не топят, пока некуда уйти (до «стульев»)', () => {
+  const g = fight(2, { STAY_T: 2, LETHAL_T: 1e9, REACH_K: 0.01 }); // достижимых листов нет вообще
+  run(g, 8);
+  assert(g.drainEvents().every(e => !(e.type === 'wave' && e.tired)), 'лист не помечен');
+  assert.strictEqual(F(g, 0).st, 'pad');
+});
+test('прыжок на новый лист сбрасывает усталость', () => {
+  const g = fight(3, { STAY_T: 5, LETHAL_T: 1e9 });
+  const f = F(g, 0);
+  run(g, 3);
+  jumpTo(g, f, nearPad(g, f, g.players.map(p => p.pad)));
+  run(g, 1);
+  assert.strictEqual(f.st, 'pad');
+  assert(f.tireAt > g.t + 3.5, 'таймер заведён заново: ' + (f.tireAt - g.t));
+});
 test('одна кувшинка = одна лягушка, большая вмещает двух без вытеснения', () => {
   const g = fight(3, {});
   const big = g.pads.find(p => p.big);
@@ -384,20 +411,20 @@ test('одновременные падения: меньше вытеснени
   const T = g.t + 0.1;
   for (const f of [a, b]) { f.st = 'out'; f.fellAt = T; g.falls.push(f); }
   a.stomps = 2; b.stomps = 0; a.seatedAt = 0; b.seatedAt = 5;
-  run(g, 0.2);
+  run(g, 0.5);
   assert.strictEqual(g.loser, 'p1', 'меньше вытеснений');
   const h = fight(4, {});
   const [x, y] = [F(h, 0), F(h, 1)];
   for (const f of [x, y]) { f.st = 'out'; f.fellAt = h.t + 0.1; h.falls.push(f); }
   x.seatedAt = 7; y.seatedAt = 3;
-  run(h, 0.2);
+  run(h, 0.5);
   assert.strictEqual(h.loser, 'p1', 'сидел дольше');
 });
 test('нечего делить — ничья-жребий с пометкой', () => {
   const g = fight(4, {});
   const [a, b] = [F(g, 0), F(g, 1)];
   for (const f of [a, b]) { f.st = 'out'; f.fellAt = g.t + 0.1; f.seatedAt = 1; g.falls.push(f); }
-  run(g, 0.2);
+  run(g, 0.5);
   assert(['p0', 'p1'].includes(g.loser));
   assert(g.drainEvents().some(e => e.type === 'loser' && e.lot));
 });
