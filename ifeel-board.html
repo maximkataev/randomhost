@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#08070b">
+<meta name="robots" content="noindex">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1fac2.svg" type="image/svg+xml">
+<title>Айфилю — общий экран</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="ifeel-theme.css">
+<style>
+  /* Доска «Айфилю» — экран тепловизора. Читается с дивана: всё в единицах --u (1/100 высоты при 16:9) с потолками.
+     В ходе слева — кадр видоискателя с набором мишени: пока порядок тайный, карточки серые «??,?°»;
+     раскрытие прогревает кадр снизу вверх — от холодного 5-го места к раскалённому 1-му, у каждой полосы своя «температура».
+     Справа — вопрос и ответы угадывающего; после раскрытия его ответы перекрашиваются в настоящую температуру пунктов.
+     Синтаксис скриптов — не выше ES2017 (проекторы на Chromium 80–83): без ?. и ??. */
+  :root {
+    --lang-switch-bg: var(--bg);
+    --lang-switch-border: var(--line);
+    --lang-switch-fg: var(--muted);
+    --lang-switch-active-bg: var(--hud);
+    --lang-switch-active-fg: var(--bg);
+    --lang-switch-active-border: var(--hud);
+    --lang-switch-font: var(--mono);
+    --u: min(1vh, 0.56vw); /* единица доски: 1/100 высоты при 16:9 */
+    --vf-t: calc(.5 * var(--u)); --vf-l: calc(3.4 * var(--u));
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--text); font: 600 calc(2.4 * var(--u)) / 1.2 var(--font); overflow: hidden; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .hidden { display: none !important; }
+  #root { height: 100%; display: flex; flex-direction: column; }
+  .top { flex: none; display: flex; align-items: center; gap: calc(1.4 * var(--u)); padding: calc(1.6 * var(--u)) calc(var(--lsw, 160px)) calc(1 * var(--u)) calc(3 * var(--u)); }
+  .brand { font: 900 calc(3.6 * var(--u)) / 1 var(--font); letter-spacing: -.01em; display: flex; align-items: center; gap: calc(1.1 * var(--u)); text-transform: uppercase; }
+  .brand .thermo { font-size: calc(3 * var(--u)); }
+  .top .mode { font-size: calc(1.8 * var(--u)); padding: calc(.5 * var(--u)) calc(1.2 * var(--u)); }
+  .top .chip { font-size: calc(2 * var(--u)); padding: calc(.4 * var(--u)) calc(1.2 * var(--u)); }
+  .grow { flex: 1; }
+  .hostctl { display: flex; align-items: center; gap: 8px; font: 500 14px/1.2 var(--mono); }
+  .hostctl button, .endbtn { border: 2px solid var(--line); background: transparent; border-radius: var(--r-sm); padding: 6px 12px; font: 700 14px/1 var(--mono); }
+  .hostctl input { font: 500 14px/1 var(--mono); padding: 6px 10px; border-radius: var(--r-sm); border: 2px solid var(--line); background: var(--bg2); color: var(--text); width: 220px; }
+  .hostctl .note { color: var(--muted); }
+  .sound-toggle-btn { width: 40px; height: 40px; border-radius: var(--r-sm); border: 2px solid var(--line); background: transparent; display: grid; place-items: center; padding: 0; }
+  .lang-switch { top: calc(1.6 * var(--u)) !important; right: 16px !important; border-radius: var(--r-sm) !important; }
+  .banner, .conn { position: fixed; left: 50%; top: calc(8 * var(--u)); transform: translateX(-50%); z-index: 30; background: var(--hud); color: var(--bg); font: 700 calc(2 * var(--u)) / 1.2 var(--mono); padding: 10px 18px; border-radius: var(--r-sm); }
+  .conn { visibility: hidden; } .conn.on { visibility: visible; }
+  main { flex: 1 1 auto; min-height: 0; position: relative; padding: calc(.6 * var(--u)) calc(3 * var(--u)) calc(3 * var(--u)); display: flex; flex-direction: column; gap: calc(1.8 * var(--u)); }
+  /* таймер: тонкая полоса прибора и секунды моноширинным */
+  .tbar { flex: none; height: calc(.6 * var(--u)); background: var(--bg3); overflow: hidden; }
+  .tbar i { display: block; height: 100%; background: var(--hud); transform-origin: left; }
+  .tsec { font: 700 calc(4 * var(--u)) / 1 var(--mono); font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
+  .tsec.hot { color: var(--h3); }
+  .row { display: flex; align-items: center; gap: calc(2 * var(--u)); }
+  .eyebrow { font: 700 calc(1.9 * var(--u)) / 1.1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  h1 { margin: 0; font: 900 calc(7.6 * var(--u)) / .98 var(--font); letter-spacing: -.01em; text-wrap: balance; text-transform: uppercase; }
+  h2 { margin: 0; font: 800 calc(4.4 * var(--u)) / 1.05 var(--font); text-wrap: balance; }
+  .lede { margin: 0; color: var(--muted); font-size: calc(2.8 * var(--u)); font-weight: 600; }
+  .av { width: calc(5.4 * var(--u)); height: calc(5.4 * var(--u)); flex: none; border-radius: 50%; background: var(--bg3); border: calc(.45 * var(--u)) solid var(--pc, var(--line)); display: grid; place-items: center; font-size: calc(2.8 * var(--u)); font-style: normal; line-height: 1; }
+  .av.big { width: calc(10 * var(--u)); height: calc(10 * var(--u)); font-size: calc(5.4 * var(--u)); }
+
+  /* лобби */
+  .lobby { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: calc(4 * var(--u)); min-height: 0; }
+  .lob-l { display: flex; flex-direction: column; gap: calc(2.2 * var(--u)); min-height: 0; }
+  .join { display: flex; gap: calc(2.8 * var(--u)); align-items: center; padding: calc(2.4 * var(--u)); }
+  .qr { flex: none; background: #fff; padding: calc(1 * var(--u)); width: calc(22 * var(--u)); height: calc(22 * var(--u)); }
+  .qr img, .qr canvas { width: 100% !important; height: 100% !important; }
+  .url { font: 500 calc(2.1 * var(--u)) / 1.2 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+  .bigcode { font: 700 calc(7.4 * var(--u)) / 1 var(--mono); letter-spacing: .04em; white-space: nowrap; color: var(--hud); }
+  .join > div:last-child { min-width: 0; overflow: hidden; }
+  /* правила: номер — полоса тепловизора своего места */
+  .rules { margin: 0; padding: 0; list-style: none; display: grid; gap: calc(1 * var(--u)); counter-reset: r; }
+  .rules li { counter-increment: r; display: grid; grid-template-columns: calc(4.6 * var(--u)) minmax(0, 1fr); gap: calc(1.4 * var(--u)); align-items: center; font-size: calc(2.6 * var(--u)); color: var(--text); }
+  .rules li::before { content: counter(r); display: grid; place-items: center; height: calc(4.6 * var(--u)); font: 700 calc(2.6 * var(--u)) / 1 var(--mono); background: var(--h1); color: var(--h1i); }
+  .rules li:nth-child(2)::before { background: var(--h3); color: var(--h3i); }
+  .rules li:nth-child(3)::before { background: var(--h5); color: var(--h5i); }
+  .opts { display: flex; flex-wrap: wrap; gap: calc(1 * var(--u)); align-items: center; }
+  .opts .eyebrow { min-width: calc(14 * var(--u)); }
+  .opt { border: 2px solid var(--line); background: transparent; border-radius: var(--r-sm); padding: calc(.9 * var(--u)) calc(2 * var(--u)); font: 700 calc(2.1 * var(--u)) / 1 var(--mono); text-transform: uppercase; letter-spacing: .04em; }
+  .opt.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .opt.on.edgy { background: var(--edgy); border-color: var(--edgy); color: #fff; }
+  .opt:disabled { cursor: default; }
+  .start { border: 0; border-radius: var(--r-sm); background: var(--h1); color: var(--h1i); font: 900 calc(3.6 * var(--u)) / 1 var(--font); text-transform: uppercase; letter-spacing: .02em; padding: calc(2 * var(--u)) calc(5 * var(--u)); box-shadow: 0 calc(.6 * var(--u)) 0 var(--h3); }
+  .start:active:not(:disabled) { transform: translateY(calc(.4 * var(--u))); box-shadow: 0 calc(.2 * var(--u)) 0 var(--h3); }
+  .start:disabled { opacity: .35; cursor: default; }
+  .pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(26 * var(--u)), 1fr)); gap: calc(1.2 * var(--u)); align-content: start; overflow: hidden; }
+  .pcell { position: relative; display: flex; align-items: center; gap: calc(1.2 * var(--u)); background: var(--bg2); border-radius: var(--r-sm); padding: calc(1.2 * var(--u)) calc(1.6 * var(--u)); font: 800 calc(3 * var(--u)) / 1.05 var(--font); min-width: 0; }
+  .pcell span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pcell.off { opacity: .4; }
+  /* готов = «откалиброван»: белая полоса снизу и галочка */
+  .pcell.ok { box-shadow: inset 0 calc(-.6 * var(--u)) 0 var(--h1); }
+  .pcell.ok::after { content: "✓"; margin-left: auto; color: var(--h1); font: 700 calc(3 * var(--u)) / 1 var(--mono); }
+  .pcell .kick { position: absolute; right: 6px; top: 6px; border: 0; background: var(--bg3); border-radius: var(--r-sm); padding: 2px 8px; font: 700 13px/1.2 var(--mono); display: none; }
+  body.host .lobbyp .pcell .kick { display: block; }
+  .pcell .kick[data-armed="1"] { background: var(--bad); color: #fff; }
+  .pcell .sc { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--accent); }
+  .pcell .tg { position: absolute; left: calc(1.6 * var(--u)); bottom: calc(-1.2 * var(--u)); background: var(--bad); color: #fff; border-radius: var(--r-sm); padding: 2px 8px; font-size: calc(1.4 * var(--u)); white-space: nowrap; }
+
+  /* ход: слева кадр видоискателя с набором, справа вопрос */
+  .turn { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: calc(4 * var(--u)); min-height: 0; }
+  .setp { position: relative; display: flex; flex-direction: column; gap: calc(1 * var(--u)); padding: calc(2.4 * var(--u)) calc(2.8 * var(--u)); min-height: 0; overflow: hidden; }
+  .sethead { display: flex; align-items: baseline; justify-content: space-between; gap: calc(2 * var(--u)); }
+  .settitle { font: 800 calc(3.6 * var(--u)) / 1.05 var(--font); text-wrap: balance; min-width: 0; }
+  .sethead .eyebrow { flex: none; color: var(--hud); }
+  .sl { font: 700 calc(2.1 * var(--u)) / 1.15 var(--mono); color: var(--h2); text-transform: uppercase; letter-spacing: .03em; }
+  .sl.b { color: var(--cold); }
+  .cards { flex: 1; display: grid; grid-template-columns: calc(1.4 * var(--u)) minmax(0, 1fr); gap: calc(1.6 * var(--u)); min-height: 0; }
+  .cards .bar { background: var(--scale); }
+  .clist { position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: calc(1 * var(--u)); min-height: 0; }
+  .clist .icard { padding: calc(1.2 * var(--u)) calc(2 * var(--u)); font-size: calc(3.4 * var(--u)); min-height: calc(8 * var(--u)); flex: 1 1 0; max-height: calc(11 * var(--u)); transition: opacity .3s, background-color .25s, color .25s; }
+  .clist .icard > span:not([class]) { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .clist .icard .deg { font-size: calc(2.6 * var(--u)); }
+  .clist .icard.dim { opacity: .35; }
+  /* вопрос про пару/тройку: эти карточки в прицеле — белые уголки */
+  .clist .icard.focus { --vf-c: var(--hud); --vf-t: calc(.45 * var(--u)); --vf-l: calc(2.2 * var(--u)); background-color: var(--bg3); }
+  .qp { display: flex; flex-direction: column; gap: calc(1.8 * var(--u)); min-height: 0; }
+  .who { display: flex; align-items: center; gap: calc(1.4 * var(--u)); font: 800 calc(3.2 * var(--u)) / 1.1 var(--font); flex-wrap: wrap; }
+  .who .arr { color: var(--hud); font: 700 calc(3 * var(--u)) / 1 var(--mono); }
+  .qbig { font: 900 calc(6 * var(--u)) / 1 var(--font); text-transform: uppercase; letter-spacing: -.005em; text-wrap: balance; }
+  .qrows { display: grid; gap: calc(1 * var(--u)); }
+  .qrow { display: grid; grid-template-columns: calc(4.6 * var(--u)) minmax(0, 1fr) auto; gap: calc(1.6 * var(--u)); align-items: center; border-top: 2px solid var(--line); padding: calc(1.1 * var(--u)) 0 calc(.4 * var(--u)); min-height: calc(7.6 * var(--u)); }
+  .qrow .qn { display: grid; place-items: center; height: calc(4.6 * var(--u)); font: 700 calc(2.6 * var(--u)) / 1 var(--mono); color: var(--muted); border: 2px solid var(--line); border-radius: var(--r-sm); }
+  .qrow.cur .qn { background: var(--hud); color: var(--bg); border-color: var(--hud); }
+  .qrow .qa { font: 800 calc(3.2 * var(--u)) / 1.12 var(--font); min-width: 0; }
+  .qrow .qa .q { color: var(--muted); font: 700 calc(1.7 * var(--u)) / 1.2 var(--mono); text-transform: uppercase; letter-spacing: .06em; display: block; }
+  .qrow .qa .ans { display: inline-flex; flex-wrap: wrap; align-items: center; gap: calc(.6 * var(--u)); margin-top: calc(.5 * var(--u)); }
+  .qrow .qa .ans > span { display: inline-flex; align-items: center; gap: calc(.6 * var(--u)); background: var(--cold-card); color: var(--text); border-radius: var(--r-sm); padding: calc(.3 * var(--u)) calc(1 * var(--u)); }
+  .qrow .qa .ans > span b { font: 700 calc(2 * var(--u)) / 1 var(--mono); }
+  .qrow .qa em { font: 500 calc(2 * var(--u)) / 1.2 var(--mono); }
+  .qrow .pts { font: 700 calc(3.6 * var(--u)) / 1 var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); opacity: 0; transition: opacity .3s; }
+  .qrow .pts.on { opacity: 1; }
+  .qrow .pts.ok { color: var(--h1); }
+  .qrow .hl { display: block; font: 500 calc(2.2 * var(--u)) / 1.2 var(--mono); color: var(--muted); margin-top: calc(.5 * var(--u)); opacity: 0; transition: opacity .3s; }
+  .qrow .hl.on { opacity: 1; }
+  .qrow .hl b { color: var(--text); }
+  .qbig .qc { text-transform: none; }
+  .qrow .hl.ok b { color: var(--h1); }
+  /* лобби: режим и язык карточек крупно — «калибровка прибора» перед стартом */
+  .calib { display: flex; align-items: center; flex-wrap: wrap; gap: calc(1.4 * var(--u)) calc(2.4 * var(--u)); padding: calc(1.8 * var(--u)) calc(2.4 * var(--u)); background: var(--bg2); }
+  .calib .eyebrow { flex-basis: 100%; }
+  .calib .mode { font-size: calc(4.4 * var(--u)); padding: calc(.8 * var(--u)) calc(2 * var(--u)); border-width: calc(.4 * var(--u)); color: var(--text); }
+  .calib .mode.edgy { color: #fff; }
+  .calib .cl { font: 800 calc(4 * var(--u)) / 1 var(--font); text-transform: uppercase; }
+  .rndlbl { color: var(--hud); }
+  /* итоги: победители названы крупно, ничья — «Победу делят» */
+  .winplate { display: flex; align-items: center; flex-wrap: wrap; gap: calc(1.2 * var(--u)); padding: calc(1.4 * var(--u)) calc(2 * var(--u)); background: var(--h1); color: var(--h1i); font: 900 calc(4.2 * var(--u)) / 1.05 var(--font); text-transform: uppercase; }
+  .winplate .av { width: calc(4.6 * var(--u)); height: calc(4.6 * var(--u)); font-size: calc(2.4 * var(--u)); }
+  .total { display: flex; align-items: baseline; gap: calc(1.6 * var(--u)); font: 700 calc(9 * var(--u)) / .9 var(--mono); color: var(--h1); letter-spacing: -.04em; opacity: 0; transition: opacity .25s, transform .25s; transform: scale(.94); transform-origin: left center; }
+  .total.on { opacity: 1; transform: none; }
+  .total .lede { letter-spacing: 0; font-family: var(--font); }
+  .qrow .qa .ans > span b { visibility: hidden; }
+  .qrow .qa .ans > span.on b { visibility: visible; }
+  .qrow .qa .ans > span.on { transition: background-color .2s, color .2s; }
+  .qrow .qa .ans > span.on.hb1 { background: var(--h1); color: var(--h1i); } .qrow .qa .ans > span.on.hb2 { background: var(--h2); color: var(--h2i); }
+  .qrow .qa .ans > span.on.hb3 { background: var(--h3); color: var(--h3i); } .qrow .qa .ans > span.on.hb4 { background: var(--h4); color: var(--h4i); }
+  .qrow .qa .ans > span.on.hb5 { background: var(--h5); color: var(--h5i); }
+
+  /* раскрытие: кадр прогревается снизу вверх. Карточка сначала серая «??,?°», в свой момент заливается полосой места */
+  .rv .icard { background: var(--cold-card); color: var(--muted); }
+  .rv .icard > * { visibility: hidden; }
+  .rv .icard.on > * { visibility: visible; }
+  .rv .icard:not(.on)::after { content: attr(data-unk); position: absolute; right: calc(2 * var(--u)); top: 50%; transform: translateY(-50%); font: 700 calc(2.6 * var(--u)) / 1 var(--mono); color: var(--muted); }
+  .rv .icard.on { animation: heat .5s steps(4, end) both; }
+  .rv .icard.on.hb1 { background: var(--h1); color: var(--h1i); } .rv .icard.on.hb2 { background: var(--h2); color: var(--h2i); }
+  .rv .icard.on.hb3 { background: var(--h3); color: var(--h3i); } .rv .icard.on.hb4 { background: var(--h4); color: var(--h4i); }
+  .rv .icard.on.hb5 { background: var(--h5); color: var(--h5i); }
+  /* «проявление» ступенями, как у тепловизора, который калибруется: без размытия и свечения */
+  @keyframes heat { 0% { transform: scaleX(.97); filter: saturate(0); } 50% { filter: saturate(.5); } 100% { transform: none; filter: none; } }
+  /* метка угадывающего на карточке: «⌖ Петя: №1» */
+  .icard .gs { flex: none; display: inline-flex; align-items: center; gap: calc(.5 * var(--u)); font: 700 calc(1.9 * var(--u)) / 1 var(--mono); padding: calc(.5 * var(--u)) calc(.9 * var(--u)); border: 2px solid currentColor; border-radius: var(--r-sm); white-space: nowrap; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
+  .icard .gs.miss { background: var(--bg); color: var(--text); border-color: var(--bg); }
+  /* строка развёртки тепловизора — едет снизу вверх вместе с прогревом */
+  .scan { position: absolute; left: calc(-1 * var(--u)); right: calc(-1 * var(--u)); bottom: 0; height: calc(.5 * var(--u)); background: var(--hud); pointer-events: none; opacity: 0; }
+  .scan.go { animation: scan var(--scan-ms, 4000ms) linear var(--scan-delay, 0ms) both; }
+  @keyframes scan { 0% { opacity: 1; transform: translateY(0); } 97% { opacity: 1; } 100% { opacity: 0; transform: translateY(var(--scan-h, -60vh)); } }
+
+  .center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(2.4 * var(--u)); text-align: center; min-height: 0; }
+  .center .pgrid { width: min(100%, calc(150 * var(--u))); }
+  .vetos { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+  .vetos span { background: var(--bad); color: #fff; border-radius: var(--r-sm); padding: 6px 14px; font: 700 calc(2 * var(--u)) / 1.2 var(--mono); }
+  /* заставка хода: угадывающий → мишень в прицеле */
+  .duel { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: calc(4 * var(--u)); width: min(100%, calc(160 * var(--u))); }
+  .duel .side { justify-self: center; max-width: 100%; display: flex; flex-direction: column; align-items: center; gap: calc(1.6 * var(--u)); min-width: 0; padding: calc(3 * var(--u)) calc(4 * var(--u)); }
+  .duel .side h1 { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(8 * var(--u)); }
+  .duel .mid { font: 700 calc(2.4 * var(--u)) / 1.2 var(--mono); color: var(--hud); text-transform: uppercase; letter-spacing: .1em; display: grid; justify-items: center; gap: calc(1 * var(--u)); }
+  .duel .mid i { font-style: normal; font-size: calc(6 * var(--u)); line-height: 1; }
+  .duel .tgt { --vf-l: calc(5 * var(--u)); --vf-t: calc(.6 * var(--u)); }
+  .duel .tgt .eyebrow, .duel .gss .eyebrow { color: var(--hud); }
+
+  /* счёт и итоги */
+  .board { list-style: none; margin: 0; padding: 0; display: grid; gap: calc(.8 * var(--u)); width: min(100%, calc(110 * var(--u))); }
+  .board li { display: flex; align-items: center; gap: calc(1.6 * var(--u)); background: var(--bg2); border-radius: var(--r-sm); padding: calc(.9 * var(--u)) calc(2 * var(--u)); font: 800 calc(3.2 * var(--u)) / 1.05 var(--font); }
+  .board li.first { background: var(--h1); color: var(--h1i); }
+  .board .rk { width: calc(4 * var(--u)); text-align: center; color: var(--muted); font: 700 calc(2.8 * var(--u)) / 1 var(--mono); }
+  .board li.first .rk { color: var(--h1i); }
+  .board .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+  .board b { font: 700 calc(3 * var(--u)) / 1 var(--mono); font-variant-numeric: tabular-nums; }
+  .fin { flex: 1; display: grid; grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr); gap: calc(4 * var(--u)); min-height: 0; }
+  .fin .board { width: 100%; overflow: hidden; }
+  .finl { display: flex; flex-direction: column; gap: calc(2 * var(--u)); min-height: 0; }
+  /* лента громких раскрытий: три карточки делят высоту поровну, ничего не обрезается */
+  .loud { display: grid; grid-template-rows: auto; grid-auto-rows: minmax(0, 1fr); gap: calc(1.4 * var(--u)); min-height: 0; overflow: hidden; }
+  .loud h2 { font: 900 calc(4.2 * var(--u)) / 1 var(--font); text-transform: uppercase; }
+  .loud.few { grid-auto-rows: auto; align-content: start; }
+  .lcard { position: relative; display: flex; flex-direction: column; justify-content: center; gap: calc(1 * var(--u)); min-height: 0; overflow: hidden; padding: calc(1.6 * var(--u)) calc(2.2 * var(--u)); background: var(--bg2); border-left: calc(.8 * var(--u)) solid var(--h4); }
+  .lcard .lh { display: flex; align-items: center; gap: calc(1 * var(--u)); font: 700 calc(2.1 * var(--u)) / 1.1 var(--mono); color: var(--muted); min-width: 0; white-space: nowrap; }
+  .lcard .lh b { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+  .lcard .lh .av { width: calc(3.6 * var(--u)); height: calc(3.6 * var(--u)); font-size: calc(2 * var(--u)); border-width: calc(.3 * var(--u)); }
+  .lcard .lh .lt { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; }
+  .lcard .ll { font: 800 calc(3.5 * var(--u)) / 1.06 var(--font); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  /* порядок мишени — полоса тепловизора в одну строку: 5 равных отрезков */
+  .lcard .lo { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: calc(.4 * var(--u)); }
+  .lcard .lo .icard { align-items: flex-start; padding: calc(.8 * var(--u)) calc(.9 * var(--u)); font-size: calc(2.1 * var(--u)); gap: calc(.6 * var(--u)); min-width: 0; min-height: calc(6.6 * var(--u)); }
+  .lcard .lo .icard > span:not([class]) { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+  .lcard .lo .icard .e { font-size: 1em; }
+  .lcard .lo .icard .no { min-width: 1.5em; height: 1.5em; border-width: 1.5px; }
+  .lcard .lo .icard.hit { outline: calc(.4 * var(--u)) solid var(--text); outline-offset: calc(.2 * var(--u)); z-index: 1; }
+  .fbtn { display: flex; gap: 12px; flex-wrap: wrap; }
+  .ghostbtn { border: 2px solid var(--line); background: transparent; border-radius: var(--r-sm); padding: calc(1.4 * var(--u)) calc(3 * var(--u)); font: 700 calc(2.4 * var(--u)) / 1 var(--mono); text-transform: uppercase; }
+
+  /* портретный экран (планшет стоймя): колонки в столбик */
+  @media (max-aspect-ratio: 1/1) {
+    :root { --u: min(0.62vh, 1vw); }
+    .lobby, .turn, .fin { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } .scan { display: none; } }
+</style>
+<script src="legacy-compat.js"></script>
+<script src="mp-common.js"></script>
+</head>
+<body>
+<div id="root">
+<div class="top">
+  <div class="brand"><i class="thermo" aria-hidden="true"></i><span id="brand">Айфилю</span></div>
+  <span class="mode" id="modechip"></span>
+  <span class="chip hidden" id="codechip"></span>
+  <span class="grow"></span>
+  <span class="hostctl" id="hostctl"></span>
+  <button class="endbtn hidden" id="endbtn" type="button">■</button>
+  <button class="sound-toggle-btn" type="button"></button>
+</div>
+<div class="banner hidden" id="banner"></div>
+<div class="conn" id="conn"></div>
+<main id="main"></main>
+</div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Айфилю — общий экран`, game_name: `Айфилю`,
+    noroom: `Такой комнаты нет — проверь код в адресе`, creating: `Открываем комнату…`, expired: `Комната закрылась — открой новую`, err_connect: `Связь потеряна — переподключаемся…`, conn_lost: `Нет связи — проверяем…`,
+    join_at: `Заходи с телефона`, code: `Код`, players: `Игроки`, need_more: `Нужно ещё {n}`, mode_lbl: `Режим`, lang_lbl: `Карточки`, safe: `Safe`, edgy: `🌶️ Edgy`,
+    mode_safe_hint: `Смешно, но можно играть с мамой`, mode_edgy_hint: `Флирт, неловкие признания, моральные дилеммы`,
+    btn_start: `Начать`, btn_end: `Закончить партию`, btn_again: `Ещё партию`, btn_lobby: `В лобби`, host_only: `Начинает ведущий`,
+    rule1: `Каждый тайно расставляет 5 карточек от первого места к последнему.`, rule2: `По кругу один угадывает чужой порядок: три вопроса, до 900 очков.`, rule3: `Остальные смотрят на экран. Тот, кого угадывают, очков не получает.`,
+    round_n: `Раунд {n} из 2`, turn_n: `Ход {n} из {m}`,
+    pick_t: `Выбирают категорию`, pick_s: `У каждого — своя тройка на выбор`,
+    write_t: `Пишут карточки друг другу`, write_s: `Каждый пишет пять карточек для соседа по кругу`,
+    rank_t: `Расставляют тайно`, rank_s: `От первого места к последнему. Порядок не видит никто`, vetoed: `{name}: одна карточка заменена`,
+    tin_g: `угадывает`, tin_from: `Карточки: {name}`, swapped: `{from} нет на связи — угадывает {to}`,
+    q_of: `Вопрос {n} из 3`, q1: `Что {name} ставит выше: {a} или {b}?`, q3: `Расставь этих троих, как {name}`,
+    q1s: `Кто выше`, q3s: `Тройка по порядку`,
+    no_answer: `нет ответа`, waiting: `думает…`,
+        reveal_t: `Порядок: {name}`, pts_turn: `очков за ход`,
+    scores_t: `Счёт после раунда {n}`, pause_t: `Ждём игроков`, pause_s: `Нужно хотя бы {n} на связи`,
+    final_t: `Итоги`, final_shared: `Победу делят: {names}`, final_host: `Ведущий закончил партию`, final_paused: `Партия прервана: не хватило игроков`, final_few: `Игроков осталось слишком мало`,
+    loud_t: `Самые громкие раскрытия`, loud_none: `Громких промахов не было — вы друг друга чувствуете`,
+        host_link: `Ссылка ведущего`, link_copied: `Ссылка скопирована`, link_shared: `Ссылка отправлена`, link_none: `Нет ключа ведущего`, link_prompt_hint: `Скопируй ссылку ведущего`,
+    host_lost_msg: `Ведущий открыл доску на другом экране`, btn_take: `Забрать`, btn_im_host: `Я ведущий`, host_paste_ph: `Вставь ссылку ведущего`, btn_ok: `ОК`, host_bad: `Ссылка не подошла`,
+    kick: `✕`, kick_armed: `Убрать?`, no_content: `Банк карточек не загрузился`, few_players: `Нужно хотя бы 3 игрока`,
+    target_lbl: `Мишень`, guesser_lbl: `Угадывает`, guess_pos: `{name}: №{n}`, frame_lbl: `⌖ {name}`,
+    q2: `Что {name} ставит на {place} место?`,
+    q2s: `{place} место`,
+    ex_none: `нет ответа, +0`,
+    ex_pair_ok: `верно, +{pts}`,
+    ex_pair_no: `наоборот, +0`,
+    ex_exact: `точно, +{pts}`,
+    ex_near: `рядом: {got} место вместо {want}, +{pts}`,
+    ex_far: `{got} место вместо {want}, +0`,
+    ex_tri0: `точно, +{pts}`,
+    ex_tri1: `одна пара не та, +{pts}`,
+    ex_tri2: `две пары не те, +{pts}`,
+    ex_tri3: `всё наоборот, +0`,
+    loud_place: `{g}: «{t} ставит на {want} место: {item}». На деле — {got}.`,
+    loud_pair: `{g}: «{t} ставит {a} выше, чем {b}». На деле — наоборот.`,
+    loud_tri: `{g}: «{t}: {x}». На деле — {y}.`,
+    final_win: `Победа: {name}`,
+    calib_t: `Партия будет такой`,
+    calib_lang: `Карточки: {lang}`,
+    rnd_lbl: `🎲 Случайный набор`,
+  },
+  en: {
+    _title: `I Feel You — shared screen`, game_name: `I Feel You`,
+    noroom: `There's no such room — check the code in the address`, creating: `Opening a room…`, expired: `The room has closed — open a new one`, err_connect: `Connection lost — reconnecting…`, conn_lost: `No connection — checking…`,
+    join_at: `Join from your phone`, code: `Code`, players: `Players`, need_more: `{n} more needed`, mode_lbl: `Mode`, lang_lbl: `Cards`, safe: `Safe`, edgy: `🌶️ Edgy`,
+    mode_safe_hint: `Funny, but fine to play with your mom`, mode_edgy_hint: `Flirting, awkward confessions, moral dilemmas`,
+    btn_start: `Start`, btn_end: `End the game`, btn_again: `Play again`, btn_lobby: `To lobby`, host_only: `The host starts the game`,
+    rule1: `Everyone secretly ranks 5 cards from first place to last.`, rule2: `Around the circle, one player guesses someone's order: three questions, up to 900 points.`, rule3: `Everyone else watches the screen. The one being guessed scores nothing.`,
+    round_n: `Round {n} of 2`, turn_n: `Turn {n} of {m}`,
+    pick_t: `Picking a category`, pick_s: `Everyone gets their own three to choose from`,
+    write_t: `Writing cards for each other`, write_s: `Everyone writes five cards for their neighbour`,
+    rank_t: `Ranking in secret`, rank_s: `From first place to last. Nobody sees the order`, vetoed: `{name}: one card replaced`,
+    tin_g: `is guessing`, tin_from: `Cards: {name}`, swapped: `{from} is offline — {to} guesses instead`,
+    q_of: `Question {n} of 3`, q1: `What does {name} rank higher: {a} or {b}?`, q3: `Rank these three like {name}`,
+    q1s: `Which is higher`, q3s: `The three in order`,
+    no_answer: `no answer`, waiting: `thinking…`,
+        reveal_t: `The order: {name}`, pts_turn: `points this turn`,
+    scores_t: `Score after round {n}`, pause_t: `Waiting for players`, pause_s: `At least {n} must be online`,
+    final_t: `Results`, final_shared: `Shared win: {names}`, final_host: `The host ended the game`, final_paused: `The game stopped: not enough players`, final_few: `Too few players left`,
+    loud_t: `The loudest reveals`, loud_none: `No big misses — you really feel each other`,
+        host_link: `Host link`, link_copied: `Link copied`, link_shared: `Link shared`, link_none: `No host key`, link_prompt_hint: `Copy the host link`,
+    host_lost_msg: `The host opened the board on another screen`, btn_take: `Take over`, btn_im_host: `I'm the host`, host_paste_ph: `Paste the host link`, btn_ok: `OK`, host_bad: `That link didn't work`,
+    kick: `✕`, kick_armed: `Remove?`, no_content: `The card bank didn't load`, few_players: `At least 3 players needed`,
+    target_lbl: `Target`, guesser_lbl: `Guessing`, guess_pos: `{name}: #{n}`, frame_lbl: `⌖ {name}`,
+    q2: `What does {name} put in {place} place?`,
+    q2s: `{place} place`,
+    ex_none: `no answer, +0`,
+    ex_pair_ok: `right, +{pts}`,
+    ex_pair_no: `the other way round, +0`,
+    ex_exact: `exact, +{pts}`,
+    ex_near: `close: {got} place, not {want}, +{pts}`,
+    ex_far: `{got} place, not {want}, +0`,
+    ex_tri0: `exact, +{pts}`,
+    ex_tri1: `one pair off, +{pts}`,
+    ex_tri2: `two pairs off, +{pts}`,
+    ex_tri3: `fully reversed, +0`,
+    loud_place: `{g} thought {t} had {item} in {want} place — it's actually {got}.`,
+    loud_pair: `{g} thought {t} ranked {a} above {b} — it's the other way round.`,
+    loud_tri: `{g} thought {t} ranked them {x} — actually {y}.`,
+    final_win: `Winner: {name}`,
+    calib_t: `This game will be`,
+    calib_lang: `Cards: {lang}`,
+    rnd_lbl: `🎲 Random set`,
+  },
+  el: {
+    // EL:unverified
+    _title: `I Feel You — κοινή οθόνη`, game_name: `I Feel You`,
+    noroom: `Δεν υπάρχει τέτοιο δωμάτιο — έλεγξε τον κωδικό`, creating: `Ανοίγουμε δωμάτιο…`, expired: `Το δωμάτιο έκλεισε — άνοιξε νέο`, err_connect: `Η σύνδεση χάθηκε — ξανασυνδεόμαστε…`, conn_lost: `Χωρίς σύνδεση — έλεγχος…`,
+    join_at: `Μπες από το κινητό`, code: `Κωδικός`, players: `Παίκτες`, need_more: `Χρειάζονται ακόμα {n}`, mode_lbl: `Λειτουργία`, lang_lbl: `Κάρτες`, safe: `Safe`, edgy: `🌶️ Edgy`,
+    mode_safe_hint: `Αστείο, αλλά παίζεται και με τη μαμά`, mode_edgy_hint: `Φλερτ, άβολες εξομολογήσεις, ηθικά διλήμματα`,
+    btn_start: `Έναρξη`, btn_end: `Τέλος παρτίδας`, btn_again: `Νέα παρτίδα`, btn_lobby: `Στο λόμπι`, host_only: `Ξεκινά ο οικοδεσπότης`,
+    rule1: `Ο καθένας κατατάσσει κρυφά 5 κάρτες από την πρώτη θέση στην τελευταία.`, rule2: `Γύρω-γύρω, ένας μαντεύει τη σειρά κάποιου άλλου: τρεις ερωτήσεις, έως 900 πόντους.`, rule3: `Οι υπόλοιποι κοιτάνε την οθόνη. Όποιον μαντεύουν δεν παίρνει πόντους.`,
+    round_n: `Γύρος {n} από 2`, turn_n: `Σειρά {n} από {m}`,
+    pick_t: `Διαλέγουν κατηγορία`, pick_s: `Ο καθένας έχει τη δική του τριάδα`,
+    write_t: `Γράφουν κάρτες ο ένας για τον άλλον`, write_s: `Ο καθένας γράφει πέντε κάρτες για τον διπλανό του`,
+    rank_t: `Κατατάσσουν κρυφά`, rank_s: `Από την πρώτη θέση στην τελευταία. Τη σειρά δεν τη βλέπει κανείς`, vetoed: `{name}: μία κάρτα άλλαξε`,
+    tin_g: `μαντεύει`, tin_from: `Κάρτες: {name}`, swapped: `{from} είναι εκτός — μαντεύει {to}`,
+    q_of: `Ερώτηση {n} από 3`, q1: `Τι βάζει {name} πιο ψηλά: {a} ή {b};`, q3: `Κατάταξε αυτά τα τρία όπως {name}`,
+    q1s: `Ποιο πιο ψηλά`, q3s: `Η τριάδα με τη σειρά`,
+    no_answer: `καμία απάντηση`, waiting: `σκέφτεται…`,
+        reveal_t: `Η σειρά: {name}`, pts_turn: `πόντοι στη σειρά`,
+    scores_t: `Σκορ μετά τον γύρο {n}`, pause_t: `Περιμένουμε παίκτες`, pause_s: `Χρειάζονται τουλάχιστον {n} online`,
+    final_t: `Αποτελέσματα`, final_shared: `Κοινή νίκη: {names}`, final_host: `Ο οικοδεσπότης τερμάτισε την παρτίδα`, final_paused: `Η παρτίδα σταμάτησε: λίγοι παίκτες`, final_few: `Έμειναν πολύ λίγοι παίκτες`,
+    loud_t: `Οι πιο ηχηρές αποκαλύψεις`, loud_none: `Καμία μεγάλη αστοχία — νιώθετε ο ένας τον άλλον`,
+        host_link: `Σύνδεσμος οικοδεσπότη`, link_copied: `Αντιγράφηκε`, link_shared: `Στάλθηκε`, link_none: `Δεν υπάρχει κλειδί`, link_prompt_hint: `Αντίγραψε τον σύνδεσμο`,
+    host_lost_msg: `Ο οικοδεσπότης άνοιξε την οθόνη αλλού`, btn_take: `Ανάληψη`, btn_im_host: `Είμαι ο οικοδεσπότης`, host_paste_ph: `Επικόλλησε τον σύνδεσμο`, btn_ok: `OK`, host_bad: `Ο σύνδεσμος δεν ταίριαξε`,
+    kick: `✕`, kick_armed: `Αφαίρεση;`, no_content: `Οι κάρτες δεν φορτώθηκαν`, few_players: `Χρειάζονται τουλάχιστον 3 παίκτες`,
+    target_lbl: `Στόχος`, guesser_lbl: `Μαντεύει`, guess_pos: `{name}: #{n}`, frame_lbl: `⌖ {name}`,
+    q2: `Τι βάζει {name} στην {place} θέση;`,
+    q2s: `{place} θέση`,
+    ex_none: `καμία απάντηση, +0`,
+    ex_pair_ok: `σωστά, +{pts}`,
+    ex_pair_no: `ανάποδα, +0`,
+    ex_exact: `ακριβώς, +{pts}`,
+    ex_near: `κοντά: {got} θέση αντί για {want}, +{pts}`,
+    ex_far: `{got} θέση αντί για {want}, +0`,
+    ex_tri0: `ακριβώς, +{pts}`,
+    ex_tri1: `ένα ζευγάρι λάθος, +{pts}`,
+    ex_tri2: `δύο ζευγάρια λάθος, +{pts}`,
+    ex_tri3: `όλα ανάποδα, +0`,
+    loud_place: `{g}: «{t} βάζει στην {want} θέση: {item}». Στην πραγματικότητα — {got}.`,
+    loud_pair: `{g}: «{t} βάζει {a} πάνω από {b}». Στην πραγματικότητα — ανάποδα.`,
+    loud_tri: `{g}: «{t}: {x}». Στην πραγματικότητα — {y}.`,
+    final_win: `Νίκη: {name}`,
+    calib_t: `Η παρτίδα θα είναι`,
+    calib_lang: `Κάρτες: {lang}`,
+    rnd_lbl: `🎲 Τυχαίο σετ`,
+  },
+};
+</script>
+<script src="ifeel-shared.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+"use strict";
+const T = (k) => wvT(k);
+const tpl = (k, v) => wvTpl(k, v);
+const $ = (id) => document.getElementById(id);
+const esc = escapeHtml;
+const params = new URLSearchParams(location.search);
+let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const hostKey = () => "ifeel-host-" + CODE;
+const langKey = () => "ifeel-lang-" + CODE; // язык карточек выбран ведущим вручную — не следуем за его интерфейсом
+const main = $("main");
+const FLAGS = { ru: "🇷🇺", en: "🇬🇧", el: "🇬🇷" };
+const LANG_NAMES = { ru: "Русский", en: "English", el: "Ελληνικά" };
+
+let conn = null, state = null, isHost = false, dead = false;
+let viewKey = "";
+const player = (id) => state && state.players.find((p) => p.id === id);
+const nameOf = (id) => (player(id) || {}).name || "?";
+const present = () => state.players.filter((p) => !p.left);
+const avHtml = (p, cls) => `<i class="av ${cls || ""}" style="--pc:${esc(p.color)}">${esc(p.avatar)}</i>`;
+const phaseNow = () => state.serverNow - state.phaseStart + (performance.now() - state.__at);
+const phaseLeft = () => state.phaseEnd - state.serverNow - (performance.now() - state.__at);
+const itemHtml = (x, no, extra) => `${no ? `<span class="no p${no}">${no}</span>` : ""}${x.e ? `<span class="e">${esc(x.e)}</span>` : ""}<span>${esc(x.t)}</span>${extra || ""}`;
+function show(html, key) {
+  if (key === viewKey) return false;
+  viewKey = key;
+  main.innerHTML = html;
+  return true;
+}
+
+// ---------- создание комнаты, если доску открыли без кода ----------
+async function ensureRoom() {
+  if (CODE) return true;
+  showBanner(T("creating"));
+  try {
+    const body = { settings: { lang: wvLang() } };
+    if (params.get("speed")) body.speed = Number(params.get("speed"));
+    const res = await fetch("/ifeel/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "error");
+    CODE = data.code;
+    try { localStorage.setItem(hostKey(), data.hostToken); } catch (e) {}
+    history.replaceState(null, "", `?r=${CODE}`);
+    showBanner(null);
+    return true;
+  } catch (err) {
+    showBanner(String(err.message || err));
+    return false;
+  }
+}
+function showBanner(text) {
+  const b = $("banner");
+  b.classList.toggle("hidden", !text);
+  b.textContent = text || "";
+}
+
+// ---------- «🔑 Ссылка ведущего» (как в crowd) ----------
+let hostNote = "", hostNoteT = 0, pasteOpen = false, hostLost = false, hostCtlKey = "";
+const HL = window.MP && MP.hostLink ? MP.hostLink({
+  hostKeyFn: hostKey,
+  boardPath: "ifeel-board.html",
+  getRoom: () => CODE,
+  sendHost: (t) => { if (conn) conn.send({ type: "host", token: t }); },
+  onToast: (kind) => {
+    if (kind === "copied") setHostNote(T("link_copied"));
+    else if (kind === "shared") setHostNote(T("link_shared"));
+    else if (kind === "none") setHostNote(T("link_none"));
+  },
+  prompt: (m, v) => window.prompt(T("link_prompt_hint"), v),
+}) : null;
+function setHostNote(text) {
+  hostNote = text;
+  clearTimeout(hostNoteT);
+  if (text) hostNoteT = setTimeout(() => { hostNote = ""; drawHostCtl(); }, 5000);
+  drawHostCtl();
+}
+const hasHostToken = () => { try { return !!localStorage.getItem(hostKey()); } catch (e) { return false; } };
+function drawHostCtl() {
+  const bar = $("hostctl");
+  if (dead || !state || !HL || !CODE) { bar.innerHTML = ""; hostCtlKey = ""; return; }
+  const key = [isHost, hostLost, pasteOpen, hostNote, wvLang(), hasHostToken()].join("|");
+  if (key === hostCtlKey) return;
+  hostCtlKey = key;
+  const mk = (txt) => { const b = document.createElement("button"); b.type = "button"; b.textContent = txt; return b; };
+  const nodes = [];
+  if (isHost) {
+    const lb = mk("🔑 " + T("host_link"));
+    lb.onclick = () => { HL.copy(); };
+    nodes.push(lb);
+  } else if (hostLost && hasHostToken()) {
+    const note = document.createElement("span"); note.className = "note"; note.textContent = T("host_lost_msg");
+    const tk = mk(T("btn_take"));
+    tk.onclick = () => { HL.take(); };
+    nodes.push(note, tk);
+  } else if (pasteOpen) {
+    const inp = document.createElement("input");
+    inp.type = "text"; inp.placeholder = T("host_paste_ph"); inp.autocomplete = "off";
+    const ok = mk(T("btn_ok"));
+    const submit = () => {
+      if (!MP.hostLink.parseToken(inp.value)) { setHostNote(T("host_bad")); return; }
+      HL.take(Date.now(), inp.value);
+      pasteOpen = false;
+    };
+    ok.onclick = submit;
+    inp.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+    nodes.push(inp, ok);
+    setTimeout(() => inp.focus(), 0);
+  } else if (!hasHostToken() || hostLost) {
+    const im = mk(T("btn_im_host"));
+    im.onclick = () => { pasteOpen = true; drawHostCtl(); };
+    nodes.push(im);
+  }
+  if (hostNote) { const n = document.createElement("span"); n.className = "note"; n.textContent = hostNote; nodes.push(n); }
+  bar.innerHTML = "";
+  nodes.forEach((n) => bar.appendChild(n));
+}
+
+// ---------- шапка ----------
+function topBar() {
+  drawHostCtl();
+  $("brand").textContent = T("game_name");
+  $("codechip").textContent = CODE;
+  $("codechip").classList.toggle("hidden", state.phase === "lobby");
+  const edgy = state.settings.mode === "edgy";
+  const mc = $("modechip");
+  mc.className = "mode" + (edgy ? " edgy" : "");
+  document.body.classList.toggle("edgy", edgy);
+  mc.textContent = (edgy ? "🌶️ EDGY" : "SAFE") + "  " + (FLAGS[state.contentLang] || "");
+  const inGame = ["lobby", "finished"].indexOf(state.phase) < 0;
+  $("endbtn").classList.toggle("hidden", !(isHost && inGame));
+  $("endbtn").title = T("btn_end");
+}
+
+// ---------- общие куски ----------
+const timerHtml = (left) => `<div class="row"><div class="eyebrow" style="flex:1">${left}</div><div class="tsec" id="tsec"></div></div><div class="tbar" id="tbar"><i></i></div>`;
+function pgridHtml(ids, done, extra) {
+  return `<div class="pgrid">${ids.map((id) => { const p = player(id); if (!p) return ""; return `<div class="pcell ${done && done.indexOf(id) >= 0 ? "ok" : ""} ${p.online ? "" : "off"}">${avHtml(p)}<span>${esc(p.name)}</span>${extra ? extra(p) : ""}</div>`; }).join("")}</div>`;
+}
+const roundLbl = () => (state.round ? esc(tpl("round_n", { n: state.round.n })) : "");
+
+// ---------- лобби ----------
+const kickTap = window.MP && MP.twoTap ? MP.twoTap.create({ armedMs: 3000, onChange: () => { if (state && state.phase === "lobby") { viewKey = ""; render(); } } }) : null;
+function joinUrl() { return location.origin + "/ifeel.html?r=" + CODE; }
+function drawLobby() {
+  const list = present();
+  const need = Math.max(0, state.minPlayers - list.length);
+  const s = state.settings;
+  const armed = kickTap ? kickTap.armed() : null;
+  const key = ["lobby", list.map((p) => p.id + p.avatar + (p.online ? 1 : 0)).join(","), s.mode, s.lang, state.contentLang, isHost, armed, wvLang()].join("|");
+  const opt = (k, v, label, cls) => `<button class="opt ${s[k] === v ? "on" : ""} ${cls || ""}" type="button" data-k="${k}" data-v="${v}"${isHost ? "" : " disabled"}>${label}</button>`;
+  if (!show(`<div class="lobby lobbyp">
+    <div class="lob-l">
+      <div class="join vf"><div class="qr" id="qr"></div><div style="display:grid;gap:calc(1*var(--u));min-width:0"><div class="eyebrow">${esc(T("join_at"))}</div><div class="url">${esc(joinUrl().replace(/^https?:\/\//, ""))}</div><div class="eyebrow">${esc(T("code"))}</div><div class="bigcode">${esc(CODE)}</div></div></div>
+      <ol class="rules"><li>${esc(T("rule1"))}</li><li>${esc(T("rule2"))}</li><li>${esc(T("rule3"))}</li></ol>
+      <div class="opts"><span class="eyebrow">${esc(T("mode_lbl"))}</span>${opt("mode", "safe", esc(T("safe")))}${opt("mode", "edgy", esc(T("edgy")), "edgy")}</div>
+      <p class="lede">${esc(T(s.mode === "edgy" ? "mode_edgy_hint" : "mode_safe_hint"))}</p>
+      <div class="opts"><span class="eyebrow">${esc(T("lang_lbl"))}</span>${["ru", "en", "el"].map((l) => opt("lang", l, FLAGS[l] + " " + l.toUpperCase())).join("")}</div>
+      <div class="row">${isHost ? `<button class="start" id="start" type="button"${list.length < state.minPlayers ? " disabled" : ""}>${esc(T("btn_start"))}</button>` : `<span class="lede">${esc(T("host_only"))}</span>`}<span class="lede">${need ? esc(tpl("need_more", { n: need })) : ""}</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:calc(1.4*var(--u));min-height:0">
+      <div class="calib vf"><span class="eyebrow">${esc(T("calib_t"))}</span><span class="mode ${s.mode === "edgy" ? "edgy" : ""}">${s.mode === "edgy" ? "🌶️ EDGY" : "SAFE"}</span><span class="cl">${esc(tpl("calib_lang", { lang: (FLAGS[state.contentLang] || "") + " " + (LANG_NAMES[state.contentLang] || state.contentLang) }))}</span></div>
+      <div class="eyebrow">${esc(T("players"))} · ${list.length} / ${state.maxPlayers}</div>
+      ${pgridHtml(list.map((p) => p.id), null, (p) => `<button class="kick" type="button" data-kick="${esc(p.id)}" data-armed="${armed === p.id ? 1 : 0}">${esc(armed === p.id ? T("kick_armed") : T("kick"))}</button>`)}</div>
+  </div>`, key)) return;
+  // разметка лобби пересобрана — QR рисуем заново (qrcodejs может не доехать: тогда остаются адрес и код)
+  try { new QRCode($("qr"), { text: joinUrl(), width: 256, height: 256, correctLevel: QRCode.CorrectLevel.M }); } catch (e) {}
+  main.querySelectorAll(".opt").forEach((b) => {
+    b.onclick = () => {
+      if (!isHost) return;
+      const st = {}; st[b.dataset.k] = b.dataset.v;
+      if (b.dataset.k === "lang") { try { localStorage.setItem(langKey(), b.dataset.v); } catch (e) {} }
+      conn.send({ type: "settings", settings: st });
+    };
+  });
+  main.querySelectorAll("[data-kick]").forEach((b) => {
+    b.onclick = (ev) => { ev.stopPropagation(); if (!isHost || !kickTap) return; if (kickTap.tap(b.dataset.kick)) { kickTap.disarm(); conn.send({ type: "kick", playerId: b.dataset.kick }); } };
+  });
+  const st = $("start");
+  if (st) st.onclick = () => conn.send({ type: "start" });
+}
+
+// ---------- выбор, сочинение, расстановка ----------
+function drawWaitPhase(titleKey, subKey, ids) {
+  const r = state.round;
+  const vet = state.phase === "rank" && r.vetoed && r.vetoed.length ? `<div class="vetos">${r.vetoed.map((id) => `<span>${esc(tpl("vetoed", { name: nameOf(id) }))}</span>`).join("")}</div>` : "";
+  const key = ["wait", state.phase, state.game, r.n, (r.done || []).join(","), (r.vetoed || []).join(","), ids.map((id) => (player(id) || {}).online).join(""), wvLang()].join("|");
+  if (show(`${timerHtml(roundLbl())}<div class="center"><h1>${esc(T(titleKey))}</h1><p class="lede">${esc(T(subKey))}</p>${pgridHtml(ids, r.done || [])}${vet}</div>`, key)) {
+    // кто-то только что закончил — щелчок
+    const n = (r.done || []).length;
+    if (drawWaitPhase.n != null && n > drawWaitPhase.n && drawWaitPhase.ph === state.phase) wvSfx.lock();
+    drawWaitPhase.n = n; drawWaitPhase.ph = state.phase;
+  }
+}
+
+// ---------- ход ----------
+// вопрос — с текстами карточек и выделенным номером места (wvQuestionHtml, ifeel-shared.js); подпись строки — HTML
+const qShort = (q) => wvQuestionShort(q);
+function whoHtml(t) {
+  const tp = player(t.target);
+  const gs = t.guessers.map(player).filter(Boolean);
+  return `<div class="who">${gs.map((g) => `${avHtml(g)}<span>${esc(g.name)}</span>`).join(" ")}<span class="arr">→</span>${tp ? avHtml(tp) + `<span>${esc(tp.name)}</span>` : ""}</div>`;
+}
+function drawTintro() {
+  const t = state.turn;
+  const tp = player(t.target);
+  const sw = (t.swapped || []).map((x) => tpl("swapped", { from: nameOf(x.from), to: nameOf(x.to) })).join(" · ");
+  const r = state.round;
+  const gs = t.guessers.map(player).filter(Boolean);
+  if (show(`<div class="center"><div class="eyebrow">${roundLbl()} · ${esc(tpl("turn_n", { n: r.ti + 1, m: r.turnsTotal }))}</div>
+    <div class="duel">
+      <div class="side gss"><div class="eyebrow" aria-hidden="true" style="visibility:hidden">${esc(T("target_lbl"))}</div><div class="row">${gs.map((g) => avHtml(g, "big")).join("") || '<i class="av big">👻</i>'}</div><h1>${esc(gs.map((g) => g.name).join(" + ") || "👻")}</h1></div>
+      <div class="mid"><i>⌖</i><span>${esc(T("tin_g"))}</span></div>
+      <div class="side tgt vf"><div class="eyebrow">${esc(T("target_lbl"))}</div>${tp ? avHtml(tp, "big") : ""}<h1>${esc(nameOf(t.target))}</h1></div>
+    </div>
+    ${t.set ? `<h2>${t.set.kind === "rnd" ? `<span class="rndlbl">${esc(T("rnd_lbl"))}</span> · ` : ""}${esc(t.set.title)}</h2>` : ""}
+    ${t.set && t.set.author ? `<p class="lede">${esc(tpl("tin_from", { name: nameOf(t.set.author) }))}</p>` : ""}
+    ${t.vetoed ? `<div class="vetos"><span>${esc(tpl("vetoed", { name: nameOf(t.target) }))}</span></div>` : ""}
+    ${sw ? `<p class="lede">${esc(sw)}</p>` : ""}</div>`, "tintro:" + state.game + ":" + r.n + ":" + r.ti + wvLang())) wvSfx.whoosh();
+}
+// ответ угадывающего на вопрос — текстом (без очков до раскрытия)
+function ansText(q, v, set) {
+  if (v == null) return null;
+  if (Array.isArray(v)) return v.map((x) => set.items[x]);
+  return [set.items[v]];
+}
+// кадр тепловизора с набором мишени. Пока порядок тайный — серые карточки «??,?°»;
+// в раскрытии карточки стоят по её порядку и прогреваются снизу вверх (data-at), у каждой — полоса и «температура» места
+const RV_STEP = 850, RV_FIRST = 600;
+function setPanel(t, focus, reveal, marks) {
+  const set = t.set;
+  let list;
+  if (reveal) {
+    const n = t.result.order.length;
+    list = t.result.order.map((x, i) => {
+      const m = marks && marks[x];
+      return `<div class="icard ${wvHeat(i + 1)}" data-at="${RV_FIRST + (n - 1 - i) * RV_STEP}" data-k="${i}" data-unk="${wvDegUnknown()}">${itemHtml(set.items[x], i + 1)}${m ? `<span class="gs${m.miss ? " miss" : ""}">${esc(m.text)}</span>` : ""}<span class="deg">${wvDeg(i + 1)}</span></div>`;
+    }).join("");
+  } else {
+    list = set.items.map((x, i) => `<div class="icard ${focus && focus.indexOf(i) < 0 ? "dim" : ""} ${focus && focus.indexOf(i) >= 0 ? "focus vf" : ""}">${itemHtml(x)}<span class="deg">${wvDegUnknown()}</span></div>`).join("");
+  }
+  const sub = set.kind === "rnd" ? `<div class="eyebrow rndlbl">${esc(T("rnd_lbl"))}</div>` : set.author ? `<div class="eyebrow">${esc(tpl("tin_from", { name: nameOf(set.author) }))}</div>` : "";
+  return `<div class="setp vf"><div class="sethead"><div class="settitle">${esc(set.title)}</div><div class="eyebrow">${esc(tpl("frame_lbl", { name: nameOf(t.target) }))}</div></div>${sub}<div class="sl">▲ ${esc(set.top)}</div>
+    <div class="cards"><div class="bar"></div><div class="clist ${reveal ? "rv" : ""}">${list}${reveal ? '<i class="scan"></i>' : ""}</div></div><div class="sl b">▼ ${esc(set.bottom)}</div></div>`;
+}
+function qFocus(q) {
+  if (!q) return null;
+  if (q.kind === "pair") return [q.a, q.b];
+  if (q.kind === "triple") return q.items;
+  return null;
+}
+function drawAsk() {
+  const t = state.turn;
+  const r = state.round;
+  const q = t.qs[t.qi];
+  const tname = nameOf(t.target);
+  const ansSig = JSON.stringify(t.answers);
+  const key = ["ask", state.game, r.n, r.ti, t.qi, ansSig, wvLang()].join("|");
+  const rows = t.qs.map((qq, i) => {
+    const per = t.guessers.map((g) => {
+      const a = ansText(qq, (t.answers[g] || [])[i], t.set);
+      const who = t.guessers.length > 1 ? esc(nameOf(g)) + ": " : "";
+      return `<span class="ans">${a ? who + a.map((x) => `<span>${esc(x.t)}</span>`).join(" ") : `<em style="color:var(--muted)">${who}${esc(i === t.qi ? T("waiting") : T("no_answer"))}</em>`}</span>`;
+    }).join("");
+    return `<div class="qrow ${i === t.qi ? "cur" : ""}"><span class="qn">${i + 1}</span><span class="qa"><span class="q">${qShort(qq)}</span>${per}</span><span></span></div>`;
+  }).join("");
+  if (show(`${timerHtml(roundLbl() + " · " + esc(tpl("turn_n", { n: r.ti + 1, m: r.turnsTotal })) + " · " + esc(tpl("q_of", { n: t.qi + 1 })))}
+    <div class="turn">${setPanel(t, qFocus(q), false)}
+      <div class="qp">${whoHtml(t)}<div class="qbig">${wvQuestionHtml(q, t.set, tname)}</div>
+        <div class="qrows">${rows}</div></div></div>`, key)) {
+    if (drawAsk.last !== ansSig && drawAsk.lastQi === t.qi + ":" + r.ti) wvSfx.lock();
+    drawAsk.last = ansSig; drawAsk.lastQi = t.qi + ":" + r.ti;
+  }
+}
+// раскрытие: порядок сверху вниз за ~4,8 с под дробь, потом очки по вопросам и строка зала
+const RV_ROWS_AT = 5000;
+let rvFired = new Set(), rvKey = "";
+function drawReveal() {
+  const t = state.turn;
+  const r = state.round;
+  if (!t.result) return;
+  const res = t.result;
+  const tname = nameOf(t.target);
+  const set = t.set;
+  const place = (x) => res.order.indexOf(x) + 1;
+  // ответы угадывающего: после строки очков чипы перекрашиваются в настоящую температуру пункта и получают его место
+  const rows = t.qs.map((qq, i) => {
+    const at = RV_ROWS_AT + i * 500;
+    const per = t.guessers.map((g) => {
+      const v = (t.answers[g] || [])[i];
+      const a = v == null ? null : Array.isArray(v) ? v : [v];
+      const who = t.guessers.length > 1 ? esc(nameOf(g)) + ": " : "";
+      return `<span class="ans">${a ? who + a.map((x) => `<span class="${wvHeat(place(x))}" data-at="${at}"><b>${place(x)}</b>${esc(set.items[x].t)}</span>`).join(" ") : `<em style="color:var(--muted)">${who}${esc(T("no_answer"))}</em>`}</span>`;
+    }).join("");
+    const pts = t.guessers.map((g) => (res.pts[g] || [0, 0, 0])[i]);
+    // пояснение частичных очков: «рядом: 3-е место вместо 2-го, +100», «одна пара не та, +200»
+    const hl = t.guessers.map((g) => (t.guessers.length > 1 ? nameOf(g) + ": " : "") + wvExplain(qq, (t.answers[g] || [])[i], res.order, (res.pts[g] || [0, 0, 0])[i])).join(" · ");
+    return `<div class="qrow"><span class="qn">${i + 1}</span><span class="qa"><span class="q">${qShort(qq)}</span>${per}<span class="hl${pts.some((x) => x > 0) ? " ok" : ""}" data-at="${at}">⌖ <b>${esc(hl)}</b></span></span>
+      <span class="pts ${pts.some((x) => x > 0) ? "ok" : ""}" data-at="${at}">${pts.map((x) => "+" + x).join(" / ")}</span></div>`;
+  }).join("");
+  // метка на карточке: что угадывающий назвал первым / последним (вопрос 2) — видно прямо в кадре, попал или нет
+  const marks = {};
+  const q2 = t.qs[1];
+  const n2 = wvPlaceOf(q2);
+  if (n2 != null) {
+    t.guessers.forEach((g) => {
+      const v = (t.answers[g] || [])[1];
+      if (v == null || marks[v]) return;
+      marks[v] = { text: "⌖ " + tpl("guess_pos", { name: nameOf(g), n: n2 }), miss: place(v) !== n2 };
+    });
+  }
+  const totals = t.guessers.map((g) => (res.pts[g] || []).reduce((a, b) => a + b, 0));
+  const key = ["rv", state.game, r.n, r.ti, wvLang()].join("|");
+  if (show(`${timerHtml(roundLbl() + " · " + esc(tpl("reveal_t", { name: tname })))}
+    <div class="turn">${setPanel(t, null, true, marks)}
+      <div class="qp">${whoHtml(t)}<div class="qrows">${rows}</div>
+        <div class="total" data-at="${RV_ROWS_AT + 1700}">+${totals.join(" / +")} <span class="lede">${esc(T("pts_turn"))}</span></div></div></div>`, key)) {
+    rvFired = new Set();
+    rvKey = key;
+    wvSfx.drum(4.6);
+    // развёртка тепловизора: снизу вверх за время прогрева
+    const scan = main.querySelector(".scan"), cl = main.querySelector(".clist");
+    if (scan && cl) {
+      const n = res.order.length;
+      scan.style.setProperty("--scan-h", -cl.clientHeight + "px");
+      scan.style.setProperty("--scan-ms", (RV_STEP * n) + "ms");
+      scan.style.setProperty("--scan-delay", Math.round(RV_FIRST - RV_STEP / 2 - phaseNow()) + "ms");
+      scan.classList.add("go");
+    }
+    updReveal();
+  }
+}
+function updReveal() {
+  if (!state || state.phase !== "reveal") return;
+  const at = phaseNow();
+  main.querySelectorAll("[data-at]").forEach((el) => {
+    const on = at >= Number(el.dataset.at);
+    if (on && !el.classList.contains("on")) {
+      el.classList.add("on");
+      const id = el.dataset.at + (el.dataset.k || "") + el.className;
+      if (!rvFired.has(id) && at - Number(el.dataset.at) < 600) {
+        rvFired.add(id);
+        if (el.dataset.k != null) wvSfx.flip(Number(el.dataset.k));
+        if (el.classList.contains("total")) { const sum = (state.turn.result && Object.values(state.turn.result.pts)[0] || []).reduce((a, b) => a + b, 0); (sum >= 500 ? wvSfx.win : sum > 0 ? wvSfx.hit : wvSfx.womp)(); }
+      }
+    }
+  });
+}
+
+// ---------- счёт, пауза, итоги ----------
+function boardHtml() {
+  const list = present().slice().sort((a, b) => b.score - a.score);
+  return `<ol class="board">${list.map((p) => `<li class="${wvRank(list, p) === 1 ? "first" : ""}"><span class="rk">${wvRank(list, p)}</span>${avHtml(p)}<span class="nm">${esc(p.name)}</span><b>${p.score}</b></li>`).join("")}</ol>`;
+}
+function drawScores() {
+  show(`${timerHtml(roundLbl())}<div class="center"><h1>${esc(tpl("scores_t", { n: state.round ? state.round.n : 1 }))}</h1>${boardHtml()}</div>`, "scores:" + state.game + ":" + (state.round ? state.round.n : 0) + wvLang());
+}
+function drawPause() {
+  show(`${timerHtml(roundLbl())}<div class="center"><h1>${esc(T("pause_t"))}</h1><p class="lede">${esc(tpl("pause_s", { n: state.minPlayers }))}</p>${pgridHtml(present().map((p) => p.id), present().filter((p) => p.online).map((p) => p.id))}</div>`, "pause:" + state.phaseStart + present().map((p) => p.online ? 1 : 0).join("") + wvLang());
+}
+// карточка ленты (§7): самый яркий промах хода (worst — его выбрал сервер) словами, без рода и падежей
+function loudLine(x) {
+  const g = nameOf(x.guesser), tn = nameOf(x.target);
+  const w = x.worst;
+  if (!w) return { text: "", hit: null };
+  const q = x.qs[w.qi], v = x.answers[w.qi];
+  const it = (k) => x.items[k].t;
+  const want = wvPlaceOf(q);
+  if (want != null) return { text: tpl("loud_place", { g, t: tn, item: it(v), want: wvOrd(want, "nom"), got: wvOrd(x.order.indexOf(v) + 1, "nom") }), hit: v };
+  if (q.kind === "pair") return { text: tpl("loud_pair", { g, t: tn, a: it(v), b: it(v === q.a ? q.b : q.a) }), hit: v };
+  const real = v.slice().sort((a, b) => x.order.indexOf(a) - x.order.indexOf(b));
+  return { text: tpl("loud_tri", { g, t: tn, x: v.map(it).join(" › "), y: real.map(it).join(" › ") }), hit: null };
+}
+function drawFinal() {
+  const list = present();
+  const winners = wvWinners(list);
+  const why = state.finishedReason;
+  const sub = why === "host" ? T("final_host") : why === "paused" ? T("final_paused") : why === "few" ? T("final_few") : "";
+  const loud = state.loud || [];
+  const cards = loud.slice(0, 3).map((x) => {
+    const g = player(x.guesser), tp = player(x.target);
+    const l = loudLine(x);
+    return `<div class="lcard"><div class="lh">${g ? avHtml(g) : ""}<b>${esc(nameOf(x.guesser))}</b><span>⌖</span>${tp ? avHtml(tp) : ""}<b>${esc(nameOf(x.target))}</b><span class="lt">· ${esc(x.title)}</span></div>
+      <div class="ll">${esc(l.text)}</div>
+      <div class="lo">${x.order.map((k, i) => `<span class="icard ${wvHeat(i + 1)} ${k === l.hit ? "hit" : ""}">${itemHtml(x.items[k], i + 1)}</span>`).join("")}</div></div>`;
+  }).join("");
+  const key = ["fin", state.game, list.map((p) => p.id + p.score).join(","), isHost, wvLang()].join("|");
+  if (!show(`<div class="fin"><div class="finl">
+      <h1>${esc(T("final_t"))}</h1>
+      ${winners.length ? `<div class="winplate vf">🏆 ${winners.map((p) => avHtml(p)).join("")}<span>${esc(winners.length > 1 ? tpl("final_shared", { names: winners.map((p) => p.name).join(", ") }) : tpl("final_win", { name: winners[0].name }))}</span></div>` : ""}${sub ? `<p class="lede">${esc(sub)}</p>` : ""}
+      ${boardHtml()}
+      ${isHost ? `<div class="fbtn"><button class="start" id="again" type="button"${list.length < state.minPlayers ? " disabled" : ""}>${esc(T("btn_again"))}</button><button class="ghostbtn" id="tolobby" type="button">${esc(T("btn_lobby"))}</button></div>` : ""}</div>
+    <div class="loud${loud.length < 3 ? " few" : ""}"><h2>${esc(T("loud_t"))}</h2>${cards || `<p class="lede">${esc(T("loud_none"))}</p>`}</div></div>`, key)) return;
+  if (why === "done") wvSfx.fanfare();
+  const a = $("again"); if (a) a.onclick = () => conn.send({ type: "start" });
+  const l = $("tolobby"); if (l) l.onclick = () => conn.send({ type: "lobby" });
+}
+
+// ---------- выбор экрана ----------
+function render() {
+  if (!state || dead) return;
+  document.body.dataset.phase = state.phase;
+  topBar();
+  const r = state.round;
+  switch (state.phase) {
+    case "lobby": return drawLobby();
+    case "pick": return drawWaitPhase("pick_t", "pick_s", r.cast);
+    case "write": return drawWaitPhase("write_t", "write_s", r.writers || r.cast);
+    case "rank": return drawWaitPhase("rank_t", "rank_s", r.ranking || r.cast);
+    case "tintro": return drawTintro();
+    case "ask": return drawAsk();
+    case "reveal": return drawReveal();
+    case "scores": return drawScores();
+    case "pause": return drawPause();
+    case "finished": return drawFinal();
+  }
+}
+$("endbtn").onclick = () => { if (confirm(T("btn_end") + "?")) conn.send({ type: "end" }); };
+
+let lastTickSec = null;
+function frame() {
+  requestAnimationFrame(frame);
+  if (!state || dead) return;
+  const bar = $("tbar"), ts = $("tsec");
+  if (state.phaseEnd && (bar || ts)) {
+    const left = phaseLeft();
+    const total = Math.max(1, state.phaseEnd - state.phaseStart);
+    if (bar) bar.firstChild.style.transform = `scaleX(${Math.max(0, Math.min(1, left / total))})`;
+    if (ts) { ts.textContent = String(Math.max(0, Math.ceil(left / 1000))); ts.classList.toggle("hot", left < 5000 && state.phase === "ask"); }
+    if (state.phase === "ask" && left < 5000 && left > 0) {
+      const sec = Math.ceil(left / 1000);
+      if (sec !== lastTickSec) { lastTickSec = sec; wvSfx.tick(sec <= 3); }
+    }
+  }
+  if (state.phase === "reveal") updReveal();
+}
+
+window.addEventListener("langchange", () => {
+  viewKey = ""; hostCtlKey = "";
+  // язык карточек по умолчанию — язык интерфейса ведущего, пока он не выбрал вручную
+  if (isHost && state && state.phase === "lobby" && !manualLang() && state.settings.lang !== wvLang()) conn.send({ type: "settings", settings: { lang: wvLang() } });
+  render();
+});
+const manualLang = () => { try { return !!localStorage.getItem(langKey()); } catch (e) { return false; } };
+
+// ---------- связь ----------
+function setState(s) { s.__at = performance.now(); state = s; }
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+      if (goneFlow) goneFlow.hello();
+      setState(m.state);
+      if (!isHost) {
+        let token = null;
+        try { token = localStorage.getItem(hostKey()); } catch (e) {}
+        if (token) conn.send({ type: "host", token });
+      }
+      render();
+      break;
+    case "state":
+      setState(m.state);
+      render();
+      break;
+    case "event":
+      if (m.event && m.event.type === "round") wvSfx.whoosh();
+      break;
+    case "host_ok":
+      isHost = true;
+      hostLost = false;
+      pasteOpen = false;
+      document.body.classList.add("host");
+      viewKey = "";
+      if (state && state.phase === "lobby" && !manualLang() && state.settings.lang !== wvLang()) conn.send({ type: "settings", settings: { lang: wvLang() } });
+      render();
+      break;
+    case "host_lost":
+      isHost = false;
+      hostLost = true;
+      document.body.classList.remove("host");
+      viewKey = "";
+      render();
+      break;
+    case "rejected":
+      if (m.action === "start" && m.reason) { showBanner(T(m.reason)); setTimeout(() => showBanner(null), 3000); }
+      break;
+    case "error":
+      if (m.error === "room_expired") onRoomGone();
+      if (m.error === "bad host token") {
+        hostLost = false;
+        try { localStorage.removeItem(hostKey()); } catch (e) {}
+        pasteOpen = true;
+        setHostNote(T("host_bad"));
+      }
+      break;
+  }
+}
+function gone() {
+  dead = true;
+  main.innerHTML = "";
+  showBanner(T("expired"));
+}
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({
+  showForm: () => { dead = true; main.innerHTML = ""; showBanner(T("noroom")); },
+  onClosed: () => gone(),
+}) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else gone(); }
+async function boot() {
+  const h = params.get("h");
+  if (h && CODE) {
+    try { localStorage.setItem(hostKey(), h); } catch (e) {}
+    history.replaceState(null, "", `?r=${CODE}`);
+  }
+  if (!(await ensureRoom())) return;
+  const banner = $("conn");
+  let netLost = false, netQuiet = false;
+  const showNet = () => {
+    banner.textContent = T(netLost ? "err_connect" : "conn_lost");
+    banner.classList.toggle("on", netLost || netQuiet);
+  };
+  window.addEventListener("langchange", showNet);
+  conn = wvConnect({
+    code: CODE,
+    onMessage,
+    onGone: onRoomGone,
+    onOpen: () => { isHost = false; },
+    onState: (st) => { netLost = st === "lost"; if (st === "open") netQuiet = false; showNet(); },
+    onQuiet: (q) => { netQuiet = !!q; showNet(); },
+  });
+  requestAnimationFrame(frame);
+  window.wvBoard = { send: (m) => conn.send(m), get state() { return state; }, get code() { return CODE; } };
+}
+window.addEventListener("resize", () => { viewKey = ""; if (state) render(); });
+boot();
+</script>
+</body>
+</html>
