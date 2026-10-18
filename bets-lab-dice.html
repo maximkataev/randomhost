@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="robots" content="noindex">
+<title>Ставки · лаборатория: кости</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
+<style>
+  :root {
+    --bg: #07090c; --glass: #0d1217; --glass-2: #121a21; --line: #1f2b34; --text: #eef2ee; --dim: #7d8c93;
+    --lime: #b6ff2e; --magenta: #ff2e88; --amber: #ffd34d;
+    --disp: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { background: var(--bg); color: var(--text); min-height: 100%; }
+  body { font-family: var(--mono); display: flex; flex-direction: column; min-height: 100vh; }
+  header { display: flex; align-items: center; gap: 18px; padding: 14px 22px 10px; border-bottom: 1px solid var(--line); }
+  .sign { font-family: var(--disp); font-weight: 900; font-size: 34px; letter-spacing: .14em; text-transform: uppercase; color: #fff;
+    text-shadow: 0 0 4px #fff, 0 0 12px var(--magenta), 0 0 28px var(--magenta), 0 0 52px var(--magenta); animation: hum 5s infinite; }
+  @keyframes hum { 0%, 92%, 96%, 100% { opacity: 1 } 93% { opacity: .55 } 95% { opacity: .85 } }
+  .sub { color: var(--dim); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  .spacer { flex: 1; }
+  .live { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; letter-spacing: .12em; color: var(--lime); }
+  .live i { width: 9px; height: 9px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 10px var(--lime); animation: blink 1.4s infinite; }
+  @keyframes blink { 50% { opacity: .25 } }
+  main { flex: 1; display: grid; grid-template-columns: 372px 1fr; gap: 16px; padding: 16px 22px 22px; min-height: 0; }
+  main > * { min-width: 0; }
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; padding: 12px 12px 18px; }
+    .stage { order: -1; }
+    .view { aspect-ratio: 4 / 3 !important; }
+    header { flex-wrap: wrap; padding: 10px 14px 8px; gap: 6px 12px; }
+    .sign { font-size: 26px; } .sub { display: none; } .say { font-size: 18px; } button { padding: 11px 14px; }
+  }
+  .board { background: var(--glass); border: 1px solid var(--line); padding-bottom: 12px; }
+  .board h2 { font-family: var(--disp); font-weight: 800; font-size: 20px; letter-spacing: .1em; text-transform: uppercase; padding: 12px 14px 4px; display: flex; justify-content: space-between; align-items: baseline; }
+  .board h2 small { font-family: var(--mono); font-size: 11px; color: var(--dim); font-weight: 700; letter-spacing: .06em; }
+  .grp { padding: 8px 14px 2px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+  .tiles { display: grid; gap: 6px; padding: 4px 14px; }
+  .t2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .t3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .t6 { grid-template-columns: repeat(6, minmax(0, 1fr)); } .t7 { grid-template-columns: repeat(5, minmax(0, 1fr)); } .t1 { grid-template-columns: 1fr; }
+  .t6 .flap span, .t7 .flap span { width: 11px; height: 20px; font-size: 13px; } .t6 .flap span.dot, .t7 .flap span.dot { width: 6px; }
+  .tile { background: var(--glass-2); border: 1px solid var(--line); padding: 7px 4px 6px; display: flex; flex-direction: column; align-items: center; gap: 5px; transition: opacity .35s, border-color .25s, box-shadow .25s, background .25s; }
+  .tile b { font-family: var(--disp); font-weight: 800; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; text-align: center; line-height: 1; }
+  .t2 .tile b { font-size: 19px; }
+  .t7 .tile b, .t6 .tile b { font-size: 13px; }
+  .tile.win { border-color: var(--lime); box-shadow: 0 0 14px rgba(182,255,46,.55), inset 0 0 18px rgba(182,255,46,.18); background: #14200c; animation: winpop .6s ease-out; }
+  .tile.lose { opacity: .32; }
+  @keyframes winpop { 0% { transform: scale(1.12) } 100% { transform: scale(1) } }
+  .flap { display: inline-flex; gap: 1px; justify-content: center; }
+  .flap span { position: relative; width: 13px; height: 22px; display: grid; place-items: center; background: linear-gradient(#232c33 50%, #1a2128 50%); color: var(--amber); font-weight: 800; font-size: 14px; border-radius: 2px; font-variant-numeric: tabular-nums; }
+  .t2 .flap span { width: 17px; height: 28px; font-size: 19px; }
+  .flap span::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: #000; opacity: .7; }
+  .flap span.dot { width: 7px; background: none; } .t2 .flap span.dot { width: 9px; } .flap span.dot::after { display: none; }
+  .flap span.flip { animation: flip .38s cubic-bezier(.3,.1,.3,1); }
+  @keyframes flip { 0% { transform: rotateX(-95deg); filter: brightness(.4) } 100% { transform: rotateX(0); filter: none } }
+  .tile.win .flap span { color: var(--lime); }
+
+  .stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .view { position: relative; background: #000; border: 1px solid var(--line); aspect-ratio: 16 / 9; width: 100%; overflow: hidden; }
+  .view canvas { display: block; width: 100%; height: 100%; }
+  .sum { position: absolute; left: 50%; top: 5%; transform: translateX(-50%); text-align: center; pointer-events: none; opacity: 0; }
+  .sum .n { font-family: var(--disp); font-weight: 900; font-size: min(15vw, 150px); line-height: .9; color: #fff;
+    text-shadow: 0 0 6px #fff, 0 0 26px var(--lime), 0 0 60px var(--lime); }
+  .sum .tags { margin-top: 6px; display: flex; gap: 8px; justify-content: center; }
+  .sum .tags span { font-family: var(--disp); font-weight: 800; letter-spacing: .1em; font-size: min(3.4vw, 26px); padding: 3px 12px; background: var(--lime); color: #07090c; text-transform: uppercase; }
+  .sum.on { animation: sumin .9s cubic-bezier(.2,1.5,.4,1) forwards; }
+  @keyframes sumin { 0% { opacity: 0; transform: translateX(-50%) scale(2.2) } 100% { opacity: 1; transform: translateX(-50%) scale(1) } }
+  .say { font-family: var(--disp); font-weight: 700; font-size: 22px; letter-spacing: .04em; text-transform: uppercase; min-height: 30px; }
+  .say em { font-style: normal; color: var(--lime); }
+  .ctl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: 800 13px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #06090b; background: var(--lime); border: 0; padding: 11px 18px; cursor: pointer; border-bottom: 3px solid #6c9e10; }
+  button.ghost { background: var(--glass-2); color: var(--text); border-bottom-color: #000; }
+  button:active { transform: translateY(2px); border-bottom-width: 1px; }
+  button:disabled { opacity: .45; cursor: default; }
+  label { font-size: 12px; color: var(--dim); display: flex; gap: 6px; align-items: center; }
+  .hint { font-size: 11px; color: var(--dim); }
+  .nogl { position: absolute; inset: 0; display: none; place-items: center; text-align: center; padding: 20px; color: var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <div class="sign">Тотализатор</div>
+  <div class="sub">лаборатория · кости · не в деплое</div>
+  <div class="spacer"></div>
+  <div class="live"><i></i>LIVE</div>
+</header>
+
+<main>
+  <section class="board" aria-label="Табло костей">
+    <h2><span>Три кубика</span><small>216 исходов</small></h2>
+    <div class="grp">Больше · меньше · чёт · нечёт</div>
+    <div class="tiles t2" id="g-main"></div>
+    <div class="grp">Пары сумм</div>
+    <div class="tiles t3" id="g-sums"></div>
+    <div class="grp">Выпадет число</div>
+    <div class="tiles t6" id="g-nums"></div>
+    <div class="grp">Точная сумма</div>
+    <div class="tiles t7" id="g-exact"></div>
+    <div class="grp">Тройка</div>
+    <div class="tiles t1" id="g-exo"></div>
+  </section>
+
+  <section class="stage">
+    <div class="view" id="view">
+      <div class="sum" id="sum"><div class="n" id="sumN">0</div><div class="tags" id="sumTags"></div></div>
+      <div class="nogl" id="nogl">WebGL недоступен в этом браузере.</div>
+    </div>
+    <div class="say" id="say">Нажми <em>«Бросок»</em></div>
+    <div class="ctl">
+      <button id="go">Бросок</button>
+      <label><input type="checkbox" id="slow"> замедление ×0.5</label>
+      <span class="hint">коэффициенты и исход — из настоящего движка (bets/events/dice.js); падение строится назад от исхода</span>
+    </div>
+  </section>
+</main>
+
+<script src="bets-lab-dice-data.js"></script>
+<script type="module">
+import * as THREE from "./vendor/three.module.min.js";
+
+const $ = (id) => document.getElementById(id);
+const DATA = window.LAB_DICE;
+
+// ---------- табло ----------
+const LABEL = { big: "Больше 11–17", small: "Меньше 4–10", odd: "Нечёт", even: "Чёт", triple: "Любая тройка",
+  "sum:10-11": "10 · 11", "sum:9-12": "9 · 12", "sum:8-13": "8 · 13", "sum:7-14": "7 · 14", "sum:5-6-15-16": "5·6·15·16", "sum:3-18": "3 · 18" };
+const kc2 = (kc) => (kc / 100).toFixed(2).replace(".", ",");
+function setFlap(el, text) {
+  const prev = el._t || "";
+  if (prev === text) return;
+  el._t = text; el.innerHTML = "";
+  [...text].forEach((ch, i) => {
+    const s = document.createElement("span"); s.textContent = ch;
+    if (ch === ",") s.className = "dot";
+    if (prev[i] !== ch) { s.classList.add("flip"); s.style.animationDelay = (i * 0.05) + "s"; }
+    el.appendChild(s);
+  });
+}
+const tileEls = {};
+function tile(parent, id, label, kc) {
+  const d = document.createElement("div"); d.className = "tile";
+  d.innerHTML = `<b>${label}</b><div class="flap"></div>`;
+  parent.appendChild(d); tileEls[id] = d;
+  setFlap(d.querySelector(".flap"), kc2(kc));
+}
+for (const m of DATA.markets) {
+  if (m.id === "big" || m.id === "small" || m.id === "odd" || m.id === "even") tile($("g-main"), m.id, LABEL[m.id], m.kc);
+  else if (m.id.startsWith("sum:")) tile($("g-sums"), m.id, LABEL[m.id], m.kc);
+  else if (m.id.startsWith("has:")) tile($("g-nums"), m.id, m.id.slice(4), m.kc);
+  else if (m.id.startsWith("exact:")) tile($("g-exact"), m.id, m.id.slice(6), m.kc);
+  else if (m.id === "triple") tile($("g-exo"), m.id, LABEL.triple, m.kc);
+}
+function clearTiles() { Object.values(tileEls).forEach((e) => (e.className = "tile")); }
+
+// ---------- сцена ----------
+const view = $("view");
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+} catch (e) { $("nogl").style.display = "grid"; throw e; }
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
+view.insertBefore(renderer.domElement, view.firstChild);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05070a);
+scene.fog = new THREE.Fog(0x05070a, 18, 42);
+const camera = new THREE.PerspectiveCamera(36, 16 / 9, 0.1, 80);
+const CAM_BASE = new THREE.Vector3(0, 7.9, 8.6), LOOK_BASE = new THREE.Vector3(0, 0.3, 0.4);
+camera.position.copy(CAM_BASE); camera.lookAt(LOOK_BASE);
+
+// свет
+scene.add(new THREE.HemisphereLight(0x6b7fa0, 0x0a0d12, 0.9));
+const spot = new THREE.SpotLight(0xfff0d6, 1400, 40, 0.62, 0.65, 2);
+spot.position.set(0.5, 13, 4); spot.target.position.set(0, 0, 0); spot.castShadow = true;
+spot.shadow.mapSize.set(2048, 2048); spot.shadow.bias = -0.0004; spot.shadow.radius = 5; spot.shadow.camera.near = 6; spot.shadow.camera.far = 24;
+scene.add(spot, spot.target);
+const pm = new THREE.PointLight(0xff2e88, 260, 26, 2); pm.position.set(-8, 3.2, -4); scene.add(pm);
+const pl = new THREE.PointLight(0xb6ff2e, 220, 26, 2); pl.position.set(8, 3.2, -4); scene.add(pl);
+
+// стол: чёрное стекло с неоновыми кольцами
+function tableTexture() {
+  const c = document.createElement("canvas"); c.width = c.height = 1024;
+  const g = c.getContext("2d");
+  const rg = g.createRadialGradient(512, 512, 40, 512, 512, 512);
+  rg.addColorStop(0, "#16282e"); rg.addColorStop(0.55, "#0c171b"); rg.addColorStop(1, "#06090b");
+  g.fillStyle = rg; g.fillRect(0, 0, 1024, 1024);
+  // тонкая сетка, как на табло
+  g.strokeStyle = "rgba(255,255,255,.035)"; g.lineWidth = 1;
+  for (let i = 0; i <= 1024; i += 32) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 1024); g.stroke(); g.beginPath(); g.moveTo(0, i); g.lineTo(1024, i); g.stroke(); }
+  const ring = (r, col, w, blur) => { g.strokeStyle = col; g.lineWidth = w; g.shadowColor = col; g.shadowBlur = blur; g.beginPath(); g.arc(512, 512, r, 0, 6.2832); g.stroke(); g.shadowBlur = 0; };
+  ring(468, "#b6ff2e", 5, 26); ring(430, "#ff2e88", 2, 14); ring(250, "rgba(182,255,46,.55)", 2, 10);
+  g.fillStyle = "rgba(182,255,46,.8)"; g.font = "800 44px 'Big Shoulders Display', Impact, sans-serif"; g.textAlign = "center";
+  g.save(); g.translate(512, 512); for (let i = 0; i < 12; i++) { g.rotate(Math.PI / 6); g.fillText(["ТОТАЛ", "×", "КОСТИ", "×"][i % 4], 0, -454 + 8); } g.restore();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+const table = new THREE.Mesh(new THREE.CircleGeometry(10, 96), new THREE.MeshStandardMaterial({ map: tableTexture(), roughness: 0.42, metalness: 0.25 }));
+table.rotation.x = -Math.PI / 2; table.receiveShadow = true; scene.add(table);
+const rim = new THREE.Mesh(new THREE.TorusGeometry(10.1, 0.28, 16, 120), new THREE.MeshStandardMaterial({ color: 0x0b0f13, roughness: 0.35, metalness: 0.6 }));
+rim.rotation.x = Math.PI / 2; rim.position.y = 0.05; scene.add(rim);
+
+// ---------- кубики ----------
+const FACE_VAL = [3, 4, 2, 5, 1, 6]; // +x, −x, +y, −y, +z, −z: противоположные грани дают 7
+const NORMALS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].map((a) => new THREE.Vector3(...a));
+const PIPS = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] };
+function pipTexture(v) {
+  const S = 256, c = document.createElement("canvas"); c.width = c.height = S;
+  const g = c.getContext("2d");
+  const bg = g.createLinearGradient(0, 0, S, S); bg.addColorStop(0, "#1b2229"); bg.addColorStop(1, "#0a0d10");
+  g.fillStyle = bg; g.fillRect(0, 0, S, S);
+  g.strokeStyle = "rgba(255,255,255,.08)"; g.lineWidth = 6; g.strokeRect(3, 3, S - 6, S - 6);
+  for (const [px, py] of PIPS[v]) {
+    const x = S / 2 + px * S * 0.25, y = S / 2 + py * S * 0.25, r = v === 1 ? S * 0.15 : S * 0.085;
+    const col = v === 1 ? "#ff2e88" : "#b6ff2e";
+    g.shadowColor = col; g.shadowBlur = 16; g.fillStyle = col; g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill();
+    g.shadowBlur = 0; g.fillStyle = "rgba(255,255,255,.65)"; g.beginPath(); g.arc(x - r * 0.25, y - r * 0.25, r * 0.4, 0, 6.2832); g.fill();
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+const pipTex = [1, 2, 3, 4, 5, 6].map(pipTexture);
+const faceMats = FACE_VAL.map((v) => new THREE.MeshStandardMaterial({ map: pipTex[v - 1], emissive: 0xffffff, emissiveMap: pipTex[v - 1], emissiveIntensity: 0.55, roughness: 0.28, metalness: 0.15 }));
+function roundedCube(size = 1, r = 0.15, seg = 7) {
+  const g = new THREE.BoxGeometry(size, size, size, seg, seg, seg);
+  const pos = g.attributes.position, nor = g.attributes.normal, half = size / 2 - r;
+  const v = new THREE.Vector3(), inner = new THREE.Vector3(), d = new THREE.Vector3();
+  const cl = (x) => Math.max(-half, Math.min(half, x));
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i); inner.set(cl(v.x), cl(v.y), cl(v.z)); d.copy(v).sub(inner);
+    if (d.lengthSq() > 1e-9) { d.normalize(); v.copy(inner).addScaledVector(d, r); nor.setXYZ(i, d.x, d.y, d.z); }
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  return g;
+}
+const dieGeo = roundedCube(1, 0.15);
+const dice = [0, 1, 2].map(() => { const m = new THREE.Mesh(dieGeo, faceMats); m.castShadow = true; m.receiveShadow = true; scene.add(m); return m; });
+const DIE_SIZE = 1, REST_Y = 0.5;
+
+// ориентация, при которой наверху грань v, с произвольным поворотом вокруг вертикали
+function qFor(v, yaw) {
+  const n = NORMALS[FACE_VAL.indexOf(v)];
+  const q = new THREE.Quaternion().setFromUnitVectors(n, new THREE.Vector3(0, 1, 0));
+  return new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw).multiply(q);
+}
+
+// ---------- стакан ----------
+const cup = new THREE.Group();
+const glass = new THREE.MeshPhysicalMaterial({ color: 0x9fd9c8, roughness: 0.08, metalness: 0, transparent: true, opacity: 0.24, side: THREE.DoubleSide, depthWrite: false });
+const cupBody = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.22, 2.5, 40, 1, true), glass); cupBody.position.y = 1.25; cup.add(cupBody);
+const cupBase = new THREE.Mesh(new THREE.CylinderGeometry(1.22, 1.22, 0.14, 40), new THREE.MeshStandardMaterial({ color: 0x10161b, roughness: 0.4, metalness: 0.6 })); cupBase.position.y = 0.07; cupBase.castShadow = true; cup.add(cupBase);
+const cupRim = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.05, 12, 60), new THREE.MeshBasicMaterial({ color: 0xb6ff2e })); cupRim.rotation.x = Math.PI / 2; cupRim.position.y = 2.5; cup.add(cupRim);
+const cupGlow = new THREE.PointLight(0xb6ff2e, 18, 6, 2); cupGlow.position.y = 2.5; cup.add(cupGlow);
+scene.add(cup);
+
+// ---------- искры ----------
+const NP = 220;
+const pPos = new Float32Array(NP * 3), pVel = new Float32Array(NP * 3), pLife = new Float32Array(NP);
+const pGeo = new THREE.BufferGeometry(); pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
+const points = new THREE.Points(pGeo, new THREE.PointsMaterial({ color: 0xb6ff2e, size: 0.11, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+points.frustumCulled = false; scene.add(points);
+let pCursor = 0;
+function sparks(x, y, z, n, power) {
+  for (let i = 0; i < n; i++) {
+    const k = pCursor++ % NP, a = Math.random() * 6.283, s = (0.4 + Math.random()) * power;
+    pPos.set([x, y, z], k * 3); pVel.set([Math.cos(a) * s, 1.2 + Math.random() * power, Math.sin(a) * s], k * 3); pLife[k] = 0.5 + Math.random() * 0.4;
+  }
+}
+
+// ---------- бросок ----------
+const rand = (a, b) => a + Math.random() * (b - a);
+const S = { phase: "idle", t: 0, ts: 1, roll: null, rollIdx: -1, dice: [], shakeSeed: Math.random() * 10, cam: 0, said: {}, ready: true };
+const LAND = [new THREE.Vector3(-1.9, REST_Y, 0.5), new THREE.Vector3(0.1, REST_Y, -1.1), new THREE.Vector3(1.9, REST_Y, 0.7)];
+const SHAKE_T = 1.9, LIFT_T = 0.5, RELEASE_T = SHAKE_T + 0.28;
+
+function say(html) { $("say").innerHTML = html; }
+
+function planRoll(o) {
+  const pl = [];
+  const order = [0, 1, 2].sort(() => Math.random() - 0.5);
+  o.forEach((v, i) => {
+    const L = LAND[order[i]].clone(); L.x += rand(-0.25, 0.25); L.z += rand(-0.25, 0.25);
+    const T = [1.8, 2.1, 2.7][i] * rand(0.95, 1.05);   // последний кубик катится дольше
+    const R = new THREE.Vector3(rand(-0.4, 0.4) - 2.2, 3.3, rand(-0.5, 0.5) - 1.0);
+    // точки соприкосновения со столом: падение, затем всё более короткие отскоки к месту посадки
+    const dirx = L.x - R.x, dirz = L.z - R.z;
+    const perp = new THREE.Vector3(-dirz, 0, dirx).normalize();
+    const X1 = R.clone().lerp(L, 0.58).addScaledVector(perp, rand(-0.9, 0.9)); X1.y = REST_Y;
+    const X2 = R.clone().lerp(L, 0.86).addScaledVector(perp, rand(-0.35, 0.35)); X2.y = REST_Y;
+    const X3 = L.clone().lerp(X2, 0.12);
+    pl.push({
+      v, T, delay: i * 0.13, R, L,
+      seg: [ // начало, конец, доля времени, высота дуги
+        { a: R, b: X1, f: 0.36, h: 0.5, fall: true }, { a: X1, b: X2, f: 0.27, h: 1.25 }, { a: X2, b: X3, f: 0.2, h: 0.55 }, { a: X3, b: L, f: 0.17, h: 0.14 },
+      ],
+      axis: new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize(), spin: Math.PI * rand(9, 13) * (Math.random() < 0.5 ? -1 : 1),
+      qEnd: qFor(v, rand(0, 6.283)), hits: 0, landed: false,
+    });
+  });
+  return pl;
+}
+
+function posAt(p, s) {
+  let acc = 0;
+  for (let i = 0; i < p.seg.length; i++) {
+    const g = p.seg[i];
+    if (s <= acc + g.f || i === p.seg.length - 1) {
+      const u = Math.min(1, Math.max(0, (s - acc) / g.f));
+      const x = g.a.x + (g.b.x - g.a.x) * u, z = g.a.z + (g.b.z - g.a.z) * u;
+      const y = g.fall ? REST_Y + (g.a.y - REST_Y) * (1 - u * u) + 4 * g.h * u * (1 - u) : REST_Y + 4 * g.h * u * (1 - u);
+      return { x, y, z, seg: i, u };
+    }
+    acc += g.f;
+  }
+}
+
+function startRoll() {
+  S.rollIdx = (S.rollIdx + 1) % DATA.rolls.length;
+  S.roll = DATA.rolls[S.rollIdx];
+  S.plan = planRoll(S.roll.o);
+  S.phase = "shake"; S.t = 0; S.ts = 1; S.said = {}; S.landedN = 0; S.released = false; S.finished = false;
+  $("sum").className = "sum"; clearTiles();
+  $("go").disabled = true;
+  cup.position.set(0, 0, 0); cup.rotation.set(0, 0, 0); cup.visible = true; glass.opacity = 0.24;
+  dice.forEach((d, i) => {
+    cup.add(d); d.position.set([-0.45, 0.45, 0][i], 0.55 + i * 0.05, [0.2, 0.1, -0.4][i]); d.quaternion.setFromEuler(new THREE.Euler(rand(0, 6), rand(0, 6), rand(0, 6))); d.visible = true; d.scale.setScalar(1);
+  });
+  say("Кубики в стакане. <em>Ставки закрыты.</em>");
+}
+
+function frame(dtReal) {
+  const slowUser = $("slow").checked ? 0.5 : 1;
+  // замедление на последнем отскоке самого долгого кубика
+  let target = slowUser;
+  if (S.phase === "throw" && S.plan) {
+    const p = S.plan[2], s = (S.t - RELEASE_T - p.delay) / p.T;
+    if (s > 0.62 && s < 0.97) target *= 0.38;
+  }
+  S.ts += (target - S.ts) * Math.min(1, dtReal * 7);
+  const dt = dtReal * S.ts;
+  S.t += (S.phase === "idle" || S.phase === "done") ? 0 : dt;
+  const t = S.t;
+
+  if (S.phase === "idle" || S.phase === "done") {
+    // стакан слегка покачивается на холостом ходу, кубики внутри лежат
+    const k = performance.now() / 1000;
+    if (S.phase === "idle") { cup.position.y = Math.sin(k * 1.4) * 0.04; cupGlow.intensity = 14 + Math.sin(k * 3) * 4; }
+  }
+
+  if (S.phase === "shake") {
+    // тряска: стакан кружит и подпрыгивает, кубики внутри гремят
+    const k = Math.min(1, t / 0.25), amp = 0.55 * k;
+    cup.position.set(Math.sin(t * 19) * amp, 0.3 + Math.abs(Math.sin(t * 13)) * 0.55 * k, Math.cos(t * 16) * amp * 0.7);
+    cup.rotation.set(Math.sin(t * 17) * 0.17 * k, 0, Math.cos(t * 21) * 0.2 * k);
+    dice.forEach((d, i) => {
+      const ph = i * 2.1 + S.shakeSeed;
+      d.position.set(Math.sin(t * 23 + ph) * 0.52, 0.55 + Math.abs(Math.sin(t * 29 + ph)) * 0.8, Math.cos(t * 19 + ph) * 0.5);
+      d.rotation.x += dt * (9 + i * 3); d.rotation.y += dt * (7 - i * 2); d.rotation.z += dt * (11 + i);
+    });
+    if (t > 0.5 && !S.said.sh) { S.said.sh = 1; say("Трясём стакан… <em>что выпадет?</em>"); }
+    if (t >= SHAKE_T) { S.phase = "throw"; }
+  }
+
+  if (S.phase === "throw") {
+    // стакан поднимается и опрокидывается к камере, кубики вылетают
+    const u = Math.min(1, Math.max(0, (t - SHAKE_T) / LIFT_T)), e = u * u * (3 - 2 * u);
+    cup.position.set(-2.2 - 0 * e, 0.3 + 2.6 * e, -1.0 + 0.2 * e);
+    cup.rotation.set(0, 0, 0); cup.rotation.z = e * 1.9; // мордой в сторону полёта (вправо)
+    if (!S.released && t >= RELEASE_T) {
+      S.released = true;
+      dice.forEach((d) => { scene.attach(d); });
+      say("Кубики вылетели!");
+    }
+    if (S.released) {
+      let allLanded = true;
+      S.plan.forEach((p, i) => {
+        const d = dice[i], ft = t - RELEASE_T - p.delay;
+        if (ft < 0) { allLanded = false; return; }
+        const s = Math.min(1, ft / p.T);
+        const pos = posAt(p, s);
+        d.position.set(pos.x, pos.y, pos.z);
+        // вращение гаснет к концу и точно приходит в нужную грань
+        const th = p.spin * Math.pow(1 - s, 1.7);
+        d.quaternion.setFromAxisAngle(p.axis, th).multiply(p.qEnd);
+        // контакты со столом: искры, лёгкая тряска камеры
+        if (pos.seg > p.hits) { p.hits = pos.seg; sparks(pos.x, 0.1, pos.z, 10 + (3 - pos.seg) * 2, 1.4 - pos.seg * 0.25); S.cam = Math.max(S.cam, 0.35 - pos.seg * 0.08); }
+        if (s >= 1) { if (!p.landed) { p.landed = true; S.landedN++; sparks(pos.x, 0.1, pos.z, 14, 1.0); } } else allLanded = false;
+      });
+      if (S.plan[2].landed === false && S.plan[0].landed && S.plan[1].landed && !S.said.last) { S.said.last = 1; say("Два кубика встали. <em>Последний ещё катится…</em>"); }
+      if (allLanded && !S.finished) finishRoll();
+    }
+    // стакан уезжает и гаснет, когда пустой
+    if (S.released) { const k = Math.min(1, (t - RELEASE_T) / 0.7); cup.position.x = -2.2 - 3.5 * k; cup.position.y = 2.9 + 1.5 * k; glass.opacity = 0.24 * (1 - k); cupGlow.intensity = 14 * (1 - k); if (k >= 1) cup.visible = false; }
+  }
+
+  // камера: лёгкая тряска на ударах, наезд на последний кубик
+  S.cam = Math.max(0, S.cam - dtReal * 2.2);
+  let push = 0;
+  if (S.phase === "throw" && S.plan && S.released) { const p = S.plan[2]; const s = (t - RELEASE_T - p.delay) / p.T; push = Math.min(1, Math.max(0, (s - 0.35) / 0.4)); }
+  if (S.phase === "done") push = Math.max(0, push);
+  const tp = S.phase === "done" ? 1 : push;
+  const look = LOOK_BASE.clone().lerp(S.plan ? S.plan[2].L : LOOK_BASE, 0.5 * tp);
+  const cp = CAM_BASE.clone().lerp(new THREE.Vector3(S.plan ? S.plan[2].L.x * 0.4 : 0, 6.4, 7.4), 0.55 * tp);
+  S.cx = (S.cx ?? cp.x) + (cp.x - (S.cx ?? cp.x)) * Math.min(1, dtReal * 3);
+  S.cy = (S.cy ?? cp.y) + (cp.y - (S.cy ?? cp.y)) * Math.min(1, dtReal * 3);
+  S.cz = (S.cz ?? cp.z) + (cp.z - (S.cz ?? cp.z)) * Math.min(1, dtReal * 3);
+  camera.position.set(S.cx + (Math.random() - 0.5) * S.cam * 0.35, S.cy + (Math.random() - 0.5) * S.cam * 0.25, S.cz);
+  camera.lookAt(look);
+
+  // искры
+  for (let i = 0; i < NP; i++) {
+    if (pLife[i] <= 0) { pPos[i * 3 + 1] = -50; continue; }
+    pLife[i] -= dtReal;
+    pVel[i * 3 + 1] -= 9 * dtReal;
+    pPos[i * 3] += pVel[i * 3] * dtReal; pPos[i * 3 + 1] += pVel[i * 3 + 1] * dtReal; pPos[i * 3 + 2] += pVel[i * 3 + 2] * dtReal;
+    if (pPos[i * 3 + 1] < 0.02) { pPos[i * 3 + 1] = 0.02; pVel[i * 3 + 1] *= -0.3; }
+  }
+  pGeo.attributes.position.needsUpdate = true;
+
+  // неон слегка дышит
+  const k = performance.now() / 1000;
+  pm.intensity = 240 + Math.sin(k * 2.3) * 40; pl.intensity = 210 + Math.sin(k * 1.9 + 1) * 36;
+  renderer.render(scene, camera);
+}
+
+function finishRoll() {
+  S.finished = true; S.phase = "done";
+  const o = S.roll.o, sum = o[0] + o[1] + o[2];
+  // подсветка выигравших рынков, остальные тускнеют
+  const win = new Set(S.roll.win);
+  Object.entries(tileEls).forEach(([id, el]) => { el.className = "tile " + (win.has(id) ? "win" : "lose"); });
+  const tags = [];
+  if (o[0] === o[1] && o[1] === o[2]) tags.push("ТРОЙКА!"); else { tags.push(sum >= 11 ? "БОЛЬШЕ" : "МЕНЬШЕ"); tags.push(sum % 2 ? "НЕЧЁТ" : "ЧЁТ"); }
+  $("sumN").textContent = sum; $("sumTags").innerHTML = tags.map((x) => `<span>${x}</span>`).join("");
+  const s = $("sum"); s.className = "sum"; void s.offsetWidth; s.classList.add("on");
+  say(`Выпало <em>${o.join(" · ")}</em>, сумма ${sum}`);
+  $("go").disabled = false;
+  sparks(0, 0.5, 0, 40, 2.4);
+}
+
+// ---------- цикл и размеры ----------
+function resize() {
+  const b = view.getBoundingClientRect();
+  renderer.setSize(b.width, b.height, false);
+  camera.aspect = b.width / b.height;
+  // на узком экране камера отъезжает, чтобы стол с кубиками помещался
+  camera.fov = b.width / b.height < 1.5 ? 46 : 36;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize);
+resize();
+let last = 0;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const now = ts / 1000, dt = Math.min(0.05, now - (last || now)); last = now;
+  frame(dt);
+}
+// стартовая раскладка: кубики лежат в стакане
+dice.forEach((d, i) => { cup.add(d); d.position.set([-0.45, 0.45, 0][i], 0.55, [0.2, 0.1, -0.4][i]); d.quaternion.setFromEuler(new THREE.Euler(0.4 + i, 0.7 * i, 0.2)); });
+$("go").onclick = startRoll;
+window.labRoll = startRoll; window.labState = S;
+// самопроверка: верхняя грань каждого кубика после посадки совпадает с исходом
+window.labCheck = () => {
+  const up = dice.map((d) => {
+    let best = -2, val = 0;
+    NORMALS.forEach((n, i) => { const y = n.clone().applyQuaternion(d.quaternion).y; if (y > best) { best = y; val = FACE_VAL[i]; } });
+    return { val, flat: +best.toFixed(4), y: +d.position.y.toFixed(3) };
+  });
+  return { want: S.roll && S.roll.o, got: up };
+};
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

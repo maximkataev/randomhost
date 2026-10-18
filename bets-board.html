@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f3b0.svg" type="image/svg+xml">
+<title>Ставки — общий экран</title>
+<!-- доска с кодом комнаты: в поиске ей делать нечего -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Oswald:wght@500;700&family=Roboto+Condensed:wght@700;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Oswald:wght@500;700&family=Roboto+Condensed:wght@700;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet"></noscript>
+<link rel="stylesheet" href="bets-board.css">
+<script src="legacy-compat.js"></script>
+<script src="mp-common.js"></script>
+<script>
+/* Словарь страницы. Ключи только для этой доски (i18n.js общий, его не трогаем): ru/en/el заполнены полностью. */
+window.I18N_DICT = {
+  ru: {
+    _title: "Ставки — общий экран",
+    sign_a: "Тотал", sign_b: "изатор", tag: "ночной тотализатор · фишки виртуальные",
+    lobby_scan: "Наведи камеру телефона на QR или открой ссылку и введи имя.",
+    lobby_who: "Игроки", need2: "Нужно минимум 2 игрока", start: "Начать",
+    warn: "Фишки виртуальные, на деньги не играем.",
+    o_stack: "Стек", o_bet: "Окно ставок", o_events: "Событий", o_mode: "Состав", o_chat: "Чат",
+    unl: "без лимита", m_mixed: "смешанный", m_real: "только реальные", m_scenic: "только сценические", on: "вкл", off: "выкл", sec: "{n} с",
+    free: "свободно", host_only: "Настройки меняет ведущий",
+    ev_no: "Событие", of: "из", minbet: "Мин. ставка", board: "Табло", est_note: "≈ оценка по живым данным",
+    live: "LIVE", est: "≈ оценка", fallback: "источник недоступен, заменено",
+    ph_bets: "Ставки", ph_locked: "Ставок больше нет", ph_scene: "Событие", ph_payout: "Выплаты",
+    alert_lock: "Ставок больше нет!",
+    sub_done: "сдал", sub_wait: "думает…", coupon_n: "{n} ст.", penalty: "−{n} штраф", out: "вылет", offline: "не в сети",
+    chat_cap: "Чат",
+    end: "Закончить сейчас", sure: "Точно?", kick: "Исключить игрока", kick_sure: "Точно исключить?", hide_chat: "Скрыть чат", show_chat: "Показать чат",
+    final_k: "Победитель", again: "Ещё партию", best_win: "Лучший выигрыш", longest: "Самый длинный коэффициент", chips: "фишек",
+    ev_short: "соб. {n}", nostat: "—",
+    host_link: "Ссылка ведущего", copied: "Ссылка ведущего скопирована", viewer: "Экран-зритель: игрой управляет ведущий", imhost: "Я ведущий", paste: "Вставь ссылку ведущего",
+    creating: "Создаём комнату…", noroom: "Такой комнаты нет", expired: "Комната закрыта", conn: "Нет связи, переподключаемся…",
+    void_all: "Событие не состоялось: ставки возвращены",
+    say_bets: "Делайте ставки!", say_locked: "Купоны открыты", say_scene: "Ждём исход…", say_payout: "Проверяем купоны", say_wait: "Ждём реальные данные…",
+    idle_sub: "сцена загружается", wait_title: "Ждём игроков"
+  },
+  en: {
+    _title: "Bets — shared screen",
+    sign_a: "Total", sign_b: "izator", tag: "night betting bar · virtual chips",
+    lobby_scan: "Point your phone camera at the QR or open the link and type your name.",
+    lobby_who: "Players", need2: "At least 2 players needed", start: "Start",
+    warn: "Chips are virtual, no real money.",
+    o_stack: "Stack", o_bet: "Betting window", o_events: "Events", o_mode: "Mix", o_chat: "Chat",
+    unl: "no limit", m_mixed: "mixed", m_real: "real only", m_scenic: "staged only", on: "on", off: "off", sec: "{n} s",
+    free: "free", host_only: "The host changes settings",
+    ev_no: "Event", of: "of", minbet: "Min bet", board: "Board", est_note: "≈ estimate from live data",
+    live: "LIVE", est: "≈ estimate", fallback: "source unavailable, replaced",
+    ph_bets: "Betting", ph_locked: "No more bets", ph_scene: "Event", ph_payout: "Payouts",
+    alert_lock: "No more bets!",
+    sub_done: "locked in", sub_wait: "thinking…", coupon_n: "{n} bets", penalty: "−{n} fine", out: "out", offline: "offline",
+    chat_cap: "Chat",
+    end: "End now", sure: "Sure?", kick: "Kick player", kick_sure: "Really kick?", hide_chat: "Hide chat", show_chat: "Show chat",
+    final_k: "Winner", again: "Another game", best_win: "Best win", longest: "Longest odds hit", chips: "chips",
+    ev_short: "ev. {n}", nostat: "—",
+    host_link: "Host link", copied: "Host link copied", viewer: "Viewer screen: the host runs the game", imhost: "I'm the host", paste: "Paste the host link",
+    creating: "Creating a room…", noroom: "No such room", expired: "Room closed", conn: "No connection, reconnecting…",
+    void_all: "Event void: bets returned",
+    say_bets: "Place your bets!", say_locked: "Coupons revealed", say_scene: "Waiting for the result…", say_payout: "Checking coupons", say_wait: "Waiting for real-world data…",
+    idle_sub: "loading the scene", wait_title: "Waiting for players"
+  },
+  el: {
+    _title: "Στοίχημα — κοινή οθόνη",
+    sign_a: "Στοί", sign_b: "χημα", tag: "νυχτερινό στοίχημα · εικονικές μάρκες",
+    lobby_scan: "Στόχευσε με την κάμερα του κινητού το QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.",
+    lobby_who: "Παίκτες", need2: "Χρειάζονται τουλάχιστον 2 παίκτες", start: "Έναρξη",
+    warn: "Οι μάρκες είναι εικονικές, δεν παίζουμε με χρήματα.",
+    o_stack: "Μάρκες", o_bet: "Παράθυρο στοιχημάτων", o_events: "Γεγονότα", o_mode: "Μείγμα", o_chat: "Τσατ",
+    unl: "χωρίς όριο", m_mixed: "μικτό", m_real: "μόνο πραγματικά", m_scenic: "μόνο σκηνικά", on: "ναι", off: "όχι", sec: "{n} δ",
+    free: "ελεύθερες", host_only: "Τις ρυθμίσεις αλλάζει ο οικοδεσπότης",
+    ev_no: "Γεγονός", of: "από", minbet: "Ελάχ. στοίχημα", board: "Ταμπλό", est_note: "≈ εκτίμηση από ζωντανά δεδομένα",
+    live: "LIVE", est: "≈ εκτίμηση", fallback: "η πηγή δεν είναι διαθέσιμη, αντικαταστάθηκε",
+    ph_bets: "Στοιχήματα", ph_locked: "Τέλος στοιχήματα", ph_scene: "Γεγονός", ph_payout: "Πληρωμές",
+    alert_lock: "Τέλος στοιχήματα!",
+    sub_done: "υπέβαλε", sub_wait: "σκέφτεται…", coupon_n: "{n} στοιχ.", penalty: "−{n} πρόστιμο", out: "εκτός", offline: "εκτός σύνδεσης",
+    chat_cap: "Τσατ",
+    end: "Τέλος τώρα", sure: "Σίγουρα;", kick: "Αποβολή παίκτη", kick_sure: "Σίγουρα αποβολή;", hide_chat: "Απόκρυψη τσατ", show_chat: "Εμφάνιση τσατ",
+    final_k: "Νικητής", again: "Άλλο ένα παιχνίδι", best_win: "Καλύτερο κέρδος", longest: "Μεγαλύτερη απόδοση που κέρδισε", chips: "μάρκες",
+    ev_short: "γεγ. {n}", nostat: "—",
+    host_link: "Σύνδεσμος οικοδεσπότη", copied: "Ο σύνδεσμος οικοδεσπότη αντιγράφηκε", viewer: "Οθόνη θεατή: το παιχνίδι το διαχειρίζεται ο οικοδεσπότης", imhost: "Είμαι ο οικοδεσπότης", paste: "Επικόλλησε τον σύνδεσμο οικοδεσπότη",
+    creating: "Δημιουργία δωματίου…", noroom: "Δεν υπάρχει τέτοιο δωμάτιο", expired: "Το δωμάτιο έκλεισε", conn: "Δεν υπάρχει σύνδεση, επανασύνδεση…",
+    void_all: "Το γεγονός δεν έγινε: τα στοιχήματα επιστράφηκαν",
+    say_bets: "Βάλτε τα στοιχήματά σας!", say_locked: "Τα δελτία αποκαλύφθηκαν", say_scene: "Περιμένουμε το αποτέλεσμα…", say_payout: "Έλεγχος δελτίων", say_wait: "Περιμένουμε πραγματικά δεδομένα…",
+    idle_sub: "φορτώνει η σκηνή", wait_title: "Περιμένουμε παίκτες"
+  }
+};
+</script>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <div class="sign"><span data-i18n="sign_a">Тотал</span><b data-i18n="sign_b">изатор</b></div>
+    <div class="evinfo" id="evinfo"></div>
+    <div class="minbet" id="minbet"></div>
+    <div class="phase" id="phase"></div>
+    <div class="timer off" id="timer"><svg viewBox="0 0 64 64"><circle class="tr" cx="32" cy="32" r="28"/><circle class="tf" id="tf" cx="32" cy="32" r="28" stroke-dasharray="175.93" stroke-dashoffset="0"/></svg><span class="tv" id="tv"></span></div>
+  </header>
+  <main id="mid">
+    <aside id="tote"><h2><span data-i18n="board">Табло</span><small id="toteNote"></small></h2><div id="rows"></div></aside>
+    <section id="stage">
+      <div id="vwrap"><div id="view">
+        <div id="scene"></div>
+        <div id="idle"><div><div class="big" id="idleBig"></div><div class="sub" id="idleSub"></div></div></div>
+        <div id="alert"><span id="alertT"></span></div>
+        <div id="stamp"></div>
+      </div></div>
+      <div id="sbar"><div id="say">&nbsp;</div><div id="ctrl"><button class="sound-toggle-btn" type="button"></button></div></div>
+    </section>
+    <aside id="chat"><div class="cap" data-i18n="chat_cap">Чат</div><div id="feed"></div></aside>
+  </main>
+  <footer id="rail"></footer>
+</div>
+
+<div id="lobby" class="hidden"></div>
+<div id="final" class="hidden"></div>
+<canvas id="confetti" class="hidden"></canvas>
+<div id="menu"></div>
+<div id="conn"></div>
+<div id="banner"></div>
+
+<script src="bets-shared.js"></script>
+<script src="bets-sound.js"></script>
+<script src="bets-scenes.js"></script>
+<script src="bets-scenes-live.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+"use strict";
+(function () {
+const $ = (id) => document.getElementById(id);
+const BS = window.BetsShared;
+const PC = BS.PLAYER_COLORS;
+const params = new URLSearchParams(location.search);
+let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 10);
+const hostKey = () => "bets-host-" + CODE;
+const lang = () => (window.I18N && I18N.lang) || "ru";
+const T = (k, v) => {
+  const D = window.I18N_DICT, L = lang();
+  let s = (D[L] && D[L][k] != null ? D[L][k] : D.en[k] != null ? D.en[k] : D.ru[k] != null ? D.ru[k] : k);
+  if (v) s = String(s).replace(/\{(\w+)\}/g, (m, x) => (x in v ? v[x] : m));
+  return s;
+};
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const num = (n) => Number(n).toLocaleString(lang() === "ru" ? "ru-RU" : lang() === "el" ? "el-GR" : "en-US");
+const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const snd = (name, arg) => { try { if (typeof window.BetsSound === "function") window.BetsSound(name, arg); } catch (e) {} };
+const UVAL = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--u")) || 1;
+const PAYOUT_MS = 7000;
+
+let fails = 0, ws = null, wsTimer = null, wsDelay = 500, pingTimer = null, dead = false, stopped = false;
+let snap = null, recvPerf = 0, prev = null;
+let isHost = false, hostLost = false, chatHidden = false;
+let sc = null;            // сцена BetsScenes
+const serverNow = () => (snap ? snap.now + (performance.now() - recvPerf) : Date.now());
+const remaining = () => (snap ? snap.deadline - serverNow() : 0);
+const colorOf = (pid) => { const i = snap ? snap.players.findIndex((p) => p.id === pid) : -1; return PC[(i < 0 ? 0 : i) % PC.length]; };
+const player = (pid) => snap && snap.players.find((p) => p.id === pid);
+const initials = (n) => [...String(n || "?").trim()][0] || "?";
+
+// ---------- связь ----------
+function send(m) { try { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); } catch (e) {} }
+function connect() {
+  if (stopped) return;
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  let opened = false;
+  try { ws = new WebSocket(`${proto}://${location.host}/bets/ws?r=${CODE}`); } catch (e) { return retry(); }
+  ws.onopen = () => {
+    opened = true; wsDelay = 500; $("conn").classList.remove("on");
+    clearInterval(pingTimer); pingTimer = setInterval(() => send({ type: "ping", c: Date.now() }), 8000);
+  };
+  ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } onMessage(m); };
+  ws.onclose = () => { clearInterval(pingTimer); if (stopped) return; if (!snap && ++fails >= 4) { gone("noroom"); return; } $("conn").textContent = T("conn"); $("conn").classList.add("on"); retry(); };
+  ws.onerror = () => {};
+}
+function retry() { clearTimeout(wsTimer); wsTimer = setTimeout(connect, wsDelay); wsDelay = Math.min(wsDelay * 2, 8000); }
+
+async function ensureRoom() {
+  if (CODE) return true;
+  banner(T("creating"));
+  try {
+    const res = await fetch("/bets/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "error");
+    CODE = data.code;
+    try { localStorage.setItem(hostKey(), data.hostToken); } catch (e) {}
+    history.replaceState(null, "", "?r=" + CODE);
+    banner("");
+    return true;
+  } catch (err) { banner(String(err.message || err)); return false; }
+}
+function banner(text) { const b = $("banner"); b.textContent = text || ""; b.classList.toggle("on", !!text); }
+
+function gone(key) { stopped = true; dead = true; try { ws && ws.close(); } catch (e) {} $("lobby").classList.add("hidden"); $("final").classList.add("hidden"); banner(T(key)); }
+
+function onMessage(m) {
+  switch (m.type) {
+    case "hello": {
+      let token = null; try { token = localStorage.getItem(hostKey()); } catch (e) {}
+      if (token) send({ type: "host", token });
+      if (m.state) onState(m.state);
+      break;
+    }
+    case "state": onState(m.state); break;
+    case "host_ok": isHost = true; hostLost = false; document.body.classList.add("host"); lobbyKey = ""; drawCtrl(); drawLobby(); break;
+    case "host_lost": isHost = false; hostLost = true; document.body.classList.remove("host"); drawCtrl(); drawLobby(); break;
+    case "event": onGameEvent(m.event || {}); break;
+    case "live": if (sc && sc.live) { try { sc.live(m.data); } catch (e) { console.error(e); } } break;
+    case "chat": onChat(m); break;
+    case "react": floatAt(m.playerId, m.emoji, "react"); break;
+    case "error":
+      if (m.error === "room_expired") gone("expired");
+      if (m.error === "bad host token") { try { localStorage.removeItem(hostKey()); } catch (e) {} hostLost = false; drawCtrl(); }
+      break;
+  }
+}
+function onGameEvent(ev) {
+  if (ev.type === "join") snd("chip");
+  else if (ev.type === "submitted") snd("submit");
+  else if (ev.type === "out") { floatAt(ev.id, T("out"), "minus"); snd("out"); }
+}
+
+// ---------- состояние ----------
+let evKey = "", rowsKey = "";
+const revealed = new Set();      // игроки, чей купон уже проверен в выплатах
+let payoutT0 = 0, payoutKey = "", payoutTimers = [];
+const stats = { longest: null };  // самый длинный коэффициент среди выигранных (копится на клиенте)
+function loadStats() { try { const s = JSON.parse(sessionStorage.getItem("bets-stats-" + CODE) || "null"); if (s) stats.longest = s.longest; } catch (e) {} }
+function saveStats() { try { sessionStorage.setItem("bets-stats-" + CODE, JSON.stringify(stats)); } catch (e) {} }
+
+function onState(s) {
+  prev = snap; snap = s; recvPerf = performance.now();
+  if (!prev || (prev.phase === "done" && s.phase === "lobby")) { loadStats(); }
+  if (s.phase === "lobby") { stats.longest = null; saveStats(); }
+  const newEv = s.ev ? s.idx + ":" + s.ev.type : "";
+  const evChanged = newEv !== evKey;
+  const phaseChanged = !prev || prev.phase !== s.phase || evChanged;
+  if (evChanged) { evKey = newEv; revealed.clear(); clearPayoutTimers(); landed.clear(); pending.clear(); rowsKey = ""; rowFlapDelay = true; rowNodes.clear(); }
+  const first = !prev;
+  render(phaseChanged, evChanged, first);
+}
+
+function render(phaseChanged, evChanged, first) {
+  document.body.classList.toggle("has-lobby", snap.phase === "lobby");
+  document.body.classList.toggle("has-final", snap.phase === "done");
+  chatHidden = chatHidden || snap.settings.chat === false;
+  document.body.classList.toggle("nochat", chatHidden);
+  drawTop();
+  drawRows(phaseChanged && !first && prev && prev.phase === "bets" && snap.phase === "locked" && !evChanged);
+  drawRail();
+  drawLobby();
+  drawFinal();
+  drawCtrl();
+  syncChat();
+  if (phaseChanged) onPhase(first, evChanged);
+  syncScene(phaseChanged);
+}
+
+// ---------- шапка ----------
+function drawTop() {
+  const ev = snap.ev, lobby = snap.phase === "lobby" || !ev;
+  const info = $("evinfo");
+  if (lobby) { info.innerHTML = `<span class="evtitle" style="color:var(--dim)">${esc(T("wait_title"))}</span>`; $("minbet").innerHTML = ""; }
+  else {
+    const total = snap.total ? ` ${T("of")} ${snap.total}` : "";
+    const badges = (ev.live ? `<span class="badge live"><i></i>${T("live")}</span><span class="badge est">${T("est")}</span>` : "") + (ev.fallback ? `<span class="badge fb">${esc(T("fallback"))}</span>` : "");
+    const k = `${ev.type}|${ev.n}|${snap.total}|${ev.live}|${ev.fallback}|${lang()}`;
+    if (info.dataset.k !== k) {
+      info.dataset.k = k;
+      info.innerHTML = `<span class="evno">${T("ev_no")} <b>${ev.n}</b>${total}</span><span class="evtitle"><span class="ic">${BS.typeIcon(ev.type)}</span>${esc(BS.typeTitle(ev.type, lang()))}</span>${badges}`;
+    }
+    const me = snap.players.filter((p) => p.alive && p.min != null).map((p) => p.min);
+    const min = snap.phase === "bets" && me.length ? Math.min(...me) : null;
+    const mb = $("minbet");
+    if (min != null) mb.innerHTML = `<small>${T("minbet")}</small><b>${num(min)}</b>`;
+    else mb.innerHTML = "";
+  }
+  const ph = $("phase");
+  ph.className = "phase " + (lobby ? "" : snap.phase);
+  ph.textContent = lobby || snap.phase === "done" ? "" : T("ph_" + snap.phase);
+  $("tote").querySelector("small").textContent = ev && ev.live ? T("est_note") : "";
+}
+let lastTick = -1;
+function tickTimer() {
+  if (!snap || dead) return;
+  const t = $("timer"), tv = $("tv"), tf = $("tf");
+  const ev = snap.ev;
+  let frac = 0, txt = "", hot = false, off = true;
+  if (snap.phase === "bets") {
+    const r = Math.max(0, remaining()), tot = snap.settings.betMs || 20000;
+    frac = Math.min(1, r / tot); txt = String(Math.ceil(r / 1000)); hot = r <= 5000; off = false;
+    if (hot && Math.ceil(r / 1000) !== lastTick && r > 0) snd("tick", true);
+    lastTick = Math.ceil(r / 1000);
+  } else if (snap.phase === "scene" && ev && ev.revealAt && ev.sceneMs) {
+    const r = Math.max(0, ev.revealAt - serverNow());
+    frac = Math.min(1, r / ev.sceneMs); txt = "▶"; off = false;
+  } else if (snap.phase === "payout") {
+    frac = Math.min(1, Math.max(0, remaining()) / PAYOUT_MS); txt = "∑"; off = false;
+  } else if (snap.phase === "locked") { txt = "×"; frac = 0; }
+  t.classList.toggle("off", off); t.classList.toggle("hot", hot);
+  if (tv.textContent !== txt) tv.textContent = txt;
+  tf.style.strokeDashoffset = String(175.93 * (1 - frac));
+}
+setInterval(tickTimer, 100);
+
+// ---------- флапы ----------
+function setFlap(f, text, delay) {
+  if (f._t === text) return;
+  f._t = text;
+  const chars = [...text], tok = (f._tok = (f._tok || 0) + 1);
+  while (f.children.length < chars.length) f.append(el("span"));
+  while (f.children.length > chars.length) f.lastChild.remove();
+  chars.forEach((ch, i) => {
+    const s = f.children[i];
+    s.classList.toggle("dot", ch === "," || ch === ".");
+    if (s.textContent === ch) return;
+    if (reduceMotion()) { s.textContent = ch; return; }
+    const d = delay + i * 45;
+    const step = (n) => {
+      if (f._tok !== tok) return;
+      if (n > 0 && /\d/.test(ch)) { s.textContent = String((Math.random() * 10) | 0); s.classList.remove("flip"); void s.offsetWidth; s.classList.add("flip"); setTimeout(() => step(n - 1), 70); }
+      else { s.textContent = ch; s.classList.remove("flip"); void s.offsetWidth; s.classList.add("flip"); }
+    };
+    setTimeout(() => step(2), d);
+  });
+  if (delay >= 0 && !reduceMotion()) setTimeout(() => { if (f._tok === tok) snd("flap"); }, delay);
+}
+
+// ---------- табло рынков ----------
+const rowNodes = new Map();       // marketId -> .row
+const landed = new Set();         // "pid|mid" — фишка уже прилипла
+const pending = new Set();        // "pid|mid" — фишка ещё летит (скрыта в лотке)
+let rowFlapDelay = true;
+const betsOf = () => {           // marketId -> [{pid, stake, kc, min}]
+  const by = new Map();
+  if (!snap || snap.phase === "lobby" || snap.phase === "bets") return by;
+  for (const p of snap.players) {
+    if (!p.coupon || !p.coupon.bets) continue;
+    for (const b of p.coupon.bets) { if (!by.has(b.id)) by.set(b.id, []); by.get(b.id).push({ pid: p.id, stake: b.stake, kc: b.kc, min: p.coupon.min || 10 }); }
+  }
+  return by;
+};
+function winnersSet() {
+  const ev = snap && snap.ev;
+  if (!ev || snap.phase !== "payout" && snap.phase !== "done") return null;
+  if (ev.voidAll) return null;
+  if (Array.isArray(ev.winners)) return { ids: new Set(ev.winners), full: true };
+  const ids = new Set();
+  for (const p of snap.players) if (p.last) for (const l of p.last.lines) if (l.result === "win") ids.add(l.id);
+  return { ids, full: false };
+}
+function drawRows(lockTransition) {
+  const ev = snap.ev, box = $("rows");
+  if (!ev || snap.phase === "lobby") { box.replaceChildren(); rowNodes.clear(); rowsKey = ""; return; }
+  const bets = betsOf();
+  const key = [ev.n, ev.type, [...bets.keys()].sort().join(","), lang(), snap.phase === "bets" ? "b" : "x"].join("|");
+  if (key !== rowsKey) {
+    rowsKey = key;
+    const u = UVAL(), cap = Math.max(4, Math.floor(((box.clientHeight || 400) - 6) / (41 * u)));
+    const groups = BS.groupsFor(ev.type, ev.markets, lang());
+    const byId = new Map(ev.markets.map((m) => [m.id, m]));
+    const extra = [...bets.keys()].filter((id) => !byId.has(id)).map((id) => { const b = bets.get(id)[0]; return { id, group: "_x", kc: b.kc }; });
+    const want = new Set(bets.keys());
+    let used = 0, reserve = want.size;
+    const items = [];
+    for (const g of groups) {
+      const ms = [];
+      for (const m of g.markets) {
+        const must = want.has(m.id);
+        if (must) reserve--;
+        const need = (ms.length ? 0 : 0.6) + 1;
+        if (must || used + need + reserve <= cap) { ms.push(m); used += need; }
+      }
+      if (ms.length) { items.push({ grp: g.title }); ms.forEach((m) => items.push({ m })); }
+    }
+    extra.forEach((m) => items.push({ m }));
+    const keep = new Set();
+    const nodes = [];
+    for (const it of items) {
+      if (it.grp != null) { nodes.push(el("div", "grp", it.grp)); continue; }
+      const m = it.m; keep.add(m.id);
+      let r = rowNodes.get(m.id);
+      if (!r) {
+        r = el("div", "row"); r.dataset.id = m.id;
+        r.innerHTML = `<div class="lb"></div><div class="tray"></div><div class="kcw">${ev.live ? '<span class="est-mark">≈</span>' : ""}<span class="flap"></span></div>`;
+        rowNodes.set(m.id, r);
+      }
+      r.querySelector(".lb").textContent = BS.marketLabel(ev.type, m.id, ev, lang());
+      const idx = nodes.length;
+      setFlap(r.querySelector(".flap"), BS.kcStr(m.kc), rowFlapDelay ? 250 + idx * 90 : -1);
+      nodes.push(r);
+    }
+    for (const id of [...rowNodes.keys()]) if (!keep.has(id)) rowNodes.delete(id);
+    rowFlapDelay = false;
+    box.replaceChildren(...nodes);
+  }
+  // лотки: фишки по купонам
+  for (const [id, r] of rowNodes) {
+    const list = (bets.get(id) || []).slice().sort((a, b) => b.stake - a.stake);
+    const tray = r.querySelector(".tray");
+    const sig = list.map((b) => b.pid + ":" + b.stake).join(",");
+    if (tray._sig !== sig) {
+      tray._sig = sig; tray.replaceChildren();
+      list.slice(0, 5).forEach((b) => {
+        const c = chipNode(b);
+        if (lockTransition) { pending.add(b.pid + "|" + id); c.style.visibility = "hidden"; }
+        tray.append(c);
+      });
+      if (list.length > 5) tray.append(el("span", "more", "+" + (list.length - 5)));
+    }
+  }
+  // подсветка выплат
+  const w = winnersSet();
+  const won = snap.phase === "payout" || snap.phase === "done";
+  for (const [id, r] of rowNodes) {
+    const has = (bets.get(id) || []).length > 0;
+    r.classList.toggle("win", !!(w && w.ids.has(id)));
+    r.classList.toggle("dim", !!(won && w && !w.ids.has(id) && (w.full || has)));
+  }
+  if (lockTransition) flyCoupons();
+}
+function chipNode(b) {
+  const c = el("i", "cc", initials((player(b.pid) || {}).name));
+  const d = Math.max(16, Math.min(32, 16 + 7 * Math.log2(1 + b.stake / Math.max(1, b.min))));
+  c.style.setProperty("--d", d.toFixed(1)); c.style.setProperty("--c", colorOf(b.pid)); c.dataset.pid = b.pid;
+  if (d < 22) c.textContent = "";
+  return c;
+}
+function seatAv(pid) { const s = seatNodes.get(pid); if (!s) return null; const a = s.querySelector(".av"); return a && a.offsetWidth ? a : s; }
+
+// купоны вылетают из рельса на табло
+function flyCoupons() {
+  const jobs = [];
+  for (const [mid, r] of rowNodes) {
+    for (const c of r.querySelectorAll(".tray .cc")) jobs.push({ mid, r, c, pid: c.dataset.pid });
+  }
+  const gap = Math.min(70, 1400 / Math.max(1, jobs.length));
+  jobs.forEach((j, i) => {
+    const av = seatAv(j.pid);
+    const done = () => { j.c.style.visibility = ""; pending.delete(j.pid + "|" + j.mid); landed.add(j.pid + "|" + j.mid); crowdCheck(j.r); };
+    if (!av || reduceMotion()) { done(); return; }
+    const delay = 150 + i * gap;
+    setTimeout(() => {
+      const a = av.getBoundingClientRect(), b = j.c.getBoundingClientRect();
+      if (!b.width) { done(); return; }
+      const f = j.c.cloneNode(true); f.classList.add("fly"); f.style.visibility = ""; f.style.margin = "0";
+      document.body.append(f);
+      const sx = a.left + a.width / 2 - b.width / 2, sy = a.top + a.height / 2 - b.height / 2;
+      const an = f.animate([
+        { transform: `translate(${sx}px,${sy}px) scale(${a.width / b.width * .8})`, opacity: .2 },
+        { transform: `translate(${(sx + b.left) / 2}px,${Math.min(sy, b.top) - 50}px) scale(1.25)`, opacity: 1, offset: .55 },
+        { transform: `translate(${b.left}px,${b.top}px) scale(1)`, opacity: 1 }], { duration: 720, easing: "cubic-bezier(.3,.6,.4,1)", fill: "forwards" });
+      snd("chip");
+      an.onfinish = () => { f.remove(); done(); };
+      an.oncancel = () => { f.remove(); done(); };
+    }, delay);
+  });
+}
+function crowdCheck(r) {
+  const n = r.querySelectorAll(".tray .cc").length + (r.querySelector(".tray .more") ? 99 : 0);
+  if (n >= 3 && !r.classList.contains("crowd")) { r.classList.add("crowd"); snd("crowd"); }
+}
+
+// ---------- рельс игроков ----------
+const seatNodes = new Map();
+const shown = new Map();
+function animateStack(id, node, target, instant) {
+  const from = shown.has(id) ? shown.get(id) : target;
+  shown.set(id, target);
+  if (from === target || instant || reduceMotion()) { node.textContent = num(target); return; }
+  const t0 = performance.now(), dur = 1000;
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+    node.textContent = num(Math.round(from + (target - from) * e));
+    if (k < 1 && shown.get(id) === target) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+function drawRail() {
+  const rail = $("rail");
+  if (snap.phase === "lobby" || snap.phase === "done") { rail.replaceChildren(); seatNodes.clear(); return; }
+  const players = snap.players;
+  rail.classList.toggle("many", players.length > (innerWidth <= 900 ? 5 : 8));
+  const want = new Set(players.map((p) => p.id));
+  for (const [id, n] of seatNodes) if (!want.has(id)) { n.remove(); seatNodes.delete(id); }
+  players.forEach((p, i) => {
+    let n = seatNodes.get(p.id);
+    if (!n) {
+      n = el("div", "seat");
+      n.innerHTML = `<div class="av"><span class="ch"></span><i class="tick">✓</i></div><div class="nm"></div><div class="st"><span class="s"></span></div><div class="tk"></div>`;
+      n.onclick = (e) => { if (isHost) openMenu(p.id, e); };
+      seatNodes.set(p.id, n);
+    }
+    if (rail.children[i] !== n) rail.insertBefore(n, rail.children[i] || null);
+    n.style.setProperty("--c", PC[i % PC.length]);
+    n.classList.toggle("host-click", isHost);
+    n.classList.toggle("sub", snap.phase === "bets" && !!p.submitted && p.alive);
+    n.classList.toggle("offline", !p.online && p.alive);
+    n.classList.toggle("out", !p.alive);
+    n.querySelector(".ch").textContent = initials(p.name);
+    const nm = n.querySelector(".nm"); nm.textContent = p.name; nm.title = p.name;
+    // стек: в выплатах растёт, когда доходит очередь проверять купон игрока
+    const inPayout = snap.phase === "payout";
+    let target = p.stack;
+    if (inPayout && p.last && !revealed.has(p.id)) target = p.stack - p.last.won;
+    animateStack(p.id, n.querySelector(".s"), target, !prev);
+    // нижняя строка
+    const tk = n.querySelector(".tk");
+    let html = "";
+    if (!p.alive) html = T("out");
+    else if (snap.phase === "bets") html = p.submitted ? `<span style="color:var(--lime)">✓ ${T("sub_done")}</span>` : `<span>${T("sub_wait")}</span>`;
+    else if (inPayout && p.last && revealed.has(p.id)) {
+      const net = p.last.net;
+      html = `<span class="ticket" style="color:${net >= 0 ? "var(--lime)" : "var(--magenta)"}">${net >= 0 ? "+" : "−"}${num(Math.abs(net))}</span>`;
+    } else if (p.coupon && p.coupon.bets) {
+      const c = p.coupon;
+      html = `<span class="ticket">🎟 <span>${c.bets.length}</span><span class="t2">· ${num(c.staked)}</span></span>` + (c.penalty ? `<span class="ticket pen">${T("penalty", { n: num(c.penalty) })}</span>` : "");
+    }
+    if (tk._h !== html) { tk._h = html; tk.innerHTML = html; }
+  });
+}
+function floatAt(pid, text, cls) {
+  const n = seatNodes.get(pid); if (!n) return null;
+  const f = el("div", "float " + cls, text);
+  n.append(f);
+  const r = f.getBoundingClientRect(), pad = 10, cx = r.left + r.width / 2, hw = f.offsetWidth / 2;
+  const shift = cx + hw > innerWidth - pad ? cx + hw - innerWidth + pad : cx - hw < pad ? cx - hw - pad : 0;
+  if (shift) f.style.marginLeft = -Math.round(shift) + "px";
+  setTimeout(() => f.remove(), 2700);
+  return f;
+}
+function countUp(f, to, prefix) {
+  const t0 = performance.now(), dur = 800;
+  const step = (t) => { const k = Math.min(1, (t - t0) / dur); f.textContent = prefix + num(Math.round(to * (1 - Math.pow(1 - k, 3)))); if (k < 1 && f.isConnected) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+
+// меню игрока (ведущий)
+function openMenu(pid, e) {
+  const p = player(pid); if (!p) return;
+  const m = $("menu");
+  m.replaceChildren(el("div", "nmx", p.name));
+  const kb = el("button", null, T("kick"));
+  kb.onclick = (ev) => { ev.stopPropagation(); if (!kb.classList.contains("armed")) { kb.classList.add("armed"); kb.textContent = T("kick_sure"); return; } m.classList.remove("on"); send({ type: "kick", playerId: pid }); };
+  m.append(kb);
+  m.style.left = Math.max(6, Math.min(innerWidth - 190, e.clientX - 80)) + "px";
+  m.style.top = Math.max(6, e.clientY - 110) + "px";
+  m.classList.add("on");
+  e.stopPropagation();
+}
+document.addEventListener("click", () => $("menu").classList.remove("on"));
+
+// ---------- фазы: эффекты ----------
+function onPhase(first, evChanged) {
+  const ph = snap.phase;
+  clearTimeout(sayT);
+  if (ph === "bets") {
+    setSay(snap.ev && snap.ev.live ? T("say_bets") : T("say_bets"));
+    if (!first) snd("bell");
+  } else if (ph === "locked") {
+    if (!first) { flashAlert(T("alert_lock")); snd("lock"); }
+    setSay(T("say_locked"));
+    // штрафы над аватарками
+    if (!first) snap.players.forEach((p) => { if (p.coupon && p.coupon.penalty > 0) { floatAt(p.id, T("penalty", { n: num(p.coupon.penalty) }), "minus"); snd("penalty"); } });
+    if (first) for (const [mid] of rowNodes) for (const p of snap.players) landed.add(p.id + "|" + mid);
+  } else if (ph === "scene") {
+    setSay(snap.ev && snap.ev.live && !snap.ev.outcome ? T("say_wait") : T("say_scene"));
+  } else if (ph === "payout") {
+    setSay(snap.ev && snap.ev.voidAll ? T("void_all") : T("say_payout"));
+    startPayout(first);
+  } else if (ph === "done") {
+    snd("jackpot");
+  }
+}
+let sayT = 0;
+function setSay(html) { const s = $("say"); s.innerHTML = html || "&nbsp;"; s.classList.remove("pop"); void s.offsetWidth; s.classList.add("pop"); }
+function flashAlert(text) { const a = $("alert"); $("alertT").textContent = text; a.classList.remove("on"); void a.offsetWidth; a.classList.add("on"); }
+function stampText(text, tone) { const s = $("stamp"); s.textContent = text; s.className = tone === "lose" ? "lose" : tone === "neutral" ? "neutral" : ""; void s.offsetWidth; s.classList.add("on"); }
+
+// ---------- выплаты: купоны проверяются по очереди ----------
+function clearPayoutTimers() { payoutTimers.forEach(clearTimeout); payoutTimers = []; }
+function startPayout(first) {
+  clearPayoutTimers();
+  const ps = snap.players.filter((p) => p.last);
+  const elapsed = Math.max(0, PAYOUT_MS - remaining());
+  const t0 = 900, step = Math.max(260, Math.min(750, 4800 / Math.max(1, ps.length)));
+  ps.forEach((p, i) => {
+    const at = t0 + i * step;
+    if (first && elapsed > at + 1500) { revealed.add(p.id); applyReveal(p, true); return; }
+    payoutTimers.push(setTimeout(() => { revealed.add(p.id); applyReveal(p, false); drawRail(); }, Math.max(0, at - (first ? elapsed : 0))));
+  });
+  if (!first) snd("coins");
+}
+function applyReveal(p, quiet) {
+  const l = p.last; if (!l) return;
+  const minBet = (p.coupon && p.coupon.min) || 10;
+  // лэйн рынков: победившие фишки вспыхивают, проигравшие гаснут
+  let big = false;
+  for (const line of l.lines) {
+    const r = rowNodes.get(line.id); if (!r) continue;
+    const chip = [...r.querySelectorAll(".tray .cc")].find((c) => c.dataset.pid === p.id);
+    if (!chip) continue;
+    if (line.result === "win") {
+      chip.classList.add("win");
+      if (line.back >= 10 * minBet || line.kc >= 1500) big = true;
+      if (!quiet) flyBack(chip, p.id);
+      noteLongest(p, line);
+    } else if (line.result === "lose") chip.classList.add("lose");
+  }
+  const seat = seatNodes.get(p.id);
+  if (quiet) { drawRail(); return; }
+  if (l.won > 0 && l.lines.some((x) => x.result === "win")) {
+    const f = floatAt(p.id, "+0", big ? "plus gold" : "plus");
+    if (f) countUp(f, l.won - 0, "+");
+    if (seat) { seat.classList.remove("hit", "gold"); void seat.offsetWidth; seat.classList.add(big ? "gold" : "hit"); }
+    snd(big ? "jackpot" : "win");
+  } else if (l.lines.length) {
+    const f = floatAt(p.id, "−" + num(l.staked), "minus");
+    snd("lose");
+  }
+}
+function flyBack(chip, pid) {
+  const av = seatAv(pid); if (!av || reduceMotion()) return;
+  const a = av.getBoundingClientRect(), b = chip.getBoundingClientRect(); if (!b.width) return;
+  for (let k = 0; k < 3; k++) {
+    const f = chip.cloneNode(true); f.classList.remove("win"); f.classList.add("fly"); f.style.margin = "0";
+    document.body.append(f);
+    const tx = a.left + a.width / 2 - b.width / 2, ty = a.top + a.height / 2 - b.height / 2;
+    f.animate([{ transform: `translate(${b.left}px,${b.top}px) scale(1)`, opacity: 1 }, { transform: `translate(${(b.left + tx) / 2 + (k - 1) * 30}px,${Math.min(b.top, ty) - 40}px) scale(1.1)`, opacity: 1, offset: .5 }, { transform: `translate(${tx}px,${ty}px) scale(.5)`, opacity: .3 }],
+      { duration: 650, delay: k * 90, easing: "ease-in", fill: "forwards" }).onfinish = () => f.remove();
+  }
+}
+function noteLongest(p, line) {
+  if (!stats.longest || line.kc > stats.longest.kc) { stats.longest = { id: p.id, name: p.name, kc: line.kc, ev: snap.ev ? snap.ev.n : 0 }; saveStats(); }
+}
+
+// ---------- сцена ----------
+let sceneKey = "", playTimer = 0;
+function ensureScene() {
+  if (sc || !window.BetsScenes || !BetsScenes.create) return sc;
+  try {
+    sc = BetsScenes.create($("scene"), { muted: false });
+    sc.on && sc.on("say", (html) => { setSay(html); });
+    sc.on && sc.on("stamp", (text, tone) => stampText(text, tone));
+    $("idle").classList.add("hidden");
+  } catch (e) { console.error("[bets] сцена не создалась:", e); sc = null; }
+  return sc;
+}
+function syncScene(phaseChanged) {
+  const ev = snap.ev;
+  if (!ev || snap.phase === "lobby" || snap.phase === "done") {
+    const s = ensureScene();
+    $("idle").classList.toggle("hidden", !!s);
+    $("idleBig").textContent = snap.phase === "lobby" ? "" : ""; $("idleSub").textContent = "";
+    return;
+  }
+  const s = ensureScene();
+  if (!s) {
+    $("idle").classList.remove("hidden");
+    $("idleBig").textContent = `${BS.typeIcon(ev.type)} ${BS.typeTitle(ev.type, lang())}`;
+    $("idleSub").textContent = T("idle_sub");
+    return;
+  }
+  const k = snap.idx + ":" + ev.type;
+  const common = { type: ev.type, input: ev.input, meta: ev.meta, seed: ev.seed };
+  if (snap.phase === "bets") {
+    if (sceneKey !== k + ":show") { sceneKey = k + ":show"; clearTimeout(playTimer); $("stamp").className = ""; /* штамп прошлого события не должен висеть над новым */ try { s.show(ev.type, { input: ev.input, meta: ev.meta, markets: ev.markets }); } catch (e) { console.error(e); } }
+    return;
+  }
+  if (sceneKey === k + ":show" || sceneKey === "") {
+    // зашли посреди события: декорация нужна, пока не начнётся сцена
+    if (sceneKey === "") { try { s.show(ev.type, { input: ev.input, meta: ev.meta, markets: ev.markets }); } catch (e) { console.error(e); } }
+  }
+  if (snap.phase === "payout") return;
+  // locked / scene: сцена стартует через 2 с после запирания (deadline фазы locked)
+  const startAt = snap.phase === "locked" ? snap.deadline : (ev.sceneMs && ev.revealAt ? ev.revealAt - ev.sceneMs : sceneStartGuess);
+  if (snap.phase === "locked") sceneStartGuess = snap.deadline;
+  const doPlay = (outcomeKnown) => {
+    const pk = k + (ev.live ? (ev.outcome != null ? ":liveout" : ":livewait") : ":play");
+    if (sceneKey === pk) return;
+    sceneKey = pk;
+    const off = Math.max(0, serverNow() - (startAt != null ? startAt : serverNow()));
+    const dur = ev.live ? (ev.outcome != null ? Math.max(1500, (ev.revealAt || 0) - serverNow() + off) : 60000) : ev.sceneMs;
+    if (!ev.live && off >= dur) return;
+    try {
+      const pr = s.play({ ...common, outcome: ev.outcome != null ? ev.outcome : null, durationMs: dur, offsetMs: off, live: ev.liveState });
+      if (pr && pr.catch) pr.catch((e) => console.error("[bets] play:", e));
+    } catch (e) { console.error(e); }
+  };
+  if (snap.phase === "locked") {
+    clearTimeout(playTimer);
+    const wait = Math.max(0, snap.deadline - serverNow());
+    if (!ev.live) playTimer = setTimeout(() => doPlay(true), wait);
+    else playTimer = setTimeout(() => doPlay(false), wait);
+  } else if (snap.phase === "scene") {
+    clearTimeout(playTimer);
+    doPlay(true);
+  }
+}
+let sceneStartGuess = null;
+
+// ---------- чат ----------
+const shownChat = new Set();
+let held = [];
+const holdChat = () => !!(snap && snap.phase === "scene" && snap.ev && (!snap.ev.live || snap.ev.outcome != null));
+function feedNode(m) {
+  const d = el("div", "msg");
+  const i = snap ? snap.players.findIndex((p) => p.id === m.playerId) : -1;
+  d.style.setProperty("--c", PC[(i < 0 ? 0 : i) % PC.length]);
+  const b = el("b", null, (m.name || (player(m.playerId) || {}).name || "?") + ": ");
+  d.append(b, document.createTextNode(m.text));
+  d._t = Date.now();
+  return d;
+}
+function pushFeed(m) {
+  if (shownChat.has(m.id)) return; shownChat.add(m.id);
+  const f = $("feed"); f.append(feedNode(m));
+  while (f.children.length > 8) f.firstChild.remove();
+}
+function onChat(m) { if (snap && snap.settings.chat === false) return; if (holdChat()) held.push(m); else pushFeed(m); }
+function syncChat() { if (!holdChat() && held.length) { held.forEach(pushFeed); held = []; } }
+setInterval(() => { const now = Date.now(); for (const n of $("feed").children) if (n._t && now - n._t > 45000) n.classList.add("old"); }, 3000);
+
+// ---------- лобби ----------
+let lobbyKey = "", qrDrawn = false;
+const OPTS = [
+  { k: "stack", label: "o_stack", vals: [500, 1000, 2000], fmt: (v) => num(v) },
+  { k: "betMs", label: "o_bet", vals: [15000, 20000, 30000], fmt: (v) => T("sec", { n: v / 1000 }) },
+  { k: "events", label: "o_events", vals: [8, 12, 16, 0], fmt: (v) => (v ? v : T("unl")) },
+  { k: "mode", label: "o_mode", vals: ["mixed", "real", "scenic"], fmt: (v) => T("m_" + v) },
+  { k: "chat", label: "o_chat", vals: [true, false], fmt: (v) => T(v ? "on" : "off") },
+];
+function drawLobby() {
+  const box = $("lobby"), on = snap.phase === "lobby";
+  box.classList.toggle("hidden", !on);
+  if (!on) { lobbyKey = ""; return; }
+  const url = `${location.origin}/bets.html?r=${CODE}`;
+  const key = lang() + "|" + isHost + "|" + (snap.liveN > 0);
+  if (lobbyKey !== key) {
+    lobbyKey = key; qrDrawn = false;
+    box.innerHTML = `<div class="lhead"><div class="sign"><span>${esc(T("sign_a"))}</span><b>${esc(T("sign_b"))}</b></div><div class="tag">${esc(T("tag"))}</div></div>
+      <div class="lgrid">
+        <div><div class="join"><div id="qr"></div><div style="min-width:0"><div class="code" id="code">${esc(CODE)}</div><div class="url">${esc(url.replace(/^https?:\/\//, ""))}</div><div class="scan">${esc(T("lobby_scan"))}</div></div></div></div>
+        <div><div class="cap2"><span>${esc(T("lobby_who"))}</span><span id="seatn"></span></div><div id="who"></div></div>
+        <div class="opts" id="opts"></div>
+      </div>
+      <div class="lfoot"><button class="btn" id="startbtn">${esc(T("start"))}</button><div class="warn">${esc(T("warn"))}</div><div class="fine" id="hint"></div></div>`;
+    $("startbtn").onclick = () => send({ type: "start" });
+    const codeEl = $("code"); let fs = 96; codeEl.style.setProperty("--code-fs", fs + "px");
+    const fit = () => { fs = 96; codeEl.style.setProperty("--code-fs", fs + "px"); const maxW = codeEl.parentElement.parentElement.clientWidth - $("qr").offsetWidth - 40; while (fs > 36 && codeEl.scrollWidth > maxW) { fs -= 4; codeEl.style.setProperty("--code-fs", fs + "px"); } };
+    fit();
+    const opts = $("opts");
+    OPTS.filter((o) => o.k !== "mode" || snap.liveN > 0).forEach((o) => {
+      const row = el("div", "opt"); row.append(el("span", null, T(o.label)));
+      const seg = el("div", "seg"); seg.dataset.k = o.k;
+      o.vals.forEach((v) => { const b = el("button", null, String(o.fmt(v))); b.dataset.v = String(v); b.onclick = () => patch(o.k, v); seg.append(b); });
+      row.append(seg); opts.append(row);
+    });
+  }
+  if (!qrDrawn && window.QRCode && $("qr")) {
+    qrDrawn = true;
+    new QRCode($("qr"), { text: url, width: 220, height: 220, colorDark: "#07090c", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+  }
+  OPTS.forEach((o) => {
+    const cur = o.k === "chat" ? snap.settings.chat !== false && !chatHidden : snap.settings[o.k];
+    $("opts").querySelectorAll(`.seg[data-k="${o.k}"] button`).forEach((b) => { b.classList.toggle("on", b.dataset.v === String(cur)); b.disabled = !isHost; });
+  });
+  const who = $("who"), ps = snap.players;
+  const have = new Map([...who.children].filter((n) => n.dataset.id).map((n) => [n.dataset.id, n]));
+  for (const [id, n] of have) if (!ps.some((p) => p.id === id)) n.remove();
+  ps.forEach((p, i) => {
+    let n = have.get(p.id);
+    if (!n) {
+      n = el("div", "pill"); n.dataset.id = p.id;
+      n.innerHTML = `<div class="av"></div><div class="nm"></div>${isHost ? '<button class="x" title="' + esc(T("kick")) + '">✕</button>' : ""}`;
+      const x = n.querySelector(".x"); if (x) x.onclick = () => send({ type: "kick", playerId: p.id });
+      who.insertBefore(n, who.querySelector(".empty")); snd("chip");
+    }
+    n.style.setProperty("--c", PC[i % PC.length]);
+    const av = n.querySelector(".av"); av.textContent = initials(p.name); av.style.setProperty("--c", PC[i % PC.length]);
+    n.querySelector(".nm").textContent = p.name;
+    n.classList.toggle("off", !p.online);
+  });
+  who.querySelectorAll(".empty").forEach((n) => n.remove());
+  const max = 12;
+  for (let i = ps.length; i < Math.min(max, Math.max(ps.length + 1, 4)); i++) who.append(el("div", "pill empty", T("free")));
+  $("seatn").textContent = `${ps.length} / ${max}`;
+  $("startbtn").disabled = !isHost || ps.length < 2;
+  $("hint").textContent = ps.length < 2 ? T("need2") : !isHost ? T("host_only") : "";
+}
+function patch(k, v) {
+  if (!isHost) return;
+  if (k === "chat") { chatHidden = !v; document.body.classList.toggle("nochat", chatHidden); }
+  send({ type: "settings", patch: k === "chat" ? { chat: v } : { [k]: v } });
+  drawLobby();
+}
+
+// ---------- финал ----------
+let finalKey = "";
+function drawFinal() {
+  const box = $("final"), on = snap.phase === "done";
+  box.classList.toggle("hidden", !on);
+  if (!on) { finalKey = ""; stopConfetti(); return; }
+  const key = [snap.winner, snap.players.map((p) => p.id + p.stack).join(","), lang(), isHost, JSON.stringify(snap.stats), JSON.stringify(stats.longest)].join("|");
+  if (key === finalKey) return;
+  const first = finalKey === ""; finalKey = key;
+  const idx = (id) => snap.players.findIndex((p) => p.id === id);
+  const win = player(snap.winner) || snap.players[0];
+  const rest = snap.players.filter((p) => p !== win).sort((a, b) => b.stack - a.stack);
+  const order = [win, ...rest];
+  const col = (p, n) => p ? `<div class="pcol p${n}" style="--c:${PC[idx(p.id) % PC.length]}"><div class="av" style="--c:${PC[idx(p.id) % PC.length]}">${esc(initials(p.name))}</div><div class="nm">${esc(p.name)}</div><div class="ps">${num(p.stack)} ${esc(T("chips"))}</div><div class="blk">${n}</div></div>` : "";
+  const bw = snap.stats && snap.stats.bestWin, bwp = bw && player(bw.id);
+  const lg = (snap.stats && snap.stats.longestWin) || stats.longest;
+  const lgp = lg && (player(lg.id) || { name: lg.name });
+  box.style.setProperty("--wc", PC[idx(win.id) % PC.length]);
+  box.innerHTML = `<div class="k">${esc(T("final_k"))}</div><div class="wn">${esc(win.name)}</div><div class="wsum">${num(win.stack)} ${esc(T("chips"))}</div>
+    <div class="podium">${col(order[1], 2)}${col(order[0], 1)}${col(order[2], 3)}</div>
+    ${order.length > 3 ? `<div class="others">${order.slice(3).map((p, i) => `<span>${i + 4}. <b>${esc(p.name)}</b> ${num(p.stack)}</span>`).join("")}</div>` : ""}
+    <div class="stats">
+      <div class="stat"><small>${esc(T("best_win"))}</small><b>${bwp ? esc(bwp.name) + " +" + num(bw.amount) : esc(T("nostat"))}</b>${bw ? `<i>${esc(T("ev_short", { n: bw.ev + 1 }))}</i>` : ""}</div>
+      <div class="stat"><small>${esc(T("longest"))}</small><b>${lg ? "×" + BS.kcStr(lg.kc) + " · " + esc(lgp.name) : esc(T("nostat"))}</b>${lg && lg.ev ? `<i>${esc(T("ev_short", { n: lg.ev }))}</i>` : ""}</div>
+    </div>
+    ${isHost ? `<button class="btn" id="again">${esc(T("again"))}</button>` : ""}`;
+  const ag = $("again"); if (ag) ag.onclick = () => { send({ type: "next_game" }); };
+  if (first) startConfetti(PC[idx(win.id) % PC.length]);
+}
+let confRaf = 0;
+function stopConfetti() { cancelAnimationFrame(confRaf); const c = $("confetti"); c.classList.add("hidden"); }
+function startConfetti(color) {
+  if (reduceMotion()) return;
+  const c = $("confetti"); c.classList.remove("hidden"); c.width = innerWidth; c.height = innerHeight;
+  const g = c.getContext("2d"), cols = [color, "#b6ff2e", "#ff2e88", "#ffd34d", "#38d3ff"];
+  const ps = Array.from({ length: 140 }, () => ({ x: Math.random() * c.width, y: -Math.random() * c.height, vy: 2 + Math.random() * 4, vx: (Math.random() - .5) * 2, w: 6 + Math.random() * 8, h: 3 + Math.random() * 5, r: Math.random() * 6, vr: (Math.random() - .5) * .3, c: cols[(Math.random() * cols.length) | 0] }));
+  const t0 = performance.now();
+  const loop = (t) => {
+    g.clearRect(0, 0, c.width, c.height);
+    const fade = Math.max(0, Math.min(1, (7000 - (t - t0)) / 1500));
+    g.globalAlpha = fade;
+    for (const p of ps) { p.x += p.vx; p.y += p.vy; p.r += p.vr; g.save(); g.translate(p.x, p.y); g.rotate(p.r); g.fillStyle = p.c; g.shadowColor = p.c; g.shadowBlur = 8; g.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); g.restore(); }
+    if (t - t0 < 7000 && snap && snap.phase === "done") confRaf = requestAnimationFrame(loop); else c.classList.add("hidden");
+  };
+  confRaf = requestAnimationFrame(loop);
+}
+
+// ---------- кнопки ведущего ----------
+let ctrlKey = "", armedEnd = false, armedT = 0, note = "", noteT = 0;
+const HL = window.MP && MP.hostLink ? MP.hostLink({
+  hostKeyFn: hostKey, boardPath: "bets-board.html", getRoom: () => CODE,
+  sendHost: (t) => send({ type: "host", token: t }),
+  onToast: (kind) => setNote(kind === "copied" || kind === "shared" ? T("copied") : ""),
+  prompt: (m, v) => window.prompt(T("paste"), v),
+}) : null;
+function setNote(t) { note = t; clearTimeout(noteT); if (t) noteT = setTimeout(() => { note = ""; drawCtrl(); }, 4000); drawCtrl(); }
+function hasToken() { try { return !!localStorage.getItem(hostKey()); } catch (e) { return false; } }
+function drawCtrl() {
+  if (!snap) return;
+  const c = $("ctrl"), sound = c.querySelector(".sound-toggle-btn");
+  const inGame = snap.phase !== "lobby" && snap.phase !== "done";
+  const key = [isHost, inGame, armedEnd, chatHidden, hostLost, note, lang(), hasToken()].join("|");
+  if (key === ctrlKey) return; ctrlKey = key;
+  const btns = [];
+  if (isHost && HL) { const b = el("button", "cbtn"); b.type = "button"; b.title = T("host_link"); b.append("🔑", el("span", "lt", " " + T("host_link"))); b.onclick = () => HL.copy(); btns.push(b); }
+  if (isHost && inGame) {
+    const ch = el("button", "cbtn" + (chatHidden ? " on" : ""), chatHidden ? T("show_chat") : T("hide_chat"));
+    ch.onclick = () => { chatHidden = !chatHidden; document.body.classList.toggle("nochat", chatHidden); send({ type: "settings", patch: { chat: !chatHidden } }); ctrlKey = ""; drawCtrl(); };
+    const e = el("button", "cbtn endbtn" + (armedEnd ? " armed" : ""), armedEnd ? T("sure") : T("end"));
+    e.onclick = () => {
+      if (!armedEnd) { armedEnd = true; clearTimeout(armedT); armedT = setTimeout(() => { armedEnd = false; drawCtrl(); }, 3000); drawCtrl(); return; }
+      armedEnd = false; send({ type: "end" }); drawCtrl();
+    };
+    btns.push(ch, e);
+  }
+  if (!isHost && HL && (hostLost || !hasToken())) {
+    const b = el("button", "cbtn", T("imhost")); b.onclick = () => { const v = window.prompt(T("paste"), ""); if (v && MP.hostLink.parseToken(v)) HL.take(Date.now(), v); };
+    btns.push(b);
+  }
+  if (note) btns.push(el("span", "note", note));
+  c.replaceChildren(...btns, sound);
+}
+
+window.addEventListener("langchange", () => { lobbyKey = ""; finalKey = ""; rowsKey = ""; ctrlKey = ""; $("evinfo").dataset.k = ""; if (snap) render(false, false, false); });
+window.addEventListener("resize", () => { rowsKey = ""; if (snap) { drawRows(false); } });
+
+(async function boot() {
+  const h = params.get("h");
+  if (h && CODE) { try { localStorage.setItem(hostKey(), h); } catch (e) {} history.replaceState(null, "", "?r=" + CODE); }
+  if (!(await ensureRoom())) return;
+  connect();
+  window.betsBoard = { send, get state() { return snap; }, get code() { return CODE; }, get isHost() { return isHost; } };
+})();
+})();
+</script>
+</body>
+</html>

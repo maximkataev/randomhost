@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#07090c">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f3b2.svg" type="image/svg+xml">
+<title>Ставки — мультиплеерная игра для компании</title>
+<meta name="robots" content="index,follow">
+<meta name="description" data-i18n-meta="bets_meta_desc" content="🎲 Тотализатор для компании на виртуальные фишки: события на общем экране (кости, собачьи бега, ракета, пенальти, курс биткоина), купоны с телефонов, честные коэффициенты. Кто остался с фишками, тот и выиграл.">
+<link rel="canonical" href="https://randomhost.online/bets.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Ставки — мультиплеерная игра для компании">
+<meta property="og:description" content="Тотализатор на виртуальные фишки: событие на экране, купон на телефоне, честные коэффициенты.">
+<meta property="og:url" content="https://randomhost.online/bets.html">
+<meta property="og:site_name" content="Рандомайзер Онлайн">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- неблокирующие шрифты: без ответа Google Fonts пульт рисуется системными. Big Shoulders не знает кириллицу,
+     её рисует Oswald (та же узкая гротескная порода), цифры и латиница — Big Shoulders. -->
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Oswald:wght@500;700&family=Roboto+Condensed:wght@700;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Oswald:wght@500;700&family=Roboto+Condensed:wght@700;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet"></noscript>
+<link rel="stylesheet" href="bets-phone.css">
+</head>
+<body>
+<div id="shell">
+  <div class="conn" id="conn" role="status"></div>
+  <div id="app"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</div>
+
+<script src="mp-common.js"></script>
+<script src="bets-shared.js"></script>
+<script>
+/* Словарь телефона «Ставок» (ru/en/el). Ключи bets_<ключ> = ключи объекта S ниже; T() берёт их через I18N.t. */
+window.I18N_DICT = {
+  ru: {
+    "_title": "Ставки — мультиплеерная игра для компании",
+    "bets_meta_desc": "🎲 Тотализатор для компании на виртуальные фишки: события на общем экране (кости, собачьи бега, ракета, пенальти, курс биткоина), купоны с телефонов, честные коэффициенты. Кто остался с фишками, тот и выиграл.",
+    "bets_sign": "Тотализатор",
+    "bets_eyebrow": "мультиплеер · фишки не настоящие",
+    "bets_lede": "Событие идёт на общем экране, а купон ты собираешь на телефоне: 20 секунд, шесть ставок, честные коэффициенты. Остался без фишек — вылетел. Побеждает тот, кто лучше всех распорядился риском.",
+    "bets_r1": "Кости, собачьи бега, ракета, пенальти, канат — и события из настоящего мира",
+    "bets_r2": "Коэффициент считается из точной вероятности, маржа казино 6–12 %",
+    "bets_r3": "Не набрал минимальную ставку — платишь разницу штрафом",
+    "bets_btn_create": "Создать комнату",
+    "bets_btn_creating": "Создаю…",
+    "bets_have_code": "У меня есть код",
+    "bets_btn_go": "Войти",
+    "bets_code_ph": "Код комнаты",
+    "bets_fine": "Фишки виртуальные, на деньги не играем",
+    "bets_enter_title": "Как тебя зовут?",
+    "bets_enter_ph": "Твоё имя",
+    "bets_btn_join": "Сесть за стол",
+    "bets_err_name": "Напиши имя",
+    "bets_err_game_started": "Партия уже идёт — дождись следующей или войди со своего телефона",
+    "bets_err_room_full": "Мест нет (максимум 12)",
+    "bets_err_token_gone": "Тебя больше нет в этой комнате — войди заново",
+    "bets_err_name_taken": "Это имя сейчас занято — выбери другое",
+    "bets_seat_wait": "Секунду…",
+    "bets_claim_title": "Это ты?",
+    "bets_claim_text": "В комнате уже есть «{name}» (фишек: {n}), сейчас без связи. Это твоё место?",
+    "bets_claim_text0": "В комнате уже есть «{name}», сейчас без связи. Это твоё место?",
+    "bets_btn_claim_yes": "Да, это я",
+    "bets_btn_claim_no": "Я другой",
+    "bets_noroom_title": "Такой комнаты нет",
+    "bets_noroom_text": "Проверь код или создай новую.",
+    "bets_expired_title": "Комната закрыта",
+    "bets_expired_text": "Партия закончилась, комнату убрали.",
+    "bets_expired_new": "Новая комната",
+    "bets_kicked_title": "Тебя убрали из комнаты",
+    "bets_kicked_again": "Войти снова",
+    "bets_replaced_title": "Игра открыта в другой вкладке",
+    "bets_replaced_text": "Здесь она остановлена. Вернуться сюда?",
+    "bets_btn_back_here": "Играть здесь",
+    "bets_wait_title": "Ждём начала",
+    "bets_wait_text": "Ведущий запустит партию с общего экрана. Нужно минимум два игрока.",
+    "bets_wait_live": "в комнате",
+    "bets_wait_seats": "игроков: {n}",
+    "bets_btn_leave": "Выйти",
+    "bets_stack_start": "Фишек у каждого: {n}",
+    "bets_ev_limit": "Событий: {n}",
+    "bets_ev_nolimit": "Событий: без лимита",
+    "bets_stack": "фишки",
+    "bets_ev_n": "событие {n} из {t}",
+    "bets_ev_n0": "событие {n}",
+    "bets_min": "мин. ставка",
+    "bets_submitted_of": "{a} из {b}",
+    "bets_ph_locked": "Ставок нет",
+    "bets_ph_scene": "Розыгрыш",
+    "bets_ph_payout": "Итог",
+    "bets_coupon": "Купон",
+    "bets_coupon_locked": "Купон заперт",
+    "bets_sum": "Σ",
+    "bets_penalty": "штраф −{n}",
+    "bets_min_ok": "минимум набран",
+    "bets_min_need": "мин. {n}",
+    "bets_max_win": "до {n}",
+    "bets_free": "свободно",
+    "bets_tap_hint": "Тапни коэффициент, чтобы добавить ставку",
+    "bets_rm": "Убрать",
+    "bets_b_clear": "Очистить",
+    "bets_b_double": "×2",
+    "bets_b_max": "Макс",
+    "bets_b_submit": "Сдать",
+    "bets_b_submit_pen": "Штраф −{n}. Сдать?",
+    "bets_sent": "Сдал",
+    "bets_sent_sub": "ждём остальных: {a} из {b}",
+    "bets_no_bets": "Купон пуст",
+    "bets_empty_coupon": "пустой купон",
+    "bets_too_many": "В купоне не больше 6 рынков",
+    "bets_no_chips": "Не хватает фишек",
+    "bets_pick_market": "Сначала выбери рынок",
+    "bets_nolink": "Нет связи — ставка не ушла",
+    "bets_dbl_no": "На ×2 не хватает фишек",
+    "bets_rk_cap": "Своя цель: долетит ли ракета до…",
+    "bets_rk_p": "шанс = 0,94 / x",
+    "bets_rk_add": "В купон",
+    "bets_rk_win": "Фишка {c} → выигрыш {w} (×{k})",
+    "bets_rk_note": "цель = коэффициент: чем дальше, тем меньше шанс",
+    "bets_chance": "шанс {p} %",
+    "bets_look_big": "Смотри на экран",
+    "bets_look_sub": "Ставок больше нет. Розыгрыш идёт на общем экране.",
+    "bets_look_live": "Ждём исход настоящего события…",
+    "bets_others": "Купоны игроков",
+    "bets_empty_c": "не ставил",
+    "bets_res_win": "Выигрыш",
+    "bets_res_lose": "Проигрыш",
+    "bets_res_even": "В ноль",
+    "bets_res_none": "Ты не ставил",
+    "bets_est": "≈ оценка",
+    "bets_est_hint": "Реальное событие: исход по данным источника, возможна погрешность",
+    "bets_void_all": "Источник не ответил — все ставки возвращены",
+    "bets_line_pen": "Штраф за недобор минимума",
+    "bets_res_back": "возврат",
+    "bets_table": "Таблица",
+    "bets_out_big": "Ты вылетел",
+    "bets_out_sub": "Фишки кончились. Смотри, пиши в чат и кидай реакции.",
+    "bets_out_status": "Идёт: {ev} · {ph}",
+    "bets_fin_win": "Ты победил!",
+    "bets_fin_place": "Твоё место: {n}",
+    "bets_fin_winner": "Победитель: {name}",
+    "bets_fin_wait": "Ведущий может сыграть ещё партию — оставайся на странице.",
+    "bets_fin_stack": "фишек: {n}",
+    "bets_chat_ph": "Сказать в зал…",
+    "bets_chat_send": "→",
+    "bets_chat_sent": "Отправлено",
+    "bets_chat_fast": "Не чаще раза в 3 секунды",
+    "bets_react_fast": "Реакции — раз в секунду",
+    "bets_conn_lost": "Нет связи — переподключаюсь…",
+    "bets_conn_quiet": "Связь тормозит…",
+    "bets_conn_dropped": "Не успело уйти — нажми ещё раз",
+    "bets_conn_queued": "Нет связи — отправлю, как вернётся",
+    "bets_rj": "Не принято",
+    "bets_rj_too_fast": "Слишком часто",
+    "bets_rj_phase": "Окно ставок уже закрыто",
+    "bets_ph_bets": "ставки"
+  },
+  en: {
+    "_title": "Bets — a multiplayer game for your group",
+    "bets_meta_desc": "🎲 A betting game for friends with virtual chips: events on the shared screen (dice, greyhound racing, rocket, penalties, the Bitcoin price), slips from phones, fair odds. Whoever keeps the chips wins.",
+    "bets_sign": "Totalizator",
+    "bets_eyebrow": "multiplayer · chips aren't real",
+    "bets_lede": "The event plays on the shared screen, and you build your slip on your phone: 20 seconds, six bets, fair odds. Run out of chips and you're out. The one who handles risk best wins.",
+    "bets_r1": "Dice, greyhound racing, rocket, penalties, tug of war — plus events from the real world",
+    "bets_r2": "Odds come from the exact probability, house edge 6–12%",
+    "bets_r3": "Don't reach the minimum bet and you pay the difference as a fine",
+    "bets_btn_create": "Create a room",
+    "bets_btn_creating": "Creating…",
+    "bets_have_code": "I have a code",
+    "bets_btn_go": "Join",
+    "bets_code_ph": "Room code",
+    "bets_fine": "Chips are virtual, no real money",
+    "bets_enter_title": "What's your name?",
+    "bets_enter_ph": "Your name",
+    "bets_btn_join": "Take a seat",
+    "bets_err_name": "Type a name",
+    "bets_err_game_started": "A game is already running — wait for the next one or rejoin from your own phone",
+    "bets_err_room_full": "No seats left (12 max)",
+    "bets_err_token_gone": "You're no longer in this room — join again",
+    "bets_err_name_taken": "That name is taken right now — pick another",
+    "bets_seat_wait": "One sec…",
+    "bets_claim_title": "Is this you?",
+    "bets_claim_text": "There's already \"{name}\" in the room ({n} chips), currently offline. Is that your seat?",
+    "bets_claim_text0": "There's already \"{name}\" in the room, currently offline. Is that your seat?",
+    "bets_btn_claim_yes": "Yes, that's me",
+    "bets_btn_claim_no": "I'm someone else",
+    "bets_noroom_title": "No such room",
+    "bets_noroom_text": "Check the code or create a new one.",
+    "bets_expired_title": "Room closed",
+    "bets_expired_text": "The game is over and the room was removed.",
+    "bets_expired_new": "New room",
+    "bets_kicked_title": "You were removed from the room",
+    "bets_kicked_again": "Join again",
+    "bets_replaced_title": "The game is open in another tab",
+    "bets_replaced_text": "It's paused here. Come back?",
+    "bets_btn_back_here": "Play here",
+    "bets_wait_title": "Waiting for the start",
+    "bets_wait_text": "The host will start the game from the shared screen. At least two players are needed.",
+    "bets_wait_live": "in the room",
+    "bets_wait_seats": "players: {n}",
+    "bets_btn_leave": "Leave",
+    "bets_stack_start": "Chips each: {n}",
+    "bets_ev_limit": "Events: {n}",
+    "bets_ev_nolimit": "Events: no limit",
+    "bets_stack": "chips",
+    "bets_ev_n": "event {n} of {t}",
+    "bets_ev_n0": "event {n}",
+    "bets_min": "min. bet",
+    "bets_submitted_of": "{a} of {b}",
+    "bets_ph_locked": "No more bets",
+    "bets_ph_scene": "The draw",
+    "bets_ph_payout": "Result",
+    "bets_coupon": "Slip",
+    "bets_coupon_locked": "Slip locked",
+    "bets_sum": "Σ",
+    "bets_penalty": "fine −{n}",
+    "bets_min_ok": "minimum reached",
+    "bets_min_need": "min. {n}",
+    "bets_max_win": "up to {n}",
+    "bets_free": "free",
+    "bets_tap_hint": "Tap an odds button to add a bet",
+    "bets_rm": "Remove",
+    "bets_b_clear": "Clear",
+    "bets_b_double": "×2",
+    "bets_b_max": "Max",
+    "bets_b_submit": "Submit",
+    "bets_b_submit_pen": "Fine −{n}. Submit?",
+    "bets_sent": "Submitted",
+    "bets_sent_sub": "waiting for the others: {a} of {b}",
+    "bets_no_bets": "Slip is empty",
+    "bets_empty_coupon": "empty slip",
+    "bets_too_many": "No more than 6 markets on a slip",
+    "bets_no_chips": "Not enough chips",
+    "bets_pick_market": "Pick a market first",
+    "bets_nolink": "No connection — the bet didn't go through",
+    "bets_dbl_no": "Not enough chips for ×2",
+    "bets_rk_cap": "Your own target: will the rocket reach…",
+    "bets_rk_p": "chance = 0.94 / x",
+    "bets_rk_add": "Add to slip",
+    "bets_rk_win": "Stake {c} → win {w} (×{k})",
+    "bets_rk_note": "target = odds: the further, the lower the chance",
+    "bets_chance": "chance {p}%",
+    "bets_look_big": "Look at the screen",
+    "bets_look_sub": "No more bets. The draw is on the shared screen.",
+    "bets_look_live": "Waiting for the real event to resolve…",
+    "bets_others": "Players' slips",
+    "bets_empty_c": "didn't bet",
+    "bets_res_win": "Win",
+    "bets_res_lose": "Loss",
+    "bets_res_even": "Break-even",
+    "bets_res_none": "You didn't bet",
+    "bets_est": "≈ estimate",
+    "bets_est_hint": "Real-world event: result from the data source, may be slightly off",
+    "bets_void_all": "The source didn't respond — all bets returned",
+    "bets_line_pen": "Fine for missing the minimum",
+    "bets_res_back": "refund",
+    "bets_table": "Standings",
+    "bets_out_big": "You're out",
+    "bets_out_sub": "No chips left. Watch, chat and send reactions.",
+    "bets_out_status": "Now: {ev} · {ph}",
+    "bets_fin_win": "You won!",
+    "bets_fin_place": "Your place: {n}",
+    "bets_fin_winner": "Winner: {name}",
+    "bets_fin_wait": "The host can play another game — stay on the page.",
+    "bets_fin_stack": "chips: {n}",
+    "bets_chat_ph": "Say something to the room…",
+    "bets_chat_send": "→",
+    "bets_chat_sent": "Sent",
+    "bets_chat_fast": "Once every 3 seconds, please",
+    "bets_react_fast": "Reactions: once a second",
+    "bets_conn_lost": "No connection — reconnecting…",
+    "bets_conn_quiet": "Connection is slow…",
+    "bets_conn_dropped": "Didn't go through — tap again",
+    "bets_conn_queued": "No connection — I'll send it when it's back",
+    "bets_rj": "Not accepted",
+    "bets_rj_too_fast": "Too often",
+    "bets_rj_phase": "The betting window is already closed",
+    "bets_ph_bets": "bets"
+  },
+  el: {
+    "_title": "Στοίχημα — παιχνίδι για παρέες",
+    "bets_meta_desc": "🎲 Παιχνίδι στοιχήματος για παρέες με εικονικές μάρκες: γεγονότα στην κοινή οθόνη (ζάρια, κυνοδρομίες, πύραυλος, πέναλτι, η τιμή του bitcoin), δελτία από τα κινητά, δίκαιες αποδόσεις. Κερδίζει όποιος μείνει με μάρκες.",
+    "bets_sign": "Στοίχημα",
+    "bets_eyebrow": "multiplayer · οι μάρκες δεν είναι αληθινές",
+    "bets_lede": "Το γεγονός παίζει στην κοινή οθόνη και το δελτίο το φτιάχνεις στο κινητό: 20 δευτερόλεπτα, έξι στοιχήματα, δίκαιες αποδόσεις. Τελείωσαν οι μάρκες; Αποκλείεσαι. Κερδίζει όποιος διαχειρίζεται καλύτερα το ρίσκο.",
+    "bets_r1": "Ζάρια, κυνοδρομίες, πύραυλος, πέναλτι, διελκυστίνδα — και γεγονότα από τον πραγματικό κόσμο",
+    "bets_r2": "Η απόδοση βγαίνει από την ακριβή πιθανότητα, περιθώριο καζίνο 6–12%",
+    "bets_r3": "Αν δεν φτάσεις το ελάχιστο στοίχημα, πληρώνεις τη διαφορά ως πρόστιμο",
+    "bets_btn_create": "Δημιουργία δωματίου",
+    "bets_btn_creating": "Δημιουργώ…",
+    "bets_have_code": "Έχω κωδικό",
+    "bets_btn_go": "Είσοδος",
+    "bets_code_ph": "Κωδικός δωματίου",
+    "bets_fine": "Οι μάρκες είναι εικονικές, δεν παίζουμε με χρήματα",
+    "bets_enter_title": "Πώς σε λένε;",
+    "bets_enter_ph": "Το όνομά σου",
+    "bets_btn_join": "Κάθισε στο τραπέζι",
+    "bets_err_name": "Γράψε ένα όνομα",
+    "bets_err_game_started": "Το παιχνίδι έχει ήδη ξεκινήσει — περίμενε το επόμενο ή μπες από το δικό σου κινητό",
+    "bets_err_room_full": "Δεν υπάρχουν θέσεις (το πολύ 12)",
+    "bets_err_token_gone": "Δεν είσαι πια σε αυτό το δωμάτιο — μπες ξανά",
+    "bets_err_name_taken": "Αυτό το όνομα είναι ήδη πιασμένο — διάλεξε άλλο",
+    "bets_seat_wait": "Μια στιγμή…",
+    "bets_claim_title": "Εσύ είσαι;",
+    "bets_claim_text": "Στο δωμάτιο υπάρχει ήδη ο/η «{name}» (μάρκες: {n}), αυτή τη στιγμή εκτός σύνδεσης. Είναι η θέση σου;",
+    "bets_claim_text0": "Στο δωμάτιο υπάρχει ήδη ο/η «{name}», αυτή τη στιγμή εκτός σύνδεσης. Είναι η θέση σου;",
+    "bets_btn_claim_yes": "Ναι, εγώ είμαι",
+    "bets_btn_claim_no": "Είμαι άλλος",
+    "bets_noroom_title": "Δεν υπάρχει τέτοιο δωμάτιο",
+    "bets_noroom_text": "Έλεγξε τον κωδικό ή φτιάξε νέο.",
+    "bets_expired_title": "Το δωμάτιο έκλεισε",
+    "bets_expired_text": "Το παιχνίδι τελείωσε και το δωμάτιο αφαιρέθηκε.",
+    "bets_expired_new": "Νέο δωμάτιο",
+    "bets_kicked_title": "Σε αφαίρεσαν από το δωμάτιο",
+    "bets_kicked_again": "Είσοδος ξανά",
+    "bets_replaced_title": "Το παιχνίδι είναι ανοιχτό σε άλλη καρτέλα",
+    "bets_replaced_text": "Εδώ έχει σταματήσει. Να γυρίσεις εδώ;",
+    "bets_btn_back_here": "Παίξε εδώ",
+    "bets_wait_title": "Περιμένουμε την έναρξη",
+    "bets_wait_text": "Ο οικοδεσπότης θα ξεκινήσει το παιχνίδι από την κοινή οθόνη. Χρειάζονται τουλάχιστον δύο παίκτες.",
+    "bets_wait_live": "στο δωμάτιο",
+    "bets_wait_seats": "παίκτες: {n}",
+    "bets_btn_leave": "Έξοδος",
+    "bets_stack_start": "Μάρκες ανά παίκτη: {n}",
+    "bets_ev_limit": "Γεγονότα: {n}",
+    "bets_ev_nolimit": "Γεγονότα: χωρίς όριο",
+    "bets_stack": "μάρκες",
+    "bets_ev_n": "γεγονός {n} από {t}",
+    "bets_ev_n0": "γεγονός {n}",
+    "bets_min": "ελάχ. στοίχημα",
+    "bets_submitted_of": "{a} από {b}",
+    "bets_ph_locked": "Τέλος στοιχήματα",
+    "bets_ph_scene": "Η κλήρωση",
+    "bets_ph_payout": "Αποτέλεσμα",
+    "bets_coupon": "Δελτίο",
+    "bets_coupon_locked": "Το δελτίο κλείδωσε",
+    "bets_sum": "Σ",
+    "bets_penalty": "πρόστιμο −{n}",
+    "bets_min_ok": "το ελάχιστο καλύφθηκε",
+    "bets_min_need": "ελάχ. {n}",
+    "bets_max_win": "έως {n}",
+    "bets_free": "ελεύθερες",
+    "bets_tap_hint": "Πάτα μια απόδοση για να προσθέσεις στοίχημα",
+    "bets_rm": "Αφαίρεση",
+    "bets_b_clear": "Καθαρισμός",
+    "bets_b_double": "×2",
+    "bets_b_max": "Μέγ.",
+    "bets_b_submit": "Υποβολή",
+    "bets_b_submit_pen": "Πρόστιμο −{n}. Υποβολή;",
+    "bets_sent": "Υποβλήθηκε",
+    "bets_sent_sub": "περιμένουμε τους υπόλοιπους: {a} από {b}",
+    "bets_no_bets": "Το δελτίο είναι άδειο",
+    "bets_empty_coupon": "άδειο δελτίο",
+    "bets_too_many": "Το δελτίο χωράει το πολύ 6 αγορές",
+    "bets_no_chips": "Δεν έχεις αρκετές μάρκες",
+    "bets_pick_market": "Διάλεξε πρώτα μια αγορά",
+    "bets_nolink": "Δεν υπάρχει σύνδεση — το στοίχημα δεν στάλθηκε",
+    "bets_dbl_no": "Δεν έχεις αρκετές μάρκες για ×2",
+    "bets_rk_cap": "Δικός σου στόχος: θα φτάσει ο πύραυλος στο…",
+    "bets_rk_p": "πιθανότητα = 0,94 / x",
+    "bets_rk_add": "Στο δελτίο",
+    "bets_rk_win": "Μάρκα {c} → κέρδος {w} (×{k})",
+    "bets_rk_note": "στόχος = απόδοση: όσο πιο μακριά, τόσο μικρότερη η πιθανότητα",
+    "bets_chance": "πιθανότητα {p}%",
+    "bets_look_big": "Κοίτα την οθόνη",
+    "bets_look_sub": "Τέλος στοιχήματα. Η κλήρωση γίνεται στην κοινή οθόνη.",
+    "bets_look_live": "Περιμένουμε την έκβαση του πραγματικού γεγονότος…",
+    "bets_others": "Δελτία παικτών",
+    "bets_empty_c": "δεν έβαλε στοίχημα",
+    "bets_res_win": "Κέρδος",
+    "bets_res_lose": "Απώλεια",
+    "bets_res_even": "Στα ίσια",
+    "bets_res_none": "Δεν έβαλες στοίχημα",
+    "bets_est": "≈ εκτίμηση",
+    "bets_est_hint": "Πραγματικό γεγονός: το αποτέλεσμα βγαίνει από την πηγή δεδομένων, μπορεί να έχει μικρή απόκλιση",
+    "bets_void_all": "Η πηγή δεν απάντησε — όλα τα στοιχήματα επιστράφηκαν",
+    "bets_line_pen": "Πρόστιμο για το ελάχιστο",
+    "bets_res_back": "επιστροφή",
+    "bets_table": "Βαθμολογία",
+    "bets_out_big": "Αποκλείστηκες",
+    "bets_out_sub": "Τελείωσαν οι μάρκες. Δες, γράψε στο τσατ και στείλε αντιδράσεις.",
+    "bets_out_status": "Τώρα: {ev} · {ph}",
+    "bets_fin_win": "Κέρδισες!",
+    "bets_fin_place": "Η θέση σου: {n}",
+    "bets_fin_winner": "Νικητής: {name}",
+    "bets_fin_wait": "Ο οικοδεσπότης μπορεί να παίξει άλλο ένα παιχνίδι — μείνε στη σελίδα.",
+    "bets_fin_stack": "μάρκες: {n}",
+    "bets_chat_ph": "Πες κάτι στην παρέα…",
+    "bets_chat_send": "→",
+    "bets_chat_sent": "Στάλθηκε",
+    "bets_chat_fast": "Όχι πιο συχνά από μία φορά ανά 3 δευτερόλεπτα",
+    "bets_react_fast": "Αντιδράσεις — μία το δευτερόλεπτο",
+    "bets_conn_lost": "Δεν υπάρχει σύνδεση — επανασύνδεση…",
+    "bets_conn_quiet": "Η σύνδεση αργεί…",
+    "bets_conn_dropped": "Δεν στάλθηκε — πάτα ξανά",
+    "bets_conn_queued": "Δεν υπάρχει σύνδεση — θα το στείλω μόλις επανέλθει",
+    "bets_rj": "Δεν έγινε δεκτό",
+    "bets_rj_too_fast": "Πολύ συχνά",
+    "bets_rj_phase": "Το παράθυρο στοιχημάτων έχει ήδη κλείσει",
+    "bets_ph_bets": "στοιχήματα"
+  }
+};
+</script>
+<script src="i18n.js"></script>
+<script>
+"use strict";
+/*
+ * «Ставки» — телефон. Контракт: docs/bets-protocol.md; движок: bets/game.js (snapshot); подписи рынков: bets-shared.js.
+ * Всё интерфейсное — через T(ключ): сначала словарь сайта (I18N.t("bets_<ключ>")), затем русский запасной текст ниже.
+ */
+
+// ---------- строки ----------
+const S = {
+  sign: "Тотализатор",
+  eyebrow: "мультиплеер · фишки не настоящие",
+  lede: "Событие идёт на общем экране, а купон ты собираешь на телефоне: 20 секунд, шесть ставок, честные коэффициенты. Остался без фишек — вылетел. Побеждает тот, кто лучше всех распорядился риском.",
+  r1: "Кости, собачьи бега, ракета, пенальти, канат — и события из настоящего мира",
+  r2: "Коэффициент считается из точной вероятности, маржа казино 6–12 %",
+  r3: "Не набрал минимальную ставку — платишь разницу штрафом",
+  btn_create: "Создать комнату", btn_creating: "Создаю…", have_code: "У меня есть код", btn_go: "Войти",
+  code_ph: "Код комнаты", fine: "Фишки виртуальные, на деньги не играем",
+  enter_title: "Как тебя зовут?", enter_ph: "Твоё имя", btn_join: "Сесть за стол", err_name: "Напиши имя",
+  err_game_started: "Партия уже идёт — дождись следующей или войди со своего телефона",
+  err_room_full: "Мест нет (максимум 12)", err_token_gone: "Тебя больше нет в этой комнате — войди заново",
+  err_name_taken: "Это имя сейчас занято — выбери другое", seat_wait: "Секунду…",
+  claim_title: "Это ты?", claim_text: "В комнате уже есть «{name}» (фишек: {n}), сейчас без связи. Это твоё место?",
+  claim_text0: "В комнате уже есть «{name}», сейчас без связи. Это твоё место?", btn_claim_yes: "Да, это я", btn_claim_no: "Я другой",
+  noroom_title: "Такой комнаты нет", noroom_text: "Проверь код или создай новую.", expired_title: "Комната закрыта", expired_text: "Партия закончилась, комнату убрали.", expired_new: "Новая комната",
+  kicked_title: "Тебя убрали из комнаты", kicked_again: "Войти снова", replaced_title: "Игра открыта в другой вкладке", replaced_text: "Здесь она остановлена. Вернуться сюда?", btn_back_here: "Играть здесь",
+  wait_title: "Ждём начала", wait_text: "Ведущий запустит партию с общего экрана. Нужно минимум два игрока.", wait_live: "в комнате", wait_seats: "игроков: {n}", btn_leave: "Выйти",
+  stack_start: "Фишек у каждого: {n}", ev_limit: "Событий: {n}", ev_nolimit: "Событий: без лимита",
+  stack: "фишки", ev_n: "событие {n} из {t}", ev_n0: "событие {n}", min: "мин. ставка", submitted_of: "{a} из {b}",
+  ph_locked: "Ставок нет", ph_scene: "Розыгрыш", ph_payout: "Итог",
+  coupon: "Купон", coupon_locked: "Купон заперт", sum: "Σ", penalty: "штраф −{n}", min_ok: "минимум набран", min_need: "мин. {n}", max_win: "до {n}", free: "свободно",
+  tap_hint: "Тапни коэффициент, чтобы добавить ставку", rm: "Убрать",
+  b_clear: "Очистить", b_double: "×2", b_max: "Макс", b_submit: "Сдать", b_submit_pen: "Штраф −{n}. Сдать?",
+  sent: "Сдал", sent_sub: "ждём остальных: {a} из {b}", no_bets: "Купон пуст", empty_coupon: "пустой купон",
+  too_many: "В купоне не больше 6 рынков", no_chips: "Не хватает фишек", pick_market: "Сначала выбери рынок", nolink: "Нет связи — ставка не ушла", dbl_no: "На ×2 не хватает фишек",
+  rk_cap: "Своя цель: долетит ли ракета до…", rk_p: "шанс = 0,94 / x", rk_add: "В купон", rk_win: "Фишка {c} → выигрыш {w} (×{k})", rk_note: "цель = коэффициент: чем дальше, тем меньше шанс",
+  chance: "шанс {p} %",
+  look_big: "Смотри на экран", look_sub: "Ставок больше нет. Розыгрыш идёт на общем экране.", look_live: "Ждём исход настоящего события…", others: "Купоны игроков", empty_c: "не ставил",
+  res_win: "Выигрыш", res_lose: "Проигрыш", res_even: "В ноль", res_none: "Ты не ставил", est: "≈ оценка", est_hint: "Реальное событие: исход по данным источника, возможна погрешность",
+  void_all: "Источник не ответил — все ставки возвращены", line_pen: "Штраф за недобор минимума", res_back: "возврат", table: "Таблица",
+  out_big: "Ты вылетел", out_sub: "Фишки кончились. Смотри, пиши в чат и кидай реакции.", out_status: "Идёт: {ev} · {ph}",
+  fin_win: "Ты победил!", fin_place: "Твоё место: {n}", fin_winner: "Победитель: {name}", fin_wait: "Ведущий может сыграть ещё партию — оставайся на странице.", fin_stack: "фишек: {n}",
+  chat_ph: "Сказать в зал…", chat_send: "→", chat_sent: "Отправлено", chat_fast: "Не чаще раза в 3 секунды", react_fast: "Реакции — раз в секунду",
+  conn_lost: "Нет связи — переподключаюсь…", conn_quiet: "Связь тормозит…", conn_dropped: "Не успело уйти — нажми ещё раз", conn_queued: "Нет связи — отправлю, как вернётся",
+  rj: "Не принято", rj_too_fast: "Слишком часто", rj_phase: "Окно ставок уже закрыто",
+  ph_bets: "ставки",
+};
+const T = (k, v) => {
+  let s = S[k];
+  try {
+    if (window.I18N && I18N.t) { const x = I18N.t("bets_" + k); if (typeof x === "string" && x !== "bets_" + k) s = x; }
+  } catch (e) {}
+  if (s == null) s = k;
+  if (v) s = s.replace(/\{(\w+)\}/g, (m, a) => (v[a] != null ? v[a] : m));
+  return s;
+};
+window.BETS_PHONE_STRINGS = S; // для пакета i18n: ключи в словаре сайта = "bets_" + ключ
+
+// ---------- утилиты ----------
+const BS = window.BetsShared;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+const signed = (n) => (n > 0 ? "+" : n < 0 ? "−" : "") + fmt(Math.abs(n));
+const initial = (name) => (Array.from(String(name || "?"))[0] || "?").toUpperCase();
+const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
+const lang = () => (window.I18N && I18N.lang) || "ru";
+function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+function safe(fn) { return function () { try { return fn.apply(this, arguments); } catch (e) { console.error(e); } }; }
+
+const params = new URLSearchParams(location.search);
+// код идёт в разметку — только алфавит кодов (иначе ?r=<img onerror> даёт XSS)
+const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const app = $("app");
+const tokenKey = () => "bets-token-" + CODE;
+const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const lsDel = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
+
+let toastT = 0;
+function toast(text, bad) {
+  const t = $("toast");
+  t.textContent = text;
+  t.classList.toggle("bad", !!bad);
+  t.classList.add("on");
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.remove("on"), 2200);
+}
+function buzz(p) { try { if (window.MP && MP.vibrate) MP.vibrate(p); else if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} }
+
+// флапы: цифры на «перекидных» табличках; при смене переворачиваются только изменившиеся
+function setFlap(node, text, anim) {
+  if (!node || node._t === text) return;
+  const old = Array.from(node._t || "");
+  node._t = text;
+  const ch = Array.from(text);
+  node.innerHTML = ch.map((c, i) => {
+    const sp = c === " " || c === " ", dot = c === "," || c === ".";
+    const changed = anim !== false && old[old.length - (ch.length - i)] !== c;
+    return `<span class="${dot ? "dot" : sp ? "sp" : ""}${changed ? " flip" : ""}"${changed ? ` style="animation-delay:${Math.min(i, 8) * 40}ms"` : ""}>${sp ? "" : esc(c)}</span>`;
+  }).join("");
+}
+const flapHtml = (cls) => `<span class="flap ${cls || ""}"></span>`;
+
+// ---------- состояние ----------
+let net = null, state = null, stateAt = 0, me = null, token = lsGet(tokenKey());
+let dead = false, screen = null, joinErr = null, joinName = "", claimPrompt = null, renamedTo = null;
+let flow = null, tab = null; // MP.joinFlow, MP.replacedTab
+const mpOn = () => !!(window.MP && !MP.off);
+const player = (id) => state && state.players.find((p) => p.id === id);
+const mine = () => (me ? player(me) : null);
+const colorOf = (id) => { const i = state ? state.players.findIndex((p) => p.id === id) : 0; return BS.PLAYER_COLORS[(i < 0 ? 0 : i) % BS.PLAYER_COLORS.length]; };
+const srvNow = () => (state ? state.now + (performance.now() - stateAt) : Date.now());
+const avatar = (p) => `<i class="av" style="background:${colorOf(p.id)}">${esc(initial(p.name))}</i>`;
+const savedName = () => lsGet("bets-name") || "";
+
+// ---------- транспорт: WebSocket, запасной long-poll ----------
+let wsBroken = false;
+function createNet(o) {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  let cur = null, stopped = false, delay = 500, retryT = 0, inGame = false;
+  const api = {
+    send(msg, attempt) {
+      const S0 = cur;
+      const fail = () => { if (o.onSendFail && msg && msg.type !== "ping") o.onSendFail(msg); };
+      if (!S0 || S0.closed) return fail();
+      try {
+        if (S0.ws && S0.ws.readyState === 1) return S0.ws.send(JSON.stringify(msg));
+      } catch (e) { return fail(); }
+      if (!S0.sid) return fail();
+      const tries = attempt || 0;
+      fetch("/bets/api/msg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid: S0.sid, msg }) })
+        .then((r) => { if (r.ok || r.status === 410) return; if (tries < 2) setTimeout(() => api.send(msg, tries + 1), 400 * (tries + 1)); else fail(); })
+        .catch(() => { if (tries < 2) setTimeout(() => api.send(msg, tries + 1), 400 * (tries + 1)); else fail(); });
+    },
+    get live() { return !!(cur && !cur.closed && ((cur.ws && cur.ws.readyState === 1) || cur.sid)); },
+    stop() { stopped = true; clearTimeout(retryT); if (cur) teardown(cur); },
+    probe(ms) {
+      const S0 = cur; if (!S0 || S0.closed || !S0.opened) return;
+      clearTimeout(S0.probeT);
+      const asked = Date.now();
+      api.send({ type: "ping", c: asked });
+      S0.probeT = setTimeout(() => { if (!S0.closed && S0.lastSeen < asked) fireClose(S0); }, ms || 3000);
+    },
+    visible() { if (cur && cur.mpc) cur.mpc.visible(Date.now()); },
+    netOffline() { if (cur && cur.opened && !cur.closed) { cur.quiet = true; o.onQuiet(true); } },
+    inGame(v) { inGame = v; },
+  };
+  function teardown(S0) {
+    S0.closed = true;
+    clearTimeout(S0.probeT); clearTimeout(S0.handshake);
+    if (S0.mpc) { try { S0.mpc.stop(); } catch (e) {} S0.mpc = null; }
+    if (S0.beat) { clearInterval(S0.beat); S0.beat = null; }
+    try { if (S0.ws) { S0.ws.onclose = S0.ws.onmessage = S0.ws.onopen = null; S0.ws.close(); } } catch (e) {}
+    try { if (S0.abort) S0.abort.abort(); } catch (e) {}
+    S0.sid = null;
+  }
+  function fireClose(S0) {
+    if (S0.closed) return;
+    teardown(S0);
+    if (stopped) return;
+    o.onState("lost");
+    retryT = setTimeout(start, delay);
+    delay = Math.min(delay * 2, 8000);
+  }
+  function heartbeat(S0) {
+    S0.lastSeen = Date.now();
+    const ping = () => { if (!S0.closed) api.send({ type: "ping", c: Date.now() }); };
+    ping(); setTimeout(ping, 500);
+    if (window.MP && typeof MP.conn === "function" && !MP.off) {
+      S0.mpc = MP.conn({
+        ping, inGame: () => inGame,
+        onOffline: () => { S0.quiet = true; o.onQuiet(true); },
+        onOnline: () => { S0.quiet = false; o.onQuiet(false); },
+        onDead: () => fireClose(S0),
+      });
+      S0.mpc.start();
+    } else {
+      S0.beat = setInterval(() => { if (Date.now() - S0.lastSeen > 45000) fireClose(S0); else ping(); }, 15000);
+    }
+  }
+  function deliver(S0, m) {
+    if (S0.closed) return;
+    S0.lastSeen = Date.now();
+    if (S0.mpc) S0.mpc.seen(S0.lastSeen);
+    if (S0.quiet) { S0.quiet = false; o.onQuiet(false); }
+    if (m && m.type === "pong") return;
+    if (m && m.state && (m.type === "hello" || m.type === "state")) inGame = !!m.state.phase && m.state.phase !== "lobby" && m.state.phase !== "done";
+    o.onMessage(m);
+  }
+  function opened(S0) { S0.opened = true; delay = 500; o.onState("open"); heartbeat(S0); o.onOpen(); }
+  const tf = (S0, url, ms) => {
+    const ctl = typeof AbortController === "function" ? new AbortController() : null;
+    S0.abort = ctl;
+    const t = ctl ? setTimeout(() => ctl.abort(), ms) : 0;
+    return fetch(url, ctl ? { signal: ctl.signal } : undefined).finally(() => clearTimeout(t));
+  };
+  async function poll(S0) {
+    if (S0.polling) return;
+    S0.polling = true;
+    try {
+      const res = await tf(S0, `/bets/api/session?r=${encodeURIComponent(CODE)}`, 15000);
+      if (res.status === 404) { teardown(S0); stopped = true; o.onGone(); return; }
+      if (!res.ok) throw new Error("session " + res.status);
+      const data = await res.json();
+      if (S0.closed) return;
+      S0.sid = data.sid; opened(S0);
+      for (const m of data.messages) deliver(S0, m);
+      while (!S0.closed && S0.sid) {
+        const r = await tf(S0, `/bets/api/poll?sid=${S0.sid}`, 28000);
+        if (r.status === 410) throw new Error("gone");
+        if (!r.ok) { await new Promise((z) => setTimeout(z, 1500)); continue; }
+        const body = await r.json();
+        for (const m of body.messages) deliver(S0, m);
+      }
+    } catch (e) { if (!S0.closed) fireClose(S0); }
+  }
+  function start() {
+    if (stopped) return;
+    o.onState("connecting");
+    const S0 = cur = { closed: false, opened: false, ws: null, sid: null, polling: false, abort: null, lastSeen: Date.now(), mpc: null, quiet: false, probeT: 0, handshake: 0, beat: null };
+    if (wsBroken || typeof WebSocket !== "function") return void poll(S0);
+    try {
+      const ws = S0.ws = new WebSocket(`${proto}://${location.host}/bets/ws?r=${encodeURIComponent(CODE)}`);
+      S0.handshake = setTimeout(() => {
+        if (S0.closed || S0.opened) return;
+        wsBroken = true;
+        try { ws.onclose = ws.onopen = ws.onmessage = null; ws.close(); } catch (e) {}
+        S0.ws = null; poll(S0);
+      }, 5000);
+      ws.onopen = () => { clearTimeout(S0.handshake); opened(S0); };
+      ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch (err) { return; } deliver(S0, m); };
+      ws.onclose = () => {
+        clearTimeout(S0.handshake);
+        if (S0.closed) return;
+        if (!S0.opened) { S0.ws = null; poll(S0); } // комнаты нет (404 на рукопожатии не виден) — выяснит опрос сессии
+        else fireClose(S0);
+      };
+      ws.onerror = () => {};
+    } catch (e) { poll(S0); }
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { api.visible(); api.probe(); } });
+  window.addEventListener("online", () => api.probe());
+  window.addEventListener("offline", () => api.netOffline());
+  start();
+  return api;
+}
+
+// ---------- экраны входа ----------
+function screenMode(name) { screen = name; app.dataset.key = ""; document.body.classList.remove("in-game"); }
+function sign(cls) { return `<div class="sign ${cls || ""}">${esc(T("sign"))}</div>`; }
+
+function renderLanding() {
+  screenMode("landing");
+  app.innerHTML = `<div class="page">
+    ${sign()}
+    <div class="eyebrow">${esc(T("eyebrow"))}</div>
+    <p class="lede">${esc(T("lede"))}</p>
+    <div class="rules"><div class="r"><i>🎲</i><span>${esc(T("r1"))}</span></div><div class="r"><i>🧮</i><span>${esc(T("r2"))}</span></div><div class="r"><i>⚠️</i><span>${esc(T("r3"))}</span></div></div>
+    <button class="btn" id="create" type="button">${esc(T("btn_create"))}</button>
+    <div id="codebox"><button class="link" id="havecode" type="button" style="width:100%">${esc(T("have_code"))}</button></div>
+    <div class="fine">${esc(T("fine"))}</div></div>`;
+  $("create").onclick = async () => {
+    const b = $("create");
+    b.disabled = true; b.textContent = T("btn_creating");
+    try {
+      const res = await fetch("/bets/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: lang() } }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "error");
+      lsSet("bets-host-" + data.code, data.hostToken);
+      location.href = "bets-board.html?r=" + encodeURIComponent(data.code);
+    } catch (e) { b.disabled = false; b.textContent = T("btn_create"); toast(String(e.message || e), true); }
+  };
+  $("havecode").onclick = () => { $("codebox").innerHTML = codeFormHtml(""); bindCodeForm(); $("codein").focus(); };
+}
+function normCode(raw) {
+  if (window.MP && MP.roomGone) return MP.roomGone.normalize(raw);
+  return String(raw || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+}
+function codeFormHtml(v) {
+  return `<form class="codeform" id="codeform" autocomplete="off"><input id="codein" maxlength="24" value="${esc(v)}" placeholder="${esc(T("code_ph"))}" aria-label="${esc(T("code_ph"))}" autocapitalize="characters" autocomplete="off" enterkeyhint="go"><button class="btn" type="submit">${esc(T("btn_go"))}</button></form>`;
+}
+function bindCodeForm() {
+  $("codeform").onsubmit = (e) => { e.preventDefault(); const c = normCode($("codein").value); if (c) location.href = "bets.html?r=" + encodeURIComponent(c); };
+}
+function renderCenter(title, text, extra) {
+  screenMode("center");
+  app.innerHTML = `<div class="center">${sign("sm")}<h2>${esc(T(title))}</h2>${text ? `<p>${esc(T(text))}</p>` : ""}${extra || ""}</div>`;
+}
+function renderNoRoom() { dead = true; screenMode("noroom"); renderCenter("noroom_title", "noroom_text", codeFormHtml(CODE) + `<a class="link" href="bets.html">${esc(T("expired_new"))}</a>`); screen = "noroom"; bindCodeForm(); }
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({ showForm: renderNoRoom, onClosed: () => renderExpired() }) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else renderExpired(); }
+function renderExpired() {
+  dead = true; lsDel(tokenKey());
+  renderCenter("expired_title", "expired_text", `<a class="btn" href="bets.html">${esc(T("expired_new"))}</a>`); screen = "expired";
+}
+function nameLimit() { return (window.MP && MP.limits && MP.limits.name) || 16; }
+function buildJoin() { const m = { type: "join" }; if (joinName) m.name = joinName; if (token) m.token = token; return m; }
+function doJoin(extra) {
+  if (flow && flow.join(extra)) return;
+  const m = buildJoin();
+  if (extra) for (const k in extra) m[k] = extra[k];
+  net.send(m);
+}
+function renderClaim() {
+  if (!claimPrompt) return;
+  const c = claimPrompt, st = c.summary && typeof c.summary.stack === "number" ? c.summary.stack : null;
+  const text = st == null ? T("claim_text0", { name: c.name }) : T("claim_text", { name: c.name, n: fmt(st) });
+  screenMode("center");
+  app.innerHTML = `<div class="center">${sign("sm")}<h2>${esc(T("claim_title"))}</h2><p>${esc(text)}</p><div class="claimbtns"><button class="btn" id="claimyes" type="button">${esc(T("btn_claim_yes"))}</button><button class="link" id="claimno" type="button">${esc(T("btn_claim_no"))}</button></div></div>`;
+  screen = "claim";
+  $("claimyes").onclick = () => { const p = claimPrompt; claimPrompt = null; screen = null; if (p) p.accept(); };
+  $("claimno").onclick = () => { const p = claimPrompt; claimPrompt = null; screen = null; if (p) p.decline(); };
+}
+function renderEnter() {
+  screenMode("enter");
+  app.innerHTML = `<form class="page" id="enterform" autocomplete="off">
+    ${sign()}
+    <div class="card"><div class="room">${esc(CODE)}</div><h2 style="text-align:center;margin-top:6px">${esc(T("enter_title"))}</h2>
+    <div class="fld"><input id="name" maxlength="24" placeholder="${esc(T("enter_ph"))}" value="${esc(savedName())}" enterkeyhint="go" autocomplete="off" aria-label="${esc(T("enter_ph"))}"><em class="cnt" id="namecnt"></em></div>
+    <div class="err" id="err">${joinErr ? esc(T(joinErr)) : ""}</div></div>
+    <button class="btn" type="submit">${esc(T("btn_join"))}</button></form>`;
+  const input = $("name");
+  if (mpOn()) MP.nameCounter(input, nameLimit(), { el: $("namecnt") });
+  $("enterform").onsubmit = (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    if (!name) { $("err").textContent = T("err_name"); return; }
+    lsSet("bets-name", name); joinErr = null; joinName = name; doJoin();
+  };
+}
+
+// ---------- лобби ----------
+const lobbySeen = new Set();
+function renderLobby() {
+  const key = "lobby:" + lang() + ":" + state.players.map((p) => p.id + p.name + (p.online ? 1 : 0)).join("|") + me + state.settings.stack + state.settings.events;
+  if (screen === "lobby" && app.dataset.key === key) return;
+  screen = "lobby"; app.dataset.key = key; document.body.classList.remove("in-game");
+  renamedTo = null;
+  const list = state.players.map((p) => `<div class="who${p.id === me ? " me" : ""}${p.online ? "" : " off"}${lobbySeen.has(p.id) || !lobbySeen.size ? "" : " new"}">${avatar(p)}<b>${esc(p.name)}</b></div>`).join("");
+  state.players.forEach((p) => lobbySeen.add(p.id));
+  const st = state.settings;
+  app.innerHTML = `<div class="page">${sign()}
+    <div class="card" style="text-align:center"><div class="room">${esc(CODE)}</div><h2 style="margin-top:4px">${esc(T("wait_title"))}</h2><p class="lede" style="margin-top:4px">${esc(T("wait_text"))}</p></div>
+    <div class="card"><div class="wrow"><span class="livepill"><i></i>${esc(T("wait_live"))}</span><span class="fine">${esc(T("wait_seats", { n: state.players.length }))}</span></div><div class="plist">${list}</div></div>
+    <div class="fine">${esc(T("stack_start", { n: fmt(st.stack) }))} · ${esc(st.events ? T("ev_limit", { n: st.events }) : T("ev_nolimit"))}</div>
+    <button class="link" id="leave" type="button">${esc(T("btn_leave"))}</button></div>`;
+  $("leave").onclick = () => { net.send({ type: "leave" }); lsDel(tokenKey()); token = null; me = null; renderEnter(); };
+}
+
+// ---------- игра: локальный купон ----------
+let draft = {}, pendingUntil = 0, resyncT = 0, lastId = null, chipVal = 0, submittedLocal = false, warnT = 0, warnSubmit = false;
+let curEv = "", activeTab = null, rkX = 3;
+const kcOf = (id) => {
+  const ev = state && state.ev; if (!ev) return 0;
+  const m = ev.markets.find((x) => x.id === id);
+  if (m) return m.kc;
+  if (ev.type === "rocket" && /^target:[0-9.]+$/.test(id)) return rkKc(+id.slice(7));
+  return 0;
+};
+const labelOf = (id) => BS.marketLabel(state.ev.type, id, state.ev);
+const myMin = () => { const p = mine(); return p && p.min != null ? p.min : 10; };
+function penaltyOf(total) { const p = mine(); return p ? Math.min(Math.max(0, p.stack - total), Math.max(0, myMin() - total)) : 0; }
+function canEdit() { const p = mine(); return !!(state && p && p.alive && state.phase === "bets" && !p.submitted && !submittedLocal); }
+const chipsList = () => { const p = mine(); return BS.chips(myMin(), p ? p.stack : 0); };
+function curChip() { const l = chipsList(); if (!l.includes(chipVal)) chipVal = l[0]; return chipVal; }
+
+function send(m) { try { net.send(m); } catch (e) { console.error(e); } }
+function afterAction() {
+  pendingUntil = Date.now() + 1500;
+  clearTimeout(resyncT);
+  resyncT = setTimeout(resync, 1700);
+  paintGame();
+}
+// сервер — источник правды: если спустя секунду-две купон не совпал с локальным, принимаем серверный
+function resync() {
+  const p = mine();
+  if (!state || state.phase !== "bets" || !p || p.submitted) return;
+  pendingUntil = 0;
+  const sd = p.draft || {};
+  const same = Object.keys(sd).length === Object.keys(draft).length && Object.keys(sd).every((k) => sd[k] === draft[k]);
+  if (!same) { draft = Object.assign({}, sd); toast(T("conn_dropped"), true); paintGame(); }
+}
+function addBet(id, want) {
+  const p = mine();
+  if (!p || !canEdit()) return false;
+  if (!net.live) { toast(T("nolink"), true); return false; }
+  const free = p.stack - sum(draft);
+  let stake = Math.min(want, free);
+  if (stake < 10) { toast(T("no_chips"), true); return false; }
+  if (!(id in draft) && Object.keys(draft).length >= 6) { toast(T("too_many"), true); return false; }
+  draft[id] = (draft[id] || 0) + stake;
+  lastId = id;
+  send({ type: "bet", marketId: id, stake });
+  buzz(8);
+  afterAction();
+  return true;
+}
+function unbet(id) {
+  if (!canEdit() || !(id in draft)) return;
+  delete draft[id];
+  send({ type: "unbet", marketId: id });
+  buzz(14);
+  afterAction();
+}
+function clearAll() {
+  if (!canEdit() || !Object.keys(draft).length) return;
+  draft = {}; send({ type: "clear" }); afterAction();
+}
+function doubleAll() {
+  const p = mine(); if (!p || !canEdit()) return;
+  const ids = Object.keys(draft);
+  if (!ids.length) return toast(T("pick_market"), true);
+  if (sum(draft) * 2 > p.stack) return toast(T("dbl_no"), true);
+  for (const id of ids) { send({ type: "bet", marketId: id, stake: draft[id] }); draft[id] *= 2; }
+  afterAction();
+}
+function maxBet() {
+  const p = mine(); if (!p || !canEdit()) return;
+  const ids = Object.keys(draft);
+  const id = lastId in draft ? lastId : ids[ids.length - 1];
+  if (!id) return toast(T("pick_market"), true);
+  const free = p.stack - sum(draft);
+  if (free < 10) return toast(T("no_chips"), true);
+  addBet(id, free);
+}
+function submitCoupon() {
+  const p = mine(); if (!p || !canEdit()) return;
+  const total = sum(draft), pen = penaltyOf(total);
+  if (pen > 0 && !warnSubmit) { // штраф за недобор: второй тап подтверждает
+    warnSubmit = true; clearTimeout(warnT); warnT = setTimeout(() => { warnSubmit = false; slipKey = ""; paintGame(); }, 3500);
+    slipKey = ""; paintGame(); return;
+  }
+  warnSubmit = false; clearTimeout(warnT);
+  submittedLocal = true;
+  sendSubmit();
+  slipKey = ""; paintGame();
+}
+let submitTries = 0, submitT = 0;
+function sendSubmit() {
+  send({ type: "submit" });
+  clearTimeout(submitT);
+  // «ушло, а в снимке не появилось»: до трёх повторов (submit идемпотентен), потом в очередь
+  submitT = setTimeout(() => {
+    const p = mine();
+    if (!state || state.phase !== "bets" || !p || p.submitted) { submitTries = 0; return; }
+    if (++submitTries <= 3) { toast(T("conn_dropped")); sendSubmit(); }
+    else { submitTries = 0; if (outq) outq.push({ type: "submit" }); }
+  }, 1600);
+}
+
+// очередь действий, нажатых без связи: submit и чат
+const outq = window.MP && MP.sendQueue ? MP.sendQueue({
+  send: (m) => net.send(m),
+  keep: (m) => !!state && (m.type === "submit" ? state.phase === "bets" : m.type === "chat"),
+  onDrop: (m, reason) => { if (reason === "expired" || reason === "overflow") toast(T("conn_dropped"), true); },
+  ceilingMs: { submit: 20000, chat: 15000, "*": 15000 },
+  replace: ["submit", "chat"],
+  max: 4,
+  probe: (ms) => net && net.probe(ms),
+}) : null;
+function onSendFail(m) {
+  if (!m || (m.type !== "submit" && m.type !== "chat")) return;
+  if (outq && outq.push(m)) toast(T("conn_queued"));
+}
+
+// ---------- игра: каркас ----------
+let els = {};
+function ensureShell() {
+  if (screen === "game" && els.game && document.body.contains(els.game)) return false;
+  screen = "game"; app.dataset.key = "";
+  document.body.classList.add("in-game");
+  app.innerHTML = `<div class="game" id="game">
+    <div class="top">
+      <div class="t1">
+        <div class="stackbox"><small>${esc(T("stack"))}</small>${flapHtml()}</div>
+        <div class="evname"><b id="evname"></b><small id="evsub"></small></div>
+        <div class="clock" id="clock"></div>
+      </div>
+      <div class="tbar" id="tbar"><i></i></div>
+      <div class="t2"><span id="t2l"></span><span class="who-s" id="whos"></span></div>
+    </div>
+    <div class="midcol"><div class="tabs" id="tabs" role="tablist"></div><div class="mid" id="mid"></div></div>
+    <div class="slip" id="slip"></div>
+    <div class="bar" id="bar">
+      <form class="chat" id="chatform" autocomplete="off"><input id="chatin" maxlength="80" placeholder="${esc(T("chat_ph"))}" enterkeyhint="send" autocomplete="off" aria-label="${esc(T("chat_ph"))}"><button type="submit" aria-label="send">${esc(T("chat_send"))}</button></form>
+      <div class="rx" id="rx">${BS.REACTIONS.map((r) => `<button type="button" data-r="${r}">${r}</button>`).join("")}<button type="button" class="cht" id="cht" aria-label="chat">💬</button></div>
+    </div></div>`;
+  els = { game: $("game"), stack: app.querySelector(".stackbox .flap"), evname: $("evname"), evsub: $("evsub"), clock: $("clock"), tbar: $("tbar"), t2l: $("t2l"), whos: $("whos"), tabs: $("tabs"), mid: $("mid"), slip: $("slip"), bar: $("bar") };
+  midKey = slipKey = ""; tabsKey = "";
+  bindShell();
+  return true;
+}
+
+let chatAt = 0, reactAt = 0, lastChatText = "";
+function bindShell() {
+  // реакции
+  $("rx").addEventListener("click", safe((e) => {
+    const b = e.target.closest("[data-r]");
+    if (b) {
+      if (Date.now() - reactAt < 1000) return toast(T("react_fast"));
+      if (!net.live) return toast(T("nolink"), true);
+      reactAt = Date.now();
+      send({ type: "react", emoji: b.dataset.r });
+      const f = el("span", "fl", b.dataset.r);
+      f.style.left = Math.max(8, b.offsetLeft + b.offsetWidth / 2 - 14) + "px";
+      els.bar.append(f); setTimeout(() => f.remove(), 1300);
+      buzz(6);
+      return;
+    }
+    if (e.target.closest("#cht")) { els.bar.classList.toggle("chatopen"); if (els.bar.classList.contains("chatopen")) $("chatin").focus(); }
+  }));
+  $("chatform").addEventListener("submit", safe((e) => {
+    e.preventDefault();
+    const inp = $("chatin"), text = (window.MP ? MP.clip(inp.value.trim(), 80) : inp.value.trim().slice(0, 80));
+    if (!text) return;
+    if (Date.now() - chatAt < 3000) return toast(T("chat_fast"));
+    chatAt = Date.now(); lastChatText = text;
+    send({ type: "chat", text });
+    inp.value = ""; toast(T("chat_sent"));
+  }));
+  // купон
+  els.slip.addEventListener("click", safe((e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.rm) return unbet(b.dataset.rm);
+    if (b.dataset.chip) { chipVal = +b.dataset.chip; slipKey = ""; return paintGame(); }
+    switch (b.dataset.act) { case "clear": return clearAll(); case "dbl": return doubleAll(); case "max": return maxBet(); case "go": return submitCoupon(); }
+  }));
+  // вкладки
+  els.tabs.addEventListener("click", safe((e) => {
+    const b = e.target.closest("[data-tab]"); if (!b) return;
+    activeTab = b.dataset.tab; midKey = ""; tabsKey = ""; paintGame();
+  }));
+  // рынки: тап добавляет, долгое нажатие убирает
+  let press = null, suppress = false;
+  const cancel = () => { if (press) { clearTimeout(press.t); press = null; } };
+  els.mid.addEventListener("pointerdown", safe((e) => {
+    suppress = false;
+    const c = e.target.closest(".mk"); if (!c || !canEdit()) return;
+    press = { id: c.dataset.id, x: e.clientX, y: e.clientY };
+    press.t = setTimeout(() => { if (press) { const id = press.id; press = null; suppress = true; unbet(id); } }, 520);
+  }));
+  els.mid.addEventListener("pointermove", (e) => { if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) cancel(); });
+  ["pointerup", "pointercancel", "pointerleave"].forEach((t) => els.mid.addEventListener(t, cancel));
+  els.mid.addEventListener("contextmenu", (e) => e.preventDefault());
+  els.mid.addEventListener("click", safe((e) => {
+    if (suppress) { suppress = false; return; }
+    const c = e.target.closest(".mk");
+    if (c) { if (addBet(c.dataset.id, curChip())) { const s = c.querySelector(".stk"); s.classList.remove("pop"); void s.offsetWidth; s.classList.add("pop"); } return; }
+    if (e.target.closest("#rkadd")) return rkAdd();
+  }));
+  // ракета: ползунок и ± с удержанием
+  els.mid.addEventListener("input", safe((e) => { if (e.target.id === "rkr") { rkX = xFromS(+e.target.value); paintRocket(true); } }));
+  let hold = null;
+  const stopHold = () => { if (hold) { clearTimeout(hold.t); clearInterval(hold.i); hold = null; } };
+  els.mid.addEventListener("pointerdown", safe((e) => {
+    const b = e.target.closest("[data-rk]"); if (!b) return;
+    e.preventDefault();
+    const dir = b.dataset.rk === "+" ? 1 : -1;
+    let n = 0;
+    const step = () => { n++; rkX = Math.min(100, Math.max(1.2, Math.round((rkX + dir * (n > 25 ? 0.1 : n > 12 ? 0.05 : 0.01)) * 100) / 100)); paintRocket(); };
+    step();
+    hold = { t: setTimeout(() => { hold.i = setInterval(step, 70); }, 380) };
+  }));
+  ["pointerup", "pointercancel", "pointerleave"].forEach((t) => els.mid.addEventListener(t, stopHold));
+  window.addEventListener("pointerup", stopHold);
+}
+
+// ---------- ракета ----------
+const xFromS = (s) => Math.round(1.2 * Math.pow(100 / 1.2, s / 1000) * 100) / 100;
+const sFromX = (x) => Math.round(1000 * Math.log(x / 1.2) / Math.log(100 / 1.2));
+// те же операции, что в bets/events/rocket.js + odds.quote: p = 0,94/x, k = floor(0,94/p·100)
+function rkKc(x) { const p = (1 - 0.06) / x; return Math.floor((1 - 0.06) / p * 100 + 1e-9); }
+const rkId = (x) => "target:" + Math.round(x * 100) / 100;
+const fmtX = (x) => x.toFixed(2).replace(".", ",");
+const fmtP = (p) => (p >= 10 ? p.toFixed(1) : p.toFixed(2)).replace(".", ",");
+function rocketPanelHtml() {
+  return `<div class="rk" id="rk"><div class="cap">${esc(T("rk_cap"))}</div>
+    <div class="bigrow"><div class="bigx" id="rkx"></div><div class="pp"><b id="rkp"></b><small>${esc(T("rk_p"))}</small></div></div>
+    <div class="sl"><button type="button" data-rk="-" aria-label="−">−</button><input type="range" id="rkr" min="0" max="1000" step="1"><button type="button" data-rk="+" aria-label="+">+</button></div>
+    <div class="tix"><span>×1,2</span><span>×100</span></div>
+    <div class="foot"><div class="win" id="rkw"></div><button class="btn add" id="rkadd" type="button">${esc(T("rk_add"))}</button></div></div>`;
+}
+function paintRocket(fromSlider) {
+  const box = $("rk"); if (!box) return;
+  const x = rkX, kc = rkKc(x), c = curChip();
+  $("rkx").innerHTML = `×${fmtX(x)}`;
+  $("rkp").textContent = fmtP(94 / x) + " %";
+  if (!fromSlider) $("rkr").value = sFromX(x);
+  $("rkw").innerHTML = esc(T("rk_win", { c: fmt(c), w: fmt(BS.payout(c, kc)), k: BS.kcStr(kc) })) + `<span class="note"><br>${esc(T("rk_note"))}</span>`;
+  const add = $("rkadd"); add.disabled = !canEdit();
+}
+function rkAdd() { addBet(rkId(rkX), curChip()); }
+
+// ---------- игра: отрисовка ----------
+let midKey = "", slipKey = "", tabsKey = "", prevStakes = {};
+function groups() {
+  const ev = state.ev, labels = (ev.meta && ev.meta.labels) || {};
+  // пороговые события: id группы — id источника (правка статьи, киты…), его человеческое имя лежит в meta.labels
+  return BS.groupsFor(ev.type, ev.markets).map((g) => (g.title === g.id && labels[g.id] ? Object.assign({}, g, { title: labels[g.id] }) : g));
+}
+function groupOf(id) {
+  for (const g of groups()) if (g.markets.some((m) => m.id === id)) return g.id;
+  return state.ev.type === "rocket" && /^target:/.test(id) ? "target" : null;
+}
+
+function renderGame(p) {
+  const ev = state.ev, ph = state.phase;
+  const built = ensureShell();
+  const evKey = ev ? ev.type + ":" + ev.n : "";
+  if (evKey !== curEv) {
+    curEv = evKey; draft = Object.assign({}, p.draft || {}); pendingUntil = 0; submittedLocal = false; warnSubmit = false;
+    activeTab = null; midKey = slipKey = tabsKey = ""; prevStakes = {}; lastId = null; submitTries = 0;
+    els.bar.classList.remove("chatopen");
+  } else if (ph === "bets" && p.alive && Date.now() > pendingUntil) {
+    draft = Object.assign({}, p.draft || {});
+  }
+  if (built) midKey = slipKey = tabsKey = "";
+  paintGame();
+}
+function modeOf(p) {
+  const ph = state.phase;
+  if (!p.alive) return "spec";
+  if (ph === "bets") return p.submitted || submittedLocal ? "sent" : "edit";
+  if (ph === "locked" || ph === "scene") return "scene";
+  return "payout";
+}
+
+function paintGame() {
+  const p = mine();
+  if (!p || !state || screen !== "game") return;
+  const mode = modeOf(p), ev = state.ev;
+  els.game.classList.toggle("spec", mode === "spec");
+  paintTop(p, mode);
+  const betsUi = mode === "edit" || mode === "sent";
+  // вкладки
+  els.tabs.hidden = !betsUi;
+  if (betsUi) {
+    const gs = groups();
+    if (!gs.find((g) => g.id === activeTab)) activeTab = gs.length ? gs[0].id : null;
+    const cnt = {};
+    for (const id of Object.keys(draft)) { const g = groupOf(id); if (g) cnt[g] = (cnt[g] || 0) + 1; }
+    const tk = gs.map((g) => g.id + ":" + (cnt[g.id] || 0)).join(",") + "|" + activeTab + "|" + lang();
+    if (tk !== tabsKey) {
+      tabsKey = tk;
+      els.tabs.innerHTML = gs.map((g) => `<button type="button" class="tab" role="tab" data-tab="${esc(g.id)}" aria-selected="${g.id === activeTab}">${esc(g.title)}${cnt[g.id] ? `<i>${cnt[g.id]}</i>` : ""}</button>`).join("");
+      const sel = els.tabs.querySelector('[aria-selected="true"]');
+      if (sel && sel.scrollIntoView) { const L = sel.offsetLeft - 12; if (els.tabs.scrollLeft > L || L - els.tabs.scrollLeft + sel.offsetWidth > els.tabs.clientWidth) els.tabs.scrollLeft = L; }
+    }
+  }
+  // середина
+  els.mid.classList.toggle("frozen", mode === "sent");
+  let key;
+  if (betsUi) key = "bets:" + curEv + ":" + activeTab + ":" + lang();
+  else if (mode === "scene") key = "scene:" + curEv + ":" + state.players.map((x) => (x.coupon ? x.coupon.staked : "-")).join(",") + ":" + state.phase + ":" + lang();
+  else if (mode === "payout") key = "pay:" + curEv + ":" + lang() + ":" + state.players.map((x) => x.stack).join(",");
+  else key = "spec:" + state.phase + ":" + curEv + ":" + state.players.map((x) => x.stack + (x.alive ? "a" : "o")).join(",") + lang();
+  if (key !== midKey) {
+    const sc = els.mid.scrollTop, same = midKey.split(":")[0] === key.split(":")[0];
+    midKey = key;
+    if (betsUi) buildBetsMid(); else if (mode === "scene") buildSceneMid(p); else if (mode === "payout") buildPayoutMid(p); else buildSpecMid(p);
+    if (same) els.mid.scrollTop = sc; else els.mid.scrollTop = 0;
+  }
+  if (betsUi) paintMarkets();
+  paintSlip(p, mode);
+}
+
+function paintTop(p, mode) {
+  const ev = state.ev;
+  setFlap(els.stack, fmt(p.stack));
+  els.evname.textContent = (ev ? BS.typeIcon(ev.type) + " " + BS.typeTitle(ev.type) : "");
+  els.evsub.textContent = ev ? (state.total ? T("ev_n", { n: ev.n, t: state.total }) : T("ev_n0", { n: ev.n })) : "";
+  const alive = state.players.filter((x) => x.alive);
+  if (state.phase === "bets") {
+    const done = alive.filter((x) => x.submitted).length;
+    els.t2l.innerHTML = p.alive ? `${esc(T("min"))} <b>${fmt(myMin())}</b>` : "";
+    els.whos.innerHTML = alive.map((x) => `<span class="dotp${x.submitted ? " ok" : ""}" style="background:${colorOf(x.id)}" title="${esc(x.name)}">${esc(initial(x.name))}</span>`).join("") + `<span class="cnt2">${esc(T("submitted_of", { a: done, b: alive.length }))}</span>`;
+  } else {
+    els.t2l.textContent = "";
+    els.whos.innerHTML = "";
+  }
+  paintClock();
+}
+function paintClock() {
+  if (!state || screen !== "game" || !els.clock) return;
+  const ph = state.phase;
+  if (ph === "bets") {
+    const rem = Math.max(0, state.deadline - srvNow());
+    const sec = Math.ceil(rem / 1000), tot = (state.settings.betMs || 20000);
+    els.clock.className = "clock" + (sec <= 5 ? " hot" : "");
+    if (els.clock.textContent !== String(sec)) els.clock.textContent = String(sec);
+    els.tbar.classList.toggle("hot", sec <= 5);
+    els.tbar.firstElementChild.style.transform = `scaleX(${Math.max(0, Math.min(1, rem / tot))})`;
+  } else {
+    els.clock.className = "clock txt";
+    const t = ph === "payout" ? T("ph_payout") : ph === "scene" ? T("ph_scene") : T("ph_locked");
+    if (els.clock.textContent !== t) els.clock.textContent = t;
+    els.tbar.classList.remove("hot");
+    els.tbar.firstElementChild.style.transform = "scaleX(0)";
+  }
+}
+setInterval(safe(paintClock), 150);
+
+function buildBetsMid() {
+  const ev = state.ev, mid = els.mid;
+  mid.innerHTML = "";
+  const gs = groups();
+  const g = gs.find((x) => x.id === activeTab);
+  if (!g) { mid.append(el("div", "empty", "—")); return; }
+  if (ev.type === "rocket" && g.id === "target") {
+    mid.insertAdjacentHTML("beforeend", rocketPanelHtml());
+    paintRocket();
+  }
+  const grid = el("div", "mkgrid");
+  g.markets.forEach((m, i) => {
+    const b = el("button", "mk");
+    b.type = "button"; b.dataset.id = m.id;
+    const text = labelOf(m.id);
+    if (text.length > 22) b.classList.add("long");
+    const pct = ev.type === "rocket" && /^target:/.test(m.id) ? `<em>${esc(T("chance", { p: fmtP(94 / +m.id.slice(7)) }))}</em>` : "";
+    b.innerHTML = `<span class="lb">${esc(text)}</span><span class="od"><span class="x">×</span><span class="flap"></span>${pct}</span><i class="stk" hidden></i>`;
+    grid.append(b);
+    setFlap(b.querySelector(".flap"), BS.kcStr(m.kc), true);
+    b.querySelectorAll(".flap span.flip").forEach((s, k) => (s.style.animationDelay = (i * 30 + k * 40) + "ms"));
+  });
+  mid.append(grid);
+}
+function paintMarkets() {
+  const cards = els.mid.querySelectorAll(".mk");
+  cards.forEach((c) => {
+    const st = draft[c.dataset.id] || 0, s = c.querySelector(".stk");
+    c.classList.toggle("on", st > 0);
+    s.hidden = !st;
+    if (st) {
+      const t = fmt(st);
+      if (s.textContent !== t) s.textContent = t;
+    }
+  });
+  if ($("rk")) paintRocket();
+}
+
+// купон
+function slipRows(rows, ro) {
+  return rows.map((r) => `<div class="ln${ro ? " ro" : ""}" data-id="${esc(r.id)}"><span class="lb">${esc(labelOf(r.id))}<i>×${BS.kcStr(r.kc)}</i></span><span class="st">${fmt(r.stake)}</span><span class="wn">→${fmt(BS.payout(r.stake, r.kc))}</span>${ro ? "" : `<button type="button" class="rm" data-rm="${esc(r.id)}" aria-label="${esc(T("rm"))}">✕</button>`}</div>`).join("");
+}
+function paintSlip(p, mode) {
+  const sl = els.slip;
+  if (mode === "payout" || mode === "spec") { sl.hidden = true; slipKey = "hidden"; return; }
+  sl.hidden = false;
+  if (mode === "scene") {
+    const c = p.coupon || { bets: [], staked: 0, penalty: 0, min: 0 };
+    const key = "scene:" + curEv + ":" + JSON.stringify(c) + lang();
+    if (key === slipKey) return; slipKey = key;
+    const winMax = c.bets.reduce((a, b) => a + BS.payout(b.stake, b.kc), 0);
+    sl.innerHTML = `<div class="sh"><span class="ti">${esc(T("coupon_locked"))}</span><span class="sm">${esc(T("sum"))} <b>${fmt(c.staked + c.penalty)}</b></span></div>
+      <div class="wrow" style="font-size:12px;color:var(--dim);min-height:18px"><span>${c.penalty ? `<span class="pen" style="color:var(--magenta);font-weight:800">${esc(T("penalty", { n: fmt(c.penalty) }))}</span>` : ""}</span><span>${c.bets.length ? esc(T("max_win", { n: fmt(winMax) })) : esc(T("empty_coupon"))}</span></div>
+      <div class="sl">${slipRows(c.bets, true)}</div>`;
+    return;
+  }
+  const rows = Object.keys(draft).map((id) => ({ id, stake: draft[id], kc: kcOf(id) }));
+  const total = sum(draft), pen = penaltyOf(total), min = myMin();
+  const winMax = rows.reduce((a, r) => a + BS.payout(r.stake, r.kc), 0);
+  const chips = chipsList(), cv = curChip();
+  const free = p.stack - total;
+  const alive = state.players.filter((x) => x.alive), done = alive.filter((x) => x.submitted).length;
+  const key = [mode, curEv, JSON.stringify(draft), p.stack, min, cv, warnSubmit, done, alive.length, lang()].join("|");
+  if (key === slipKey) return; slipKey = key;
+  const sub = pen > 0 ? `<span class="pen">${esc(T("penalty", { n: fmt(pen) }))}</span>` : (total >= min ? `<span class="okm">${esc(T("min_ok"))}</span>` : `<span>${esc(T("min_need", { n: fmt(min) }))}</span>`);
+  const head = `<div class="sh"><span class="ti">${esc(T("coupon"))}${rows.length ? " · " + rows.length : ""}</span><span class="sm">${esc(T("sum"))} <b>${fmt(total)}</b></span></div>
+    <div class="wrow" style="font-size:12px;color:var(--dim);min-height:18px"><span>${mode === "edit" ? sub : ""}</span><span>${rows.length ? esc(T("max_win", { n: fmt(winMax) })) : ""}</span></div>`;
+  if (mode === "sent") {
+    sl.innerHTML = head + `<div class="sl">${rows.length ? slipRows(rows, true) : `<div class="ln hint">${esc(T("no_bets"))}</div>`}</div>
+      <div class="stamp">${esc(T("sent"))} ✓<small>${esc(T("sent_sub", { a: done, b: alive.length }))}</small></div>`;
+    return;
+  }
+  const colors = ["#38d3ff", "#b6ff2e", "#ffd34d", "#ff7a2e", "#ff2e88"];
+  sl.innerHTML = head + `<div class="sl">${rows.length ? slipRows(rows, false) : `<div class="ln hint">${esc(T("tap_hint"))}</div>`}</div>
+    <div class="chips">${chips.map((c, i) => `<button type="button" class="chip" style="--c:${colors[i % colors.length]}" data-chip="${c}" aria-pressed="${c === cv}">${fmt(c)}</button>`).join("")}<span class="free">${esc(T("free"))} <b>${fmt(free)}</b></span></div>
+    <div class="acts"><button type="button" data-act="clear"${rows.length ? "" : " disabled"}>${esc(T("b_clear"))}</button><button type="button" data-act="dbl"${rows.length ? "" : " disabled"}>${esc(T("b_double"))}</button><button type="button" data-act="max"${rows.length ? "" : " disabled"}>${esc(T("b_max"))}</button><button type="button" class="go${warnSubmit ? " warn" : ""}" data-act="go">${esc(warnSubmit ? T("b_submit_pen", { n: fmt(pen) }) : T("b_submit"))}</button></div>`;
+}
+
+// сцена
+function pillsOf(bets) {
+  return bets.map((b) => `<span class="pill">${esc(labelOf(b.id))}<b>${fmt(b.stake)}</b></span>`).join("");
+}
+function buildSceneMid(p) {
+  const ev = state.ev;
+  const others = state.players.filter((x) => x.id !== me && x.alive !== undefined);
+  const cps = others.map((x) => {
+    const c = x.coupon;
+    const body = c ? (c.bets.length ? `<div class="bs">${pillsOf(c.bets)}</div>` : `<div class="none">${esc(T("empty_c"))}</div>`) : "";
+    return `<div class="cp"><div class="h">${avatar(x)}<b>${esc(x.name)}</b><span>${c ? fmt(c.staked) : ""}${c && c.penalty ? `<span class="pen">−${fmt(c.penalty)}</span>` : ""}</span></div>${body}</div>`;
+  }).join("");
+  els.mid.innerHTML = `<div class="look"><div class="ev">${BS.typeIcon(ev.type)}</div><div class="big">${esc(T("look_big"))}</div>
+    <div class="sub">${esc(ev.live ? T("look_live") : T("look_sub"))}</div><div class="track">${"<i></i>".repeat(9)}</div></div>
+    <div class="hdr">${esc(T("others"))}</div><div class="cps">${cps}</div>`;
+}
+
+// развязка
+function outcomeText(ev) {
+  const o = ev.outcome, m = ev.meta || {};
+  if (o == null) return "";
+  try {
+    switch (ev.type) {
+      case "dice": return "🎲 " + o.join(" · ") + " = " + o.reduce((a, b) => a + b, 0);
+      case "rocket": return "🚀 ×" + fmtX(o);
+      case "dogs": return "🐕 " + o.map((i) => "№" + (i + 1) + (m.names && m.names[i] ? " " + m.names[i] : "")).join(" › ");
+      case "penalties": return "⚽ " + ((m.A && m.A.name) || "A") + " " + o.goalsA + ":" + o.goalsB + " " + ((m.B && m.B.name) || "B");
+      case "rope": return "💪 " + (m[o.winner] || o.winner);
+    }
+  } catch (e) {}
+  return "";
+}
+let vibratedFor = "";
+function buildPayoutMid(p) {
+  const ev = state.ev, last = p.last;
+  let hero = "";
+  if (last) {
+    const profit = last.net;
+    const cls = last.staked + last.penalty === 0 ? "even" : profit > 0 ? "win" : profit < 0 ? "lose" : "even";
+    const tag = last.staked + last.penalty === 0 ? T("res_none") : profit > 0 ? T("res_win") : profit < 0 ? T("res_lose") : T("res_even");
+    const lines = last.lines.map((l) => {
+      const c = l.result === "win" ? "win" : l.result === "void" ? "void" : "lose";
+      const ic = c === "win" ? "✓" : c === "void" ? "↺" : "✕";
+      const am = c === "win" ? "+" + fmt(l.back - l.stake) : c === "void" ? T("res_back") : "−" + fmt(l.stake);
+      return `<div class="rline ${c}"><span class="ic">${ic}</span><span class="lb">${esc(labelOf(l.id))}<small>${fmt(l.stake)} × ${BS.kcStr(l.kc)}</small></span><span class="am">${am}</span></div>`;
+    });
+    if (last.penalty) lines.push(`<div class="rline pen"><span class="ic">!</span><span class="lb">${esc(T("line_pen"))}</span><span class="am">−${fmt(last.penalty)}</span></div>`);
+    hero = `<div class="res ${cls}"><div class="tag">${esc(tag)}</div><div class="net">${last.staked + last.penalty === 0 ? "0" : signed(profit)}</div>
+      <div class="out">${esc(outcomeText(ev))}</div>
+      ${ev.live ? `<div class="est" title="${esc(T("est_hint"))}">${esc(T("est"))}</div>` : ""}
+      ${ev.voidAll ? `<div class="voidmsg">${esc(T("void_all"))}</div>` : ""}</div>
+      ${lines.length ? `<div class="rl">${lines.join("")}</div>` : ""}`;
+    if (vibratedFor !== curEv) {
+      vibratedFor = curEv;
+      if (last.lines.some((l) => l.result === "win")) buzz([70, 40, 70, 40, 200]);
+    }
+  }
+  els.mid.innerHTML = hero + `<div class="hdr">${esc(T("table"))}</div>${boardHtml()}`;
+}
+function boardHtml(sorted) {
+  const ps = (sorted || state.players.slice().sort((a, b) => b.stack - a.stack || (b.alive ? 1 : 0) - (a.alive ? 1 : 0)));
+  return `<div class="board">${ps.map((x, i) => {
+    const net = x.last ? x.last.net : null;
+    return `<div class="row${x.id === me ? " me" : ""}${x.alive ? "" : " out"}"><span class="pl">${i + 1}</span>${avatar(x)}<span class="nm">${esc(x.name)}</span><span class="s">${fmt(x.stack)}</span><span class="d ${net > 0 ? "up" : net < 0 ? "dn" : ""}">${net == null || net === 0 ? "" : signed(net)}</span></div>`;
+  }).join("")}</div>`;
+}
+
+// вылет: экран зрителя
+function buildSpecMid(p) {
+  const ev = state.ev;
+  els.mid.innerHTML = `<div class="gone"><div class="big">${esc(T("out_big"))}</div><p>${esc(T("out_sub"))}</p></div>
+    ${ev ? `<div class="status">${esc(T("out_status", { ev: BS.typeIcon(ev.type) + " " + BS.typeTitle(ev.type), ph: state.phase === "bets" ? T("ph_bets") : state.phase === "payout" ? T("ph_payout") : T("ph_scene") }))}</div>` : ""}
+    <div class="hdr">${esc(T("table"))}</div>${boardHtml()}`;
+}
+
+// финал
+function renderFinal(p) {
+  const key = "final:" + state.winner + ":" + me + ":" + lang();
+  if (screen === "final" && app.dataset.key === key) return;
+  screen = "final"; app.dataset.key = key; els = {}; document.body.classList.remove("in-game");
+  // место: победитель, затем по фишкам; вылетевшие с нулём — по выигрышу за событие (точного порядка вылета в снимке нет)
+  const ranked = state.players.slice().sort((a, b) => (b.id === state.winner) - (a.id === state.winner) || (b.alive - a.alive) || b.stack - a.stack || b.maxWin - a.maxWin);
+  const place = ranked.findIndex((x) => x.id === me) + 1;
+  const won = state.winner === me, w = player(state.winner);
+  let rain = "";
+  if (won && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    for (let i = 0; i < 36; i++) rain += `<i style="left:${(Math.random() * 100).toFixed(1)}%;background:${BS.PLAYER_COLORS[i % 12]};animation-duration:${(2.4 + Math.random() * 2).toFixed(2)}s;animation-delay:${(Math.random() * 2).toFixed(2)}s"></i>`;
+  }
+  const medal = won ? "" : place === 2 ? "m2" : place === 3 ? "m3" : "m0";
+  app.innerHTML = `<div class="page final" style="position:relative">${rain ? `<div class="rain">${rain}</div>` : ""}${sign("sm")}
+    <div class="medal ${medal}">${won ? "🏆" : place}</div>
+    <h2>${esc(won ? T("fin_win") : T("fin_place", { n: place }))}</h2>
+    <div class="wn">${won ? `<b>${esc(T("fin_stack", { n: fmt(p.stack) }))}</b>` : w ? esc(T("fin_winner", { name: w.name })) : ""}</div>
+    <div class="board">${ranked.map((x, i) => `<div class="row${x.id === me ? " me" : ""}${x.alive ? "" : " out"}"><span class="pl">${i + 1}</span>${avatar(x)}<span class="nm">${esc(x.name)}</span><span class="s">${fmt(x.stack)}</span><span class="d"></span></div>`).join("")}</div>
+    <div class="fine">${esc(T("fin_wait"))}</div></div>`;
+  if (won) buzz([80, 50, 80, 50, 260]);
+}
+
+// ---------- диспетчер ----------
+function render() {
+  if (dead || !state) return;
+  if (screen === "kicked") return;
+  const p = mine();
+  if (!p) {
+    if (claimPrompt) return;
+    if (!token && screen !== "enter") renderEnter(); // с токеном ждём ответа на join, а не мигаем формой
+    return;
+  }
+  if (state.phase === "lobby") { draft = {}; curEv = ""; vibratedFor = ""; return renderLobby(); }
+  if (state.phase === "done") return renderFinal(p);
+  renderGame(p);
+}
+window.addEventListener("langchange", safe(() => {
+  if (!CODE) return renderLanding();
+  if (screen === "enter") return renderEnter();
+  if (screen === "claim") return renderClaim();
+  if (screen === "noroom") return renderNoRoom();
+  if (screen === "expired") return renderExpired();
+  midKey = slipKey = tabsKey = ""; app.dataset.key = "";
+  if (screen === "game") { screen = null; }
+  render();
+}));
+if (window.MP && MP.keyboardClass) { try { MP.keyboardClass({}); } catch (e) {} }
+
+// ---------- связь ----------
+function onMessage(m) {
+  if (mpOn()) {
+    if (m.type === "hello" && goneFlow) goneFlow.hello();
+    if (m.type === "hello" && MP.applyHello(m) === false) { flow = tab = null; }
+    else if (tab && tab.handle(m)) return;
+    else if (flow && flow.handle(m)) return;
+  }
+  switch (m.type) {
+    case "hello":
+    case "state":
+      state = m.state; stateAt = performance.now();
+      if (m.type === "hello" && token && !me) { joinName = joinName || savedName(); doJoin(); }
+      else if (m.type === "hello" && !me && flow && flow.state().prompting) flow.resume();
+      render();
+      break;
+    case "joined":
+      me = m.playerId; token = m.token; claimPrompt = null; screen = screen === "claim" ? null : screen;
+      if (m.name) { joinName = m.name; lsSet("bets-name", m.name); if (m.renamed) { renamedTo = m.name; toast(m.name); } }
+      lsSet(tokenKey(), token);
+      render();
+      if (outq && outq.size()) outq.flush((x) => !!state && (x.type === "submit" ? state.phase === "bets" : true), () => {});
+      break;
+    case "rejected": {
+      const known = { too_fast: "rj_too_fast", phase: "rj_phase" };
+      const txt = m.action === "chat" ? T("chat_fast") : T(known[m.reason] || "rj");
+      toast(txt, true);
+      if (m.action === "chat") { const i = $("chatin"); if (i && !i.value) i.value = lastChatText; chatAt = 0; }
+      if (m.action === "bet" || m.action === "unbet" || m.action === "clear") { pendingUntil = 0; const p = mine(); if (p && p.draft) { draft = Object.assign({}, p.draft); paintGame(); } }
+      if (m.action === "submit") { submittedLocal = false; clearTimeout(submitT); slipKey = ""; paintGame(); }
+      break;
+    }
+    case "error":
+      if (m.error === "room_expired") return onRoomGone();
+      if (m.error === "too_fast") return toast(T("rj_too_fast"), true);
+      if (["game_started", "room_full", "token_gone", "bad_name", "name_taken"].includes(m.error)) {
+        if (m.error === "token_gone") { lsDel(tokenKey()); token = null; }
+        joinErr = m.error === "bad_name" ? "err_name" : "err_" + m.error;
+        me = null; renderEnter();
+      }
+      break;
+    case "kicked":
+      me = null; lsDel(tokenKey()); token = null; screen = "kicked";
+      renderCenter("kicked_title", null, `<button class="btn" id="sitagain" type="button">${esc(T("kicked_again"))}</button>`); screen = "kicked";
+      $("sitagain").onclick = () => { screen = null; joinErr = null; renderEnter(); };
+      break;
+    case "replaced":
+      showReplaced();
+      break;
+  }
+}
+function showReplaced() {
+  me = null;
+  renderCenter("replaced_title", "replaced_text", `<button class="btn" id="here" type="button">${esc(T("btn_back_here"))}</button>`); screen = "replaced";
+  $("here").onclick = () => { if (tab && tab.back()) return; doJoin(); };
+}
+
+function start() {
+  if (!CODE) return renderLanding();
+  renderCenter("wait_title");
+  const banner = $("conn");
+  net = createNet({
+    onMessage,
+    onGone: onRoomGone,
+    onOpen: () => { me = null; }, // после переподключения снова садимся за место своим токеном (hello придёт первым)
+    onQuiet: (q) => { banner.textContent = T("conn_quiet"); banner.classList.toggle("on", q); },
+    onState: (st) => { if (st === "lost") { banner.textContent = T("conn_lost"); banner.classList.add("on"); } else if (st === "open") banner.classList.remove("on"); },
+    onSendFail,
+  });
+}
+if (window.MP) {
+  flow = MP.joinFlow({
+    send: (m) => net.send(m),
+    buildJoin,
+    onClaimPrompt: (c) => { claimPrompt = c; renderClaim(); },
+    onRetry: () => { const e = $("err"); if (e && screen === "enter") e.textContent = T("seat_wait"); },
+    onGiveUp: () => { joinErr = "err_name_taken"; me = null; renderEnter(); },
+  });
+  tab = MP.replacedTab({
+    rejoin: () => doJoin(),
+    onReplaced: showReplaced,
+    onTokenGone: () => { lsDel(tokenKey()); token = null; me = null; joinErr = null; if (savedName()) { joinName = savedName(); doJoin(); } else renderEnter(); },
+  });
+}
+start();
+</script>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+  ym(104849796, 'init', { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+</body>
+</html>

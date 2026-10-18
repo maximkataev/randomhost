@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="robots" content="noindex">
+<title>Ставки · лаборатория: пенальти</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
+<style>
+  :root {
+    --bg: #07090c; --glass: #0d1217; --glass-2: #121a21; --line: #1f2b34; --text: #eef2ee; --dim: #7d8c93;
+    --lime: #b6ff2e; --magenta: #ff2e88; --amber: #ffd34d;
+    --disp: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { background: var(--bg); color: var(--text); min-height: 100%; }
+  body { font-family: var(--mono); display: flex; flex-direction: column; min-height: 100vh; }
+  header { display: flex; align-items: center; gap: 18px; padding: 14px 22px 10px; border-bottom: 1px solid var(--line); }
+  .sign { font-family: var(--disp); font-weight: 900; font-size: 34px; letter-spacing: .14em; text-transform: uppercase; color: #fff;
+    text-shadow: 0 0 4px #fff, 0 0 12px var(--magenta), 0 0 28px var(--magenta), 0 0 52px var(--magenta); animation: hum 5s infinite; }
+  @keyframes hum { 0%, 92%, 96%, 100% { opacity: 1 } 93% { opacity: .55 } 95% { opacity: .85 } }
+  .sub { color: var(--dim); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  .spacer { flex: 1; }
+  .live { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; letter-spacing: .12em; color: var(--lime); }
+  .live i { width: 9px; height: 9px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 10px var(--lime); animation: blink 1.4s infinite; }
+  @keyframes blink { 50% { opacity: .25 } }
+  main { flex: 1; display: grid; grid-template-columns: 372px 1fr; gap: 16px; padding: 16px 22px 22px; min-height: 0; }
+  main > * { min-width: 0; }
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; padding: 12px 12px 18px; }
+    .stage { order: -1; }
+    .view { aspect-ratio: 4 / 3 !important; }
+    header { flex-wrap: wrap; padding: 10px 14px 8px; gap: 6px 12px; }
+    .sign { font-size: 26px; } .sub { display: none; } .say { font-size: 18px; } button { padding: 11px 14px; }
+    .sb { transform: scale(.78); transform-origin: top left; }
+  }
+  .board { background: var(--glass); border: 1px solid var(--line); padding-bottom: 12px; }
+  .board h2 { font-family: var(--disp); font-weight: 800; font-size: 20px; letter-spacing: .1em; text-transform: uppercase; padding: 12px 14px 4px; display: flex; justify-content: space-between; align-items: baseline; }
+  .board h2 small { font-family: var(--mono); font-size: 11px; color: var(--dim); font-weight: 700; letter-spacing: .06em; }
+  .grp { padding: 8px 14px 2px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+  .tiles { display: grid; gap: 6px; padding: 4px 14px; }
+  .t2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .t3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .t4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .tile { background: var(--glass-2); border: 1px solid var(--line); padding: 7px 4px 6px; display: flex; flex-direction: column; align-items: center; gap: 5px; transition: opacity .35s, border-color .25s, box-shadow .25s, background .25s; }
+  .tile b { font-family: var(--disp); font-weight: 800; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; text-align: center; line-height: 1; }
+  .t2 .tile b { font-size: 19px; }
+  .tile.win { border-color: var(--lime); box-shadow: 0 0 14px rgba(182,255,46,.55), inset 0 0 18px rgba(182,255,46,.18); background: #14200c; animation: winpop .6s ease-out; }
+  .tile.lose { opacity: .32; }
+  @keyframes winpop { 0% { transform: scale(1.12) } 100% { transform: scale(1) } }
+  .flap { display: inline-flex; gap: 1px; justify-content: center; }
+  .flap span { position: relative; width: 13px; height: 22px; display: grid; place-items: center; background: linear-gradient(#232c33 50%, #1a2128 50%); color: var(--amber); font-weight: 800; font-size: 14px; border-radius: 2px; font-variant-numeric: tabular-nums; }
+  .t2 .flap span { width: 17px; height: 28px; font-size: 19px; }
+  .flap span::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: #000; opacity: .7; }
+  .flap span.dot { width: 7px; background: none; } .t2 .flap span.dot { width: 9px; } .flap span.dot::after { display: none; }
+  .flap span.flip { animation: flip .38s cubic-bezier(.3,.1,.3,1); }
+  @keyframes flip { 0% { transform: rotateX(-95deg); filter: brightness(.4) } 100% { transform: rotateX(0); filter: none } }
+  .tile.win .flap span { color: var(--lime); }
+  .now { margin: 10px 14px 0; padding: 8px 10px; border: 1px dashed #2a3842; font-size: 12px; color: var(--dim); min-height: 52px; line-height: 1.5; }
+  .now b { color: var(--text); font-weight: 800; }
+
+  .stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .view { position: relative; background: #000; border: 1px solid var(--line); aspect-ratio: 16 / 9; width: 100%; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+  /* табло серии */
+  .sb { position: absolute; left: 12px; top: 12px; background: rgba(6,8,12,.82); border: 1px solid #26323b; padding: 7px 10px 8px; display: grid; gap: 5px; font-family: var(--disp); }
+  .sb .tr { display: grid; grid-template-columns: 88px auto 34px; gap: 8px; align-items: center; }
+  .sb .nm { font-weight: 900; letter-spacing: .08em; font-size: 17px; text-transform: uppercase; }
+  .sb .a .nm { color: var(--lime); } .sb .b .nm { color: var(--magenta); }
+  .sb .dots { display: flex; gap: 4px; align-items: center; }
+  .sb .d { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #3a4852; display: grid; place-items: center; font: 900 11px var(--mono); transition: all .3s; }
+  .sb .d.cur { border-color: #fff; animation: cur 0.7s infinite; }
+  @keyframes cur { 50% { box-shadow: 0 0 10px #fff; } }
+  .sb .a .d.goal { background: var(--lime); border-color: var(--lime); box-shadow: 0 0 10px var(--lime); }
+  .sb .b .d.goal { background: var(--magenta); border-color: var(--magenta); box-shadow: 0 0 10px var(--magenta); }
+  .sb .d.no { border-color: #55303f; color: #ff5c7a; }
+  .sb .d.no::after { content: "✕"; }
+  .sb .d.sdm { margin-left: 3px; }
+  .sb .sc { font-weight: 900; font-size: 26px; color: #fff; text-align: center; line-height: 1; }
+  .sb .tag { font: 700 10px var(--mono); letter-spacing: .1em; color: var(--dim); text-transform: uppercase; }
+  .stamp { position: absolute; left: 50%; top: 36%; transform: translate(-50%, -50%) rotate(-4deg); font-family: var(--disp); font-weight: 900; font-size: min(11vw, 120px); letter-spacing: .06em; text-transform: uppercase;
+    color: #fff; text-shadow: 0 0 6px #fff, 0 0 24px var(--lime), 0 0 54px var(--lime); opacity: 0; pointer-events: none; white-space: nowrap; }
+  .stamp.sm { font-size: min(6.5vw, 70px); }
+  .stamp.pm { text-shadow: 0 0 6px #fff, 0 0 24px var(--magenta), 0 0 54px var(--magenta); }
+  .stamp.am { text-shadow: 0 0 6px #fff, 0 0 24px var(--amber), 0 0 54px var(--amber); }
+  .stamp.on { animation: stamp 1.5s ease-out forwards; }
+  @keyframes stamp { 0% { opacity: 0; transform: translate(-50%, -50%) rotate(-4deg) scale(2.4) } 12% { opacity: 1; transform: translate(-50%, -50%) rotate(-4deg) scale(1) } 80% { opacity: 1 } 100% { opacity: 0 } }
+  .who { position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%); text-align: center; pointer-events: none; opacity: 0; transition: opacity .3s; }
+  .who.on { opacity: 1; }
+  .who b { display: block; font-family: var(--disp); font-weight: 900; font-size: min(5vw, 46px); letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 0 18px rgba(0,0,0,.9); }
+  .who span { font: 700 12px var(--mono); color: var(--dim); letter-spacing: .1em; text-transform: uppercase; background: rgba(6,8,12,.7); padding: 3px 8px; }
+  .say { font-family: var(--disp); font-weight: 700; font-size: 22px; letter-spacing: .04em; text-transform: uppercase; min-height: 30px; }
+  .say em { font-style: normal; color: var(--lime); }
+  .ctl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: 800 13px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #06090b; background: var(--lime); border: 0; padding: 11px 18px; cursor: pointer; border-bottom: 3px solid #6c9e10; }
+  button:active { transform: translateY(2px); border-bottom-width: 1px; }
+  button:disabled { opacity: .45; cursor: default; }
+  label { font-size: 12px; color: var(--dim); display: flex; gap: 6px; align-items: center; }
+  .hint { font-size: 11px; color: var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <div class="sign">Тотализатор</div>
+  <div class="sub">лаборатория · пенальти · не в деплое</div>
+  <div class="spacer"></div>
+  <div class="live"><i></i>LIVE</div>
+</header>
+
+<main>
+  <section class="board" aria-label="Табло серии">
+    <h2><span>Серия пенальти</span><small>5 + 5 ударов</small></h2>
+    <div class="grp">Победитель серии</div>
+    <div class="tiles t2" id="g-win"></div>
+    <div class="grp">Голов в серии (10 ударов)</div>
+    <div class="tiles t2" id="g-tot"></div>
+    <div class="grp">Особые</div>
+    <div class="tiles t3" id="g-side"></div>
+    <div class="grp">Точный счёт после 10 ударов</div>
+    <div class="tiles t4" id="g-score"></div>
+    <div class="now" id="now">Нажми «Серия».</div>
+  </section>
+
+  <section class="stage">
+    <div class="view" id="view">
+      <canvas id="cv"></canvas>
+      <div class="sb" id="sb"></div>
+      <div class="who" id="who"><b id="whoN"></b><span id="whoP"></span></div>
+      <div class="stamp" id="stamp">Гол!</div>
+    </div>
+    <div class="say" id="say">Нажми <em>«Серия»</em></div>
+    <div class="ctl">
+      <button id="go">Серия</button>
+      <label><input type="checkbox" id="fast"> ×2 быстрее</label>
+      <span class="hint">составы, коэффициенты и исход каждого удара — из настоящего движка (bets/events/penalties.js)</span>
+    </div>
+  </section>
+</main>
+
+<script src="bets-lab-pen-data.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const kc2 = (kc) => (kc / 100).toFixed(2).replace(".", ",");
+
+const TEAM = {
+  A: { name: "Лаймы", col: "#b6ff2e", dark: "#07090c", men: ["Шашков", "Коробов", "Лютиков", "Бубнов", "Клюшкин"] },
+  B: { name: "Маджента", col: "#ff2e88", dark: "#fff", men: ["Гвоздев", "Пончиков", "Кубиков", "Тапкин", "Рельсов"] },
+};
+
+// ---------- split-flap и табло ----------
+function setFlap(el, text) {
+  const prev = el._t || ""; if (prev === text) return;
+  el._t = text; el.innerHTML = "";
+  [...text].forEach((ch, i) => { const s = document.createElement("span"); s.textContent = ch; if (ch === ",") s.className = "dot"; if (prev[i] !== ch) { s.classList.add("flip"); s.style.animationDelay = (i * 0.05) + "s"; } el.appendChild(s); });
+}
+const tileEls = {};
+function tile(parent, id, label, kc) {
+  const d = document.createElement("div"); d.className = "tile"; d.innerHTML = `<b>${label}</b><div class="flap"></div>`;
+  parent.appendChild(d); tileEls[id] = d; setFlap(d.querySelector(".flap"), kc2(kc));
+}
+function buildBoard(sh) {
+  ["g-win", "g-tot", "g-side", "g-score"].forEach((g) => ($(g).innerHTML = ""));
+  Object.keys(tileEls).forEach((k) => delete tileEls[k]);
+  const M = sh.markets;
+  const get = (id) => M.find((m) => m.id === id);
+  ["winner:A", "winner:B"].forEach((id) => { const m = get(id); if (m) tile($("g-win"), id, id.endsWith("A") ? TEAM.A.name : TEAM.B.name, m.kc); });
+  M.filter((m) => m.id.startsWith("over:") || m.id.startsWith("under:")).sort((a, b) => parseFloat(a.id.split(":")[1]) - parseFloat(b.id.split(":")[1]) || (a.id[0] === "o" ? -1 : 1))
+    .forEach((m) => tile($("g-tot"), m.id, (m.id[0] === "o" ? "Больше " : "Меньше ") + m.id.split(":")[1].replace(".", ","), m.kc));
+  const side = [["both3", "Обе ≥ 3 гола"], ["post", "Будет штанга"]];
+  side.forEach(([id, label]) => { const m = get(id); if (m) tile($("g-side"), id, label, m.kc); });
+  const bestShooter = M.filter((m) => m.id.startsWith("shooter:")).sort((a, b) => a.kc - b.kc).slice(0, 1);
+  bestShooter.forEach((m) => { const t = m.id.split(":")[1]; tile($("g-side"), m.id, `${TEAM[t[0]].men[+t[1] - 1]} забьёт`, m.kc); });
+  M.filter((m) => m.id.startsWith("score:")).sort((a, b) => a.kc - b.kc).slice(0, 8).forEach((m) => { const [i, j] = m.id.slice(6).split("-"); tile($("g-score"), m.id, `${i}:${j}`, m.kc); });
+}
+function clearTiles() { Object.values(tileEls).forEach((e) => (e.className = "tile")); }
+
+// ---------- проекция: камера сзади бьющего ----------
+const cv = $("cv"), ctx = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1, SC = 1;
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  const b = cv.getBoundingClientRect();
+  W = Math.max(300, Math.round(b.width)); H = Math.max(220, Math.round(b.height));
+  cv.width = W * DPR; cv.height = H * DPR; SC = Math.min(W / 1280, H / 720) * 1;
+}
+window.addEventListener("resize", resize);
+const CAMZ = -9, CAMY = 1.85, GZ = 11;           // камера сзади пенальтийной отметки; плоскость ворот z = 11 м
+const FOCAL = () => W * (W / H < 1.5 ? 1.0 : 1.25), HY = () => H * 0.31;
+function P(x, y, z) { const k = FOCAL() / (z - CAMZ); return { x: W / 2 + x * k, y: HY() + (CAMY - y) * k, k }; }
+
+// ---------- состояние ----------
+const S = { phase: "idle", sh: null, seq: [], k: -1, t: 0, ts: 1, A: 0, B: 0, goals: { A: [], B: [] }, cur: null, ball: null, trail: [], net: [], sparks: [], flash: 0, shake: 0, zoom: 1, crowd: [], keeper: { x: 0, y: 0.92, rot: 0, lean: 0, dive: 0 }, said: {}, idx: -1, heart: 0, hold: 0, running: false };
+{ for (let i = 0; i < 380; i++) S.crowd.push({ x: Math.random(), row: Math.floor(Math.random() * 8), c: Math.floor(Math.random() * 8), ph: Math.random() * 6 }); }
+const CROWD_COL = ["#3b2f4a", "#4a2f3a", "#2f3f4a", "#463d2a", "#2c4a3c", "#4a3a2c", "#2f2f4a", "#503040"];
+function say(h) { $("say").innerHTML = h; }
+
+// ---------- сборка последовательности ударов ----------
+function buildSeq(sh) {
+  const seq = [];
+  sh.o.kicks.forEach((k) => seq.push({ team: k.team, n: k.n, res: k.res, sd: false }));
+  sh.o.sd.forEach((r, i) => {
+    const bad = () => pick(["save", "save", "miss", "post"]);
+    seq.push({ team: "A", n: i % 5, res: r.a ? "goal" : bad(), sd: true });
+    seq.push({ team: "B", n: i % 5, res: r.b ? "goal" : bad(), sd: true });
+  });
+  return seq;
+}
+
+// зона удара в системе ворот: u ∈ [−1,1] по ширине, v ∈ [0,1] по высоте
+function planKick(k) {
+  const side = pick([-1, 1]);
+  const zones = [[-0.78, 0.2], [-0.78, 0.8], [0, 0.82], [0.78, 0.2], [0.78, 0.8], [0, 0.2]];
+  const zn = pick(zones.filter((z) => !(z[0] === 0 && z[1] === 0.2)));
+  const hw = 3.66, hh = 2.44;
+  let tx, ty, post = null, wide = null;
+  if (k.res === "goal" || k.res === "save") {
+    tx = zn[0] * hw * 0.92 + rnd(-0.12, 0.12); ty = zn[1] * hh * 0.92 + rnd(-0.1, 0.1);
+    if (zn[0] === 0 && k.res === "goal") tx = side * rnd(0.2, 0.7);
+  } else if (k.res === "post") {
+    post = pick(["L", "R", "T"]);
+    if (post === "L") { tx = -hw; ty = rnd(0.7, 1.9); } else if (post === "R") { tx = hw; ty = rnd(0.7, 1.9); } else { tx = side * rnd(0.8, 2.6); ty = hh; }
+  } else { // мимо: вбок или выше перекладины
+    wide = pick(["L", "R", "U"]);
+    if (wide === "L") { tx = -hw - rnd(0.7, 1.8); ty = rnd(0.5, 1.8); } else if (wide === "R") { tx = hw + rnd(0.7, 1.8); ty = rnd(0.5, 1.8); } else { tx = side * rnd(0.5, 2.5); ty = hh + rnd(0.7, 1.4); }
+  }
+  // вратарь: гол — не достаёт, сейв — достаёт, штанга — почти, мимо — гадает
+  let kx, ky;
+  const dirTo = tx >= 0 ? 1 : -1;
+  if (k.res === "save") { kx = tx + rnd(-0.1, 0.1); ky = ty + rnd(-0.08, 0.08); }
+  else if (k.res === "goal") {
+    if (Math.abs(tx) < 0.8) { const s2 = pick([-1, 1]); kx = s2 * 2.3; ky = 0.9; }
+    else if (Math.random() < 0.55) { kx = -dirTo * rnd(1.8, 2.8); ky = rnd(0.6, 1.5); }
+    else { kx = dirTo * rnd(1.0, 1.7); ky = ty > 1.2 ? rnd(0.3, 0.7) : rnd(1.5, 2.0); } // нырнул туда же, но не достал
+  } else if (k.res === "post") { kx = dirTo * rnd(1.5, 2.4); ky = Math.min(1.9, ty); }
+  else { kx = pick([-1, 1]) * rnd(1.4, 2.5); ky = rnd(0.7, 1.7); }
+  return { tx, ty, kx, ky, post, wide };
+}
+
+// ---------- ход серии ----------
+const T_PREP = 1.15, T_RUN = 0.95, T_FLY = 0.62, T_AFTER = 1.55;
+function startShoot() {
+  S.idx = (S.idx + 1) % window.LAB_PEN.length;
+  S.sh = window.LAB_PEN[S.idx]; S.seq = buildSeq(S.sh); S.k = -1; S.A = 0; S.B = 0; S.goals = { A: [], B: [] };
+  S.phase = "between"; S.t = 0; S.said = {}; S.running = true; S.flash = 0; S.hold = 0.6;
+  buildBoard(S.sh); clearTiles(); renderSb(); $("go").disabled = true;
+  $("now").innerHTML = `<b>${TEAM.A.name}</b> бьют первыми. Бьющие: ${TEAM.A.men.map((m, i) => `${m} ${(S.sh.A[i] / 10).toFixed(0)}%`).join(", ")}.`;
+  say("Серия пенальти. <em>Ставки закрыты.</em>");
+}
+function nextKick() {
+  S.k++;
+  if (S.k >= S.seq.length) return finishShoot();
+  const k = S.seq[S.k];
+  S.cur = { ...k, ...planKick(k), t: 0, stage: "prep", struck: false, resolved: false };
+  S.phase = "kick"; S.ball = { x: 0, y: 0.11, z: 0, spin: 0 }; S.trail.length = 0; S.keeper = { x: 0, y: 0.92, rot: 0, lean: 0, dive: 0 }; S.net.length = 0;
+  const man = TEAM[k.team].men[k.n], pct = (S.sh[k.team][k.n] / 10).toFixed(0);
+  $("whoN").textContent = man; $("whoN").style.color = TEAM[k.team].col;
+  $("whoP").textContent = `${TEAM[k.team].name} · №${k.n + 1}${k.sd ? " · до первой ошибки" : ""} · шанс гола ${k.sd ? (S.sh.sd[k.team] / 10).toFixed(0) : pct}%`;
+  $("who").classList.add("on");
+  const total = S.sh.o.kicks.length;
+  say(k.sd ? `До первой ошибки: бьёт <em>${man}</em>` : `Бьёт <em>${man}</em>, ${TEAM[k.team].name}`);
+  renderSb();
+}
+function renderSb() {
+  const sdCount = S.sh ? S.sh.o.sd.length : 0;
+  const row = (t) => {
+    const dots = [];
+    for (let i = 0; i < 5; i++) dots.push(dotCls(t, i, false));
+    for (let i = 0; i < sdCount; i++) dots.push(dotCls(t, i, true));
+    return `<div class="tr ${t.toLowerCase()}"><div class="nm">${TEAM[t].name}</div><div class="dots">${dots.join("")}</div><div class="sc">${S[t]}</div></div>`;
+  };
+  $("sb").innerHTML = row("A") + row("B") + (S.sh && S.seq[S.k] && S.seq[S.k].sd ? `<div class="tag">до первой ошибки</div>` : "");
+}
+function dotCls(t, i, sd) {
+  const idxInSeq = S.seq.findIndex((k, j) => k.team === t && k.sd === sd && (sd ? Math.floor(S.seq.slice(0, j).filter((q) => q.team === t && q.sd).length) === i : k.n === i));
+  if (idxInSeq < 0) return `<i class="d${sd ? " sdm" : ""}"></i>`;
+  const done = idxInSeq < S.k || (idxInSeq === S.k && S.cur && S.cur.resolved);
+  const cur = idxInSeq === S.k && !done;
+  const res = S.seq[idxInSeq].res;
+  return `<i class="d${sd ? " sdm" : ""}${cur ? " cur" : ""}${done ? (res === "goal" ? " goal" : " no") : ""}"></i>`;
+}
+function finishShoot() {
+  S.phase = "done"; S.cur = null; $("who").classList.remove("on");
+  const win = new Set(S.sh.win);
+  Object.entries(tileEls).forEach(([id, el]) => { el.className = "tile " + (win.has(id) ? "win" : "lose"); });
+  const w = S.sh.o.winner, st = $("stamp");
+  st.textContent = "Победа: " + TEAM[w].name; st.className = "stamp sm" + (w === "B" ? " pm" : ""); void st.offsetWidth; st.classList.add("on");
+  const o = S.sh.o;
+  say(`Серия окончена: <em>${TEAM[w].name}</em> ${S.A}:${S.B}`);
+  $("now").innerHTML = `Счёт после 10 ударов <b>${o.goalsA}:${o.goalsB}</b>${o.sd.length ? `, потом ${o.sd.length} пар до первой ошибки` : ""}. Штанг: <b>${o.posts}</b>.`;
+  $("go").disabled = false; S.running = false;
+}
+
+// ---------- траектория мяча ----------
+function ballAt(c, s) { // s ∈ [0,1] до плоскости ворот
+  const e = s;
+  const arc = 0.28 + Math.max(0, c.ty) * 0.12;
+  return { x: c.tx * e, y: 0.11 + (c.ty - 0.11) * e + 4 * arc * e * (1 - e), z: GZ * e };
+}
+
+function onResult() {
+  const c = S.cur; c.resolved = true;
+  const t = c.team, col = TEAM[t].col;
+  const st = $("stamp");
+  if (c.res === "goal") {
+    S[t]++; S.goals[t].push(1); S.flash = 0.5; S.shake = 1.2;
+    st.textContent = "ГОЛ!"; st.className = "stamp" + (t === "B" ? " pm" : ""); say(`<em>ГОЛ!</em> ${TEAM[t].men[c.n]} забивает`);
+    S.net.push({ x: c.tx, y: c.ty, t: 0 });
+  } else if (c.res === "save") {
+    st.textContent = "СЕЙВ!"; st.className = "stamp am"; say(`<em>Сейв!</em> Вратарь вытаскивает мяч`); S.shake = 0.8;
+  } else if (c.res === "post") {
+    st.textContent = c.post === "T" ? "ПЕРЕКЛАДИНА!" : "ШТАНГА!"; st.className = "stamp am"; say(`<em>${c.post === "T" ? "Перекладина" : "Штанга"}!</em> Не повезло`); S.shake = 1.6; S.flash = 0.35;
+    sparks(c.tx, c.ty, GZ, 26);
+  } else { st.textContent = "МИМО"; st.className = "stamp pm"; say(`<em>Мимо!</em> Мяч улетает ${c.wide === "U" ? "над перекладиной" : "в сторону от ворот"}`); }
+  void st.offsetWidth; st.classList.add("on");
+  renderSb();
+  $("now").innerHTML = `Счёт <b>${S.A}:${S.B}</b> · ${TEAM[t].men[c.n]}: ${({ goal: "гол", save: "сейв", post: "штанга", miss: "мимо" })[c.res]}`;
+}
+function sparks(x, y, z, n) { for (let i = 0; i < n; i++) S.sparks.push({ x, y, z, vx: rnd(-3, 3), vy: rnd(0.5, 4), vz: rnd(-3, 1), life: rnd(0.5, 1.1), age: 0 }); }
+
+// ---------- рисование ----------
+function line(a, b) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+
+function drawStadium(now) {
+  // небо и трибуны за воротами
+  const g = ctx.createLinearGradient(0, 0, 0, HY() + 40);
+  g.addColorStop(0, "#04050b"); g.addColorStop(0.6, "#161028"); g.addColorStop(1, "#2c1634");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, HY() + 60);
+  // прожекторы
+  for (const fx of [0.08, 0.92, 0.3, 0.7]) {
+    const x = W * fx, y = H * 0.04, gl = ctx.createRadialGradient(x, y, 0, x, y, H * 0.5);
+    gl.addColorStop(0, "rgba(255,244,220,.6)"); gl.addColorStop(0.14, "rgba(255,238,200,.18)"); gl.addColorStop(1, "rgba(255,238,200,0)");
+    ctx.fillStyle = gl; ctx.fillRect(x - H * 0.55, 0, H * 1.1, H * 0.65);
+    ctx.fillStyle = "#fff6dd"; ctx.fillRect(x - 22 * SC, y - 5 * SC, 44 * SC, 11 * SC);
+  }
+  // трибуна: от верха ворот вверх
+  const top = P(0, 8.5, 21).y, bot = P(0, 1.0, 17).y;
+  ctx.fillStyle = "#130f22"; ctx.fillRect(0, top, W, bot - top + 6);
+  const excite = S.phase === "kick" && S.cur && S.cur.stage === "result" && S.cur.res === "goal" ? 3 : S.phase === "kick" ? 1 : 0.5;
+  for (const c of S.crowd) {
+    const y = top + (c.row + 0.6) / 8.4 * (bot - top), x = c.x * W;
+    const bob = Math.sin(now * (4 + c.row) + c.ph) * excite * (1.2 + c.row * 0.3);
+    ctx.fillStyle = CROWD_COL[c.c]; const s = (3 + c.row * 0.8) * SC * 1.2;
+    ctx.beginPath(); ctx.arc(x, y + bob, s, 0, 6.3); ctx.fill(); ctx.fillRect(x - s, y + bob, s * 2, s * 1.4);
+  }
+  // рекламные щиты у ворот: неон
+  const a = P(-16, 1.05, 13.8), b = P(16, 0, 13.8);
+  ctx.fillStyle = "#0a0c12"; ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+  const n = 9, w = (b.x - a.x) / n;
+  for (let i = 0; i < n; i++) {
+    ctx.fillStyle = i % 2 ? "#b6ff2e" : "#ff2e88"; ctx.globalAlpha = 0.85 + 0.15 * Math.sin(now * 3 + i);
+    ctx.font = `900 ${(b.y - a.y) * 0.62}px "Big Shoulders Display", Impact, sans-serif`; ctx.textAlign = "center";
+    ctx.fillText(i % 2 ? "ЛАЙМ" : "ТОТАЛ", a.x + w * (i + 0.5), a.y + (b.y - a.y) * 0.72); ctx.globalAlpha = 1;
+  }
+  ctx.textAlign = "left";
+}
+
+function drawPitch() {
+  const h = HY();
+  // газон полосами через каждые 3 м
+  for (let z = -8; z < 40; z += 3) {
+    const k = Math.floor((z + 8) / 3) % 2;
+    const a = P(-60, 0, Math.max(z, CAMZ + 0.35)), b = P(60, 0, Math.max(z + 3, CAMZ + 0.35)), c2 = P(60, 0, z), d = P(-60, 0, z);
+    ctx.fillStyle = k ? "#13321f" : "#183a25";
+    ctx.beginPath(); ctx.moveTo(P(-60, 0, Math.max(z, CAMZ + 0.4)).x, P(-60, 0, Math.max(z, CAMZ + 0.4)).y); ctx.lineTo(P(60, 0, Math.max(z, CAMZ + 0.4)).x, P(60, 0, Math.max(z, CAMZ + 0.4)).y);
+    ctx.lineTo(P(60, 0, z + 3).x, P(60, 0, z + 3).y); ctx.lineTo(P(-60, 0, z + 3).x, P(-60, 0, z + 3).y); ctx.closePath(); ctx.fill();
+  }
+  // разметка
+  ctx.strokeStyle = "rgba(255,255,255,.8)";
+  const seg = (x1, z1, x2, z2, wd = 0.12) => { const a = P(x1, 0, Math.max(z1, CAMZ + 0.4)), b = P(x2, 0, Math.max(z2, CAMZ + 0.4)); ctx.lineWidth = Math.max(1, wd * (a.k + b.k) / 2); line(a, b); };
+  seg(-40, GZ, 40, GZ);                    // линия ворот
+  seg(-9.16, GZ, -9.16, GZ - 5.5); seg(9.16, GZ, 9.16, GZ - 5.5); seg(-9.16, GZ - 5.5, 9.16, GZ - 5.5);  // вратарская
+  seg(-20.16, GZ, -20.16, GZ - 16.5); seg(20.16, GZ, 20.16, GZ - 16.5);                                  // штрафная
+  // пенальти-отметка
+  const sp = P(0, 0, 0); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.ellipse(sp.x, sp.y, 0.16 * sp.k, 0.06 * sp.k, 0, 0, 6.3); ctx.fill();
+}
+
+function drawNetAndGoal(now, front) {
+  const hw = 3.66, hh = 2.44, bz = 13.1, bhw = 3.2, bhh = 2.15;
+  if (!front) {
+    // задняя сетка и боковые стенки с волной от попадания
+    ctx.strokeStyle = "rgba(235,240,245,.34)"; ctx.lineWidth = Math.max(1, 1.2 * SC);
+    const disp = (x, y) => { let dz = 0; for (const n of S.net) { const r2 = (x - n.x * 0.9) ** 2 + (y - n.y) ** 2; dz += Math.exp(-r2 / 1.1) * Math.sin(n.t * 14) * Math.exp(-n.t * 2.2) * 0.9; } return dz; };
+    const vx = 14, vy = 11;
+    for (let i = 0; i <= vx; i++) {
+      ctx.beginPath();
+      for (let j = 0; j <= vy; j++) { const x = -bhw + 2 * bhw * i / vx, y = bhh * j / vy, p = P(x, y, bz + disp(x, y)); j ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }
+      ctx.stroke();
+    }
+    for (let j = 0; j <= vy; j++) {
+      ctx.beginPath();
+      for (let i = 0; i <= vx; i++) { const x = -bhw + 2 * bhw * i / vx, y = bhh * j / vy, p = P(x, y, bz + disp(x, y)); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }
+      ctx.stroke();
+    }
+    // крыша и боковины
+    for (let i = 0; i <= 8; i++) { const x = -hw + 2 * hw * i / 8; line(P(x, hh, GZ), P(x * bhw / hw, bhh, bz)); }
+    for (let j = 0; j <= 5; j++) { const y = hh * j / 5; line(P(-hw, y, GZ), P(-bhw, y * bhh / hh, bz)); line(P(hw, y, GZ), P(bhw, y * bhh / hh, bz)); }
+    return;
+  }
+  // каркас ворот: штанги и перекладина (светятся при попадании)
+  const hit = S.cur && S.cur.res === "post" && S.cur.stage !== "prep" && S.cur.stage !== "run" && S.cur.t > S.cur.tK + T_FLY - 0.05 ? Math.max(0, 1 - (S.cur.t - (S.cur.tK + T_FLY)) * 1.8) : 0;
+  const a = P(-hw, 0, GZ), b = P(-hw, hh, GZ), c = P(hw, hh, GZ), d = P(hw, 0, GZ);
+  ctx.lineCap = "round"; ctx.strokeStyle = hit ? `rgb(255,${Math.round(220 - hit * 100)},${Math.round(220 - hit * 140)})` : "#f4f7fa"; ctx.lineWidth = Math.max(3, 0.13 * a.k);
+  ctx.shadowColor = hit ? "#ff2e88" : "rgba(255,255,255,.4)"; ctx.shadowBlur = 8 + hit * 30;
+  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.stroke(); ctx.shadowBlur = 0; ctx.lineCap = "butt";
+}
+
+// вратарь: скелет в метрах, рисуется поверх сетки
+function drawKeeper(kp) {
+  const z = GZ + 0.2, sc = P(0, 0, z).k;
+  ctx.save();
+  const base = P(kp.x, 0, z);
+  ctx.translate(base.x, base.y - kp.y * sc);       // бедро на высоте kp.y
+  ctx.rotate(kp.rot); ctx.scale(sc, sc);
+  const jersey = "#ffd34d", glove = "#fff", pants = "#232a35", s = kp.dive; // s — степень «нырка»: руки вверх
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  const limb = (x1, y1, x2, y2, w, col) => { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(x1, -y1); ctx.lineTo(x2, -y2); ctx.stroke(); };
+  // ноги (разведены при падении)
+  limb(0, 0, -0.16 - 0.1 * s, -0.78, 0.2, pants); limb(0, 0, 0.16 + 0.1 * s, -0.8, 0.2, pants);
+  limb(-0.16 - 0.1 * s, -0.78, -0.2 - 0.12 * s, -0.95, 0.15, "#10151c"); limb(0.16 + 0.1 * s, -0.8, 0.2 + 0.12 * s, -0.97, 0.15, "#10151c");
+  // торс
+  limb(0, 0, 0, 0.62, 0.42, jersey); limb(0, 0.3, 0, 0.3, 0.0, jersey);
+  // голова
+  ctx.fillStyle = "#f2c6a0"; ctx.beginPath(); ctx.arc(0, -0.78, 0.17, 0, 6.3); ctx.fill();
+  ctx.fillStyle = "#1b1f27"; ctx.beginPath(); ctx.arc(0, -0.82, 0.17, Math.PI, 0); ctx.fill();
+  // руки: перед ударом растопырены, в нырке вытянуты вдоль направления прыжка
+  const lift = 0.2 + 0.75 * s;
+  limb(-0.18, 0.5, -0.38 - 0.3 * s, 0.5 + lift, 0.13, jersey); limb(0.18, 0.5, 0.38 + 0.3 * s, 0.5 + lift, 0.13, jersey);
+  ctx.fillStyle = glove; ctx.beginPath(); ctx.arc(-0.38 - 0.3 * s, -(0.5 + lift), 0.13, 0, 6.3); ctx.fill(); ctx.beginPath(); ctx.arc(0.38 + 0.3 * s, -(0.5 + lift), 0.13, 0, 6.3); ctx.fill();
+  ctx.restore();
+}
+
+// бьющий: спина, номер, разбег
+function drawKicker(c, now) {
+  const team = TEAM[c.team];
+  const run = Math.min(1, Math.max(0, (c.t - T_PREP) / T_RUN));
+  const e = run * run * (3 - 2 * run);
+  const z = -3.6 + 2.9 * e, x = -2.6 + 1.6 * e;
+  const sc = P(0, 0, z).k, base = P(x, 0, z);
+  const kickLeg = c.struck ? Math.max(0, 1 - (c.t - c.tK) * 3.2) : 0;
+  const gone = c.struck ? Math.min(1, (c.t - c.tK) / 0.35) : 0;
+  ctx.save(); ctx.globalAlpha = 1 - gone; ctx.translate(base.x - gone * 140, base.y); ctx.scale(sc, sc);
+  const step = Math.sin(run * 22) * (run > 0 && run < 1 ? 0.28 : 0);
+  ctx.lineCap = "round";
+  const limb = (x1, y1, x2, y2, w, col) => { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(x1, -y1); ctx.lineTo(x2, -y2); ctx.stroke(); };
+  // ноги: опорная и бьющая
+  limb(-0.12, 0.9, -0.12 + step * 0.4, 0.04, 0.2, "#e9edf2"); limb(0.12, 0.9, 0.14 - step * 0.4 + kickLeg * 0.3, 0.04 + kickLeg * 0.35, 0.2, "#e9edf2");
+  limb(-0.12 + step * 0.4, 0.04, -0.12 + step * 0.4, 0.0, 0.2, "#111");
+  // торс с номером на спине
+  limb(0, 0.9, 0, 1.55, 0.5, team.col);
+  ctx.fillStyle = team.dark; ctx.font = `900 ${0.36}px "Big Shoulders Display", Impact, sans-serif`; ctx.textAlign = "center"; ctx.fillText(c.n + 7, 0, -1.12); ctx.textAlign = "left";
+  // руки и голова
+  limb(-0.28, 1.5, -0.42, 1.0 + (1 - run) * 0.05, 0.14, team.col); limb(0.28, 1.5, 0.45, 1.05, 0.14, team.col);
+  ctx.fillStyle = "#231c1a"; ctx.beginPath(); ctx.arc(0, -1.78, 0.18, 0, 6.3); ctx.fill();
+  ctx.restore();
+}
+
+function drawBall(b, vis = true) {
+  const p = P(b.x, b.y, b.z), r = Math.max(2.5, 0.11 * p.k);
+  // тень
+  const sh = P(b.x, 0, b.z); ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.beginPath(); ctx.ellipse(sh.x, sh.y, r * 1.1, r * 0.4, 0, 0, 6.3); ctx.fill();
+  ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(b.spin);
+  const g = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.1, 0, 0, r); g.addColorStop(0, "#fff"); g.addColorStop(1, "#c7ccd3");
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.3); ctx.fill();
+  ctx.fillStyle = "#1c2128"; for (let i = 0; i < 5; i++) { const a = i * 1.2566 + 0.3; ctx.beginPath(); ctx.arc(Math.cos(a) * r * 0.58, Math.sin(a) * r * 0.58, r * 0.2, 0, 6.3); ctx.fill(); }
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.22, 0, 6.3); ctx.fill();
+  ctx.restore();
+}
+
+let last = 0;
+function frame(ts) {
+  requestAnimationFrame(frame);
+  if (!W) resize();
+  const now = ts / 1000, dtReal = Math.min(0.05, now - (last || now)); last = now;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const fast = $("fast").checked ? 1.8 : 1;
+  const c = S.cur;
+
+  // замедление: последние метры полёта и решающие моменты
+  let target = fast;
+  if (c && c.stage === "fly") { const s = (c.t - c.tK) / T_FLY; if (s > 0.62) target *= 0.38; }
+  if (c && c.stage === "after") target *= (c.t - c.tK - T_FLY < 0.5 ? 0.5 : 1);
+  S.ts += (target - S.ts) * Math.min(1, dtReal * 8);
+  const dt = dtReal * S.ts;
+
+  // автомат
+  if (S.running) {
+    if (S.phase === "between") { S.hold -= dtReal; if (S.hold <= 0) nextKick(); }
+    else if (S.phase === "kick" && c) {
+      c.t += dt;
+      if (c.stage === "prep" && c.t >= T_PREP) c.stage = "run";
+      if (c.stage === "run" && c.t >= T_PREP + T_RUN) { c.stage = "fly"; c.struck = true; c.tK = c.t; S.shake = 0.4; }
+      if (c.stage === "fly") {
+        const s = Math.min(1, (c.t - c.tK) / T_FLY), p = ballAt(c, s);
+        S.ball.x = p.x; S.ball.y = p.y; S.ball.z = p.z; S.ball.spin += dt * 24;
+        S.trail.unshift({ ...p }); if (S.trail.length > 9) S.trail.pop();
+        // вратарь прыгает чуть позже удара
+        const kd = Math.min(1, Math.max(0, (c.t - c.tK - 0.05) / 0.5)), ke = 1 - Math.pow(1 - kd, 2);
+        S.keeper.x = c.kx * ke; S.keeper.y = 0.92 + (c.ky - 0.92) * ke - 0.25 * Math.sin(ke * Math.PI) * 0;
+        S.keeper.rot = Math.max(-1.35, Math.min(1.35, (c.kx / 2.4) * 1.15)) * ke * 0.9; S.keeper.dive = ke;
+        if (s >= 1) { c.stage = "after"; onResult(); }
+      } else if (c.stage === "after") {
+        const u = c.t - c.tK - T_FLY, b = S.ball;
+        S.ball.spin += dt * 18;
+        if (c.res === "goal") { b.z = Math.min(12.8, b.z + dt * 9 * Math.max(0, 1 - u * 1.6)); b.y = Math.max(0.12, b.y - dt * (1.5 + u * 3)); b.x += dt * (c.tx > 0 ? 0.4 : -0.4); if (u > 0.4) b.z = Math.min(12.5, b.z - dt * 0.6); }
+        else if (c.res === "save") { if (!c.dfl) c.dfl = { vx: rnd(-3.5, 3.5), vy: rnd(2, 4.5), vz: rnd(-6, -3) }; b.x += c.dfl.vx * dt; b.y += c.dfl.vy * dt; c.dfl.vy -= 9.8 * dt; b.z += c.dfl.vz * dt; if (b.y < 0.11) { b.y = 0.11; c.dfl.vy *= -0.45; c.dfl.vx *= 0.7; c.dfl.vz *= 0.6; } }
+        else if (c.res === "post") { if (!c.dfl) c.dfl = { vx: (c.post === "L" ? 1 : c.post === "R" ? -1 : pick([-1, 1])) * rnd(2, 4), vy: c.post === "T" ? rnd(-2, 0) : rnd(1, 3), vz: rnd(-8, -5) }; b.x += c.dfl.vx * dt; b.y += c.dfl.vy * dt; c.dfl.vy -= 9.8 * dt; b.z += c.dfl.vz * dt; if (b.y < 0.11) { b.y = 0.11; c.dfl.vy *= -0.45; } }
+        else { b.z += dt * 14; b.x += (c.tx > 0 ? 1 : -1) * dt * 1.5; b.y += dt * (c.wide === "U" ? 3 : -1.5); if (b.y < 0.11) b.y = 0.11; }
+        S.trail.unshift({ x: b.x, y: b.y, z: b.z }); if (S.trail.length > 9) S.trail.pop();
+        if (u > T_AFTER) { c.stage = "done"; $("who").classList.remove("on"); S.phase = "between"; S.hold = 0.35; }
+      }
+    }
+  }
+  if (!S.running && !c) { S.ball = S.ball || { x: 0, y: 0.11, z: 0, spin: 0 }; }
+  S.shake = Math.max(0, S.shake - dtReal * 3);
+  for (const n of S.net) n.t += dtReal;
+
+  // кадр: наезд перед ударом, тряска на попадании
+  const prepZoom = c && (c.stage === "prep" || c.stage === "run") ? 1 + 0.07 * Math.min(1, c.t / (T_PREP + T_RUN)) : 1;
+  const flyZoom = c && (c.stage === "fly" || c.stage === "after") ? 1.1 : 1;
+  S.zoom += ((c ? Math.max(prepZoom, flyZoom) : 1) - S.zoom) * Math.min(1, dtReal * 3);
+  ctx.save();
+  ctx.translate(W / 2 + (Math.random() - 0.5) * S.shake * 7 * SC, H * 0.45 + (Math.random() - 0.5) * S.shake * 6 * SC);
+  ctx.scale(S.zoom, S.zoom); ctx.translate(-W / 2, -H * 0.45);
+
+  drawStadium(now);
+  drawPitch();
+  drawNetAndGoal(now, false);
+  const kp = S.keeper;
+  drawKeeper(kp);
+  // мяч: на отметке до удара, в полёте; за плоскостью ворот — перед каркасом нет, внутри сетки
+  const ball = S.ball || { x: 0, y: 0.11, z: 0, spin: 0 };
+  const inside = ball.z > GZ;
+  if (inside) drawBall(ball);
+  drawNetAndGoal(now, true);
+  // след мяча
+  if (S.trail.length > 1 && c && (c.stage === "fly" || c.stage === "after")) {
+    for (let i = 1; i < S.trail.length; i++) { const p = P(S.trail[i].x, S.trail[i].y, S.trail[i].z); ctx.globalAlpha = (1 - i / S.trail.length) * 0.35; ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(1.5, 0.08 * p.k * (1 - i / 12)), 0, 6.3); ctx.fill(); }
+    ctx.globalAlpha = 1;
+  }
+  if (!inside) drawBall(ball);
+  if (c && c.stage !== "done") drawKicker(c, now);
+  // искры от штанги
+  for (let i = S.sparks.length - 1; i >= 0; i--) {
+    const s = S.sparks[i]; s.age += dtReal; if (s.age > s.life) { S.sparks.splice(i, 1); continue; }
+    s.vy -= 8 * dtReal; s.x += s.vx * dtReal; s.y += s.vy * dtReal; s.z += s.vz * dtReal;
+    const p = P(s.x, s.y, s.z); ctx.globalAlpha = 1 - s.age / s.life; ctx.fillStyle = "#ffd34d"; ctx.beginPath(); ctx.arc(p.x, p.y, 2.2 * SC, 0, 6.3); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  // пульс перед ударом: красная виньетка «сердцебиение»
+  const tension = c && (c.stage === "prep" || c.stage === "run") ? 1 : 0;
+  S.heart += (tension - S.heart) * Math.min(1, dtReal * 4);
+  const beat = (0.5 + 0.5 * Math.sin(now * 7)) * S.heart;
+  const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.4, W / 2, H / 2, H * 0.95);
+  vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, `rgba(${Math.round(30 + beat * 120)},0,${Math.round(20 + beat * 30)},${0.5 + beat * 0.2})`);
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  if (S.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${Math.min(0.6, S.flash)})`; ctx.fillRect(0, 0, W, H); S.flash -= dtReal * 2.4; }
+}
+
+$("go").onclick = startShoot;
+window.labShoot = startShoot; window.labState = S;
+// стартовая картинка: ворота и мяч на отметке
+window.addEventListener("load", () => { window.LAB_PEN && buildBoard(window.LAB_PEN[0]); S.sh = window.LAB_PEN[0]; renderSb(); });
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
