@@ -20,10 +20,10 @@ const DEFAULTS = Object.assign({}, P.DEFAULTS, {
   TELEGRAPH: 2.5,       // от знака беды до погружения кувшинки
   GRACE: 0.15,          // погружение обрабатывается на столько позже метки: ждём прыжки, начатые «задним числом»
   LAG_MAX: 0.15,        // предел бэкдейтинга прыжка
-  WAVE_FIRST: 6,        // первая волна
+  WAVE_FIRST: 9,        // первая волна
   WAVE_T0: 8, WAVE_T1: 5.5, WAVE_RAMP: 60, // интервал волн 8 с → 5,5 с за минуту
   SLACK0: 0.4,          // запас кувшинок в начале: +40% к числу живых лягушек
-  LETHAL_T: 55,         // с этой секунды волны сводят ёмкость пруда ниже числа живых
+  LETHAL_T: 45, LETHAL_BASE: 14, LETHAL_PER: 4, // «стулья» начинаются с min(LETHAL_T, BASE + PER·n) с, а не по первому падению (первый вылет бывает на 5-й секунде)         // с этой секунды волны сводят ёмкость пруда ниже числа живых
   CUT_K: 0.15,          // сколько мест убирает волна в «стульях»: max(1, round(alive*CUT_K))
   MAX_T: 90,            // после этого волна каждые 1,5 с по одному месту
   MAX_WAVE_T: 1.5,
@@ -36,6 +36,7 @@ const DEFAULTS = Object.assign({}, P.DEFAULTS, {
   REACH_K: 0.9,         // волна не оставляет лягушку без достижимой свободной кувшинки: достижимо = до REACH_K * JUMP_MAX
   REACH_UNTIL: 10,      // за столько секунд до MAX_T проверка достижимости отключается (иначе «стулья» не закончить)
   STAY_T: 9,            // лист «устаёт»: кто сидит на нём дольше (с разбросом ±15%), тот его топит — на месте не отсидеться
+  TIRE_WAIT: 3,         // нет свободного достижимого листа — усталый лист ждёт не дольше (дальше выбор: вытеснить соседа или упасть)
   TIRE_WARN: 2.0,       // от красной метки усталого листа до погружения
   JUMP_RATE: 0.2,       // не чаще одного прыжка за столько секунд на игрока
   TIE_EPS: 1e-6,
@@ -72,6 +73,7 @@ function createGame(opts) {
     const s = slotFor(pad, f);
     f.x = s.x; f.y = s.y; f.seatedAt = t; f.readyAt = t + cfg.CROUCH;
     // разброс: ±15%; на старте (все сели одновременно) шире, чтобы не прыгали все разом
+    f.tireWait = null;
     f.tireAt = t + cfg.STAY_T * (t === 0 ? 0.9 + 0.7 * rng() : 0.85 + 0.3 * rng());
     if (pad.fly && pad.fly.until > t) {
       pad.fly = null; f.boost = true;
@@ -197,9 +199,12 @@ function createGame(opts) {
   function tire(f, t) {
     const pad = g.pads[f.pad];
     if (!pad || pad.state !== 'ok' || pad.sinkAt != null) { f.tireAt = Infinity; return; }
-    const chairs = !!g.loser || t >= Math.min(cfg.LETHAL_T, 15 + 5 * g.n0);
+    const chairs = t >= Math.min(cfg.LETHAL_T, cfg.LETHAL_BASE + cfg.LETHAL_PER * g.n0);
     // до «стульев» не топим лист, с которого некуда уйти: ждём, пока освободится место
-    if (!chairs && !hasFreeReach(f, pad)) { f.tireAt = t + 0.7; return; }
+    if (!chairs && !hasFreeReach(f, pad)) {
+      if (f.tireWait == null) f.tireWait = t;
+      if (t - f.tireWait < cfg.TIRE_WAIT) { f.tireAt = t + 0.7; return; }
+    }
     mark(pad, t + cfg.TIRE_WARN, 'wave');
     f.tireAt = Infinity;
     push({ type: 'wave', t, pads: [pad.id], shrink: [], sinkAt: pad.sinkAt, sinkAts: [pad.sinkAt], tired: f.id });
@@ -210,11 +215,11 @@ function createGame(opts) {
     const ok = okPads();
     let cap = capNow();
     let target;
-    const lethalT = Math.min(cfg.LETHAL_T, 15 + 5 * g.n0); // вдвоём не ждём минуту: «стулья» раньше
+    const lethalT = Math.min(cfg.LETHAL_T, cfg.LETHAL_BASE + cfg.LETHAL_PER * g.n0); // вдвоём не ждём минуту: «стулья» раньше
     if (t >= cfg.MAX_T) target = Math.max(1, n - 1);
-    else if (g.loser || t >= lethalT) target = Math.max(1, n - Math.max(1, Math.round(n * cfg.CUT_K)));
+    else if (t >= lethalT) target = Math.max(1, n - Math.max(1, Math.round(n * cfg.CUT_K)));
     else target = n + Math.round(n * cfg.SLACK0 * (1 - clamp(t / lethalT, 0, 1)));
-    const chairs = !!g.loser || t >= lethalT;
+    const chairs = t >= lethalT;
     let chosen = [];
     // ступени: строгая достижимость → вся дальность прыжка → без проверки (если волна подряд ничего не смогла убрать; иначе партия застрянет)
     const tiers = [undefined, 1.0, g.blocked >= 2 ? Infinity : null].filter((x) => x !== null);
@@ -223,7 +228,9 @@ function createGame(opts) {
       usedK = k;
       chosen = [];
       let capLeft = cap;
-      for (const p of shuffle(ok.slice())) {
+      // до «стульев» волны убирают только ПУСТЫЕ листья: случайная гибель сидящих — лотерея; давление создают усталость, вытеснения и цапля
+      const pool = chairs ? ok.slice() : ok.filter((p) => !occupants(p.id).length);
+      for (const p of shuffle(pool)) {
         // метки погружения чуть разнесены по времени: листья уходят каскадом, а не все на одном тике
         if (capLeft - p.cap >= target && reachOk(p, chosen, t, chairs, k)) { chosen.push(p); capLeft -= p.cap; mark(p, t + cfg.TELEGRAPH + (chosen.length - 1) * cfg.STAGGER, 'wave'); }
       }

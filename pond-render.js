@@ -511,9 +511,15 @@
               const u = clamp(1 - (f.tireAt - tn) / (m.cfg.STAY_T || 9), 0, 1);
               if (u > 0.12) {
                 const pulse = u > 0.82 ? 0.5 + 0.5 * Math.sin(t * 16) : 1;
-                cx.lineWidth = 3.5; cx.lineCap = 'round';
-                cx.strokeStyle = u < 0.6 ? 'rgba(255,230,120,0.6)' : u < 0.82 ? 'rgba(255,170,70,0.8)' : `rgba(255,80,70,${0.5 + 0.5 * pulse})`;
-                cx.beginPath(); cx.arc(pd.x, pd.y, (pd._dr || pd.r) + 5, -Math.PI / 2, -Math.PI / 2 + u * TAU); cx.stroke();
+                // тёмная подложка + яркая дуга снаружи листа: не путается с красной каймой погружения (она — вплотную к краю)
+                const rr = (pd._dr || pd.r) + 9;
+                cx.lineCap = 'round';
+                cx.strokeStyle = 'rgba(2,20,28,0.7)'; cx.lineWidth = 7;
+                cx.beginPath(); cx.arc(pd.x, pd.y, rr, 0, TAU); cx.stroke();
+                cx.lineWidth = 4.5;
+                cx.strokeStyle = u < 0.6 ? 'rgba(255,236,130,0.95)' : u < 0.82 ? 'rgba(255,160,50,1)' : `rgba(255,${70 + 90 * pulse | 0},50,1)`;
+                cx.beginPath(); cx.arc(pd.x, pd.y, rr, -Math.PI / 2, -Math.PI / 2 + u * TAU); cx.stroke();
+                if (u > 0.82) { cx.font = '800 24px Montserrat, sans-serif'; cx.textAlign = 'center'; cx.fillStyle = '#ffd24a'; cx.fillText('⏳', pd.x, pd.y - rr - 6); }
               }
             }
           }
@@ -549,8 +555,12 @@
       if (r.flash > 0.01) { cx.fillStyle = `rgba(${r.flashColor},${r.flash})`; cx.fillRect(0, 0, r.w, r.h); r.flash *= 0.9; }
       // подписи имён
       cx.font = '700 12px Montserrat, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'alphabetic';
+      const placed = [];
       for (const n of r.names) {
         const s = r.w2s(n.x + (r.shake ? 0 : 0), n.y - 26 * r.cam.s / r.cam.s);
+        // две лягушки на одном листе: подписи не налезают друг на друга — вторая поднимается выше
+        for (let k = 0; k < 4; k++) { const hit = placed.some((p) => Math.abs(p.x - s.x) < 78 && Math.abs(p.y - s.y) < 20); if (!hit) break; s.y -= 20; }
+        placed.push({ x: s.x, y: s.y });
         const label = (n.f.name || '') + (n.mine ? ' ⬅' : '') + (n.f.online === false ? ' 📡' : '');
         const wdt = cx.measureText(label).width + 12;
         cx.fillStyle = n.mine ? 'rgba(255,214,64,0.92)' : 'rgba(4,22,34,0.72)';

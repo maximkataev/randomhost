@@ -195,11 +195,13 @@ test('усталость листа: кто сидит дольше STAY_T, то
   assert(g.falls.length >= 1 && g.falls.every(x => x.cause === 'wave'), 'отсидевшиеся упали вместе с листом');
   assert(f.st === 'out' || g.phase === 'over', 'либо упал, либо партия уже решена');
 });
-test('усталый лист не топят, пока некуда уйти (до «стульев»)', () => {
-  const g = fight(2, { STAY_T: 2, LETHAL_T: 1e9, REACH_K: 0.01 }); // достижимых листов нет вообще
-  run(g, 8);
-  assert(g.drainEvents().every(e => !(e.type === 'wave' && e.tired)), 'лист не помечен');
+test('усталый лист ждёт, пока некуда уйти, но не вечно: через TIRE_WAIT тонет (вытеснить или упасть)', () => {
+  const g = fight(2, { STAY_T: 2, LETHAL_T: 1e9, REACH_K: 0.01, TIRE_WAIT: 3 }); // достижимых листов нет вообще
+  run(g, 4.5);
+  assert(g.drainEvents().every(e => !(e.type === 'wave' && e.tired)), 'в пределах ожидания лист не помечен');
   assert.strictEqual(F(g, 0).st, 'pad');
+  run(g, 5);
+  assert(g.falls.length >= 1 || g.drainEvents().some(e => e.type === 'wave' && e.tired), 'после ожидания помечен');
 });
 test('прыжок на новый лист сбрасывает усталость', () => {
   const g = fight(3, { STAY_T: 5, LETHAL_T: 1e9 });
