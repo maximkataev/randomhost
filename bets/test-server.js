@@ -17,7 +17,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "bets-test-"));
 
 // ---------- сервер ----------
 
-const BASE_ENV = { BETS_INTRO_MS: "0", BETS_TIME_SCALE: "3", OFFLINE_GRACE_MS: "300", GHOST_TTL_MS: "2000", CHAT_GAP_MS: "400", REACT_GAP_MS: "300" };
+const BASE_ENV = { BETS_PACE: "auto", BETS_INTRO_MS: "0", BETS_TIME_SCALE: "3", OFFLINE_GRACE_MS: "300", GHOST_TTL_MS: "2000", CHAT_GAP_MS: "400", REACT_GAP_MS: "300" };
 
 async function withServer(env, fn) {
   const port = nextPort++;
@@ -423,17 +423,18 @@ exports.createFeed = () => ({
   status() { return { mock: { ok: true, lastAt: 1, note: MODE } }; },
   prepare(type) { return IN[type] ? { input: IN[type], meta: { title: "mock " + type } } : null; },
   begin(type, o) {
+    o.onLive({ kind: "echo", input: o.input, meta: o.meta, deadline: o.deadline });   // сервер обязан передать input/meta события
     o.onLive({ kind: "price", t: 1, btc: 100 });
     o.onLive({ kind: "count", a: 1, b: 0 });
     o.onLive({ kind: "count", a: 2, b: 0 });
-    const t = setTimeout(() => { if (MODE === "resolve") o.onResolve(OUT[type]); else if (MODE === "abort") o.onAbort(); }, 100);
+    const t = setTimeout(() => { if (MODE === "resolve") o.onResolve(OUT[type]); else if (MODE === "abort") o.onAbort("mock lost"); else if (MODE === "garbage") o.onResolve(null); }, 100);
     return { cancel() { clearTimeout(t); } };
   },
 });
 `;
 const MOCK_PATH = path.join(TMP, "mock-feed.js");
 fs.writeFileSync(MOCK_PATH, MOCK_FEED);
-const liveEnv = (mode, extra = {}) => ({ BETS_INTRO_MS: "0", BETS_TIME_SCALE: "10", BETS_LIVE: "all", BETS_FEED_MODULE: MOCK_PATH, MOCK_FEED: mode, ...extra });
+const liveEnv = (mode, extra = {}) => ({ BETS_PACE: "auto", BETS_INTRO_MS: "0", BETS_TIME_SCALE: "10", BETS_LIVE: "all", BETS_FEED_MODULE: MOCK_PATH, MOCK_FEED: mode, ...extra });
 
 async function twoPlayersToLocked(srv, settings) {
   const { code, hostToken } = await srv.createRoom({ mode: "real", betMs: 30000, ...settings });
@@ -458,10 +459,30 @@ test("реальное событие: feed.begin при запирании, liv
     const pay = await a.wait(statePred((s) => s.phase === "payout"), 15000);
     assert.ok(a.lives.length >= 3 && p.lives.length >= 3 && b.lives.length >= 3, "live дошёл всем");
     assert.deepStrictEqual(a.lives.map((m) => m.seq), a.lives.map((_, i) => a.lives[0].seq + i), "seq идёт подряд");
-    assert.strictEqual(a.lives[0].data.kind, "price");
+    assert.ok(a.lives.some((m) => m.data.kind === "price"), "поток live содержит котировки");
     assert.strictEqual(pay.state.ev.live, true);
     assert.ok(pay.state.ev.outcome !== undefined && !pay.state.ev.voidAll);
     assert.ok(pay.state.players.every((x) => x.last.lines.every((l) => l.result !== "void")));
+  });
+});
+
+test("реальное событие: сервер передаёт feed.begin input/meta/deadline события; мусорный исход → возврат с voidReason", async () => {
+  await withServer(liveEnv("garbage"), async (srv) => {
+    const { a } = await twoPlayersToLocked(srv, {});
+    const pay = await a.wait(statePred((s) => s.phase === "payout"), 15000);
+    const echo = a.lives.find((m) => m.data.kind === "echo").data;
+    assert.ok(echo.input && echo.meta && /^mock /.test(echo.meta.title), "input/meta дошли до feed.begin");
+    assert.ok(echo.deadline > 0);
+    assert.strictEqual(pay.state.ev.voidAll, true);
+    assert.match(pay.state.ev.voidReason, /^bad_outcome/);
+  });
+});
+
+test("реальное событие: источник пропал — причина в ev.voidReason", async () => {
+  await withServer(liveEnv("abort"), async (srv) => {
+    const { a } = await twoPlayersToLocked(srv, {});
+    const pay = await a.wait(statePred((s) => s.phase === "payout"), 15000);
+    assert.match(pay.state.ev.voidReason, /^source_lost: mock lost/);
   });
 });
 
@@ -691,5 +712,31 @@ test("доска: host даёт один host_ok и состояние, а не 
     await sleep(600);
     assert.equal(b.msgs.filter((m) => m.type === "host_lost").length, 1);
     assert.equal(b2.msgs.filter((m) => m.type === "host_ok").length, 1);
+  });
+});
+
+test("темп «по кнопке»: знакомство ждёт «open» от ведущего, ставки без таймера, «lock» и «next» только от ведущего", async () => {
+  await withServer({ BETS_PACE: "host" }, async (srv) => {
+    const { code, hostToken } = await srv.createRoom({});
+    const b = await board(srv, code, hostToken);
+    const a = await player(srv, code, "Аня");
+    const p = await player(srv, code, "Петя");
+    b.send({ type: "start" });
+    const st = await a.wait(statePred((s) => s.phase === "bets" && s.intro));
+    assert.equal(st.state.gate, "open");
+    assert.equal(st.state.deadline, 0, "таймера нет");
+    a.send({ type: "open" });                       // игрок кнопку не нажмёт
+    await sleep(400);
+    assert.equal([...a.msgs].reverse().find((m) => m.type === "state").state.intro, true, "от игрока open игнорируется");
+    b.send({ type: "open" });
+    const bets = await a.wait(statePred((s) => s.phase === "bets" && !s.intro));
+    assert.equal(bets.state.gate, "lock");
+    assert.equal(bets.state.deadline, 0);
+    a.send({ type: "bet", marketId: bets.state.ev.markets[0].id, stake: 100 });
+    a.send({ type: "submit" });
+    await sleep(500);
+    assert.equal([...a.msgs].reverse().find((m) => m.type === "state").state.phase, "bets", "Петя не сдал — окно не закрывается само");
+    b.send({ type: "lock" });
+    await a.wait(statePred((s) => s.phase === "locked" || s.phase === "scene"));
   });
 });

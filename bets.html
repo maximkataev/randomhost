@@ -156,7 +156,7 @@ window.I18N_DICT = {
     "bets_rj_too_fast": "Слишком часто",
     "bets_rj_phase": "Окно ставок уже закрыто",
     "bets_ph_bets": "ставки",
-    "bets_intro_note": "Знакомься с событием: ставки откроются, когда таймер дойдёт до нуля",
+    "bets_intro_note": "Знакомься с событием: ставки откроет ведущий",
     "bets_intro_label": "до ставок"
   },
   en: {
@@ -280,7 +280,7 @@ window.I18N_DICT = {
     "bets_rj_too_fast": "Too often",
     "bets_rj_phase": "The betting window is already closed",
     "bets_ph_bets": "bets",
-    "bets_intro_note": "Get to know the event: betting opens when the timer hits zero",
+    "bets_intro_note": "Get to know the event: the host will open betting",
     "bets_intro_label": "until bets"
   },
   el: {
@@ -404,7 +404,7 @@ window.I18N_DICT = {
     "bets_rj_too_fast": "Πολύ συχνά",
     "bets_rj_phase": "Το παράθυρο στοιχημάτων έχει ήδη κλείσει",
     "bets_ph_bets": "στοιχήματα",
-    "bets_intro_note": "Δες το γεγονός: τα στοιχήματα ανοίγουν όταν το χρονόμετρο φτάσει στο μηδέν",
+    "bets_intro_note": "Δες το γεγονός: ο οικοδεσπότης θα ανοίξει τα στοιχήματα",
     "bets_intro_label": "έως τα στοιχήματα"
   }
 };
@@ -455,7 +455,7 @@ const S = {
   conn_lost: "Нет связи — переподключаюсь…", conn_quiet: "Связь тормозит…", conn_dropped: "Не успело уйти — нажми ещё раз", conn_queued: "Нет связи — отправлю, как вернётся",
   rj: "Не принято", rj_too_fast: "Слишком часто", rj_phase: "Окно ставок уже закрыто",
   ph_bets: "ставки",
-  intro_note: "Знакомься с событием: ставки откроются, когда таймер дойдёт до нуля",
+  intro_note: "Знакомься с событием: ставки откроет ведущий",
   intro_label: "до ставок",
 };
 const T = (k, v) => {
@@ -771,7 +771,7 @@ const kcOf = (id) => {
   if (ev.type === "rocket" && /^target:[0-9.]+$/.test(id)) return rkKc(+id.slice(7));
   return 0;
 };
-const labelOf = (id) => BS.marketLabel(state.ev.type, id, state.ev);
+const labelOf = (id) => BS.marketLabel(state.ev.type, id, state.ev, lang());
 const myMin = () => { const p = mine(); return p && p.min != null ? p.min : 10; };
 function penaltyOf(total) { const p = mine(); return p ? Math.min(Math.max(0, p.stack - total), Math.max(0, myMin() - total)) : 0; }
 function canEdit() { const p = mine(); return !!(state && p && p.alive && state.phase === "bets" && !state.intro && !p.submitted && !submittedLocal); }
@@ -1008,9 +1008,9 @@ function rkAdd() { addBet(rkId(rkX), curChip()); }
 // ---------- игра: отрисовка ----------
 let midKey = "", slipKey = "", tabsKey = "", prevStakes = {};
 function groups() {
-  const ev = state.ev, labels = (ev.meta && ev.meta.labels) || {};
-  // пороговые события: id группы — id источника (правка статьи, киты…), его человеческое имя лежит в meta.labels
-  return BS.groupsFor(ev.type, ev.markets).map((g) => (g.title === g.id && labels[g.id] ? Object.assign({}, g, { title: labels[g.id] }) : g));
+  const ev = state.ev;
+  // пороговые события: id группы — id источника (правка статьи, киты…); подпись переводится по id в bets-shared.js
+  return BS.groupsFor(ev.type, ev.markets, lang(), ev);
 }
 function groupOf(id) {
   for (const g of groups()) if (g.markets.some((m) => m.id === id)) return g.id;
@@ -1081,6 +1081,8 @@ function paintGame() {
 
 function paintTop(p, mode) {
   const ev = state.ev;
+  // ведущий выключил чат: панель чата и реакций на телефоне скрыта (сервер всё равно молча терял бы сообщения)
+  if (els.bar) els.bar.style.display = state.settings && state.settings.chat === false ? "none" : "";
   setFlap(els.stack, fmt(p.stack));
   els.evname.textContent = (ev ? BS.typeIcon(ev.type) + " " + BS.typeTitle(ev.type) : "");
   els.evsub.textContent = ev ? (state.total ? T("ev_n", { n: ev.n, t: state.total }) : T("ev_n0", { n: ev.n })) : "";
@@ -1099,6 +1101,13 @@ function paintClock() {
   if (!state || screen !== "game" || !els.clock) return;
   const ph = state.phase;
   if (ph === "bets") {
+    if (!state.deadline) { // темп «по кнопке»: таймера нет
+      els.clock.className = "clock txt" + (state.intro ? " intro" : "");
+      const t = state.intro ? "…" : "∞";
+      if (els.clock.textContent !== t) els.clock.textContent = t;
+      els.tbar.classList.remove("hot"); els.tbar.firstElementChild.style.transform = "scaleX(1)";
+      return;
+    }
     const rem = Math.max(0, state.deadline - srvNow());
     const sec = Math.ceil(rem / 1000), tot = state.intro ? (state.introMs || 6000) : (state.settings.betMs || 20000);
     els.clock.className = "clock" + (state.intro ? " intro" : sec <= 5 ? " hot" : "");
@@ -1119,6 +1128,8 @@ function buildBetsMid() {
   const ev = state.ev, mid = els.mid;
   mid.innerHTML = "";
   mid.append(rulesCard());
+  const fbt = BS.fallbackText(ev, lang());
+  if (fbt) mid.append(el("div", "fbnote", "⚠ " + fbt));   // событие заменено: причина из ev.fallbackWhy
   const gs = groups();
   const g = gs.find((x) => x.id === activeTab);
   if (!g) { mid.append(el("div", "empty", "—")); return; }
@@ -1133,7 +1144,7 @@ function buildBetsMid() {
     const text = labelOf(m.id);
     if (text.length > 22) b.classList.add("long");
     const pct = ev.type === "rocket" && /^target:/.test(m.id) ? `<em>${esc(T("chance", { p: fmtP(94 / +m.id.slice(7)) }))}</em>` : "";
-    b.innerHTML = `<span class="lb">${esc(text)}</span><span class="od"><span class="x">×</span><span class="flap"></span>${pct}</span><i class="stk" hidden></i>`;
+    b.innerHTML = `<span class="lb">${esc(text).replace(/σ/g, '<span class="sg">σ</span>')}</span><span class="od"><span class="x">×</span><span class="flap"></span>${pct}</span><i class="stk" hidden></i>`;
     grid.append(b);
     setFlap(b.querySelector(".flap"), BS.kcStr(m.kc), true);
     b.querySelectorAll(".flap span.flip").forEach((s, k) => (s.style.animationDelay = (i * 30 + k * 40) + "ms"));
@@ -1146,14 +1157,15 @@ function rulesCard() {
   const ev = state.ev, lang = (document.documentElement.lang || "ru").slice(0, 2);
   const box = el("div", "rules");
   if (!ev) return box;
-  const key = "bets-rules-" + ev.type;
+  const key = "bets-rules-" + ev.type, rk = ev.n + ":" + (state.intro ? "i" : "b");
   let seen = false; try { seen = sessionStorage.getItem(key) === "1"; } catch (e) {}
-  const open = rulesOpen[ev.type] !== undefined ? rulesOpen[ev.type] : !seen;
+  // во время знакомства карточка раскрыта; в окне ставок — свёрнута (рынки важнее), пока игрок сам не раскроет
+  const open = rulesOpen[rk] !== undefined ? rulesOpen[rk] : !!state.intro;
   const r = BS.rules(ev.type, ev, lang);
   box.classList.toggle("open", open);
   box.innerHTML = `<button type="button" class="rh"><span>${esc(RULES_T[lang] || RULES_T.ru)}</span><i>${open ? "−" : "?"}</i></button>${open ? `<p>${esc(r.text)}</p><small>${esc(r.general)}</small>` : ""}`;
   if (open && !seen) { try { sessionStorage.setItem(key, "1"); } catch (e) {} }
-  box.querySelector(".rh").onclick = () => { rulesOpen[ev.type] = !open; paintMarkets(); };
+  box.querySelector(".rh").onclick = () => { rulesOpen[rk] = !open; paintMarkets(); };
   return box;
 }
 const rulesOpen = {};
@@ -1267,7 +1279,7 @@ function buildPayoutMid(p) {
     hero = `<div class="res ${cls}"><div class="tag">${esc(tag)}</div><div class="net">${last.staked + last.penalty === 0 ? "0" : signed(profit)}</div>
       <div class="out">${esc(outcomeText(ev))}</div>
       ${ev.live ? `<div class="est" title="${esc(T("est_hint"))}">${esc(T("est"))}</div>` : ""}
-      ${ev.voidAll ? `<div class="voidmsg">${esc(T("void_all"))}</div>` : ""}</div>
+      ${ev.voidAll ? `<div class="voidmsg">${esc(T("void_all"))}${BS.voidText(ev, lang()) ? " (" + esc(BS.voidText(ev, lang())) + ")" : ""}</div>` : ""}</div>
       ${lines.length ? `<div class="rl">${lines.join("")}</div>` : ""}`;
     if (vibratedFor !== curEv) {
       vibratedFor = curEv;

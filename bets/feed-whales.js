@@ -90,6 +90,7 @@ function create(d) {
     start() { conn = managedWs(deps, endpoints, { name: "whales", silentMs: 20000 }); conn.start(); },
     stop() { if (conn) conn.stop(); conn = null; },
     status() { const ok = !!conn && conn.isLive(); return { ok, lastAt, note: ok ? `транзакций ${n}` : "blockchain.info молчит" }; },
+    why() { if (!conn || !conn.isLive()) return "down"; return !since || deps.now() - since < 600000 ? "warming" : "no_pair"; },
     prepare, begin, _onTx: onTx, _setConn(c) { conn = c; }, _since(t) { since = t; }, LEVELS,
   };
 }

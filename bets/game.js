@@ -23,14 +23,17 @@ const INTRO_FIRST_MS = 12000, INTRO_NEXT_MS = 6000;  // реальный исх�
 // минимальная ставка на событие в процентах от стартового стека (§6.3)
 const LEVELS = [3, 3, 4, 5, 6, 8, 10, 12, 16, 20, 25];
 
-const DEFAULTS = { stack: 1000, betMs: 20000, events: 12, mode: "mixed" };
-const ALLOWED = { stack: [500, 1000, 2000], betMs: [15000, 20000, 30000], events: [8, 12, 16, 0], mode: ["mixed", "real", "scenic"] };
+// pace: "host" — раунд идёт по кнопкам ведущего без таймеров (знакомство → «Открыть ставки», окно ставок закрывается, когда сдали все или ведущий жмёт «Закрыть ставки», после выплат «Дальше»); "auto" — по таймерам
+const DEFAULTS = { stack: 1000, betMs: 20000, events: 12, mode: "mixed", pace: "auto" };
+const ALLOWED = { stack: [500, 1000, 2000], betMs: [15000, 20000, 30000], events: [8, 12, 16, 0], mode: ["mixed", "real", "scenic"], pace: ["host", "auto"] };
 
 class Game {
   constructor(rnd, opts = {}) {
     this.rnd = rnd;
     // prepareLive(type) → входные данные реального события из feed.js или null (источник недоступен)
     this.prepareLive = opts.prepareLive || (() => null);
+    // whyLive(type) → "no_pair" | "warming" | "down": почему prepareLive вернул null (ключ для плашки на клиентах)
+    this.whyLive = opts.whyLive || (() => "down");
     // intro(first, type) → мс знакомства; 0 — без фазы (тесты движка)
     this.intro = opts.intro || ((first) => (first ? INTRO_FIRST_MS : INTRO_NEXT_MS));
     // какие реальные события включены (сервер отдаёт список из feed); по умолчанию все — для тестов движка
@@ -114,13 +117,15 @@ class Game {
     const s = this.s;
     s.idx++;
     let type = s.schedule[s.idx];
-    let input = null, fallback = null;
+    let input = null, fallback = null, fallbackWhy;
     this.cur = null;
     if (R.REAL.includes(type)) {
       const prep = this.prepareLive(type); // { input, meta } от feed.js или null
       input = prep ? prep.input : null;
       if (!input) { // источник молчит: заменяем сценическим событием, расписание не ломается (§2.3)
         fallback = type;
+        try { fallbackWhy = String(this.whyLive(type) || "down"); } catch (e) { fallbackWhy = "down"; }
+        if (!["no_pair", "warming", "down"].includes(fallbackWhy)) fallbackWhy = "down";
         const prev = s.schedule[s.idx - 1];
         const pool = R.SCENIC.filter((t) => t !== prev);
         type = pool[this.rnd(pool.length)];
@@ -134,13 +139,14 @@ class Game {
       input = this.cur.input;
     }
     s.schedule[s.idx] = type;
-    s.ev = { type, input, meta: this.cur.meta || R.describe(type, this.rnd), live: R.REAL.includes(type), fallback, outcome: null, hasOutcome: false, voidAll: false, voids: [], revealAt: 0, n: s.idx + 1 };
+    s.ev = { type, input, meta: this.cur.meta || R.describe(type, this.rnd), live: R.REAL.includes(type), fallback, fallbackWhy, outcome: null, hasOutcome: false, voidAll: false, voids: [], revealAt: 0, n: s.idx + 1 };
     s.seen = s.seen || [];
     const first = !s.seen.includes(type);
     if (first) s.seen.push(type);
     const introMs = Math.max(0, Number(this.intro(first, type)) || 0);
     s.introMs = introMs;
-    if (introMs > 0) { s.phase = "intro"; s.deadline = now + introMs; }
+    if (s.settings.pace === "host") { s.phase = "intro"; s.deadline = 0; s.introMs = 0; } // ждём кнопку ведущего
+    else if (introMs > 0) { s.phase = "intro"; s.deadline = now + introMs; }
     else { s.phase = "bets"; s.deadline = now + s.settings.betMs; }
     for (const p of Object.values(s.players)) { p.draft = {}; p.submitted = false; p.coupon = null; p.last = null; p.stackBefore = p.stack; }
     return [{ type: "event", idx: s.idx, kind: type, fallback, min: this.alive().map((p) => [p.id, this.minStake(p)]) }];
@@ -167,7 +173,8 @@ class Game {
   bet(pid, marketId, stake) {
     const s = this.s, p = s.players[pid];
     if (s.phase !== "bets" || !p || !p.alive || p.submitted) return [];
-    if (!Number.isInteger(stake) || stake < MIN_STAKE) return [];
+    // ставка меньше 10 допустима только как весь остаток (ва-банк при стеке 1–9), иначе игрок терял бы остаток штрафом без шанса
+    if (!Number.isInteger(stake) || stake < 1 || (stake < MIN_STAKE && stake !== p.stack - this.draftTotal(p))) return [];
     const m = this.getMarket(marketId);
     if (!m) return [];
     if (!(marketId in p.draft) && Object.keys(p.draft).length >= MAX_BETS) return [];
@@ -240,6 +247,13 @@ class Game {
   resolveLive(outcome, now, voids = []) {
     const s = this.s;
     if (!s.ev || !s.ev.live || s.ev.hasOutcome || (s.phase !== "locked" && s.phase !== "scene")) return [];
+    // мусорный исход (пустой объект, NaN, чужой id…) не должен выигрывать «ничью» или молча проигрывать всем: возврат ставок
+    const bad = this.checkOutcome(outcome);
+    if (bad) {
+      console.error(`[bets] ${s.ev.type}: некорректный исход (${bad}) — ставки возвращены`);
+      s.ev.voidReason = "bad_outcome: " + bad;
+      return this.voidAllAndSettle(now);
+    }
     s.ev.outcome = outcome;
     s.ev.hasOutcome = true;
     s.ev.voids = voids;
@@ -274,11 +288,37 @@ class Game {
       if (p.stack <= 0) { p.alive = false; p.outAt = s.idx; out.push({ type: "out", id: p.id }); }
     }
     s.phase = "payout";
-    s.deadline = now + PAYOUT_MS;
+    s.deadline = s.settings.pace === "host" ? 0 : now + PAYOUT_MS; // в темпе ведущего дальше — по кнопке «Дальше»
     return out;
   }
 
-  voidAllAndSettle(now) {
+  // Проверка формы исхода по виду математики события. Возвращает описание проблемы или null, если всё в порядке.
+  checkOutcome(o) {
+    const ev = this.s.ev, kind = R.LIVE_KIND[ev.type];
+    const fin = (x) => typeof x === "number" && Number.isFinite(x);
+    const obj = (x) => x !== null && typeof x === "object" && !Array.isArray(x);
+    switch (kind) {
+      case "btc": return fin(o) ? null : "ожидалось конечное число";
+      case "btceth": return obj(o) && fin(o.rB) && fin(o.rE) ? null : "ожидалось {rB, rE} конечные числа";
+      case "duel": return obj(o) && Number.isInteger(o.nA) && Number.isInteger(o.nB) && o.nA >= 0 && o.nB >= 0 ? null : "ожидалось {nA, nB} целые >= 0";
+      case "drand": return typeof o === "string" && /^[0-9a-f]{64}$/i.test(o) ? null : "ожидалась hex-строка из 64 символов";
+      case "categorical": {
+        // id категорий события = ключи input.counts + «other» (рынки называются cat:<id>; часть рынков clean() может срезать)
+        const ids = new Set(Object.keys((ev.input && ev.input.counts) || {}).concat("other"));
+        return typeof o === "string" && ids.has(o) ? null : "id не входит в рынки события";
+      }
+      case "thresholds": {
+        if (!obj(o)) return "ожидался объект";
+        const ids = (ev.input && Array.isArray(ev.input.kinds)) ? ev.input.kinds.map((k) => k.id) : Object.keys(o).filter((k) => k !== "first");
+        for (const id of ids) if (!fin(o[id]) || o[id] < 0) return `нет числового значения для ${id}`;
+        return null;
+      }
+    }
+    return null;
+  }
+
+  voidAllAndSettle(now, reason) {
+    if (reason && this.s.ev && !this.s.ev.voidReason) this.s.ev.voidReason = String(reason);
     this.s.ev.voidAll = true;
     this.s.ev.hasOutcome = true;
     return this.settle(now);
@@ -311,6 +351,7 @@ class Game {
     if (this.s.phase === "lobby" || this.s.phase === "done") return [];
     const s = this.s;
     const players = this.alive();
+    if (!players.length) return this.finish(now);
     const top = Math.max(...players.map((p) => p.stack));
     const pool = players.filter((p) => p.stack === top);
     s.winner = pool[this.rnd(pool.length)].id;
@@ -319,33 +360,52 @@ class Game {
     return [{ type: "done", winner: s.winner }];
   }
 
+  // ---------- кнопки ведущего (темп «по кнопке») ----------
+
+  // знакомство закончено — открыть окно ставок (в темпе ведущего без таймера: закрывается, когда сдали все или ведущий жмёт «Закрыть»)
+  openBets(now) {
+    const s = this.s;
+    if (s.phase !== "intro") return [];
+    s.phase = "bets";
+    s.deadline = s.settings.pace === "host" ? 0 : now + s.settings.betMs;
+    return [{ type: "bets_open" }];
+  }
+
+  // закрыть окно ставок сейчас: несданные купоны считаются пустыми (как по таймеру)
+  lockNow(now) {
+    return this.s.phase === "bets" ? this.lock(now) : [];
+  }
+
+  // после выплат: следующее событие или финал
+  afterPayout(now) {
+    const s = this.s;
+    if (s.phase !== "payout") return [];
+    const aliveN = this.alive().length, limit = s.settings.events;
+    if (aliveN <= 1 || (limit && s.idx + 1 >= limit) || s.idx + 1 >= s.schedule.length) return this.finish(now);
+    return this.nextEvent(now);
+  }
+
   // ---------- часы ----------
 
   tick(now) {
     const s = this.s;
     switch (s.phase) {
       case "intro":
-        if (now < s.deadline) return [];
-        s.phase = "bets";
-        s.deadline = now + s.settings.betMs;
-        return [{ type: "bets_open" }];
+        if (!s.deadline || now < s.deadline) return [];
+        return this.openBets(now);
       case "bets":
-        return now >= s.deadline ? this.lock(now) : [];
+        return s.deadline && now >= s.deadline ? this.lock(now) : [];
       case "locked":
         if (now < s.deadline) return [];
         s.phase = "scene";
         return [{ type: "scene" }, ...this.tick(now)];
       case "scene":
         if (s.ev.hasOutcome) return now >= s.ev.revealAt ? this.settle(now) : [];
-        if (s.ev.live && now >= s.ev.liveDeadline) return this.voidAllAndSettle(now); // реальный исход не пришёл: возврат
+        if (s.ev.live && now >= s.ev.liveDeadline) return this.voidAllAndSettle(now, "timeout"); // реальный исход не пришёл: возврат
         return [];
-      case "payout": {
-        if (now < s.deadline) return [];
-        const aliveN = this.alive().length;
-        const limit = s.settings.events;
-        if (aliveN <= 1 || (limit && s.idx + 1 >= limit) || s.idx + 1 >= s.schedule.length) return this.finish(now);
-        return this.nextEvent(now);
-      }
+      case "payout":
+        if (!s.deadline || now < s.deadline) return [];
+        return this.afterPayout(now);
       default:
         return [];
     }
@@ -380,10 +440,12 @@ class Game {
       };
     });
     return {
-      intro: intro || undefined, introMs: s.introMs || undefined, liveN: this.liveTypes().length, me: board ? undefined : forPlayer, phase: phase, settings: s.settings, now, deadline: s.deadline, idx: s.idx, total: s.settings.events || null,
+      intro: intro || undefined, introMs: s.introMs || undefined,
+      // какую кнопку ждёт ведущий в темпе «по кнопке»: open — открыть ставки, lock — закрыть ставки, next — дальше
+      gate: s.settings.pace === "host" ? (intro ? "open" : phase === "bets" ? "lock" : phase === "payout" ? "next" : undefined) : undefined, liveN: this.liveTypes().length, me: board ? undefined : forPlayer, phase: phase, settings: s.settings, now, deadline: s.deadline, idx: s.idx, total: s.settings.events || null,
       players, winner: s.winner, stats: s.stats,
       ev: ev && {
-        type: ev.type, live: ev.live, fallback: ev.fallback, n: ev.n, meta: ev.meta, input: ev.input,
+        type: ev.type, live: ev.live, fallback: ev.fallback, fallbackWhy: ev.fallback ? ev.fallbackWhy : undefined, n: ev.n, meta: ev.meta, input: ev.input,
         markets: this.cur ? this.cur.markets.map((m) => ({ id: m.id, group: m.group, kc: m.kc, p: board ? m.p : undefined })) : [],
         // исход видит доска, как только он выбран (строит сцену), телефон — в момент развязки
         outcome: ev.hasOutcome && (board || revealed) ? ev.outcome : undefined,
@@ -391,6 +453,7 @@ class Game {
         seed: ev.seed !== undefined && (board || revealed) ? ev.seed : undefined,
         sceneMs: ev.hasOutcome && !ev.live ? R.SCENE_MS[ev.type](ev.outcome) : undefined,
         voidAll: ev.voidAll || undefined,
+        voidReason: ev.voidAll ? ev.voidReason : undefined,
         // выигравшие рынки видны всем с развязки: доска подсвечивает их на табло
         winners: ev.hasOutcome && !ev.voidAll && (phase === "payout" || phase === "done") && this.cur
           ? this.cur.markets.filter((m) => ev.voids.indexOf(m.id) < 0 && m.test(ev.outcome)).map((m) => m.id) : undefined,

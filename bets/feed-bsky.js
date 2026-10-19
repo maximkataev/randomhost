@@ -27,6 +27,10 @@ const M = {
   laugh: /😂|🤣/, heart: /❤|♥|💖|💕/, fire: /🔥/, skull: /💀/, cry: /😭/, pleading: /🥺/, party: /🎉/, love: /😍|🥰/,
   cat: /🐱|🐈|😺|\bcats?\b/i, dog: /🐶|🐕|\bdogs?\b/i, haha: /\bha(?:ha)+\b/i, lol: /\blol\b/i, ahah: /а?хах/i, lolru: /лол/i,
   sun: /☀|🌞/, moon: /🌙|🌛/,
+  // расширение каталога 18.10 (чтобы чаще находилась пара, проходящая duelOk): те же правила, что у остальных — шаблон на пост
+  pray: /🙏/, sparkle: /✨/, eyes: /👀/, think: /🤔/, smile: /😊|☺/, sweat: /😅/, thumbs: /👍/, clap: /👏/,
+  gm: /\bgood morning\b|\bgm\b/i, gn: /\bgood night\b|\bgn\b/i, thanks: /\bthank(?:s| you)\b|\bthx\b/i, sorry: /\bsorry\b/i,
+  privet: /привет/i, poka: /\bпока\b/i,
 };
 const PAIRS = [
   { id: "laugh-heart", a: "laugh", b: "heart", la: "😂", lb: "❤️" },
@@ -37,6 +41,17 @@ const PAIRS = [
   { id: "haha-lol", a: "haha", b: "lol", la: "haha", lb: "lol" },
   { id: "ahah-lolru", a: "ahah", b: "lolru", la: "ахах", lb: "лол" },
   { id: "sun-moon", a: "sun", b: "moon", la: "☀️", lb: "🌙" },
+  { id: "laugh-cry", a: "laugh", b: "cry", la: "😂", lb: "😭" },
+  { id: "heart-fire", a: "heart", b: "fire", la: "❤️", lb: "🔥" },
+  { id: "skull-laugh", a: "skull", b: "laugh", la: "💀", lb: "😂" },
+  { id: "love-heart", a: "love", b: "heart", la: "😍", lb: "❤️" },
+  { id: "pray-sparkle", a: "pray", b: "sparkle", la: "🙏", lb: "✨" },
+  { id: "eyes-think", a: "eyes", b: "think", la: "👀", lb: "🤔" },
+  { id: "smile-sweat", a: "smile", b: "sweat", la: "😊", lb: "😅" },
+  { id: "thumbs-clap", a: "thumbs", b: "clap", la: "👍", lb: "👏" },
+  { id: "gm-gn", a: "gm", b: "gn", la: "gm", lb: "gn" },
+  { id: "thanks-sorry", a: "thanks", b: "sorry", la: "thanks", lb: "sorry" },
+  { id: "privet-poka", a: "privet", b: "poka", la: "привет", lb: "пока" },
 ];
 
 const baseLang = (l) => String(l || "").toLowerCase().split("-")[0];
@@ -104,12 +119,14 @@ function create(d) {
     const c = cands[deps.rnd(cands.length)];
     const input = { lamA: round(c.la, 4), lamB: round(c.lb, 4), T: T_SEC, phi: PHI_EMOJI };
     const meta = { labels: { A: c.p.la, B: c.p.lb }, skin: c.p.id };
-    lastPrepared.emoji = { pair: c.p, input };
+    lastPrepared.emoji = { pair: c.p, input };       // только запасной вариант: begin берёт пару из opts.meta.skin
     return { input, meta };
   }
 
   function beginEmoji(opts) {
-    const pair = PAIRS.find((p) => p.id === opts.skin) || (lastPrepared.emoji && lastPrepared.emoji.pair);
+    // пара — из meta события (переживает рестарт и две комнаты); lastPrepared — лишь запасной вариант
+    const skin = (opts.meta && opts.meta.skin) || opts.skin;
+    const pair = PAIRS.find((p) => p.id === skin) || (!skin && lastPrepared.emoji && lastPrepared.emoji.pair);
     if (!pair) { return abortNow(opts, "пара не подготовлена"); }
     const h = makeHandle(deps, opts, { timeoutMs: T_SEC * 1000 + 5000 });
     const closeAt = opts.closeAt, endAt = closeAt + T_SEC * 1000;
@@ -149,11 +166,13 @@ function create(d) {
     const labels = {};
     for (const k of [...kept, "other"]) labels[k] = LANG_LABEL[k];
     const input = { counts, minShare };
-    lastPrepared.lang = { kept: new Set(kept) };
+    lastPrepared.lang = { kept: new Set(kept) };     // запасной вариант: begin берёт набор из opts.meta.labels
     return { input, meta: { labels } };
   }
   function beginLang(opts) {
-    const kept = (lastPrepared.lang && lastPrepared.lang.kept) || new Set(LANGS);
+    // набор рынков = ключи подписей события без «other»; иначе исход мог бы не совпасть с рынками, которые видел игрок
+    const lab = opts.meta && opts.meta.labels && typeof opts.meta.labels === "object" ? Object.keys(opts.meta.labels).filter((k) => k !== "other") : null;
+    const kept = lab ? new Set(lab) : (lastPrepared.lang && lastPrepared.lang.kept) || new Set(LANGS);
     const h = makeHandle(deps, opts, { timeoutMs: 10500 });
     const closeAt = opts.closeAt;
     const stopAt = closeAt + 4000 + deps.rnd(5001);       // случайный момент «стоп» 4–9 с, неизвестен заранее
@@ -185,6 +204,13 @@ function create(d) {
     },
     stop() { if (conn) conn.stop(); conn = null; },
     status() { const ok = !!conn && conn.isLive(); return { ok, lastAt, note: ok ? `${conn.endpoint()}, постов ${posts}` : "Jetstream молчит" }; },
+    // почему prepare вернул null
+    why(type) {
+      if (!conn || !conn.isLive()) return "down";
+      if (type === "emoji") return warm(90000) ? "no_pair" : "warming";
+      if (!warm(60000)) return "warming";
+      return langCounts(deps.now()).total < LANG_MIN_TOTAL ? "warming" : "no_pair";
+    },
     prepare(type) { return type === "emoji" ? prepareEmoji() : type === "lang" ? prepareLang() : null; },
     begin(type, opts) { return type === "emoji" ? beginEmoji(opts) : beginLang(opts); },
     _onPost: onPost, _setConn(c) { conn = c; }, _since(t) { since = t; }, PAIRS,

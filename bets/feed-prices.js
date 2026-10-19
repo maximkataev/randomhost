@@ -8,7 +8,7 @@
  * Binance и Coinbase отдают оба актива из одного потока (отклонение от §4.5 записано в отчёте).
  *
  * Защита: S0 и S1 берутся из ОДНОГО источника по серверным меткам времени (момент прихода сообщения, а не
- * время биржи). Нет котировки моложе 3 с в момент S0 или S1 — abort, ставки возвращаются.
+ * время биржи). Нет котировки моложе 6 с в момент S0 или S1 — abort, ставки возвращаются.
  *
  * Оценка волатильности: приращения за 5 с (а не за 1 с: отскок bid/ask раздувает секундную дисперсию),
  * EWMA с полураспадом 180 с по последним 10 минутам, делим дисперсию на 5. Длинная оценка (полураспад 1 ч,
@@ -20,7 +20,7 @@ const T_SEC = 20;            // окно рынка, с
 const LAG = 5;               // лаг приращений для оценки, с
 const SHORT_SEC = 600, SHORT_HALF = 180;
 const LONG_SEC = 10800, LONG_HALF = 3600;
-const MAX_AGE = 3000;        // максимум возраста котировки в S0/S1, мс
+const MAX_AGE = 6000;        // максимум возраста котировки в S0/S1, мс (было 3000: на загруженной машине обработка сообщений запаздывала)
 const MIN_VALID = 300;       // из 600 секунд должно быть хотя бы столько с ценой
 const RHO_MIN = 0.3;         // §4.6: монеты «расклеились» — события нет
 const SPIKE = 3;             // §4.5: s(10 мин) / s(3 ч) > 3 — события нет
@@ -182,6 +182,14 @@ function create(d) {
     return { input: { sigB, sigE, rho: Math.min(0.99, Math.round(est.rho * 1000) / 1000) }, meta: { labels: { A: "BTC", B: "ETH" }, source: src, ref: { BTC: ref.BTC.price, ETH: ref.ETH.price } } };
   }
 
+  // почему prepare вернул null
+  function why(type) {
+    const r = estimate(type === "btceth");
+    if (r.why === "источник молчит") return "down";
+    if (r.why) return "warming";
+    return r.ref.BTC && (type !== "btceth" || r.ref.ETH) ? "no_pair" : "down";   // нет свежей котировки или всплеск/расклейка монет
+  }
+
   function begin(type, opts) {
     const two = type === "btceth";
     const h = makeHandle(deps, opts, { timeoutMs: T_SEC * 1000 + 8000 });
@@ -196,7 +204,7 @@ function create(d) {
       // источник фиксируем по живому на момент закрытия; S0 — оба актива из него
       src = conn ? conn.endpoint() : null;
       s0 = src && snap(closeAt);
-      if (!s0) return h.abort("нет котировки за 3 с до закрытия");
+      if (!s0) return h.abort("нет котировки за 6 с до закрытия");
       h.live({ kind: "s0", btc: s0.BTC.price, eth: two ? s0.ETH.price : undefined });
       h.every(1000, () => {
         const c = snap(deps.now());
@@ -206,7 +214,7 @@ function create(d) {
     }
     function finish() {
       const s1 = snap(endAt);
-      if (!s1) return h.abort("нет котировки за 3 с до конца окна");
+      if (!s1) return h.abort("нет котировки за 6 с до конца окна");
       if (s1.BTC.src !== src || (two && s1.ETH.src !== src)) return h.abort("источник сменился");
       if (!two) {
         const dlt = Math.round((s1.BTC.price - s0.BTC.price) * 100) / 100;
@@ -237,7 +245,7 @@ function create(d) {
       const ok = !!conn && conn.isLive();
       return { ok, lastAt: conn ? conn.lastMsgAt() : 0, note: ok ? conn.endpoint() : state.note };
     },
-    prepare, begin, latest, estimate,
+    prepare, why, begin, latest, estimate,
     // для тестов: подать котировку напрямую
     _record: record, _store: store, _setConn(c) { conn = c; },
   };

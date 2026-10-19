@@ -184,7 +184,7 @@ test("реальное событие: фолбэк на сценическое,
 
 test("реальное событие: исход приходит позже, ничья по порогу возвращается, таймаут — возврат ставок", () => {
   const prep = () => ({ input: { sigma: 40 }, meta: {} });
-  const g = new Game(mulberry(4), { prepareLive: prep, intro: () => 0 });
+  const g = new Game(mulberry(4), { prepareLive: prep, intro: () => 0, liveTypes: () => ["btc"] });
   g.setSettings({ mode: "real" });
   g.addPlayer("a", "А"); g.addPlayer("b", "Б");
   g.start(0);
@@ -204,7 +204,7 @@ test("реальное событие: исход приходит позже, �
   assert.equal(a.last.lines.find((l) => l.id === "up:1").result, "lose");
   assert.equal(a.stack, 1000 - 100 + 0); // 100 вернулось, 100 проиграно
   // таймаут без исхода: всем возврат
-  const g2 = new Game(mulberry(4), { prepareLive: prep, intro: () => 0 });
+  const g2 = new Game(mulberry(4), { prepareLive: prep, intro: () => 0, liveTypes: () => ["btc"] });
   g2.setSettings({ mode: "real" });
   g2.addPlayer("a", "А"); g2.addPlayer("b", "Б");
   g2.start(0);
@@ -316,5 +316,114 @@ test("знакомство перед ставками: клиенты видя�
   g.bet("b", g.cur.markets[0].id, 50); g.submit("a", 13100); g.submit("b", 13100);
   let now = 13100;
   for (let i = 0; i < 30 && g.s.phase !== "intro"; i++) { now = Math.max(now, g.nextDeadline()); g.tick(now); }
+  assert.equal(g.s.phase, "intro");
+});
+
+// ---------- форма исхода живого события и причина замены ----------
+function liveRoom(type, input, whyLive) {
+  const g = new Game(mulberry(7), { prepareLive: (t) => (t === type ? { input, meta: {} } : null), whyLive, liveTypes: () => [type], intro: () => 0 });
+  g.setSettings({ mode: "real" });
+  g.addPlayer("a", "А"); g.addPlayer("b", "Б");
+  g.start(0);
+  assert.equal(g.s.ev.type, type);
+  const mid = g.cur.markets[0].id;
+  g.bet("a", mid, 100); g.submit("a", 5); g.bet("b", mid, 100); g.submit("b", 5);
+  const now = advance(g, 5, "scene");
+  assert.equal(g.s.phase, "scene");
+  return { g, now };
+}
+const LIVE_INPUTS = {
+  btc: { sigma: 40 },
+  btceth: { sigB: 0.0006, sigE: 0.0009, rho: 0.7 },
+  emoji: { lamA: 0.5, lamB: 0.5, T: 20, phi: 1.4 },
+  wikiedit: { kinds: [{ id: "cat", lam: 0.03 }, { id: "war", lam: 0.04 }], opts: { T: 20, phi: 1.2, ks: [1, 2] } },
+  lang: { counts: { en: 500, ja: 300, other: 200 }, minShare: 0.03 },
+};
+const BAD_OUTCOMES = {
+  btc: [NaN, undefined, "5", Infinity, null],
+  btceth: [{}, { rB: NaN, rE: 0.1 }, { rB: 0.1 }, 5],
+  emoji: [{}, { nA: 1.5, nB: 2 }, { nA: -1, nB: 2 }, { nA: "3", nB: 2 }, null],
+  wikiedit: [{}, { cat: 1 }, { cat: NaN, war: 0 }, "x"],
+  lang: ["zzz", undefined, {}, 5],
+};
+const GOOD_OUTCOMES = {
+  btc: 12.5, btceth: { rB: 0.001, rE: -0.002 }, emoji: { nA: 5, nB: 5 }, wikiedit: { cat: 0, war: 2, first: "war" },
+  lang: "ja",
+};
+
+for (const type of Object.keys(LIVE_INPUTS)) {
+  test(`resolveLive(${type}): мусорный исход → возврат ставок с voidReason; нормальный принимается`, () => {
+    for (const bad of BAD_OUTCOMES[type]) {
+      const { g, now } = liveRoom(type, LIVE_INPUTS[type]);
+      const out = g.resolveLive(bad, now + 100);
+      assert.equal(g.s.phase, "payout", `${type}: ${JSON.stringify(bad)}`);
+      assert.equal(g.s.ev.voidAll, true);
+      assert.match(g.s.ev.voidReason, /^bad_outcome/);
+      assert.ok(out.some((e) => e.type === "settle"));
+      assert.equal(g.s.players.a.stack, 1000, "ставка вернулась");
+      assert.equal(g.snapshot(now, undefined).ev.voidReason, g.s.ev.voidReason);
+    }
+    const { g, now } = liveRoom(type, LIVE_INPUTS[type]);
+    assert.deepEqual(g.resolveLive(GOOD_OUTCOMES[type], now + 100), [{ type: "resolved" }]);
+    assert.equal(g.s.ev.voidAll, false);
+    assert.equal(g.s.ev.voidReason, undefined);
+  });
+}
+
+test("fallbackWhy: причина замены живого события попадает в ev и снимок; неизвестный ключ → down", () => {
+  for (const why of ["no_pair", "warming", "down"]) {
+    const g = new Game(mulberry(3), { prepareLive: () => null, whyLive: () => why, intro: () => 0 });
+    g.setSettings({ mode: "real" });
+    g.addPlayer("a", "А"); g.addPlayer("b", "Б");
+    g.start(0);
+    assert.equal(g.s.ev.fallbackWhy, why);
+    assert.equal(g.snapshot(0, undefined).ev.fallbackWhy, why);
+  }
+  const g = new Game(mulberry(3), { prepareLive: () => null, whyLive: () => "что-то", intro: () => 0 });
+  g.setSettings({ mode: "real" }); g.addPlayer("a", "А"); g.addPlayer("b", "Б"); g.start(0);
+  assert.equal(g.s.ev.fallbackWhy, "down");
+  // обычное сценическое событие и живое без замены ключа не имеют
+  const g2 = room(2); g2.start(0);
+  assert.equal(g2.snapshot(0, undefined).ev.fallbackWhy, undefined);
+});
+
+test("стек меньше 10: ва-банк на весь остаток принимается, а не штраф; endNow без живых не падает", () => {
+  const g = room(2);
+  g.start(0);
+  g.s.players.p1.stack = 7;
+  const m = g.cur.markets[0].id;
+  assert.deepEqual(g.bet("p1", m, 5), [], "5 из 7 — меньше 10 и не весь остаток");
+  assert.equal(g.bet("p1", m, 7).length, 1, "весь остаток 7 принимается");
+  g.s.players.p1.alive = false; g.s.players.p2.alive = false;
+  assert.doesNotThrow(() => g.endNow(10));
+});
+
+test("темп «по кнопке ведущего»: без таймеров; открыть ставки, закрыть ставки и «дальше» — только по кнопкам", () => {
+  const g = room(2, {}, { pace: "host" });
+  g.start(0);
+  assert.equal(g.s.phase, "intro");
+  assert.equal(g.s.deadline, 0);
+  assert.equal(g.snapshot(0, "p1").gate, "open");
+  assert.deepEqual(g.tick(10 ** 9), [], "таймер знакомство не заканчивает");
+  assert.deepEqual(g.bet("p1", g.cur.markets[0].id, 50), [], "до кнопки ставки закрыты");
+  assert.equal(g.openBets(5).length, 1);
+  assert.equal(g.s.phase, "bets");
+  assert.equal(g.s.deadline, 0, "окно ставок без таймера");
+  assert.equal(g.snapshot(5, "p1").gate, "lock");
+  g.bet("p1", g.cur.markets[0].id, 50);
+  g.submit("p1", 6);
+  assert.deepEqual(g.tick(10 ** 9), [], "несдавший не закрывается по времени");
+  assert.equal(g.s.phase, "bets");
+  g.lockNow(7);                      // ведущий закрывает окно: у не сдавшего штраф
+  assert.equal(g.s.phase, "locked");
+  assert.ok(g.s.players.p2.coupon.penalty > 0);
+  // сцена идёт по своему таймеру, выплаты ждут кнопки
+  let now = 7;
+  for (let i = 0; i < 10 && g.s.phase !== "payout"; i++) { now = Math.max(now, g.nextDeadline()); g.tick(now); }
+  assert.equal(g.s.phase, "payout");
+  assert.equal(g.s.deadline, 0);
+  assert.equal(g.snapshot(now, "p1").gate, "next");
+  assert.deepEqual(g.tick(now + 10 ** 9), [], "выплаты не заканчиваются по времени");
+  assert.equal(g.afterPayout(now + 1).some((e) => e.type === "event"), true, "«дальше» запускает следующее событие");
   assert.equal(g.s.phase, "intro");
 });

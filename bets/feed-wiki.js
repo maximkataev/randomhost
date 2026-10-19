@@ -24,6 +24,8 @@ const EDIT_HISTORY = 30 * 60 * 1000;
 const WIKIS = {
   enwiki: "en", dewiki: "de", frwiki: "fr", ruwiki: "ru", eswiki: "es", itwiki: "it", jawiki: "ja", ptwiki: "pt", zhwiki: "zh",
   plwiki: "pl", ukwiki: "uk", arwiki: "ar", nlwiki: "nl", svwiki: "sv",
+  // расширение 18.10: больше средних вики, чтобы чаще находилась пара, проходящая duelOk (φ у языковых вики без ботов ≈ 1,05–1,3)
+  cawiki: "ca", kowiki: "ko", trwiki: "tr", idwiki: "id", fawiki: "fa", cswiki: "cs", hewiki: "he", viwiki: "vi", fiwiki: "fi", huwiki: "hu",
   // Wikidata и Commons убраны из дуэли: их потоки всплесковые (φ 14–19 по записи 18.10), пары без них φ≈1,05
 };
 
@@ -136,9 +138,11 @@ function create(d) {
     return { input: { lamA: round(A.l, 4), lamB: round(B.l, 4), T: T_SEC, phi: PHI_DUEL }, meta: { labels: { A: WIKIS[A.w], B: WIKIS[B.w] }, wikis: { A: A.w, B: B.w } } };
   }
   function beginDuel(opts) {
+    // вики — из meta события (переживает рестарт и две комнаты); lastPrepared — лишь запасной вариант
+    const mw = (opts.meta && opts.meta.wikis) || opts.wikis;
     const lp = lastPrepared.wikiduel;
-    const wa = (opts.wikis && opts.wikis.A) || (lp && lp.a), wb = (opts.wikis && opts.wikis.B) || (lp && lp.b);
-    if (!wa) return abortNow(opts, "пара не подготовлена");
+    const wa = mw ? mw.A : lp && lp.a, wb = mw ? mw.B : lp && lp.b;
+    if (!wa || !wb || !(wa in WIKIS) || !(wb in WIKIS)) return abortNow(opts, "пара не подготовлена");
     const h = makeHandle(deps, opts, { timeoutMs: T_SEC * 1000 + 5000 });
     const closeAt = opts.closeAt, endAt = closeAt + T_SEC * 1000;
     let nA = 0, nB = 0, lastItem = 0;
@@ -175,7 +179,8 @@ function create(d) {
     return { input: { kinds, opts: { T: T_SEC, phi: PHI_EDIT, ks: [1, 2] } }, meta: { labels } };
   }
   function beginEdit(opts) {
-    const ids = opts.kinds || (lastPrepared.wikiedit && lastPrepared.wikiedit.ids);
+    const fromInput = opts.input && Array.isArray(opts.input.kinds) ? opts.input.kinds.map((k) => k.id) : null;
+    const ids = fromInput || opts.kinds || (lastPrepared.wikiedit && lastPrepared.wikiedit.ids);
     if (!ids) return abortNow(opts, "темы не подготовлены");
     const h = makeHandle(deps, opts, { timeoutMs: T_SEC * 1000 + 5000 });
     const closeAt = opts.closeAt, endAt = closeAt + T_SEC * 1000;
@@ -220,7 +225,9 @@ function create(d) {
     return { input: { counts, minShare }, meta: { labels } };
   }
   function beginNext(opts) {
-    const kept = (lastPrepared.wikinext && lastPrepared.wikinext.kept) || new Set(NEXT_IDS);
+    // набор рынков = ключи подписей события без «other»
+    const lab = opts.meta && opts.meta.labels && typeof opts.meta.labels === "object" ? Object.keys(opts.meta.labels).filter((k) => k !== "other") : null;
+    const kept = lab ? new Set(lab) : (lastPrepared.wikinext && lastPrepared.wikinext.kept) || new Set(NEXT_IDS);
     const h = makeHandle(deps, opts, { timeoutMs: 10500 });
     const closeAt = opts.closeAt;
     const stopAt = closeAt + 4000 + deps.rnd(5001);
@@ -257,6 +264,11 @@ function create(d) {
     },
     stop() { if (sse) sse.stop(); sse = null; },
     status() { const ok = !!sse && sse.isLive(); return { ok, lastAt, note: ok ? `правок ${n}` : "recentchange молчит" }; },
+    why(type) {
+      if (!sse || !sse.isLive()) return "down";
+      if (!warm(type === "wikiedit" ? 300000 : type === "wikinext" ? 60000 : 90000)) return "warming";
+      return type === "wikinext" && nextCounts(deps.now()).total < NEXT_MIN_TOTAL ? "warming" : "no_pair";
+    },
     prepare(type) { return type === "wikiduel" ? prepareDuel() : type === "wikiedit" ? prepareEdit() : type === "wikinext" ? prepareNext() : null; },
     begin(type, opts) { return type === "wikiduel" ? beginDuel(opts) : type === "wikiedit" ? beginEdit(opts) : beginNext(opts); },
     _onChange: onChange, _setSse(s) { sse = s; }, _since(t) { since = t; }, TOPICS,

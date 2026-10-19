@@ -99,7 +99,7 @@ test("флаги BETS_LIVE: none по умолчанию, список, all; в�
   assert.equal(parseFlags(undefined).size, 0);
   assert.equal(parseFlags("none").size, 0);
   assert.deepEqual([...parseFlags("btc, drand,foo")].sort(), ["btc", "drand"]);
-  assert.equal(parseFlags("all").size, R.REAL.length);
+  assert.equal(parseFlags("all").size, R.REAL.length + 1); // в feed остался drand, из расписания игры он убран (угадывание цифры)
   const clock = new Clock();
   const f = createFeed(mkDeps(clock, { env: {} }));
   f.start();
@@ -110,7 +110,7 @@ test("флаги BETS_LIVE: none по умолчанию, список, all; в�
   assert.ok(s.aborted, "выключенное событие сразу abort");
   const st = f.status();
   assert.equal(st.btc.enabled, false);
-  assert.deepEqual(Object.keys(st).sort(), [...R.REAL].sort());
+  assert.deepEqual(Object.keys(st).sort(), [...R.REAL, "drand"].sort()); // feed знает и drand, хотя в игре его нет
   f.stop();
   const g = createFeed(mkDeps(clock, { env: { BETS_LIVE: "drand" } }));
   assert.equal(g.prepare("btc"), null, "btc не включён");
@@ -308,7 +308,7 @@ test("btc.begin: точная ничья (цена не сдвинулась) �
   assert.equal(s.resolved, 0);
   assert.deepEqual(s.voids, ["up:0", "down:0"]);
   // Game: ставки на up:0 возвращаются, остальные проигрывают
-  const g = new Game(mulberry(4), { intro: () => 0, prepareLive: () => ({ input: { sigma: 40 }, meta: {} }) });
+  const g = new Game(mulberry(4), { intro: () => 0, liveTypes: () => ["btc"], prepareLive: () => ({ input: { sigma: 40 }, meta: {} }) });
   g.setSettings({ mode: "real" });
   g.addPlayer("a", "А"); g.addPlayer("b", "Б");
   g.start(0);
@@ -1278,4 +1278,172 @@ test("coinbase как запасной источник: после двух с�
   assert.equal(mod.status().note, "coinbase");
   assert.ok(mod._store.coinbase.ticks.BTC.length >= 1);
   mod.stop();
+});
+
+// ================= изоляция подготовленного события по комнатам и рестарт (begin берёт input/meta, а не lastPrepared) =================
+test("wikiduel: две комнаты подряд prepare разных пар (или сторон) → begin каждой считает СВОЮ (по meta, не по последнему prepare)", async () => {
+  const clock = new Clock(BASE);
+  const mod = wiki.create(mkDeps(clock, { rnd: mulberry(5) }));
+  warmWiki(clock, mod);
+  const seen = new Map();
+  for (let i = 0; i < 80 && seen.size < 2; i++) {
+    const p = mod.prepare("wikiduel");
+    seen.set(p.meta.wikis.A + "-" + p.meta.wikis.B, p);   // порядок важен: A/B случайно меняются местами
+  }
+  assert.equal(seen.size >= 2, true, "нужны две разные подготовки");
+  const [pa, pb] = [...seen.values()];                    // последним подготовлена pb, но комната A запирает окно позже
+  const closeAt = clock.now() + 1000;
+  const sa = sink(), sb = sink();
+  mod.begin("wikiduel", { closeAt, input: pa.input, meta: pa.meta, ...sa.opts });
+  mod.begin("wikiduel", { closeAt, input: pb.input, meta: pb.meta, ...sb.opts });
+  const W = [pa.meta.wikis.A, pa.meta.wikis.B];
+  for (let i = 0; i < 4; i++) feedAt(clock, closeAt + 500 + i * 1000, () => mod._onChange(wch(W[0], "a" + i), clock.now()));
+  for (let i = 0; i < 2; i++) feedAt(clock, closeAt + 700 + i * 1000, () => mod._onChange(wch(W[1], "b" + i), clock.now()));
+  await clock.advance(1000 + 20_100);
+  const want = (p) => ({ nA: p.meta.wikis.A === W[0] ? 4 : p.meta.wikis.A === W[1] ? 2 : 0, nB: p.meta.wikis.B === W[0] ? 4 : p.meta.wikis.B === W[1] ? 2 : 0 });
+  assert.deepEqual(sa.resolved, want(pa));
+  assert.deepEqual(sb.resolved, want(pb));
+  assert.notDeepEqual(want(pa), want(pb), "пары различимы: без изоляции одна из комнат считала бы чужое");
+});
+
+test("рестарт: begin без prepare, но с input/meta — emoji, wikiduel, wikiedit, lang, wikinext считают по событию", async () => {
+  // emoji: свежий модуль, prepare не звали
+  let clock = new Clock(BASE);
+  let b = bsky.create(mkDeps(clock));
+  warmBsky(clock, b);
+  let m = bsky.create(mkDeps(clock));
+  m._setConn(conn(clock));
+  let closeAt = clock.now() + 1000, s = sink();
+  m.begin("emoji", { closeAt, input: { lamA: 0.5, lamB: 0.5, T: 20, phi: 1.4 }, meta: { labels: { A: "🔥", B: "💀" }, skin: "fire-skull" }, ...s.opts });
+  for (let i = 0; i < 3; i++) feedAt(clock, closeAt + 1000 + i * 1000, () => m._onPost({ text: "🔥", langs: ["en"] }, clock.now()));
+  feedAt(clock, closeAt + 5000, () => m._onPost({ text: "💀", langs: ["en"] }, clock.now()));
+  feedAt(clock, closeAt + 6000, () => m._onPost({ text: "😂", langs: ["en"] }, clock.now()));
+  await clock.advance(1000 + 20_100);
+  assert.deepEqual(s.resolved, { nA: 3, nB: 1 });
+  // без meta и без prepare — по-прежнему abort «пара не подготовлена»
+  const s0 = sink();
+  m.begin("emoji", { closeAt: clock.now() + 100, ...s0.opts });
+  await clock.advance(50);
+  assert.equal(s0.done, "abort");
+
+  // lang: набор рынков из meta.labels, а не «все языки»
+  clock = new Clock(BASE);
+  m = bsky.create(mkDeps(clock, { rnd: () => 0 }));
+  m._setConn(conn(clock));
+  closeAt = clock.now() + 500; s = sink();
+  m.begin("lang", { closeAt, input: { counts: { en: 5, ja: 5, other: 1 }, minShare: 0.03 }, meta: { labels: { en: "English", ja: "日本語", other: "Другой" } }, ...s.opts });
+  for (let i = 0; i < 30; i++) feedAt(clock, closeAt + 100 + i * 400, () => m._onPost({ text: "x", langs: ["de"] }, clock.now()));
+  await clock.advance(500 + 12_000);
+  assert.equal(s.resolved, "other", "de не входит в рынки события → other");
+  const s2 = sink();
+  m.begin("lang", { closeAt: clock.now() + 500, input: {}, meta: { labels: { en: "English", de: "Deutsch", other: "Другой" } }, ...s2.opts });
+  const c2 = clock.now() + 500;
+  for (let i = 0; i < 30; i++) feedAt(clock, c2 + 100 + i * 400, () => m._onPost({ text: "x", langs: ["de"] }, clock.now()));
+  await clock.advance(500 + 12_000);
+  assert.equal(s2.resolved, "de");
+
+  // wikiduel / wikiedit / wikinext
+  clock = new Clock(BASE);
+  let w = wiki.create(mkDeps(clock, { rnd: () => 0 }));
+  w._setSse({ isLive: () => true, stop() {} });
+  closeAt = clock.now() + 500; s = sink();
+  w.begin("wikiduel", { closeAt, input: { lamA: 0.5, lamB: 0.5, T: 20, phi: 1.4 }, meta: { labels: { A: "pl", B: "ru" }, wikis: { A: "plwiki", B: "ruwiki" } }, ...s.opts });
+  feedAt(clock, closeAt + 1000, () => w._onChange(wch("plwiki", "x"), clock.now()));
+  feedAt(clock, closeAt + 2000, () => w._onChange(wch("ruwiki", "y"), clock.now()));
+  feedAt(clock, closeAt + 3000, () => w._onChange(wch("ruwiki", "z"), clock.now()));
+  feedAt(clock, closeAt + 4000, () => w._onChange(wch("dewiki", "q"), clock.now()));
+  await clock.advance(500 + 20_100);
+  assert.deepEqual(s.resolved, { nA: 1, nB: 2 });
+
+  closeAt = clock.now() + 500; s = sink();
+  w.begin("wikiedit", { closeAt, input: { kinds: [{ id: "cat", lam: 0.03 }, { id: "war", lam: 0.04 }], opts: {} }, meta: {}, ...s.opts });
+  feedAt(clock, closeAt + 1000, () => w._onChange(wch("enwiki", "Cat toys"), clock.now()));
+  feedAt(clock, closeAt + 2000, () => w._onChange(wch("enwiki", "Bitcoin"), clock.now()));   // тема не из события
+  await clock.advance(500 + 20_100);
+  assert.deepEqual(s.resolved, { cat: 1, war: 0, first: "cat" });
+
+  closeAt = clock.now() + 500; s = sink();
+  w.begin("wikinext", { closeAt, input: {}, meta: { labels: { en: "en", ru: "ru", other: "Другие" } }, ...s.opts });
+  for (let i = 0; i < 30; i++) feedAt(clock, closeAt + 100 + i * 400, () => w._onChange(wch("dewiki", "d" + i), clock.now()));
+  await clock.advance(500 + 12_000);
+  assert.equal(s.resolved, "other", "de не входит в рынки события");
+});
+
+test("airport: фокус опроса — по парам, а не одна глобальная; рестарт: begin по meta.skin без prepare", async () => {
+  const rig = airportRig();
+  rig.f.start();
+  await rig.clock.advance(12 * 60 * 1000);
+  const mod = rig.mod();
+  const keys = new Set();
+  for (let i = 0; i < 80 && keys.size < 2; i++) { const p = mod.prepare(); keys.add(p.meta.skin); }
+  assert.ok(keys.size >= 2, "две разные пары подготовлены (две комнаты)");
+  assert.ok([...keys].every((k) => mod._focus.has(k)), "фокус держит обе пары");
+  const [k1] = [...keys];
+  const [A, B] = k1.split("-");
+  const closeAt = rig.clock.now() + 1000;
+  const s1 = sink(), s2 = sink();
+  const h1 = mod.begin("airport", { closeAt, meta: { skin: k1 }, ...s1.opts });
+  const h2 = mod.begin("airport", { closeAt, meta: { skin: k1 }, ...s2.opts });   // вторая комната на той же паре
+  h1.cancel();
+  assert.ok(mod._focus.get(k1).until > rig.clock.now() + 5000, "пару держит вторая комната: фокус не сворачивается");
+  await rig.clock.advance(1000 + 90_000 + 3000);
+  assert.equal(s2.done, "resolve", String(s2.aborted));
+  assert.ok(Number.isInteger(s2.resolved.nA) && Number.isInteger(s2.resolved.nB));
+  // свежий модуль без prepare: пара берётся из meta.skin; без skin — abort
+  const s3 = sink();
+  const fresh = require("./feed-airport").create(mkDeps(rig.clock, {}));
+  fresh.begin("airport", { closeAt: rig.clock.now() + 100, meta: { skin: "XXX-YYY" }, ...s3.opts });
+  await rig.clock.advance(50);
+  assert.equal(s3.done, "abort");
+  assert.ok(A && B && h2);
+  rig.f.stop();
+});
+
+test("createFeed.begin передаёт input/meta адаптеру; feed.why различает «прогрев», «нет пары» и «источник молчит»", async () => {
+  const clock = new Clock(BASE);
+  const got = [];
+  const fake = { start() {}, stop() {}, status: () => ({ ok: true, lastAt: 0, note: "" }), prepare: () => null, begin: (t, o) => { got.push(o); return { cancel() {} }; } };
+  const f = createFeed(mkDeps(clock, { env: { BETS_LIVE: "emoji" }, modules: { "./feed-bsky": fake } }));
+  f.begin("emoji", { closeAt: 5, deadline: 9, input: { a: 1 }, meta: { skin: "x" }, onAbort() {} });
+  assert.deepEqual([got[0].input, got[0].meta, got[0].deadline], [{ a: 1 }, { skin: "x" }, 9]);
+  assert.equal(f.why("emoji"), "no_pair", "адаптер исправен, но пары нет");
+  fake.status = () => ({ ok: false, lastAt: 0, note: "" });
+  assert.equal(f.why("emoji"), "down");
+  fake.why = () => "warming";
+  assert.equal(f.why("emoji"), "warming");
+  assert.equal(f.why("btc"), "down", "выключенный тип");
+  // реальные адаптеры
+  const m = bsky.create(mkDeps(clock));
+  assert.equal(m.why("emoji"), "down");
+  m._setConn(conn(clock)); m._since(clock.t);
+  assert.equal(m.why("emoji"), "warming");
+  warmBsky(clock, m);
+  assert.equal(m.why("emoji"), "no_pair");
+  const w = wiki.create(mkDeps(clock));
+  assert.equal(w.why("wikiduel"), "down");
+  w._setSse({ isLive: () => true, stop() {} }); w._since(clock.t);
+  assert.equal(w.why("wikiduel"), "warming");
+});
+
+test("btc.begin: котировки запаздывают на 5 с (загруженная машина) — событие не прерывается", async () => {
+  const clock = new Clock();
+  const mod = prices.create(mkDeps(clock));
+  mod._setConn({ endpoint: () => "binance", isLive: () => true, lastMsgAt: () => clock.now() });
+  const closeAt = clock.now() + 1000;
+  mod._record("binance", "BTC", 100000, clock.now() - 4000);      // к closeAt самой свежей котировке 5 с
+  mod._record("binance", "ETH", 3000, clock.now() - 4000);
+  ticker(mod, clock, () => [100010, 3001], { from: closeAt + 5000, until: closeAt + 15000 });   // к S1 тишина 5 с
+  const s = sink();
+  mod.begin("btc", { closeAt, ...s.opts });
+  await clock.advance(1000 + 20000 + 400);
+  assert.equal(s.done, "resolve", String(s.aborted));
+  assert.equal(s.resolved, 10);
+});
+
+test("каталог: эмодзи-пары и вики расширены, id пар уникальны, все шаблоны существуют", () => {
+  const ids = bsky.PAIRS.map((p) => p.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.ok(bsky.PAIRS.length >= 15);
+  for (const p of bsky.PAIRS) assert.ok(bsky.M[p.a] instanceof RegExp && bsky.M[p.b] instanceof RegExp, p.id);
+  assert.ok(Object.keys(wiki.WIKIS).length >= 20);
 });

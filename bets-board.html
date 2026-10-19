@@ -39,7 +39,7 @@ window.I18N_DICT = {
     host_link: "Ссылка ведущего", copied: "Ссылка ведущего скопирована", viewer: "Экран-зритель: игрой управляет ведущий", imhost: "Я ведущий", paste: "Вставь ссылку ведущего",
     creating: "Создаём комнату…", noroom: "Такой комнаты нет", expired: "Комната закрыта", conn: "Нет связи, переподключаемся…",
     void_all: "Событие не состоялось: ставки возвращены",
-    say_intro: "Знакомимся с событием. Ставки откроются через несколько секунд", alert_open: "СТАВКИ ОТКРЫТЫ!", ph_intro: "Знакомство",
+    say_intro: "Знакомимся с событием. Ставки откроет ведущий, когда все прочитают правила", alert_open: "СТАВКИ ОТКРЫТЫ!", ph_intro: "Знакомство", gate_open: "Открыть ставки", gate_lock: "Закрыть ставки", gate_next: "Дальше", gate_wait: "Ждём ведущего", o_pace: "Темп", pace_host: "по кнопке ведущего", pace_auto: "по таймеру", sub_n: "сдали {a} из {b}",
     say_bets: "Делайте ставки!", say_locked: "Купоны открыты", say_scene: "Ждём исход…", say_payout: "Проверяем купоны", say_wait: "Ждём реальные данные…",
     idle_sub: "сцена загружается", wait_title: "Ждём игроков"
   },
@@ -64,7 +64,7 @@ window.I18N_DICT = {
     host_link: "Host link", copied: "Host link copied", viewer: "Viewer screen: the host runs the game", imhost: "I'm the host", paste: "Paste the host link",
     creating: "Creating a room…", noroom: "No such room", expired: "Room closed", conn: "No connection, reconnecting…",
     void_all: "Event void: bets returned",
-    say_intro: "Meet the event. Betting opens in a few seconds", alert_open: "BETS ARE OPEN!", ph_intro: "Intro",
+    say_intro: "Meet the event. The host opens betting once everyone has read the rules", alert_open: "BETS ARE OPEN!", ph_intro: "Intro", gate_open: "Open betting", gate_lock: "Close betting", gate_next: "Next", gate_wait: "Waiting for the host", o_pace: "Pace", pace_host: "host button", pace_auto: "timer", sub_n: "{a} of {b} submitted",
     say_bets: "Place your bets!", say_locked: "Coupons revealed", say_scene: "Waiting for the result…", say_payout: "Checking coupons", say_wait: "Waiting for real-world data…",
     idle_sub: "loading the scene", wait_title: "Waiting for players"
   },
@@ -89,7 +89,7 @@ window.I18N_DICT = {
     host_link: "Σύνδεσμος οικοδεσπότη", copied: "Ο σύνδεσμος οικοδεσπότη αντιγράφηκε", viewer: "Οθόνη θεατή: το παιχνίδι το διαχειρίζεται ο οικοδεσπότης", imhost: "Είμαι ο οικοδεσπότης", paste: "Επικόλλησε τον σύνδεσμο οικοδεσπότη",
     creating: "Δημιουργία δωματίου…", noroom: "Δεν υπάρχει τέτοιο δωμάτιο", expired: "Το δωμάτιο έκλεισε", conn: "Δεν υπάρχει σύνδεση, επανασύνδεση…",
     void_all: "Το γεγονός δεν έγινε: τα στοιχήματα επιστράφηκαν",
-    say_intro: "Γνωρίστε το γεγονός. Τα στοιχήματα ανοίγουν σε λίγα δευτερόλεπτα", alert_open: "ΑΝΟΙΧΤΑ ΣΤΟΙΧΗΜΑΤΑ!", ph_intro: "Γνωριμία",
+    say_intro: "Γνωρίστε το γεγονός. Ο οικοδεσπότης ανοίγει τα στοιχήματα όταν όλοι διαβάσουν τους κανόνες", alert_open: "ΑΝΟΙΧΤΑ ΣΤΟΙΧΗΜΑΤΑ!", ph_intro: "Γνωριμία", gate_open: "Άνοιγμα στοιχημάτων", gate_lock: "Κλείσιμο στοιχημάτων", gate_next: "Επόμενο", gate_wait: "Περιμένουμε τον οικοδεσπότη", o_pace: "Ρυθμός", pace_host: "κουμπί οικοδεσπότη", pace_auto: "χρονόμετρο", sub_n: "{a} από {b} υπέβαλαν",
     say_bets: "Βάλτε τα στοιχήματά σας!", say_locked: "Τα δελτία αποκαλύφθηκαν", say_scene: "Περιμένουμε το αποτέλεσμα…", say_payout: "Έλεγχος δελτίων", say_wait: "Περιμένουμε πραγματικά δεδομένα…",
     idle_sub: "φορτώνει η σκηνή", wait_title: "Περιμένουμε παίκτες"
   }
@@ -115,7 +115,7 @@ window.I18N_DICT = {
         <div id="stamp"></div>
         <div id="rules"></div>
       </div></div>
-      <div id="sbar"><div id="say">&nbsp;</div><div id="ctrl"><button class="sound-toggle-btn" type="button"></button></div></div>
+      <div id="sbar"><div id="say">&nbsp;</div><div id="gate"></div><div id="ctrl"><button class="sound-toggle-btn" type="button"></button></div></div>
     </section>
     <aside id="chat"><div class="cap" data-i18n="chat_cap">Чат</div><div id="feed"></div></aside>
   </main>
@@ -162,7 +162,7 @@ const PAYOUT_MS = 7000;
 
 let fails = 0, ws = null, wsTimer = null, wsDelay = 500, pingTimer = null, dead = false, stopped = false;
 let snap = null, recvPerf = 0, prev = null;
-let isHost = false, hostLost = false, hostSent = false, chatHidden = false;
+let isHost = false, hostLost = false, hostSent = false, chatHidden = false, helloState = null; // helloState — снимок из hello, ждёт host_ok (до него это вид без исхода)
 let sc = null;            // сцена BetsScenes
 const serverNow = () => (snap ? snap.now + (performance.now() - recvPerf) : Date.now());
 const remaining = () => (snap ? snap.deadline - serverNow() : 0);
@@ -211,20 +211,20 @@ function onMessage(m) {
     case "hello": {
       // host шлём один раз на соединение (hostSent сбрасывается в connect); доска, потерявшая роль (host_lost), не забирает её автоматически
       let token = null; try { token = localStorage.getItem(hostKey()); } catch (e) {}
-      if (token && !hostSent && !hostLost) { hostSent = true; send({ type: "host", token }); }
+      if (token && !hostSent && !hostLost) { hostSent = true; send({ type: "host", token }); helloState = m.state || null; setTimeout(() => { if (!snap && helloState) onState(helloState); }, 2500); break; }
       if (m.state) onState(m.state);
       break;
     }
     case "state": onState(m.state); break;
-    case "host_ok": { const was = isHost; isHost = true; hostLost = false; document.body.classList.add("host"); if (!was) lobbyKey = ""; drawCtrl(); drawLobby(); break; }
-    case "host_lost": isHost = false; hostLost = true; document.body.classList.remove("host"); drawCtrl(); drawLobby(); break;
+    case "host_ok": { const was = isHost; isHost = true; hostLost = false; document.body.classList.add("host"); if (!was) lobbyKey = ""; drawCtrl(); drawGate(); if (snap) drawLobby(); break; }
+    case "host_lost": isHost = false; hostLost = true; document.body.classList.remove("host"); drawCtrl(); drawGate(); if (snap) drawLobby(); break;
     case "event": onGameEvent(m.event || {}); break;
     case "live": if (sc && sc.live) { try { sc.live(m.data); } catch (e) { console.error(e); } } break;
     case "chat": onChat(m); break;
     case "react": floatAt(m.playerId, m.emoji, "react"); break;
     case "error":
       if (m.error === "room_expired") gone("expired");
-      if (m.error === "bad host token") { try { localStorage.removeItem(hostKey()); } catch (e) {} hostLost = false; drawCtrl(); }
+      if (m.error === "bad host token") { try { localStorage.removeItem(hostKey()); } catch (e) {} hostLost = false; drawCtrl(); if (helloState && !snap) onState(helloState); }
       break;
   }
 }
@@ -264,6 +264,7 @@ function render(phaseChanged, evChanged, first) {
   drawLobby();
   drawFinal();
   drawCtrl();
+  drawGate();
   syncChat();
   if (phaseChanged) onPhase(first, evChanged);
   syncScene(phaseChanged);
@@ -276,8 +277,8 @@ function drawTop() {
   if (lobby) { info.innerHTML = `<span class="evtitle" style="color:var(--dim)">${esc(T("wait_title"))}</span>`; $("minbet").innerHTML = ""; }
   else {
     const total = snap.total ? ` ${T("of")} ${snap.total}` : "";
-    const badges = (ev.live ? `<span class="badge live"><i></i>${T("live")}</span><span class="badge est">${T("est")}</span>` : "") + (ev.fallback ? `<span class="badge fb">${esc(T("fallback"))}</span>` : "");
-    const k = `${ev.type}|${ev.n}|${snap.total}|${ev.live}|${ev.fallback}|${lang()}`;
+    const badges = (ev.live ? `<span class="badge live"><i></i>${T("live")}</span><span class="badge est">${T("est")}</span>` : "") + (ev.fallback ? `<span class="badge fb">${esc(BS.fallbackText(ev, lang()) || T("fallback"))}</span>` : "");
+    const k = `${ev.type}|${ev.n}|${snap.total}|${ev.live}|${ev.fallback}|${ev.fallbackWhy || ""}|${lang()}`;
     if (info.dataset.k !== k) {
       info.dataset.k = k;
       info.innerHTML = `<span class="evno">${T("ev_no")} <b>${ev.n}</b>${total}</span><span class="evtitle"><span class="ic">${BS.typeIcon(ev.type)}</span>${esc(BS.typeTitle(ev.type, lang()))}</span>${badges}`;
@@ -300,15 +301,19 @@ function tickTimer() {
   const ev = snap.ev;
   let frac = 0, txt = "", hot = false, off = true;
   if (snap.phase === "bets") {
+    if (!snap.deadline) { // темп «по кнопке»: времени нет, окно закроют все сдавшие или ведущий
+      frac = 1; txt = snap.intro ? "…" : "∞"; hot = false; off = false;
+    } else {
     const r = Math.max(0, remaining()), tot = snap.intro ? (snap.introMs || 6000) : (snap.settings.betMs || 20000);
     frac = Math.min(1, r / tot); txt = String(Math.ceil(r / 1000)); hot = !snap.intro && r <= 5000; off = false;
     if (hot && Math.ceil(r / 1000) !== lastTick && r > 0) snd("tick", true);
     lastTick = Math.ceil(r / 1000);
+    }
   } else if (snap.phase === "scene" && ev && ev.revealAt && ev.sceneMs) {
     const r = Math.max(0, ev.revealAt - serverNow());
     frac = Math.min(1, r / ev.sceneMs); txt = "▶"; off = false;
   } else if (snap.phase === "payout") {
-    frac = Math.min(1, Math.max(0, remaining()) / PAYOUT_MS); txt = "∑"; off = false;
+    frac = snap.deadline ? Math.min(1, Math.max(0, remaining()) / PAYOUT_MS) : 1; txt = "∑"; off = false;
   } else if (snap.phase === "locked") { txt = "×"; frac = 0; }
   t.classList.toggle("off", off); t.classList.toggle("hot", hot);
   if (tv.textContent !== txt) tv.textContent = txt;
@@ -362,6 +367,36 @@ function winnersSet() {
   for (const p of snap.players) if (p.last) for (const l of p.last.lines) if (l.result === "win") ids.add(l.id);
   return { ids, full: false };
 }
+// рынки, по которым ставки вернулись (ничья на «выше/ниже» и т.п.): видны по строкам купонов с result "void"
+function backSet() {
+  const ids = new Set(), ev = snap && snap.ev;
+  if (!ev || ev.voidAll || snap.phase !== "payout" && snap.phase !== "done") return ids;
+  for (const p of snap.players) if (p.last) for (const l of p.last.lines) if (l.result === "void") ids.add(l.id);
+  return ids;
+}
+// Раскладка табло: сначала обычные строки; если рынков больше, чем влезает, — компактная сетка ячеек (метка + коэффициент),
+// и только если не помещается даже она, сжимаем масштаб и лишь тогда убираем лишнее (рынки с фишками остаются всегда).
+function layoutTote(groups, avail, u, want) {
+  const ROW = 41 * u, HDR = 25 * u, CELL = 45 * u, GPAD = 4 * u;
+  const total = groups.reduce((a, g) => a + HDR + g.markets.length * ROW, 0);
+  if (total <= avail) return { mode: "rows", scale: 1, groups: groups.map((g) => ({ g, ms: g.markets, cols: 1 })) };
+  const colsOf = (g) => {
+    const L = Math.max(...g.markets.map((m) => m.short.length));
+    return Math.min(g.markets.length, L <= 7 ? 4 : L <= 12 ? 3 : L <= 24 ? 2 : 1);
+  };
+  const plan = groups.map((g) => ({ g, ms: g.markets.slice(), cols: colsOf(g) }));
+  const need = () => plan.reduce((a, p) => a + (p.ms.length ? HDR + Math.ceil(p.ms.length / p.cols) * (p.cols > 1 ? CELL : ROW) + GPAD : 0), 0);
+  let n = need();
+  if (n <= avail) return { mode: "cells", scale: 1, groups: plan };
+  const MIN = 0.66;
+  if (n * MIN <= avail) return { mode: "cells", scale: Math.max(MIN, avail / n), groups: plan };
+  // совсем тесно (ландшафт телефона): убираем рынки с конца, оставляя те, куда поставили
+  for (let gi = plan.length - 1; gi >= 0 && need() * MIN > avail; gi--) {
+    const p = plan[gi];
+    for (let i = p.ms.length - 1; i >= 0 && need() * MIN > avail; i--) if (!want.has(p.ms[i].id)) p.ms.splice(i, 1);
+  }
+  return { mode: "cells", scale: MIN, groups: plan };
+}
 function drawRows(lockTransition) {
   const ev = snap.ev, box = $("rows");
   if (!ev || snap.phase === "lobby") { box.replaceChildren(); rowNodes.clear(); rowsKey = ""; return; }
@@ -369,40 +404,41 @@ function drawRows(lockTransition) {
   const key = [ev.n, ev.type, [...bets.keys()].sort().join(","), lang(), snap.phase === "bets" ? "b" : "x"].join("|");
   if (key !== rowsKey) {
     rowsKey = key;
-    const u = UVAL(), cap = Math.max(4, Math.floor(((box.clientHeight || 400) - 6) / (41 * u)));
-    const groups = BS.groupsFor(ev.type, ev.markets, lang());
+    const u = UVAL(), avail = (box.clientHeight || 400) - 6;
+    const groups = BS.groupsFor(ev.type, ev.markets, lang(), ev).map((g) => ({
+      id: g.id, title: g.title,
+      markets: g.markets.map((m) => { const lab = BS.marketLabel(ev.type, m.id, ev, lang()); return Object.assign({}, m, { lab, short: (BS.shortLabel && BS.shortLabel(ev.type, m.id, ev, lang())) || lab }); }),
+    }));
     const byId = new Map(ev.markets.map((m) => [m.id, m]));
-    const extra = [...bets.keys()].filter((id) => !byId.has(id)).map((id) => { const b = bets.get(id)[0]; return { id, group: "_x", kc: b.kc }; });
-    const want = new Set(bets.keys());
-    let used = 0, reserve = want.size;
-    const items = [];
-    for (const g of groups) {
-      const ms = [];
-      for (const m of g.markets) {
-        const must = want.has(m.id);
-        if (must) reserve--;
-        const need = (ms.length ? 0 : 0.6) + 1;
-        if (must || used + need + reserve <= cap) { ms.push(m); used += need; }
-      }
-      if (ms.length) { items.push({ grp: g.title }); ms.forEach((m) => items.push({ m })); }
-    }
-    extra.forEach((m) => items.push({ m }));
+    const extra = [...bets.keys()].filter((id) => !byId.has(id)).map((id) => { const b = bets.get(id)[0]; return { id, group: "_x", kc: b.kc, lab: BS.marketLabel(ev.type, id, ev, lang()) }; });
+    const lay = layoutTote(groups, avail, u, new Set(bets.keys()));
+    box.style.setProperty("--rs", lay.scale.toFixed(3));
     const keep = new Set();
     const nodes = [];
-    for (const it of items) {
-      if (it.grp != null) { nodes.push(el("div", "grp", it.grp)); continue; }
-      const m = it.m; keep.add(m.id);
+    const mkNode = (m, cell) => {
+      keep.add(m.id);
       let r = rowNodes.get(m.id);
       if (!r) {
         r = el("div", "row"); r.dataset.id = m.id;
         r.innerHTML = `<div class="lb"></div><div class="tray"></div><div class="kcw">${ev.live ? '<span class="est-mark">≈</span>' : ""}<span class="flap"></span></div>`;
         rowNodes.set(m.id, r);
       }
-      r.querySelector(".lb").textContent = BS.marketLabel(ev.type, m.id, ev, lang());
-      const idx = nodes.length;
-      setFlap(r.querySelector(".flap"), BS.kcStr(m.kc), rowFlapDelay ? 250 + idx * 90 : -1);
-      nodes.push(r);
+      r.classList.toggle("cell", cell);
+      const lb = r.querySelector(".lb"), txt = cell ? m.short : m.lab;
+      lb.innerHTML = esc(txt).replace(/σ/g, '<span class="sg">σ</span>'); lb.title = m.lab;   // σ — единица, а не заглавная Σ от text-transform
+      lb.classList.toggle("long", !cell && txt.length > 17); lb.classList.toggle("vlong", !cell && txt.length > 23);
+      setFlap(r.querySelector(".flap"), BS.kcStr(m.kc), rowFlapDelay ? 250 + nodes.length * 90 : -1);
+      return r;
+    };
+    for (const p of lay.groups) {
+      if (!p.ms.length) continue;
+      nodes.push(el("div", "grp", p.g.title));
+      if (lay.mode === "rows" || p.cols === 1) { p.ms.forEach((m) => nodes.push(mkNode(m, false))); continue; }
+      const grid = el("div", "cgrid"); grid.style.setProperty("--cols", p.cols);
+      p.ms.forEach((m) => grid.append(mkNode(m, true)));
+      nodes.push(grid);
     }
+    extra.forEach((m) => nodes.push(mkNode(m, false)));
     for (const id of [...rowNodes.keys()]) if (!keep.has(id)) rowNodes.delete(id);
     rowFlapDelay = false;
     box.replaceChildren(...nodes);
@@ -425,10 +461,12 @@ function drawRows(lockTransition) {
   // подсветка выплат
   const w = winnersSet();
   const won = snap.phase === "payout" || snap.phase === "done";
+  const back = backSet();
   for (const [id, r] of rowNodes) {
     const has = (bets.get(id) || []).length > 0;
     r.classList.toggle("win", !!(w && w.ids.has(id)));
-    r.classList.toggle("dim", !!(won && w && !w.ids.has(id) && (w.full || has)));
+    r.classList.toggle("back", back.has(id));
+    r.classList.toggle("dim", !!(won && w && !w.ids.has(id) && !back.has(id) && (w.full || has)));
   }
   if (lockTransition) flyCoupons();
 }
@@ -568,28 +606,50 @@ function onPhase(first, evChanged) {
   const ph = snap.phase;
   clearTimeout(sayT);
   if (ph === "bets") {
-    setSay(snap.intro ? T("say_intro") : T("say_bets"));
+    { const k = snap.intro ? "say_intro" : "say_bets"; setSay(() => T(k)); }
     if (!first) snd("bell");
     if (!first && !snap.intro && prev && prev.intro) flashAlert(T("alert_open"));
   } else if (ph === "locked") {
     if (!first) { flashAlert(T("alert_lock")); snd("lock"); }
-    setSay(T("say_locked"));
+    setSay(() => T("say_locked"));
     // штрафы над аватарками
     if (!first) snap.players.forEach((p) => { if (p.coupon && p.coupon.penalty > 0) { floatAt(p.id, T("penalty", { n: num(p.coupon.penalty) }), "minus"); snd("penalty"); } });
     if (first) for (const [mid] of rowNodes) for (const p of snap.players) landed.add(p.id + "|" + mid);
   } else if (ph === "scene") {
-    setSay(snap.ev && snap.ev.live && !snap.ev.outcome ? T("say_wait") : T("say_scene"));
+    { const k = snap.ev && snap.ev.live && !snap.ev.outcome ? "say_wait" : "say_scene"; setSay(() => T(k)); }
   } else if (ph === "payout") {
-    setSay(snap.ev && snap.ev.voidAll ? T("void_all") : T("say_payout"));
+    if (snap.ev && snap.ev.voidAll) { const ev = snap.ev; setSay(() => { const why = BS.voidText(ev, lang()); return esc(T("void_all")) + (why ? esc(" (" + why + ")") : ""); }); }
+    else setSay(() => T("say_payout"));
     startPayout(first);
   } else if (ph === "done") {
     snd("jackpot");
   }
 }
-let sayT = 0;
-function setSay(html) { const s = $("say"); s.innerHTML = html || "&nbsp;"; s.classList.remove("pop"); void s.offsetWidth; s.classList.add("pop"); }
+let sayT = 0, sayCur = null;
+// Реплика хранится как строка или функция (ключ перевода): при смене языка функция вызывается заново и #say перерисовывается
+const sayHtml = () => { try { const h = typeof sayCur === "function" ? sayCur() : sayCur; return h || "&nbsp;"; } catch (e) { return "&nbsp;"; } };
+// длинная реплика: сначала мельче (до 62 %), затем две строки, чтобы текст не обрезался многоточием
+function fitSay() {
+  const s = $("say");
+  s.classList.remove("wrap"); s.style.fontSize = "";
+  const base = parseFloat(getComputedStyle(s).fontSize) || 20;
+  let size = base, guard = 20;
+  while (guard-- > 0 && s.scrollWidth > s.clientWidth + 1 && size > base * 0.62) { size *= 0.94; s.style.fontSize = size.toFixed(1) + "px"; }
+  if (s.scrollWidth > s.clientWidth + 1) { s.classList.add("wrap"); s.style.fontSize = (base * 0.8).toFixed(1) + "px"; }
+}
+function setSay(html) { sayCur = html; const s = $("say"); s.innerHTML = sayHtml(); fitSay(); s.classList.remove("pop"); void s.offsetWidth; s.classList.add("pop"); }
+function redrawSay() { $("say").innerHTML = sayHtml(); fitSay(); }
 function flashAlert(text) { const a = $("alert"); $("alertT").textContent = text; a.classList.remove("on"); void a.offsetWidth; a.classList.add("on"); }
-function stampText(text, tone) { const s = $("stamp"); s.textContent = text; s.className = tone === "lose" ? "lose" : tone === "neutral" ? "neutral" : ""; void s.offsetWidth; s.classList.add("on"); }
+// Штамп результата: длинный текст не обрезается, а переносится на две строки и при необходимости уменьшается, чтобы влезть в сцену
+function fitStamp() {
+  const s = $("stamp"), v = $("view");
+  s.style.fontSize = "";
+  let size = parseFloat(getComputedStyle(s).fontSize) || 60;
+  const maxW = v.clientWidth * 0.92, maxH = v.clientHeight * 0.5;
+  let guard = 40;
+  while (guard-- > 0 && size > 14 && (s.offsetWidth > maxW + 1 || s.offsetHeight > maxH)) { size = Math.max(14, size * 0.92); s.style.fontSize = size.toFixed(1) + "px"; }
+}
+function stampText(text, tone) { const s = $("stamp"); s.textContent = text; s.className = tone === "lose" ? "lose" : tone === "neutral" ? "neutral" : ""; fitStamp(); void s.offsetWidth; s.classList.add("on"); }
 
 // ---------- выплаты: купоны проверяются по очереди ----------
 function clearPayoutTimers() { payoutTimers.forEach(clearTimeout); payoutTimers = []; }
@@ -620,12 +680,15 @@ function applyReveal(p, quiet) {
       if (!quiet) flyBack(chip, p.id);
       noteLongest(p, line);
     } else if (line.result === "lose") chip.classList.add("lose");
+    else if (line.result === "void") chip.classList.add("void");
   }
   const seat = seatNodes.get(p.id);
   if (quiet) { drawRail(); return; }
   if (l.won > 0 && l.lines.some((x) => x.result === "win")) {
-    const f = floatAt(p.id, "+0", big ? "plus gold" : "plus");
-    if (f) countUp(f, l.won - 0, "+");
+    // над игроком — чистый итог события (выигрыш минус ставки и штраф), а не валовая выплата
+    const net = l.net != null ? l.net : l.won - l.staked;
+    const f = net > 0 ? floatAt(p.id, "+0", big ? "plus gold" : "plus") : floatAt(p.id, (net < 0 ? "−" : "±") + num(Math.abs(net)), net < 0 ? "minus" : "plus");
+    if (f && net > 0) countUp(f, net, "+");
     if (seat) { seat.classList.remove("hit", "gold"); void seat.offsetWidth; seat.classList.add(big ? "gold" : "hit"); }
     snd(big ? "jackpot" : "win");
   } else if (l.lines.length) {
@@ -689,16 +752,21 @@ function syncScene(phaseChanged) {
   const k = snap.idx + ":" + ev.type;
   const common = { type: ev.type, input: ev.input, meta: ev.meta, seed: ev.seed };
   if (snap.phase === "bets") {
-    if (sceneKey !== k + ":show") { sceneKey = k + ":show"; clearTimeout(playTimer); $("stamp").className = ""; /* штамп прошлого события не должен висеть над новым */ try { s.show(ev.type, { input: ev.input, meta: ev.meta, markets: ev.markets }); } catch (e) { console.error(e); } }
+    if (sceneKey !== k + ":show") { sceneKey = k + ":show"; clearTimeout(playTimer); $("stamp").className = ""; /* штамп прошлого события не должен висеть над новым */ try { s.show(ev.type, { input: ev.input, meta: ev.meta, markets: ev.markets, clock: false }); } catch (e) { console.error(e); } }
     return;
   }
-  if (sceneKey === k + ":show" || sceneKey === "") {
-    // зашли посреди события: декорация нужна, пока не начнётся сцена
-    if (sceneKey === "") { try { s.show(ev.type, { input: ev.input, meta: ev.meta, markets: ev.markets }); } catch (e) { console.error(e); } }
+  if (sceneKey === "") {
+    // зашли посреди события (перезагрузка доски): декорация + для живых — часы и последние значения из liveState, чтобы отсчёт не начинался заново
+    sceneKey = k + ":clock";
+    try { s.show(ev.type, { input: ev.input, meta: ev.meta, markets: ev.markets, live: ev.liveState, elapsedMs: liveElapsed(ev) }); } catch (e) { console.error(e); }
+  } else if (ev.live && sceneKey === k + ":show") {
+    // окно ставок закрылось: у живой сцены только сейчас начинается отсчёт окна ожидания (в окне ставок часы стоят)
+    sceneKey = k + ":clock";
+    try { s.show(ev.type, { input: ev.input, meta: ev.meta, markets: ev.markets, keep: true, elapsedMs: liveElapsed(ev) }); } catch (e) { console.error(e); }
   }
   if (snap.phase === "payout") {
     // исход живого события так и не пришёл: сцена показывает «ставки возвращены»
-    if (ev.live && ev.voidAll && sceneKey !== k + ":void") { sceneKey = k + ":void"; try { s.play({ ...common, outcome: null, voidAll: true, durationMs: 3500, offsetMs: 0, live: ev.liveState }); } catch (e) { console.error(e); } }
+    if (ev.live && ev.voidAll && sceneKey !== k + ":void") { sceneKey = k + ":void"; try { s.play({ ...common, outcome: null, voidAll: true, voidReason: ev.voidReason, durationMs: 3500, offsetMs: 0, live: ev.liveState }); } catch (e) { console.error(e); } }
     return;
   }
   // locked / scene: сцена стартует через 2 с после запирания (deadline фазы locked)
@@ -730,6 +798,20 @@ function syncScene(phaseChanged) {
   }
 }
 let sceneStartGuess = null;
+// Сколько мс окна ожидания живого события уже прошло (для восстановления сцены после перезагрузки доски).
+// Окно открывается в момент запирания; deadline фазы locked = запирание + LOCK_MS (2 с), и в фазе scene без исхода сервер
+// сейчас отдаёт тот же deadline. Если когда-нибудь там окажется liveDeadline (запирание + LOCK_MS + ожидание типа),
+// это видно по дедлайну в будущем: тогда вычитаем ожидание типа (таблица дублирует bets/registry.js LIVE_WAIT_MS).
+// Нет данных для расчёта — 0 (сцена пойдёт с нуля, как раньше).
+const LOCK_MS = 2000;
+const LIVE_WAIT_MS = { btc: 20000, btceth: 20000, news: 45000, emoji: 20000, wikiduel: 20000, wikiedit: 20000, whales: 20000, lightning: 100000, airport: 90000, lang: 10000, wikinext: 10000, drand: 12000 };
+function liveElapsed(ev) {
+  if (!ev || !ev.live || ev.outcome != null || !snap || (snap.phase !== "locked" && snap.phase !== "scene")) return 0;
+  const now = serverNow();
+  let lockAt = snap.deadline - LOCK_MS;
+  if (snap.phase === "scene" && snap.deadline > now + LOCK_MS + 500) lockAt = LIVE_WAIT_MS[ev.type] ? snap.deadline - LOCK_MS - LIVE_WAIT_MS[ev.type] : now;
+  return Math.max(0, now - lockAt);
+}
 
 // ---------- чат ----------
 const shownChat = new Set();
@@ -759,6 +841,7 @@ const knownPlayers = new Set();  // кто уже слышал «chip»: зву�
 let lobbyHeard = false;
 const OPTS = [
   { k: "stack", label: "o_stack", vals: [500, 1000, 2000], fmt: (v) => num(v) },
+  { k: "pace", label: "o_pace", vals: ["host", "auto"], fmt: (v) => T("pace_" + v) },
   { k: "betMs", label: "o_bet", vals: [15000, 20000, 30000], fmt: (v) => T("sec", { n: v / 1000 }) },
   { k: "events", label: "o_events", vals: [8, 12, 16, 0], fmt: (v) => (v ? v : T("unl")) },
   { k: "mode", label: "o_mode", vals: ["mixed", "real", "scenic"], fmt: (v) => T("m_" + v) },
@@ -769,7 +852,7 @@ function drawLobby() {
   box.classList.toggle("hidden", !on);
   if (!on) { lobbyKey = ""; return; }
   const url = `${location.origin}/bets.html?r=${CODE}`;
-  const key = lang() + "|" + isHost + "|" + (snap.liveN > 0);
+  const key = lang() + "|" + isHost + "|" + (snap.liveN > 0) + "|" + snap.settings.pace;
   if (lobbyKey !== key) {
     lobbyKey = key; qrDrawn = false;
     box.innerHTML = `<div class="lhead"><div class="sign"><span>${esc(T("sign_a"))}</span><b>${esc(T("sign_b"))}</b></div><div class="tag">${esc(T("tag"))}</div></div>
@@ -784,7 +867,7 @@ function drawLobby() {
     const fit = () => { fs = 96; codeEl.style.setProperty("--code-fs", fs + "px"); const maxW = codeEl.parentElement.parentElement.clientWidth - $("qr").offsetWidth - 40; while (fs > 36 && codeEl.scrollWidth > maxW) { fs -= 4; codeEl.style.setProperty("--code-fs", fs + "px"); } };
     fit();
     const opts = $("opts");
-    OPTS.filter((o) => o.k !== "mode" || snap.liveN > 0).forEach((o) => {
+    OPTS.filter((o) => (o.k !== "mode" || snap.liveN > 0) && (o.k !== "betMs" || snap.settings.pace === "auto")).forEach((o) => {
       const row = el("div", "opt"); row.append(el("span", null, T(o.label)));
       const seg = el("div", "seg"); seg.dataset.k = o.k;
       o.vals.forEach((v) => { const b = el("button", null, String(o.fmt(v))); b.dataset.v = String(v); b.onclick = () => patch(o.k, v); seg.append(b); });
@@ -889,6 +972,24 @@ const HL = window.MP && MP.hostLink ? MP.hostLink({
 }) : null;
 function setNote(t) { note = t; clearTimeout(noteT); if (t) noteT = setTimeout(() => { note = ""; drawCtrl(); }, 4000); drawCtrl(); }
 function hasToken() { try { return !!localStorage.getItem(hostKey()); } catch (e) { return false; } }
+let gateKey = "";
+// кнопка ведущего в темпе «по кнопке»: открыть ставки → закрыть ставки → дальше
+function drawGate() {
+  const box = $("gate"); if (!box || !snap) return;
+  const g = snap.gate;
+  const subs = snap.players.filter((p) => p.alive && p.submitted).length, alive = snap.players.filter((p) => p.alive).length;
+  const key = [g, isHost, lang(), g === "lock" ? subs + "/" + alive : ""].join("|");
+  if (key === gateKey) return; gateKey = key;
+  box.innerHTML = "";
+  if (!g) return;
+  if (isHost) {
+    const btn = el("button", "gatebtn " + g, T("gate_" + (g === "lock" ? "lock" : g)));
+    btn.type = "button";
+    btn.onclick = () => { btn.disabled = true; send({ type: g }); };
+    box.append(btn);
+    if (g === "lock") box.append(el("span", "gatecnt", T("sub_n", { a: subs, b: alive })));
+  } else box.append(el("span", "gatecnt", T("gate_wait")));
+}
 function drawCtrl() {
   if (!snap) return;
   const c = $("ctrl"), sound = c.querySelector(".sound-toggle-btn");
@@ -915,15 +1016,15 @@ function drawCtrl() {
   c.replaceChildren(...btns, sound);
 }
 
-window.addEventListener("langchange", () => { lobbyKey = ""; finalKey = ""; rowsKey = ""; ctrlKey = ""; $("evinfo").dataset.k = ""; if (snap) render(false, false, false); });
-window.addEventListener("resize", () => { rowsKey = ""; if (snap) { drawRows(false); } });
+window.addEventListener("langchange", () => { redrawSay(); lobbyKey = ""; finalKey = ""; rowsKey = ""; ctrlKey = ""; $("evinfo").dataset.k = ""; if (snap) render(false, false, false); });
+window.addEventListener("resize", () => { redrawSay(); rowsKey = ""; if (snap) { drawRows(false); } });
 
 (async function boot() {
   const h = params.get("h");
   if (h && CODE) { try { localStorage.setItem(hostKey(), h); } catch (e) {} history.replaceState(null, "", "?r=" + CODE); }
   if (!(await ensureRoom())) return;
   connect();
-  window.betsBoard = { send, get state() { return snap; }, get code() { return CODE; }, get isHost() { return isHost; } };
+  window.betsBoard = { send, get state() { return snap; }, get code() { return CODE; }, get isHost() { return isHost; }, debug() { return sc && sc.debug ? sc.debug() : null; } };
 })();
 })();
 </script>

@@ -89,6 +89,11 @@ if (LIVE_ENV && LIVE_ENV !== "none") {
     console.warn(`${LOG} feed.js недоступен (${err.code === "MODULE_NOT_FOUND" ? "нет модуля" : err.message}) — все события сценические`);
   }
 }
+// Почему prepareLive вернул null: "no_pair" | "warming" | "down" (ev.fallbackWhy в снимке)
+function whyLive(type) {
+  if (!feed || typeof feed.why !== "function") return "down";
+  try { return feed.why(type) || "down"; } catch { return "down"; }
+}
 function prepareLive(type) {
   if (!feed) return null;
   try { return feed.prepare(type) || null; } catch (err) { console.warn(`${LOG} feed.prepare(${type}) упал:`, err.message); return null; }
@@ -162,7 +167,7 @@ function pruneTokens(room) {
 }
 
 function newGame(state) {
-  const opts = { intro: process.env.BETS_INTRO_MS !== undefined ? () => Math.max(0, Number(process.env.BETS_INTRO_MS) || 0) : undefined, prepareLive, liveTypes: () => (feed ? (typeof feed.enabled === "function" ? feed.enabled() : require("./registry").REAL) : []) };
+  const opts = { intro: process.env.BETS_INTRO_MS !== undefined ? () => Math.max(0, Number(process.env.BETS_INTRO_MS) || 0) : undefined, prepareLive, whyLive, liveTypes: () => (feed ? (typeof feed.enabled === "function" ? feed.enabled() : require("./registry").REAL) : []) };
   return state ? Game.restore(state, rnd, opts) : new Game(rnd, opts);
 }
 
@@ -200,7 +205,7 @@ function createRoom({ settings = {}, speed, ip = "" } = {}) {
   }
   if (rooms.size >= MAX_ROOMS && !evictOldestEmpty()) throw new Error("too many rooms");
   const game = newGame();
-  game.setSettings(settings && typeof settings === "object" ? settings : {});
+  game.setSettings({ pace: process.env.BETS_PACE || "host", ...(settings && typeof settings === "object" ? settings : {}) });
   game.s.settings.chat = settings && settings.chat === false ? false : true;
   const room = newRoom({
     code: newCode(),
@@ -344,6 +349,9 @@ function startLive(room) {
     const handle = feed.begin(ev.type, {
       closeAt: now(),
       deadline: ev.liveDeadline,
+      // всё, что нужно источнику, берём из события, а не из «последнего prepare» процесса: две комнаты и рестарт внутри окна ставок
+      input: ev.input,
+      meta: ev.meta,
       log: (m) => console.log(`${LOG} ${room.code} ${ev.type}: ${m}`),
       onLive: (data) => {
         if (!same() || !data || typeof data !== "object") return;
@@ -357,13 +365,13 @@ function startLive(room) {
         room.liveToken = null;
         try { afterChange(room, g.resolveLive(outcome, clock(room), Array.isArray(voids) ? voids : [])); } catch (err) { console.error(`${LOG} onResolve упал:`, err); }
       },
-      onAbort: () => {
+      onAbort: (why) => {
         if (!same()) return;
         room.liveToken = null;
         const e = g.s.ev;
         if (e && e.live && !e.hasOutcome && (g.s.phase === "locked" || g.s.phase === "scene")) {
           console.log(`${LOG} ${room.code}: источник ${e.type} пропал — ставки возвращены`);
-          try { afterChange(room, g.voidAllAndSettle(clock(room))); } catch (err) { console.error(`${LOG} onAbort упал:`, err); }
+          try { afterChange(room, g.voidAllAndSettle(clock(room), "source_lost: " + String(why || "").slice(0, 120))); } catch (err) { console.error(`${LOG} onAbort упал:`, err); }
         }
       },
     });
@@ -371,7 +379,7 @@ function startLive(room) {
   } catch (err) {
     console.error(`${LOG} feed.begin(${ev.type}) упал — ставки возвращены:`, err);
     room.liveToken = null;
-    if (g.s.ev && !g.s.ev.hasOutcome && (g.s.phase === "locked" || g.s.phase === "scene")) g.voidAllAndSettle(clock(room));
+    if (g.s.ev && !g.s.ev.hasOutcome && (g.s.phase === "locked" || g.s.phase === "scene")) g.voidAllAndSettle(clock(room), "begin_failed");
   }
 }
 
@@ -867,6 +875,10 @@ function handle(room, client, msg) {
       return afterChange(room, g.start(t));
     }
     case "end": return client.host ? afterChange(room, g.endNow(t)) : undefined;
+    // кнопки ведущего в темпе «по кнопке»: открыть ставки, закрыть ставки, дальше
+    case "open": return client.host ? afterChange(room, g.openBets(t)) : undefined;
+    case "lock": return client.host ? afterChange(room, g.lockNow(t)) : undefined;
+    case "next": return client.host ? afterChange(room, g.afterPayout(t)) : undefined;
     case "kick": {
       if (!client.host) return;
       const id = String(msg.playerId || "");
@@ -999,7 +1011,7 @@ function restore() {
           const ev = s.ev;
           if ((phase === "locked" || phase === "scene") && ev && ev.live && !ev.hasOutcome) {
             console.log(`${LOG} ${room.code}: рестарт во время реального события ${ev.type} — ставки возвращены`);
-            room.game.voidAllAndSettle(clock(room));
+            room.game.voidAllAndSettle(clock(room), "restart");
           }
         }
         rooms.set(room.code, room);

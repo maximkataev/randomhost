@@ -1283,7 +1283,7 @@
       S.phase = "end"; S.cur = null; S.endT = 0;
       const w = out.winner;
       env.stamp(i18t("pWin", { team: TEAM[w].name.toUpperCase() }), "win");
-      say(i18t("pEnd", { team: esc(TEAM[w].name), a: out.goalsA, b: out.goalsB }) + (sdList.length ? i18t("pEndSd", { n: sdList.length }) : ""));
+      say(i18t("pEnd", { team: esc(TEAM[w].name), a: w === "A" ? out.goalsA : out.goalsB, b: w === "A" ? out.goalsB : out.goalsA }) + (sdList.length ? i18t("pEndSd", { n: sdList.length }) : ""));
       snd("whistle");
     }
     function onResult() {

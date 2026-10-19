@@ -50,9 +50,66 @@
       target: "Στόχος", price: "Τιμή", dir: "Κατεύθυνση", duel: "Μονομαχία", gap: "Διαφορά", cat: "Κατηγορία", digit: "Ψηφίο", parity: "Μονό / ζυγό", kind: "Ψηφίο ή γράμμα", quarter: "Τέταρτο", first: "Πρώτο" },
   };
 
+  // ---- Подписи, которые приходят с сервера (ev.meta.labels) на русском: переводим в клиенте ПО ID. ----
+  // Словарь по типу события: LABELS[type][id] → {ru,en,el}. Нет id в словаре — берём текст из meta.labels как есть.
+  const T3 = (ru, en, el) => ({ ru, en: en == null ? ru : en, el: el == null ? (en == null ? ru : en) : el });
+  const LABELS = {
+    // темы Википедии (bets/feed-wiki.js TOPICS)
+    wikiedit: {
+      football: T3("футбол", "football", "ποδόσφαιρο"), basketball: T3("баскетбол", "basketball", "μπάσκετ"), tennis: T3("теннис", "tennis", "τένις"),
+      olympic: T3("Олимпиада", "Olympics", "Ολυμπιακοί Αγώνες"), war: T3("война", "war", "πόλεμος"), election: T3("выборы", "elections", "εκλογές"),
+      president: T3("президент", "president", "πρόεδρος"), russia: T3("Россия", "Russia", "Ρωσία"), ukraine: T3("Украина", "Ukraine", "Ουκρανία"),
+      usa: T3("США", "USA", "ΗΠΑ"), china: T3("Китай", "China", "Κίνα"), germany: T3("Германия", "Germany", "Γερμανία"), france: T3("Франция", "France", "Γαλλία"),
+      film: T3("фильм", "film", "ταινία"), album: T3("альбом", "album", "άλμπουμ"), song: T3("песня", "song", "τραγούδι"), list: T3("список", "list", "λίστα"),
+      village: T3("деревня", "village", "χωριό"), river: T3("река", "river", "ποτάμι"), school: T3("школа", "school", "σχολείο"), church: T3("церковь", "church", "εκκλησία"),
+      bitcoin: T3("биткоин", "bitcoin", "bitcoin"), trump: T3("Трамп", "Trump", "Τραμπ"), putin: T3("Путин", "Putin", "Πούτιν"), musk: T3("Маск", "Musk", "Μασκ"),
+      messi: T3("Месси", "Messi", "Μέσι"), swift: T3("Тейлор Свифт", "Taylor Swift", "Τέιλορ Σουίφτ"), pokemon: T3("покемоны", "Pokémon", "Πόκεμον"),
+      starwars: T3("Звёздные войны", "Star Wars", "Star Wars"), cat: T3("кошки", "cats", "γάτες"), dog: T3("собаки", "dogs", "σκύλοι"),
+      moscow: T3("Москва", "Moscow", "Μόσχα"), london: T3("Лондон", "London", "Λονδίνο"), paris: T3("Париж", "Paris", "Παρίσι"),
+      anime: T3("аниме", "anime", "anime"), game: T3("видеоигры", "video games", "βιντεοπαιχνίδια"),
+    },
+    // регионы новостей (bets/feed-news.js REGIONS)
+    news: {
+      us: T3("США", "USA", "ΗΠΑ"), ru: T3("Россия", "Russia", "Ρωσία"), il: T3("Израиль и Газа", "Israel and Gaza", "Ισραήλ και Γάζα"), cn: T3("Китай", "China", "Κίνα"),
+      ua: T3("Украина", "Ukraine", "Ουκρανία"), eu: T3("Европа", "Europe", "Ευρώπη"), other: T3("Другое", "Other", "Άλλο"),
+    },
+    // языки постов Bluesky (bets/feed-bsky.js LANG_LABEL): названия языков пишутся на самом языке
+    lang: {
+      en: T3("English"), ja: T3("日本語"), pt: T3("Português"), es: T3("Español"), de: T3("Deutsch"), ru: T3("Русский"), fr: T3("Français"), it: T3("Italiano"), ko: T3("한국어"), tr: T3("Türkçe"),
+      other: T3("Другой", "Other", "Άλλη"),
+    },
+    // проекты Викимедии (bets/feed-wiki.js NEXT_LABEL)
+    wikinext: {
+      wikidata: T3("Wikidata"), commons: T3("Commons"), en: T3("en"), de: T3("de"), ru: T3("ru"), fr: T3("fr"), other: T3("Другие", "Other", "Άλλα"),
+    },
+  };
+  // стороны дуэлей приходят текстом (A/B): молнии «Север/Юг», «Восток/Запад»; эмодзи, коды аэропортов и вики-проектов не переводятся
+  const SIDES = {
+    "Север": T3("Север", "North", "Βορράς"), "Юг": T3("Юг", "South", "Νότος"), "Восток": T3("Восток", "East", "Ανατολή"), "Запад": T3("Запад", "West", "Δύση"),
+  };
+
+  // Подпись по id: словарь → meta.labels как есть → сам id. ev — { meta } (или просто meta).
+  function labelFor(type, id, ev, lang) {
+    lang = lang || LANG();
+    const meta = (ev && ev.meta) || ev || {}, lb = meta.labels || {};
+    const tbl = LABELS[type];
+    if (tbl && tbl[id]) return pick(tbl[id], lang);
+    if (lb[id] != null) return SIDES[lb[id]] ? pick(SIDES[lb[id]], lang) : String(lb[id]);
+    return id;
+  }
+
   const kcStr = (kc) => (kc / 100).toFixed(2).replace(".", ",");
   const num = (x) => String(x).replace(".", ",");
   const dog = (meta, i) => `№${i} ${(meta && meta.names && meta.names[i - 1]) || ""}`.trim();
+
+  // «2+ правки» / «2+ edits» / «2+ επεξεργασίες»: порог числа событий
+  function atLeast(type, n, lang) {
+    const wh = type === "whales";
+    if (lang === "en") return `${n}+ ${wh ? "transactions" : "edits"}`;
+    if (lang === "el") return `${n}+ ${wh ? "συναλλαγές" : "επεξεργασίες"}`;
+    const m10 = n % 10, m100 = n % 100, few = m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14);
+    return `${n}+ ${wh ? (few ? "транзакции" : "транзакций") : (few ? "правки" : "правок")}`;
+  }
 
   // Подпись рынка. type — тип события, id — id рынка, ev — { meta, input } события.
   function marketLabel(type, id, ev, lang) {
@@ -109,21 +166,19 @@
         if (k === "ethGap") return `ETH ${w.gap} ${num(v)}σ`;
         break;
       case "emoji": case "wikiduel": case "lightning": case "airport": {
-        const lb = meta.labels || {};
-        if (id === "A") return `${w.more}: ${lb.A || "A"}`;
-        if (id === "B") return `${w.more}: ${lb.B || "B"}`;
+        if (id === "A" || id === "B") return `${w.more}: ${labelFor(type, id, meta, lang)}`;
         if (id === "tie") return w.tie;
         break;
       }
       case "wikiedit": case "whales": {
-        const lb = meta.labels || {};
-        if (k === "first") return `${w.first}: ${lb[v] || v}`;
+        if (k === "first") return `${w.first}: ${labelFor(type, v, meta, lang)}`;
         const m = /^(.+):ge(\d+)$/.exec(id);
-        if (m) return `${lb[m[1]] || m[1]}${+m[2] > 1 ? " ×" + m[2] : ""}`;
+        // порог «≥ k правок»: без «×k», чтобы не путать с коэффициентом в той же строке
+        if (m) return +m[2] > 1 ? `${labelFor(type, m[1], meta, lang)}: ${atLeast(type, +m[2], lang)}` : labelFor(type, m[1], meta, lang);
         break;
       }
       case "news": case "lang": case "wikinext":
-        if (k === "cat") return (meta.labels && meta.labels[v]) || v;
+        if (k === "cat") return labelFor(type, v, meta, lang);
         break;
       case "drand":
         if (k === "digit") return `${w.digit} ${v.toUpperCase()}`;
@@ -135,6 +190,14 @@
     return id;
   }
 
+  // Короткая подпись для компактной сетки табло (под заголовком группы смысл ясен): одна цифра/число; нет короткой — null
+  function shortLabel(type, id) {
+    const [k, v] = id.split(":");
+    if (type === "drand" && k === "digit") return v.toUpperCase();
+    if (type === "dice" && (k === "has" || k === "exact")) return v;
+    return null;
+  }
+
   // Порядок групп по типу события и русские/английские/греческие заголовки
   const GROUP_ORDER = {
     dice: ["main", "numbers", "sums", "exact", "exotic"], dogs: ["win", "place", "forecast", "exotic"], rocket: ["target", "exotic"],
@@ -143,7 +206,8 @@
   };
 
   // Группы рынков события: [{ id, title, markets }]
-  function groupsFor(type, markets, lang) {
+  // ev (необязательно) — { meta }: у пороговых и категориальных событий id группы — id темы, подпись берётся из словаря/meta.labels
+  function groupsFor(type, markets, lang, ev) {
     lang = lang || LANG();
     const kind = { emoji: "duel", wikiduel: "duel", lightning: "duel", airport: "duel", wikiedit: "thresholds", whales: "thresholds", news: "categorical", lang: "categorical", wikinext: "categorical" }[type] || type;
     const order = GROUP_ORDER[kind] || [];
@@ -151,7 +215,8 @@
     for (const m of markets) { if (!by.has(m.group)) by.set(m.group, []); by.get(m.group).push(m); }
     const ids = [...order.filter((g) => by.has(g)), ...[...by.keys()].filter((g) => !order.includes(g))];
     const titles = GROUP_TITLES[lang] || GROUP_TITLES.ru;
-    return ids.map((id) => ({ id, title: type === "rope" && id === "winner" ? titles.win : titles[id] || id, markets: by.get(id) }));
+    const byLabel = kind === "thresholds" || kind === "categorical";   // здесь id группы — id темы, а не служебная секция
+    return ids.map((id) => ({ id, title: type === "rope" && id === "winner" ? titles.win : byLabel ? (order.includes(id) ? titles[id] : labelFor(type, id, ev, lang)) : titles[id] || id, markets: by.get(id) }));
   }
 
   // ---- Правила события: коротко, что происходит и как выиграть (показываются в окне ставок на доске и на телефоне) ----
@@ -244,9 +309,9 @@
     },
   };
   const RULES_GENERAL = {
-    ru: "Ставки открыты ограниченное время. Выигрыш = ставка × коэффициент. Фишки виртуальные.",
-    en: "Betting is open for a limited time. Win = stake × odds. Chips are virtual.",
-    el: "Τα στοιχήματα είναι ανοιχτά για περιορισμένο χρόνο. Κέρδος = ποντάρισμα × απόδοση. Οι μάρκες είναι εικονικές.",
+    ru: "Выигрыш = ставка × коэффициент. Фишки виртуальные.",
+    en: "Win = stake × odds. Chips are virtual.",
+    el: "Κέρδος = ποντάρισμα × απόδοση. Οι μάρκες είναι εικονικές.",
   };
 
   // Текст правил для события: { text, general }
@@ -259,11 +324,38 @@
     return { text: fill(r[lang] || r.ru || ""), general: RULES_GENERAL[lang] || RULES_GENERAL.ru };
   }
 
+  // ---- Почему событие заменено / ставки возвращены (поля снимка ev.fallbackWhy и ev.voidReason; без полей — null) ----
+  const FALLBACK_WHY = {
+    no_pair: T3("подходящей пары сейчас нет, заменено", "no suitable pair right now, replaced", "δεν υπάρχει κατάλληλο ζεύγος, αντικαταστάθηκε"),
+    warming: T3("источник прогревается, заменено", "source is warming up, replaced", "η πηγή προετοιμάζεται, αντικαταστάθηκε"),
+    down: T3("источник недоступен, заменено", "source unavailable, replaced", "η πηγή δεν είναι διαθέσιμη, αντικαταστάθηκε"),
+  };
+  // Подпись плашки «заменено»: точная причина, если сервер её прислал, иначе прежний общий текст; не заменено — null
+  function fallbackText(ev, lang) {
+    if (!ev || !ev.fallback) return null;
+    return pick(FALLBACK_WHY[ev.fallbackWhy] || FALLBACK_WHY.down, lang || LANG());
+  }
+  // Короткая причина возврата. Значения ev.voidReason задаёт сервер (bets/game.js, server.js): "bad_outcome: …", "source_lost: …",
+  // "begin_failed", "restart"; незнакомое значение — null (останется общее сообщение).
+  const VOID_WHY = [
+    [/^bad_outcome/, T3("источник прислал некорректный исход", "the source sent an invalid result", "η πηγή έστειλε μη έγκυρο αποτέλεσμα")],
+    [/^source_lost/, T3("источник пропал", "the source went silent", "η πηγή σταμάτησε")],
+    [/^begin_failed/, T3("источник не запустился", "the source failed to start", "η πηγή δεν ξεκίνησε")],
+    [/^restart/, T3("сервер перезапускался", "the server restarted", "ο διακομιστής επανεκκινήθηκε")],
+    [/^(timeout|deadline)/, T3("исход не пришёл вовремя", "the result didn't arrive in time", "το αποτέλεσμα δεν ήρθε εγκαίρως")],
+  ];
+  function voidText(ev, lang) {
+    const r = ev && ev.voidReason;
+    if (!r) return null;
+    for (const [re, d] of VOID_WHY) if (re.test(String(r))) return pick(d, lang || LANG());
+    return null;
+  }
+
   // Фишки для телефона: кратны 10, от минимума до не больше стека
   function chips(min, stack) {
     const base = Math.max(10, Math.ceil(min / 10) * 10);
     const set = [...new Set([base, base * 2, base * 5, base * 10, base * 25].filter((x) => x <= stack))];
-    return set.length ? set : [Math.max(10, Math.min(stack, base))];
+    return set.length ? set : [stack > 0 && stack < 10 ? stack : Math.max(10, Math.min(stack, base))];
   }
 
   const PLAYER_COLORS = ["#ff2e88", "#b6ff2e", "#38d3ff", "#ffd34d", "#a78bfa", "#ff7a2e", "#4dffb0", "#ff5c5c", "#7aa2ff", "#f0abfc", "#fde047", "#5eead4"];
@@ -277,7 +369,7 @@
   // Потенциальный выигрыш по правилам движка (floor, целые фишки)
   const payout = (stake, kc) => Math.floor((stake * kc) / 100);
 
-  const api = { TYPES, rules, marketLabel, groupsFor, chips, kcStr, payout, mulberry32, PLAYER_COLORS, REACTIONS, typeTitle: (t, lang) => pick((TYPES[t] || { title: { ru: t } }).title, lang || LANG()), typeIcon: (t) => (TYPES[t] || {}).icon || "🎯" };
+  const api = { TYPES, rules, marketLabel, shortLabel, groupsFor, labelFor, LABELS, fallbackText, voidText, chips, kcStr, payout, mulberry32, PLAYER_COLORS, REACTIONS, typeTitle: (t, lang) => pick((TYPES[t] || { title: { ru: t } }).title, lang || LANG()), typeIcon: (t) => (TYPES[t] || {}).icon || "🎯" };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.BetsShared = api;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -35,9 +35,9 @@
   const TITLE = { btc: "Биткоин: выше или ниже", btceth: "BTC против ETH", news: "Кто первый в новостях", emoji: "Эмодзи-дуэль", wikiduel: "Википедия-дуэль", wikiedit: "Правка в Википедии", whales: "Киты в мемпуле", lightning: "Молнии", airport: "Аэропорт-дуэль", lang: "Язык следующего поста", wikinext: "Следующая правка Википедии", drand: "Маяк случайности" };
 
   const TXT = {
-    ru: { est: "≈ оценка модели", estS: "≈ модель", exact: "точная случайность", wait: "ждём исход", voidT: "ИСХОД НЕ ПРИШЁЛ", voidS: "ставки возвращены", left: "осталось", verify: "проверь на drand", tie: "НИЧЬЯ", wins: "побеждает", rush: "ФИНАЛЬНЫЙ РЫВОК", first: "ПЕРВЫМ", pre: "ставки открыты · цена закрытия зафиксируется при старте", s0: "цена закрытия", lead: "ЛИДЕР", gap: "разрыв", events: "событий", hit: "совпало", round: "раунд", spin: "ждём раунд маяка", digit: "последняя цифра", odd: "нечёт", even: "чёт", num: "цифра", letter: "буква", reel: "ждём элемент потока", stop: "СТОП", next: "следующий раунд через", total: "итог", lead2: "Лидер сменился", more: "больше", sec: "с" },
-    en: { est: "≈ model estimate", estS: "≈ model", exact: "exact randomness", wait: "waiting for the result", voidT: "NO RESULT", voidS: "bets refunded", left: "left", verify: "verify on drand", tie: "TIE", wins: "wins", rush: "FINAL SPRINT", first: "FIRST", pre: "bets open · closing price locks at start", s0: "closing price", lead: "LEAD", gap: "gap", events: "events", hit: "matched", round: "round", spin: "waiting for a beacon round", digit: "last digit", odd: "odd", even: "even", num: "digit", letter: "letter", reel: "waiting for a stream item", stop: "STOP", next: "next round in", total: "result", lead2: "Lead changed", more: "more", sec: "s" },
-    el: { est: "≈ εκτίμηση μοντέλου", estS: "≈ μοντέλο", exact: "ακριβής τυχαιότητα", wait: "αναμονή αποτελέσματος", voidT: "ΔΕΝ ΥΠΑΡΧΕΙ ΑΠΟΤΕΛΕΣΜΑ", voidS: "οι στοιχηματισμοί επιστρέφονται", left: "απομένουν", verify: "έλεγχος στο drand", tie: "ΙΣΟΠΑΛΙΑ", wins: "νικά", rush: "ΤΕΛΙΚΟ ΣΠΡΙΝΤ", first: "ΠΡΩΤΟ", pre: "ανοιχτά στοιχήματα · η τιμή κλεισίματος κλειδώνει στην εκκίνηση", s0: "τιμή κλεισίματος", lead: "ΕΠΙΚΕΦΑΛΗΣ", gap: "διαφορά", events: "γεγονότα", hit: "ταίριαξαν", round: "γύρος", spin: "αναμονή γύρου φάρου", digit: "τελευταίο ψηφίο", odd: "μονό", even: "ζυγό", num: "ψηφίο", letter: "γράμμα", reel: "αναμονή στοιχείου ροής", stop: "ΣΤΟΠ", next: "επόμενος γύρος σε", total: "αποτέλεσμα", lead2: "Άλλαξε ο επικεφαλής", more: "περισσότερα", sec: "δευτ." },
+    ru: { est: "≈ оценка модели", estS: "≈ модель", noChange: "без изменения", refund: "возврат", equal: "поровну",  exact: "точная случайность", wait: "ждём исход", voidT: "ИСХОД НЕ ПРИШЁЛ", voidS: "ставки возвращены", left: "осталось", verify: "проверь на drand", tie: "НИЧЬЯ", wins: "побеждает", rush: "ФИНАЛЬНЫЙ РЫВОК", first: "ПЕРВЫМ", pre: "ставки открыты · цена закрытия зафиксируется при старте", s0: "цена закрытия", lead: "ЛИДЕР", gap: "разрыв", events: "событий", hit: "совпало", round: "раунд", spin: "ждём раунд маяка", digit: "последняя цифра", odd: "нечёт", even: "чёт", num: "цифра", letter: "буква", reel: "ждём элемент потока", stop: "СТОП", next: "следующий раунд через", total: "итог", lead2: "Лидер сменился", more: "больше", sec: "с" },
+    en: { est: "≈ model estimate", estS: "≈ model", noChange: "no change", refund: "refund", equal: "equal",  exact: "exact randomness", wait: "waiting for the result", voidT: "NO RESULT", voidS: "bets refunded", left: "left", verify: "verify on drand", tie: "TIE", wins: "wins", rush: "FINAL SPRINT", first: "FIRST", pre: "bets open · closing price locks at start", s0: "closing price", lead: "LEAD", gap: "gap", events: "events", hit: "matched", round: "round", spin: "waiting for a beacon round", digit: "last digit", odd: "odd", even: "even", num: "digit", letter: "letter", reel: "waiting for a stream item", stop: "STOP", next: "next round in", total: "result", lead2: "Lead changed", more: "more", sec: "s" },
+    el: { est: "≈ εκτίμηση μοντέλου", estS: "≈ μοντέλο", noChange: "καμία μεταβολή", refund: "επιστροφή", equal: "ίσα",  exact: "ακριβής τυχαιότητα", wait: "αναμονή αποτελέσματος", voidT: "ΔΕΝ ΥΠΑΡΧΕΙ ΑΠΟΤΕΛΕΣΜΑ", voidS: "οι στοιχηματισμοί επιστρέφονται", left: "απομένουν", verify: "έλεγχος στο drand", tie: "ΙΣΟΠΑΛΙΑ", wins: "νικά", rush: "ΤΕΛΙΚΟ ΣΠΡΙΝΤ", first: "ΠΡΩΤΟ", pre: "ανοιχτά στοιχήματα · η τιμή κλεισίματος κλειδώνει στην εκκίνηση", s0: "τιμή κλεισίματος", lead: "ΕΠΙΚΕΦΑΛΗΣ", gap: "διαφορά", events: "γεγονότα", hit: "ταίριαξαν", round: "γύρος", spin: "αναμονή γύρου φάρου", digit: "τελευταίο ψηφίο", odd: "μονό", even: "ζυγό", num: "ψηφίο", letter: "γράμμα", reel: "αναμονή στοιχείου ροής", stop: "ΣΤΟΠ", next: "επόμενος γύρος σε", total: "αποτέλεσμα", lead2: "Άλλαξε ο επικεφαλής", more: "περισσότερα", sec: "δευτ." },
   };
   const lang = () => ((doc && doc.documentElement.lang) || "ru").slice(0, 2);
   const tr = (k) => (TXT[lang()] || TXT.ru)[k] || TXT.ru[k] || k;
@@ -99,7 +99,9 @@
     S.rng = (salt) => mkRng(hash32(S.seed | 0, salt | 0));
     S.fs = (n) => Math.max(9, Math.round(n * S.k));
     S.u = (n) => n * S.k;
-    S.lbl = (id) => ((S.meta && S.meta.labels && S.meta.labels[id]) != null ? S.meta.labels[id] : id);
+    // подпись по id: перевод из словаря bets-shared.js, иначе текст из meta.labels как есть (язык берётся на лету)
+    S.lbl = (id) => ((BS && BS.labelFor) ? BS.labelFor(S.type, id, S.meta, lang()) : ((S.meta && S.meta.labels && S.meta.labels[id]) != null ? S.meta.labels[id] : id));
+    S.raw = (id) => ((S.meta && S.meta.labels && S.meta.labels[id]) != null ? String(S.meta.labels[id]) : id);   // текст с сервера (для сопоставления с элементами потока)
 
     // канва
     host.style.position = host.style.position || "relative";
@@ -166,6 +168,7 @@
       if (o.meta) S.meta = o.meta;
       if (o.markets) S.markets = o.markets;
       if (o.seed != null) S.seed = o.seed | 0;
+      if (o.voidReason != null) S.voidReason = o.voidReason;
       const inp = S.input || {};
       const T = inp.T || (inp.opts && inp.opts.T);
       S.wms = T ? T * 1000 : (WAIT[S.type] || 20000);
@@ -173,7 +176,7 @@
     }
     function reset() {
       S.clockStart = null; S.tau = 0; S.f = 1; S.dataEnd = Infinity; S.end = Infinity; S.outcome = null; S.void = false; S.done = false; S.resolve = null;
-      S.stamped = false; S.played = false; S.hasLive = false; S.synthetic = false; S.shown = {}; S.lastNow = null; S.revealAt = null; S.stale = false;
+      S.stamped = false; S.played = false; S.restored = false; S.hasLive = false; S.synthetic = false; S.shown = {}; S.lastNow = null; S.revealAt = null; S.stale = false;
       def.reset(S);
     }
     function loop() {
@@ -208,7 +211,11 @@
         if (S.stale || S.mode === "play" || S.mode === "done" || (S.mode === "show" && !(o && o.keep))) reset();
         adopt(o);
         S.mode = "show";
-        if (def.startOnShow && S.clockStart == null) S.clockStart = S.now();
+        // перезагрузка доски посреди живого окна: отсчёт идёт от реально прошедшего времени, а не заново (o.elapsedMs, мс от запирания окна)
+        const el = o && o.elapsedMs > 0 ? Math.min(+o.elapsedMs, S.wms) : 0;
+        // o.clock === false — окно ставок: декорация без отсчёта, часы запустятся при запирании (повторный show с keep) или первым live-сообщением
+        if (def.startOnShow && S.clockStart == null && !(o && o.clock === false)) S.clockStart = S.now() - el;
+        if (el > 0 && o.live && !S.restored) { S.restored = true; restoreLive(S, o.live, el); }
         def.onShow && def.onShow(S);
         if (!S.rafId) loop();
       },
@@ -321,6 +328,8 @@
     S.shown.badge = text;
   }
 
+  // короткая причина возврата (ev.voidReason, если сервер её прислал)
+  function voidWhy(S) { try { return (BS && BS.voidText && S.voidReason) ? BS.voidText({ voidReason: S.voidReason }, lang()) : null; } catch (e) { return null; } }
   function voidBanner(S) {
     const g = S.g, W = S.W, H = S.H;
     const a = easeOut((S.tau - S.voidAt) / 500);
@@ -333,10 +342,11 @@
     S.rr((W - bw) / 2, cy - bh / 2, bw, bh, S.u(6)); g.fillStyle = "rgba(13,18,23,.94)"; g.fill(); g.strokeStyle = C.amber; g.lineWidth = 2; g.shadowColor = C.amber; g.shadowBlur = 18; g.stroke(); g.shadowBlur = 0;
     const big = S.fit(tr("voidT"), S.fs(46), bw - S.u(30));
     S.txt(tr("voidT"), W / 2, cy - bh * 0.12, { s: big, c: C.amber, a: "center", glow: C.amber });
-    S.txt(tr("voidS").toUpperCase(), W / 2, cy + bh * 0.26, { s: S.fit(tr("voidS").toUpperCase(), S.fs(20), bw - S.u(30), "m"), f: "m", c: C.text, a: "center", w: 800 });
+    const sub = (tr("voidS") + (voidWhy(S) ? " · " + voidWhy(S) : "")).toUpperCase();
+    S.txt(sub, W / 2, cy + bh * 0.26, { s: S.fit(sub, S.fs(20), bw - S.u(30), "m"), f: "m", c: C.text, a: "center", w: 800 });
     g.restore();
     S.shown.void = true;
-    S.stamp(tr("voidT") + " · " + tr("voidS"), "neutral");
+    S.stamp(tr("voidT") + " · " + tr("voidS") + (voidWhy(S) ? " · " + voidWhy(S) : ""), "neutral");
   }
 
   // сводка победивших рынков (в виде подписей) в нижней полосе
@@ -349,6 +359,46 @@
     while (total > maxW && list.length > 1) { list.pop(); widths.pop(); total = widths.reduce((a, b) => a + b, 0); }
     let x = cx - total / 2;
     list.forEach((l, i) => { S.pill(l, x + widths[i] / 2 - S.u(4), y, { s, c: color, glow: true, alpha }); x += widths[i]; });
+  }
+
+  // Восстановление после перезагрузки доски посреди окна: ev.liveState = последнее значение каждого вида живых данных
+  // (ключи: s0, price, count, "item:a", "item:b", item, reel, stop, round). Прошлой кривой нет, берём только то, что есть: стартовую цену,
+  // последнюю цену, счёт, последний элемент барабана, раунд; el — сколько мс окна уже прошло.
+  function restoreLive(S, L, el) {
+    try {
+      const nowT = S.now();
+      if (S.type === "btc" || S.type === "btceth") {
+        const z = L.s0;
+        if (!z || z.btc == null) return;
+        const k = clamp(Math.round(el / 1000), 0, Math.round(S.wms / 1000)), pr = L.price;
+        S.clockStart = nowT - el; S.flashAt = nowT - el; S.hasLive = true;
+        if (S.type === "btc") {
+          S.s0 = z.btc; S.ticks.set(0, 0);
+          if (pr && pr.btc != null) { S.lastPrice = pr.btc; S.ticks.set(k, pr.btc - S.s0); S.lastTickK = k; }
+        } else {
+          S.s0 = { btc: z.btc, eth: z.eth }; S.tB.set(0, 0); S.tE.set(0, 0);
+          if (pr && pr.btc != null) S.tB.set(k, pr.btc / S.s0.btc - 1);
+          if (pr && pr.eth != null && S.s0.eth) S.tE.set(k, pr.eth / S.s0.eth - 1);
+        }
+      } else if (S.def === duelDef) {
+        const c = L.count;
+        if (c) {
+          const a = c.a | 0, b = c.b | 0;
+          S.samples.push({ tau: el, a, b }); S.hasLive = true;
+          S.disp = [a, b]; S.scale = Math.max(S.scale, Math.ceil(Math.max(a, b, 4) * 1.25));
+        }
+        ["a", "b"].forEach((sd) => { const it = L["item:" + sd]; if (it) S.items.push({ tau: el, side: sd === "b" ? 1 : 0, text: String(it.text == null ? "" : it.text) }); });
+      } else if (S.def === reelDef) {
+        if (L.reel) { const it = { cat: String(L.reel.cat), text: String(L.reel.text == null ? "" : L.reel.text) }; S.reel.push(it); S.lastItem = it; S.hasLive = true; }
+        if (L.stop && S.stopTau == null) { S.stopTau = el; reelDef.mkLand(S); }
+      } else if (S.def === drandDef) {
+        const r = L.round;
+        if (r) {
+          S.rounds.push({ tau: el, n: r.n }); S.roundN = r.n != null ? r.n : S.roundN; S.hasLive = true;
+          if (r.randomness && S.pubTau == null) { S.pubTau = el; S.hex = String(r.randomness).toLowerCase(); }
+        }
+      }
+    } catch (e) { /* не получилось восстановить — сцена просто пойдёт с нуля, как раньше */ }
   }
 
   function mlabel(S, id) {
@@ -469,7 +519,7 @@
         });
       });
       // закраска между S0 и текущей ценой
-      if (reveal && dFinal != null) {
+      if (reveal && dFinal != null && dFinal !== 0) {
         g.fillStyle = dFinal >= 0 ? "rgba(182,255,46,.10)" : "rgba(255,46,136,.10)";
         const yy = sy(dFinal); g.fillRect(x0, Math.min(cy, yy), x1 - x0, Math.abs(yy - cy));
       }
@@ -525,9 +575,19 @@
         [0].concat(zs).forEach((z) => { const dd = dOf(z); if (dFinal > dd) wins.push("up:" + z); if (dFinal < -dd) wins.push("down:" + z); });
         S.shown.outcome = dFinal; S.shown.text = money(dFinal); S.shown.wins = wins;
         const a = easeOut((tau - dataEnd) / 600);
-        chipsRow(S, wins.slice(0, 5).map((id) => mlabel(S, id)), H - S.u(14), C.lime, a);
-        S.pill(money(dFinal), W / 2, top + S.u(14), { s: S.fs(20), c: dFinal >= 0 ? C.lime : C.mag, glow: true, alpha: a });
-        S.stamp(money(dFinal) + " · " + (dFinal >= 0 ? "↑" : "↓"), "neutral");
+        // ничья (цена не изменилась): «выше» и «ниже» возвращаются, победных линий нет
+        const tie = dFinal === 0;
+        if (tie) {
+          const back = ["up:0", "down:0"].filter((id) => mkc(S, id) != null || !S.markets);
+          S.shown.back = back; S.shown.text = "$" + fmt(0, 2) + " · " + tr("noChange");
+          chipsRow(S, back.map((id) => "↺ " + mlabel(S, id)), H - S.u(14), C.amber, a);
+          S.pill("$" + fmt(0, 2) + " · " + tr("noChange"), W / 2, top + S.u(14), { s: S.fs(20), c: C.amber, glow: true, alpha: a });
+          S.stamp("$" + fmt(0, 2) + " · " + tr("noChange") + " · " + tr("refund"), "neutral");
+        } else {
+          chipsRow(S, wins.slice(0, 5).map((id) => mlabel(S, id)), H - S.u(14), C.lime, a);
+          S.pill(money(dFinal), W / 2, top + S.u(14), { s: S.fs(20), c: dFinal >= 0 ? C.lime : C.mag, glow: true, alpha: a });
+          S.stamp(money(dFinal) + " · " + (dFinal >= 0 ? "↑" : "↓"), "neutral");
+        }
       }
     },
   };
@@ -628,7 +688,7 @@
         const rv = reveal ? 1 : 0;
         const pop = reveal ? 1 : easeOut(tp / 0.25) * (1 - easeInOut((tp - 0.65) / 0.35));
         if (!reveal) { S.shown.leadTick = phase2; }
-        if (S.lastLead !== ldr && S.lastLead != null && !reveal) S.emit("say", `<b>${ldr === "B" ? "BTC" : "ETH"}</b> ${tr("lead2").toLowerCase()}: ${sgn(Math.abs(gap), 2)}σ`);
+        if (S.lastLead !== ldr && S.lastLead != null && !reveal) { const nm = ldr === "B" ? "BTC" : "ETH", gv = sgn(Math.abs(gap), 2); S.emit("say", () => `<b>${nm}</b> ${tr("lead2").toLowerCase()}: ${gv}σ`); }
         S.lastLead = ldr;
         const name = ldr === "B" ? "BTC" : "ETH";
         S.pill(`${tr("lead")}: ${name}  ${fmt(Math.abs(gap), 2)}σ_d`, (x0 + x1) / 2, top + S.u(14), { s: S.fs(13), c: col[ldr], glow: true, alpha: reveal ? 1 : 0.35 + 0.65 * pop });
@@ -659,13 +719,15 @@
         const o = S.outcome, gapF = (o.rB - o.rE) / sd;
         const wins = [];
         if (o.rB > 0 && o.rE > 0) wins.push("bothUp"); if (o.rB < 0 && o.rE < 0) wins.push("bothDown"); if (o.rB * o.rE < 0) wins.push("mixed");
-        wins.push(o.rB - o.rE > 0 ? "btcBeats" : "ethBeats");
+        // при равенстве доходностей оба рынка «кто сильнее» возвращаются: победителя нет, показываем «поровну»
+        const tieBE = Math.abs(o.rB - o.rE) < 1e-12;
+        if (!tieBE) wins.push(o.rB - o.rE > 0 ? "btcBeats" : "ethBeats");
         [0.5, 1, 1.5].forEach((z) => { if (gapF > z) wins.push("btcGap:" + z); if (-gapF > z) wins.push("ethGap:" + z); });
-        S.shown.outcome = o; S.shown.wins = wins; S.shown.gapSigma = +gapF.toFixed(3);
+        S.shown.outcome = o; S.shown.wins = wins; S.shown.gapSigma = +gapF.toFixed(3); S.shown.tie = tieBE;
         S.shown.text = `BTC ${sgn(o.rB * 100, 3)}% · ETH ${sgn(o.rE * 100, 3)}%`;
         const a = easeOut((tau - dataEnd) / 600);
-        chipsRow(S, wins.map((id) => mlabel(S, id)), H - S.u(10), C.lime, a);
-        S.stamp(S.shown.text, "neutral");
+        chipsRow(S, wins.map((id) => mlabel(S, id)).concat(tieBE ? ["↺ " + tr("equal")] : []), H - S.u(10), C.lime, a);
+        S.stamp(S.shown.text + (tieBE ? " · " + tr("equal") : ""), "neutral");
       }
     },
   };
@@ -739,7 +801,7 @@
       S.scale = S.scale < tgtScale ? lerp(S.scale, tgtScale, 1 - Math.exp(-S.dt / 250)) : S.scale;
       const top = S.hh + S.u(46), base = H - S.u(78), bh = base - top;
       const cxs = [W * (W < 500 ? 0.26 : 0.3), W * (W < 500 ? 0.74 : 0.7)], bw = Math.min(W * 0.2, S.u(150));
-      const cols = [C.lime, C.mag], lb = (S.meta && S.meta.labels) || {}, names = [lb.A || "A", lb.B || "B"];
+      const cols = [C.lime, C.mag], names = [S.lbl("A"), S.lbl("B")];
       const vals = [dA, dB], ints = [a, b];
       const rush = !reveal && S.mode !== "idle" && tau > dataEnd * 0.88 && tau <= dataEnd && S.clockStart != null && !S.void && S.mode === "play" ? 1 : 0;
       const winner = reveal ? (a > b ? 0 : b > a ? 1 : -1) : -2;
@@ -802,7 +864,7 @@
       // смена лидера
       const sg = Math.sign(a - b);
       if (sg !== S.leadSign && a + b >= 6 && S.leadSign !== 0 && sg !== 0 && !reveal && S.now() - S.leadAt > 2500 && S.leadSays < 4) {
-        S.leadAt = S.now(); S.leadSays++; S.emit("say", `${tr("lead2")}: <b>${names[sg > 0 ? 0 : 1]}</b> ${a}:${b}`);
+        S.leadAt = S.now(); S.leadSays++; { const sid = sg > 0 ? "A" : "B", sa = a, sb = b; S.emit("say", () => `${tr("lead2")}: <b>${S.lbl(sid)}</b> ${sa}:${sb}`); }
       }
       if (sg !== 0) S.leadSign = sg;
       // финальный рывок
@@ -850,7 +912,7 @@
       [].concat(it.ids || [], it.id != null ? [it.id] : [], it.kind != null ? [it.kind] : []).forEach((x) => { x = String(x); if (ids.includes(x) && !out.includes(x)) out.push(x); });
       if (out.length) return out;
       const low = String(it.text || "").toLowerCase();
-      for (const id of ids) { const l = String(S.lbl(id)).toLowerCase().replace(/[^\p{L}\p{N} ]/gu, "").trim(); if (l && low.includes(l)) out.push(id); }
+      for (const id of ids) { const l = String(S.raw(id)).toLowerCase().replace(/[^\p{L}\p{N} ]/gu, "").trim(); if (l && low.includes(l)) out.push(id); }
       return out;
     },
     live(S, d) {
@@ -1028,7 +1090,8 @@
     },
     draw(S, tau) {
       const g = S.g, W = S.W, H = S.H, k = S.k;
-      const cats = this.cats(S), lb = (S.meta && S.meta.labels) || {};
+      const cats = this.cats(S);
+      const lbl = (c) => String(S.lbl(c));
       const colOf = (cat) => CATCOL[Math.max(0, cats.indexOf(cat)) % CATCOL.length];
       // положение барабана
       let s, v, stopped = false;
@@ -1055,7 +1118,7 @@
         g.strokeStyle = col; g.lineWidth = 1.5 * k; g.globalAlpha *= 0.8; g.stroke(); g.globalAlpha /= 0.8;
         g.fillStyle = col; g.globalAlpha *= 0.9; g.fillRect(x - w / 2 + S.u(10), cy - h / 2 + S.u(10), S.u(26), S.u(3)); g.globalAlpha /= 0.9;
         // метка и текст элемента
-        const label = String(lb[c.cat] != null ? lb[c.cat] : c.cat);
+        const label = lbl(c.cat);
         const ls = S.fit(label, S.fs(34) * sc, w - S.u(16));
         const em = isEmoji(label);
         S.txt(label.toUpperCase(), x, cy - h * (c.text ? 0.08 : 0), { s: ls, c: "#fff", a: "center", glow: col, gb: 8, maxW: w - S.u(12) });
@@ -1075,14 +1138,14 @@
       // легенда категорий
       const reveal = S.played && !S.void && stopped;
       const ly = H - S.u(52), chipS = S.fs(11);
-      const rowsW = cats.map((c) => S.measure(String(lb[c] != null ? lb[c] : c), chipS, "m", 800) + chipS * 1.8);
+      const rowsW = cats.map((c) => S.measure(lbl(c), chipS, "m", 800) + chipS * 1.8);
       let rows = [[]], rw = 0; cats.forEach((c, i) => { if (rw + rowsW[i] > W - S.u(20) && rows[rows.length - 1].length) { rows.push([]); rw = 0; } rows[rows.length - 1].push(i); rw += rowsW[i] + S.u(6); });
       rows.slice(0, 3).forEach((row, ri) => {
         const tw = row.reduce((a, i) => a + rowsW[i] + S.u(6), -S.u(6)); let x = (W - tw) / 2;
         const y = ly + ri * chipS * 2.2 - (rows.length > 1 ? (rows.length - 1) * chipS * 1.1 : 0);
         row.forEach((i) => {
           const c = cats[i], on = centerCat && centerCat.cat === c, win = reveal && String(S.outcome) === c;
-          S.pill(String(lb[c] != null ? lb[c] : c), x + rowsW[i] / 2, y, { s: chipS, c: win ? C.lime : on ? colOf(c) : "rgba(125,140,147,.5)", tc: win ? "#07090c" : on ? "#fff" : C.dim, bg: win ? C.lime : "rgba(13,18,23,.9)", glow: win || on, alpha: reveal && !win ? 0.4 : 1 });
+          S.pill(lbl(c), x + rowsW[i] / 2, y, { s: chipS, c: win ? C.lime : on ? colOf(c) : "rgba(125,140,147,.5)", tc: win ? "#07090c" : on ? "#fff" : C.dim, bg: win ? C.lime : "rgba(13,18,23,.9)", glow: win || on, alpha: reveal && !win ? 0.4 : 1 });
           x += rowsW[i] + S.u(6);
         });
       });
@@ -1095,7 +1158,7 @@
       S.shown.phase = reveal ? "reveal" : stopped ? "stopped" : "run";
       S.shown.centerCat = centerCat && centerCat.cat;
       if (reveal) {
-        const o = String(S.outcome), lab = String(lb[o] != null ? lb[o] : o), pa = easeOut((tau - S.dataEnd) / 500);
+        const o = String(S.outcome), lab = lbl(o), pa = easeOut((tau - S.dataEnd) / 500);
         S.shown.outcome = o; S.shown.text = lab; S.shown.landedCat = centerCat && centerCat.cat;
         const kc = mkc(S, "cat:" + o);
         S.pill(lab + (kc != null ? "  ×" + kcFmt(kc) : ""), W / 2, S.hh + S.u(26), { s: S.fs(16), c: C.lime, glow: true, alpha: pa });

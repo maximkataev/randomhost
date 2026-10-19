@@ -12,7 +12,7 @@ const rocket = require("./events/rocket");
 const live = require("./events/live");
 
 const SCENIC = ["dice", "dogs", "penalties", "rocket", "rope"];
-const REAL = ["btc", "btceth", "news", "emoji", "wikiduel", "wikiedit", "whales", "lightning", "airport", "lang", "wikinext", "drand"];
+const REAL = ["btc", "btceth", "news", "emoji", "wikiduel", "wikiedit", "whales", "lightning", "airport", "lang", "wikinext"];
 
 // какой математикой считается реальное событие
 const LIVE_KIND = {

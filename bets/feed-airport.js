@@ -110,7 +110,10 @@ function create(d) {
   const src = SOURCES.map((s) => ({ ...s, last: 0, busy: false, fails: 0, downs: 0, downUntil: 0, okAt: 0 }));
   const listeners = new Set();
   let timer = null, started = false, k = 0, lastAt = 0, total = { ground: 0, climb: 0 };
-  let focus = null;                                   // { pair: [A,B], until }
+  // Частый опрос выбранных пар: ключ «A-B» → { pair, until }. Пар может быть несколько (по одной на комнату),
+  // поэтому это не одна глобальная пара: истёкшие записи удаляются, опрос идёт по аэропортам всех живых пар.
+  const focus = new Map();
+  const refs = new Map();                             // «A-B» → число идущих begin() с этой парой
   let lastPrepared = null;
   const hist = [];                                    // дневник для отладки измерения: { t, ap, kind }
 
@@ -155,10 +158,11 @@ function create(d) {
 
   function tick() {
     const now = deps.now();
-    if (focus && now > focus.until) focus = null;
+    for (const [key, f] of focus) if (now > f.until) focus.delete(key);
     const usable = src.filter((s) => !s.busy && s.downUntil <= now && now - s.last >= s.gap).sort((a, b) => a.last - b.last);
     if (!usable.length) return;
-    const ap = focus ? focus.pair[k % 2] : codes[k % codes.length];
+    const fl = focus.size ? [...new Set([...focus.values()].flatMap((f) => f.pair))] : null;
+    const ap = fl ? fl[k % fl.length] : codes[k % codes.length];
     k++;
     poll(usable[0], ap);
     // иногда чистим память о судах (раз в ~сотню запросов)
@@ -168,6 +172,19 @@ function create(d) {
   const fresh = (c, now) => lastOk[c] && now - lastOk[c] < 90000;
   const warm = (c, now) => since[c] && now - since[c] >= WARM_MS && fresh(c, now);
   const lam = (c, now) => rates[c].rate(now, { windowMs: RATE_WINDOW, halfMs: RATE_HALF, since: since[c] });
+
+  const pairKey = (A, B) => `${A}-${B}`;
+  function setFocus(A, B, until) {
+    const key = pairKey(A, B), f = focus.get(key);
+    focus.set(key, { pair: [A, B], until: f ? Math.max(f.until, until) : until });
+  }
+
+  // почему prepare вернул null
+  function why() {
+    const now = deps.now();
+    if (!(lastAt > 0 && now - lastAt < 30000)) return "down";
+    return PAIRS.some(([a, b]) => warm(a, now) && warm(b, now)) ? "no_pair" : "warming";
+  }
 
   function prepare() {
     const now = deps.now();
@@ -188,18 +205,22 @@ function create(d) {
     const input = { lamA: round(la, 5), lamB: round(lb, 5), T: T_SEC, phi: PHI_AIRPORT };
     const meta = { labels: { A: `✈ ${A}`, B: `✈ ${B}` }, skin: `${A}-${B}` };
     lastPrepared = { A, B, input };
-    focus = { pair: [A, B], until: now + FOCUS_MS };   // с этого момента опрашиваем только эту пару, чаще
+    setFocus(A, B, now + FOCUS_MS);                    // с этого момента эту пару опрашиваем чаще
     return { input, meta };
   }
 
   function begin(type, opts) {
     let A, B;
-    const m = /^([A-Z]{3})-([A-Z]{3})$/.exec(opts.skin || "");
-    if (m && AIRPORTS[m[1]] && AIRPORTS[m[2]]) { A = m[1]; B = m[2]; } else if (lastPrepared) { A = lastPrepared.A; B = lastPrepared.B; }
+    // пара — из meta события (переживает рестарт и две комнаты); lastPrepared — лишь запасной вариант без skin
+    const skin = (opts.meta && opts.meta.skin) || opts.skin;
+    const m = /^([A-Z]{3})-([A-Z]{3})$/.exec(skin || "");
+    if (m && AIRPORTS[m[1]] && AIRPORTS[m[2]]) { A = m[1]; B = m[2]; } else if (!skin && lastPrepared) { A = lastPrepared.A; B = lastPrepared.B; }
     if (!A) { deps.setTimeout(() => opts.onAbort && opts.onAbort("пара не подготовлена"), 0); return { cancel() {} }; }
     const closeAt = opts.closeAt, endAt = closeAt + T_SEC * 1000;
     const h = makeHandle(deps, opts, { timeoutMs: T_SEC * 1000 + 8000 });
-    focus = { pair: [A, B], until: endAt + 5000 };
+    const myKey = pairKey(A, B);
+    setFocus(A, B, endAt + 5000);
+    refs.set(myKey, (refs.get(myKey) || 0) + 1);
     let nA = 0, nB = 0, lastItem = 0;
     const fn = (e) => {
       if (e.t <= closeAt || e.t > endAt) return;
@@ -207,7 +228,18 @@ function create(d) {
       if (e.t - lastItem >= 700) { lastItem = e.t; h.live({ kind: "item", side: e.ap === A ? "a" : "b", text: `✈ ${e.ap} · ${e.flight}` }); }
     };
     listeners.add(fn);
-    const stopAll = () => { listeners.delete(fn); if (focus && focus.pair[0] === A) focus.until = Math.min(focus.until, deps.now() + 1000); };
+    // счётчик ссылок: фокус на паре сворачиваем, только когда её последнее событие закончилось
+    let stopped = false;
+    const stopAll = () => {
+      listeners.delete(fn);
+      if (stopped) return;
+      stopped = true;
+      const left = (refs.get(myKey) || 1) - 1;
+      if (left > 0) { refs.set(myKey, left); return; }
+      refs.delete(myKey);
+      const f = focus.get(myKey);
+      if (f) f.until = Math.min(f.until, deps.now() + 1000);
+    };
     // по ходу окна оба аэропорта должны отвечать, иначе нулевой счёт был бы враньём
     const alive = () => {
       const now = deps.now();
@@ -229,15 +261,16 @@ function create(d) {
   return {
     types: ["airport"],
     start() { if (started) return; started = true; timer = deps.setInterval(tick, TICK_MS); },
-    stop() { started = false; if (timer != null) deps.clearInterval(timer); timer = null; focus = null; },
+    stop() { started = false; if (timer != null) deps.clearInterval(timer); timer = null; focus.clear(); refs.clear(); },
     status() {
       const now = deps.now();
       const ok = lastAt > 0 && now - lastAt < 30000;
       const up = src.filter((s) => s.okAt && now - s.okAt < 30000).map((s) => s.id).join("+") || "нет";
       return { ok, lastAt, note: ok ? `${up}, взлётов ${total.ground}+${total.climb}` : "ADS-B источники молчат" };
     },
-    prepare,
+    prepare, why,
     begin,
+    _focus: focus,
     // для тестов и измерения
     _tick: tick, _detect: detect, _hist: hist, _lam: lam, _since: since, _rates: rates, _total: total,
   };

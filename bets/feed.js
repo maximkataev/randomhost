@@ -13,8 +13,11 @@
  * begin → немедленный onAbort. Всё внешнее внедряется (fetch, WebSocket, часы, таймеры, rnd(n) → целое [0,n)),
  * поэтому тесты идут на моках. Адаптеры лежат в bets/feed-*.js; здесь только маршрутизация, флаги и статус.
  *
- * Серверу: begin() нужно звать в момент запирания окна, closeAt = серверное время запирания (мс). Если сервер
- * знает входные данные события (ev.input / ev.meta), их можно не передавать: feed помнит последний prepare по типу.
+ * Серверу: begin() нужно звать в момент запирания окна, closeAt = серверное время запирания (мс) и ОБЯЗАТЕЛЬНО
+ * передавать input/meta события (ev.input / ev.meta из game.js): адаптеры берут пару, список вики, темы и набор
+ * категорий оттуда. Состояние «последнего prepare» на процесс остаётся лишь запасным вариантом: при двух комнатах
+ * и после рестарта сервера внутри окна ставок оно не совпадает с тем, что видел игрок.
+ *   feed.why(type) → "no_pair" | "warming" | "down": почему prepare вернул null (для ev.fallbackWhy).
  */
 const { withDefaults } = require("./feed-util");
 
@@ -77,12 +80,23 @@ function createFeed(d = {}) {
     }
   }
 
+  // Почему prepare вернул null: "down" — источник молчит/выключен, "warming" — мало данных, "no_pair" — нет подходящей пары/набора
+  function why(type) {
+    if (!enabled.has(type) || !mods.get(type)) return "down";
+    try {
+      const m = mods.get(type);
+      if (typeof m.why === "function") { const w = m.why(type); if (w) return w; }
+      return m.status().ok ? "no_pair" : "down";
+    } catch (e) { return "down"; }
+  }
+
   function begin(type, opts = {}) {
     const abort = (why) => { deps.setTimeout(() => opts.onAbort && opts.onAbort(why), 0); return { cancel() {} }; };
     if (!enabled.has(type) || !mods.get(type)) return abort("выключено");
     let finished = false, inner = null;
     const wrap = {
-      closeAt: opts.closeAt, skin: opts.skin, wikis: opts.wikis, kinds: opts.kinds, split: opts.split,
+      closeAt: opts.closeAt, deadline: opts.deadline, input: opts.input, meta: opts.meta, log: opts.log,
+      skin: opts.skin, wikis: opts.wikis, kinds: opts.kinds, split: opts.split,
       onLive: (data) => { if (!finished && opts.onLive) { try { opts.onLive(data); } catch (e) { /* ошибка сервера не ломает источник */ } } },
       onResolve: (o, voids) => { if (finished) return; finished = true; active.delete(handle); if (opts.onResolve) opts.onResolve(o, voids); },
       onAbort: (why) => { if (finished) return; finished = true; active.delete(handle); if (opts.onAbort) opts.onAbort(why); },
@@ -100,11 +114,12 @@ function createFeed(d = {}) {
       let s;
       try { s = mods.get(t).status(); } catch (e) { s = { ok: false, lastAt: 0, note: e.message }; }
       out[t] = Object.assign({ enabled: true }, s);
+      if (!out[t].ok) out[t].why = "down";
     }
     return out;
   }
 
-  return { start, stop, prepare, begin, status, enabled: () => [...enabled], _mods: mods };
+  return { start, stop, prepare, begin, status, why, enabled: () => [...enabled], _mods: mods };
 }
 
 module.exports = { createFeed, parseFlags, REAL };
