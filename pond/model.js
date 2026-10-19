@@ -13,9 +13,11 @@
 
   const keyOf = e => (e.t != null ? e.t : e.type === 'jump' ? e.t0 : null);
 
-  // погружение сервер обрабатывает на GRACE позже метки (ждёт прыжки «задним числом»): эти события опаздывают намеренно,
+  // погружение сервер обрабатывает на GRACE позже метки, вытеснение — на STOMP_REACT после прилёта (ждёт блок): эти события опаздывают намеренно,
   // а кувшинка и так тонет по своей метке sinkAt, которую клиент знает заранее
-  const deferred = e => e.type === 'sunk' || e.type === 'shrunk' || (e.type === 'fall' && (e.cause === 'wave' || e.cause === 'heron'));
+  const deferred = e => e.type === 'sunk' || e.type === 'shrunk' || e.type === 'stomp' || e.type === 'blocked'
+    || (e.type === 'fall' && (e.cause === 'wave' || e.cause === 'heron' || e.cause === 'stomp'))
+    || (e.type === 'land' && (e.stomp != null || e.bounce != null)) || (e.type === 'jump' && e.forced);
 
   function createModel(opts) {
     opts = opts || {};
