@@ -207,15 +207,23 @@
       f.blockUntil = nowT + m.cfg.BLOCK_T; f.blockReadyAt = f.blockUntil + m.cfg.BLOCK_CD;
       return true;
     };
-    // кто-то летит на мой лист (вытеснение): для подсказки «нажми блок»
+    // кто-то летит на мой лист (вытеснение): для подсказки «нажми блок».
+    // Смотрим и в очередь событий: тревога срабатывает, как только событие прыжка пришло, не дожидаясь задержки отрисовки.
     m.incoming = function (nowT) {
       const me = m.frogs.get(m.myId);
       if (!me || me.st !== 'pad') return null;
       const pd = m.pads[me.pad];
       if (!pd) return null;
+      const react = m.cfg.STOMP_REACT || 0.35;
+      const hits = (tx, ty) => Math.hypot(tx - pd.x, ty - pd.y) <= pd.r + m.cfg.LAND_SLACK;
       for (const f of m.frogs.values()) {
         if (f === me || f.st !== 'air' || !f.jump || f.jump.forced) continue;
-        if (Math.hypot(f.jump.tx - pd.x, f.jump.ty - pd.y) <= pd.r + m.cfg.LAND_SLACK && f.jump.L >= nowT - (m.cfg.STOMP_REACT || 0.35)) return { by: f.id, eta: Math.max(0, f.jump.L - nowT) };
+        if (hits(f.jump.tx, f.jump.ty) && f.jump.L >= nowT - react) return { by: f.id, eta: Math.max(0, f.jump.L - nowT) };
+      }
+      for (const e of m.queue) {
+        if (e.type !== 'jump' || e.forced || e.id === m.myId) continue;
+        const L = e.t0 + e.dur;
+        if (L >= nowT - react && hits(e.x0 + Math.cos(e.ang) * e.dist, e.y0 + Math.sin(e.ang) * e.dist)) return { by: e.id, eta: Math.max(0, L - nowT) };
       }
       return null;
     };

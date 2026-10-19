@@ -552,7 +552,7 @@
           if (mine && c.incoming && m.phase === 'fight') {
             const pl = 0.5 + 0.5 * Math.sin(t * 22);
             cx.strokeStyle = `rgba(255,90,70,${0.55 + 0.45 * pl})`; cx.lineWidth = 4; cx.beginPath(); cx.arc(pos.x, pos.y, 40, 0, TAU); cx.stroke();
-            cx.font = '800 26px Montserrat, sans-serif'; cx.textAlign = 'center'; cx.fillStyle = '#ff6a55'; cx.fillText('❗', pos.x, pos.y - 46);
+            cx.font = '800 40px Montserrat, sans-serif'; cx.textAlign = 'center'; cx.fillStyle = '#ff6a55'; cx.fillText('❗', pos.x, pos.y - 50);
           }
           drawFrog(f, pos, face, { air, u, crouch: aim ? aim.pow * 0.9 : cr, t, scale: mine ? 1.08 : 1, croak: f._croak > t ? 1 : 0, look: aim ? 1 : 0 });
           r.names.push({ f, x: pos.x, y: pos.y - (pos.z || 0) * 0.55, mine });
