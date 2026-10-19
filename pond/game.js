@@ -39,6 +39,7 @@ const DEFAULTS = Object.assign({}, P.DEFAULTS, {
   STAY_T: 9,            // лист «устаёт»: кто сидит на нём дольше (с разбросом ±15%), тот его топит — на месте не отсидеться
   TIRE_WAIT: 3,         // нет свободного достижимого листа — усталый лист ждёт не дольше (дальше выбор: вытеснить соседа или упасть)
   TIRE_WARN: 2.0,       // от красной метки усталого листа до погружения
+  STOMP_REACT: 0.35,    // вытеснение срабатывает через столько после прилёта: хозяин ещё успевает нажать блок (окно «секунда» = полёт + это)
   BLOCK_T: 1.0,         // блок: столько секунд лист защищён от вытеснения
   BLOCK_CD: 2.5,        // после блока кнопка неактивна ещё столько секунд
   JUMP_RATE: 0.2,       // не чаще одного прыжка за столько секунд на игрока
@@ -135,7 +136,8 @@ function createGame(opts) {
     // стартовая защита: вытеснять рано — лягушка отскакивает
     if (L < cfg.STOMP_GUARD) return bounce();
     // блок: хозяин нажал защиту — вытеснение не проходит (если защищены все, кого можно сбросить)
-    const shielded = (o) => L >= o.blockFrom && L <= o.blockUntil;
+    // защита покрывает прилёт, если окно блока не истекло к L и блок нажат не позже обработки (L + STOMP_REACT)
+    const shielded = (o) => L <= o.blockUntil && o.blockFrom <= L + cfg.STOMP_REACT;
     const open = occ.filter((o) => !shielded(o));
     if (!open.length) {
       const d = occ.reduce((a, b) => (a.seatedAt <= b.seatedAt ? a : b));
@@ -438,9 +440,9 @@ function createGame(opts) {
     for (const f of g.players) {
       if (f.st === 'air') {
         const j = f.jump;
-        // прилёт на занятый лист: обрабатываем на GRACE позже, чтобы успел блок, нажатый с задержкой сети
+        // прилёт на занятый лист: обрабатываем на STOMP_REACT позже — хозяин успевает нажать блок (с учётом задержки сети)
         let wait = 0;
-        if (!j.forced) { const pd = P.padAt(g.pads, j.tx, j.ty, cfg); if (pd && occupants(pd.id).some((o) => o !== f)) wait = cfg.GRACE; }
+        if (!j.forced) { const pd = P.padAt(g.pads, j.tx, j.ty, cfg); if (pd && occupants(pd.id).filter((o) => o !== f).length >= pd.cap) wait = cfg.STOMP_REACT; }
         if (j.L + wait <= tNew) take(j.L, 'land', f, 1 + f.idx * 1e-3);
       }
       else if (f.st === 'pad' && f.queued) take(f.readyAt, 'queued', f, 2);

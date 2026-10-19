@@ -391,7 +391,7 @@ render.setVibrate((p) => vibrate(p));   // на телефоне имён над
     if (e.target && /input|textarea/i.test(e.target.tagName)) return;
     if (e.key === 'b' || e.key === 'B' || e.key === 'и' || e.key === 'И') { if (canPlay()) { e.preventDefault(); doBlock(); } }
   });
-  let lastBlockClass = '';
+  let lastBlockClass = '', lastBlockLbl = '';
   function updateBlockBtn(m, nowT) {
     const f = mine(m);
     if (!f || !blockBtn) return;
@@ -403,6 +403,8 @@ render.setVibrate((p) => vibrate(p));   // на телефоне имён над
     const full = cls + (inc ? ' warn' : '');
     if (full !== lastBlockClass) { blockBtn.className = 'block-btn ' + full; lastBlockClass = full; }
     blockBtn.style.setProperty('--p', p.toFixed(3));
+    const lbl = cls === 'cool' ? (Math.max(0, f.blockReadyAt - nowT)).toFixed(1) : '🛡';
+    if (lbl !== lastBlockLbl) { blockBtn.firstElementChild.textContent = lbl; lastBlockLbl = lbl; }
     render.incoming = !!m.incoming(nowT);
   }
 

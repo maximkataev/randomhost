@@ -215,7 +215,7 @@
       if (!pd) return null;
       for (const f of m.frogs.values()) {
         if (f === me || f.st !== 'air' || !f.jump || f.jump.forced) continue;
-        if (Math.hypot(f.jump.tx - pd.x, f.jump.ty - pd.y) <= pd.r + m.cfg.LAND_SLACK && f.jump.L >= nowT - 0.05) return { by: f.id, eta: f.jump.L - nowT };
+        if (Math.hypot(f.jump.tx - pd.x, f.jump.ty - pd.y) <= pd.r + m.cfg.LAND_SLACK && f.jump.L >= nowT - (m.cfg.STOMP_REACT || 0.35)) return { by: f.id, eta: Math.max(0, f.jump.L - nowT) };
       }
       return null;
     };

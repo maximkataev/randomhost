@@ -273,6 +273,26 @@ test('блок: окно истекло — вытеснение проходи�
   assert(!ev.some(e => e.type === 'blocked'));
   assert.strictEqual(b.blocks, 0);
 });
+test('блок после прилёта: нажатие в пределах STOMP_REACT спасает, позже — нет', () => {
+  const s1 = duelSetup();
+  run(s1.g, 1);
+  jumpTo(s1.g, s1.a, s1.pb);
+  const L1 = s1.a.jump.L;
+  for (let k = 0; k < 400 && s1.g.t < L1 + 0.2 && s1.g.phase === 'fight'; k++) s1.g.step(0.01);
+  assert(s1.a.st === 'air', 'вытеснение ещё не сработало');
+  assert(s1.g.block('p1', 0), 'блок нажат уже после прилёта');
+  run(s1.g, 0.8);
+  assert(s1.g.drainEvents().some(e => e.type === 'blocked'), 'прилёт отбит');
+  const s2 = duelSetup();
+  run(s2.g, 1);
+  jumpTo(s2.g, s2.a, s2.pb);
+  const L2 = s2.a.jump.L;
+  for (let k = 0; k < 600 && s2.a.st === 'air' && s2.g.phase === 'fight'; k++) s2.g.step(0.01);
+  s2.g.block('p1', 0);   // вытеснение уже случилось
+  const ev2 = s2.g.drainEvents();
+  assert(ev2.some(e => e.type === 'stomp') && !ev2.some(e => e.type === 'blocked'), 'слишком поздно — вытеснение прошло');
+  assert(L2 > 0);
+});
 test('блок с лагом: нажатие, пришедшее чуть позже прилёта, но в пределах LAG_MAX, успевает', () => {
   const { g, a, pb } = duelSetup();
   run(g, 1);
