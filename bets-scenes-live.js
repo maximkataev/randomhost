@@ -743,7 +743,7 @@
   };
   const duelDef = {
     startOnShow: true,
-    reset(S) { S.samples = []; S.items = []; S.ex = null; S.chipsSynth = []; S.scale = 8; S.bump = [-1e9, -1e9]; S.leadSign = 0; S.leadAt = -1e9; S.leadSays = 0; S.disp = [0, 0]; S.base = [0, 0]; S.tau0 = 0; },
+    reset(S) { S.samples = []; S.items = []; S.ex = null; S.chipsSynth = []; S.scale = S.type === "airport" ? 4 : 8; S.bump = [-1e9, -1e9]; S.leadSign = 0; S.leadAt = -1e9; S.leadSays = 0; S.disp = [0, 0]; S.base = [0, 0]; S.tau0 = 0; },
     hasHistory(S) { return S.samples.length > 0; },
     live(S, d) {
       if (S.synthetic) return;
@@ -797,7 +797,7 @@
       const dA = sm(0, a), dB = sm(1, b);
       [a, b].forEach((v, i) => { const jump = v - Math.round(prev[i]); if (jump >= Math.max(2, S.scale * 0.05)) S.bump[i] = S.now(); });
       const peak = Math.max(a, b, 4);
-      const tgtScale = Math.max(8, Math.ceil(peak * 1.25));
+      const tgtScale = Math.max(S.type === "airport" ? 4 : 8, Math.ceil(peak * 1.25));
       S.scale = S.scale < tgtScale ? lerp(S.scale, tgtScale, 1 - Math.exp(-S.dt / 250)) : S.scale;
       const top = S.hh + S.u(46), base = H - S.u(78), bh = base - top;
       const cxs = [W * (W < 500 ? 0.26 : 0.3), W * (W < 500 ? 0.74 : 0.7)], bw = Math.min(W * 0.2, S.u(150));
@@ -827,7 +827,7 @@
         } else { g.fillStyle = grad; g.fillRect(x, y, bw, h); g.fillStyle = "rgba(255,255,255,.9)"; g.fillRect(x, y, bw, Math.max(2, S.u(3))); }
         g.restore();
         // число
-        const numS = S.fs(54) * (1 + 0.12 * bumpK);
+        const numS = S.fs(S.type === "airport" ? 76 : 54) * (1 + 0.12 * bumpK);
         S.txt(String(Math.round(vals[i])), cx, Math.max(top - S.u(6), y - S.u(26)), { s: numS, c: "#fff", a: "center", glow: cols[i], gb: 14, alpha: dim ? 0.5 : 1 });
         // подпись
         const nm = String(names[i]);
@@ -853,7 +853,7 @@
         const barTop = base - clamp(vals[c.side] / S.scale, 0, 1) * bh;
         const y = clamp(barTop + S.u(16) + hj * Math.min(base - barTop - S.u(24), S.u(110)), top, base - S.u(14));
         const x = cxs[c.side] + side * lerp(bw * 0.5 + S.u(190), bw * 0.5 + S.u(6), easeInOut(Math.min(1, p)));
-        S.txt(c.text, x, y, { s: S.fs(12), f: "m", c: cols[c.side], a: c.side ? "left" : "right", alpha: (1 - clamp((p - 0.85) / 0.4, 0, 1)) * clamp(p * 5, 0, 1), maxW: S.u(170), w: 700 });
+        S.txt((S.type === "airport" ? "✈ " : "") + c.text, x, y, { s: S.fs(S.type === "airport" ? 15 : 12), f: "m", c: cols[c.side], a: c.side ? "left" : "right", alpha: (1 - clamp((p - 0.85) / 0.4, 0, 1)) * clamp(p * 5, 0, 1), maxW: S.u(170), w: 700 });
         drawn++;
       }
       // центр: VS и отсчёт

@@ -101,7 +101,7 @@
 
   const kcStr = (kc) => (kc / 100).toFixed(2).replace(".", ",");
   const num = (x) => String(x).replace(".", ",");
-  const dog = (meta, i) => `№${i} ${(meta && meta.names && meta.names[i - 1]) || ""}`.trim();
+  const dog = (meta, i) => `№${i} ${tr((meta && meta.names && meta.names[i - 1]) || "")}`.trim();
 
   // «2+ правки» / «2+ edits» / «2+ επεξεργασίες»: порог числа событий
   function atLeast(type, n, lang) {
@@ -132,25 +132,25 @@
         if (k === "ex") { const [a, b] = v.split("-"); return `${dog(meta, +a)}, ${w.then} ${dog(meta, +b)}`; }
         break;
       case "penalties": {
-        const team = (t) => (meta[t] && meta[t].name) || t;
+        const team = (t) => tr((meta[t] && meta[t].name) || t);
         if (k === "winner") return team(v);
         if (k === "over") return `${w.over} ${num(v)}`;
         if (k === "under") return `${w.under} ${num(v)}`;
         if (k === "score") return `${w.score} ${v.replace("-", ":")}`;
         if (id === "both3") return w.both3;
         if (id === "post") return w.post;
-        if (k === "shooter") { const t = v[0], n = +v.slice(1); return `${(meta[t] && meta[t].men && meta[t].men[n - 1]) || v} ${w.scores}`; }
+        if (k === "shooter") { const t = v[0], n = +v.slice(1); return `${tr((meta[t] && meta[t].men && meta[t].men[n - 1]) || v)} ${w.scores}`; }
         break;
       }
       case "rope": {
-        const hero = (t) => meta[t] || t;
+        const hero = (t) => tr(meta[t] || t);
         if (k === "win") return hero(v);
         if (k === "big") return `${hero(v)} ${w.margin}`;
         if (k === "comeback") return `${hero(v)}: ${w.comeback}`;
         break;
       }
       case "boxing": {
-        const hero = (t) => (meta[t] && (meta[t].name || meta[t])) || t;
+        const hero = (t) => tr((meta[t] && (meta[t].name || meta[t])) || t);
         if (k === "win") return hero(v);
         if (id === "method:KO") return w.koTxt;
         if (id === "method:DEC") return w.decTxt;
@@ -386,7 +386,25 @@
   // Потенциальный выигрыш по правилам движка (floor, целые фишки)
   const payout = (stake, kc) => Math.floor((stake * kc) / 100);
 
-  const api = { TYPES, rules, marketLabel, shortLabel, groupsFor, labelFor, LABELS, fallbackText, voidText, chips, kcStr, payout, mulberry32, PLAYER_COLORS, REACTIONS, typeTitle: (t, lang) => pick((TYPES[t] || { title: { ru: t } }).title, lang || LANG()), typeIcon: (t) => (TYPES[t] || {}).icon || "🎯" };
+
+  // ---- Имена героев приходят с сервера на русском: в EN/EL показываем транслитерацию (собаки, команды, бойцы) ----
+  const TR_EN = { а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "yo", ж: "zh", з: "z", и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "kh", ц: "ts", ч: "ch", ш: "sh", щ: "shch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya" };
+  const TR_EL = { а: "α", б: "μπ", в: "β", г: "γκ", д: "ντ", е: "ε", ё: "ιο", ж: "ζ", з: "ζ", и: "ι", й: "ι", к: "κ", л: "λ", м: "μ", н: "ν", о: "ο", п: "π", р: "ρ", с: "σ", т: "τ", у: "ου", ф: "φ", х: "χ", ц: "τσ", ч: "τσ", ш: "σ", щ: "σ", ъ: "", ы: "ι", ь: "", э: "ε", ю: "ιου", я: "για" };
+  function tr(s, lang) {
+    s = String(s == null ? "" : s); lang = lang || LANG();
+    if (lang !== "en" && lang !== "el") return s;
+    const m = lang === "en" ? TR_EN : TR_EL;
+    let out = "";
+    for (const ch of s) {
+      const lo = ch.toLowerCase(), v = m[lo];
+      if (v === undefined) { out += ch; continue; }
+      out += ch !== lo ? v.charAt(0).toUpperCase() + v.slice(1) : v;
+    }
+    if (lang === "el") out = out.replace(/σ(?=$|[^α-ωά-ώ])/g, "ς");
+    return out;
+  }
+
+  const api = { tr, TYPES, rules, marketLabel, shortLabel, groupsFor, labelFor, LABELS, fallbackText, voidText, chips, kcStr, payout, mulberry32, PLAYER_COLORS, REACTIONS, typeTitle: (t, lang) => pick((TYPES[t] || { title: { ru: t } }).title, lang || LANG()), typeIcon: (t) => (TYPES[t] || {}).icon || "🎯" };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.BetsShared = api;
 })(typeof window !== "undefined" ? window : globalThis);

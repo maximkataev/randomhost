@@ -40,7 +40,7 @@ window.I18N_DICT = {
     creating: "Создаём комнату…", noroom: "Такой комнаты нет", expired: "Комната закрыта", conn: "Нет связи, переподключаемся…",
     void_all: "Событие не состоялось: ставки возвращены",
     say_intro: "Знакомимся с событием. Ставки откроет ведущий, когда все прочитают правила", alert_open: "СТАВКИ ОТКРЫТЫ!", ph_intro: "Знакомство", gate_open: "Открыть ставки", gate_lock: "Закрыть ставки", gate_next: "Дальше", gate_wait: "Ждём ведущего", o_pace: "Темп", pace_host: "по кнопке ведущего", pace_auto: "по таймеру", sub_n: "сдали {a} из {b}",
-    say_bets: "Делайте ставки!", say_locked: "Купоны открыты", say_scene: "Ждём исход…", say_payout: "Проверяем купоны", say_wait: "Ждём реальные данные…",
+    say_bets: "Делайте ставки!", say_locked: "Купоны открыты", say_scene: "Розыгрыш идёт — держитесь!", say_payout: "Проверяем купоны", say_wait: "Ждём реальные данные…", say_sub: "{n} сдал(а) купон — {k} из {m}",
     idle_sub: "сцена загружается", wait_title: "Ждём игроков"
   },
   en: {
@@ -65,7 +65,7 @@ window.I18N_DICT = {
     creating: "Creating a room…", noroom: "No such room", expired: "Room closed", conn: "No connection, reconnecting…",
     void_all: "Event void: bets returned",
     say_intro: "Meet the event. The host opens betting once everyone has read the rules", alert_open: "BETS ARE OPEN!", ph_intro: "Intro", gate_open: "Open betting", gate_lock: "Close betting", gate_next: "Next", gate_wait: "Waiting for the host", o_pace: "Pace", pace_host: "host button", pace_auto: "timer", sub_n: "{a} of {b} submitted",
-    say_bets: "Place your bets!", say_locked: "Coupons revealed", say_scene: "Waiting for the result…", say_payout: "Checking coupons", say_wait: "Waiting for real-world data…",
+    say_bets: "Place your bets!", say_locked: "Coupons revealed", say_scene: "Here it comes — hold on!", say_payout: "Checking coupons", say_wait: "Waiting for real-world data…", say_sub: "{n} locked in — {k} of {m}",
     idle_sub: "loading the scene", wait_title: "Waiting for players"
   },
   el: {
@@ -90,7 +90,7 @@ window.I18N_DICT = {
     creating: "Δημιουργία δωματίου…", noroom: "Δεν υπάρχει τέτοιο δωμάτιο", expired: "Το δωμάτιο έκλεισε", conn: "Δεν υπάρχει σύνδεση, επανασύνδεση…",
     void_all: "Το γεγονός δεν έγινε: τα στοιχήματα επιστράφηκαν",
     say_intro: "Γνωρίστε το γεγονός. Ο οικοδεσπότης ανοίγει τα στοιχήματα όταν όλοι διαβάσουν τους κανόνες", alert_open: "ΑΝΟΙΧΤΑ ΣΤΟΙΧΗΜΑΤΑ!", ph_intro: "Γνωριμία", gate_open: "Άνοιγμα στοιχημάτων", gate_lock: "Κλείσιμο στοιχημάτων", gate_next: "Επόμενο", gate_wait: "Περιμένουμε τον οικοδεσπότη", o_pace: "Ρυθμός", pace_host: "κουμπί οικοδεσπότη", pace_auto: "χρονόμετρο", sub_n: "{a} από {b} υπέβαλαν",
-    say_bets: "Βάλτε τα στοιχήματά σας!", say_locked: "Τα δελτία αποκαλύφθηκαν", say_scene: "Περιμένουμε το αποτέλεσμα…", say_payout: "Έλεγχος δελτίων", say_wait: "Περιμένουμε πραγματικά δεδομένα…",
+    say_bets: "Βάλτε τα στοιχήματά σας!", say_locked: "Τα δελτία αποκαλύφθηκαν", say_scene: "Ξεκινά το παιχνίδι — κρατηθείτε!", say_payout: "Έλεγχος δελτίων", say_wait: "Περιμένουμε πραγματικά δεδομένα…", say_sub: "{n} υπέβαλε — {k} από {m}",
     idle_sub: "φορτώνει η σκηνή", wait_title: "Περιμένουμε παίκτες"
   }
 };
@@ -546,6 +546,13 @@ function drawRail() {
     n.style.setProperty("--c", PC[i % PC.length]);
     n.classList.toggle("host-click", isHost);
     n.classList.toggle("sub", snap.phase === "bets" && !!p.submitted && p.alive);
+    if (snap.phase === "bets" && !snap.intro && p.submitted && p.alive && snap.ev) {   // бегущая реплика: кто сдал купон (без содержимого — ставки секретны до запирания)
+      const sk = snap.ev.n + ":" + p.id;
+      if (!subSeen.has(sk)) {
+        subSeen.add(sk);
+        if (prev) { const act = snap.players.filter((q) => q.alive), done = act.filter((q) => q.submitted).length, nm0 = p.name; setSay(() => T("say_sub", { n: esc(nm0), k: done, m: act.length })); }
+      }
+    }
     n.classList.toggle("offline", !p.online && p.alive);
     n.classList.toggle("out", !p.alive);
     n.querySelector(".ch").textContent = initials(p.name);
@@ -626,6 +633,7 @@ function onPhase(first, evChanged) {
   }
 }
 let sayT = 0, sayCur = null;
+const subSeen = new Set();
 // Реплика хранится как строка или функция (ключ перевода): при смене языка функция вызывается заново и #say перерисовывается
 const sayHtml = () => { try { const h = typeof sayCur === "function" ? sayCur() : sayCur; return h || "&nbsp;"; } catch (e) { return "&nbsp;"; } };
 // длинная реплика: сначала мельче (до 62 %), затем две строки, чтобы текст не обрезался многоточием
@@ -937,8 +945,8 @@ function drawFinal() {
     <div class="podium">${col(order[1], 2)}${col(order[0], 1)}${col(order[2], 3)}</div>
     ${order.length > 3 ? `<div class="others">${order.slice(3).map((p, i) => `<span>${i + 4}. <b>${esc(p.name)}</b> ${num(p.stack)}</span>`).join("")}</div>` : ""}
     <div class="stats">
-      <div class="stat"><small>${esc(T("best_win"))}</small><b>${bwp ? esc(bwp.name) + " +" + num(bw.amount) : esc(T("nostat"))}</b>${bw ? `<i>${esc(T("ev_short", { n: bw.ev + 1 }))}</i>` : ""}</div>
-      <div class="stat"><small>${esc(T("longest"))}</small><b>${lg ? "×" + BS.kcStr(lg.kc) + " · " + esc(lgp.name) : esc(T("nostat"))}</b>${lg && lg.ev ? `<i>${esc(T("ev_short", { n: lg.ev }))}</i>` : ""}</div>
+      ${bwp ? `<div class="stat"><small>${esc(T("best_win"))}</small><b>${esc(bwp.name)} +${num(bw.amount)}</b><i>${esc(T("ev_short", { n: bw.ev + 1 }))}</i></div>` : ""}
+      ${lg ? `<div class="stat"><small>${esc(T("longest"))}</small><b>×${BS.kcStr(lg.kc)} · ${esc(lgp.name)}</b>${lg.ev ? `<i>${esc(T("ev_short", { n: lg.ev }))}</i>` : ""}</div>` : ""}
     </div>
     ${isHost ? `<button class="btn" id="again">${esc(T("again"))}</button>` : ""}`;
   const ag = $("again"); if (ag) ag.onclick = () => { send({ type: "next_game" }); };

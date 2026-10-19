@@ -106,6 +106,7 @@
   };
   // текущий язык: берём в момент вывода строки; неизвестный → ru
   const lang = () => { try { const l = ((root.document && root.document.documentElement.lang) || (root.I18N && root.I18N.lang) || "ru").slice(0, 2); return STR[l] ? l : "ru"; } catch (e) { return "ru"; } };
+  const trn = (s) => { const B = root.BetsShared; return B && B.tr ? B.tr(s) : String(s); };   // транслитерация имён героев в EN/EL
   const i18t = (key, vars) => {
     let s = (STR[lang()] || STR.ru)[key]; if (s == null) s = STR.ru[key]; if (s == null) return key;
     return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] == null ? m : vars[k])) : s;
@@ -519,7 +520,7 @@
     const names = [], pool = DOG_NAMES.slice();
     for (let i = 0; i < N; i++) {
       const fromR = pool.splice(Math.floor(R() * pool.length), 1)[0];
-      names.push(meta.names && meta.names[i] ? String(meta.names[i]) : fromR);
+      names.push(trn(meta.names && meta.names[i] ? String(meta.names[i]) : fromR));
     }
     const coats = COATS.slice();
     for (let i = coats.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); const t = coats[i]; coats[i] = coats[j]; coats[j] = t; }
@@ -1084,13 +1085,13 @@
       g.fillStyle = "rgba(6,8,12,.72)"; g.fillRect(0, 0, rx + 20, H);
       g.strokeStyle = "#2b3a46"; g.lineWidth = 2; g.beginPath(); g.moveTo(rx, 0); g.lineTo(rx, H); g.stroke();
       const ticks = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 7, 10, 15, 20, 30, 50, 70, 100, 150, 200, 300, 500, 1000];
-      g.textAlign = "right"; g.font = "800 " + (13 * Math.max(0.8, SC)) + "px " + MONO;
+      g.textAlign = "right"; g.font = "800 " + (15 * Math.max(0.9, SC)) + "px " + MONO;
       for (const m of ticks) {
         const y = yOf(m); if (y < -10 || y > H + 10) continue;
         const major = [2, 5, 10, 20, 50, 100].indexOf(m) >= 0;
         g.strokeStyle = major ? "rgba(255,255,255,.55)" : "rgba(255,255,255,.22)"; g.lineWidth = major ? 2 : 1;
         g.beginPath(); g.moveTo(rx - (major ? 16 : 9), y); g.lineTo(rx, y); g.stroke();
-        g.fillStyle = major ? "#fff" : "#8f9aa3"; g.fillText("×" + m, rx - 22 * Math.max(0.6, SC * 1.4), y + 4);
+        g.fillStyle = major ? "#fff" : "#b8c2ca"; g.fillText("×" + m, rx - 22 * Math.max(0.6, SC * 1.4), y + 4);
       }
       g.textAlign = "left";
       let prevY = -99, shiftN = 0;
@@ -1202,8 +1203,8 @@
     const mk = (t, col, dark, men0, nm0) => {
       const m = meta[t] || {};
       const men = [];
-      for (let i = 0; i < 5; i++) men.push(m.men && m.men[i] ? String(m.men[i]) : men0[i]);
-      const nmFix = m.name ? String(m.name) : null;
+      for (let i = 0; i < 5; i++) men.push(trn(m.men && m.men[i] ? String(m.men[i]) : men0[i]));
+      const nmFix = m.name ? trn(String(m.name)) : null;
       return { get name() { return nmFix || i18t(nm0); }, col, dark, men };
     };
     const TEAM = { A: mk("A", "#b6ff2e", "#07090c", PEN_MEN_A, "teamA"), B: mk("B", "#ff2e88", "#ffffff", PEN_MEN_B, "teamB") };
@@ -1649,7 +1650,7 @@
     const R = mulberry32(play ? (o.seed | 0) : 55);
     const rnd = (a, b) => a + R() * (b - a);
     const meta = o.meta || {};
-    const nm = (v, def) => (v && typeof v === "object" ? String(v.name || def) : v ? String(v) : def);
+    const nm = (v, def) => trn(v && typeof v === "object" ? String(v.name || def) : v ? String(v) : def);
     const HERO = {
       A: { name: nm(meta.A, "Бугай"), col: "#b6ff2e", dark: "#07090c", skin: "#e8b48a" },
       B: { name: nm(meta.B, "Жила"), col: "#ff2e88", dark: "#ffffff", skin: "#d9a07a" },
@@ -1876,7 +1877,7 @@
     const R = mulberry32(play ? (o.seed | 0) : 77);
     const rnd = (a, b) => a + R() * (b - a);
     const meta = o.meta || {};
-    const nm = (v, def) => (v && typeof v === "object" ? String(v.name || def) : v ? String(v) : def);
+    const nm = (v, def) => trn(v && typeof v === "object" ? String(v.name || def) : v ? String(v) : def);
     const FIG = {
       A: { name: nm(meta.A, "Громила"), col: "#b6ff2e", dark: "#07090c", skin: "#e0aa82", hair: "#241812" },
       B: { name: nm(meta.B, "Ураган"), col: "#ff2e88", dark: "#ffffff", skin: "#c98f68", hair: "#16161a" },
@@ -2047,7 +2048,7 @@
       spotlights(g, W, H, [0.28, 0.72], SC, 0.04);
       const top = H * 0.16, bot = H * 0.5; g.fillStyle = "#130f22"; g.fillRect(0, top, W, bot - top);
       drawCrowd(g, crowd, 7, W, top, bot, now, 0.6 + hype * 3.2, 0, 3.5 * SC * 1.2);
-      drawBoards(g, W, H * 0.5, H * 0.06, [i18t("bxBoardA"), i18t("bxBoardB")], now, 0);
+      g.globalAlpha = 0.6; drawBoards(g, W, H * 0.5, H * 0.06, [i18t("bxBoardA"), i18t("bxBoardB")], now, 0); g.globalAlpha = 1;
       // помост
       const yB = H * 0.57, yF = H * 0.93, xBL = W * 0.17, xBR = W * 0.83, xFL = W * 0.03, xFR = W * 0.97;
       gr = g.createLinearGradient(0, yB, 0, yF); gr.addColorStop(0, "#1c2430"); gr.addColorStop(1, "#0d141b");
