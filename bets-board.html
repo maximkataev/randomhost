@@ -24,7 +24,7 @@ window.I18N_DICT = {
     lobby_scan: "Наведи камеру телефона на QR или открой ссылку и введи имя.",
     lobby_who: "Игроки", need2: "Нужно минимум 2 игрока", start: "Начать",
     warn: "Фишки виртуальные, на деньги не играем.",
-    o_stack: "Стек", o_bet: "Окно ставок", o_events: "Событий", o_mode: "Состав", o_chat: "Чат",
+    prog: "Сегодня в программе", o_stack: "Стек", o_bet: "Окно ставок", o_events: "Событий", o_mode: "Состав", o_chat: "Чат",
     unl: "без лимита", m_mixed: "смешанный", m_real: "только реальные", m_scenic: "только сценические", on: "вкл", off: "выкл", sec: "{n} с",
     free: "свободно", host_only: "Настройки меняет ведущий",
     ev_no: "Событие", of: "из", minbet: "Мин. ставка", board: "Табло", est_note: "≈ оценка по живым данным",
@@ -49,7 +49,7 @@ window.I18N_DICT = {
     lobby_scan: "Point your phone camera at the QR or open the link and type your name.",
     lobby_who: "Players", need2: "At least 2 players needed", start: "Start",
     warn: "Chips are virtual, no real money.",
-    o_stack: "Stack", o_bet: "Betting window", o_events: "Events", o_mode: "Mix", o_chat: "Chat",
+    prog: "Tonight's program", o_stack: "Stack", o_bet: "Betting window", o_events: "Events", o_mode: "Mix", o_chat: "Chat",
     unl: "no limit", m_mixed: "mixed", m_real: "real only", m_scenic: "staged only", on: "on", off: "off", sec: "{n} s",
     free: "free", host_only: "The host changes settings",
     ev_no: "Event", of: "of", minbet: "Min bet", board: "Board", est_note: "≈ estimate from live data",
@@ -74,7 +74,7 @@ window.I18N_DICT = {
     lobby_scan: "Στόχευσε με την κάμερα του κινητού το QR ή άνοιξε τον σύνδεσμο και γράψε το όνομά σου.",
     lobby_who: "Παίκτες", need2: "Χρειάζονται τουλάχιστον 2 παίκτες", start: "Έναρξη",
     warn: "Οι μάρκες είναι εικονικές, δεν παίζουμε με χρήματα.",
-    o_stack: "Μάρκες", o_bet: "Παράθυρο στοιχημάτων", o_events: "Γεγονότα", o_mode: "Μείγμα", o_chat: "Τσατ",
+    prog: "Σήμερα στο πρόγραμμα", o_stack: "Μάρκες", o_bet: "Παράθυρο στοιχημάτων", o_events: "Γεγονότα", o_mode: "Μείγμα", o_chat: "Τσατ",
     unl: "χωρίς όριο", m_mixed: "μικτό", m_real: "μόνο πραγματικά", m_scenic: "μόνο σκηνικά", on: "ναι", off: "όχι", sec: "{n} δ",
     free: "ελεύθερες", host_only: "Τις ρυθμίσεις αλλάζει ο οικοδεσπότης",
     ev_no: "Γεγονός", of: "από", minbet: "Ελάχ. στοίχημα", board: "Ταμπλό", est_note: "≈ εκτίμηση από ζωντανά δεδομένα",
@@ -244,7 +244,7 @@ function saveStats() { try { sessionStorage.setItem("bets-stats-" + CODE, JSON.s
 function onState(s) {
   prev = snap; snap = s; recvPerf = performance.now();
   if (!prev || (prev.phase === "done" && s.phase === "lobby")) { loadStats(); }
-  if (s.phase === "lobby") { stats.longest = null; saveStats(); }
+  if (s.phase === "lobby") { stats.longest = null; saveStats(); streaks.clear(); }
   const newEv = s.ev ? s.idx + ":" + s.ev.type : "";
   const evChanged = newEv !== evKey;
   const phaseChanged = !prev || prev.phase !== s.phase || evChanged || !!prev.intro !== !!s.intro;
@@ -673,6 +673,12 @@ function startPayout(first) {
   });
   if (!first) snd("coins");
 }
+const streaks = new Map();
+function setStreak(pid, n) {
+  streaks.set(pid, n);
+  const nm = seatNodes.get(pid) && seatNodes.get(pid).querySelector(".nm");
+  if (nm) nm.dataset.s = n >= 2 ? String(n) : "";
+}
 function applyReveal(p, quiet) {
   const l = p.last; if (!l) return;
   const minBet = (p.coupon && p.coupon.min) || 10;
@@ -692,6 +698,7 @@ function applyReveal(p, quiet) {
   }
   const seat = seatNodes.get(p.id);
   if (quiet) { drawRail(); return; }
+  if (l.lines.length) setStreak(p.id, l.won > 0 && (l.net != null ? l.net : l.won - l.staked) > 0 ? (streaks.get(p.id) || 0) + 1 : 0);
   if (l.won > 0 && l.lines.some((x) => x.result === "win")) {
     // над игроком — чистый итог события (выигрыш минус ставки и штраф), а не валовая выплата
     const net = l.net != null ? l.net : l.won - l.staked;
@@ -855,6 +862,17 @@ const OPTS = [
   { k: "mode", label: "o_mode", vals: ["mixed", "real", "scenic"], fmt: (v) => T("m_" + v) },
   { k: "chat", label: "o_chat", vals: [true, false], fmt: (v) => T(v ? "on" : "off") },
 ];
+const PROG_SCENIC = ["dogs", "dice", "penalties", "rocket", "boxing", "rope"];
+const PROG_REAL = ["btc", "btceth", "emoji", "wikiduel", "lang", "airport", "drand"];
+let progKey = "";
+function paintProg() {
+  const box = $("prog"); if (!box) return;
+  const mode = snap.settings.mode || "mixed", l = lang();
+  const key = mode + "|" + l + "|" + (snap.liveN > 0);
+  if (key === progKey) return; progKey = key;
+  const types = mode === "real" ? PROG_REAL : mode === "scenic" || !(snap.liveN > 0) ? PROG_SCENIC : [].concat(...PROG_SCENIC.map((t, i) => (PROG_REAL[i] ? [t, PROG_REAL[i]] : [t])), PROG_REAL.slice(PROG_SCENIC.length));
+  box.innerHTML = `<div class="cap2"><span>${esc(T("prog"))}</span></div><div class="reel">${types.map((t, i) => `<div class="pc" style="--i:${i}"><i>${esc(BS.typeIcon(t))}</i><b>${esc(BS.typeTitle(t, l))}</b></div>`).join("")}</div>`;
+}
 function drawLobby() {
   const box = $("lobby"), on = snap.phase === "lobby";
   box.classList.toggle("hidden", !on);
@@ -881,7 +899,9 @@ function drawLobby() {
       o.vals.forEach((v) => { const b = el("button", null, String(o.fmt(v))); b.dataset.v = String(v); b.onclick = () => patch(o.k, v); seg.append(b); });
       row.append(seg); opts.append(row);
     });
+    const pr = el("div", "prog"); pr.id = "prog"; box.querySelector(".lgrid").after(pr);
   }
+  paintProg();
   if (!qrDrawn && window.QRCode && $("qr")) {
     qrDrawn = true;
     new QRCode($("qr"), { text: url, width: 220, height: 220, colorDark: "#07090c", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
