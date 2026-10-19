@@ -54,7 +54,8 @@
       tStart: "Бойцы взялись за канат. <em>Ставки закрыты.</em>", tStreak3: "Серия! {h} тянет три подряд", tStreakStamp: "СЕРИЯ!",
       tStreak5: "Пять рывков подряд! {h} <em>не оставляет шансов</em>", tBack: "{h} <em>отыгрывается!</em>", tMid: "Середина: {a}:{b}. <em>Всё впереди!</em>",
       tTight: "Последние рывки. <em>Всё решается сейчас!</em>", tTightStamp: "РЕШАЮЩИЕ!", tDec: "{h} уже не догнать", tComeback: "КАМБЭК!",
-      tWinSay: "Победил {h}, {w}:{l}", tWinCb: " — после отставания {n} рывков!", tBoardA: "ТОТАЛ", tBoardB: "КАНАТ", tPull: "РЫВОК {k} / {n}", tVictory: "ПОБЕДА"
+      tWinSay: "Победил {h}, {w}:{l}", tWinCb: " — после отставания {n} рывков!", tBoardA: "ТОТАЛ", tBoardB: "КАНАТ", tPull: "РЫВОК {k} / {n}", tVictory: "ПОБЕДА",
+      bxStart: "Бойцы на ринге. <em>Ставки закрыты.</em>", bxRoundSay: "Раунд {n}. Бойцы сходятся в центре ринга", bxRoundWon: "Раунд {n} за {h}", bxKoStamp: "НОКАУТ!", bxKoSay: "Нокаут! {h} отправляет соперника на канвас в раунде {n}", bxDecStamp: "РЕШЕНИЕ СУДЕЙ", bxDecSay: "Бой дошёл до конца. По очкам побеждает {h}, {a}:{b} по раундам", bxWin: "ПОБЕДА: {h}", bxRoundOf: "РАУНД {n} / {t}", bxBoardA: "ТОТАЛ", bxBoardB: "БОЙ", bxByKo: "нокаутом", bxByDec: "по очкам"
     },
     en: {
       loading: "LOADING SCENE…", m: "m", sec: "s",
@@ -76,7 +77,8 @@
       tStart: "The fighters grip the rope. <em>Bets are closed.</em>", tStreak3: "Streak! {h} pulls three in a row", tStreakStamp: "STREAK!",
       tStreak5: "Five pulls in a row! {h} <em>leaves no chance</em>", tBack: "{h} <em>fights back!</em>", tMid: "Halfway: {a}:{b}. <em>Anything can happen!</em>",
       tTight: "Last pulls. <em>It's decided now!</em>", tTightStamp: "DECIDING PULLS!", tDec: "{h} can't be caught now", tComeback: "COMEBACK!",
-      tWinSay: "{h} wins, {w}:{l}", tWinCb: " — after trailing by {n} pulls!", tBoardA: "TOTE", tBoardB: "TUG", tPull: "PULL {k} / {n}", tVictory: "VICTORY"
+      tWinSay: "{h} wins, {w}:{l}", tWinCb: " — after trailing by {n} pulls!", tBoardA: "TOTE", tBoardB: "TUG", tPull: "PULL {k} / {n}", tVictory: "VICTORY",
+      bxStart: "The fighters are in the ring. <em>Betting is closed.</em>", bxRoundSay: "Round {n}. The fighters meet in the middle of the ring", bxRoundWon: "Round {n} goes to {h}", bxKoStamp: "KNOCKOUT!", bxKoSay: "Knockout! {h} drops the opponent in round {n}", bxDecStamp: "JUDGES' DECISION", bxDecSay: "The fight went the distance. {h} wins on points, {a}:{b} in rounds", bxWin: "WINNER: {h}", bxRoundOf: "ROUND {n} / {t}", bxBoardA: "TOTE", bxBoardB: "FIGHT", bxByKo: "by knockout", bxByDec: "on points"
     },
     el: {
       loading: "ΦΟΡΤΩΣΗ ΣΚΗΝΗΣ…", m: "μ.", sec: "δευτ.",
@@ -98,7 +100,8 @@
       tStart: "Οι αθλητές έπιασαν το σχοινί. <em>Τα στοιχήματα έκλεισαν.</em>", tStreak3: "Σερί! Ο/Η {h} τραβά τρεις στη σειρά", tStreakStamp: "ΣΕΡΙ!",
       tStreak5: "Πέντε τραβήγματα στη σειρά! Ο/Η {h} <em>δεν αφήνει περιθώρια</em>", tBack: "Ο/Η {h} <em>ανακτά έδαφος!</em>", tMid: "Μέση: {a}:{b}. <em>Όλα ανοιχτά!</em>",
       tTight: "Τελευταία τραβήγματα. <em>Όλα κρίνονται τώρα!</em>", tTightStamp: "ΚΡΙΣΙΜΑ!", tDec: "Τον/Την {h} δεν τον φτάνουν πια", tComeback: "ΑΝΑΤΡΟΠΗ!",
-      tWinSay: "Νίκησε ο/η {h}, {w}:{l}", tWinCb: " — μετά από απώλεια {n} τραβηγμάτων!", tBoardA: "ΤΟΤΑΛ", tBoardB: "ΣΧΟΙΝΙ", tPull: "ΤΡΑΒΗΓΜΑ {k} / {n}", tVictory: "ΝΙΚΗ"
+      tWinSay: "Νίκησε ο/η {h}, {w}:{l}", tWinCb: " — μετά από απώλεια {n} τραβηγμάτων!", tBoardA: "ΤΟΤΑΛ", tBoardB: "ΣΧΟΙΝΙ", tPull: "ΤΡΑΒΗΓΜΑ {k} / {n}", tVictory: "ΝΙΚΗ",
+      bxStart: "Οι μαχητές στο ρινγκ. <em>Τα στοιχήματα έκλεισαν.</em>", bxRoundSay: "Γύρος {n}. Οι μαχητές συναντιούνται στο κέντρο", bxRoundWon: "Ο γύρος {n} πάει στον/στην {h}", bxKoStamp: "ΝΟΚ ΑΟΥΤ!", bxKoSay: "Νοκ άουτ! Ο/Η {h} στέλνει τον αντίπαλο κάτω στον γύρο {n}", bxDecStamp: "ΑΠΟΦΑΣΗ ΚΡΙΤΩΝ", bxDecSay: "Ο αγώνας έφτασε ως το τέλος. Νικά στα σημεία ο/η {h}, {a}:{b} στους γύρους", bxWin: "ΝΙΚΗΤΗΣ: {h}", bxRoundOf: "ΓΥΡΟΣ {n} / {t}", bxBoardA: "ΤΟΤΑΛ", bxBoardB: "ΑΓΩΝΑΣ", bxByKo: "με νοκ άουτ", bxByDec: "στα σημεία"
     },
   };
   // текущий язык: берём в момент вывода строки; неизвестный → ru
@@ -1866,9 +1869,274 @@
     };
   }
 
+
+  // ---------- бокс: 5 раундов, нокаут или решение судей ----------
+  function boxMake(o, env) {
+    const L = env.L, play = o.mode === "play", ROUNDS = 5;
+    const R = mulberry32(play ? (o.seed | 0) : 77);
+    const rnd = (a, b) => a + R() * (b - a);
+    const meta = o.meta || {};
+    const nm = (v, def) => (v && typeof v === "object" ? String(v.name || def) : v ? String(v) : def);
+    const FIG = {
+      A: { name: nm(meta.A, "Громила"), col: "#b6ff2e", dark: "#07090c", skin: "#e0aa82", hair: "#241812" },
+      B: { name: nm(meta.B, "Ураган"), col: "#ff2e88", dark: "#ffffff", skin: "#c98f68", hair: "#16161a" },
+    };
+    const out = o.outcome && o.outcome.winner ? o.outcome : { winner: "B", method: "DEC", round: ROUNDS, rounds: [], scoreA: 0, scoreB: 0 };
+    const rounds = Array.isArray(out.rounds) ? out.rounds : [];
+    const isKO = out.method === "KO", koBy = out.koBy || out.winner, loserOf = (t) => (t === "A" ? "B" : "A");
+    const nRounds = isKO ? out.round : ROUNDS;
+    const scoreA = out.scoreA != null ? out.scoreA : rounds.filter((x) => x === "A").length;
+    const scoreB = out.scoreB != null ? out.scoreB : rounds.filter((x) => x === "B").length;
+    const T_INTRO = 1.2, T_BELL = 0.9, T_FIGHT = 3.8, T_FIGHT_KO = 2.6, T_REST = 1.0, T_KO = 4.1, T_DEC = 2.6, T_END = 3.2, PUNCH = 0.28;
+    const S = {
+      phase: play ? "intro" : "idle", clk: 0, wait: T_INTRO, pt: 0, r: 0, ts: 1, slow: 0,
+      ev: [], evi: 0, punch: { A: 0, B: 0 }, hit: { A: 0, B: 0 }, hp: { A: 1, B: 1 }, pips: [], parts: [], shake: 0, shx: 0, shy: 0, flash: 0,
+      down: 0, count: 0, endT: 0, said: {}, fightT: 0, roundW: null,
+    };
+    const crowd = makeCrowd(5, 360, 7);
+    let W = 0, H = 0, SC = 1, g = null;
+    const say = env.say, ease = (x) => x * x * (3 - 2 * x), hn = (t) => "<em>" + esc(FIG[t].name) + "</em>";
+
+    const start = () => { if (play) say(i18t("bxStart")); };
+
+    // план обмена ударами в раунде: победитель раунда чаще бьёт и чаще попадает; в раунде нокаута последний удар — решающий
+    function planRound(r) {
+      const koRound = isKO && r === out.round;
+      const wn = koRound ? koBy : rounds[r - 1] || "A";
+      const dur = koRound ? T_FIGHT_KO : T_FIGHT, n = koRound ? 6 + Math.floor(R() * 3) : 8 + Math.floor(R() * 4);
+      const ev = [];
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.6 + R() * 0.5) / (n + 0.4) * (dur - 0.3);
+        const by = R() < 0.68 ? wn : loserOf(wn);
+        ev.push({ t, by, hit: by === wn ? R() < 0.82 : R() < 0.35, ko: false });
+      }
+      if (koRound) ev.push({ t: dur - 0.05, by: koBy, hit: true, ko: true });
+      S.ev = ev.sort((a, b) => a.t - b.t); S.evi = 0; S.roundW = wn; S.fightT = 0; S.fightDur = dur;
+    }
+    function beginRound() {
+      S.r++; S.phase = "bell"; S.wait = T_BELL;
+      say(i18t("bxRoundSay", { n: S.r }));
+      env.snd("bell");
+    }
+    function throwPunch(e) {
+      S.punch[e.by] = PUNCH;
+      const victim = loserOf(e.by);
+      if (e.hit) {
+        S.hit[victim] = 0.4; S.shake = Math.max(S.shake, e.ko ? 1.6 : 0.35);
+        if (!e.ko) S.hp[victim] = Math.max(0.2, S.hp[victim] - 0.05);
+        for (let i = 0; i < (e.ko ? 12 : 4); i++) S.parts.push({ t: "spark", side: victim, ox: 0, oy: 0, vx: rnd(-160, 160) * (e.ko ? 1.6 : 1), vy: rnd(-200, -20), life: rnd(0.3, 0.7), age: 0, r: rnd(1.5, 3.5) });
+        if (R() < 0.6) S.parts.push({ t: "sweat", side: victim, ox: 0, oy: 0, vx: rnd(-60, 60), vy: rnd(-110, -30), life: 0.7, age: 0, r: 2.5 });
+        env.snd("kick");
+      } else env.snd("pull");
+    }
+    function startKO() {
+      S.phase = "ko"; S.pt = 0; S.down = 0; S.count = 0; S.slow = 0.7; S.flash = 0.5;
+      S.hp[loserOf(koBy)] = 0;
+      env.stamp(i18t("bxKoStamp"), "win"); say(i18t("bxKoSay", { h: hn(koBy), n: out.round })); env.snd("crowd");
+    }
+    function endRound() {
+      S.pips.push(S.roundW);
+      S.phase = "rest"; S.wait = T_REST;
+      say(i18t("bxRoundWon", { n: S.r, h: hn(S.roundW) }));
+    }
+    function finish() {
+      S.phase = "end"; S.endT = 0;
+      env.stamp(i18t("bxWin", { h: FIG[out.winner].name.toUpperCase() }), "win");
+      S.flash = 0.4; env.snd("win");
+    }
+
+    function step(dt) {
+      S.clk += dt;
+      const target = S.slow > 0 ? 0.4 : 1;
+      S.ts += (target - S.ts) * Math.min(1, dt * 8);
+      const sdt = dt * S.ts;
+      if (S.slow > 0) S.slow -= dt;
+      for (const k of ["A", "B"]) { S.punch[k] = Math.max(0, S.punch[k] - sdt); S.hit[k] = Math.max(0, S.hit[k] - sdt); }
+      if (S.phase === "intro") { S.wait -= dt; if (S.wait <= 0) { planRound(S.r + 1); beginRound(); } }
+      else if (S.phase === "bell") { S.wait -= dt; if (S.wait <= 0) { S.phase = "fight"; S.fightT = 0; } }
+      else if (S.phase === "fight") {
+        S.fightT += sdt;
+        while (S.evi < S.ev.length && S.ev[S.evi].t <= S.fightT) { const e = S.ev[S.evi++]; throwPunch(e); if (e.ko) { startKO(); break; } }
+        if (S.phase === "fight" && S.fightT >= S.fightDur) endRound();
+      } else if (S.phase === "rest") {
+        S.wait -= dt;
+        if (S.wait <= 0) { if (S.r >= nRounds) { S.phase = "dec"; S.pt = 0; env.stamp(i18t("bxDecStamp"), "neutral"); say(i18t("bxDecSay", { h: hn(out.winner), a: Math.max(scoreA, scoreB), b: Math.min(scoreA, scoreB) })); } else { planRound(S.r + 1); beginRound(); } }
+      } else if (S.phase === "ko") {
+        S.pt += sdt;
+        S.down = ease(Math.min(1, S.pt / 0.5));
+        const n = Math.max(0, Math.min(10, Math.floor((S.pt - 0.7) / 0.28) + 1));
+        if (n !== S.count && n > 0) { S.count = n; env.snd("tick"); }
+        if (S.pt >= T_KO) finish();
+      } else if (S.phase === "dec") { S.pt += dt; if (S.pt >= T_DEC) finish(); }
+      else if (S.phase === "end") S.endT += dt;
+      S.shake = Math.max(0, S.shake - dt * 2.8);
+      if (S.shake > 0) { S.shx = R() - 0.5; S.shy = R() - 0.5; } else { S.shx = S.shy = 0; }
+      if (S.flash > 0) S.flash -= dt * 2.2;
+      if ((S.phase === "fight") && R() < dt * 6) S.parts.push({ t: "sweat", side: R() < 0.5 ? "A" : "B", ox: 0, oy: 0, vx: rnd(-40, 40), vy: rnd(-90, -20), life: 0.7, age: 0, r: 2.2 });
+      for (let i = S.parts.length - 1; i >= 0; i--) {
+        const p = S.parts[i]; p.age += dt;
+        if (p.age > p.life) { S.parts.splice(i, 1); continue; }
+        p.vy += 320 * dt; p.ox += p.vx * dt; p.oy += p.vy * dt;
+      }
+    }
+
+    // ---------- рисование ----------
+    function taper(x1, y1, x2, y2, w1, w2, fill) {
+      const dx = x2 - x1, dy = y2 - y1, Ln = Math.hypot(dx, dy) || 1, nx = -dy / Ln, ny = dx / Ln, a = Math.atan2(ny, nx);
+      g.fillStyle = fill; g.beginPath();
+      g.moveTo(x1 + nx * w1 / 2, y1 + ny * w1 / 2); g.lineTo(x2 + nx * w2 / 2, y2 + ny * w2 / 2);
+      g.arc(x2, y2, w2 / 2, a, a - Math.PI, true); g.lineTo(x1 - nx * w1 / 2, y1 - ny * w1 / 2);
+      g.arc(x1, y1, w1 / 2, a + Math.PI, a, true); g.closePath(); g.fill();
+    }
+    function glove(x, y, r, col) {
+      g.fillStyle = col; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
+      g.fillStyle = "rgba(255,255,255,.35)"; g.beginPath(); g.arc(x - r * 0.3, y - r * 0.35, r * 0.35, 0, TAU); g.fill();
+      g.fillStyle = "#f2f2f2"; g.fillRect(x - r * 1.05, y + r * 0.55, r * 0.9, r * 0.5);   // манжета
+    }
+    // боец: профиль, смотрит вправо в локальных координатах (dir = -1 зеркалит); (x, gy) — между ногами на канвасе
+    function drawFighter(x, gy, dir, who, now) {
+      const f = FIG[who], p = S.punch[who] > 0 ? Math.sin(Math.PI * (1 - S.punch[who] / PUNCH)) : 0, h = S.hit[who] / 0.4;
+      const winnerEnd = (S.phase === "end" || (S.phase === "ko" && S.count >= 10)) && out.winner === who;
+      const loserDown = isKO && who === loserOf(koBy) && (S.phase === "ko" || S.phase === "end");
+      const down = loserDown ? (S.phase === "end" ? 1 : S.down) : 0;
+      const bob = Math.sin(now * 5 + (who === "A" ? 0 : 2)) * 3;
+      const s = SC * 1.2;
+      g.save(); g.translate(x - dir * down * 60 * SC, gy); g.scale(s * dir, s);
+      if (down) { g.translate(0, -78 * 0); g.rotate(-down * 1.5); }
+      const lean = 0.1 + p * 0.25 - h * 0.35;
+      const hipY = -82 + bob * 0.4, shY = -146 + bob, shX = lean * 60 - 4;
+      const hx = shX + 18 - h * 18, hy = shY - 28 + (down ? 6 : 0);
+      // ноги: передняя, задняя; бутсы
+      taper(-6, hipY, -30 + p * 14, 0, 26, 18, f.skin); taper(10, hipY, 40 + p * 10, 0, 26, 18, f.skin);
+      g.fillStyle = "#14181f"; g.fillRect(-52 + p * 14, -8, 34, 10); g.fillRect(26 + p * 10, -8, 38, 10);
+      // шорты: цвет бойца, белый пояс
+      g.fillStyle = f.col; g.beginPath(); g.moveTo(-26, hipY - 12); g.lineTo(34, hipY - 12); g.lineTo(44, hipY + 38); g.lineTo(-34, hipY + 38); g.closePath(); g.fill();
+      g.fillStyle = "#f4f4f4"; g.fillRect(-27, hipY - 14, 62, 8);
+      // торс, задняя рука (защита), голова, передняя рука с ударом
+      taper(0, hipY - 8, shX, shY, 50, 54, f.skin);
+      taper(shX - 6, shY + 4, shX + 22, shY + 38, 17, 14, f.skin); taper(shX + 22, shY + 38, shX + 38, shY + 10, 14, 13, f.skin);
+      glove(shX + 40, shY + 6, 17, f.col);
+      g.fillStyle = f.skin; g.beginPath(); g.ellipse(hx, hy, 21, 25, 0, 0, TAU); g.fill();
+      g.fillStyle = f.hair; g.beginPath(); g.ellipse(hx - 5, hy - 9, 22, 18, 0, Math.PI, 0); g.fill();
+      g.fillStyle = "#fff"; g.beginPath(); g.ellipse(hx + 11, hy - 3, 5, 4, 0, 0, TAU); g.fill();
+      g.fillStyle = "#111"; g.beginPath(); g.arc(hx + 12, hy - 3, 2, 0, TAU); g.fill();
+      g.strokeStyle = "#111"; g.lineWidth = 3; g.beginPath(); g.moveTo(hx + 4, hy - 11); g.lineTo(hx + 17, hy - 8); g.stroke();
+      if (h > 0.1 || p > 0.2 || loserDown) { g.fillStyle = "#3a0b17"; g.beginPath(); g.ellipse(hx + 13, hy + 12, 6, 5, 0, 0, TAU); g.fill(); g.fillStyle = "#fff"; g.fillRect(hx + 9, hy + 8, 9, 3); }
+      else { g.strokeStyle = "#7a3a2a"; g.lineWidth = 3; g.beginPath(); g.moveTo(hx + 7, hy + 12); g.lineTo(hx + 17, hy + 12); g.stroke(); }
+      // передняя рука: выпрямляется при ударе
+      const gx = shX + 36 + p * 98 + (winnerEnd ? 0 : 0), gyy = shY + 2 - (winnerEnd ? 70 : 0) - p * 4;
+      taper(shX + 6, shY + 6, gx, gyy, 18, 14, f.skin); glove(gx, gyy, 19, f.col);
+      g.restore();
+      return { hx: x + dir * (hx + 20) * s, hy: gy + (hy) * s, gx: x + dir * gx * s };
+    }
+    function drawReferee(cx, y) {
+      const s = SC * 0.95;
+      g.save(); g.translate(cx, y); g.scale(s, s);
+      taper(-10, -40, -14, 0, 18, 14, "#1a1a22"); taper(10, -40, 14, 0, 18, 14, "#1a1a22");
+      taper(0, -48, 0, -96, 40, 44, "#f2f2f2");
+      g.fillStyle = "#e3b58f"; g.beginPath(); g.arc(0, -112, 15, 0, TAU); g.fill();
+      g.fillStyle = "#222"; g.beginPath(); g.ellipse(0, -118, 16, 9, 0, Math.PI, 0); g.fill();
+      g.fillStyle = "#111"; g.fillRect(-7, -96, 14, 5);
+      const wave = S.phase === "ko" ? Math.sin(S.clk * 12) * 0.5 : 0;
+      taper(18, -90, 40, -118 + wave * 20, 12, 10, "#f2f2f2"); g.fillStyle = "#e3b58f"; g.beginPath(); g.arc(41, -121 + wave * 20, 7, 0, TAU); g.fill();
+      g.restore();
+    }
+    function drawRing(now, hype) {
+      let gr = g.createLinearGradient(0, 0, 0, H * 0.5);
+      gr.addColorStop(0, "#04050b"); gr.addColorStop(0.6, "#161028"); gr.addColorStop(1, "#2c1634"); g.fillStyle = gr; g.fillRect(0, 0, W, H * 0.6);
+      spotlights(g, W, H, [0.1, 0.35, 0.65, 0.9], SC, 0.04);
+      const top = H * 0.16, bot = H * 0.5; g.fillStyle = "#130f22"; g.fillRect(0, top, W, bot - top);
+      drawCrowd(g, crowd, 7, W, top, bot, now, 0.6 + hype * 3.2, 0, 3.5 * SC * 1.2);
+      drawBoards(g, W, H * 0.5, H * 0.06, [i18t("bxBoardA"), i18t("bxBoardB")], now, 0);
+      // помост
+      const yB = H * 0.57, yF = H * 0.93, xBL = W * 0.17, xBR = W * 0.83, xFL = W * 0.03, xFR = W * 0.97;
+      gr = g.createLinearGradient(0, yB, 0, yF); gr.addColorStop(0, "#1c2430"); gr.addColorStop(1, "#0d141b");
+      g.fillStyle = gr; g.beginPath(); g.moveTo(xBL, yB); g.lineTo(xBR, yB); g.lineTo(xFR, yF); g.lineTo(xFL, yF); g.closePath(); g.fill();
+      g.strokeStyle = "#b6ff2e"; g.lineWidth = 3; g.shadowColor = "#b6ff2e"; g.shadowBlur = 12; g.beginPath(); g.moveTo(xFL, yF); g.lineTo(xFR, yF); g.stroke(); g.shadowBlur = 0;
+      g.fillStyle = "rgba(255,255,255,.07)"; g.beginPath(); g.ellipse(W / 2, (yB + yF) / 2 + 6 * SC, W * 0.2, (yF - yB) * 0.22, 0, 0, TAU); g.fill();
+      // канаты за бойцами и угловые стойки
+      const cols = ["#ff2e88", "#f4f4f4", "#b6ff2e"];
+      for (let i = 0; i < 3; i++) {
+        const y = yB - (24 + i * 34) * SC;
+        g.strokeStyle = cols[i]; g.lineWidth = 5 * SC; g.lineCap = "round"; g.beginPath(); g.moveTo(xBL, y); g.lineTo(xBR, y); g.stroke();
+      }
+      for (const xp of [xBL, xBR]) { g.fillStyle = "#1a2230"; g.fillRect(xp - 7 * SC, yB - 125 * SC, 14 * SC, 125 * SC); g.fillStyle = "#ff2e88"; g.fillRect(xp - 9 * SC, yB - 128 * SC, 18 * SC, 22 * SC); }
+    }
+    function drawHud() {
+      const u = clamp(SC * 1.1, 0.6, 1.3), bw = Math.min(W * 0.94, 820 * u), x0 = (W - bw) / 2, y0 = 10 * u;
+      g.textBaseline = "alphabetic";
+      const side = (who, left) => {
+        const f = FIG[who], hp = S.hp[who];
+        g.font = "900 " + (22 * u) + "px " + DISP; g.fillStyle = f.col; g.textAlign = left ? "left" : "right";
+        g.fillText(f.name.toUpperCase(), left ? x0 : x0 + bw, y0 + 26 * u, bw * 0.34);
+        const w = bw * 0.36, bx = left ? x0 : x0 + bw - w, by = y0 + 34 * u;
+        g.fillStyle = "#151c22"; g.fillRect(bx, by, w, 12 * u); g.strokeStyle = "#26323b"; g.lineWidth = 1; g.strokeRect(bx + 0.5, by + 0.5, w - 1, 12 * u - 1);
+        g.fillStyle = hp > 0.45 ? f.col : "#ff5c5c"; const ww = Math.max(0, w * hp); g.fillRect(left ? bx : bx + w - ww, by, ww, 12 * u);
+      };
+      side("A", true); side("B", false);
+      g.textAlign = "center"; g.font = "800 " + (13 * u) + "px " + MONO; g.fillStyle = "#cfd8dc";
+      g.fillText(i18t("bxRoundOf", { n: Math.max(1, S.r), t: ROUNDS }), W / 2, y0 + 22 * u);
+      // карточки раундов: цвет бойца, взявшего раунд; нокаут — красный
+      const sw = 22 * u, gap = 6 * u, tot = ROUNDS * sw + (ROUNDS - 1) * gap;
+      for (let i = 0; i < ROUNDS; i++) {
+        const x = W / 2 - tot / 2 + i * (sw + gap), y = y0 + 32 * u, pw = S.pips[i];
+        g.fillStyle = pw ? FIG[pw].col : "#151c22"; g.fillRect(x, y, sw, 14 * u);
+        g.strokeStyle = "#26323b"; g.strokeRect(x + 0.5, y + 0.5, sw - 1, 14 * u - 1);
+        if (isKO && i + 1 === out.round && (S.phase === "ko" || S.phase === "end")) { g.fillStyle = "#ff3030"; g.fillRect(x, y, sw, 14 * u); g.fillStyle = "#fff"; g.font = "900 " + (11 * u) + "px " + MONO; g.fillText("KO", x + sw / 2, y + 11 * u); }
+      }
+      g.textAlign = "left";
+    }
+    function draw() {
+      L.fit(); g = L.g; W = L.W; H = L.H; SC = Math.min(W / 1100, H / 620);
+      const now = S.clk, cx = W / 2;
+      const fighting = S.phase === "fight" || S.phase === "ko";
+      const hype = Math.min(1, (fighting ? 0.55 : 0.2) + (S.phase === "ko" || S.phase === "end" ? 0.45 : 0));
+      g.save(); g.translate(S.shx * 8 * SC, S.shy * 6 * SC);
+      drawRing(now, hype);
+      const gy = H * 0.84, gap = (170 + Math.sin(now * 2.2) * 8) * SC;
+      drawReferee(cx, gy - 34 * SC);
+      const posA = cx - gap / 2 - (S.punch.A > 0 ? -10 : 0) * SC, posB = cx + gap / 2 + (S.punch.B > 0 ? -10 : 0) * SC;
+      const fA = drawFighter(posA, gy, 1, "A", now), fB = drawFighter(posB, gy, -1, "B", now);
+      for (const p of S.parts) {
+        const a = 1 - p.age / p.life, tgt = p.side === "A" ? fA : fB;
+        g.globalAlpha = a; g.fillStyle = p.t === "spark" ? "#ffd34d" : "#9fe6ff";
+        g.beginPath(); g.arc(tgt.hx + p.ox * SC, tgt.hy + p.oy * SC, p.r * SC, 0, TAU); g.fill();
+      }
+      g.globalAlpha = 1;
+      g.restore();
+      vignette(g, W, H, 0.5, 0.45);
+      if (S.flash > 0) { g.fillStyle = "rgba(255,255,255," + Math.min(0.6, S.flash) + ")"; g.fillRect(0, 0, W, H); }
+      drawHud();
+      // номер раунда при гонге
+      if (S.phase === "bell") { g.globalAlpha = clamp(S.wait / T_BELL * 1.6, 0, 1); glowText(g, i18t("bxRoundOf", { n: S.r, t: ROUNDS }), W / 2, H * 0.34, Math.min(H * 0.1, W / 11), "#fff", "#ff2e88", "center", W * 0.9); g.globalAlpha = 1; }
+      // отсчёт рефери
+      if (S.phase === "ko" && S.count > 0) glowText(g, String(S.count), W / 2, H * 0.4, Math.min(H * 0.28, W / 5), S.count >= 10 ? "#ff3030" : "#fff", "#ff2e88", "center", W * 0.5);
+      if (S.phase === "dec") {
+        const k = Math.min(1, S.pt / 0.5); g.globalAlpha = k;
+        g.fillStyle = "rgba(6,8,12,.6)"; g.fillRect(0, H * 0.28, W, H * 0.24);
+        glowText(g, i18t("bxDecStamp"), W / 2, H * 0.38, Math.min(H * 0.09, W / 14), "#ffd34d", null, "center", W * 0.9);
+        glowText(g, FIG.A.name.toUpperCase() + "  " + scoreA + " : " + scoreB + "  " + FIG.B.name.toUpperCase(), W / 2, H * 0.48, Math.min(H * 0.065, W / 18), "#fff", null, "center", W * 0.92);
+        g.globalAlpha = 1;
+      }
+      if (S.phase === "end") {
+        const k = Math.min(1, S.endT / 0.4), wn = out.winner;
+        g.globalAlpha = k; g.fillStyle = "rgba(6,8,12," + (0.5 * k) + ")"; g.fillRect(0, H * 0.3, W, H * 0.22);
+        glowText(g, i18t("bxWin", { h: FIG[wn].name.toUpperCase() }), W / 2, H * 0.4, Math.min(H * 0.12, W / 10), FIG[wn].col, null, "center", W * 0.92);
+        glowText(g, isKO ? i18t("bxKoStamp") + " · " + out.round : i18t("bxByDec").toUpperCase() + " " + Math.max(scoreA, scoreB) + ":" + Math.min(scoreA, scoreB), W / 2, H * 0.49, Math.min(H * 0.06, W / 18), "#fff", FIG[wn].col, "center", W * 0.92);
+        g.globalAlpha = 1;
+      }
+    }
+    return {
+      start, step, draw,
+      done: () => play && S.phase === "end" && S.endT > T_END,
+      debug: () => ({ sig: sig(S), type: "boxing", phase: S.phase, round: S.r, pips: S.pips.slice(), winner: out.winner, method: out.method, koRound: isKO ? out.round : null }),
+    };
+  }
+
   // ---------- регистрация сценических сцен ----------
   BS.register("dogs", (host, ctx) => canvasScene(host, ctx, { make: dogsMake }));
   BS.register("rocket", (host, ctx) => canvasScene(host, ctx, { make: rocketMake }));
   BS.register("penalties", (host, ctx) => canvasScene(host, ctx, { make: penMake }));
   BS.register("rope", (host, ctx) => canvasScene(host, ctx, { make: ropeMake }));
+  BS.register("boxing", (host, ctx) => canvasScene(host, ctx, { make: boxMake }));
 })(typeof window !== "undefined" ? window : this);

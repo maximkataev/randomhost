@@ -10,13 +10,13 @@
   const pick = (d, lang) => d[lang] || d.ru;
 
   const W = {
-    ru: { big: "Больше", small: "Меньше", odd: "Нечёт", even: "Чёт", has: "Выпадет", sum: "Сумма", triple: "Любая тройка", top2: "Топ-2", last: "Последняя", then: "затем", win: "Победа", over: "Больше", under: "Меньше",
+    ru: { koTxt: "Нокаут", decTxt: "По очкам", inRound: "в раунде", rounds12: "в раундах 1–2", rounds35: "в раундах 3–5", by: "победа", big: "Больше", small: "Меньше", odd: "Нечёт", even: "Чёт", has: "Выпадет", sum: "Сумма", triple: "Любая тройка", top2: "Топ-2", last: "Последняя", then: "затем", win: "Победа", over: "Больше", under: "Меньше",
       score: "Счёт", both3: "Обе забьют ≥ 3", post: "Будет штанга", scores: "забьёт", margin: "с перевесом 9+", comeback: "камбэк", target: "Долетит до", instant: "Взрыв на старте",
       up: "Выше", down: "Ниже", bothUp: "Обе вверх", bothDown: "Обе вниз", mixed: "Разошлись", beats: "сильнее", gap: "обгонит на", tie: "Поровну", more: "Больше", first: "Первой", digit: "Цифра", num: "Цифра", letter: "Буква", dollars: "$" },
-    en: { big: "Big", small: "Small", odd: "Odd", even: "Even", has: "Shows", sum: "Total", triple: "Any triple", top2: "Top 2", last: "Last", then: "then", win: "Win", over: "Over", under: "Under",
+    en: { koTxt: "Knockout", decTxt: "On points", inRound: "in round", rounds12: "in rounds 1–2", rounds35: "in rounds 3–5", by: "wins", big: "Big", small: "Small", odd: "Odd", even: "Even", has: "Shows", sum: "Total", triple: "Any triple", top2: "Top 2", last: "Last", then: "then", win: "Win", over: "Over", under: "Under",
       score: "Score", both3: "Both score ≥ 3", post: "Hits the post", scores: "scores", margin: "by 9+", comeback: "comeback", target: "Reaches", instant: "Crash at launch",
       up: "Up", down: "Down", bothUp: "Both up", bothDown: "Both down", mixed: "Split", beats: "outperforms", gap: "leads by", tie: "Tie", more: "More", first: "First", digit: "Digit", num: "Digit", letter: "Letter", dollars: "$" },
-    el: { big: "Μεγάλο", small: "Μικρό", odd: "Μονό", even: "Ζυγό", has: "Θα φέρει", sum: "Άθροισμα", triple: "Οποιαδήποτε τριάδα", top2: "Top 2", last: "Τελευταίο", then: "μετά", win: "Νίκη", over: "Πάνω από", under: "Κάτω από",
+    el: { koTxt: "Νοκ άουτ", decTxt: "Στα σημεία", inRound: "στον γύρο", rounds12: "στους γύρους 1–2", rounds35: "στους γύρους 3–5", by: "νικά", big: "Μεγάλο", small: "Μικρό", odd: "Μονό", even: "Ζυγό", has: "Θα φέρει", sum: "Άθροισμα", triple: "Οποιαδήποτε τριάδα", top2: "Top 2", last: "Τελευταίο", then: "μετά", win: "Νίκη", over: "Πάνω από", under: "Κάτω από",
       score: "Σκορ", both3: "Και οι δύο ≥ 3", post: "Δοκάρι", scores: "σκοράρει", margin: "με διαφορά 9+", comeback: "ανατροπή", target: "Φτάνει", instant: "Έκρηξη στην αρχή",
       up: "Πάνω", down: "Κάτω", bothUp: "Και τα δύο πάνω", bothDown: "Και τα δύο κάτω", mixed: "Αντίθετα", beats: "ξεπερνά", gap: "προηγείται κατά", tie: "Ισοπαλία", more: "Περισσότερα", first: "Πρώτο", digit: "Ψηφίο", num: "Ψηφίο", letter: "Γράμμα", dollars: "$" },
   };
@@ -26,6 +26,7 @@
     dogs: { icon: "🐕", title: { ru: "Собачьи бега", en: "Greyhounds", el: "Κυνοδρομίες" } },
     rocket: { icon: "🚀", title: { ru: "Ракета", en: "Rocket", el: "Πύραυλος" } },
     penalties: { icon: "⚽", title: { ru: "Серия пенальти", en: "Penalty shootout", el: "Σειρά πέναλτι" } },
+    boxing: { icon: "🥊", title: { ru: "Бокс", en: "Boxing", el: "Πυγμαχία" } },
     rope: { icon: "💪", title: { ru: "Канат", en: "Tug of war", el: "Διελκυστίνδα" } },
     btc: { icon: "₿", title: { ru: "Биткоин: выше или ниже", en: "Bitcoin: up or down", el: "Bitcoin: πάνω ή κάτω" } },
     btceth: { icon: "₿", title: { ru: "BTC против ETH", en: "BTC vs ETH", el: "BTC εναντίον ETH" } },
@@ -42,11 +43,11 @@
   };
 
   const GROUP_TITLES = {
-    ru: { main: "Основные", numbers: "Выпадет число", sums: "Пары сумм", exact: "Точная сумма", exotic: "Экзотика", win: "Победитель", place: "Топ-2", forecast: "Точная пара", winner: "Победитель серии", total: "Тотал голов", score: "Точный счёт", side: "Особые", shooters: "Бьющие",
+    ru: { method: "Как закончится", combo: "Победитель и способ", round: "Нокаут по раундам", main: "Основные", numbers: "Выпадет число", sums: "Пары сумм", exact: "Точная сумма", exotic: "Экзотика", win: "Победитель", place: "Топ-2", forecast: "Точная пара", winner: "Победитель серии", total: "Тотал голов", score: "Точный счёт", side: "Особые", shooters: "Бьющие",
       target: "Цель", price: "Цена", dir: "Направление", duel: "Дуэль", gap: "Разрыв", cat: "Категория", digit: "Цифра", parity: "Чёт / нечёт", kind: "Цифра или буква", quarter: "Четверть", first: "Первым" },
-    en: { main: "Main", numbers: "Shows number", sums: "Sum pairs", exact: "Exact total", exotic: "Exotic", win: "Winner", place: "Top 2", forecast: "Exact pair", winner: "Shootout winner", total: "Total goals", score: "Exact score", side: "Specials", shooters: "Shooters",
+    en: { method: "How it ends", combo: "Winner and method", round: "Knockout by round", main: "Main", numbers: "Shows number", sums: "Sum pairs", exact: "Exact total", exotic: "Exotic", win: "Winner", place: "Top 2", forecast: "Exact pair", winner: "Shootout winner", total: "Total goals", score: "Exact score", side: "Specials", shooters: "Shooters",
       target: "Target", price: "Price", dir: "Direction", duel: "Duel", gap: "Gap", cat: "Category", digit: "Digit", parity: "Odd / even", kind: "Digit or letter", quarter: "Quarter", first: "First" },
-    el: { main: "Κύρια", numbers: "Θα έρθει αριθμός", sums: "Ζεύγη αθροισμάτων", exact: "Ακριβές άθροισμα", exotic: "Εξωτικά", win: "Νικητής", place: "Top 2", forecast: "Ακριβές ζεύγος", winner: "Νικητής σειράς", total: "Σύνολο γκολ", score: "Ακριβές σκορ", side: "Ειδικά", shooters: "Εκτελεστές",
+    el: { method: "Πώς τελειώνει", combo: "Νικητής και τρόπος", round: "Νοκ άουτ ανά γύρο", main: "Κύρια", numbers: "Θα έρθει αριθμός", sums: "Ζεύγη αθροισμάτων", exact: "Ακριβές άθροισμα", exotic: "Εξωτικά", win: "Νικητής", place: "Top 2", forecast: "Ακριβές ζεύγος", winner: "Νικητής σειράς", total: "Σύνολο γκολ", score: "Ακριβές σκορ", side: "Ειδικά", shooters: "Εκτελεστές",
       target: "Στόχος", price: "Τιμή", dir: "Κατεύθυνση", duel: "Μονομαχία", gap: "Διαφορά", cat: "Κατηγορία", digit: "Ψηφίο", parity: "Μονό / ζυγό", kind: "Ψηφίο ή γράμμα", quarter: "Τέταρτο", first: "Πρώτο" },
   };
 
@@ -148,6 +149,17 @@
         if (k === "comeback") return `${hero(v)}: ${w.comeback}`;
         break;
       }
+      case "boxing": {
+        const hero = (t) => (meta[t] && (meta[t].name || meta[t])) || t;
+        if (k === "win") return hero(v);
+        if (id === "method:KO") return w.koTxt;
+        if (id === "method:DEC") return w.decTxt;
+        if (k === "combo") { const [t, m] = v.split("-"); return `${hero(t)}: ${m === "KO" ? w.koTxt.toLowerCase() : w.decTxt.toLowerCase()}`; }
+        if (id === "ko:1-2") return `${w.koTxt} ${w.rounds12}`;
+        if (id === "ko:3-5") return `${w.koTxt} ${w.rounds35}`;
+        if (k === "ko") return `${w.koTxt} ${w.inRound} ${v}`;
+        break;
+      }
       case "rocket":
         if (id === "instant") return w.instant;
         if (k === "target") return `${w.target} ×${num(v)}`;
@@ -201,7 +213,7 @@
   // Порядок групп по типу события и русские/английские/греческие заголовки
   const GROUP_ORDER = {
     dice: ["main", "numbers", "sums", "exact", "exotic"], dogs: ["win", "place", "forecast", "exotic"], rocket: ["target", "exotic"],
-    penalties: ["winner", "total", "side", "shooters", "score", "exotic"], rope: ["winner", "side", "exotic"],
+    penalties: ["winner", "total", "side", "shooters", "score", "exotic"], rope: ["winner", "side", "exotic"], boxing: ["winner", "method", "round", "combo"],
     btc: ["price"], btceth: ["dir", "duel", "gap"], duel: ["duel"], thresholds: ["win"], categorical: ["cat"], drand: ["digit", "parity", "kind", "quarter"],
   };
 
@@ -241,6 +253,11 @@
       ru: "Две команды бьют по 5 пенальти, при ничьей — по одному удару до первой ошибки. Ставь на победителя серии, число голов, точный счёт, штангу или на конкретного бьющего.",
       en: "Two teams take 5 penalties each; if tied, one kick each until someone misses. Bet on the winner, the number of goals, the exact score, a post hit or a particular shooter.",
       el: "Δύο ομάδες εκτελούν από 5 πέναλτι· σε ισοπαλία, ένα σουτ η καθεμία μέχρι το πρώτο λάθος. Πόνταρε στον νικητή, στα γκολ, στο ακριβές σκορ, στο δοκάρι ή σε συγκεκριμένο εκτελεστή.",
+    },
+    boxing: {
+      ru: "Бой на 5 раундов. Исход — нокаут в одном из раундов или решение судей по числу выигранных раундов (3 из 5 и больше). Ставь на победителя, на способ (нокаут или по очкам), на раунд нокаута или на связку «боец и способ».",
+      en: "A 5-round fight. It ends by knockout in some round or by the judges' decision on rounds won (3 of 5 or more). Bet on the winner, the method (knockout or points), the round of the knockout, or a fighter-and-method combo.",
+      el: "Αγώνας 5 γύρων. Τελειώνει με νοκ άουτ σε κάποιον γύρο ή με απόφαση κριτών για τους γύρους που κέρδισαν (3 στους 5 ή περισσότεροι). Πόνταρε στον νικητή, στον τρόπο (νοκ άουτ ή πόντους), στον γύρο του νοκ άουτ ή σε συνδυασμό μαχητή και τρόπου.",
     },
     rope: {
       ru: "Канат, 41 рывок. Кто выиграл больше рывков, тот и победил. Ставь на победителя, на победу с перевесом 9+ рывков или на «камбэк» (победитель в какой-то момент отставал на 5+).",

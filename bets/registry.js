@@ -8,10 +8,11 @@ const dice = require("./events/dice");
 const dogs = require("./events/dogs");
 const pen = require("./events/penalties");
 const rope = require("./events/rope");
+const boxing = require("./events/boxing");
 const rocket = require("./events/rocket");
 const live = require("./events/live");
 
-const SCENIC = ["dice", "dogs", "penalties", "rocket", "rope"];
+const SCENIC = ["dice", "dogs", "penalties", "rocket", "rope", "boxing"];
 const REAL = ["btc", "btceth", "news", "emoji", "wikiduel", "wikiedit", "whales", "lightning", "airport", "lang", "wikinext"];
 
 // какой математикой считается реальное событие
@@ -26,6 +27,7 @@ const SCENE_MS = {
   dogs: () => 30000,
   penalties: (o) => 3000 + (o.kicks.length + 2 * o.sd.length) * 3300,
   rope: () => 34000,
+  boxing: (o) => 4000 + o.round * 6000 + (o.method === "KO" ? 4500 : 3000),
   rocket: (m) => Math.min(40000, 3000 + Math.round(Math.log(m) / 0.2 * 1000)),
 };
 // окно ожидания реального исхода и сцена после него, мс
@@ -37,6 +39,7 @@ const TEAMS = [["Лаймы", "Маджента"], ["Огурцы", "Помид�
 const MEN_A = ["Шашков", "Коробов", "Лютиков", "Бубнов", "Клюшкин", "Пирогов", "Сковородкин"];
 const MEN_B = ["Гвоздев", "Пончиков", "Кубиков", "Тапкин", "Рельсов", "Самоваров", "Бидонов"];
 const HEROES = [["Бугай", "Жила"], ["Танк", "Шнурок"], ["Батя", "Малой"], ["Кувалда", "Спичка"]];
+const BOXERS = [["Громила", "Ураган"], ["Молот", "Комар"], ["Бык", "Лиса"], ["Утюг", "Снайпер"]];
 function takeN(pool, n, rnd) { const p = pool.slice(), out = []; while (out.length < n) out.push(p.splice(rnd(p.length), 1)[0]); return out; }
 
 // Метаданные события для клиентов: подписи героев. Живые события получают подписи от feed.js.
@@ -45,6 +48,7 @@ function describe(type, rnd) {
     case "dogs": return { names: takeN(DOG_NAMES, 3, rnd) };
     case "penalties": { const t = TEAMS[rnd(TEAMS.length)]; return { A: { name: t[0], men: takeN(MEN_A, 5, rnd) }, B: { name: t[1], men: takeN(MEN_B, 5, rnd) } }; }
     case "rope": { const h = HEROES[rnd(HEROES.length)]; return { A: h[0], B: h[1] }; }
+    case "boxing": { const h = BOXERS[rnd(BOXERS.length)]; return { A: h[0], B: h[1] }; }
     default: return {};
   }
 }
@@ -55,6 +59,7 @@ function makeScenic(type, rnd) {
     case "dogs": return dogs.build(rnd);
     case "penalties": return pen.build(rnd);
     case "rope": return rope.build(rnd);
+    case "boxing": return boxing.build(rnd);
     case "rocket": return rocket.build();
   }
   throw new Error("unknown scenic " + type);
@@ -67,6 +72,7 @@ function rebuild(type, input) {
     case "dogs": return dogs.build(null, input.weights);
     case "penalties": return pen.build(null, input);
     case "rope": return rope.build(null, input.s);
+    case "boxing": return boxing.build(null, input);
     case "rocket": return rocket.build();
   }
   const kind = LIVE_KIND[type];

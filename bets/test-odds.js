@@ -10,6 +10,7 @@ const dogs = require("./events/dogs");
 const pen = require("./events/penalties");
 const rope = require("./events/rope");
 const rocket = require("./events/rocket");
+const boxing = require("./events/boxing");
 const live = require("./events/live");
 
 // детерминированный rnd(n) → 0..n-1
@@ -269,4 +270,28 @@ test("категориальные рулетки и drand", () => {
   assert.equal(d["quarter:2"].kc, 380);
   assert.equal(d["digit:7"].test("abc7"), true);
   assert.equal(d["letter"].test("00ff"), true);
+});
+
+test("бокс: эталон, сумма P = 1, частоты сходятся с вероятностями", () => {
+  const fixed = { kA: 90, kB: 50, q: 550 };
+  const ev = boxing.build(mulberry(31), fixed);
+  near(boxing.outcomes(90, 50, 550).reduce((s, x) => s + x.P, 0), 1, 1e-12);
+  const m = byId(ev);
+  assert.equal(m["win:A"].kc, 151);
+  assert.equal(m["win:B"].kc, 247);
+  assert.equal(m["method:KO"].kc, 173);
+  assert.equal(m["method:DEC"].kc, 195);
+  assert.equal(m["ko:1-2"].p > 0.2, true);
+  near(m["win:A"].p + m["win:B"].p, 1, 1e-12);
+  assert.deepEqual(checkBook(ev.markets), []);
+  monteCarlo(ev, mulberry(32), 250000);
+  // случайные бойцы: рынки в диапазоне, исход непротиворечив
+  const rnd = mulberry(33);
+  for (let i = 0; i < 100; i++) {
+    const e = boxing.build(rnd);
+    assert.deepEqual(checkBook(e.markets), []);
+    const o = e.draw(rnd);
+    assert.ok(o.winner === "A" || o.winner === "B");
+    if (o.method === "KO") assert.equal(o.rounds.length, o.round - 1); else assert.equal(o.rounds.length, 5);
+  }
 });
