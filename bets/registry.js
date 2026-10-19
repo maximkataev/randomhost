@@ -13,7 +13,8 @@ const rocket = require("./events/rocket");
 const live = require("./events/live");
 
 const SCENIC = ["dice", "dogs", "penalties", "rocket", "rope", "boxing"];
-const REAL = ["btc", "btceth", "news", "emoji", "wikiduel", "wikiedit", "whales", "lightning", "airport", "lang", "wikinext"];
+// в игре остались только понятные дуэли и курс; «угадай число/язык/правку» убраны по просьбе владельца
+const REAL = ["btc", "btceth", "emoji", "wikiduel", "airport"];
 
 // какой математикой считается реальное событие
 const LIVE_KIND = {

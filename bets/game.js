@@ -127,7 +127,11 @@ class Game {
         try { fallbackWhy = String(this.whyLive(type) || "down"); } catch (e) { fallbackWhy = "down"; }
         if (!["no_pair", "warming", "down"].includes(fallbackWhy)) fallbackWhy = "down";
         const prev = s.schedule[s.idx - 1];
-        const pool = R.SCENIC.filter((t) => t !== prev);
+        const next = s.schedule[s.idx + 1];
+        const cnt = (x) => s.schedule.slice(0, s.idx).filter((y) => y === x).length;
+        let pool = R.SCENIC.filter((t) => t !== prev && t !== next);
+        const least = Math.min(...pool.map(cnt));
+        pool = pool.filter((t) => cnt(t) === least);   // замена берёт самый редкий тип: без трёх собак и двух боксов подряд
         type = pool[this.rnd(pool.length)];
       } else {
         this.cur = R.rebuild(type, input);

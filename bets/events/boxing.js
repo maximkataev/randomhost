@@ -55,8 +55,6 @@ function build(rnd, fixed) {
   add("method:DEC", "method", "side", (o) => o.method === "DEC");
   for (const w of ["A", "B"]) for (const m of ["KO", "DEC"]) add(`combo:${w}-${m}`, "combo", "exotic", (o) => o.winner === w && o.method === m);
   for (let r = 1; r <= ROUNDS; r++) add(`ko:${r}`, "round", "exotic", (o) => o.method === "KO" && o.round === r);
-  add("ko:1-2", "round", "side", (o) => o.method === "KO" && o.round <= 2);
-  add("ko:3-5", "round", "side", (o) => o.method === "KO" && o.round >= 3);
 
   return {
     type: "boxing",

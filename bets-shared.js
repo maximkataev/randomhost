@@ -10,13 +10,13 @@
   const pick = (d, lang) => d[lang] || d.ru;
 
   const W = {
-    ru: { koTxt: "Нокаут", decTxt: "По очкам", inRound: "в раунде", rounds12: "в раундах 1–2", rounds35: "в раундах 3–5", by: "победа", big: "Больше", small: "Меньше", odd: "Нечёт", even: "Чёт", has: "Выпадет", sum: "Сумма", triple: "Любая тройка", top2: "Топ-2", last: "Последняя", then: "затем", win: "Победа", over: "Больше", under: "Меньше",
+    ru: { rnd: "Раунд", rnds: "Раунды", koTxt: "Нокаут", decTxt: "По очкам", inRound: "в раунде", rounds12: "в раундах 1–2", rounds35: "в раундах 3–5", by: "победа", big: "Больше", small: "Меньше", odd: "Нечёт", even: "Чёт", has: "Выпадет", sum: "Сумма", triple: "Любая тройка", top2: "Топ-2", last: "Последняя", then: "затем", win: "Победа", over: "Больше", under: "Меньше",
       score: "Счёт", both3: "Обе забьют ≥ 3", post: "Будет штанга", scores: "забьёт", margin: "с перевесом 9+", comeback: "камбэк", target: "Долетит до", instant: "Взрыв на старте",
       up: "Выше", down: "Ниже", bothUp: "Обе вверх", bothDown: "Обе вниз", mixed: "Разошлись", beats: "сильнее", gap: "обгонит на", tie: "Поровну", more: "Больше", first: "Первой", digit: "Цифра", num: "Цифра", letter: "Буква", dollars: "$" },
-    en: { koTxt: "Knockout", decTxt: "On points", inRound: "in round", rounds12: "in rounds 1–2", rounds35: "in rounds 3–5", by: "wins", big: "Big", small: "Small", odd: "Odd", even: "Even", has: "Shows", sum: "Total", triple: "Any triple", top2: "Top 2", last: "Last", then: "then", win: "Win", over: "Over", under: "Under",
+    en: { rnd: "Round", rnds: "Rounds", koTxt: "Knockout", decTxt: "On points", inRound: "in round", rounds12: "in rounds 1–2", rounds35: "in rounds 3–5", by: "wins", big: "Big", small: "Small", odd: "Odd", even: "Even", has: "Shows", sum: "Total", triple: "Any triple", top2: "Top 2", last: "Last", then: "then", win: "Win", over: "Over", under: "Under",
       score: "Score", both3: "Both score ≥ 3", post: "Hits the post", scores: "scores", margin: "by 9+", comeback: "comeback", target: "Reaches", instant: "Crash at launch",
       up: "Up", down: "Down", bothUp: "Both up", bothDown: "Both down", mixed: "Split", beats: "outperforms", gap: "leads by", tie: "Tie", more: "More", first: "First", digit: "Digit", num: "Digit", letter: "Letter", dollars: "$" },
-    el: { koTxt: "Νοκ άουτ", decTxt: "Στα σημεία", inRound: "στον γύρο", rounds12: "στους γύρους 1–2", rounds35: "στους γύρους 3–5", by: "νικά", big: "Μεγάλο", small: "Μικρό", odd: "Μονό", even: "Ζυγό", has: "Θα φέρει", sum: "Άθροισμα", triple: "Οποιαδήποτε τριάδα", top2: "Top 2", last: "Τελευταίο", then: "μετά", win: "Νίκη", over: "Πάνω από", under: "Κάτω από",
+    el: { rnd: "Γύρος", rnds: "Γύροι", koTxt: "Νοκ άουτ", decTxt: "Στα σημεία", inRound: "στον γύρο", rounds12: "στους γύρους 1–2", rounds35: "στους γύρους 3–5", by: "νικά", big: "Μεγάλο", small: "Μικρό", odd: "Μονό", even: "Ζυγό", has: "Θα φέρει", sum: "Άθροισμα", triple: "Οποιαδήποτε τριάδα", top2: "Top 2", last: "Τελευταίο", then: "μετά", win: "Νίκη", over: "Πάνω από", under: "Κάτω από",
       score: "Σκορ", both3: "Και οι δύο ≥ 3", post: "Δοκάρι", scores: "σκοράρει", margin: "με διαφορά 9+", comeback: "ανατροπή", target: "Φτάνει", instant: "Έκρηξη στην αρχή",
       up: "Πάνω", down: "Κάτω", bothUp: "Και τα δύο πάνω", bothDown: "Και τα δύο κάτω", mixed: "Αντίθετα", beats: "ξεπερνά", gap: "προηγείται κατά", tie: "Ισοπαλία", more: "Περισσότερα", first: "Πρώτο", digit: "Ψηφίο", num: "Ψηφίο", letter: "Γράμμα", dollars: "$" },
   };
@@ -155,9 +155,9 @@
         if (id === "method:KO") return w.koTxt;
         if (id === "method:DEC") return w.decTxt;
         if (k === "combo") { const [t, m] = v.split("-"); return `${hero(t)}: ${m === "KO" ? w.koTxt.toLowerCase() : w.decTxt.toLowerCase()}`; }
-        if (id === "ko:1-2") return `${w.koTxt} ${w.rounds12}`;
-        if (id === "ko:3-5") return `${w.koTxt} ${w.rounds35}`;
-        if (k === "ko") return `${w.koTxt} ${w.inRound} ${v}`;
+        if (id === "ko:1-2") return `${w.rnds} 1–2`;
+        if (id === "ko:3-5") return `${w.rnds} 3–5`;
+        if (k === "ko") return `${w.rnd} ${v}`;
         break;
       }
       case "rocket":
@@ -228,7 +228,7 @@
     const ids = [...order.filter((g) => by.has(g)), ...[...by.keys()].filter((g) => !order.includes(g))];
     const titles = GROUP_TITLES[lang] || GROUP_TITLES.ru;
     const byLabel = kind === "thresholds" || kind === "categorical";   // здесь id группы — id темы, а не служебная секция
-    return ids.map((id) => ({ id, title: type === "rope" && id === "winner" ? titles.win : byLabel ? (order.includes(id) ? titles[id] : labelFor(type, id, ev, lang)) : titles[id] || id, markets: by.get(id) }));
+    return ids.map((id) => ({ id, title: (type === "rope" || type === "boxing") && id === "winner" ? titles.win : byLabel ? (order.includes(id) ? titles[id] : labelFor(type, id, ev, lang)) : titles[id] || id, markets: by.get(id) }));
   }
 
   // ---- Правила события: коротко, что происходит и как выиграть (показываются в окне ставок на доске и на телефоне) ----

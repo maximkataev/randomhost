@@ -11,7 +11,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const zlib = require("zlib");
 const path = require("path");
-const { createFeed, parseFlags } = require("./feed");
+const { createFeed, parseFlags, REAL: FEED_REAL } = require("./feed");
 const prices = require("./feed-prices");
 const bsky = require("./feed-bsky");
 const wiki = require("./feed-wiki");
@@ -99,7 +99,7 @@ test("флаги BETS_LIVE: none по умолчанию, список, all; в�
   assert.equal(parseFlags(undefined).size, 0);
   assert.equal(parseFlags("none").size, 0);
   assert.deepEqual([...parseFlags("btc, drand,foo")].sort(), ["btc", "drand"]);
-  assert.equal(parseFlags("all").size, R.REAL.length + 1); // в feed остался drand, из расписания игры он убран (угадывание цифры)
+  assert.equal(parseFlags("all").size, FEED_REAL.length); // feed знает больше типов, чем расписание игры (drand, wikiedit, lang… из игры убраны)
   const clock = new Clock();
   const f = createFeed(mkDeps(clock, { env: {} }));
   f.start();
@@ -110,7 +110,7 @@ test("флаги BETS_LIVE: none по умолчанию, список, all; в�
   assert.ok(s.aborted, "выключенное событие сразу abort");
   const st = f.status();
   assert.equal(st.btc.enabled, false);
-  assert.deepEqual(Object.keys(st).sort(), [...R.REAL, "drand"].sort()); // feed знает и drand, хотя в игре его нет
+  assert.deepEqual(Object.keys(st).sort(), [...FEED_REAL].sort());
   f.stop();
   const g = createFeed(mkDeps(clock, { env: { BETS_LIVE: "drand" } }));
   assert.equal(g.prepare("btc"), null, "btc не включён");

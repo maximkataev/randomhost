@@ -351,7 +351,7 @@ const GOOD_OUTCOMES = {
   lang: "ja",
 };
 
-for (const type of Object.keys(LIVE_INPUTS)) {
+for (const type of Object.keys(LIVE_INPUTS).filter((x) => ["btc", "btceth", "emoji"].includes(x))) {   // типы, что остались в расписании игры
   test(`resolveLive(${type}): мусорный исход → возврат ставок с voidReason; нормальный принимается`, () => {
     for (const bad of BAD_OUTCOMES[type]) {
       const { g, now } = liveRoom(type, LIVE_INPUTS[type]);

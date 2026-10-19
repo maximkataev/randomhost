@@ -281,7 +281,6 @@ test("бокс: эталон, сумма P = 1, частоты сходятся 
   assert.equal(m["win:B"].kc, 247);
   assert.equal(m["method:KO"].kc, 173);
   assert.equal(m["method:DEC"].kc, 195);
-  assert.equal(m["ko:1-2"].p > 0.2, true);
   near(m["win:A"].p + m["win:B"].p, 1, 1e-12);
   assert.deepEqual(checkBook(ev.markets), []);
   monteCarlo(ev, mulberry(32), 250000);
