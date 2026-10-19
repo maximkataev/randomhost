@@ -11,9 +11,9 @@
 const { jumpMax } = P;
 
 const STYLES = {
-  calm:  { react: [0.7, 1.5], aim: 0.05, stomp: 0.05 },
-  jumpy: { react: [0.25, 0.7], aim: 0.10, stomp: 0.15 },
-  brute: { react: [0.4, 1.1], aim: 0.07, stomp: 0.55 },
+  calm:  { react: [0.7, 1.5], aim: 0.05, stomp: 0.05, block: 0.75 },
+  jumpy: { react: [0.25, 0.7], aim: 0.10, stomp: 0.15, block: 0.5 },
+  brute: { react: [0.4, 1.1], aim: 0.07, stomp: 0.55, block: 0.3 },
 };
 const STYLE_KEYS = Object.keys(STYLES);
 
@@ -62,5 +62,17 @@ function think(g, f, bot, dt) {
   return { ang, pow, seq: ++bot.seq };
 }
 
-return { createBot, think, STYLE_KEYS, STYLES };
+// нужно ли нажать блок: на мой лист летит вытеснение; реакция 0,1–0,35 с, не всегда (по стилю)
+function wantBlock(g, f, bot) {
+  if (f.st !== 'pad' || g.phase !== 'fight' || g.t < (f.blockReadyAt || 0)) { bot.blockAt = null; return false; }
+  const pd = g.pads[f.pad];
+  if (!pd) return false;
+  const inc = g.players.some((o) => o !== f && o.st === 'air' && o.jump && !o.jump.forced && Math.hypot(o.jump.tx - pd.x, o.jump.ty - pd.y) <= pd.r + 6 && o.jump.L > g.t - 0.05);
+  if (!inc) { bot.blockAt = null; return false; }
+  if (bot.blockAt == null) bot.blockAt = bot.rnd() < bot.style.block ? g.t + 0.1 + bot.rnd() * 0.25 : Infinity;
+  if (g.t >= bot.blockAt) { bot.blockAt = null; return true; }
+  return false;
+}
+
+return { createBot, think, wantBlock, STYLE_KEYS, STYLES };
 });

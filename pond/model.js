@@ -78,7 +78,7 @@
         let o = m.frogs.get(f.id);
         const wasPred = o && m.pred && f.id === m.myId;
         if (!o) { o = { id: f.id }; m.frogs.set(f.id, o); }
-        Object.assign(o, { name: f.name, ci: f.ci, inGame: !!f.ig, st: f.st, pad: f.pad, boost: !!f.boost, online: !!f.on, stomps: f.s || 0, readyAt: f.rd, tireAt: f.ta || 0 });
+        Object.assign(o, { name: f.name, ci: f.ci, inGame: !!f.ig, st: f.st, pad: f.pad, boost: !!f.boost, online: !!f.on, stomps: f.s || 0, readyAt: f.rd, tireAt: f.ta || 0, blockUntil: f.bu || 0, blockReadyAt: f.br || 0, blocks: f.bk || 0 });
         if (!wasPred || f.st !== 'pad') { o.x = f.x; o.y = f.y; }
         o.jump = f.j ? jumpOf(f.j) : null;
         if (wasPred && f.j) m.pred = null;
@@ -109,6 +109,8 @@
           break;
         case 'land': if (f) seatFrog(f, e.pad, e.x, e.y, e.t, e.boost, e.ta); break;
         case 'fall': if (f) { f.st = 'out'; f.pad = -1; f.jump = null; if (e.x != null) { f.x = e.x; f.y = e.y; } if (e.id === m.myId) m.pred = null; } break;
+        case 'block': if (f) { f.blockUntil = e.until; f.blockReadyAt = e.ready; } break;
+        case 'blocked': if (f) f.blocks = (f.blocks || 0) + 1; break;
         case 'wave': {
           const ids = e.pads.concat(e.shrink || []);
           ids.forEach((id, i) => { const p = m.pads[id]; if (p) { p.sinkAt = e.sinkAts ? e.sinkAts[i] : e.sinkAt; p.cause = i >= e.pads.length ? 'shrink' : 'wave'; } });
@@ -191,6 +193,31 @@
       m.pred = { seq, fromPad: f.pad, x: f.x, y: f.y };
       f.st = 'air'; f.boost = false; f.jump = Object.assign({ t0: nowT, L: nowT + plan.dur, forced: false, srv: false }, plan);
       return true;
+    };
+
+    // ---------- свой блок ----------
+    // Кнопка отзывается сразу: щит рисуем по своим часам, сервер подтвердит событием block (оно перезапишет значения)
+    m.blockReady = function (nowT) {
+      const f = m.frogs.get(m.myId);
+      return !!f && m.phase === 'fight' && f.st === 'pad' && nowT >= (f.blockReadyAt || 0);
+    };
+    m.predictBlock = function (nowT) {
+      const f = m.frogs.get(m.myId);
+      if (!m.blockReady(nowT)) return false;
+      f.blockUntil = nowT + m.cfg.BLOCK_T; f.blockReadyAt = f.blockUntil + m.cfg.BLOCK_CD;
+      return true;
+    };
+    // кто-то летит на мой лист (вытеснение): для подсказки «нажми блок»
+    m.incoming = function (nowT) {
+      const me = m.frogs.get(m.myId);
+      if (!me || me.st !== 'pad') return null;
+      const pd = m.pads[me.pad];
+      if (!pd) return null;
+      for (const f of m.frogs.values()) {
+        if (f === me || f.st !== 'air' || !f.jump || f.jump.forced) continue;
+        if (Math.hypot(f.jump.tx - pd.x, f.jump.ty - pd.y) <= pd.r + m.cfg.LAND_SLACK && f.jump.L >= nowT - 0.05) return { by: f.id, eta: f.jump.L - nowT };
+      }
+      return null;
     };
 
     // ---------- чтение состояния ----------

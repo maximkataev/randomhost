@@ -118,6 +118,19 @@
   .net-chip { position: fixed; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 6; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: rgba(4,24,30,0.7); color: var(--muted); display: none; font-variant-numeric: tabular-nums; }
   body.playing .net-chip, body.watching .net-chip { display: block; }
   .net-chip.mid { color: #ffd23f; } .net-chip.bad { color: #ff7a6a; }
+  /* кнопка блока: окно защиты 1 с, потом пауза — кольцо показывает, сколько осталось */
+  .block-btn { position: fixed; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(64px + env(safe-area-inset-bottom, 0px)); z-index: 8; width: 84px; height: 84px; border-radius: 50%; border: 0; padding: 0; display: none; place-items: center; font-size: 34px; color: #fff; touch-action: none; user-select: none; -webkit-user-select: none; background: conic-gradient(var(--bc, #35c9d8) calc(var(--p, 1) * 360deg), rgba(255,255,255,0.14) 0); box-shadow: 0 6px 24px rgba(0,0,0,0.45); }
+  .block-btn::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: rgba(4, 30, 40, 0.92); }
+  .block-btn span { position: relative; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+  .block-btn small { position: absolute; bottom: -2px; right: -2px; z-index: 2; font: 800 11px Montserrat, sans-serif; padding: 2px 6px; border-radius: 8px; background: rgba(4, 30, 40, 0.95); border: 1px solid var(--line); }
+  body.playing .block-btn { display: grid; }
+  body.is-touch .block-btn small { display: none; }
+  .block-btn.ready { --bc: #35c9d8; }
+  .block-btn.active { --bc: #8ef0ff; box-shadow: 0 0 0 4px rgba(142,240,255,0.35), 0 0 28px rgba(142,240,255,0.7); }
+  .block-btn.cool { --bc: #6b7f86; opacity: 0.6; }
+  .block-btn.cool span { filter: grayscale(1) drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+  .block-btn.warn { animation: warnpulse 0.28s infinite alternate; }
+  @keyframes warnpulse { from { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,90,70,0.0), 0 6px 24px rgba(0,0,0,0.45); } to { transform: scale(1.12); box-shadow: 0 0 0 8px rgba(255,90,70,0.45), 0 6px 24px rgba(0,0,0,0.45); } }
   .outpill { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 6; display: none; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; background: rgba(4, 24, 30, 0.85); border: 1px solid var(--line); font-weight: 700; font-size: 13px; }
   body.watching .outpill { display: flex; }
   .outpill button { background: rgba(255,255,255,0.08); border: 0; border-radius: 50%; width: 36px; height: 36px; font-size: 18px; }
@@ -156,6 +169,7 @@
 <div class="feed" id="feed"></div>
 <div class="hint" id="hint"></div>
 <div class="net-chip" id="chip"></div>
+<button class="block-btn ready" id="blockBtn" type="button" aria-label="Блок"><span>🛡</span><small>B</small></button>
 <div class="outpill" id="outpill"></div>
 <div class="verdict" id="verdict"></div>
 <div class="conn" id="conn"></div>
@@ -170,7 +184,7 @@ window.I18N_DICT = {
     lede: `Все заходят по ссылке, каждый — лягушка со своего телефона или компьютера. Кувшинки тонут, места всё меньше.`,
     rule1: `Оттяни палец назад и отпусти: лягушка прыгнет в обратную сторону. Чем дальше оттянул, тем дальше прыжок.`,
     rule2: `Сидеть нельзя: лист под тобой устаёт (кольцо заполняется) и тонет — прыгай заранее. Красный лист тонет прямо сейчас.`,
-    rule3: `Прыгнешь на занятую — сбросишь хозяина 💥. Внимание на цаплю 🐦 и мух 🪰 (дальний прыжок).`,
+    rule3: `Прыгнешь на занятую — сбросишь хозяина 💥. Если летят на тебя — жми 🛡 блок: 1 с защиты, потом 2,5 с пауза. Цапля 🐦 бьёт по толпе, мухи 🪰 дают дальний прыжок.`,
     rule4: `Кто упал в воду первым — неудачник. Остальные борются за звание «Царь болота».`,
     create: `Создать комнату`, have_code: `У меня есть код`, code_ph: `Код комнаты`, enter: `Войти`, room: `Комната`,
     name_title: `Твоё имя`, name_ph: `Имя`, color: `Цвет лягушки`, players: `Лягушки`, of_max: `{n} из {m}`,
@@ -183,7 +197,7 @@ window.I18N_DICT = {
     conn_lost: `Связь потеряна — переподключаемся…`, conn_blocked: `Сеть блокирует соединение — попробуй мобильный интернет или другой Wi-Fi`, ping_bad: `может подлагивать`,
     verdict: `😅 {name} — неудачник`, verdict_you: `😅 Ты — неудачник`, king: `Царь болота`,
     res_host: `Неудачник`, res_first_at: `упал первым на {s} с`, res_lot: `ничья — жребий`, res_king: `Царь болота: {names}`, res_draw: `🤝 Упали одновременно — ничья`,
-    nom_stomp: `Больше всех сбросил:`, nom_self: `Сам себе враг:`, again: `Ещё партия`, to_lobby: `В лобби`, wait_again: `Ждём, пока {name} начнёт новую партию…`,
+    nom_stomp: `Больше всех сбросил:`, nom_block: `Лучший защитник:`, nom_self: `Сам себе враг:`, again: `Ещё партия`, to_lobby: `В лобби`, wait_again: `Ждём, пока {name} начнёт новую партию…`,
     spectate: `Ты выбыл — смотри`, stomps: `💥×{n}`,
     f_stomp: `{a} 💥→ {b}`, f_wave: `🌊 {n}`, f_heron: `🐦 {n}`, f_miss: `🙃 {n}`, f_stomped: `🦶 {n}`,
     go_word: `КВАК!`, bad_name: `Введи имя`, name_taken: `Имя занято`, room_full: `В комнате нет мест`, too_many_rooms: `Слишком много комнат — попробуй позже`, busy: `Сервер занят — попробуй через минуту`, server_error: `Ошибка сервера`, token_gone: `Сессия устарела`,
@@ -198,7 +212,7 @@ window.I18N_DICT = {
     lede: `Everyone joins by link, each one a frog on their own phone or computer. The pads sink and room runs out.`,
     rule1: `Pull your finger back and let go: the frog jumps the other way. The longer the pull, the longer the jump.`,
     rule2: `No sitting still: the pad under you gets tired (the ring fills up) and sinks — hop away in time. A red pad is sinking right now.`,
-    rule3: `Land on an occupied pad to knock its owner off 💥. Watch out for the heron 🐦 and catch flies 🪰 (longer jump).`,
+    rule3: `Land on an occupied pad to knock its owner off 💥. If someone is flying at you, hit 🛡 block: 1 s of protection, then a 2.5 s pause. The heron 🐦 hits crowds, flies 🪰 give a longer jump.`,
     rule4: `First one in the water is the loser. The rest fight for the title of King of the Pond.`,
     create: `Create a room`, have_code: `I have a code`, code_ph: `Room code`, enter: `Enter`, room: `Room`,
     name_title: `Your name`, name_ph: `Name`, color: `Frog colour`, players: `Frogs`, of_max: `{n} of {m}`,
@@ -211,7 +225,7 @@ window.I18N_DICT = {
     conn_lost: `Connection lost — reconnecting…`, conn_blocked: `The network blocks the connection — try mobile data or another Wi-Fi`, ping_bad: `may lag`,
     verdict: `😅 {name} is the loser`, verdict_you: `😅 You're the loser`, king: `King of the Pond`,
     res_host: `Loser`, res_first_at: `fell first at {s} s`, res_lot: `tie — drawn by lot`, res_king: `King of the Pond: {names}`, res_draw: `🤝 Fell at the same moment — a draw`,
-    nom_stomp: `Most knock-offs:`, nom_self: `Own worst enemy:`, again: `Another round`, to_lobby: `To lobby`, wait_again: `Waiting for {name} to start a new round…`,
+    nom_stomp: `Most knock-offs:`, nom_block: `Best defender:`, nom_self: `Own worst enemy:`, again: `Another round`, to_lobby: `To lobby`, wait_again: `Waiting for {name} to start a new round…`,
     spectate: `You're out — watch`, stomps: `💥×{n}`,
     f_stomp: `{a} 💥→ {b}`, f_wave: `🌊 {n}`, f_heron: `🐦 {n}`, f_miss: `🙃 {n}`, f_stomped: `🦶 {n}`,
     go_word: `RIBBIT!`, bad_name: `Enter a name`, name_taken: `Name is taken`, room_full: `The room is full`, too_many_rooms: `Too many rooms — try again later`, busy: `Server is busy — try in a minute`, server_error: `Server error`, token_gone: `Session expired`,
@@ -226,7 +240,7 @@ window.I18N_DICT = {
     lede: `Όλοι μπαίνουν από σύνδεσμο, ο καθένας βάτραχος από το κινητό ή τον υπολογιστή του. Τα νούφαρα βυθίζονται και ο χώρος στενεύει.`,
     rule1: `Τράβηξε το δάχτυλο πίσω και άφησέ το: ο βάτραχος πηδά στην αντίθετη κατεύθυνση. Όσο πιο πολύ τραβάς, τόσο πιο μακριά πηδά.`,
     rule2: `Δεν κάθεσαι ακίνητος: το νούφαρο κουράζεται (ο κύκλος γεμίζει) και βυθίζεται — πήδα εγκαίρως. Το κόκκινο βυθίζεται τώρα.`,
-    rule3: `Αν προσγειωθείς σε κατειλημμένο, ρίχνεις τον ιδιοκτήτη 💥. Πρόσεχε τον ερωδιό 🐦 και πιάσε μύγες 🪰 (μακρύτερο άλμα).`,
+    rule3: `Αν προσγειωθείς σε κατειλημμένο, ρίχνεις τον ιδιοκτήτη 💥. Αν πετούν πάνω σου, πάτα 🛡 μπλοκ: 1 δ προστασία και μετά παύση 2,5 δ. Ο ερωδιός 🐦 χτυπά το πλήθος, οι μύγες 🪰 δίνουν μακρύτερο άλμα.`,
     rule4: `Όποιος πέσει πρώτος στο νερό χάνει. Οι υπόλοιποι παλεύουν για τον τίτλο «Βασιλιάς του βάλτου».`,
     create: `Δημιουργία δωματίου`, have_code: `Έχω κωδικό`, code_ph: `Κωδικός δωματίου`, enter: `Είσοδος`, room: `Δωμάτιο`,
     name_title: `Το όνομά σου`, name_ph: `Όνομα`, color: `Χρώμα βατράχου`, players: `Βάτραχοι`, of_max: `{n} από {m}`,
@@ -239,7 +253,7 @@ window.I18N_DICT = {
     conn_lost: `Η σύνδεση χάθηκε — επανασύνδεση…`, conn_blocked: `Το δίκτυο μπλοκάρει τη σύνδεση — δοκίμασε δεδομένα κινητού ή άλλο Wi-Fi`, ping_bad: `ίσως καθυστερεί`,
     verdict: `😅 Χάνει ο/η {name}`, verdict_you: `😅 Χάνεις εσύ`, king: `Βασιλιάς του βάλτου`,
     res_host: `Χαμένος`, res_first_at: `έπεσε πρώτος στα {s} δ`, res_lot: `ισοπαλία — κλήρωση`, res_king: `Βασιλιάς του βάλτου: {names}`, res_draw: `🤝 Έπεσαν ταυτόχρονα — ισοπαλία`,
-    nom_stomp: `Περισσότερες ρίψεις:`, nom_self: `Ο χειρότερος εχθρός του εαυτού του:`, again: `Άλλος ένας γύρος`, to_lobby: `Στο λόμπι`, wait_again: `Περιμένουμε τον/την {name} να ξεκινήσει νέο γύρο…`,
+    nom_stomp: `Περισσότερες ρίψεις:`, nom_block: `Καλύτερος αμυντικός:`, nom_self: `Ο χειρότερος εχθρός του εαυτού του:`, again: `Άλλος ένας γύρος`, to_lobby: `Στο λόμπι`, wait_again: `Περιμένουμε τον/την {name} να ξεκινήσει νέο γύρο…`,
     spectate: `Βγήκες — παρακολούθησε`, stomps: `💥×{n}`,
     f_stomp: `{a} 💥→ {b}`, f_wave: `🌊 {n}`, f_heron: `🐦 {n}`, f_miss: `🙃 {n}`, f_stomped: `🦶 {n}`,
     go_word: `ΚΡΟΑ!`, bad_name: `Γράψε ένα όνομα`, name_taken: `Το όνομα χρησιμοποιείται`, room_full: `Το δωμάτιο είναι γεμάτο`, too_many_rooms: `Πολλά δωμάτια — δοκίμασε αργότερα`, busy: `Ο διακομιστής είναι απασχολημένος`, server_error: `Σφάλμα διακομιστή`, token_gone: `Η συνεδρία έληξε`,

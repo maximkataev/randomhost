@@ -16,6 +16,7 @@
   const nowS = () => performance.now() / 1000;
   const r3 = (v) => Math.round(v * 1000) / 1000;
   const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+  if (isTouch) document.body.classList.add('is-touch');
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
@@ -43,7 +44,8 @@
   };
 
   const render = PR.create($('arena'));
-render.compact = isTouch;   // на телефоне имён над лягушками нет: подсвечивается только своя
+render.compact = isTouch;
+render.setVibrate((p) => vibrate(p));   // на телефоне имён над лягушками нет: подсвечивается только своя
   const aim = { active: false, ang: 0, pow: 0 };
 
   // ===================================================================
@@ -80,6 +82,7 @@ render.compact = isTouch;   // на телефоне имён над лягуш�
       if (!bot) continue;
       const m = PB.think(g, f, bot, dt);
       if (m) g.input(f.id, m, 0);
+      if (PB.wantBlock(g, f, bot)) g.block(f.id, 0);
     }
     g.step(dt);
     const evs = g.drainEvents();
@@ -368,6 +371,41 @@ render.compact = isTouch;   // на телефоне имён над лягуш�
     net.pending.set(s, { msg, at: nowS(), n: 0 });
     send(msg);
   }
+  // ----- блок -----
+  const blockBtn = $('blockBtn');
+  function doBlock() {
+    Sound.ensure();
+    const m = cur();
+    if (local && m === local.model) {
+      if (local.g.block(local.meId, 0)) { m.predictBlock(local.g.clock()); }
+      return;
+    }
+    const nowT = online.now(nowS());
+    if (!online.predictBlock(nowT)) return;
+    Sound.shield(); vibrate(12);
+    send({ type: 'b' });
+  }
+  blockBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); doBlock(); });
+  blockBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+  window.addEventListener('keydown', (e) => {
+    if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+    if (e.key === 'b' || e.key === 'B' || e.key === 'и' || e.key === 'И') { if (canPlay()) { e.preventDefault(); doBlock(); } }
+  });
+  let lastBlockClass = '';
+  function updateBlockBtn(m, nowT) {
+    const f = mine(m);
+    if (!f || !blockBtn) return;
+    const bt = (m.cfg.BLOCK_T || 1), cd = (m.cfg.BLOCK_CD || 2.5);
+    let cls = 'ready', p = 1;
+    if (nowT < (f.blockUntil || 0)) { cls = 'active'; p = clamp((f.blockUntil - nowT) / bt, 0, 1); }
+    else if (nowT < (f.blockReadyAt || 0)) { cls = 'cool'; p = clamp(1 - (f.blockReadyAt - nowT) / cd, 0, 1); }
+    const inc = (cls === 'ready') && m.incoming(nowT);
+    const full = cls + (inc ? ' warn' : '');
+    if (full !== lastBlockClass) { blockBtn.className = 'block-btn ' + full; lastBlockClass = full; }
+    blockBtn.style.setProperty('--p', p.toFixed(3));
+    render.incoming = !!m.incoming(nowT);
+  }
+
   // неподтверждённый прыжок повторяем (тот же номер — сервер дубль не исполнит)
   setInterval(() => {
     const rtt = online.clock.rtt === Infinity ? 0 : online.clock.rtt;
@@ -492,6 +530,8 @@ render.compact = isTouch;   // на телефоне имён над лягуш�
     const selfs = pl.filter((p) => p.cause === 'miss' && p.fellAt != null).sort((a, b) => a.fellAt - b.fellAt)[0];
     const noms = [];
     if (top && top.stomps > 0) noms.push(`<div><span>${esc(T('nom_stomp'))}</span><b>${esc(top.name)} · ${top.stomps}</b></div>`);
+    const bb = pl.slice().sort((a, b) => (b.blocks || 0) - (a.blocks || 0))[0];
+    if (bb && bb.blocks > 0) noms.push(`<div><span>${esc(T('nom_block'))}</span><b>${esc(bb.name)} · ${bb.blocks}</b></div>`);
     if (selfs) noms.push(`<div><span>${esc(T('nom_self'))}</span><b>${esc(selfs.name)}</b></div>`);
     const iAmHost = net.me === net.hostId, host = net.roster.find((p) => p.id === net.hostId);
     setPanel(`${brand()}<div class="host-card"><div class="lbl">${esc(T('res_host'))}</div><div class="nm">😅 ${esc(nm(ov.loser))}</div><div class="note">${esc(note)}</div></div>
@@ -606,7 +646,8 @@ render.compact = isTouch;   // на телефоне имён над лягуш�
     const ph = phaseNow();
     if (ph !== lastPhase) { lastPhase = ph; redraw(true); }
     updateHud(m, nowT);
-    render.draw(ts, { nowT, renderT, aim });
+    updateBlockBtn(m, nowT);
+    render.draw(ts, { nowT, renderT, aim, incoming: !!render.incoming });
   }
   function ensureLocalIfNeeded() { if (!useOnline()) ensureLocal(); }
 

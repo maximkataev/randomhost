@@ -226,6 +226,24 @@ test('рестарт сервера: комната и игроки в лобб�
   again.close();
 });
 
+test('блок по сети: событие block видят все, повторное нажатие в кулдауне игнорируется', async () => {
+  const r = await room();
+  const bs = await botsFast(r.code, r.hostToken, [{ think: false }, { think: false }]);
+  await bs[0].until(b => b.roster && b.roster.length === 2);
+  bs[0].send({ type: 'start' });
+  await bs[0].until(b => b.model.phase === 'fight');
+  await sleep(1200);
+  bs[1].send({ type: 'b' });
+  await bs[0].until(b => b.events.some(e => e.type === 'block' && e.id === bs[1].id), 3000);
+  const ev = bs[0].events.find(e => e.type === 'block' && e.id === bs[1].id);
+  assert(ev.until - ev.t0 > 0.9 && ev.until - ev.t0 < 1.1, 'окно ~1 с');
+  assert(ev.ready - ev.until > 2.4, 'кулдаун ~2,5 с после окна');
+  bs[1].send({ type: 'b' });
+  await sleep(600);
+  assert.strictEqual(bs[0].events.filter(e => e.type === 'block' && e.id === bs[1].id).length, 1, 'второй блок не прошёл');
+  closeAll(bs);
+});
+
 test('реакции зрителей: не чаще раза в 2 с, только из списка', async () => {
   const r = await room();
   const bs = await botsFast(r.code, r.hostToken, [{ think: false }, { think: false }]);

@@ -426,6 +426,11 @@ function handle(room, client, msg) {
       const ok = g.input(me, { ang: Math.round(Number(msg.a) * 1000) / 1000, pow: Math.round(Number(msg.p) * 1000) / 1000, seq: msg.s }, lag);
       return reply({ type: "ack", s: msg.s, ok, gt: g.clock() });
     }
+    case "b": {
+      // блок: окно защиты от вытеснения; кулдаун и условия проверяет движок, задержку берём измеренную сервером
+      if (!me) return;
+      return void g.block(me, (client.rtt || 0) / 2000);
+    }
     case "hbr": {
       const sent = client.hbSent.get(msg.c);
       if (sent == null) return;

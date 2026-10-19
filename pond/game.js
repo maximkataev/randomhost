@@ -39,6 +39,8 @@ const DEFAULTS = Object.assign({}, P.DEFAULTS, {
   STAY_T: 9,            // лист «устаёт»: кто сидит на нём дольше (с разбросом ±15%), тот его топит — на месте не отсидеться
   TIRE_WAIT: 3,         // нет свободного достижимого листа — усталый лист ждёт не дольше (дальше выбор: вытеснить соседа или упасть)
   TIRE_WARN: 2.0,       // от красной метки усталого листа до погружения
+  BLOCK_T: 1.0,         // блок: столько секунд лист защищён от вытеснения
+  BLOCK_CD: 2.5,        // после блока кнопка неактивна ещё столько секунд
   JUMP_RATE: 0.2,       // не чаще одного прыжка за столько секунд на игрока
   TIE_EPS: 1e-6,
 });
@@ -120,8 +122,8 @@ function createGame(opts) {
     }
     if (j.forced) { f.x = j.tx; f.y = j.ty; return fall(f, L, 'stomp', j.by); }
     if (!occ.length) return; // (недостижимо)
-    // стартовая защита: вытеснять рано — лягушка отскакивает на свою прежнюю кувшинку, если та ещё свободна
-    if (L < cfg.STOMP_GUARD) {
+    // отскок нападающего на свою прежнюю кувшинку (если она ещё свободна), иначе в воду
+    const bounce = () => {
       const home = j.from >= 0 ? g.pads[j.from] : null;
       if (home && home.state === 'ok' && !(home.sinkAt != null && L >= home.sinkAt) && occupants(home.id).filter(o => o !== f).length < home.cap) {
         seat(f, home, L);
@@ -129,9 +131,20 @@ function createGame(opts) {
       }
       f.x = j.tx; f.y = j.ty;
       return fall(f, L, 'miss');
+    };
+    // стартовая защита: вытеснять рано — лягушка отскакивает
+    if (L < cfg.STOMP_GUARD) return bounce();
+    // блок: хозяин нажал защиту — вытеснение не проходит (если защищены все, кого можно сбросить)
+    const shielded = (o) => L >= o.blockFrom && L <= o.blockUntil;
+    const open = occ.filter((o) => !shielded(o));
+    if (!open.length) {
+      const d = occ.reduce((a, b) => (a.seatedAt <= b.seatedAt ? a : b));
+      d.blocks++;
+      push({ type: 'blocked', id: d.id, by: f.id, pad: pad.id, t: L });
+      return bounce();
     }
     // вытеснение: хозяин (кто сидит дольше) получает вынужденный прыжок по ходу прилёта
-    const victim = occ.reduce((a, b) => (a.seatedAt <= b.seatedAt ? a : b));
+    const victim = open.reduce((a, b) => (a.seatedAt <= b.seatedAt ? a : b));
     victim.queued = null;
     startJump(victim, L, j.ang, 0, true, cfg.JUMP_MIN * (1 + 0.5 * rng()), 0, 0, f.id);
     seat(f, pad, L);
@@ -317,7 +330,7 @@ function createGame(opts) {
     if (g.byId.has(id)) return g.byId.get(id);
     const f = {
       id, name, ci: ci | 0, idx: g.players.length, inGame: false, st: g.phase === 'lobby' ? 'lobby' : 'watch', pad: -1, x: 0, y: 0, jump: null,
-      readyAt: 0, seatedAt: 0, tireAt: Infinity, queued: null, boost: false, online: true, offSince: null,
+      readyAt: 0, seatedAt: 0, tireAt: Infinity, blockFrom: -1e9, blockUntil: -1e9, blockReadyAt: 0, blocks: 0, queued: null, boost: false, online: true, offSince: null,
       stomps: 0, jumps: 0, lastIn: -9, fellAt: null, cause: null, by: null, place: null, removed: false,
     };
     g.players.push(f); g.byId.set(id, f);
@@ -402,6 +415,18 @@ function createGame(opts) {
     return true;
   };
 
+  // Блок: кнопка защиты. Окно BLOCK_T с момента нажатия (с поправкой на лаг), потом кнопка неактивна BLOCK_CD.
+  g.block = function (id, lag) {
+    const f = g.byId.get(id);
+    if (!f || g.phase !== 'fight' || f.st !== 'pad') return false;
+    if (g.t < f.blockReadyAt) return false;
+    const from = g.t - clamp(lag || 0, 0, cfg.LAG_MAX);
+    f.blockFrom = from; f.blockUntil = from + cfg.BLOCK_T;
+    f.blockReadyAt = f.blockUntil + cfg.BLOCK_CD;
+    push({ type: 'block', id: f.id, t0: from, until: f.blockUntil, ready: f.blockReadyAt });
+    return true;
+  };
+
   // ---------- шаг ----------
   // Очередь событий считается заново на каждой итерации: людей мало, зато порядок строго по времени.
   function nextDue(tNew) {
@@ -411,7 +436,13 @@ function createGame(opts) {
       if (!best || time < best.time - cfg.TIE_EPS || (Math.abs(time - best.time) <= cfg.TIE_EPS && order < best.order)) best = { time, kind, ref, order };
     };
     for (const f of g.players) {
-      if (f.st === 'air') take(f.jump.L, 'land', f, 1 + f.idx * 1e-3);
+      if (f.st === 'air') {
+        const j = f.jump;
+        // прилёт на занятый лист: обрабатываем на GRACE позже, чтобы успел блок, нажатый с задержкой сети
+        let wait = 0;
+        if (!j.forced) { const pd = P.padAt(g.pads, j.tx, j.ty, cfg); if (pd && occupants(pd.id).some((o) => o !== f)) wait = cfg.GRACE; }
+        if (j.L + wait <= tNew) take(j.L, 'land', f, 1 + f.idx * 1e-3);
+      }
       else if (f.st === 'pad' && f.queued) take(f.readyAt, 'queued', f, 2);
       if (f.st === 'pad' && f.online && f.tireAt !== Infinity) take(f.tireAt, 'tire', f, 2.2);
       if ((f.st === 'pad' || f.st === 'air') && !f.online && f.offSince != null) take(f.offSince + cfg.OFFLINE_T, 'remove', f, 0.5);
@@ -451,7 +482,7 @@ function createGame(opts) {
     }
     g.over = {
       t, kings, draw, loser: g.loser, lot: !!(lot || g.loserLot),
-      players: g.players.map(f => ({ id: f.id, name: f.name, place: f.place, stomps: f.stomps, jumps: f.jumps, cause: f.cause, by: f.by, removed: f.removed, fellAt: f.fellAt })),
+      players: g.players.map(f => ({ id: f.id, name: f.name, place: f.place, stomps: f.stomps, blocks: f.blocks, jumps: f.jumps, cause: f.cause, by: f.by, removed: f.removed, fellAt: f.fellAt })),
     };
     push({ type: 'over', ...g.over });
   }
@@ -526,7 +557,7 @@ function createGame(opts) {
     g.byId.clear();
     for (const f of g.players) {
       g.byId.set(f.id, f);
-      Object.assign(f, { st: 'lobby', pad: -1, jump: null, queued: null, boost: false, readyAt: 0, seatedAt: 0, stomps: 0, jumps: 0, lastIn: -9, fellAt: null, cause: null, by: null, place: null, removed: false, inGame: false, left: false });
+      Object.assign(f, { st: 'lobby', pad: -1, jump: null, queued: null, blockFrom: -1e9, blockUntil: -1e9, blockReadyAt: 0, blocks: 0, boost: false, readyAt: 0, seatedAt: 0, stomps: 0, jumps: 0, lastIn: -9, fellAt: null, cause: null, by: null, place: null, removed: false, inGame: false, left: false });
       if (f.online) f.offSince = null;
     }
     g.players.forEach((f, i) => { f.idx = i; });
@@ -548,7 +579,7 @@ function createGame(opts) {
       frogs: g.players.map(f => ({
         id: f.id, name: f.name, ci: f.ci, ig: f.inGame ? 1 : 0, st: f.st, pad: f.pad, x: f.x, y: f.y, boost: f.boost, on: f.online,
         j: f.jump ? { t0: f.jump.t0, x0: f.jump.x0, y0: f.jump.y0, ang: f.jump.ang, dist: f.jump.dist, dur: f.jump.dur, forced: f.jump.forced } : null,
-        rd: f.readyAt, s: f.stomps, ta: f.tireAt === Infinity ? 0 : f.tireAt,
+        rd: f.readyAt, s: f.stomps, ta: f.tireAt === Infinity ? 0 : f.tireAt, bu: f.blockUntil > 0 ? f.blockUntil : 0, br: f.blockReadyAt, bk: f.blocks,
       })),
       heron: g.heron,
       over: g.over,

@@ -118,7 +118,9 @@ function connect({ base, code, name, style = "jumpy", hostToken, token, ci, thin
       model.advance(t);
       const me = model.frogs.get(b.id);
       if (!me) return;
-      const move = Bots.think(model.view(t), me, bot, 0.05);
+      const view = model.view(t);
+      if (Bots.wantBlock(view, me, bot)) { model.predictBlock(t); out({ type: "b" }); }
+      const move = Bots.think(view, me, bot, 0.05);
       if (!move) return;
       const s = ++b.seq;
       const msg = { type: "j", a: Math.round(move.ang * 1000) / 1000, p: Math.round(move.pow * 1000) / 1000, s };

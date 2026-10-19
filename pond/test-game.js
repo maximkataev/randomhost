@@ -234,6 +234,63 @@ test('волны и цапля не рвут связность пруда (в �
     }
   }
 });
+// нападающий a рядом с кувшинкой b (в пределах прыжка); a «свой» лист — nb
+function duelSetup() {
+  const g = fight(2, {});
+  const a = F(g, 0), b = F(g, 1);
+  const pb = g.pads[b.pad];
+  const nb = g.pads.find(p => p.id !== pb.id && Math.hypot(p.x - pb.x, p.y - pb.y) <= g.jmax * 0.9 && Math.hypot(p.x - pb.x, p.y - pb.y) >= g.cfg.JUMP_MIN + 10);
+  assert(nb, 'есть соседний лист');
+  a.pad = nb.id; a.x = nb.x; a.y = nb.y;
+  return { g, a, b, pb, nb };
+}
+test('блок: нажатая защита отбивает вытеснение, нападающий отскакивает, кнопка потом неактивна', () => {
+  const { g, a, b, pb, nb } = duelSetup();
+  run(g, 1);
+  jumpTo(g, a, pb);
+  assert(g.block('p1', 0), 'блок принят');
+  assert(!g.block('p1', 0), 'второй раз сразу — нельзя');
+  run(g, 1);
+  const ev = g.drainEvents();
+  assert(ev.some(e => e.type === 'blocked' && e.id === 'p1' && e.by === 'p0'), 'событие blocked');
+  assert(!ev.some(e => e.type === 'stomp'), 'вытеснения нет');
+  assert.strictEqual(b.pad, pb.id); assert.strictEqual(b.st, 'pad');
+  assert.strictEqual(a.pad, nb.id, 'нападающий отскочил на свою кувшинку');
+  assert.strictEqual(b.blocks, 1);
+  assert(!g.block('p1', 0), 'ещё в кулдауне');
+  run(g, g.cfg.BLOCK_T + g.cfg.BLOCK_CD);
+  assert(g.block('p1', 0), 'после кулдауна снова можно');
+});
+test('блок: окно истекло — вытеснение проходит', () => {
+  const { g, a, b, pb } = duelSetup();
+  run(g, 1);
+  assert(g.block('p1', 0));
+  run(g, 1.3); // окно (1 с) закончилось
+  jumpTo(g, a, pb);
+  run(g, 1);
+  const ev = g.drainEvents();
+  assert(ev.some(e => e.type === 'stomp'), 'вытеснение прошло');
+  assert(!ev.some(e => e.type === 'blocked'));
+  assert.strictEqual(b.blocks, 0);
+});
+test('блок с лагом: нажатие, пришедшее чуть позже прилёта, но в пределах LAG_MAX, успевает', () => {
+  const { g, a, pb } = duelSetup();
+  run(g, 1);
+  jumpTo(g, a, pb);
+  const L = a.jump.L;
+  for (let k = 0; k < 400 && g.t < L + 0.05 && g.phase === 'fight'; k++) g.step(0.01); // прилёт ещё ждёт GRACE
+  assert(a.st === 'air', 'прилёт ещё не обработан');
+  assert(g.block('p1', 0.12), 'блок принят с поправкой на лаг');
+  run(g, 0.5);
+  assert(g.drainEvents().some(e => e.type === 'blocked'), 'прилёт отбит');
+});
+test('блок нельзя нажать в воздухе и после выбывания', () => {
+  const g = fight(2, {});
+  const a = F(g, 0);
+  run(g, 1);
+  jumpTo(g, a, nearPad(g, a, g.players.map(p => p.pad)));
+  assert(!g.block('p0', 0));
+});
 test('одна кувшинка = одна лягушка, большая вмещает двух без вытеснения', () => {
   const g = fight(3, {});
   const big = g.pads.find(p => p.big);

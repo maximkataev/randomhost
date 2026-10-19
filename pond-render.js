@@ -75,6 +75,8 @@
       gurgle() { for (let i = 0; i < 4; i++) tone(240 + i * 70, 0.08, { type: 'sine', to: 400 + i * 90, vol: 0.07, delay: i * 0.07 }); },
       heron() { tone(700, 0.5, { type: 'sawtooth', to: 260, vol: 0.09 }); tone(540, 0.35, { type: 'sawtooth', to: 220, vol: 0.06, delay: 0.1 }); },
       strike() { noise(0.5, { f0: 2400, f1: 200, vol: 0.34 }); tone(80, 0.4, { type: 'sine', to: 40, vol: 0.25 }); },
+      shield() { tone(520, 0.12, { type: 'triangle', vol: 0.09 }); tone(780, 0.16, { type: 'sine', vol: 0.08, delay: 0.05 }); },
+      clang() { tone(1400, 0.22, { type: 'square', to: 900, vol: 0.12 }); tone(2100, 0.3, { type: 'triangle', to: 1600, vol: 0.1, delay: 0.02 }); noise(0.08, { f0: 6000, f1: 2500, vol: 0.12, filter: 'highpass' }); },
       fly() { tone(900, 0.2, { type: 'square', to: 1300, vol: 0.03 }); },
       lick() { tone(1200, 0.06, { type: 'sine', to: 400, vol: 0.14 }); tone(700, 0.1, { type: 'triangle', to: 1500, vol: 0.1, delay: 0.05 }); },
       go() { tone(440, 0.12, { type: 'triangle', vol: 0.14 }); tone(880, 0.25, { type: 'triangle', vol: 0.14, delay: 0.12 }); },
@@ -91,6 +93,7 @@
   function create(canvas, opts) {
     opts = opts || {};
     const cx = canvas.getContext('2d');
+    let vibrateHook = null;
     const r = {
       model: null, shake: 0, shakeT: 0, flash: 0, flashColor: '255,255,255', insets: { l: 0, t: 0, r: 0, b: 0 },
       parts: [], flies: [], reduced: matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -142,6 +145,7 @@
     // светлячки — фон, независимо от модели
     for (let i = 0; i < 26; i++) r.flies.push({ a: hash(i) * TAU, d: 0.2 + hash(i + 40) * 1.1, sp: 0.05 + hash(i + 80) * 0.12, ph: hash(i + 120) * TAU, sz: 1.2 + hash(i + 160) * 1.6 });
 
+    r.setVibrate = (fn) => { vibrateHook = fn; };
     r.setModel = (m) => { if (r.model !== m) { r.model = m; r.seen.pads.clear(); r.seen.fly.clear(); r.parts.length = 0; r.face.clear(); r.drown.length = 0; } };
 
     // ----- события: эффекты и звук -----
@@ -178,6 +182,19 @@
           r.drown.push({ x: e.x, y: e.y, ci: col, life: 1.1, max: 1.1 });
           Sound.splash(true);
           if (e.id === me) { r.shake = Math.max(r.shake, 8); Sound.lose(); }
+          break;
+        }
+        case 'block': {
+          const f = m.frogs.get(e.id);
+          if (f) r.fx.ring(f.x, f.y, 34, '120,230,255', 0.55, 2.4);
+          if (e.id === me) Sound.shield();
+          break;
+        }
+        case 'blocked': {
+          const pd = m.pads[e.pad];
+          if (pd) { r.fx.burst(pd.x, pd.y, '150,235,255', 20); r.fx.ring(pd.x, pd.y, pd.r + 14, '150,235,255', 0.7, 3); r.fx.text(pd.x, pd.y - 16, '🛡', '#bff3ff'); }
+          r.shake = Math.max(r.shake, 6); Sound.clang();
+          if (e.id === me) vibrateHook && vibrateHook([20, 30, 20]);
           break;
         }
         case 'wave': Sound.warn(); break;
@@ -522,6 +539,20 @@
                 if (u > 0.82) { cx.font = '800 24px Montserrat, sans-serif'; cx.textAlign = 'center'; cx.fillStyle = '#ffd24a'; cx.fillText('⏳', pd.x, pd.y - rr - 6); }
               }
             }
+          }
+          // щит блока: полупрозрачный купол, гаснет в последние 0,25 с
+          const tnow = mine ? nowT : renderT;
+          if (f.blockUntil > tnow && m.phase === 'fight') {
+            const left = f.blockUntil - tnow, al = clamp(left / 0.25, 0, 1);
+            const sg = cx.createRadialGradient(pos.x, pos.y, 8, pos.x, pos.y, 34);
+            sg.addColorStop(0, `rgba(120,230,255,${0.05 * al})`); sg.addColorStop(0.8, `rgba(120,230,255,${0.28 * al})`); sg.addColorStop(1, `rgba(200,250,255,${0.7 * al})`);
+            cx.fillStyle = sg; cx.beginPath(); cx.arc(pos.x, pos.y, 34, 0, TAU); cx.fill();
+            cx.strokeStyle = `rgba(210,250,255,${0.9 * al})`; cx.lineWidth = 2; cx.beginPath(); cx.arc(pos.x, pos.y, 34, 0, TAU); cx.stroke();
+          }
+          if (mine && c.incoming && m.phase === 'fight') {
+            const pl = 0.5 + 0.5 * Math.sin(t * 22);
+            cx.strokeStyle = `rgba(255,90,70,${0.55 + 0.45 * pl})`; cx.lineWidth = 4; cx.beginPath(); cx.arc(pos.x, pos.y, 40, 0, TAU); cx.stroke();
+            cx.font = '800 26px Montserrat, sans-serif'; cx.textAlign = 'center'; cx.fillStyle = '#ff6a55'; cx.fillText('❗', pos.x, pos.y - 46);
           }
           drawFrog(f, pos, face, { air, u, crouch: aim ? aim.pow * 0.9 : cr, t, scale: mine ? 1.08 : 1, croak: f._croak > t ? 1 : 0, look: aim ? 1 : 0 });
           r.names.push({ f, x: pos.x, y: pos.y - (pos.z || 0) * 0.55, mine });
