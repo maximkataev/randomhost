@@ -2000,7 +2000,7 @@
       const loserDown = isKO && who === loserOf(koBy) && (S.phase === "ko" || S.phase === "end");
       const down = loserDown ? (S.phase === "end" ? 1 : S.down) : 0;
       const bob = Math.sin(now * 5 + (who === "A" ? 0 : 2)) * 3;
-      const s = SC * 1.2;
+      const s = SC * 1.5;
       g.save(); g.translate(x - dir * down * 60 * SC, gy); g.scale(s * dir, s);
       if (down) { g.translate(0, -78 * 0); g.rotate(-down * 1.5); }
       const lean = 0.1 + p * 0.25 - h * 0.35;
@@ -2044,7 +2044,7 @@
     function drawRing(now, hype) {
       let gr = g.createLinearGradient(0, 0, 0, H * 0.5);
       gr.addColorStop(0, "#04050b"); gr.addColorStop(0.6, "#161028"); gr.addColorStop(1, "#2c1634"); g.fillStyle = gr; g.fillRect(0, 0, W, H * 0.6);
-      spotlights(g, W, H, [0.1, 0.35, 0.65, 0.9], SC, 0.04);
+      spotlights(g, W, H, [0.28, 0.72], SC, 0.04);
       const top = H * 0.16, bot = H * 0.5; g.fillStyle = "#130f22"; g.fillRect(0, top, W, bot - top);
       drawCrowd(g, crowd, 7, W, top, bot, now, 0.6 + hype * 3.2, 0, 3.5 * SC * 1.2);
       drawBoards(g, W, H * 0.5, H * 0.06, [i18t("bxBoardA"), i18t("bxBoardB")], now, 0);
@@ -2071,16 +2071,16 @@
         g.fillText(f.name.toUpperCase(), left ? x0 : x0 + bw, y0 + 26 * u, bw * 0.34);
         const w = bw * 0.36, bx = left ? x0 : x0 + bw - w, by = y0 + 34 * u;
         g.fillStyle = "#151c22"; g.fillRect(bx, by, w, 12 * u); g.strokeStyle = "#26323b"; g.lineWidth = 1; g.strokeRect(bx + 0.5, by + 0.5, w - 1, 12 * u - 1);
-        g.fillStyle = hp > 0.45 ? f.col : "#ff5c5c"; const ww = Math.max(0, w * hp); g.fillRect(left ? bx : bx + w - ww, by, ww, 12 * u);
+        g.fillStyle = f.col; g.globalAlpha = hp > 0.45 ? 1 : 0.65; const ww = Math.max(0, w * hp); g.fillRect(left ? bx : bx + w - ww, by, ww, 12 * u); g.globalAlpha = 1;
       };
       side("A", true); side("B", false);
       g.textAlign = "center"; g.font = "800 " + (13 * u) + "px " + MONO; g.fillStyle = "#cfd8dc";
       g.fillText(i18t("bxRoundOf", { n: Math.max(1, S.r), t: ROUNDS }), W / 2, y0 + 22 * u);
       // карточки раундов: цвет бойца, взявшего раунд; нокаут — красный
-      const sw = 22 * u, gap = 6 * u, tot = ROUNDS * sw + (ROUNDS - 1) * gap;
+      const sw = 28 * u, gap = 6 * u, tot = ROUNDS * sw + (ROUNDS - 1) * gap;
       for (let i = 0; i < ROUNDS; i++) {
         const x = W / 2 - tot / 2 + i * (sw + gap), y = y0 + 32 * u, pw = S.pips[i];
-        g.fillStyle = pw ? FIG[pw].col : "#151c22"; g.fillRect(x, y, sw, 14 * u);
+        g.fillStyle = pw ? FIG[pw].col : "#151c22"; g.fillRect(x, y, sw, 16 * u);
         g.strokeStyle = "#26323b"; g.strokeRect(x + 0.5, y + 0.5, sw - 1, 14 * u - 1);
         if (isKO && i + 1 === out.round && (S.phase === "ko" || S.phase === "end")) { g.fillStyle = "#ff3030"; g.fillRect(x, y, sw, 14 * u); g.fillStyle = "#fff"; g.font = "900 " + (11 * u) + "px " + MONO; g.fillText("KO", x + sw / 2, y + 11 * u); }
       }
@@ -2093,7 +2093,7 @@
       const hype = Math.min(1, (fighting ? 0.55 : 0.2) + (S.phase === "ko" || S.phase === "end" ? 0.45 : 0));
       g.save(); g.translate(S.shx * 8 * SC, S.shy * 6 * SC);
       drawRing(now, hype);
-      const gy = H * 0.84, gap = (170 + Math.sin(now * 2.2) * 8) * SC;
+      const gy = H * 0.9, gap = ((S.phase === "fight" ? 230 : 280) + Math.sin(now * 2.2) * 10) * SC;
       drawReferee(cx, gy - 34 * SC);
       const posA = cx - gap / 2 - (S.punch.A > 0 ? -10 : 0) * SC, posB = cx + gap / 2 + (S.punch.B > 0 ? -10 : 0) * SC;
       const fA = drawFighter(posA, gy, 1, "A", now), fB = drawFighter(posB, gy, -1, "B", now);
@@ -2120,9 +2120,9 @@
       }
       if (S.phase === "end") {
         const k = Math.min(1, S.endT / 0.4), wn = out.winner;
-        g.globalAlpha = k; g.fillStyle = "rgba(6,8,12," + (0.5 * k) + ")"; g.fillRect(0, H * 0.3, W, H * 0.22);
-        glowText(g, i18t("bxWin", { h: FIG[wn].name.toUpperCase() }), W / 2, H * 0.4, Math.min(H * 0.12, W / 10), FIG[wn].col, null, "center", W * 0.92);
-        glowText(g, isKO ? i18t("bxKoStamp") + " · " + out.round : i18t("bxByDec").toUpperCase() + " " + Math.max(scoreA, scoreB) + ":" + Math.min(scoreA, scoreB), W / 2, H * 0.49, Math.min(H * 0.06, W / 18), "#fff", FIG[wn].col, "center", W * 0.92);
+        g.globalAlpha = k; g.fillStyle = "rgba(6,8,12," + (0.5 * k) + ")"; g.fillRect(0, H * 0.2, W, H * 0.22);
+        glowText(g, i18t("bxWin", { h: FIG[wn].name.toUpperCase() }), W / 2, H * 0.3, Math.min(H * 0.12, W / 10), FIG[wn].col, null, "center", W * 0.92);
+        glowText(g, isKO ? i18t("bxKoStamp") + " · " + out.round : i18t("bxByDec").toUpperCase() + " " + Math.max(scoreA, scoreB) + ":" + Math.min(scoreA, scoreB), W / 2, H * 0.39, Math.min(H * 0.06, W / 18), "#fff", FIG[wn].col, "center", W * 0.92);
         g.globalAlpha = 1;
       }
     }
