@@ -54,7 +54,40 @@ function describe(type, rnd) {
   }
 }
 
+// Сокращение табло: оставляем самые сочные рынки и часть экзотики (владелец просил поменьше рынков)
+const KEEP = {
+  dice: (m) => m.group === "main" || m.group === "numbers" || m.group === "exotic" || m.id === "sum:5-6-15-16" || m.id === "exact:7" || m.id === "exact:14",
+  rocket: (m) => !["target:1.5", "target:5", "target:20"].includes(m.id) && m.id !== "target:100",
+  boxing: (m) => m.id !== "combo:A-DEC" && m.id !== "combo:B-DEC",
+};
+// из линий тотала оставляем одну — самую равную (over и under с ближайшими коэффициентами)
+function totalsDrop(markets) {
+  const lines = {};
+  for (const m of markets) { const x = /^(over|under):(.+)$/.exec(m.id); if (x) (lines[x[2]] = lines[x[2]] || {})[x[1]] = m; }
+  let best = null, gap = Infinity;
+  for (const L of Object.keys(lines)) { const l = lines[L]; if (!l.over || !l.under) continue; const d = Math.abs(l.over.kc - l.under.kc); if (d < gap) { gap = d; best = L; } }
+  return markets.filter((m) => { const x = /^(over|under):(.+)$/.exec(m.id); return x && x[2] !== best; });
+}
+function trimMarkets(type, ev) {
+  const by = (g) => ev.markets.filter((m) => m.group === g).sort((a, b) => a.kc - b.kc);
+  let keep = ev.markets;
+  if (KEEP[type]) keep = keep.filter(KEEP[type]);
+  if (type === "penalties") {
+    const drop = new Set([...by("score").slice(6), ...by("shooters").filter((m) => !/^shooter:[AB]5$/.test(m.id)), ...totalsDrop(ev.markets)].map((m) => m.id));
+    keep = keep.filter((m) => !drop.has(m.id));
+  }
+  if (type === "dogs") {
+    const drop = new Set([...by("forecast").slice(0, 1), ...by("forecast").slice(4)].map((m) => m.id));
+    keep = keep.filter((m) => !drop.has(m.id));
+  }
+  ev.markets = keep;
+  return ev;
+}
+
 function makeScenic(type, rnd) {
+  return trimMarkets(type, makeScenic0(type, rnd));
+}
+function makeScenic0(type, rnd) {
   switch (type) {
     case "dice": return dice.build();
     case "dogs": return dogs.build(rnd);
@@ -68,6 +101,9 @@ function makeScenic(type, rnd) {
 
 // Пересборка после рестарта: тот же набор рынков с теми же коэффициентами
 function rebuild(type, input) {
+  return trimMarkets(type, rebuild0(type, input));
+}
+function rebuild0(type, input) {
   switch (type) {
     case "dice": return dice.build();
     case "dogs": return dogs.build(null, input.weights);

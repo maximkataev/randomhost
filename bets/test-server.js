@@ -539,7 +539,7 @@ test("без feed.js (BETS_LIVE=none) режим «только реальные
     const st = await a.wait(statePred((s) => s.phase === "bets"));
     assert.strictEqual(st.state.ev.live, false);
     assert.ok(!st.state.ev.fallback && !st.state.ev.live, "режим «только реальные» без источников дал сценические события, без плашки");
-    assert.ok(["dice", "dogs", "penalties", "rocket", "rope"].includes(st.state.ev.type));
+    assert.ok(["dice", "dogs", "penalties", "rocket", "rope", "boxing"].includes(st.state.ev.type));
     assert.strictEqual(st.state.ev.markets.length > 0, true);
     // BETS_LIVE выставлен, но модуль не найден — тоже сценические
   });

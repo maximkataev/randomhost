@@ -48,8 +48,8 @@ test("старт: расписание, стек, фаза ставок 20 с", 
 });
 
 test("ставки: проверки купона", () => {
-  const g = room();
-  g.start(0);
+  let g, seed = 1;
+  do { g = room(3, { seed: seed++ }); g.start(0); } while (g.cur.markets.length < 8);   // нужно событие минимум с 8 рынками
   const m = g.cur.markets[0].id;
   assert.deepEqual(g.bet("p1", m, 5), [], "меньше 10");
   assert.deepEqual(g.bet("p1", m, 10.5), [], "нецелая");
