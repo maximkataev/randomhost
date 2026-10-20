@@ -391,6 +391,23 @@ window.I18N_DICT = {
     run(s, []);
     setTimeout(function () { table.say('Длинная реплика Марго про ситуацию за столом'); }, 600);
   };
+  // дилер с n картами (2/5/6/7) — проверка веера и счёта; число игроков: ?np=6|12 для board, 1 для соло
+  [2, 5, 6, 7].forEach(function (n) {
+    SC['dealer' + n] = function () {
+      var np = layout === 'board' ? parseInt(params.get('np') || '6', 10) : 1;
+      var s = base(np, { phase: 'dealer', phaseEndsAt: 0, level: 0, minBet: 10, settings: { solo: layout !== 'board' } });
+      var c = card, H = [c('10','h'), c('9','s')];
+      s.players.forEach(function (p, i) { p.bet = 40; p.stack = 900; p.hands = [hand([c('10','c'), c('8','d')], { done: true })]; if (np === 1) p.name = 'Вы'; });
+      var pool = [c('5','d'), c('2','c'), c('3','h'), c('2','s'), c('4','d'), c('2','h'), c('3','c')];
+      var dc = n === 2 ? [c('K','d'), c('8','c')] : pool.slice(0, n - 1).concat([c('K','c')]);
+      if (n > 2) dc = [c('5','d'), c('2','c'), c('3','h')].slice(0, 0).concat(dc);
+      var v = val(dc);
+      s.dealer.up = dc[0]; s.dealer.hole = dc[1]; s.dealer.cards = dc; s.dealer.value = v.value; s.dealer.bust = v.bust; s.dealer.soft = v.soft;
+      var t = Date.now();
+      s.dealer.revealAt = dc.slice(1).map(function (_, i) { return t - 60000 + i * 100; }); s.dealer.plot = 'normal';
+      run(s, []);
+    };
+  });
   SC.solofinal = function () {
     var s = base(1, { phase: 'finished', phaseEndsAt: 0, hand: 23, level: 5, minBet: 80, settings: { solo: true } });
     s.players[0].name = 'Вы'; s.players[0].stack = 0; s.players[0].out = true;
@@ -433,6 +450,7 @@ window.I18N_DICT = {
   var ms = document.getElementById('mstates');
   BJMargot.STATES.forEach(function (st) { btn(ms, st, function () { table.margot(st); }); });
   btn(ms, 'brow', function () { table.brow(); });
+  (BJMargot.EMOTES || []).forEach(function (e) { btn(ms, 'e:' + e, function () { table.emote(e, null, true); }); });
   btn(ms, 'look ←', function () { table.lookAt(-1); });
   btn(ms, 'look →', function () { table.lookAt(1); });
   var ml = document.getElementById('mlines');

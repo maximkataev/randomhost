@@ -78,21 +78,22 @@
   #scene .bj-margot-wrap { cursor: pointer; }
   /* пузырь в портрете: стоит на x≈260 из 420 — ограничиваем ширину, чтобы реплика не уходила за рамку */
   #scene .bj[data-layout="solo"] .bj-bubble { max-width: 176px; font-size: 25px; padding: 5px 12px 6px; }
-  /* разорение — единственная фаза, где пульт растёт по содержимому (таблица рекордов), сцена ужимается */
-  #pult[data-phase="finished"] { flex: 0 0 auto; height: auto; max-height: 62%; }
-  #pult { flex: 0 0 var(--pult-h); height: var(--pult-h); padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; justify-content: flex-end; gap: 5px; border-top: 1px solid var(--line); background: var(--panel); }
+  /* пульт одной высоты во всех фазах, в том числе при разорении: таблица рекордов при нехватке места скроллится внутри него, а не раздувает пульт и не двигает сцену */
+  #pult[data-phase="finished"] { justify-content: flex-start; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  #pult { flex: 0 0 var(--pult-h); height: var(--pult-h); min-width: 0; overflow-x: hidden; padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; justify-content: flex-end; gap: 5px; border-top: 1px solid var(--line); background: var(--panel); }
   @media (max-height: 660px) { :root { --pult-h: 224px; } #pult { gap: 4px; } }
   /* десктоп: колонка 760 px по центру, сцена solo-wide (760×440) сверху, пульт под боксом */
   @media (min-width: 820px) and (min-height: 560px) {
     #col { max-width: 760px; margin: 0 auto; justify-content: center; }
     #scene { flex: 1 1 auto; max-height: 440px; }
-    #pult { flex: 0 0 auto; height: auto; padding: 10px 16px 18px; gap: 8px; }
-    :root { --pult-h: 0px; }
+    #pult { padding: 10px 16px 18px; gap: 8px; }
+    :root { --pult-h: 268px; }
   }
   /* телефон в ландшафте: сцена solo-wide слева во всю высоту, пульт 320 px справа, прижат к низу */
   @media (min-width: 700px) and (max-height: 559px) {
     #col { flex-direction: row; }
-    #pult { flex: 0 0 320px; height: auto; border-top: 0; border-left: 1px solid var(--line); padding: 10px 14px 12px; gap: 6px; justify-content: flex-end; }
+    #pult { flex: 0 0 320px; width: 320px; min-width: 0; height: auto; border-top: 0; border-left: 1px solid var(--line); padding: 10px 14px 12px; gap: 6px; justify-content: flex-end; overflow-x: hidden; }
+    .stats { flex-wrap: wrap; row-gap: 2px; }
     :root { --pult-h: 0px; }
   }
 
@@ -114,7 +115,7 @@
   @media (max-height: 660px) { .grid2 .btn { min-height: 56px; } }
 
   /* ставки */
-  .stats { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .stats { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; min-width: 0; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
   .stats span { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
   .stats b { font-size: 20px; letter-spacing: 0; color: var(--ivory); font-variant-numeric: tabular-nums; }
   .stats b.gold { color: var(--gold-hi); }
@@ -172,6 +173,7 @@
   .rec .v.new { color: var(--gold-hi); }
   .rec .v.new i { font: 600 12px/1 var(--cond); letter-spacing: .08em; text-transform: uppercase; font-style: normal; margin-right: 6px; vertical-align: 2px; }
   .rec .ft { grid-column: 1 / -1; border-bottom: 0; font-size: 12px; color: var(--muted); padding-top: 4px; }
+  @media (max-height: 660px) { .rec > span { padding: 0; line-height: 1.2; } .rec .v { font-size: 15px; } .rec .hd { padding-bottom: 1px; } .rec .ft { padding-top: 2px; } }
 
   /* пошаговая первая раздача */
   .tut { border: 1px solid var(--gold); background: #1a0a0d; padding: 6px 10px 7px; display: flex; flex-direction: column; gap: 3px; }
@@ -286,20 +288,23 @@ window.I18N_DICT = {
     total: 'Итог раздачи', btn_next: 'Дальше', next_sub: 'или через пару секунд само',
     over_text: 'Продержались {hands}, лучший стек {stack}', col_this: 'Эта партия', col_rec: 'Рекорд', new_short: 'новый', over_first: 'Первая партия — рекорды пошли', btn_again: 'Ещё раз', again_sub: 'новая партия, стек 1 000',
     tut_step: 'Шаг {n} из 6', tut_next: 'Дальше', tut_skip: 'Пропустить', tut_wait: 'смотрите на стол…',
-    tut_1: 'Тапни фишку — она ляжет в бокс. Минимум {min}, потолок — весь стек.',
-    tut_2: 'У тебя {you}, у меня {up}. Туз сам считается за 1 или 11 — как выгоднее.',
-    tut_2_bj: 'Блэкджек с раздачи! Туз и десятка платят 3:2.',
-    tut_2_dbj: 'У меня блэкджек — раздача кончилась, не начавшись. Бывает.',
+    tut_1: 'Тапни фишку — она ляжет в бокс. Минимум {min}, потолок — весь стек. Смелее.',
+    tut_2: 'У тебя {you}, у меня {up}. Нужно набрать ближе к 21, чем у меня, но не больше.',
+    tut_2_ace: 'У тебя {you}, у меня {up}. Туз считается за 1 или 11 — как выгоднее.',
+    tut_2_bj: 'Блэкджек с раздачи! Туз и десятка платят 3:2. Я не расстроена. Почти.',
+    tut_2_dbj: 'У меня блэкджек — раздача кончилась, не начавшись. Ничего личного.',
     tut_3: 'Ещё — карта, хватит — стоп. Удвоить даёт ×2 за одну карту; серые кнопки скажут, почему нельзя.',
-    tut_4: 'Теперь я: беру до 17 и на 17 стою — даже на мягких.',
-    tut_5: 'Выше меня — 1:1, блэкджек — 3:2. Перебор проигрывает всегда — даже если я тоже перебрала.',
+    tut_4: 'Открываю закрытую карту. Меньше 17 — беру ещё, с 17 и выше — стою.',
+    tut_4_stand: 'У меня {v}. Меньше 17 я бы взяла ещё, а с 17 и выше стою — на этом остановилась.',
+    tut_4_bust: 'У меня {v} — перебор. Да, и со мной бывает. Мне тоже нельзя больше 21: тогда выигрывают все, кто остался в игре.',
+    tut_5: 'Выше меня — 1:1, блэкджек — 3:2. Перебор проигрывает всегда — даже если я тоже перебрала. Несправедливо, зато честно.',
     tut_6: 'Дальше без поводка. Над кнопками — мои подсказки, а минимум растёт каждые две раздачи.',
-    tut_ins: 'Страховка — обычно мимо. Смело жми «Нет».',
+    tut_ins: 'Страховка — обычно мимо. Смело жми «Нет». Я не обижусь.',
     ask_title: 'Спроси Марго', ask_all: 'Все правила', ask_back: 'К вопросу',
     ask_betting: 'Ставь фишки в бокс: минимум {min}, больше можно. «Пара» и «21+3» по желанию, не больше основной. Готово — «Сдавай».',
     ask_insurance: 'У меня туз. Страховка — {n} на мой блэкджек, платит 2:1. С блэкджеком у тебя — «ровно 1:1» без риска.',
     ask_deciding: 'У тебя {you}, у меня {up}. Я бы сказала: {hint}',
-    ask_dealer: 'Открываю карту и беру до 17. На 17 стою, даже на мягких. Тут я ничего не решаю.',
+    ask_dealer: 'Открываю карту. Меньше 17 — беру ещё, с 17 и выше — стою. Тут я ничего не решаю.',
     ask_payout: 'Выше меня — 1:1. Ровно — ставка назад. Блэкджек — 3:2. Перебор проигрывает всегда. Побочные — сразу после раздачи.',
     ask_finished: 'Фишки кончились. «Ещё раз» — новая партия со стеком 1 000. Рекорды — в настройках.',
     rules_title: 'Правила за минуту',
@@ -343,20 +348,23 @@ window.I18N_DICT = {
     total: 'Hand result', btn_next: 'Next', next_sub: 'or it moves on by itself',
     over_text: 'You lasted {hands}, best stack {stack}', col_this: 'This game', col_rec: 'Record', new_short: 'new', over_first: 'First game — records start now', btn_again: 'Again', again_sub: 'new game, 1,000 chips',
     tut_step: 'Step {n} of 6', tut_next: 'Next', tut_skip: 'Skip', tut_wait: 'watch the table…',
-    tut_1: 'Tap a chip and it lands in the box. Minimum {min}, ceiling is your whole stack.',
-    tut_2: 'You have {you}, I show {up}. An ace counts as 1 or 11, whichever helps.',
-    tut_2_bj: 'Blackjack off the deal! Ace and ten pay 3:2.',
-    tut_2_dbj: 'I have blackjack — the hand ended before it began. It happens.',
+    tut_1: 'Tap a chip and it lands in the box. Minimum {min}, ceiling is your whole stack. Be bold.',
+    tut_2: 'You have {you}, I show {up}. Get closer to 21 than me, without going over.',
+    tut_2_ace: 'You have {you}, I show {up}. An ace counts as 1 or 11, whichever helps.',
+    tut_2_bj: 'Blackjack off the deal! Ace and ten pay 3:2. I am not upset. Almost.',
+    tut_2_dbj: 'I have blackjack — the hand ended before it began. Nothing personal.',
     tut_3: 'Hit takes a card, stand stops. Double gets ×2 for one card; grey buttons say why not.',
-    tut_4: 'My turn: I draw to 17 and stand on 17 — even soft.',
-    tut_5: 'Beat me for 1:1, blackjack pays 3:2. A bust always loses — even if I bust too.',
+    tut_4: 'I flip my hidden card. Under 17 I draw, from 17 up I stand.',
+    tut_4_stand: 'I have {v}. Under 17 I would draw; from 17 up I stand — so I stopped here.',
+    tut_4_bust: 'I have {v} — over 21, a bust. I can bust too: then everyone still in the game wins.',
+    tut_5: 'Beat me for 1:1, blackjack pays 3:2. A bust always loses — even if I bust too. Unfair, but honest.',
     tut_6: 'Off the leash now. My hints sit above the buttons, and the minimum rises every two hands.',
     tut_ins: 'Insurance is usually a miss. Press “No” freely.',
     ask_title: 'Ask Margot', ask_all: 'All the rules', ask_back: 'Back',
     ask_betting: 'Put chips in the box: minimum {min}, more is fine. «Pair» and «21+3» are optional, capped at the main bet. Set? «Deal».',
     ask_insurance: 'I show an ace. Insurance is {n} on my blackjack, pays 2:1. With your own blackjack, «even money» is risk-free.',
     ask_deciding: 'You have {you}, I show {up}. I\'d say: {hint}',
-    ask_dealer: 'I flip my card and draw to 17. I stand on 17, even soft. No decisions on my side.',
+    ask_dealer: 'I flip my card. Under 17 I draw, from 17 up I stand. No decisions on my side.',
     ask_payout: 'Beat me: 1:1. Tie: bet back. Blackjack: 3:2. Bust always loses. Side bets settle right after the deal.',
     ask_finished: 'Out of chips. «Again» starts a new game with 1,000. Records are in settings.',
     rules_title: 'Rules in a minute',
@@ -401,11 +409,14 @@ window.I18N_DICT = {
     over_text: 'Αντέξατε {hands}, καλύτερη στοίβα {stack}', col_this: 'Αυτό το παιχνίδι', col_rec: 'Ρεκόρ', new_short: 'νέο', over_first: 'Πρώτο παιχνίδι — τα ρεκόρ ξεκινούν', btn_again: 'Ξανά', again_sub: 'νέο παιχνίδι, 1.000 μάρκες',
     tut_step: 'Βήμα {n} από 6', tut_next: 'Επόμενο', tut_skip: 'Παράλειψη', tut_wait: 'κοιτάξτε το τραπέζι…',
     tut_1: 'Πάτα μια μάρκα και πέφτει στο κουτί. Ελάχιστο {min}, ταβάνι όλη η στοίβα.',
-    tut_2: 'Έχεις {you}, δείχνω {up}. Ο άσος μετράει 1 ή 11, ό,τι συμφέρει.',
+    tut_2: 'Έχεις {you}, δείχνω {up}. Πλησίασε το 21 περισσότερο από μένα, χωρίς να το ξεπεράσεις.',
+    tut_2_ace: 'Έχεις {you}, δείχνω {up}. Ο άσος μετράει 1 ή 11, ό,τι συμφέρει.',
     tut_2_bj: 'Μπλακτζάκ από τη μοιρασιά! Άσος και δεκάρι πληρώνουν 3:2.',
     tut_2_dbj: 'Έχω μπλακτζάκ — η μοιρασιά τελείωσε πριν αρχίσει. Συμβαίνει.',
     tut_3: 'Κι άλλο παίρνει φύλλο, Στοπ σταματά. Το Διπλό δίνει ×2 για ένα φύλλο· τα γκρι λένε γιατί όχι.',
-    tut_4: 'Τώρα εγώ: τραβάω ως το 17 και στο 17 στέκομαι — και στα μαλακά.',
+    tut_4: 'Γυρίζω το κρυφό φύλλο. Κάτω από 17 τραβάω, από 17 και πάνω στέκομαι.',
+    tut_4_stand: 'Έχω {v}. Κάτω από 17 θα τραβούσα· από 17 και πάνω στέκομαι — εδώ σταμάτησα.',
+    tut_4_bust: 'Έχω {v} — πάνω από 21, κάψιμο. Μπορώ κι εγώ να καώ: τότε κερδίζουν όλοι όσοι έμειναν.',
     tut_5: 'Με νικάς: 1:1, μπλακτζάκ 3:2. Το κάψιμο χάνει πάντα — κι αν καώ κι εγώ.',
     tut_6: 'Τώρα χωρίς λουρί. Οι υποδείξεις μου είναι πάνω από τα κουμπιά και το ελάχιστο ανεβαίνει κάθε δύο μοιρασιές.',
     tut_ins: 'Η ασφάλεια συνήθως είναι άστοχη. Πάτα «Όχι» άφοβα.',
@@ -413,7 +424,7 @@ window.I18N_DICT = {
     ask_betting: 'Βάλε μάρκες στο κουτί: ελάχιστο {min}, περισσότερο επιτρέπεται. «Ζευγάρι» και «21+3» προαιρετικά, όχι πάνω από το κύριο. Έτοιμο; «Μοίρασε».',
     ask_insurance: 'Δείχνω άσο. Η ασφάλεια είναι {n} στο μπλακτζάκ μου, πληρώνει 2:1. Με μπλακτζάκ δικό σου, το «ακριβώς 1:1» είναι χωρίς ρίσκο.',
     ask_deciding: 'Έχεις {you}, δείχνω {up}. Εγώ θα έλεγα: {hint}',
-    ask_dealer: 'Γυρίζω το φύλλο και τραβάω ως το 17. Στο 17 στέκομαι, κι αν είναι μαλακό. Δεν αποφασίζω τίποτα.',
+    ask_dealer: 'Γυρίζω το φύλλο. Κάτω από 17 τραβάω, από 17 και πάνω στέκομαι. Δεν αποφασίζω τίποτα.',
     ask_payout: 'Με νικάς: 1:1. Ισοπαλία: πίσω το ποντάρισμα. Μπλακτζάκ: 3:2. Το κάψιμο χάνει πάντα. Τα πλαϊνά κρίνονται αμέσως.',
     ask_finished: 'Τέλος οι μάρκες. «Ξανά» — νέο παιχνίδι με 1.000. Τα ρεκόρ είναι στις ρυθμίσεις.',
     rules_title: 'Κανόνες σε ένα λεπτό',
@@ -631,8 +642,8 @@ window.I18N_DICT = {
     session.firstGame = !(base.bestHands > 0);
     store.games = (store.games || 0) + 1;
     updateRecords();
-    table.margot('sweep', 2600);
-    table.say(BJMargot.pick(lang, 'out'));
+    table.margot('sweep', 2600); table.emote('sigh');
+    table.say(BJMargot.pick(lang, 'soloEnd'));
   }
 
   // ---------- подсказки Марго ----------
@@ -763,7 +774,9 @@ window.I18N_DICT = {
       if (tutStep === 2) html += tutCard(2, tutText2(p, b));
       else if (tut.on && tutStep === 4) {
         var ready = game.s.deadline != null && s.t >= game.s.deadline;
-        html += tutCard(4, T('tut_4'), { nextDisabled: !ready, nextSub: ready ? '' : T('tut_wait') });
+        var d4 = b.dealer || {};
+        var t4 = !ready || d4.blackjack ? T('tut_4') : F(d4.bust ? 'tut_4_bust' : 'tut_4_stand', { v: d4.value });
+        html += tutCard(4, t4, { nextDisabled: !ready, nextSub: ready ? '' : T('tut_wait') });
         if (!ready && !pendingTimer) pendingTimer = setTimeout(function () { pendingTimer = 0; render(); }, Math.max(100, game.s.deadline - s.t + 50));
       } else {
         var fin = b.dealer && b.dealer.revealAt && b.dealer.revealAt.length ? b.dealer.revealAt[b.dealer.revealAt.length - 1] : 0;
@@ -794,7 +807,8 @@ window.I18N_DICT = {
     var h = p.hands[0];
     if (b.dealer && b.dealer.blackjack) return T('tut_2_dbj');
     if (h && h.blackjack) return T('tut_2_bj');
-    return F('tut_2', { you: h ? valText(h) : '', up: b.dealer && b.dealer.up ? upName(b.dealer.up) : '' });
+    var hasAce = !!h && h.cards.some(function (c) { return c.r === 'A'; });
+    return F(hasAce ? 'tut_2_ace' : 'tut_2', { you: h ? valText(h) : '', up: b.dealer && b.dealer.up ? upName(b.dealer.up) : '' });
   }
   function handsBar(m, b, active) {
     var p = m.players[0], html = '<div class="hands">';

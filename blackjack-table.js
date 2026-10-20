@@ -314,6 +314,8 @@
       if (o && o.hold) S.sayHoldUntil = Date.now() + (ms || 2800);
     }
     function setMargot(state, ms) { if (margot) margot.set(state, ms); }
+    // эмоция поверх состояния (мимика/жесты Марго, см. BJMargot.EMOTES); слабая не перебивает сильную, пока та не отыграла
+    function emote(name, ms) { if (margot && margot.emote) margot.emote(name, ms); }
     function autoLine(cat, force) {
       if (!autoSay || !margot) return;
       var now = Date.now();
@@ -824,6 +826,7 @@
       var total = Math.max(1000, ps.endsAt - ps.at), left = Math.max(0, ps.endsAt - now);
       timerBar.style.transform = 'scaleX(' + Math.min(1, left / total).toFixed(3) + ')';
       var hot = left < 5000 && left > 0 && (s.phase === 'betting' || s.phase === 'deciding' || s.phase === 'insurance');
+      if (hot && !timerEl.classList.contains('is-hot') && s.phase !== 'insurance') { emote('drum'); autoLine('drum', true); }
       timerEl.classList.toggle('is-hot', hot);
       var sec = Math.ceil(left / 1000);
       var dk = sec + ':' + S.decN + '/' + S.decM;
@@ -972,7 +975,7 @@
           var st = renderStack(b.betEl, 'main', p.bet || 0, color, min, null, betPos, false);
           if (st && (p.bet || 0) > b.bet && !instant) { st.classList.remove('drop'); void st.offsetWidth; st.classList.add('drop'); sfx(stackLayers(p.bet, min) > 1 ? 'stack' : 'chip', stackLayers(p.bet, min)); b.ring.classList.remove('ping'); void b.ring.offsetWidth; b.ring.classList.add('ping'); }
           b.bet = p.bet || 0;
-          if (p.bet && p.stack === 0 && snap.phase === 'betting' && !instant) { if (margot) margot.brow(); autoLine('allin'); }
+          if (p.bet && p.stack === 0 && snap.phase === 'betting' && !instant) { if (margot) margot.brow(); emote('lean'); autoLine('allin'); }
         }
         var side = p.side || {};
         ['pp', 'tp'].forEach(function (k, i) {
@@ -1012,7 +1015,8 @@
               if (node.textContent !== txt || !node.classList.contains('on')) {
                 node.className = 'bj-dec on' + (dec === 'double' ? ' is-double' : '');
                 node.textContent = txt;
-                if (!instant && dec === 'hit' && hd.value === 16 && !hd.soft && margot) { margot.brow(); autoLine('hit16'); }
+                if (!instant && dec === 'hit' && hd.value === 16 && !hd.soft && margot) { margot.brow(); emote('sly'); autoLine('hit16'); }
+                if (!instant && dec === 'hit' && hd.value >= 19 && !hd.soft && margot) { emote('facepalm'); autoLine('hit20', true); }
                 if (!instant && dec === 'double' && margot) margot.brow();
               }
             }
@@ -1046,7 +1050,6 @@
     function renderHand(b, h, hd, p, hi, snap, instant) {
       var cards = hd.cards || [], n = cards.length;
       if (instant) { h.shownBust = !!hd.bust; h.shown21 = hd.value === 21; h.shownBj = !!hd.blackjack; }
-      h.el.classList.toggle('is-bust', !!hd.bust);
       h.el.classList.toggle('is-done', !!hd.done);
       // новые карты
       if (n < h.cards.length) { // пересдача/обмен: убираем лишние
@@ -1079,6 +1082,10 @@
           })(ce, i, hd, h, b, p);
         } else if (ce && !ce.classList.contains('is-flying') && !h.pending) ce.style.transform = cardTransform(i, n);
       }
+      // серым рука становится только когда последняя карта уже перевёрнута (иначе перебор виден до вскрытия карты);
+      // проверка — после цикла, чтобы учесть только что запущенный полёт новой карты
+      if (!h.pending || instant) h.el.classList.toggle('is-bust', !!hd.bust);
+      else if (!hd.bust) h.el.classList.remove('is-bust');
       // счёт — только когда карты на месте
       h.value = hd.value || 0; h.soft = !!hd.soft; h.bust = !!hd.bust; h.bj = !!hd.blackjack; h.data = hd;
       if (!h.pending) { setScore(h.score, h.value, h.soft, h.bust, h.bj, false, !!hd.done || !!hd.result); if (!n) h.score.classList.remove('on'); }
@@ -1116,6 +1123,7 @@
       if (!cur) return;
       var wasV = h.score.getAttribute('data-v');
       setScore(h.score, cur.value, cur.soft, cur.bust, cur.blackjack, true, !!cur.done || !!cur.result);
+      if (!h.pending) h.el.classList.toggle('is-bust', !!cur.bust);
       var c = lcenter(h.cardsEl);
       if (cur.blackjack && !h.shownBj) {
         h.shownBj = true;
@@ -1123,11 +1131,14 @@
         burst(c.x, c.y, 70, 'spark', 260);
         b.plaque.innerHTML = esc(T('blackjack')) + '<small>3 : 2</small>'; b.plaque.classList.add('on');
         sfx('bj');
-        setMargot('congrats', 2200); autoLine('playerBj', true);
+        setMargot('congrats', 2200); emote('wow'); autoLine('playerBj', true);
       } else if (cur.bust && !h.shownBust) {
         h.shownBust = true;
         sfx('crack');
-        autoLine('playerBust');
+        // перебор: «ой-ой» с ухмылкой; если следом ещё один за 3 с — хохот и реплика про коллективный перебор
+        var nowB = Date.now(), multi = nowB - (S.lastBustAt || 0) < 3000;
+        S.lastBustAt = nowB;
+        if (multi) { emote('laugh'); autoLine('multiBust', true); } else { emote('pity'); autoLine('playerBust'); }
       } else if (cur.value === 21 && !cur.bust && !h.shown21 && !cur.blackjack) {
         h.shown21 = true;
         burst(c.x, c.y, 40, 'wave', 140);
@@ -1182,7 +1193,7 @@
       sfx('coins');
       b.plaque.innerHTML = esc(label) + '<small>' + esc(b.nm.textContent) + '</small>'; b.plaque.classList.add('on');
       later(function () { b.plaque.classList.remove('on'); }, 3600);
-      setMargot('congrats', 2400); autoLine('jackpot', true);
+      setMargot('congrats', 2400); emote('wow'); autoLine('jackpot', true);
       // столбики фишек из лотка — щедро
       var color = b.el.style.getPropertyValue('--c') || '#d4af37';
       for (var i = 0; i < 4; i++) addFlight({ x0: G.tray.x + (i - 1.5) * 20, y0: G.tray.y, x1: c.x + (i - 1.5) * 26, y1: c.y + 2, color: color, layers: 5, dur: 600 * K() + i * 90, arc: 90 });
@@ -1194,7 +1205,7 @@
       later(function () { b.mark.classList.remove('on'); }, 2600);
       burst(c.x, c.y - 60, 50, 'spark', 220);
       sfx('gold');
-      autoLine('rescue', true);
+      emote('joy'); autoLine('rescue', true);
       var seat = S.seats[p.id]; if (seat) { seat.el.classList.remove('hit'); void seat.el.offsetWidth; seat.el.classList.add('hit'); }
     }
     function playerOut(b, p) {
@@ -1204,7 +1215,7 @@
       addFlight({ x0: c.x, y0: c.y, x1: G.tray.x, y1: G.tray.y, color: (b.el.style.getPropertyValue('--c') || '#888'), layers: 2, dur: 700 * K(), arc: 50 });
       sfx('lose'); sfx('sweep');
       autoLine('out', true);
-      setMargot('oops', 1800);
+      setMargot('idle'); emote('pity');
     }
 
     // ---------- выплаты ----------
@@ -1219,7 +1230,7 @@
       var idx = S.payIdx++;
       if (hd.result !== 'lose') S.seatPending[p.id] = true;
       if (hd.result === 'lose') {
-        if (!S.sweepDone) { S.sweepDone = true; setMargot('sweep', 1300 * K()); later(function () { sfx('sweep'); }, 450 * K()); }
+        if (!S.sweepDone) { S.sweepDone = true; setMargot('sweep', 1300 * K()); later(function () { sfx('sweep'); }, 450 * K()); if (Math.random() < .35) later(function () { emote('tease'); autoLine('dealerWin'); }, 900 * K()); }
         later(function () {
           if (stackEl) stackEl.classList.add('is-gone');
           addFlight({ x0: box.x, y0: box.y, x1: G.tray.x, y1: G.tray.y, color: color, layers: stackLayers(bet, min), label: fmt(bet), dur: 520 * K(), arc: 10 });
@@ -1245,6 +1256,7 @@
           b.net.className = 'bj-net on ' + (hd.result === 'bj' ? 'is-bj' : 'is-win'); b.net.textContent = signed(win);
         } else {
           b.net.className = 'bj-net on is-push'; b.net.textContent = T('push');
+          if (!S.pushSaid || S.pushSaid !== snap.hand) { S.pushSaid = snap.hand; emote('shrug'); autoLine('push'); }
           later(function () {
             if (stackEl) stackEl.classList.add('is-gone');
             addFlight({ x0: box.x, y0: box.y, x1: seatPt.x, y1: seatPt.y, color: color, layers: stackLayers(bet, min), label: fmt(bet), dur: 520 * K(), arc: 50, onDone: function () { seatArrive(p.id); } });
@@ -1342,7 +1354,7 @@
         if (!ce) {
           ce = window.BJCards.element(cards[i], { down: !instant });
           dcards.appendChild(ce); S.dealerCards.push(ce);
-          flyIn(ce, dealerTransform(i, n), 0, 0, null, { instant: true });
+          flyIn(ce, dealerTransform(i, Math.max(n, cards.length)), 0, 0, null, { instant: true });
         } else if (ce.getAttribute('data-card') !== cardKey(cards[i])) ce.bjSetCard(cards[i]);
         if (instant) ce.classList.remove('is-down');
       }
@@ -1385,6 +1397,7 @@
           S.allinOn = true;
           if (ap) { var b = S.boxes[ap.id]; if (b) { var c = lcenter(b.el); dim.style.setProperty('--x', (c.x / G.W * 100).toFixed(1) + '%'); dim.style.setProperty('--y', (c.y / G.H * 100).toFixed(1) + '%'); } showBanner(esc(ap.name), T('allinSub'), 'is-name', true); }
           dim.className = 'bj-dim on is-allin';
+          emote('lean');
           if (window.BJSfx) window.BJSfx.duck(0, 0);
           setMargot('suspense');
         } });
@@ -1407,7 +1420,7 @@
           ce.classList.remove('flip-slow');
           S.dealerShown = 2; dealerScore(snap);
           if (plot === 'longflip') { dim.className = 'bj-dim'; if (window.BJSfx) window.BJSfx.duck(1); }
-          if (plot === 'dealerbj') { showBanner(T('dealerBj'), T('dealerBjSub'), 'is-dark'); sfx('crack'); setMargot('smug', 2500); autoLine('dealer21', true); }
+          if (plot === 'dealerbj') { showBanner(T('dealerBj'), T('dealerBjSub'), 'is-dark'); sfx('crack'); setMargot('smug', 2500); emote('cold'); autoLine('dealer21', true); }
           else if (n === 2) finishDealer(snap, plot);
           else { setMargot(plot === 'cardbycard' ? 'suspense' : 'dealing'); autoLine('dealerDraw'); if (plot === 'cardbycard' && fx) dealer.classList.add('is-zoom'); }
         }, fl + 40);
@@ -1423,7 +1436,7 @@
           dealerScorePos(idx + 1);
           if (plot === 'cardbycard') { dscore.classList.add('is-pulse'); sfx('pulse', Math.min(1, 0.3 + k * 0.25)); }
           flyIn(ce, dealerTransform(idx, idx + 1), 0, 0, function () {
-            S.dealerShown = idx + 1; dealerScore(snap);
+            S.dealerShown = idx + 1; dealerScorePos(S.dealerCards.length); dealerScore(snap);
             if (last) finishDealer(snap, plot);
           }, { hit: true, slow: plot === 'cardbycard' && !last, last: plot === 'cardbycard' && last });
         } });
@@ -1449,8 +1462,8 @@
           burst(0, 0, fx ? 320 : 60, 'rain');
           sfx('salvo');
         }
-        setMargot('oops', 2600); autoLine('dealerBust', true);
-      } else if (d.value === 21) { setMargot('smug', 2000); autoLine('dealer21', true); }
+        setMargot('oops', 2600); emote('gasp'); autoLine('dealerBust', true);
+      } else if (d.value === 21) { setMargot('smug', 2000); emote('triumph'); autoLine('dealer21', true); }
       else { setMargot('idle'); }
       flushResults();
     }
@@ -1475,7 +1488,7 @@
           setMargot('dealing'); autoLine('deal', true);
           break;
         case 'insurance':
-          setMargot('peek'); if (margot) margot.brow(); autoLine('insurance', true);
+          setMargot('peek'); if (margot) margot.brow(); emote('dare'); autoLine('insurance', true);
           var hc = S.dealerCards[1]; if (hc && fx) { later(function () { hc.classList.add('is-peek'); sfx('flip'); later(function () { hc.classList.remove('is-peek'); }, 1500 * K()); }, 900); }
           break;
         case 'deciding':
@@ -1497,7 +1510,7 @@
     }
     function levelUp(snap) {
       showCenter('<div class="bj-cs">' + esc(T('level')) + ' ' + ((snap.level || 0) + (levelBase === 0 ? 1 : 0)) + '</div><div class="bj-ct">' + esc(T('levelUp')) + ' ' + fmt(snap.minBet) + '</div>', 'is-level', 2700);
-      sfx('level'); S.levelSays = (S.levelSays || 0) + 1; if (S.levelSays % 2 === 1) autoLine('level', true);
+      sfx('level'); S.levelSays = (S.levelSays || 0) + 1; emote('grin'); if (S.levelSays % 2 === 1) autoLine('level', true);
     }
     function doShuffle() {
       shoe.classList.add('is-shuffling');
@@ -1510,7 +1523,7 @@
       var hands = snap.hand || 0;
       var html = '<div class="bj-cs">' + esc(T('soloOver')) + '</div><div class="bj-ct">' + hands + ' ' + esc(handsWord(hands)) + '</div>' + statsHtml(statsList(snap));
       showCenter(html, 'is-final bj-final is-solo');
-      setMargot('smug', 2500); autoLine('out', true);
+      setMargot('idle'); emote('sigh'); autoLine('soloEnd', true);
       sfx('lose');
     }
     // stats от движка — объект {biggestWin:{playerId,amount}, biggestBust, blackjacks:{pid:n}, cruelCard:{by,target,card,amount},
@@ -1573,7 +1586,7 @@
       html += statsHtml(statsList(snap));
       showCenter(html, 'is-final bj-final');
       burst(0, 0, fx ? 260 : 40, 'rain');
-      sfx('gold'); setMargot('congrats', 3000); autoLine('final', true);
+      sfx('gold'); setMargot('congrats', 3000); later(function () { emote('winkgrin'); }, 700); autoLine('final', true);
       var b = S.boxes[w.id]; if (b) { var c = lcenter(b.el); flashAt(c.x, c.y); burst(c.x, c.y, 60, 'coin', 260); }
     }
 
@@ -1589,8 +1602,9 @@
           case 'say': say(ev.text || window.BJMargot.pick(lang, ev.cat || 'hint')); break;
           case 'brow': if (margot) margot.brow(); break;
           case 'rescue': var b = S.boxes[pid]; (function (p) { (snap.players || []).forEach(function (q) { if (q.id === pid) p = q; }); if (b && p) later(function () { rescue(b, p); }, ev.delay || 1500); })(null); break;
-          case 'allin': if (margot) margot.brow(); autoLine('allin', true); break;
-          case 'penalty': var s = S.seats[pid]; if (s) { s.rn.className = 'bj-rn on is-lose'; s.rn.textContent = '−' + fmt(ev.amount) + ' ' + T('penalty'); addFlight({ x0: lcenter(s.av).x, y0: lcenter(s.av).y, x1: G.tray.x, y1: G.tray.y, color: s.el.style.getPropertyValue('--c') || '#fff', layers: 1, label: fmt(ev.amount), dur: 600 * K(), arc: 80 }); sfx('chip'); } break;
+          case 'allin': if (margot) margot.brow(); emote('lean'); autoLine('allin', true); break;
+          case 'trick': emote('sly'); autoLine('trick', true); break;
+          case 'penalty': emote('sly'); autoLine('trick'); var s = S.seats[pid]; if (s) { s.rn.className = 'bj-rn on is-lose'; s.rn.textContent = '−' + fmt(ev.amount) + ' ' + T('penalty'); addFlight({ x0: lcenter(s.av).x, y0: lcenter(s.av).y, x1: G.tray.x, y1: G.tray.y, color: s.el.style.getPropertyValue('--c') || '#fff', layers: 1, label: fmt(ev.amount), dur: 600 * K(), arc: 80 }); sfx('chip'); } break;
           case 'peek': setMargot('peek', 1600); autoLine('peek', true); break;
           case 'cut': showCenter('<div class="bj-ct">' + esc(ev.text || '') + '</div>', 'is-level', 2600); break;
         }
@@ -1604,6 +1618,7 @@
       setAutoSay: function (on) { autoSay = !!on; },
       margot: setMargot,
       brow: function () { if (margot) margot.brow(); },
+      emote: function (name, ms, force) { if (margot) margot.emote(name, ms, force); },
       lookAt: function (x) { if (margot) margot.lookAt(x); },
       setLang: function (l) { lang = l; if (S.snap) { renderHud(S.snap, null); dlabel.textContent = T('dealer'); } },
       setFx: function (on) { fx = !!on; root.setAttribute('data-fx', fx ? 'on' : 'off'); },
