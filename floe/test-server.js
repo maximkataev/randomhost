@@ -529,6 +529,29 @@ function rawWs(code) {
       ws.close(); host.close();
     });
 
+    await test("режим «экран»: зритель получает партию, не игрок, ведущим становится вошедший с токеном", async () => {
+      const r5 = await NetBot.createRoom(BASE);
+      const v = await rawWs(r5.code);
+      v.send(JSON.stringify({ type: "view", hostToken: r5.hostToken }));
+      await wait(300);
+      assert(v.msgs.some((m) => m.type === "s"), "зритель получил снимок");
+      assert(v.msgs.some((m) => m.type === "s" && "sh" in m), "со строкой осколков");
+      const g = await NetBot.connect({ base: BASE, code: r5.code, name: "Гость", think: false });
+      await wait(300);
+      assert.strictEqual(g.hostId, null, "без токена ведущим первый гость не стал");
+      const h = await NetBot.connect({ base: BASE, code: r5.code, name: "Хозяин", hostToken: r5.hostToken, think: false });
+      await h.until((b) => b.hostId === b.id, 3000);
+      h.send({ type: "start" });
+      await h.until((b) => b.phase !== "lobby", 5000);
+      await wait(800);
+      assert(v.msgs.some((m) => m.type === "s" && m.ph !== "lobby"), "зритель видит ход партии");
+      assert(v.msgs.some((m) => m.type === "ev"), "зритель получает события");
+      v.send(JSON.stringify({ type: "start" }));   // зритель не ведёт комнату и не играет
+      v.send(JSON.stringify({ type: "i", mx: 1, my: 0, d: 1 }));
+      assert.strictEqual(v.readyState, 1);
+      v.close(); g.close(); h.close();
+    });
+
     await test("рестарт сервера: комната и токены живы, партия отменена", async () => {
       const r4 = await NetBot.createRoom(BASE);
       const a = await NetBot.connect({ base: BASE, code: r4.code, name: "Ася", hostToken: r4.hostToken, think: false });

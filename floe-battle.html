@@ -338,6 +338,12 @@
   /* узкий ландшафт (SE 1): арена не отъезжает от панели, вердикт ушёл бы под неё */
   @media (max-width: 599px) and (orientation: landscape) { body.with-panel .verdict { display: none; } }
   @media (prefers-reduced-motion: reduce) { .big.show { animation-duration: 0.01s; } }
+.viewopt { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; text-align: left; }
+  .viewopt input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
+  .viewopt small { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+  .hostqr .fine { flex: 1; }
+  .hostqr .code-box { grid-template-columns: 1fr auto; }
+  .code-box .qr.big { width: 156px; height: 156px; }
 </style>
 </head>
 <body>
@@ -372,6 +378,7 @@ window.I18N_DICT = {
     rule1: `Толкайте соперников в воду рывком и не упадите сами — лёд скользкий.`,
     rule2: `Льдина тает с краёв, места всё меньше.`,
     rule3: `<b>Кто первым упал — неудачник.</b> Последний на льдине — царь.`,
+    view_toggle: `Играть с телефона`, view_toggle_sub: `Этот экран только показывает игру — вы играете и ведёте комнату с телефона`, view_scan: `Остальные заходят с телефона по QR или коду`, view_host_title: `Ведущий — с телефона`, view_host_scan: `Наведите камеру своего телефона: вы войдёте игроком и ведущим`, view_no_players: `Пока никого — ждём игроков`, view_wait_host: `Ждём ведущего с телефона…`, view_play_here: `Играть с этого экрана`,
     create: `Создать комнату`, have_code: `У меня есть код`, code_ph: `Код комнаты`, go: `Войти`,
     name_title: `Как вас зовут?`, name_ph: `Имя`, hat: `Шапка`, join: `Встать на льдину`,
     room: `Комната`, copy: `Скопировать ссылку`, copied: `Ссылка скопирована — киньте её в чат созвона`,
@@ -415,6 +422,7 @@ window.I18N_DICT = {
     rule1: `Dash into rivals to knock them into the water, and don't fall yourself — the ice is slippery.`,
     rule2: `The floe melts from the edges, space keeps shrinking.`,
     rule3: `<b>First one to fall is the loser.</b> Last one standing is the King of the Floe.`,
+    view_toggle: `Play from my phone`, view_toggle_sub: `This screen only shows the game — you play and host from your phone`, view_scan: `Everyone else joins from a phone via the QR or the code`, view_host_title: `Host from your phone`, view_host_scan: `Scan with your phone: you'll join as a player and the host`, view_no_players: `Nobody yet — waiting for players`, view_wait_host: `Waiting for the host on a phone…`, view_play_here: `Play from this screen`,
     create: `Create a room`, have_code: `I have a code`, code_ph: `Room code`, go: `Enter`,
     name_title: `What's your name?`, name_ph: `Name`, hat: `Hat`, join: `Step onto the ice`,
     room: `Room`, copy: `Copy link`, copied: `Link copied — drop it in the call chat`,
@@ -458,6 +466,7 @@ window.I18N_DICT = {
     rule1: `Σπρώξε τους αντιπάλους στο νερό με ορμή και μην πέσεις εσύ — ο πάγος γλιστράει.`,
     rule2: `Ο πάγος λιώνει από τις άκρες, ο χώρος στενεύει.`,
     rule3: `<b>Όποιος πέσει πρώτος χάνει.</b> Ο τελευταίος πάνω στον πάγο είναι ο Βασιλιάς.`,
+    view_toggle: `Παίζω από το κινητό`, view_toggle_sub: `Αυτή η οθόνη μόνο δείχνει το παιχνίδι — παίζεις και διαχειρίζεσαι το δωμάτιο από το κινητό`, view_scan: `Οι υπόλοιποι μπαίνουν από κινητό με το QR ή τον κωδικό`, view_host_title: `Διαχείριση από το κινητό`, view_host_scan: `Σάρωσε με το κινητό σου: θα μπεις ως παίκτης και διαχειριστής`, view_no_players: `Κανείς ακόμη — περιμένουμε παίκτες`, view_wait_host: `Περιμένουμε τον διαχειριστή από κινητό…`, view_play_here: `Παίξε από αυτή την οθόνη`,
     create: `Νέο δωμάτιο`, have_code: `Έχω κωδικό`, code_ph: `Κωδικός δωματίου`, go: `Είσοδος`,
     name_title: `Πώς σε λένε;`, name_ph: `Όνομα`, hat: `Σκουφί`, join: `Πάνω στον πάγο`,
     room: `Δωμάτιο`, copy: `Αντιγραφή συνδέσμου`, copied: `Ο σύνδεσμος αντιγράφηκε — στείλ' τον στο chat της κλήσης`,
@@ -521,6 +530,7 @@ window.I18N_DICT = {
   const params = new URLSearchParams(location.search);
   // код идёт в разметку — только алфавит кодов
   let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 14);
+  let VIEW = params.get("v") === "1";   // режим «экран»: комп только показывает партию, играют с телефонов
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
@@ -580,6 +590,7 @@ window.I18N_DICT = {
       net.open = true; net.everOpen = true; net.retry = 0;
       net.openedAt = performance.now(); net.lastSnapAt = 0; net.silent = false;
       $("conn").classList.remove("on");
+      if (VIEW) { send({ type: "view", hostToken: store.get(hostKey()) || undefined }); return; }
       if (flow && flow.resume()) return;   // экран «Это ты?» открыт: продлеваем ожидание, экран не пропадает
       if (net.token || net.wantJoin) sendJoin();
     };
@@ -637,7 +648,7 @@ window.I18N_DICT = {
     rg = MP.roomGone({
       showForm: () => {
         // комнаты нет (до первого hello): форма с полем кода, а не тупик
-        net.dead = false; CODE = ""; net.wantJoin = false; ui.codeOpen = true; ui.joinErr = "no_such_room";
+        net.dead = false; CODE = ""; VIEW = false; net.wantJoin = false; ui.codeOpen = true; ui.joinErr = "no_such_room";
         try { history.replaceState(null, "", location.pathname); } catch (e) {}
         unboot(); $("conn").classList.remove("on");
         redraw();
@@ -714,7 +725,7 @@ window.I18N_DICT = {
     ui.mySt = mySt;
     if (m.ph !== ui.phase) onPhase(m.ph, ui.phase, m);
     else if (stChanged) applyMode();
-    if (net.me) unboot();
+    if (net.me || VIEW) unboot();
   }
   const lerpAng = (a, b, t) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * t; };
   const nameOf = (id) => { const p = net.roster.find((x) => x.id === id); return p ? p.name : "?"; };
@@ -894,14 +905,14 @@ window.I18N_DICT = {
   function redraw() {
     if (net.dead) return;
     if (!CODE) return drawHome();
-    if (!net.me) return drawJoin();
+    if (!net.me && !VIEW) return drawJoin();
     const ph = ui.phase;
     const wait = ph === "over" && !ui.showResults && !ui.replay;
     document.body.classList.toggle("over-wait", wait);
     if (ph === "over" && ui.showResults) return drawResults();
     // итог ещё не показан: пустая панель, не лобби
     if (wait) return setPanel("", "");
-    if (ph === "lobby" || ph == null) return drawLobby();
+    if (ph === "lobby" || ph == null) return VIEW ? drawView() : drawLobby();
   }
 
   function drawHome() {
@@ -912,9 +923,11 @@ window.I18N_DICT = {
       <div class="sec" id="codeSec" ${ui.codeOpen ? "" : "hidden"}>
         <div class="row2"><input class="field code" id="codeIn" maxlength="14" placeholder="${esc(T("code_ph"))}" autocomplete="off" autocapitalize="characters"><button class="btn ghost" id="codeGo" type="button" style="flex:0 0 auto;width:auto">${esc(T("go"))}</button></div>
       </div>
+      ${ui.codeOpen ? "" : `<label class="viewopt"><input type="checkbox" id="viewOpt" ${store.get("floe-viewpref") === "1" ? "checked" : ""}><span><b>${esc(T("view_toggle"))}</b><small>${esc(T("view_toggle_sub"))}</small></span></label>`}
       <div class="err" id="err">${ui.joinErr ? esc(T(ui.joinErr)) : ""}</div>`,
       `<button class="btn" id="create" type="button">${esc(T("create"))}</button>${ui.codeOpen ? "" : `<button class="link" id="haveCode" type="button">${esc(T("have_code"))}</button>`}`);
-    $("create").onclick = createRoom;
+    $("create").onclick = () => createRoom(!!($("viewOpt") && $("viewOpt").checked));
+    if ($("viewOpt")) $("viewOpt").onchange = () => store.set("floe-viewpref", $("viewOpt").checked ? "1" : "0");
     if ($("haveCode")) $("haveCode").onclick = () => { ui.codeOpen = true; drawHome(); $("codeIn").focus(); };
     if ($("codeGo")) {
       const go = () => { const c = $("codeIn").value.toUpperCase().replace(/[^A-Z2-9]/g, ""); if (c) enterRoom(c); };
@@ -1027,6 +1040,26 @@ window.I18N_DICT = {
     else setTimeout(() => { if ($("qr") && !$("qr").children.length && window.QRCode) new QRCode($("qr"), { text: url, width: 120, height: 120, colorDark: "#06182c", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M }); }, 800);
   }
 
+  // «экран»: код и QR для остальных, отдельный QR для ведущего с телефона (пока ведущего нет), список игроков
+  function drawView() {
+    const url = location.origin + location.pathname + "?r=" + CODE;
+    const tok = store.get(hostKey());
+    const host = net.roster.find((p) => p.id === net.hostId);
+    const needHost = !net.hostId && !!tok;
+    setPanel(`${brand()}
+      <div class="sec"><h3>${esc(T("room"))}</h3>
+        <div class="code-box"><div><div class="code">${esc(CODE)}</div><button class="link" id="copy" type="button">${esc(T("copy"))}</button></div><div class="qr big" id="qr"></div></div>
+        <p class="fine" style="margin-top:8px">${esc(T("view_scan"))}</p></div>
+      ${needHost ? `<div class="sec hostqr"><h3>${esc(T("view_host_title"))}</h3><div class="code-box"><div class="fine">${esc(T("view_host_scan"))}</div><div class="qr big" id="qrHost"></div></div></div>` : ""}
+      <div class="sec"><h3>${esc(T("players"))} <span>${esc(tpl("of_max", { n: net.roster.length, m: 12 }))}</span></h3>${net.roster.length ? playerList(false) : `<p class="fine">${esc(T("view_no_players"))}</p>`}</div>`,
+      `<div class="waitline">${esc(host ? tpl("wait_host", { name: host.name }) : T("view_wait_host"))}</div><button class="link" id="playHere" type="button">${esc(T("view_play_here"))}</button>`);
+    $("copy").onclick = () => copyLink(url);
+    $("playHere").onclick = () => { location.href = url; };
+    const mk = (id, text) => { if (window.QRCode && $(id) && !$(id).children.length) new QRCode($(id), { text, width: 144, height: 144, colorDark: "#06182c", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M }); };
+    const draw = () => { mk("qr", url); if (needHost) mk("qrHost", url + "&h=" + encodeURIComponent(tok)); };
+    draw(); setTimeout(draw, 800);
+  }
+
   function copyLink(url) {
     const ok = () => toast(T("copied"));
     if (navigator.clipboard) navigator.clipboard.writeText(url).then(ok, () => prompt("", url));
@@ -1035,7 +1068,7 @@ window.I18N_DICT = {
 
   function drawResults() {
     const ov = ui.over;
-    if (!ov || !ov.stats || !ov.host) return drawLobby();
+    if (!ov || !ov.stats || !ov.host) return VIEW ? drawView() : drawLobby();
     const s = ov.stats, h = ov.host;
     const note = h.lottery ? T(h.of === 1 ? "res_off_one" : "res_lottery") : h.tie === "hits" ? T("res_hits") : h.tie === "lottery" ? T("res_tie") : tpl("res_first_at", { s: num1(h.at) });
     const nm = (id) => { const p = s.players.find((x) => x.id === id); return p ? p.name : nameOf(id); };
@@ -1055,7 +1088,7 @@ window.I18N_DICT = {
     const noms = [];
     if (s.pusher.length) noms.push(nomLine("nom_push", s.pusher.map((id) => nm(id) + " ×" + s.maxKos).join(", ")));
     if (selfIds.length) noms.push(nomLine("nom_self", selfIds.map(nm).join(", ")));
-    const iAmHost = net.me === net.hostId;
+    const iAmHost = !VIEW && net.me === net.hostId;
     const host = net.roster.find((p) => p.id === net.hostId);
     setPanel(`${brand().replace('class="brand"', 'class="brand res-brand"')}
       <div class="host-card"><div class="lbl">${esc(T("res_host"))}</div><div class="nm" style="--n:${[...nm(h.id)].length + 2}">😅 ${esc(nm(h.id))}</div><div class="note">${esc(note)}</div></div>
@@ -1065,7 +1098,7 @@ window.I18N_DICT = {
       // в остальных раскладках номинации — под таблицей, как раньше (копия в подвале скрыта)
       `<div class="noms noms-foot">${noms.join("")}</div>` + (iAmHost
         ? `<div class="res-btns"><button class="btn" id="again" type="button">${esc(T("again"))}</button><button class="btn ghost" id="rep" type="button">${esc(T("show_replay"))}</button><button class="btn ghost" id="lob" type="button">${esc(T("to_lobby"))}</button></div>`
-        : `<div class="waitline">${esc(tpl("wait_again", { name: host ? host.name : "…" }))}</div>${net.replay ? `<button class="btn ghost" id="rep" type="button">${esc(T("show_replay"))}</button>` : ""}`), "res-body");
+        : `<div class="waitline">${esc(tpl("wait_again", { name: host ? host.name : "…" }))}</div>${net.replay && !VIEW ? `<button class="btn ghost" id="rep" type="button">${esc(T("show_replay"))}</button>` : ""}`), "res-body");
     if ($("again")) $("again").onclick = () => { Sound.ensure(); send({ type: "start" }); };
     if ($("lob")) $("lob").onclick = () => send({ type: "lobby" });
     if ($("rep")) $("rep").onclick = startReplay;
@@ -1094,7 +1127,7 @@ window.I18N_DICT = {
     if ($("here")) $("here").onclick = () => { net.dead = false; net.retry = 0; net.everOpen = false; net.silent = false; net.lastSnapAt = 0; $("conn").classList.remove("on"); $("conn").textContent = ""; connect(); redraw(); };
   }
 
-  async function createRoom() {
+  async function createRoom(view) {
     Sound.ensure();
     $("create").disabled = true;
     try {
@@ -1102,18 +1135,19 @@ window.I18N_DICT = {
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "server_error");
       store.set("floe-host-" + j.code, j.hostToken);
-      enterRoom(j.code);
+      enterRoom(j.code, view);
     } catch (e) {
       ui.joinErr = /too_many/.test(e.message) ? "too_many_rooms" : "conn_blocked";
       drawHome();
     }
   }
 
-  function enterRoom(code) {
+  function enterRoom(code, view) {
+    VIEW = !!view;
     CODE = code;
-    history.pushState(null, "", "?r=" + code);
+    history.pushState(null, "", "?r=" + code + (VIEW ? "&v=1" : ""));
     demo = null;
-    net.token = store.get(tokenKey()) || null;
+    net.token = VIEW ? null : store.get(tokenKey()) || null;
     net.wantJoin = !!net.token;
     render.reset();
     connect();
@@ -1310,7 +1344,7 @@ window.I18N_DICT = {
   // предсказание выключено, 4 с — закрываем сокет, дальше обычное переподключение. Только у вошедшего (иначе тик не идёт
   // и снимков нет по делу) и только пока вкладка видима (в фоне кадры и таймеры сами встают)
   function watchSnaps(now) {
-    if (!net.open || !net.me || document.hidden) return;
+    if (!net.open || !(net.me || VIEW) || document.hidden) return;
     const age = now - Math.max(net.lastSnapAt, net.openedAt);
     const silent = age > 1500;
     if (silent) pred.on = false;
@@ -1456,7 +1490,7 @@ window.I18N_DICT = {
   // ----- старт -----
   applyStatic();
   if (CODE) {
-    net.token = store.get(tokenKey()) || null;
+    net.token = VIEW ? null : store.get(tokenKey()) || null;
     net.wantJoin = !!net.token;
     if (net.token) { document.body.classList.add("booting"); setTimeout(unboot, 1200); }
     document.body.classList.add("with-panel");

@@ -25,6 +25,7 @@
 
   const params = new URLSearchParams(location.search);
   let CODE = (params.get('r') || '').toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, 14);
+  let VIEW = params.get('v') === '1';   // режим «экран»: комп только показывает партию, играют с телефонов
   const tokenKey = () => 'pond-token-' + CODE;
   const hostKey = () => 'pond-host-' + CODE;
   try {
@@ -53,7 +54,7 @@ render.setVibrate((p) => vibrate(p));   // на телефоне имён над
   // ===================================================================
   const online = PM.createModel({ onEvent: (e) => onEvent(e, online, false) });
   let local = null;
-  const useOnline = () => !!(net.me && online.pads.length && online.phase !== 'lobby');
+  const useOnline = () => !!((net.me || VIEW) && online.pads.length && online.phase !== 'lobby');
   const cur = () => (useOnline() ? online : local ? local.model : online);
 
   function startLocal(mode) {
@@ -113,6 +114,7 @@ render.setVibrate((p) => vibrate(p));   // на телефоне имён над
       if (net.ws !== ws) return;
       net.open = true; net.everOpen = true; net.retry = 0; net.lastMsgAt = nowS(); net.connectedAt = nowS();
       $('conn').classList.remove('on');
+      if (VIEW) { send({ type: 'view', hostToken: store.get(hostKey()) || undefined }); sendPing(); return; }
       if (flow && flow.resume()) return;
       if (net.token || net.wantJoin) sendJoin();
       sendPing();
@@ -427,7 +429,7 @@ render.setVibrate((p) => vibrate(p));   // на телефоне имён над
   const swatches = (sel, taken) => `<div class="swatches">${COLORS.map((c, i) => `<button type="button" class="sw${i === sel ? ' on' : ''}" data-ci="${i}" style="--c:${c[0]}" ${taken.has(i) ? 'disabled' : ''} aria-label="${i + 1}"></button>`).join('')}</div>`;
   const ciOf = (id) => { const p = net.roster.find((x) => x.id === id); return p ? p.ci : 0; };
 
-  function phaseNow() { return net.me ? online.phase : 'lobby'; }
+  function phaseNow() { return net.me || VIEW ? online.phase : 'lobby'; }
   let panelKey = '';
   function redraw(force) {
     const key = [CODE, net.me, phaseNow(), net.roster.length, !!ui.claim, ui.dead, ui.codeOpen, ui.joinErr, ui.colorOpen, net.hostId, net.roster.map((p) => p.id + p.online + p.ci + (p.ping > 250 ? 'x' : '')).join(','), online.over ? 'o' : ''].join('|');
@@ -436,6 +438,12 @@ render.setVibrate((p) => vibrate(p));   // на телефоне имён над
     if (ui.dead) return;
     if (ui.claim) return drawClaim();
     if (!CODE) return drawHome();
+    if (VIEW) {
+      const vp = phaseNow();
+      if (vp === 'over') return drawResults();
+      if (vp === 'countdown' || vp === 'fight') return;
+      return drawView();
+    }
     if (!net.me) return drawJoin();
     const ph = phaseNow();
     if (ph === 'over') return drawResults();
@@ -444,11 +452,13 @@ render.setVibrate((p) => vibrate(p));   // на телефоне имён над
   }
   function drawHome() {
     setPanel(`<a class="back" href="index.html">${esc(T('back'))}</a>${brand()}<p class="lede">${esc(T('lede'))}</p><div class="sec">${rulesHtml()}</div>
+      ${ui.codeOpen ? '' : `<label class="viewopt"><input type="checkbox" id="viewOpt" ${store.get('pond-viewpref') === '1' ? 'checked' : ''}><span><b>${esc(T('view_toggle'))}</b><small>${esc(T('view_toggle_sub'))}</small></span></label>`}
       ${ui.codeOpen ? `<div class="sec"><div class="name-row"><label class="fine" for="codeIn">${esc(T('code_ph'))}</label><span class="err">${ui.joinErr ? esc(T(ui.joinErr)) : ''}</span></div>
         <input class="field" id="codeIn" placeholder="${esc(T('code_ph'))}" autocapitalize="characters" autocomplete="off" enterkeyhint="go" style="margin-top:6px"></div>` : ''}`,
       `<button class="btn" id="create" type="button">${esc(T('create'))}</button>` +
       (ui.codeOpen ? `<button class="btn ghost" id="enter" type="button">${esc(T('enter'))}</button>` : `<button class="btn ghost" id="haveCode" type="button">${esc(T('have_code'))}</button>`));
-    $('create').onclick = createRoom;
+    $('create').onclick = () => createRoom(!!($('viewOpt') && $('viewOpt').checked));
+    if ($('viewOpt')) $('viewOpt').onchange = () => store.set('pond-viewpref', $('viewOpt').checked ? '1' : '0');
     if ($('haveCode')) $('haveCode').onclick = () => { ui.codeOpen = true; ui.joinErr = null; redraw(true); setTimeout(() => $('codeIn') && $('codeIn').focus(), 50); };
     const go = () => { const c = ($('codeIn').value || '').toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, 14); if (c) enterRoom(c); };
     if ($('enter')) $('enter').onclick = go;
@@ -475,6 +485,25 @@ render.setVibrate((p) => vibrate(p));   // на телефоне имён над
     $('nameIn').onkeydown = (e) => { if (e.key === 'Enter') go(); };
     $('nameIn').oninput = () => { if (window.MP) { const v = MP.clip($('nameIn').value, 15); if (v !== $('nameIn').value) $('nameIn').value = v; } ui.name = $('nameIn').value; };
     document.querySelectorAll('.sw').forEach((b) => (b.onclick = () => { ui.ci = Number(b.dataset.ci); drawJoin(); }));
+  }
+  // «экран»: код и QR для остальных, отдельный QR для ведущего с телефона (пока ведущего нет), список игроков
+  function drawView() {
+    const base = location.origin + location.pathname;
+    const url = base + '?r=' + CODE;
+    const tok = store.get(hostKey());
+    const host = net.roster.find((p) => p.id === net.hostId);
+    const needHost = !net.hostId && !!tok;
+    setPanel(`${brand()}
+      <div class="sec"><h3>${esc(T('room'))}</h3><div class="code-box"><div><div class="code">${esc(CODE)}</div><button class="link" id="copy" type="button">${esc(T('copy'))}</button></div><div class="qr" id="qr"></div></div>
+        <p class="fine" style="margin-top:8px">${esc(T('view_scan'))}</p></div>
+      ${needHost ? `<div class="sec hostqr"><h3>${esc(T('view_host_title'))}</h3><div class="code-box"><div class="fine">${esc(T('view_host_scan'))}</div><div class="qr" id="qrHost"></div></div></div>` : ''}
+      <div class="sec"><h3>${esc(T('players'))} <span>${esc(tpl('of_max', { n: net.roster.length, m: 12 }))}</span></h3>${net.roster.length ? playerList(false) : `<p class="fine">${esc(T('view_no_players'))}</p>`}</div>`,
+      `<div class="waitline">${esc(host ? tpl('wait_host', { name: host.name }) : T('view_wait_host'))}</div><button class="link" id="playHere" type="button">${esc(T('view_play_here'))}</button>`);
+    $('copy').onclick = () => copyLink(url);
+    $('playHere').onclick = () => { location.href = url; };
+    const mk = (id, text) => { if (window.QRCode && $(id) && !$(id).children.length) new QRCode($(id), { text, width: 176, height: 176, colorDark: '#06222c', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M }); };
+    const draw = () => { mk('qr', url); if (needHost) mk('qrHost', url + '&h=' + encodeURIComponent(tok)); };
+    draw(); setTimeout(draw, 800);
   }
   function drawClaim() {
     const c = ui.claim;
@@ -555,7 +584,7 @@ render.setVibrate((p) => vibrate(p));   // на телефоне имён над
       kind === 'replaced' ? `<button class="btn" id="here" type="button">${esc(T('play_here'))}</button>` : `<a class="btn" href="frog-pond.html">${esc(T('new_game'))}</a>`);
     if ($('here')) $('here').onclick = () => { net.dead = false; ui.dead = null; net.retry = 0; net.everOpen = false; $('conn').classList.remove('on'); connect(); redraw(true); };
   }
-  async function createRoom() {
+  async function createRoom(view) {
     Sound.ensure();
     $('create').disabled = true;
     try {
@@ -563,12 +592,13 @@ render.setVibrate((p) => vibrate(p));   // на телефоне имён над
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'server_error');
       store.set('pond-host-' + j.code, j.hostToken);
-      enterRoom(j.code);
+      enterRoom(j.code, view);
     } catch (e) { ui.joinErr = /too_many/.test(e.message) ? 'too_many_rooms' : 'conn_blocked'; ui.codeOpen = false; redraw(true); toast(T(ui.joinErr)); }
   }
-  function enterRoom(code) {
+  function enterRoom(code, view) {
+    VIEW = !!view;
     CODE = code; net.token = store.get(tokenKey()); net.me = null; net.roster = []; net.dead = false; ui.dead = null; ui.codeOpen = false; ui.joinErr = null;
-    try { history.replaceState(null, '', location.pathname + '?r=' + CODE); } catch (e) {}
+    try { history.replaceState(null, '', location.pathname + '?r=' + CODE + (VIEW ? '&v=1' : '')); } catch (e) {}
     connect(); redraw(true);
   }
 
@@ -605,7 +635,8 @@ render.setVibrate((p) => vibrate(p));   // на телефоне имён над
       body.classList.toggle('watching', !!watching);
       body.classList.toggle('inlobby', !inRound);
       fitInsets();
-      if (watching) $('outpill').innerHTML = `${esc(T('spectate'))} ${['🔥', '😂', '😱', '👏'].map((e) => `<button type="button" data-e="${e}">${e}</button>`).join('')}`;
+      $('outpill').style.display = VIEW ? 'none' : '';
+      if (watching && !VIEW) $('outpill').innerHTML = `${esc(T('spectate'))} ${['🔥', '😂', '😱', '👏'].map((e) => `<button type="button" data-e="${e}">${e}</button>`).join('')}`;
       document.querySelectorAll('#outpill button').forEach((b) => (b.onclick = () => send({ type: 'react', e: b.dataset.e })));
     }
   }

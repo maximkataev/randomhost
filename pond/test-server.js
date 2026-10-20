@@ -255,6 +255,31 @@ test('реакции зрителей: не чаще раза в 2 с, толь�
   closeAll(bs);
 });
 
+test('режим «экран»: зритель получает партию, не игрок, ведущим становится вошедший с токеном', async () => {
+  const r = await room();
+  const wsUrl = base.replace('http', 'ws') + '/pond/ws?r=' + r.code;
+  const msgs = [];
+  const v = new WebSocket(wsUrl);
+  await new Promise(res => v.on('open', res));
+  v.on('message', d => msgs.push(JSON.parse(d)));
+  v.send(JSON.stringify({ type: 'view', hostToken: r.hostToken }));
+  await sleep(300);
+  assert(msgs.some(m => m.type === 'snap'), 'зритель получил снимок');
+  // чужой вошёл первым — ведущим он не становится
+  const g = await NetBot.connect({ base, code: r.code, name: 'Гость', think: false });
+  await sleep(300);
+  assert.strictEqual(g.hostId, null, 'без токена ведущим первый гость не стал');
+  const h = await NetBot.connect({ base, code: r.code, name: 'Хозяин', hostToken: r.hostToken, think: false });
+  await h.until(b => b.hostId === b.id);
+  h.send({ type: 'start' });
+  await h.until(b => b.model.phase !== 'lobby', 10000);
+  await sleep(1500);
+  assert(msgs.some(m => m.type === 'ev' || (m.type === 'snap' && m.ph !== 'lobby')), 'зритель видит ход партии');
+  // зритель не живёт как аноним: после ANON_TTL не закрыт
+  assert.strictEqual(v.readyState, 1);
+  v.close(); g.close(); h.close();
+});
+
 (async () => {
   await startServer();
   for (const [name, fn] of tests) {

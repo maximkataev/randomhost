@@ -169,6 +169,10 @@
   .timer { font-variant-numeric: tabular-nums; font-size: 18px; min-width: 72px; text-align: center; }
   .timer.low { color: var(--gold); }
   .pos b { font-size: 18px; }
+  .viewopt { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+  .viewopt input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
+  .viewopt small { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+  .hostqr .fine { flex: 1; }
   .quit { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: calc(12px + env(safe-area-inset-left, 0px)); z-index: 6; display: none; width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 16px; }
   body.playing .quit { display: block; }
   /* первый тап — «Сойти? ✕» на 3 с, второй — выход (вместо confirm(), который в WebView/PWA глушится) */
@@ -316,6 +320,7 @@ window.I18N_DICT = {
     rule_t: `Пробел или кнопка ⚡ — рывок. Копится пару секунд, потом можно снова: жмите на чистой воде, не в камень.`,
     rule2: `Соседей можно подтолкнуть — прямо на камень.`,
     rule3: `<b>Кто приплыл последним — неудачник.</b> Первый — чемпион заплыва.`,
+    view_toggle: `Играть с телефона`, view_toggle_sub: `Этот экран только показывает заплыв — ты играешь и ведёшь комнату с телефона`, view_scan: `Остальные заходят с телефона по QR или коду`, view_host_title: `Ведущий — с телефона`, view_host_scan: `Наведи камеру своего телефона: ты войдёшь игроком и ведущим`, view_no_players: `Пока никого — ждём игроков`, view_wait_host: `Ждём ведущего с телефона…`, view_play_here: `Играть с этого экрана`,
     create: `Создать комнату`, have_code: `У меня есть код`, code_ph: `Код комнаты`, go: `Войти`,
     name_title: `Как вас зовут?`, name_ph: `Имя`, color: `Цвет утки`, join: `На старт`,
     room: `Комната`, copy: `Скопировать ссылку`, copied: `Ссылка скопирована — киньте её в чат созвона`,
@@ -363,6 +368,7 @@ window.I18N_DICT = {
     rule_t: `Space or the ⚡ button — a burst of speed. It recharges in a few seconds; use it on clear water, not into a rock.`,
     rule2: `You can nudge your neighbours — right into a rock.`,
     rule3: `<b>Last one in is the loser.</b> The first is the race champion.`,
+    view_toggle: `Play from my phone`, view_toggle_sub: `This screen only shows the race — you play and host from your phone`, view_scan: `Everyone else joins from a phone via the QR or the code`, view_host_title: `Host from your phone`, view_host_scan: `Scan with your phone: you will join as a player and the host`, view_no_players: `Nobody yet — waiting for players`, view_wait_host: `Waiting for the host on a phone…`, view_play_here: `Play from this screen`,
     create: `Create a room`, have_code: `I have a code`, code_ph: `Room code`, go: `Join`,
     name_title: `What's your name?`, name_ph: `Name`, color: `Duck colour`, join: `To the start`,
     room: `Room`, copy: `Copy link`, copied: `Link copied — drop it in the call chat`,
@@ -410,6 +416,7 @@ window.I18N_DICT = {
     rule_t: `Space ή το κουμπί ⚡ — ξαφνική επιτάχυνση. Φορτίζει σε λίγα δευτερόλεπτα· χρησιμοποίησέ τη σε καθαρό νερό, όχι πάνω σε πέτρα.`,
     rule2: `Μπορείς να σπρώξεις τους διπλανούς — κατευθείαν σε πέτρα.`,
     rule3: `<b>Όποιος φτάσει τελευταίος χάνει.</b> Η πρώτη θέση παίρνει το στέμμα.`,
+    view_toggle: `Παίζω από το κινητό`, view_toggle_sub: `Αυτή η οθόνη μόνο δείχνει τον αγώνα — παίζεις και διαχειρίζεσαι από το κινητό`, view_scan: `Οι υπόλοιποι μπαίνουν από κινητό με το QR ή τον κωδικό`, view_host_title: `Διαχείριση από το κινητό`, view_host_scan: `Σάρωσε με το κινητό σου: θα μπεις ως παίκτης και διαχειριστής`, view_no_players: `Κανείς ακόμη — περιμένουμε παίκτες`, view_wait_host: `Περιμένουμε τον διαχειριστή από κινητό…`, view_play_here: `Παίξε από αυτή την οθόνη`,
     create: `Νέο δωμάτιο`, have_code: `Έχω κωδικό`, code_ph: `Κωδικός δωματίου`, go: `Είσοδος`,
     name_title: `Πώς σε λένε;`, name_ph: `Όνομα`, color: `Χρώμα πάπιας`, join: `Στην αφετηρία`,
     room: `Δωμάτιο`, copy: `Αντιγραφή συνδέσμου`, copied: `Ο σύνδεσμος αντιγράφηκε — στείλ' τον στο chat της κλήσης`,
@@ -477,6 +484,7 @@ window.I18N_DICT = {
   const params = new URLSearchParams(location.search);
   // код идёт в разметку — только алфавит кодов
   let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 14);
+  let VIEW = params.get("v") === "1";   // режим «экран»: комп только показывает заплыв, играют с телефонов
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
@@ -531,6 +539,15 @@ window.I18N_DICT = {
   };
   const tokenKey = () => "rapids-token-" + CODE;
   const hostKey = () => "rapids-host-" + CODE;
+  // ссылка создателя (?h=ТОКЕН) возвращает управление комнатой из чистого контекста: токен — в хранилище, из адреса убираем
+  try {
+    const hp = params.get("h");
+    if (hp && CODE && /^[A-Za-z0-9_-]{8,80}$/.test(hp)) {
+      store.set(hostKey(), hp);
+      const u = new URL(location.href); u.searchParams.delete("h");
+      history.replaceState(null, "", u.pathname + u.search);
+    }
+  } catch (e) {}
   let course = null;
   const courseFor = (seed) => { if (!course || course.seed !== seed) course = makeCourse(seed, net.cfg); return course; };
 
@@ -543,6 +560,7 @@ window.I18N_DICT = {
       net.open = true; net.everOpen = true; net.retry = 0;
       net.openedAt = performance.now(); net.lastSnapAt = 0;
       $("conn").classList.remove("on");
+      if (VIEW) { send({ type: "view", hostToken: store.get(hostKey()) || undefined }); return; }
       if (net.token || net.wantJoin) sendJoin();
       else if (flow && ui.claim) flow.resume();   // обрыв при открытом «Это ты?» — экран остаётся, сервер продлит ожидание
     };
@@ -882,13 +900,14 @@ window.I18N_DICT = {
   function redraw() {
     if (net.dead) return;
     if (!CODE) return drawHome();
-    if (!net.me) return ui.claim ? drawClaim() : drawJoin();
+    if (!net.me && !VIEW) return ui.claim ? drawClaim() : drawJoin();
     const ph = ui.phase;
     if (ph === "over" && ui.showResults) return drawResults();
     // заплыв только что кончился: пока камера едет к ведущему — без лобби и без кнопки старта,
     // иначе ведущий комнаты рефлекторно жал «Открыть шлюз» и итог не видел никто (плейтест 04.10)
     if (ph === "over") return setPanel(`${brand()}<div class="finish-wait">🏁 ${esc(T("finish_wait"))}</div>`, "", "wait");
-    if (ph === "lobby" || ph == null) return drawLobby();
+    if (VIEW && (ph === "countdown" || ph === "race")) return;
+    if (ph === "lobby" || ph == null) return VIEW ? drawView() : drawLobby();
   }
 
   function drawHome() {
@@ -899,9 +918,11 @@ window.I18N_DICT = {
       <div class="sec" id="codeSec" ${ui.codeOpen ? "" : "hidden"}>
         <div class="row2"><input class="field code" id="codeIn" maxlength="14" placeholder="${esc(T("code_ph"))}" autocomplete="off" autocapitalize="characters"><button class="btn ghost" id="codeGo" type="button" style="flex:0 0 auto;width:auto">${esc(T("go"))}</button></div>
       </div>
+      ${ui.codeOpen ? "" : `<label class="viewopt"><input type="checkbox" id="viewOpt" ${store.get("rapids-viewpref") === "1" ? "checked" : ""}><span><b>${esc(T("view_toggle"))}</b><small>${esc(T("view_toggle_sub"))}</small></span></label>`}
       <div class="err" id="err">${ui.joinErr ? esc(T(ui.joinErr)) : ""}</div>`,
       `<button class="btn" id="create" type="button">${esc(T("create"))}</button>${ui.codeOpen ? "" : `<button class="link" id="haveCode" type="button">${esc(T("have_code"))}</button>`}`, "home");
-    $("create").onclick = createRoom;
+    $("create").onclick = () => createRoom(!!($("viewOpt") && $("viewOpt").checked));
+    if ($("viewOpt")) $("viewOpt").onchange = () => store.set("rapids-viewpref", $("viewOpt").checked ? "1" : "0");
     if ($("haveCode")) $("haveCode").onclick = () => { ui.codeOpen = true; drawHome(); $("codeIn").focus(); };
     if ($("codeGo")) {
       const go = () => { const c = $("codeIn").value.toUpperCase().replace(/[^A-Z2-9]/g, ""); if (c) enterRoom(c); else $("err").textContent = T("code_empty"); };
@@ -998,6 +1019,29 @@ window.I18N_DICT = {
     if (window.QRCode) qr(); else setTimeout(qr, 800);
   }
 
+  // «экран»: код и QR для остальных, отдельный QR для ведущего с телефона (пока ведущего нет), список игроков
+  function drawView() {
+    const base = location.origin + location.pathname;
+    const url = base + "?r=" + CODE;
+    const tok = store.get(hostKey());
+    const host = net.roster.find((p) => p.id === net.hostId);
+    const needHost = !net.hostId && !!tok;
+    const big = matchMedia("(min-width: 1400px)").matches ? 240 : 120;
+    ui.nextScreen = "view";
+    setPanel(`${brand()}
+      <div class="sec"><h3>${esc(T("room"))}</h3>
+        <div class="code-box"><div><div class="code">${esc(CODE)}</div><button class="link" id="copy" type="button">${esc(T("copy"))}</button></div><div class="qr" id="qr"></div></div>
+        <p class="fine" style="margin-top:8px">${esc(T("view_scan"))}</p></div>
+      ${needHost ? `<div class="sec hostqr"><h3>${esc(T("view_host_title"))}</h3><div class="code-box"><div class="fine">${esc(T("view_host_scan"))}</div><div class="qr" id="qrHost"></div></div></div>` : ""}
+      <div class="sec"><h3>${esc(T("players"))} <span>${esc(tpl("online_n", { n: net.roster.filter((p) => p.online).length }))}</span></h3>${net.roster.length ? playerList(false) : `<p class="fine">${esc(T("view_no_players"))}</p>`}</div>`,
+      `<div class="waitline">${host ? waitLine("wait_host", host.name) : esc(T("view_wait_host"))}</div><button class="link" id="playHere" type="button">${esc(T("view_play_here"))}</button>`);
+    $("copy").onclick = () => copyLink(url);
+    $("playHere").onclick = () => { location.href = url; };
+    const mk = (id, text) => { if ($(id) && !$(id).children.length && window.QRCode) new QRCode($(id), { text, width: big, height: big, colorDark: "#0b2a22", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M }); };
+    const draw = () => { mk("qr", url); if (needHost) mk("qrHost", url + "&h=" + encodeURIComponent(tok)); };
+    draw(); setTimeout(draw, 800);
+  }
+
   function copyLink(url) {
     const ok = () => toast(T("copied"));
     if (navigator.clipboard) navigator.clipboard.writeText(url).then(ok, () => prompt("", url));
@@ -1013,7 +1057,7 @@ window.I18N_DICT = {
 
   function drawResults() {
     const ov = ui.over;
-    if (!ov || !ov.stats || !ov.host) return drawLobby();
+    if (!ov || !ov.stats || !ov.host) return VIEW ? drawView() : drawLobby();
     const s = ov.stats, h = ov.host;
     const nm = (id) => { const p = s.players.find((x) => x.id === id); return p ? p.name : (id === h.id && h.name) || nameOf(id); };
     // цвет — из итога (ci у игрока): после reload клиент мог не знать ушедших
@@ -1038,7 +1082,7 @@ window.I18N_DICT = {
       <div class="table">${rows}</div>
       ${notes.length ? `<div class="res-fine">${notes.map(esc).join("<br>")}</div>` : ""}
       <div class="noms">${nomLine("nom_push", s.pusher, s.maxBumps && tpl("n_bumps", { n: s.maxBumps }))}${nomLine("nom_whirl", s.whirler, s.maxWhirls && tpl("n_whirls", { n: s.maxWhirls }))}</div>`,
-      iAmHost
+      VIEW ? "" : iAmHost
         ? `<button class="btn" id="again" type="button">${esc(T("again"))}</button><button class="btn ghost" id="lob" type="button">${esc(T("to_lobby"))}</button>`
         : `<div class="waitline">${waitLine("wait_again", host ? host.name : "…")}</div>`);
     if ($("again")) $("again").onclick = () => { Sound.ensure(); send({ type: "start" }); };
@@ -1082,7 +1126,7 @@ window.I18N_DICT = {
     if ($("here")) $("here").onclick = () => { net.dead = false; net.retry = 0; net.everOpen = false; net.lastSnapAt = 0; $("conn").classList.remove("on"); $("conn").textContent = ""; connect(); redraw(); };
   }
 
-  async function createRoom() {
+  async function createRoom(view) {
     Sound.ensure();
     $("create").disabled = true;
     try {
@@ -1090,16 +1134,17 @@ window.I18N_DICT = {
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "server_error");
       store.set("rapids-host-" + j.code, j.hostToken);
-      enterRoom(j.code);
+      enterRoom(j.code, view);
     } catch (e) {
       ui.joinErr = /too_many/.test(e.message) ? "too_many_rooms" : "conn_blocked";
       drawHome();
     }
   }
 
-  function enterRoom(code) {
+  function enterRoom(code, view) {
     CODE = code;
-    history.pushState(null, "", "?r=" + code);
+    VIEW = !!view;
+    history.pushState(null, "", "?r=" + code + (VIEW ? "&v=1" : ""));
     demo = null;
     net.token = store.get(tokenKey()) || null;
     net.wantJoin = !!net.token;
@@ -1142,7 +1187,7 @@ window.I18N_DICT = {
     const play = ph === "countdown" || ph === "race";
     document.body.classList.toggle("inlobby", ph === "lobby" && !!net.me && !net.dead);
     document.body.classList.toggle("playing", play && !!inGame);
-    document.body.classList.toggle("watching", play && !inGame && !!net.me);
+    document.body.classList.toggle("watching", play && (VIEW || (!inGame && !!net.me)));   // экран: панель убрана, как у зрителя
     document.body.classList.toggle("with-panel", !play);
     $("tag").classList.toggle("show", play && !inGame && !!net.me);
     if (play && !inGame && net.me) $("tag").textContent = T(net.resumed ? "watching_resumed" : "watching");
@@ -1288,7 +1333,7 @@ window.I18N_DICT = {
         // сокет открыт, но снимков нет — сеть встала молча: плашка, а своя утка больше не едет по предсказанию
         // сторож: 1,5 с без снимков — плашка и предсказание выключено, 4 с — закрываем сокет (дальше обычный реконнект);
         // только у вошедшего и пока вкладка видима
-        const watch = net.open && net.me && !document.hidden;
+        const watch = net.open && (net.me || VIEW) && !document.hidden;
         const age = now - Math.max(net.lastSnapAt, net.openedAt || 0);
         const silent = watch && age > 1500;
         if (silent) { pred.on = false; $("conn").textContent = T("conn_lost"); }
@@ -1323,8 +1368,8 @@ window.I18N_DICT = {
           if (ui.phase === "over" && ui.resultsAt && now >= ui.resultsAt) { ui.resultsAt = 0; ui.showResults = true; redraw(); }
           // страховка: в фазе «итог» события over нет уже 1,5 с (потеряно в сети) — просим повторить и рисуем итог из снимка
           // (ведущий, чемпион, кнопки), чтобы комната не стояла на «Итог через секунду…»
-          if (ui.phase === "over" && !ui.over && !ui.resultsAt && ui.overAt && now - ui.overAt > 1500 && net.me && net.open) {
-            if (!ui.overAsked) { ui.overAsked = true; sendJoin(); }
+          if (ui.phase === "over" && !ui.over && !ui.resultsAt && ui.overAt && now - ui.overAt > 1500 && (net.me || VIEW) && net.open) {
+            if (!ui.overAsked) { ui.overAsked = true; if (VIEW) send({ type: "view" }); else sendJoin(); }
             if (snap.host) {
               ui.over = { type: "over", host: snap.host, champion: snap.champion, stats: { players: [], pusher: [], whirler: [], maxBumps: 0, maxWhirls: 0 }, synth: true };
               ui.showResults = true; redraw();
@@ -1368,7 +1413,7 @@ window.I18N_DICT = {
   applyStatic();
   document.body.classList.add("with-panel");
   if (CODE) {
-    net.token = store.get(tokenKey()) || null;
+    net.token = VIEW ? null : store.get(tokenKey()) || null;
     net.wantJoin = !!net.token;
     if (net.token) { document.body.classList.add("booting"); setTimeout(unboot, 1200); }
     connect();

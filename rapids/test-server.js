@@ -578,6 +578,28 @@ function rawWs(code) {
       } finally { s3.kill("SIGTERM"); }
     }
 
+    await test("режим «экран»: зритель получает партию, не игрок, ведущим становится вошедший с токеном", async () => {
+      const r = await NetBot.createRoom(BASE);
+      const msgs = [];
+      const v = await rawWs(r.code);
+      v.on("message", (d) => msgs.push(JSON.parse(d)));
+      v.send(JSON.stringify({ type: "view", hostToken: r.hostToken }));
+      await wait(300);
+      assert(msgs.some((m) => m.type === "s"), "зритель получил снимок");
+      // чужой вошёл первым — ведущим он не становится
+      const g = await NetBot.connect({ base: BASE, code: r.code, name: "Гость", think: false });
+      await wait(300);
+      assert.strictEqual(g.hostId, null, "без токена ведущим первый гость не стал");
+      const h = await NetBot.connect({ base: BASE, code: r.code, name: "Хозяин", hostToken: r.hostToken, think: false });
+      await h.until((b) => b.hostId === b.id);
+      h.send({ type: "start" });
+      await h.until((b) => b.phase !== "lobby", 10000);
+      await wait(1500);
+      assert(msgs.some((m) => m.type === "ev" || (m.type === "s" && m.ph !== "lobby")), "зритель видит ход партии");
+      assert.strictEqual(v.readyState, 1, "зритель не закрыт как аноним");
+      v.close(); g.close(); h.close();
+    });
+
     await test("рестарт сервера: комната и токены живы, партия отменена", async () => {
       const r4 = await NetBot.createRoom(BASE);
       const a = await NetBot.connect({ base: BASE, code: r4.code, name: "Ася", hostToken: r4.hostToken, think: false });

@@ -37,6 +37,8 @@ const MAX_PLAYERS = 12;
 const MAX_SOCKETS_PER_ROOM = Number(process.env.MAX_SOCKETS_PER_ROOM || 24);
 const MAX_TOTAL_SOCKETS = Number(process.env.MAX_TOTAL_SOCKETS || 1500);
 const MAX_ANON_PER_ROOM = 12;
+const MAX_VIEWERS = 4;                    // экранов «только показ» на комнату
+const HOST_RESERVE_MS = 180000;           // сколько ждём ведущего с телефона, прежде чем им станет первый вошедший
 const MAX_SOCKETS_PER_IP = Number(process.env.MAX_SOCKETS_PER_IP || 60);
 const HOST_HANDOFF_MS = 10000;                                   // ведущий комнаты пропал на 10 с — права следующему
 // Числа правил и защит из env С ПРОВЕРКОЙ ДИАПАЗОНА. FLOE_CFG/RAPIDS_CFG читаются только при NODE_ENV=development,
@@ -314,7 +316,8 @@ function maintain(room, t) {
   }
   const host = room.hostId && g.byId.get(room.hostId);
   const hostMeta = host && room.meta.get(host.id);
-  if (!host || hostMeta.left || (!host.online && t - (hostMeta.offlineAt || t) > HOST_HANDOFF_MS)) {
+  const reserved = !room.hostId && room.hostReservedAt && t - room.hostReservedAt < HOST_RESERVE_MS;
+  if (!reserved && (!host || hostMeta.left || (!host.online && t - (hostMeta.offlineAt || t) > HOST_HANDOFF_MS))) {
     const next = g.players
       .filter((p) => p.online && !room.meta.get(p.id)?.left)
       .sort((a, b) => room.meta.get(a.id).joinedAt - room.meta.get(b.id).joinedAt)[0];
@@ -420,7 +423,7 @@ function upgrade(req, socket, head) {
   const room = roomFor(req, url);
   if (!room) { socket.write("HTTP/1.1 404 Not Found\r\n\r\n"); return socket.destroy(); }
   // ждущий подтверждения «Это ты?» — не «пустой» аноним: у него свои потолки в lib/seats (MAX_PENDING_PER_IP/ROOM)
-  const freeAnon = (c) => !c.playerId && !seats.isPending(c);
+  const freeAnon = (c) => !c.playerId && !c.viewer && !seats.isPending(c);
   const anon = [...room.sockets].filter(freeAnon).length;
   const ip = clientIp(req);
   // с одного адреса — офис целиком, но не сотни сокетов (у wave то же самое)
@@ -535,6 +538,22 @@ function handle(room, client, msg) {
       }
       return reply({ type: "pong", c: typeof msg.c === "number" ? msg.c : 0, t: now() });
     }
+    case "view": {
+      // «экран»: комп только показывает партию, играют с телефонов. Не игрок, к анонимам не причисляется, живёт без таймаута
+      const viewers = [...room.sockets].filter((c) => c.viewer && c !== client).length;
+      if (me || (!client.viewer && viewers >= MAX_VIEWERS)) return;
+      client.viewer = true;
+      // ведущий придёт с телефона по ссылке с токеном: пока он не вошёл, первый вошедший ведущим не становится
+      if (typeof msg.hostToken === "string" && msg.hostToken === room.hostToken && !room.hostId) room.hostReservedAt = now();
+      // снимок только этому сокету; осколки шлём целиком, не трогая счётчики общей рассылки
+      const shVer = room.shVer, shSentAt = room.shSentAt;
+      room.shSentAt = 0;
+      const snap = snapMsg(room, now());
+      room.shVer = shVer; room.shSentAt = shSentAt;
+      send(client.ws, JSON.parse(snap));
+      sendLateOver(room, client);
+      return;
+    }
     case "join": {
       room.touched = now();
       let id = typeof msg.token === "string" && room.tokens[msg.token];
@@ -619,7 +638,7 @@ function handle(room, client, msg) {
       }
       // ведущий комнаты — тот, кто её создал (у него host-токен), иначе первый вошедший
       if (typeof msg.hostToken === "string" && msg.hostToken === room.hostToken) room.hostId = id;
-      if (!room.hostId) room.hostId = id;
+      if (!room.hostId && !(room.hostReservedAt && now() - room.hostReservedAt < HOST_RESERVE_MS)) room.hostId = id;
       for (const c of room.sockets) if (c !== client && c.playerId === id) { c.playerId = null; send(c.ws, { type: "replaced" }); }
       client.playerId = id;
       client.token = msg.token;
@@ -694,7 +713,7 @@ setInterval(() => {
       try { c.ws.ping(); } catch {}
       // не вошёл за ANON_TTL_MS (ждущий подтверждения — CLAIM_WAIT_MS) — не держит место. Закрываем кодом 4000 anon_timeout:
       // клиент переподключается молча, без баннера и без потери введённого имени (floe-013)
-      if (!c.playerId && seats.anonExpired(c, t, { anonTtlMs: ANON_TTL_MS, claimWaitMs: CLAIM_WAIT_MS })) { try { c.ws.close(4000, "anon_timeout"); } catch {} }
+      if (!c.playerId && !c.viewer && seats.anonExpired(c, t, { anonTtlMs: ANON_TTL_MS, claimWaitMs: CLAIM_WAIT_MS })) { try { c.ws.close(4000, "anon_timeout"); } catch {} }
     }
     if (room.sockets.size || isActive(room)) room.touched = t;
     if (t - room.touched > ROOM_TTL) { console.log(`${LOG} комната ${room.code} закрыта по времени`); destroyRoom(room); }
