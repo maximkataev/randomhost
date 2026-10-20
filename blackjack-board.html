@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f0cf.svg" type="image/svg+xml">
+<title>Блэкджек — стол</title>
+<!-- доска ведущего с кодом комнаты: в поиске ей делать нечего -->
+<meta name="robots" content="noindex,nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800;900&family=Bodoni+Moda:opsz,wght@6..96,500;6..96,600&family=EB+Garamond:wght@600&display=swap" rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800;900&family=Bodoni+Moda:opsz,wght@6..96,500;6..96,600&family=EB+Garamond:wght@600&display=swap" rel="stylesheet"></noscript>
+<link rel="stylesheet" href="blackjack-table.css">
+<style>
+  /* Доска «Блэкджека»: сцена рисует BJTable (blackjack-table.js), поверх — лобби, лента, кнопки ведущего.
+     Накладки масштабируются вместе со сценой через --u (= 1px на экране 1920 px). Без :has, subgrid, gap в grid на
+     старых движках закрывает legacy-compat.js. */
+  :root { --u: calc(100vw / 1920); --surface: rgba(16, 6, 8, .92); --line: rgba(212, 175, 55, .35); --line-2: rgba(212, 175, 55, .7); }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bj-bg); color: var(--bj-ivory); font: 500 16px/1.3 var(--bj-cond); -webkit-user-select: none; user-select: none; }
+  /* стол занимает экран без нижней полосы: там бегунок ленты, ничего поверх боксов и HUD */
+  /* height:auto — иначе .bj{height:100%} перебивает bottom и рельс уезжает под бегунок */
+  #table, #table.bj { position: fixed; left: 0; top: 0; right: 0; bottom: calc(46 * var(--u)); height: auto; width: auto; }
+  /* центральную табличку лобби рисуем сами (QR, список, настройки) */
+  #table .bj-center.is-lobby { display: none; }
+  /* пояснения фаз длиннее реплик в 2–6 слов: пузырю Марго разрешаем перенос */
+  #table .bj-bubble { white-space: normal; width: max-content; max-width: 400px; font-size: 29px; }
+  .hidden { display: none !important; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .btn { border: 1px solid var(--bj-gold); background: var(--bj-gold); color: var(--bj-ink); font: 700 calc(22 * var(--u))/1 var(--bj-cond); letter-spacing: .14em; text-transform: uppercase; padding: calc(16 * var(--u)) calc(34 * var(--u)); transition: transform .15s, background .15s; }
+  .btn:hover { background: var(--bj-gold-hi); }
+  .btn:active { transform: scale(.97); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.ghost { background: var(--surface); color: var(--bj-gold-hi); border-color: var(--line); }
+  .btn.ghost:hover { border-color: var(--bj-gold); background: #1d0b0e; }
+  .btn.small { font-size: calc(15 * var(--u)); padding: calc(9 * var(--u)) calc(14 * var(--u)); letter-spacing: .1em; }
+  .btn[data-armed="1"] { background: var(--bj-red); border-color: var(--bj-red); color: #fff; }
+
+  /* ---------- лобби ---------- */
+  #lobby { position: fixed; left: 50%; top: 41%; transform: translateX(-50%); width: calc(1380 * var(--u)); height: calc(560 * var(--u)); z-index: 12; display: grid; grid-template-columns: calc(360 * var(--u)) minmax(0, 1fr) calc(420 * var(--u)); grid-template-rows: minmax(0, 1fr) auto; column-gap: calc(28 * var(--u)); row-gap: calc(14 * var(--u)); padding: calc(26 * var(--u)) calc(30 * var(--u)) calc(22 * var(--u)); box-sizing: border-box; background: var(--surface); border: 1px solid var(--bj-gold); box-shadow: inset 0 0 0 5px var(--surface), inset 0 0 0 6px rgba(212, 175, 55, .45), 0 30px 80px rgba(0, 0, 0, .7); }
+  #lobby .cap { font: 700 calc(17 * var(--u))/1 var(--bj-cond); letter-spacing: .26em; text-transform: uppercase; color: var(--bj-muted); margin-bottom: calc(10 * var(--u)); }
+  #lobby .join { display: flex; flex-direction: column; align-items: flex-start; }
+  #lobby #qr { width: calc(190 * var(--u)); height: calc(190 * var(--u)); padding: calc(8 * var(--u)); background: #fbf4e3; box-sizing: content-box; }
+  #lobby #qr img, #lobby #qr canvas { width: 100% !important; height: 100% !important; display: block; }
+  #lobby .code { margin-top: calc(14 * var(--u)); font: 700 calc(64 * var(--u))/1 var(--bj-cond); letter-spacing: .16em; color: var(--bj-gold-hi); white-space: nowrap; }
+  #lobby .url { margin-top: calc(6 * var(--u)); font: 600 calc(22 * var(--u))/1.2 var(--bj-cond); letter-spacing: .04em; color: var(--bj-ivory); word-break: break-all; }
+  #lobby .scan { margin-top: calc(10 * var(--u)); font: 500 calc(19 * var(--u))/1.35 var(--bj-cond); color: var(--bj-muted); }
+  #lobby .who { display: flex; flex-wrap: wrap; align-content: flex-start; gap: calc(10 * var(--u)); overflow: hidden; }
+  #lobby .who > span { display: inline-flex; align-items: center; gap: calc(10 * var(--u)); padding: calc(6 * var(--u)) calc(12 * var(--u)) calc(6 * var(--u)) calc(6 * var(--u)); height: calc(52 * var(--u)); box-sizing: border-box; border: 1px solid rgba(255, 255, 255, .1); border-left: 3px solid var(--c, #777); background: rgba(30, 10, 12, .9); font: 600 calc(21 * var(--u))/1 var(--bj-cond); max-width: 100%; }
+  #lobby .who > span.new { animation: seat-in .45s var(--bj-spring); }
+  #lobby .who > span.off { opacity: .45; }
+  #lobby .who > span.empty { border-style: dashed; color: var(--bj-muted); border-left-width: 1px; }
+  #lobby .who > span b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(200 * var(--u)); }
+  #lobby .who > span .x { width: calc(36 * var(--u)); height: calc(36 * var(--u)); border: 1px solid var(--line); background: transparent; color: var(--bj-muted); font-size: calc(16 * var(--u)); line-height: 1; padding: 0; }
+  #lobby .who > span .x[data-armed="1"] { background: var(--bj-red); color: #fff; border-color: var(--bj-red); }
+  #lobby .av { width: calc(38 * var(--u)); height: calc(38 * var(--u)); border-radius: 50%; display: grid; place-items: center; background: var(--c); color: #111; font: 800 calc(17 * var(--u))/1 var(--bj-cond); box-shadow: 0 0 0 2px rgba(0, 0, 0, .5); flex: none; }
+  #lobby .av.em { font-size: calc(20 * var(--u)); }
+  #lobby .seatn { display: flex; align-items: center; gap: calc(14 * var(--u)); }
+  #lobby .purge { border: 1px solid var(--line); background: transparent; color: var(--bj-gold-hi); font: 600 calc(17 * var(--u))/1 var(--bj-cond); letter-spacing: .1em; text-transform: uppercase; padding: calc(5 * var(--u)) calc(10 * var(--u)); }
+  #lobby .opts { display: grid; grid-template-columns: 1fr; row-gap: calc(7 * var(--u)); align-content: start; overflow: hidden; }
+  #lobby .o { display: grid; grid-template-columns: calc(130 * var(--u)) minmax(0, 1fr); align-items: center; column-gap: calc(8 * var(--u)); }
+  #lobby .o .k { font: 600 calc(18 * var(--u))/1.1 var(--bj-cond); letter-spacing: .08em; text-transform: uppercase; color: var(--bj-muted); }
+  #lobby .seg { display: flex; flex-wrap: wrap; gap: calc(4 * var(--u)); }
+  #lobby .seg button { border: 1px solid var(--line); background: #1d0b0e; color: var(--bj-ivory); font: 600 calc(18 * var(--u))/1 var(--bj-cond); letter-spacing: .04em; padding: calc(7 * var(--u)) calc(10 * var(--u)); min-width: calc(44 * var(--u)); }
+  #lobby .seg button.on { background: var(--bj-gold); color: var(--bj-ink); border-color: var(--bj-gold); }
+  #lobby .seg button:disabled { opacity: .6; cursor: default; }
+  #lobby .foot { grid-column: 1 / -1; display: flex; align-items: center; gap: calc(18 * var(--u)); border-top: 1px solid rgba(212, 175, 55, .22); padding-top: calc(14 * var(--u)); }
+  #lobby .foot .fine { font: 500 calc(18 * var(--u))/1.3 var(--bj-cond); color: var(--bj-muted); margin-left: auto; text-align: right; }
+  @keyframes seat-in { from { transform: translateY(14px) scale(.9); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* ---------- лента: бегунок под столом, по одному сообщению ---------- */
+  #feed { position: fixed; left: 0; right: calc(620 * var(--u)); bottom: 0; height: calc(46 * var(--u)); z-index: 8; display: flex; align-items: center; justify-content: center; gap: calc(10 * var(--u)); padding: 0 calc(20 * var(--u)); overflow: hidden; }
+  #feed::before { content: ""; position: fixed; left: 0; right: 0; bottom: 0; height: calc(46 * var(--u)); background: var(--bj-ink); border-top: 1px solid rgba(212, 175, 55, .35); z-index: -1; }
+  #feed .msg { display: flex; align-items: center; gap: calc(10 * var(--u)); max-width: calc(1500 * var(--u)); padding: calc(5 * var(--u)) calc(14 * var(--u)); border-left: 3px solid var(--c, var(--bj-gold)); font: 500 calc(23 * var(--u))/1.2 var(--bj-cond); color: var(--bj-ivory); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: msg-in .35s ease-out; }
+  #feed .msg.out { animation: msg-out .3s ease-in forwards; }
+  #feed .msg.sys { border-left-color: var(--bj-gold); color: var(--bj-gold-hi); font-weight: 600; }
+  #feed .msg.sys.big { font-size: calc(23 * var(--u)); }
+  #feed .msg b { color: var(--c, var(--bj-gold-hi)); margin-right: 4px; }
+  #feed .msg .x { width: calc(28 * var(--u)); height: calc(28 * var(--u)); border: 1px solid var(--line); background: transparent; color: var(--bj-muted); font-size: calc(13 * var(--u)); padding: 0; line-height: 1; flex: none; }
+  @keyframes msg-in { from { transform: translateY(100%); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes msg-out { to { transform: translateY(-100%); opacity: 0; } }
+  .fly { position: fixed; z-index: 30; font-size: calc(44 * var(--u)); pointer-events: none; animation: fly 1.4s ease-out forwards; transform: translate(-50%, -50%); }
+  .fly small { display: block; font: 600 calc(17 * var(--u))/1 var(--bj-cond); letter-spacing: .08em; color: var(--bj-ivory); text-align: center; text-shadow: 0 1px 4px #000; }
+  @keyframes fly { 0% { transform: translate(-50%, -50%) scale(.6); opacity: 0; } 15% { transform: translate(-50%, -70%) scale(1.1); opacity: 1; } 100% { transform: translate(-50%, -260%) scale(1); opacity: 0; } }
+
+  /* ---------- кнопки ведущего, зритель, связь ---------- */
+  #ctrl { position: fixed; right: calc(14 * var(--u)); bottom: calc(5 * var(--u)); height: calc(36 * var(--u)); z-index: 14; display: flex; align-items: center; gap: calc(8 * var(--u)); flex-wrap: wrap; justify-content: flex-end; max-width: calc(600 * var(--u)); }
+  #ctrl .note { font: 600 calc(18 * var(--u))/1.2 var(--bj-cond); color: var(--bj-gold-hi); }
+  #ctrl input { width: calc(300 * var(--u)); background: #1d0b0e; border: 1px solid var(--line); color: var(--bj-ivory); font: 600 calc(18 * var(--u))/1 var(--bj-cond); padding: calc(10 * var(--u)); }
+  .sound-toggle-btn { width: calc(36 * var(--u)); height: calc(36 * var(--u)); border: 1px solid var(--line); background: var(--surface); color: var(--bj-gold); padding: 0; display: grid; place-items: center; }
+  .sound-toggle-btn svg { width: 55%; height: 55%; }
+  #viewer { position: fixed; left: 50%; top: calc(12 * var(--u)); transform: translateX(-50%); z-index: 14; background: var(--surface); border: 1px solid var(--line); padding: calc(6 * var(--u)) calc(14 * var(--u)); font: 600 calc(17 * var(--u))/1 var(--bj-cond); letter-spacing: .12em; text-transform: uppercase; color: var(--bj-muted); }
+  #pausenext { position: fixed; left: 50%; top: calc(12 * var(--u)); transform: translateX(-50%); z-index: 14; background: var(--surface); border: 1px solid var(--line); padding: calc(6 * var(--u)) calc(14 * var(--u)); font: 600 calc(18 * var(--u))/1 var(--bj-cond); letter-spacing: .1em; color: var(--bj-gold-hi); }
+  #conn { position: fixed; left: 50%; top: 0; transform: translate(-50%, -110%); z-index: 40; background: var(--bj-red); color: #fff; font: 700 calc(19 * var(--u))/1 var(--bj-cond); letter-spacing: .1em; text-transform: uppercase; padding: calc(8 * var(--u)) calc(18 * var(--u)); transition: transform .3s; }
+  #conn.on { transform: translate(-50%, 0); }
+  #center { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 20; }
+  #center .banner { background: var(--surface); border: 1px solid var(--bj-gold); padding: calc(26 * var(--u)) calc(46 * var(--u)); font: 700 calc(40 * var(--u))/1.1 var(--bj-serif); color: var(--bj-ivory); text-align: center; }
+  #menu { position: fixed; z-index: 30; background: var(--surface); border: 1px solid var(--line-2); padding: 6px; display: none; min-width: 190px; box-shadow: 0 20px 40px rgba(0, 0, 0, .7); }
+  #menu.on { display: grid; }
+  #menu button { background: none; border: 0; text-align: left; padding: 10px 12px; font: 600 18px/1 var(--bj-cond); letter-spacing: .04em; }
+  #menu button:hover { background: #1d0b0e; }
+  #menu .fine { padding: 6px 12px 4px; font: 600 13px/1 var(--bj-cond); letter-spacing: .16em; text-transform: uppercase; color: var(--bj-muted); }
+
+  /* ---------- финал, демо ---------- */
+  #final { position: fixed; left: calc(960 * var(--u) + 340 * var(--u)); top: calc(560 * var(--u)); transform: none; z-index: 15; display: flex; flex-direction: column; align-items: center; gap: calc(10 * var(--u)); }
+  #final .sub { display: none; font: 600 calc(20 * var(--u))/1 var(--bj-cond); letter-spacing: .18em; text-transform: uppercase; color: var(--bj-muted); }
+  #demo { position: fixed; left: calc(44 * var(--u)); top: calc(236 * var(--u)); z-index: 16; display: flex; align-items: center; gap: calc(14 * var(--u)); }
+  #demo .t { font: 700 calc(21 * var(--u))/1 var(--bj-cond); letter-spacing: .2em; text-transform: uppercase; color: var(--bj-gold-hi); }
+
+  /* узкий экран (ноутбук в окне, планшет): лобби в одну колонку */
+  @media (max-aspect-ratio: 4/3) {
+    :root { --u: calc(100vw / 1400); }
+    #lobby { top: 30%; height: 66vh; grid-template-columns: 1fr 1fr; grid-template-rows: auto minmax(0, 1fr) auto; }
+    #lobby .join { grid-column: 1; }
+    #lobby .seats { grid-column: 2; grid-row: 1; }
+    #lobby .opts { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; column-gap: calc(24 * var(--u)); }
+  }
+</style>
+<script src="legacy-compat.js"></script>
+<script src="mp-common.js"></script>
+</head>
+<body>
+<div id="table"></div>
+<div id="lobby" class="hidden"></div>
+<div id="feed"></div>
+<div id="ctrl"><button class="sound-toggle-btn" type="button"></button></div>
+<div id="viewer" class="hidden" data-i18n="viewer">Только просмотр — управляет другая доска</div>
+<div id="pausenext" class="hidden"></div>
+<div id="final" class="hidden"></div>
+<div id="demo" class="hidden"></div>
+<div id="center"></div>
+<div id="menu"></div>
+<div id="conn"></div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Блэкджек — стол`,
+    viewer: `Только просмотр — управляет другая доска`,
+    creating: `Создаём комнату…`, noroom: `Такой комнаты нет`, expired: `Комната закрыта`,
+    lobby_title: `Садитесь за стол`, lobby_scan: `Наведите камеру телефона на QR или откройте ссылку и введите имя.`,
+    lobby_who: `За столом`, lobby_seats: `{n} из 12`, lobby_free: `свободно`, lobby_fine: `Фишки виртуальные, на деньги не играем`,
+    lobby_hi: `{name} за столом`, need_two: `Нужно хотя бы два игрока`, offline_tip: `Нет связи с телефоном`,
+    purge_off: `Убрать офлайн ({n})`, purge_sure: `Точно убрать {n}?`,
+    opt_format: `Формат`, opt_hands: `Раздач`, opt_stack: `Стартовый стек`, opt_pace: `Темп уровней`, opt_time: `Таймер ставок`, opt_cards: `Карты-пакости`, opt_chat: `Чат`, opt_calm: `Без спецэффектов`,
+    on: `вкл`, off: `выкл`, sec: `{n} с`,
+    btn_start: `Начать`, btn_howto: `Как играть`, btn_bots: `+3 бота`, btn_skip: `Пропустить`, btn_again: `Ещё партию`,
+    btn_pause: `Пауза`, btn_resume: `Продолжить`, btn_end: `Закончить сейчас`, btn_end_sure: `Точно закончить?`,
+    host_link: `Ссылка ведущего`, link_copied: `Ссылка скопирована`, link_shared: `Ссылка отправлена`, link_none: `Не удалось скопировать`, link_prompt_hint: `Скопируйте ссылку ведущего`,
+    btn_im_host: `Я ведущий`, btn_take: `Забрать управление`, btn_ok: `Ок`, host_paste_ph: `Вставьте ссылку ведущего`, host_bad: `Это не ссылка ведущего`, host_lost_msg: `Управляет другая доска`,
+    kick: `Убрать`, mute: `Заглушить`, unmute: `Вернуть голос`, hide: `Скрыть`,
+    pause_next: `Пауза — на следующих ставках`, fin_host: `Ведущий закончил партию`, fin_sub: `Партия окончена`, spectators: `зрителей: {n}`,
+    demo_title: `Как играть — показательная раздача`, demo_names: `Маша|Пётр`,
+    st_dealer_busts: `Марго перебрала`, st_side_jackpot: `Джекпот побочной`, st_hands: `{n} раздач`, st_hand1: `1 раздачу`,
+    // Марго комментирует фазы (§8 п.3)
+    m_start: `Цель — ближе к 21, чем у меня. Картинки — 10, туз — 1 или 11.`,
+    m_bets_long: `Ставки с телефонов. Минимум {n}: меньше нельзя, больше — пожалуйста.`, m_bets_short: `Ставки. Минимум {n}`,
+    m_decide_long: `Ещё — карта, хватит — стоп. Больше 21 — вылет.`, m_decide_short: `Решайте`,
+    m_dealer: `Теперь я. Беру до 17, на 17 стою.`,
+    m_payout: `Выше меня — 1:1. Ровно — ставка назад. Блэкджек — 3:2.`,
+    m_level: `Минимум теперь {n}. Отсидеться не выйдет`, m_cut: `После этой раздачи самый бедный уходит`,
+    m_cut_warn: `После этой раздачи выбывает последний`,
+    // демо «Как играть»
+    d_bets: `Ставки — с телефонов. Минимум 10, больше можно.`,
+    d_deal: `Две карты каждому, у меня одна открытая.`,
+    d_decide: `Ещё — карта, хватит — стоп. Больше 21 — проигрыш.`,
+    d_hit: `У {a} 16 — берёт. У {b} 20 — хватит.`,
+    d_bust: `{a}: перебор. Ставка уходит.`,
+    d_dealer: `Теперь я. Беру до 17.`,
+    d_pay: `Выше меня — 1:1. Ровно — ничья. Блэкджек — 3:2.`,
+    d_end: `Вот и вся наука. Садитесь.`,
+    d_goal: `Цель — ближе к 21, чем у меня. Картинки — 10, туз — 1 или 11.`,
+    d_level: `Минимум растёт. Отсидеться не выйдет.`,
+  },
+  en: {
+    _title: `Blackjack — table`,
+    viewer: `View only — another board is in control`,
+    creating: `Creating a room…`, noroom: `No such room`, expired: `The room is closed`,
+    lobby_title: `Take a seat`, lobby_scan: `Point your phone camera at the QR or open the link and type your name.`,
+    lobby_who: `At the table`, lobby_seats: `{n} of 12`, lobby_free: `free`, lobby_fine: `Chips are virtual, no real money`,
+    lobby_hi: `{name} is at the table`, need_two: `At least two players needed`, offline_tip: `Phone is offline`,
+    purge_off: `Remove offline ({n})`, purge_sure: `Really remove {n}?`,
+    opt_format: `Format`, opt_hands: `Hands`, opt_stack: `Starting stack`, opt_pace: `Level pace`, opt_time: `Betting timer`, opt_cards: `Trick cards`, opt_chat: `Chat`, opt_calm: `No effects`,
+    on: `on`, off: `off`, sec: `{n} s`,
+    btn_start: `Start`, btn_howto: `How to play`, btn_bots: `+3 bots`, btn_skip: `Skip`, btn_again: `Play again`,
+    btn_pause: `Pause`, btn_resume: `Resume`, btn_end: `End now`, btn_end_sure: `Really end?`,
+    host_link: `Host link`, link_copied: `Link copied`, link_shared: `Link shared`, link_none: `Could not copy`, link_prompt_hint: `Copy the host link`,
+    btn_im_host: `I'm the host`, btn_take: `Take control`, btn_ok: `OK`, host_paste_ph: `Paste the host link`, host_bad: `That is not a host link`, host_lost_msg: `Another board is in control`,
+    kick: `Remove`, mute: `Mute`, unmute: `Unmute`, hide: `Hide`,
+    pause_next: `Pause — at the next bets`, fin_host: `The host ended the game`, fin_sub: `Game over`, spectators: `spectators: {n}`,
+    demo_title: `How to play — a demo hand`, demo_names: `Mia|Peter`,
+    st_dealer_busts: `Margot busted`, st_side_jackpot: `Side-bet jackpot`, st_hands: `{n} hands`, st_hand1: `1 hand`,
+    m_start: `Get closer to 21 than me. Faces are 10, an ace is 1 or 11.`,
+    m_bets_long: `Bets from your phones. Minimum {n}: no less, more is welcome.`, m_bets_short: `Bets. Minimum {n}`,
+    m_decide_long: `Hit — a card, stand — stop. Over 21 — out.`, m_decide_short: `Decide`,
+    m_dealer: `My turn. I draw to 17.`,
+    m_payout: `Beat me — 1:1. Tie — bet back. Blackjack — 3:2.`,
+    m_level: `Minimum is now {n}. No sitting out`, m_cut: `After this hand the poorest leaves`,
+    m_cut_warn: `After this hand the last one is out`,
+    d_bets: `Bets from your phones. Minimum 10, more is fine.`,
+    d_deal: `Two cards each, one face up for me.`,
+    d_decide: `Hit — a card, stand — stop. Over 21 — you lose.`,
+    d_hit: `{a} has 16 — hits. {b} has 20 — stands.`,
+    d_bust: `{a}: bust. The bet is gone.`,
+    d_dealer: `My turn. I draw to 17.`,
+    d_pay: `Beat me — 1:1. Tie — push. Blackjack — 3:2.`,
+    d_end: `That's the whole lesson. Take a seat.`,
+    d_goal: `Get closer to 21 than me. Faces are 10, an ace is 1 or 11.`,
+    d_level: `The minimum keeps rising. No sitting out.`,
+  },
+  el: {
+    _title: `Μπλακτζάκ — τραπέζι`,
+    viewer: `Μόνο προβολή — ελέγχει άλλη οθόνη`,
+    creating: `Δημιουργία δωματίου…`, noroom: `Δεν υπάρχει τέτοιο δωμάτιο`, expired: `Το δωμάτιο έκλεισε`,
+    lobby_title: `Καθίστε στο τραπέζι`, lobby_scan: `Στρέψτε την κάμερα του κινητού στο QR ή ανοίξτε τον σύνδεσμο και γράψτε το όνομά σας.`,
+    lobby_who: `Στο τραπέζι`, lobby_seats: `{n} από 12`, lobby_free: `ελεύθερο`, lobby_fine: `Οι μάρκες είναι εικονικές, χωρίς χρήματα`,
+    lobby_hi: `{name} στο τραπέζι`, need_two: `Χρειάζονται τουλάχιστον δύο παίκτες`, offline_tip: `Το κινητό είναι εκτός σύνδεσης`,
+    purge_off: `Αφαίρεση offline ({n})`, purge_sure: `Σίγουρα αφαίρεση {n};`,
+    opt_format: `Μορφή`, opt_hands: `Μοιρασιές`, opt_stack: `Αρχική στοίβα`, opt_pace: `Ρυθμός επιπέδων`, opt_time: `Χρόνος στοιχημάτων`, opt_cards: `Κάρτες-φάρσες`, opt_chat: `Συνομιλία`, opt_calm: `Χωρίς εφέ`,
+    on: `ναι`, off: `όχι`, sec: `{n} δ`,
+    btn_start: `Έναρξη`, btn_howto: `Πώς παίζεται`, btn_bots: `+3 bots`, btn_skip: `Παράλειψη`, btn_again: `Ξανά`,
+    btn_pause: `Παύση`, btn_resume: `Συνέχεια`, btn_end: `Τέλος τώρα`, btn_end_sure: `Σίγουρα τέλος;`,
+    host_link: `Σύνδεσμος οικοδεσπότη`, link_copied: `Ο σύνδεσμος αντιγράφηκε`, link_shared: `Ο σύνδεσμος στάλθηκε`, link_none: `Αποτυχία αντιγραφής`, link_prompt_hint: `Αντιγράψτε τον σύνδεσμο οικοδεσπότη`,
+    btn_im_host: `Είμαι ο οικοδεσπότης`, btn_take: `Ανάληψη ελέγχου`, btn_ok: `Οκ`, host_paste_ph: `Επικολλήστε τον σύνδεσμο οικοδεσπότη`, host_bad: `Αυτό δεν είναι σύνδεσμος οικοδεσπότη`, host_lost_msg: `Ελέγχει άλλη οθόνη`,
+    kick: `Αφαίρεση`, mute: `Σίγαση`, unmute: `Άρση σίγασης`, hide: `Απόκρυψη`,
+    pause_next: `Παύση — στα επόμενα στοιχήματα`, fin_host: `Ο οικοδεσπότης τερμάτισε το παιχνίδι`, fin_sub: `Τέλος παιχνιδιού`, spectators: `θεατές: {n}`,
+    demo_title: `Πώς παίζεται — μοιρασιά επίδειξης`, demo_names: `Μαρία|Πέτρος`,
+    st_dealer_busts: `Η Μαργκό κάηκε`, st_side_jackpot: `Τζάκποτ πλαϊνού`, st_hands: `{n} μοιρασιές`, st_hand1: `1 μοιρασιά`,
+    m_start: `Πιο κοντά στο 21 από εμένα. Φιγούρες 10, άσος 1 ή 11.`,
+    m_bets_long: `Στοιχήματα από τα κινητά. Ελάχιστο {n}: λιγότερο όχι, περισσότερο ναι.`, m_bets_short: `Στοιχήματα. Ελάχιστο {n}`,
+    m_decide_long: `Κι άλλο — φύλλο, Στοπ — τέλος. Πάνω από 21 — έξω.`, m_decide_short: `Αποφασίστε`,
+    m_dealer: `Σειρά μου. Τραβάω ως το 17.`,
+    m_payout: `Με νικάς — 1:1. Ισοπαλία — πίσω το ποντάρισμα. Μπλακτζάκ — 3:2.`,
+    m_level: `Το ελάχιστο τώρα είναι {n}. Δεν κρύβεται κανείς`, m_cut: `Μετά από αυτή τη μοιρασιά φεύγει ο φτωχότερος`,
+    m_cut_warn: `Μετά από αυτή τη μοιρασιά αποκλείεται ο τελευταίος`,
+    d_bets: `Στοιχήματα από τα κινητά. Ελάχιστο 10, περισσότερο ναι.`,
+    d_deal: `Δύο φύλλα στον καθένα, ένα ανοιχτό σε μένα.`,
+    d_decide: `Κι άλλο — φύλλο, Στοπ — τέλος. Πάνω από 21 — χάνεις.`,
+    d_hit: `{a} έχει 16 — τραβάει. {b} έχει 20 — στοπ.`,
+    d_bust: `{a}: κάψιμο. Το ποντάρισμα χάθηκε.`,
+    d_dealer: `Σειρά μου. Τραβάω ως το 17.`,
+    d_pay: `Με νικάς — 1:1. Ίσα — ισοπαλία. Μπλακτζάκ — 3:2.`,
+    d_end: `Αυτό ήταν όλο το μάθημα. Καθίστε.`,
+    d_goal: `Πιο κοντά στο 21 από εμένα. Φιγούρες 10, άσος 1 ή 11.`,
+    d_level: `Το ελάχιστο ανεβαίνει. Δεν κρύβεται κανείς.`,
+  },
+};
+</script>
+<script src="blackjack-cards.js"></script>
+<script src="blackjack-margot.js"></script>
+<script src="blackjack-sfx.js"></script>
+<script src="blackjack-table.js"></script>
+<script src="blackjack-shared.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+"use strict";
+const T = (k) => bjT(k);
+const tpl = (k, v) => bjTpl(k, v);
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const DEV = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || params.get("dev") === "1";
+
+let conn = null, state = null, isHost = false, dead = false;
+let table = null;
+const hostKey = () => "blackjack-host-" + CODE;
+const lang = () => (window.I18N && I18N.lang) || "ru";
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const player = (id) => state && state.players.find((p) => p.id === id);
+const nameOf = (id) => (player(id) || {}).name || "?";
+
+// ---------- стол ----------
+function makeTable() {
+  // autoSay остаётся у рендерера: реплики по событиям (блэкджек, перебор, ва-банк…) делает он;
+  // доска добавляет только пояснения фаз для новичков (§8 п.3) — say() после render() перекрывает автореплику той же фазы
+  table = BJTable.create($("table"), { fx: !reduceMotion(), lang: lang(), layout: "board", autoSay: true });
+  window.TABLE = table;
+}
+function applyFx() {
+  const calm = !!(state && state.settings && state.settings.calm);
+  const on = !calm && !reduceMotion();
+  if (table && table.state && table.state.fxOn !== on) { table.state.fxOn = on; table.setFx(on); }
+}
+
+// Снимок сервера → снимок рендерера: без зрителей и ушедших, winner/stats в формате стола, события в его именах
+function adapt(s) {
+  const out = {};
+  for (const k in s) out[k] = s[k];
+  out.players = s.players.filter((p) => !p.left && !p.spectator).map((p) => {
+    const q = {};
+    for (const k in p) q[k] = p[k];
+    const d = s.dealer || {};
+    q.allin = !!(p.allIn || (d.allin && d.allin.indexOf(p.id) >= 0));
+    q.rescued = !!(d.rescue && d.rescue.indexOf(p.id) >= 0 && (s.phase === "payout" || s.phase === "finished"));
+    return q;
+  });
+  out.code = null; // табличку лобби рисуем сами
+  out.winner = s.winnerId || null;
+  out.stats = statRows(s);
+  out.events = (s.events || []).map(mapEvent).filter(Boolean);
+  return out;
+}
+function mapEvent(e) {
+  switch (e.type) {
+    case "penalty": return { t: e.t, type: "penalty", id: e.playerId, amount: e.amount };
+    case "allin": return { t: e.t, type: "allin" };
+    case "cut": return { t: e.t, type: "cut", text: tpl(e.coin ? "ev_cut_coin" : "ev_cut", { name: nameOf(e.playerId) }) };
+    default: return null;
+  }
+}
+function statRows(s) {
+  if (!s.stats) return null;
+  const st = s.stats, rows = [];
+  if (st.biggestWin) rows.push({ key: "biggestWin", name: nameOf(st.biggestWin.playerId), value: "+" + bjNum(st.biggestWin.amount) });
+  if (st.biggestBust) rows.push({ key: "biggestBust", name: nameOf(st.biggestBust.playerId), value: "−" + bjNum(st.biggestBust.amount) });
+  const bjs = Object.keys(st.blackjacks || {}).map((id) => [id, st.blackjacks[id]]).sort((a, b) => b[1] - a[1]);
+  const bjTotal = bjs.reduce((a, x) => a + x[1], 0);
+  if (bjTotal) rows.push({ key: "bjs", name: bjs[0] ? nameOf(bjs[0][0]) : "", value: bjTotal });
+  if (st.cruelCard) rows.push({ key: "meanCard", name: nameOf(st.cruelCard.by), value: T("card_" + st.cruelCard.card) + " → " + nameOf(st.cruelCard.target) });
+  const breath = Object.keys(st.lastBreath || {}).map((id) => [id, st.lastBreath[id]]).sort((a, b) => b[1] - a[1])[0];
+  if (breath) rows.push({ key: "last", name: nameOf(breath[0]), value: breath[1] === 1 ? T("st_hand1") : tpl("st_hands", { n: breath[1] }) });
+  rows.push({ key: "twentyOne", value: st.exact21 || 0 });
+  if (st.dealerBusts) rows.push({ label: T("st_dealer_busts"), value: st.dealerBusts });
+  if (st.sideJackpot) rows.push({ label: T("st_side_jackpot"), name: nameOf(st.sideJackpot.playerId), value: T(st.sideJackpot.box + "_" + st.sideJackpot.kind) });
+  return rows;
+}
+
+// ---------- создание комнаты, если доску открыли без кода ----------
+async function ensureRoom() {
+  if (CODE) return true;
+  $("center").innerHTML = `<div class="banner">${escapeHtml(T("creating"))}</div>`;
+  try {
+    const res = await fetch("/blackjack/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: lang() } }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "error");
+    CODE = data.code;
+    try { localStorage.setItem(hostKey(), data.hostToken); } catch (e) {}
+    history.replaceState(null, "", `?r=${CODE}`);
+    $("center").innerHTML = "";
+    return true;
+  } catch (err) {
+    $("center").innerHTML = `<div class="banner">${escapeHtml(String(err.message || err))}</div>`;
+    return false;
+  }
+}
+
+// ---------- лента: чат и события ----------
+// Бегунок: сообщения выходят по одному (системные 2,6 с, чат 4 с, итоги рук 2,2 с), очередь не длиннее 14
+const feedQ = [];
+let feedCur = null, feedTimer = 0;
+const shownChat = new Set();
+function feedPush(node, ms) {
+  node._ms = ms || (node.classList.contains("sys") ? 2600 : 4000);
+  feedQ.push(node);
+  while (feedQ.length > 14) feedQ.shift();
+  feedPump();
+}
+function feedPump() {
+  // итоги рук живут только в фазе выплат и 3 с после: просроченные и чужой раздачи в очередь не лезут
+  while (feedQ.length && feedQ[0]._res && (feedQ[0]._hand !== (state && state.hand) || Date.now() > feedQ[0]._until)) feedQ.shift();
+  if (feedCur || !feedQ.length) return;
+  const f = $("feed");
+  feedCur = feedQ.shift();
+  f.append(feedCur);
+  feedTimer = setTimeout(() => {
+    const n = feedCur; feedCur = null;
+    if (n) { n.classList.add("out"); setTimeout(() => n.remove(), 300); }
+    feedPump();
+  }, feedCur._ms);
+}
+function feedSys(text, big, ms) {
+  const fn = typeof text === "function" ? text : null;
+  const n = el("div", "msg sys" + (big ? " big" : ""), fn ? fn() : text);
+  if (fn) n._fn = fn;
+  feedPush(n, ms);
+}
+function feedClear() { feedQ.length = 0; clearTimeout(feedTimer); if (feedCur) { feedCur.remove(); feedCur = null; } }
+function feedRetranslate() { for (const n of $("feed").querySelectorAll(".msg.sys")) if (n._fn) n.textContent = n._fn(); }
+function feedChat(m) {
+  if (shownChat.has(m.id)) return;
+  shownChat.add(m.id);
+  const p = player(m.pid);
+  const d = el("div", "msg");
+  d.dataset.id = m.id;
+  d.style.cssText = bjChipVars(p ? p.color : "#d4af37");
+  const body = el("div");
+  body.append(el("b", null, (p ? p.name : "?") + ":"), document.createTextNode(m.text));
+  d.append(body);
+  if (isHost) {
+    const x = el("button", "x", "✕");
+    x.title = T("hide");
+    x.onclick = () => conn.send({ type: "hide", id: m.id });
+    d.append(x);
+  }
+  feedPush(d);
+}
+function syncChat() {
+  if (!state) return;
+  const visible = new Set(state.chat.map((m) => m.id));
+  // скрытое ведущим — снимаем с экрана и из очереди
+  for (const node of Array.from($("feed").querySelectorAll(".msg[data-id]"))) if (!visible.has(Number(node.dataset.id))) { node.remove(); if (feedCur === node) { clearTimeout(feedTimer); feedCur = null; feedPump(); } }
+  for (let i = feedQ.length - 1; i >= 0; i--) if (feedQ[i].dataset.id && !visible.has(Number(feedQ[i].dataset.id))) feedQ.splice(i, 1);
+  for (const m of state.chat) feedChat(m);
+}
+// реакция над местом игрока на рельсе (элементы мест — у рендерера)
+function floatAt(pid, emoji, label) {
+  const seat = table && table.state && table.state.seats[pid];
+  let x = innerWidth / 2, y = innerHeight - 120;
+  if (seat) { const r = seat.el.getBoundingClientRect(); x = r.left + r.width / 2; y = r.top; }
+  const f = el("div", "fly", emoji);
+  if (label) f.append(el("small", null, label));
+  f.style.left = x + "px"; f.style.top = y + "px";
+  document.body.append(f);
+  setTimeout(() => f.remove(), 1500);
+}
+
+// события движка — в ленту (по одному разу)
+const seenEv = new Set();
+function feedEvents() {
+  if (!state) return;
+  for (const e of state.events || []) {
+    const key = e.t + ":" + e.type + ":" + (e.playerId || "") + ":" + (e.hand || "");
+    if (seenEv.has(key)) continue;
+    seenEv.add(key);
+    if (seenEv.size > 400) seenEv.delete(seenEv.values().next().value);
+    if (!feedReady) continue; // первый снимок: старые события не пересказываем
+    switch (e.type) {
+      case "level": { if (state.hand <= 1) break; const ov = e.overtime, mb = e.minBet; feedSys(() => (ov ? tpl("ev_overtime", { p: ov }) : tpl("ev_level", { n: bjNum(mb) })), true); break; }
+      case "card_reveal": { const self = BJ_TRICKS[e.card] && BJ_TRICKS[e.card].self; const by = nameOf(e.playerId), tg = nameOf(e.target), c = e.card, o = e.outcome;
+        feedSys(() => tpl(self ? "ev_card_self" : "ev_card", { by, target: tg, card: bjTrickName(c) }) + (o === "ok" ? "" : ` — ${T("out_" + o)}`)); break; }
+      case "penalty": { const nm = nameOf(e.playerId), n = e.amount; feedSys(() => tpl("ev_penalty", { name: nm, n: bjNum(n) })); break; }
+      case "out": { const nm = nameOf(e.playerId); feedSys(() => tpl("ev_out", { name: nm }), true); break; }
+      case "allin": { const nm = nameOf(e.playerId); feedSys(() => tpl("ev_allin", { name: nm }), true); break; }
+      case "cut": { const nm = nameOf(e.playerId), coin = !!e.coin; feedSys(() => tpl(coin ? "ev_cut_coin" : "ev_cut", { name: nm }), true); break; }
+      case "swap": { const a = nameOf(e.playerId), b = nameOf(e.target); feedSys(() => tpl("ev_swap", { name: a, target: b })); break; }
+      case "tax": { const a = nameOf(e.playerId), b = nameOf(e.target), n = e.amount; feedSys(() => tpl("ev_tax", { by: a, target: b, n: bjNum(n) })); break; }
+      case "frozen": { const nm = nameOf(e.playerId); feedSys(() => tpl("ev_frozen", { name: nm })); break; }
+      case "cut_warning": margotSay(T("m_cut_warn"), 5000); break;
+      case "reveal": {
+        const v = bjHandText(e.value, false);
+        feedSys(() => (e.bj ? T("ev_dealer_bj") : e.bust ? tpl("ev_dealer_bust", { v }) : tpl("ev_dealer_stand", { v })), true);
+        break;
+      }
+      case "payout": resultsToFeed(); break;
+    }
+  }
+}
+let feedReady = false;
+// итоги рук словами (§8): по строке на игрока
+let resultsHand = -1;
+function resultsToFeed() {
+  if (!state || state.hand === resultsHand) return;
+  resultsHand = state.hand;
+  for (const p of state.players) {
+    if (p.left || p.spectator || p.out && p.outHand !== state.hand) continue;
+    if (!p.hands || !p.hands.length) { if (p.skip && p.penalty) continue; continue; }
+    const lines = p.hands.map((h) => bjResultText(h, p, state.dealer)).filter(Boolean);
+    if (!lines.length) continue;
+    const nm = p.name;
+    const d = el("div", "msg sys");
+    d.style.cssText = bjChipVars(p.color);
+    d.style.borderLeftColor = p.color;
+    d.textContent = nm + " — " + lines.join(" · ");
+    d._res = true; d._hand = state.hand; d._until = Date.now() + 7000;
+    feedPush(d, 2200);
+  }
+}
+
+// ---------- Марго комментирует фазы (§8 п.3): первые 3 раздачи развёрнуто, до 10 коротко, дальше только события ----------
+let sayTimer = 0;
+function margotSay(text, ms) { clearTimeout(sayTimer); if (table) table.say(text, ms || 4200); }
+function margotLater(text, ms, delay) { clearTimeout(sayTimer); sayTimer = setTimeout(() => margotSay(text, ms), delay); }
+let phaseKey = "";
+function margotPhase(prevState) {
+  const s = state;
+  const key = s.game + ":" + s.hand + ":" + s.phase + ":" + s.wave;
+  if (key === phaseKey) return;
+  phaseKey = key;
+  const h = s.hand;
+  const long = h <= 3, short = h > 3 && h <= 10;
+  if (prevState && s.level > prevState.level && s.phase !== "lobby") { margotSay(tpl("m_level", { n: bjNum(s.minBet) }), 4200); return; }
+  if (s.format === "tournament" && s.cutIn === 0 && s.phase === "betting") { margotLater(T("m_cut"), 4200, 600); return; }
+  switch (s.phase) {
+    case "betting":
+      if (h === 1 && long) { margotSay(T("m_start"), 6500); margotLater(tpl("m_bets_long", { n: bjNum(s.minBet) }), 4800, 6800); }
+      else if (long) margotSay(tpl("m_bets_long", { n: bjNum(s.minBet) }), 4800);
+      else if (short) margotSay(tpl("m_bets_short", { n: bjNum(s.minBet) }), 3000);
+      break;
+    case "deciding":
+      if (s.wave !== 1) break;
+      if (long) margotSay(T("m_decide_long"), 4800);
+      else if (short) margotSay(T("m_decide_short"), 2500);
+      break;
+    case "dealer":
+      if (long && s.dealer && s.dealer.cards && s.dealer.cards.length) margotSay(T("m_dealer"), 3500);
+      break;
+    case "payout":
+      if (long) margotLater(T("m_payout"), 5200, 1400);
+      break;
+  }
+}
+
+// ---------- лобби ----------
+let qrDrawn = false;
+const lobbySeen = new Set();
+const kickTap = window.MP && MP.twoTap && MP.twoTap.create ? MP.twoTap.create({ armedMs: 3000, onChange: () => { if (state && state.phase === "lobby") drawLobby(); } }) : null;
+function avatarHtml(p) {
+  const em = /^[^\w\s]{1,4}$/u.test(p.avatar || "") && (p.avatar || "").length <= 4;
+  return `<span class="av${em ? " em" : ""}" style="${bjChipVars(p.color)}">${escapeHtml(em ? p.avatar : initials(p.name))}</span>`;
+}
+function drawLobby() {
+  const box = $("lobby");
+  const on = state && state.phase === "lobby" && !demo.on;
+  box.classList.toggle("hidden", !on);
+  if (!on) return;
+  const url = `${location.origin}/blackjack.html?r=${CODE}`;
+  if (!box.dataset.built || box.dataset.lang !== lang()) {
+    box.dataset.built = "1";
+    box.dataset.lang = lang();
+    qrDrawn = false;
+    box.innerHTML = `<div class="join"><div class="cap">${T("lobby_title")}</div><div id="qr"></div><div class="code">${escapeHtml(CODE)}</div><div class="url">${escapeHtml(url.replace(/^https?:\/\//, ""))}</div><div class="scan">${T("lobby_scan")}</div></div>
+      <div class="seats"><div class="cap seatn"><span>${T("lobby_who")}</span><span id="seatn"></span></div><div class="who" id="who"></div></div>
+      <div class="opts" id="opts"></div>
+      <div class="foot"><button class="btn" id="startbtn">${T("btn_start")}</button><button class="btn ghost" id="howto">${T("btn_howto")}</button>${DEV ? `<button class="btn ghost" id="botsbtn">${T("btn_bots")}</button>` : ""}<div class="fine" id="starthint"></div></div>`;
+    $("startbtn").onclick = () => conn.send({ type: "start" });
+    $("howto").onclick = () => demo.start();
+    if (DEV) $("botsbtn").onclick = () => conn.send({ type: "bots", n: 3 });
+  }
+  if (!qrDrawn && window.QRCode) {
+    qrDrawn = true;
+    new QRCode($("qr"), { text: url, width: 190, height: 190, colorDark: "#0a0d16", colorLight: "#fbf4e3", correctLevel: QRCode.CorrectLevel.M });
+  }
+  const players = state.players.filter((p) => !p.left);
+  const fresh = players.filter((p) => !lobbySeen.has(p.id));
+  // Марго здоровается с входящими по имени
+  if (fresh.length && lobbySeen.size) { margotSay(tpl("lobby_hi", { name: fresh[0].name }), 2600); if (window.BJSfx) BJSfx.play("chip"); }
+  const nodes = players.map((p) => {
+    const sp = el("span", (lobbySeen.has(p.id) ? "" : "new") + (p.online === false ? " off" : ""));
+    sp.style.cssText = bjChipVars(p.color);
+    if (p.online === false) sp.title = T("offline_tip");
+    sp.innerHTML = avatarHtml(p) + `<b title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</b>`;
+    if (isHost) {
+      const x = el("button", "x", "✕");
+      x.type = "button"; x.title = T("kick"); x.setAttribute("aria-label", T("kick"));
+      if (kickTap && kickTap.isArmed(p.id)) x.dataset.armed = "1";
+      x.onclick = () => { if (kickTap && !kickTap.tap(p.id)) return; conn.send({ type: "kick", playerId: p.id }); };
+      sp.append(x);
+    }
+    return sp;
+  });
+  fresh.forEach((p) => lobbySeen.add(p.id));
+  const free = Math.max(0, Math.min(12, Math.max(4, players.length + 1)) - players.length);
+  for (let i = 0; i < free; i++) { const sp = el("span", "empty"); sp.append(el("b", null, T("lobby_free"))); nodes.push(sp); }
+  $("who").replaceChildren.apply($("who"), nodes);
+  const sn = $("seatn");
+  sn.textContent = tpl("lobby_seats", { n: players.length });
+  const offIds = players.filter((p) => p.online === false).map((p) => p.id);
+  if (isHost && offIds.length) {
+    const armed = kickTap && kickTap.isArmed("off");
+    const pb = el("button", "purge", tpl(armed ? "purge_sure" : "purge_off", { n: offIds.length }));
+    pb.type = "button";
+    pb.onclick = () => { if (kickTap && !kickTap.tap("off")) return; for (const id of offIds) conn.send({ type: "kick", playerId: id }); };
+    sn.append(pb);
+  }
+  drawOpts();
+  const enough = players.filter((p) => p.online && !p.spectator).length >= 2;
+  $("startbtn").disabled = !isHost || !enough;
+  $("startbtn").classList.toggle("hidden", !isHost);
+  $("howto").classList.toggle("hidden", !isHost);
+  if (DEV) $("botsbtn").classList.toggle("hidden", !isHost);
+  $("starthint").textContent = !enough ? T("need_two") : T("lobby_fine");
+}
+function drawOpts() {
+  const s = state.settings;
+  const opts = $("opts");
+  const row = (label, values, cur, fmt, set) => {
+    const seg = el("div", "seg");
+    for (const v of values) {
+      const b = el("button", v === cur ? "on" : "", fmt(v));
+      b.type = "button";
+      b.disabled = !isHost;
+      b.onclick = () => conn.send({ type: "settings", patch: set(v) });
+      seg.append(b);
+    }
+    const o = el("div", "o");
+    o.append(el("div", "k", label), seg);
+    return o;
+  };
+  const onoff = (v) => T(v ? "on" : "off");
+  const rows = [
+    row(T("opt_format"), BJ_FORMATS, s.format, (v) => (v === "hands" ? tpl("fmt_hands", { n: "N" }) : T("fmt_" + v)), (v) => ({ format: v })),
+  ];
+  if (s.format === "hands") rows.push(row(T("opt_hands"), [15, 20, 30], s.handsTotal, (v) => String(v), (v) => ({ handsTotal: v })));
+  rows.push(
+    row(T("opt_stack"), [500, 1000, 2000], s.stack, (v) => bjNum(v), (v) => ({ stack: v })),
+    row(T("opt_pace"), ["fast", "normal", "slow"], s.pace, (v) => T("pace_" + v), (v) => ({ pace: v })),
+    row(T("opt_time"), [15000, 20000, 30000], s.betTime, (v) => tpl("sec", { n: v / 1000 }), (v) => ({ betTime: v })),
+    row(T("opt_cards"), [true, false], s.cards, onoff, (v) => ({ cards: v })),
+    row(T("opt_chat"), [true, false], s.chat, onoff, (v) => ({ chat: v })),
+    row(T("opt_calm"), [false, true], s.calm, onoff, (v) => ({ calm: v })),
+  );
+  opts.replaceChildren.apply(opts, rows);
+}
+
+// ---------- «Как играть»: показательная раздача Марго за 30 с (§8 п.5) ----------
+const demo = { on: false, timers: [], pending: null };
+demo.stop = function () {
+  if (!demo.on) return;
+  demo.on = false;
+  demo.timers.forEach(clearTimeout); demo.timers = [];
+  if (table && table.setAutoSay) table.setAutoSay(true);
+  $("demo").classList.add("hidden");
+  if (table) { table.margot("shuffle"); }
+  if (state) render(true);
+};
+demo.start = function () {
+  if (demo.on || !state || state.phase !== "lobby") return;
+  demo.on = true;
+  $("lobby").classList.add("hidden");
+  $("demo").classList.remove("hidden");
+  $("demo").innerHTML = `<span class="t">${T("demo_title")}</span><button class="btn small ghost" id="demoskip">${T("btn_skip")}</button>`;
+  $("demoskip").onclick = () => demo.stop();
+  const names = T("demo_names").split("|");
+  const card = (r, s) => ({ r, s });
+  const val = (cards) => BJCards.value(cards);
+  const hand = (cards, extra) => { const v = val(cards); const h = { cards, value: v.value, soft: v.soft, bust: v.bust, blackjack: v.blackjack, done: false, doubled: false, fromSplit: false, result: null, payout: 0 }; if (extra) for (const k in extra) h[k] = extra[k]; return h; };
+  const pl = (i) => ({ id: "d" + i, name: names[i], color: BJTable.COLORS[i], avatar: ["🦊", "🐻"][i], seat: i, stack: 1000, online: true, out: false, ready: false, bet: 0, side: { pp: 0, tp: 0 }, insurance: 0, evenMoney: false, hands: [], decision: null, penalty: 0, net: 0, cardsCount: 0, shield: false, sideResults: { pp: null, tp: null } });
+  const t0 = Date.now();
+  const s = { phase: "betting", now: t0, phaseEndsAt: t0 + 6000, hand: 1, level: 0, minBet: 10, format: "last", handsTotal: null, cutIn: null, wave: 0, shoe: { left: 0.9, reshuffle: false },
+    dealer: { up: null, hole: null, cards: [], value: 0, soft: false, bust: false, blackjack: false, plot: "normal", revealAt: [] }, players: [pl(0), pl(1)], events: [], chat: [] };
+  const A = [card("K", "s"), card("6", "h")], B = [card("Q", "d"), card("10", "c")], up = card("9", "d"), hole = card("7", "h"), draw = card("2", "s"), hitCard = card("9", "c");
+  // реплика — после render() и с hold: автореплики рендерера на ту же перемену не перекрывают урок
+  let line = null;
+  const say = (text, ms) => { line = [text, ms]; };
+  const step = (t, fn) => demo.timers.push(setTimeout(() => { if (!demo.on) return; s.now = Date.now(); line = null; fn(); table.render(JSON.parse(JSON.stringify(s))); if (line) { clearTimeout(sayTimer); table.say(line[0], line[1], { hold: true }); } }, t));
+  if (table.setAutoSay) table.setAutoSay(false);
+  table.render(JSON.parse(JSON.stringify(s)));
+  table.say(T("d_goal"), 6600, { hold: true });
+  step(6700, () => { say(T("d_bets"), 4600); });
+  step(7400, () => { s.players[0].bet = 50; s.players[0].stack -= 50; });
+  step(8800, () => { s.players[1].bet = 100; s.players[1].stack -= 100; });
+  step(11300, () => { s.phase = "closing"; s.phaseEndsAt = 0; });
+  step(12400, () => { s.phase = "dealing"; say(T("d_deal"), 3800); });
+  step(12800, () => { s.players[0].hands = [hand([A[0]])]; });
+  step(13100, () => { s.players[1].hands = [hand([B[0]])]; });
+  step(13400, () => { s.dealer.up = up; s.dealer.cards = [up]; s.dealer.value = 9; });
+  step(13700, () => { s.players[0].hands = [hand(A)]; });
+  step(14000, () => { s.players[1].hands = [hand(B)]; });
+  step(16300, () => { s.phase = "deciding"; s.wave = 1; s.phaseEndsAt = s.now + 8000; say(T("d_decide"), 5200); });
+  step(21600, () => { s.players[0].decision = "hit"; s.players[1].decision = "stand"; s.players[1].hands[0].done = true; say(tpl("d_hit", { a: names[0], b: names[1] }), 4600); });
+  step(26300, () => { s.wave = 2; s.phaseEndsAt = 0; s.players.forEach((p) => { p.decision = null; }); s.players[0].hands = [hand(A.concat([hitCard]), { done: true })]; say(tpl("d_bust", { a: names[0] }), 4400); });
+  step(30900, () => {
+    s.phase = "dealer"; s.phaseEndsAt = 0;
+    const cards = [up, hole, draw], v = val(cards);
+    s.dealer.cards = cards; s.dealer.hole = hole; s.dealer.value = v.value; s.dealer.soft = v.soft; s.dealer.bust = v.bust; s.dealer.blackjack = false; s.dealer.plot = "normal";
+    s.dealer.revealAt = [s.now + 900, s.now + 2100];
+    say(T("d_dealer"), 4600);
+  });
+  step(35600, () => {
+    s.phase = "payout";
+    s.players[0].hands[0].result = "lose"; s.players[0].hands[0].payout = 0; s.players[0].net = -50;
+    s.players[1].hands[0].result = "win"; s.players[1].hands[0].payout = 200; s.players[1].net = 100; s.players[1].stack += 200;
+    say(T("d_pay"), 6000);
+  });
+  step(41800, () => { say(T("d_level"), 4000); });
+  step(46000, () => { say(T("d_end"), 3000); });
+  demo.timers.push(setTimeout(() => demo.stop(), 49200));
+};
+
+// ---------- управление ведущего ----------
+let hostNote = "", hostNoteT = 0, pasteOpen = false, hostLost = false, ctrlKey = "";
+const HL = window.MP && MP.hostLink ? MP.hostLink({
+  hostKeyFn: hostKey,
+  boardPath: "blackjack-board.html",
+  getRoom: () => CODE,
+  sendHost: (t) => { if (conn) conn.send({ type: "host", token: t }); },
+  onToast: (kind) => {
+    if (kind === "copied") setHostNote(T("link_copied"));
+    else if (kind === "shared") setHostNote(T("link_shared"));
+    else if (kind === "none") setHostNote(T("link_none"));
+  },
+  prompt: (m, v) => window.prompt(T("link_prompt_hint"), v),
+}) : null;
+function setHostNote(text) {
+  hostNote = text;
+  clearTimeout(hostNoteT);
+  if (text) hostNoteT = setTimeout(() => { hostNote = ""; drawCtrl(); }, 5000);
+  drawCtrl();
+}
+function hasHostToken() { try { return !!localStorage.getItem(hostKey()); } catch (e) { return false; } }
+let endTap = null;
+function drawCtrl() {
+  const c = $("ctrl");
+  const sound = c.querySelector(".sound-toggle-btn");
+  const inGame = !!(state && state.phase !== "lobby" && state.phase !== "finished");
+  const paused = !!(state && (state.phase === "paused" || state.pauseNext));
+  const claim = !isHost && HL && state && (hostLost || !hasHostToken());
+  const key = [isHost, inGame, paused, hostLost, claim, pasteOpen, hostNote, lang(), !!state, demo.on].join("|");
+  $("viewer").classList.toggle("hidden", isHost || !state || demo.on);
+  if (key === ctrlKey) return;
+  ctrlKey = key;
+  const btns = [];
+  if (isHost && HL) {
+    const lb = el("button", "btn small ghost");
+    lb.type = "button"; lb.title = T("host_link");
+    lb.textContent = "🔑 " + T("host_link");
+    lb.onclick = () => { HL.copy(); };
+    btns.push(lb);
+  }
+  if (isHost && inGame) {
+    const pb = el("button", "btn small ghost", T(paused ? "btn_resume" : "btn_pause"));
+    pb.type = "button";
+    pb.onclick = () => conn.send({ type: paused ? "resume" : "pause" });
+    const eb = el("button", "btn small ghost", T("btn_end"));
+    eb.type = "button";
+    if (endTap) endTap.destroy();
+    endTap = window.MP && MP.twoTap ? MP.twoTap(eb, { onConfirm: () => conn.send({ type: "end" }), label: T("btn_end"), armedLabel: T("btn_end_sure") }) : null;
+    if (!endTap) eb.onclick = () => { if (confirm(T("btn_end_sure"))) conn.send({ type: "end" }); };
+    btns.push(pb, eb);
+  }
+  if (claim && hostLost && hasHostToken()) {
+    const tk = el("button", "btn small ghost", T("btn_take"));
+    tk.type = "button";
+    tk.onclick = () => { HL.take(); };
+    btns.push(el("span", "note", T("host_lost_msg")), tk);
+  } else if (claim) {
+    if (pasteOpen) {
+      const inp = el("input");
+      inp.type = "text"; inp.placeholder = T("host_paste_ph"); inp.autocomplete = "off";
+      const ok = el("button", "btn small ghost", T("btn_ok"));
+      ok.type = "button";
+      const submit = () => { if (!MP.hostLink.parseToken(inp.value)) { setHostNote(T("host_bad")); return; } HL.take(Date.now(), inp.value); pasteOpen = false; };
+      ok.onclick = submit;
+      inp.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+      btns.push(inp, ok);
+      setTimeout(() => inp.focus(), 0);
+    } else {
+      const im = el("button", "btn small ghost", T("btn_im_host"));
+      im.type = "button";
+      im.onclick = () => { pasteOpen = true; drawCtrl(); };
+      btns.push(im);
+    }
+  }
+  if (hostNote) btns.push(el("span", "note", hostNote));
+  c.replaceChildren.apply(c, btns.concat([sound]));
+}
+// меню ведущего по клику на место игрока на рельсе
+function openSeatMenu(pid, e) {
+  const p = player(pid);
+  if (!p || !isHost) return;
+  const m = $("menu");
+  const kick = el("button", null, T("kick"));
+  kick.onclick = () => { m.classList.remove("on"); if (confirm(T("kick") + ": " + p.name + "?")) conn.send({ type: "kick", playerId: pid }); };
+  const mute = el("button", null, T(p.muted ? "unmute" : "mute"));
+  mute.onclick = () => { m.classList.remove("on"); conn.send({ type: "mute", playerId: pid, muted: !p.muted }); };
+  m.replaceChildren(el("div", "fine", p.name), mute, kick);
+  m.style.left = Math.min(innerWidth - 200, e.clientX) + "px";
+  m.style.top = Math.max(10, e.clientY - 120) + "px";
+  m.classList.add("on");
+  e.stopPropagation();
+}
+document.addEventListener("click", () => $("menu").classList.remove("on"));
+$("table").addEventListener("click", (e) => {
+  if (!isHost || !table) return;
+  const node = e.target.closest ? e.target.closest(".bj-seat") : null;
+  if (!node) return;
+  for (const pid in table.state.seats) if (table.state.seats[pid].el === node) return openSeatMenu(pid, e);
+});
+
+// ---------- финал, пауза ----------
+function drawFinal() {
+  const f = $("final");
+  const on = state && state.phase === "finished";
+  f.classList.toggle("hidden", !on);
+  if (!on) { f.dataset.key = ""; return; }
+  const key = state.game + ":" + isHost + ":" + lang();
+  if (f.dataset.key === key) return;
+  f.dataset.key = key;
+  f.innerHTML = `<div class="sub">${T(state.finishedReason === "host" ? "fin_host" : "fin_sub")}</div>${isHost ? `<button class="btn" id="again">${T("btn_again")}</button>` : ""}`;
+  if (isHost) $("again").onclick = () => conn.send({ type: "next_game" });
+}
+function drawPauseNext() {
+  const on = !!(state && state.pauseNext && state.phase !== "paused" && state.phase !== "lobby" && state.phase !== "finished");
+  $("pausenext").classList.toggle("hidden", !on);
+  if (on) $("pausenext").textContent = "II " + T("pause_next");
+}
+
+// ---------- сообщения ----------
+let prevState = null;
+function render(force) {
+  if (dead || !state) return;
+  applyFx();
+  if (demo.on) { if (state.phase !== "lobby") demo.stop(); else return; }
+  const snap = adapt(state);
+  table.render(snap);
+  if (table.state.snap === snap) { /* рендерер хранит наш снимок */ }
+  drawLobby();
+  drawCtrl();
+  drawFinal();
+  drawPauseNext();
+  syncChat();
+  feedEvents();
+  margotPhase(prevState);
+  feedReady = true;
+  prevState = state;
+}
+
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+      state = m.state;
+      if (goneFlow) goneFlow.hello();
+      if (m.state && !isHost) {
+        let token = null;
+        try { token = localStorage.getItem(hostKey()); } catch (e) {}
+        if (token) conn.send({ type: "host", token });
+      }
+      render();
+      break;
+    case "state":
+      // новая партия — лента прошлой больше не нужна
+      if (state && m.state && m.state.game !== state.game) { feedClear(); resultsHand = -1; }
+      state = m.state;
+      render();
+      break;
+    case "host_ok":
+      isHost = true; hostLost = false; pasteOpen = false;
+      document.body.classList.add("host");
+      $("lobby").dataset.built = "";
+      render();
+      break;
+    case "host_lost":
+      isHost = false; hostLost = true;
+      document.body.classList.remove("host");
+      $("lobby").dataset.built = "";
+      render();
+      break;
+    case "event": {
+      const e = m.event || {};
+      if (e.type === "react") floatAt(e.playerId, e.emoji);
+      else if (e.type === "cheer") { floatAt(e.forId, "💛", nameOf(e.playerId)); const a = nameOf(e.playerId), b = nameOf(e.forId); feedSys(() => tpl("ev_cheer", { name: a, forName: b })); }
+      else if (e.type === "rejoin") { const rn = nameOf(e.playerId); feedSys(() => tpl("ev_rejoin", { name: rn })); }
+      break;
+    }
+    case "error":
+      if (m.error === "room_expired") onRoomGone();
+      if (m.error === "bad host token") {
+        hostLost = false;
+        try { localStorage.removeItem(hostKey()); } catch (e) {}
+        pasteOpen = true;
+        setHostNote(T("host_bad"));
+      }
+      break;
+  }
+}
+
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({ showForm: () => gone("noroom"), onClosed: () => gone("expired") }) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else gone("expired"); }
+function gone(key) {
+  dead = true;
+  demo.stop();
+  $("lobby").classList.add("hidden");
+  $("center").innerHTML = `<div class="banner">${escapeHtml(T(key === "noroom" ? "noroom" : "expired"))}</div>`;
+}
+
+window.addEventListener("langchange", () => {
+  $("lobby").dataset.built = "";
+  ctrlKey = "";
+  if (table) table.setLang(lang());
+  feedRetranslate();
+  if (state) render(true);
+});
+
+// фоновый шум зала — после первого жеста (браузер не даёт звук без него), только в игре
+let ambientOn = false;
+window.addEventListener("pointerdown", () => {
+  if (ambientOn || !window.BJSfx || !state) return;
+  ambientOn = true;
+  BJSfx.ambient(true);
+}, { passive: true });
+
+async function boot() {
+  const h = params.get("h");
+  if (h && CODE) {
+    try { localStorage.setItem(hostKey(), h); } catch (e) {}
+    history.replaceState(null, "", `?r=${CODE}`);
+  }
+  makeTable();
+  if (!(await ensureRoom())) return;
+  const banner = $("conn");
+  conn = bjConnect({
+    code: CODE,
+    onMessage,
+    onGone: onRoomGone,
+    onOpen: () => { isHost = false; },
+    auth: () => { let t = null; try { t = localStorage.getItem(hostKey()); } catch (e) {} return t ? "&h=" + encodeURIComponent(t) : ""; },
+    onQuiet: (q) => { banner.textContent = T("conn_quiet"); banner.classList.toggle("on", q); },
+    onState: (st) => { banner.textContent = T("err_connect"); banner.classList.toggle("on", st === "lost"); },
+  });
+  // ручка для отладки и стенда: те же сообщения, что шлют кнопки доски
+  window.bjBoard = { send: (m) => conn.send(m), get state() { return state; }, get code() { return CODE; }, demo };
+}
+boot();
+</script>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+  ym(104849796, 'init', { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+</body>
+</html>

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex,nofollow">
+<title>Блэкджек — лаборатория стола</title>
+<!-- Стенд этапа 2: в деплой не идёт. Сценарии строят последовательности снапшотов и гонят их через BJTable.render.
+     ?shot=<сценарий>&t=<мс> — останавливает анимацию на кадре для скриншота; &layout=solo, &fx=0, &lang=en, &ui=0 -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800;900&family=Bodoni+Moda:opsz,wght@6..96,500;6..96,600&family=EB+Garamond:wght@600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="blackjack-table.css">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #06080f; color: #f3efe4; font: 500 14px/1.3 var(--bj-ui, "Inter Tight", Arial, sans-serif); }
+  #table { position: fixed; left: 0; top: 0; right: 0; bottom: 0; }
+  /* панель стенда: плоская, тёмная, без стекла; открывается кнопкой слева снизу */
+  #labBtn { position: fixed; left: 12px; bottom: 12px; z-index: 50; width: 44px; height: 44px; border: 1px solid #d4af37; background: #0a0d16; color: #d4af37; font: 700 18px/1 "Inter Tight", sans-serif; cursor: pointer; }
+  #lab { position: fixed; left: 0; top: 0; bottom: 0; width: 300px; z-index: 40; background: #0a0d16; border-right: 1px solid #d4af37; padding: 14px 14px 70px; overflow: auto; transform: translateX(-100%); transition: transform .25s; }
+  #lab.on { transform: none; }
+  #lab h2 { margin: 12px 0 6px; font: 700 13px/1 "Inter Tight", sans-serif; letter-spacing: .24em; text-transform: uppercase; color: #8e97ad; }
+  #lab h1 { margin: 0 0 4px; font: 700 22px/1 "Inter Tight", sans-serif; color: #f3dd8a; }
+  #lab .grp { display: flex; flex-wrap: wrap; gap: 5px; }
+  #lab button { border: 1px solid rgba(212, 175, 55, .45); background: #121725; color: #f3efe4; font: 600 13px/1 "Inter Tight", sans-serif; padding: 7px 10px; cursor: pointer; letter-spacing: .04em; }
+  #lab button:hover { border-color: #d4af37; }
+  #lab button.on { background: #d4af37; color: #0a0d16; }
+  #lab label { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+  #lab input[type="text"] { width: 100%; box-sizing: border-box; background: #121725; border: 1px solid rgba(212, 175, 55, .45); color: #f3efe4; font: inherit; padding: 6px 8px; }
+  #lab .note { color: #8e97ad; font-size: 12px; }
+  #fps { position: fixed; right: 12px; bottom: 12px; z-index: 50; font: 600 12px/1 "Inter Tight", sans-serif; color: #8e97ad; letter-spacing: .1em; }
+  .sound-toggle-btn { position: fixed; left: 64px; bottom: 12px; z-index: 50; width: 44px; height: 44px; border: 1px solid #d4af37; background: #0a0d16; color: #d4af37; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="table"></div>
+<button id="labBtn" type="button" title="Стенд" aria-label="Стенд">⚙</button>
+<button class="sound-toggle-btn" type="button"></button>
+<div id="fps"></div>
+<aside id="lab">
+  <h1 data-i18n="lab_title">Блэкджек · стол</h1>
+  <div class="note" data-i18n="lab_note">Стенд этапа 2. Сценарии гонят снапшоты через render().</div>
+  <h2 data-i18n="lab_scen">Сценарии</h2>
+  <div class="grp" id="scenarios"></div>
+  <h2 data-i18n="lab_plots">Сюжеты дилера</h2>
+  <div class="grp" id="plots"></div>
+  <h2 data-i18n="lab_margot">Марго</h2>
+  <div class="grp" id="mstates"></div>
+  <div class="grp" id="mlines" style="margin-top:6px"></div>
+  <input type="text" id="sayText" data-i18n-attr="placeholder:lab_say_ph" placeholder="Реплика…" style="margin-top:6px">
+  <h2 data-i18n="lab_toggles">Переключатели</h2>
+  <label><input type="checkbox" id="tFx" checked> <span data-i18n="lab_fx">Спецэффекты</span></label>
+  <label><span data-i18n="lab_solo">Раскладка</span> <select id="tLayout"><option value="board">board</option><option value="solo">solo</option><option value="solo-wide">solo-wide</option></select></label>
+  <label><input type="checkbox" id="tAmb"> <span data-i18n="lab_amb">Фоновый шум зала</span></label>
+  <div class="note" data-i18n="lab_rm">Reduced motion проверяется системной настройкой; флаг fx:false даёт тот же режим.</div>
+  <h2 data-i18n="lab_shot">Кадр</h2>
+  <div class="note" data-i18n="lab_shot_note">?shot=&lt;сценарий&gt;&amp;t=&lt;мс&gt; — остановить на кадре. Список имён — в консоли: LAB.names</div>
+</aside>
+
+<script>
+window.I18N_DICT = {
+  ru: { _title: 'Блэкджек — лаборатория стола', lab_title: 'Блэкджек · стол', lab_note: 'Стенд этапа 2. Сценарии гонят снапшоты через render().', lab_scen: 'Сценарии', lab_plots: 'Сюжеты дилера', lab_margot: 'Марго', lab_say_ph: 'Реплика… (Enter)', lab_toggles: 'Переключатели', lab_fx: 'Спецэффекты', lab_solo: 'Раскладка', lab_amb: 'Фоновый шум зала', lab_rm: 'Reduced motion проверяется системной настройкой; флаг fx:false даёт тот же режим.', lab_shot: 'Кадр', lab_shot_note: '?shot=&lt;сценарий&gt;&amp;t=&lt;мс&gt; — остановить на кадре. Список имён — в консоли: LAB.names',
+    sc_lobby: 'Лобби', sc_deal6: 'Раздача на 6', sc_deal12: 'Раздача на 12', sc_hitbust: 'Ещё / перебор', sc_twentyone: '21', sc_playerbj: 'Блэкджек игрока', sc_split: 'Сплит', sc_double: 'Удвоение', sc_insurance: 'Страховка + подглядывание', sc_payouts: 'Выплаты', sc_sidejackpot: 'Джекпот побочной', sc_shuffle: 'Тасовка', sc_levelup: 'Уровень вырос', sc_out: 'Выбывание', sc_final: 'Финал', sc_paused: 'Пауза', sc_solo: 'Соло: раздача', sc_solofinal: 'Соло: финал', sc_finaltourney: 'Финал турнира 12',
+    pl_normal: 'Обычный', pl_longflip: 'Долгий флип', pl_cardbycard: 'Карта за картой', pl_dealerbust: 'Перебор дилера', pl_allin: 'Ва-банк', pl_rescue: 'Спасение', pl_jackpot: 'Джекпот', pl_dealerbj: 'Блэкджек дилера', sound_off: 'Выключить звук', sound_on: 'Включить звук' },
+  en: { _title: 'Blackjack — table lab', lab_title: 'Blackjack · table', lab_note: 'Stage 2 bench. Scenarios push snapshots through render().', lab_scen: 'Scenarios', lab_plots: 'Dealer plots', lab_margot: 'Margot', lab_say_ph: 'Line… (Enter)', lab_toggles: 'Toggles', lab_fx: 'Effects', lab_solo: 'Layout', lab_amb: 'Room ambience', lab_rm: 'Reduced motion follows the OS setting; fx:false gives the same mode.', lab_shot: 'Frame', lab_shot_note: '?shot=&lt;scenario&gt;&amp;t=&lt;ms&gt; freezes a frame. Names: LAB.names in the console',
+    sc_lobby: 'Lobby', sc_deal6: 'Deal for 6', sc_deal12: 'Deal for 12', sc_hitbust: 'Hit / bust', sc_twentyone: '21', sc_playerbj: 'Player blackjack', sc_split: 'Split', sc_double: 'Double', sc_insurance: 'Insurance + peek', sc_payouts: 'Payouts', sc_sidejackpot: 'Side-bet jackpot', sc_shuffle: 'Shuffle', sc_levelup: 'Level up', sc_out: 'Elimination', sc_final: 'Final', sc_paused: 'Paused', sc_solo: 'Solo: a hand', sc_solofinal: 'Solo: final', sc_finaltourney: 'Tournament final 12',
+    pl_normal: 'Normal', pl_longflip: 'Long flip', pl_cardbycard: 'Card by card', pl_dealerbust: 'Dealer bust', pl_allin: 'All in', pl_rescue: 'Rescue', pl_jackpot: 'Jackpot', pl_dealerbj: 'Dealer blackjack', sound_off: 'Mute', sound_on: 'Unmute' },
+  el: { _title: 'Μπλακτζάκ — εργαστήριο τραπεζιού', lab_title: 'Μπλακτζάκ · τραπέζι', lab_note: 'Πάγκος σταδίου 2. Τα σενάρια στέλνουν snapshots στο render().', lab_scen: 'Σενάρια', lab_plots: 'Πλοκές ντίλερ', lab_margot: 'Μαργκό', lab_say_ph: 'Ατάκα… (Enter)', lab_toggles: 'Διακόπτες', lab_fx: 'Εφέ', lab_solo: 'Διάταξη', lab_amb: 'Ήχος αίθουσας', lab_rm: 'Το reduced motion ακολουθεί τη ρύθμιση του συστήματος· το fx:false δίνει το ίδιο.', lab_shot: 'Καρέ', lab_shot_note: '?shot=&lt;σενάριο&gt;&amp;t=&lt;ms&gt; παγώνει ένα καρέ. Ονόματα: LAB.names στην κονσόλα',
+    sc_lobby: 'Λόμπι', sc_deal6: 'Μοιρασιά για 6', sc_deal12: 'Μοιρασιά για 12', sc_hitbust: 'Κι άλλο / κάψιμο', sc_twentyone: '21', sc_playerbj: 'Μπλακτζάκ παίκτη', sc_split: 'Σπλιτ', sc_double: 'Διπλασιασμός', sc_insurance: 'Ασφάλεια + ματιά', sc_payouts: 'Πληρωμές', sc_sidejackpot: 'Τζάκποτ πλαϊνού', sc_shuffle: 'Ανακάτεμα', sc_levelup: 'Ανέβηκε επίπεδο', sc_out: 'Αποκλεισμός', sc_final: 'Τελικό', sc_paused: 'Παύση', sc_solo: 'Σόλο: μοιρασιά', sc_solofinal: 'Σόλο: τελικό', sc_finaltourney: 'Τελικό τουρνουά 12',
+    pl_normal: 'Κανονική', pl_longflip: 'Αργό γύρισμα', pl_cardbycard: 'Φύλλο-φύλλο', pl_dealerbust: 'Κάψιμο ντίλερ', pl_allin: 'Όλα μέσα', pl_rescue: 'Διάσωση', pl_jackpot: 'Τζάκποτ', pl_dealerbj: 'Μπλακτζάκ ντίλερ', sound_off: 'Σίγαση', sound_on: 'Ήχος' }
+};
+</script>
+<script src="blackjack-cards.js"></script>
+<script src="blackjack-margot.js"></script>
+<script src="blackjack-sfx.js"></script>
+<script src="blackjack-table.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script>
+(function () {
+  'use strict';
+  var params = new URLSearchParams(location.search);
+  var shot = params.get('shot'), shotT = parseInt(params.get('t') || '0', 10);
+  var layout = params.get('layout') === 'solo' ? 'solo' : params.get('layout') === 'solo-wide' ? 'solo-wide' : 'board';
+  var fxOn = params.get('fx') !== '0';
+  if (params.get('lang') && window.I18N) I18N.setLang(params.get('lang'), { persist: false });
+  var lang = (window.I18N && I18N.lang) || 'ru';
+  var T = function (k) { return (window.I18N && I18N.t(k)) || k; };
+
+  var NAMES = ['Маша', 'Пётр', 'Лена', 'Гоша', 'Ира', 'Вова', 'Оля', 'Дима', 'Катя', 'Макс', 'Юля', 'Саша'];
+  var AVAS = ['🦊', '🐻', '🐼', '🦁', '🐸', '🐙', '🦄', '🐯', '🐨', '🐧', '🦋', '🐺'];
+  var COLORS = BJTable.COLORS;
+  function card(r, s) { return { r: r, s: s }; }
+  function val(cards) { return BJCards.value(cards); }
+  function hand(cards, extra) {
+    var v = val(cards), h = { cards: cards, value: v.value, soft: v.soft, bust: v.bust, blackjack: v.blackjack, done: false, doubled: false, fromSplit: false, result: null, payout: 0 };
+    if (extra) for (var k in extra) h[k] = extra[k];
+    if (h.fromSplit) h.blackjack = false; // после сплита 21 — не блэкджек
+    return h;
+  }
+  function player(i, over) {
+    var p = { id: 'p' + i, name: NAMES[i], color: COLORS[i], avatar: AVAS[i], seat: i, stack: 1000, online: true, out: false, ready: false, bet: 0, side: { pp: 0, tp: 0 }, insurance: 0, evenMoney: false, hands: [], decision: null, penalty: 0, net: 0, cardsCount: 0, shield: false, sideResults: { pp: null, tp: null } };
+    if (over) for (var k in over) p[k] = over[k];
+    return p;
+  }
+  function base(n, over) {
+    var s = { phase: 'betting', now: 0, phaseEndsAt: 0, hand: 4, level: 1, minBet: 20, format: 'last', handsTotal: null, cutIn: null, wave: 0, shoe: { left: 0.62, reshuffle: false },
+      dealer: { up: null, hole: null, cards: [], value: 0, soft: false, bust: false, blackjack: false, plot: 'normal', revealAt: [] }, players: [], events: [], chat: [] };
+    for (var i = 0; i < n; i++) s.players.push(player(i));
+    if (over) for (var k in over) s[k] = over[k];
+    return s;
+  }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+  // ---------- стол ----------
+  var root = document.getElementById('table');
+  var table = null;
+  function makeTable() {
+    if (table) table.destroy();
+    table = BJTable.create(root, { fx: fxOn, lang: lang, layout: layout, onMargotTap: function () { table.say(BJMargot.pick((window.I18N && I18N.lang) || 'ru', 'hint')); }, instantGapMs: layout === 'board' ? 4000 : Infinity });
+    window.TABLE = table;
+  }
+  makeTable();
+
+  // ---------- прогон: steps = [{t, do(s)}], каждый шаг правит общий снапшот и рендерит ----------
+  var runTimers = [], runStart = 0, cur = null;
+  function stop() { runTimers.forEach(clearTimeout); runTimers = []; }
+  function run(initial, steps, freezeAt) {
+    stop();
+    cur = clone(initial);
+    runStart = Date.now();
+    cur.now = runStart; if (cur.phaseEndsAt && cur.phaseEndsAt < 100000) cur.phaseEndsAt += runStart; // относительные дедлайны
+    table.render(clone(cur));
+    steps.forEach(function (st) {
+      runTimers.push(setTimeout(function () {
+        if (freezeAt !== undefined && st.t > freezeAt) return;
+        cur.now = runStart + st.t;
+        st.do(cur, runStart);
+        table.render(clone(cur));
+      }, st.t));
+    });
+    if (freezeAt !== undefined) runTimers.push(setTimeout(function () { table.freeze(); }, freezeAt));
+  }
+
+  // раздача двумя кругами: по карте каждому, дилеру открытую; второй круг, дилеру закрытую (0,3 с на карту)
+  function dealSteps(t0, hands, up, hole, step) {
+    step = step || 300;
+    var steps = [], t = t0, n = hands.length;
+    for (var round = 0; round < 2; round++) {
+      for (var i = 0; i < n; i++) (function (i, round) {
+        steps.push({ t: t, do: function (s) {
+          var p = s.players[i]; if (p.out || !p.bet) return;
+          var cards = hands[i].slice(0, round + 1);
+          p.hands = [hand(cards)];
+          p.cardsCount = cards.length;
+        } });
+        t += step;
+      })(i, round);
+      if (round === 0) { steps.push({ t: t, do: function (s) { s.dealer.up = up; s.dealer.cards = [up]; s.dealer.value = val([up]).value; } }); t += step; }
+      else { steps.push({ t: t, do: function (s) { s.phase = up.r === 'A' ? 'insurance' : 'deciding'; s.wave = 1; s.phaseEndsAt = s.now + (up.r === 'A' ? 6000 : 12000); } }); t += step; }
+    }
+    return { steps: steps, t: t };
+  }
+  function bettingSteps(bets, t0) {
+    var steps = [], t = t0 || 0;
+    bets.forEach(function (b, i) { steps.push({ t: t + i * 350, do: function (s) { var p = s.players[i]; if (!p) return; p.bet = b; p.stack -= b; } }); });
+    return { steps: steps, t: t + bets.length * 350 };
+  }
+  function dealerPhase(s, cards, plot, gap) {
+    s.phase = 'dealer'; s.phaseEndsAt = 0;
+    var v = val(cards);
+    s.dealer.cards = cards; s.dealer.hole = cards[1]; s.dealer.value = v.value; s.dealer.soft = v.soft; s.dealer.bust = v.bust; s.dealer.blackjack = v.blackjack; s.dealer.plot = plot;
+    var t = s.now + (plot === 'longflip' ? 2200 : plot === 'allin' ? 2800 : plot === 'dealerbj' ? 400 : 900), ra = [t];
+    for (var i = 2; i < cards.length; i++) { t += gap || (plot === 'cardbycard' ? 1500 + i * 400 : 900); ra.push(t); }
+    s.dealer.revealAt = ra;
+    return ra[ra.length - 1];
+  }
+  function settle(s) {
+    s.phase = 'payout'; s.phaseEndsAt = 0;
+    var dv = s.dealer.value, db = s.dealer.bust, dbj = s.dealer.blackjack;
+    s.players.forEach(function (p) {
+      if (p.out || !p.hands.length) return;
+      var net = 0;
+      p.hands.forEach(function (h) {
+        var bet = h.doubled ? p.bet * 2 : p.bet;
+        if (h.bust) { h.result = 'lose'; h.payout = 0; net -= bet; }
+        else if (h.blackjack && !dbj) { h.result = 'bj'; h.payout = Math.floor(bet * 2.5); net += h.payout - bet; }
+        else if (dbj) { if (h.blackjack) { h.result = 'push'; h.payout = bet; } else { h.result = 'lose'; net -= bet; } }
+        else if (db || h.value > dv) { h.result = 'win'; h.payout = bet * 2; net += bet; }
+        else if (h.value === dv) { h.result = 'push'; h.payout = bet; }
+        else { h.result = 'lose'; h.payout = 0; net -= bet; }
+        h.done = true;
+      });
+      if (p.insurance) { if (dbj) net += p.insurance * 2; else net -= p.insurance; }
+      p.net = net; p.stack += p.bet * (p.hands.length) + (p.hands[0].doubled ? p.bet : 0) + net;
+    });
+  }
+
+  // ---------- сценарии ----------
+  var SC = {};
+  SC.lobby = function () {
+    var s = base(0, { phase: 'lobby', hand: 0, level: 0, minBet: 10, code: 'MARGO 21' });
+    var steps = [];
+    for (var i = 0; i < 6; i++) (function (i) { steps.push({ t: 600 + i * 700, do: function (s) { s.players.push(player(i)); } }); })(i);
+    steps.push({ t: 5200, do: function (s) { s.players[2].online = false; } });
+    run(s, steps);
+  };
+  function dealScenario(n, hands, up, hole, bets) {
+    var s = base(n, { phaseEndsAt: 7000 });
+    var b = bettingSteps(bets, 600);
+    var steps = b.steps;
+    steps.push({ t: b.t + 400, do: function (s) { s.phase = 'closing'; s.phaseEndsAt = 0; } });
+    steps.push({ t: b.t + 1600, do: function (s) { s.phase = 'dealing'; } });
+    var d = dealSteps(b.t + 1900, hands, up, hole);
+    steps = steps.concat(d.steps);
+    return { s: s, steps: steps, t: d.t };
+  }
+  var H6 = [[card('10', 'h'), card('7', 's')], [card('A', 'd'), card('6', 'c')], [card('8', 's'), card('8', 'h')], [card('K', 'c'), card('Q', 'd')], [card('5', 'h'), card('6', 'd')], [card('9', 'c'), card('3', 's')]];
+  SC.deal6 = function () {
+    var d = dealScenario(6, H6, card('9', 'd'), card('7', 'h'), [40, 100, 20, 250, 60, 20]);
+    d.steps.push({ t: d.t + 1500, do: function (s) { s.players[0].decision = 'stand'; s.players[0].hands[0].done = true; } });
+    d.steps.push({ t: d.t + 2300, do: function (s) { s.players[3].decision = 'stand'; s.players[3].hands[0].done = true; s.players[4].decision = 'double'; } });
+    d.steps.push({ t: d.t + 3000, do: function (s) { s.players[2].decision = 'split'; s.players[5].decision = 'hit'; } });
+    run(d.s, d.steps);
+  };
+  SC.deal12 = function () {
+    var H12 = H6.concat([[card('J', 'd'), card('4', 'c')], [card('A', 's'), card('K', 'h')], [card('7', 'c'), card('7', 'd')], [card('2', 'h'), card('9', 's')], [card('Q', 'c'), card('6', 'h')], [card('4', 'd'), card('4', 's')]]);
+    var d = dealScenario(12, H12, card('6', 'd'), card('10', 'h'), [40, 100, 20, 250, 60, 20, 80, 30, 20, 500, 20, 120]);
+    d.steps.push({ t: d.t + 1200, do: function (s) { [0, 3, 10].forEach(function (i) { s.players[i].decision = 'stand'; s.players[i].hands[0].done = true; }); s.players[8].decision = 'split'; s.players[4].decision = 'double'; } });
+    run(d.s, d.steps);
+  };
+  SC.hitbust = function () {
+    var s = base(6, { phase: 'deciding', phaseEndsAt: 12000, wave: 1 });
+    H6.forEach(function (h, i) { s.players[i].bet = [40, 100, 20, 250, 60, 20][i]; s.players[i].stack -= s.players[i].bet; s.players[i].hands = [hand(h)]; });
+    s.dealer.up = card('9', 'd'); s.dealer.cards = [card('9', 'd')]; s.dealer.value = 9;
+    var steps = [
+      { t: 800, do: function (s) { s.players[5].decision = 'hit'; s.players[0].decision = 'stand'; s.players[0].hands[0].done = true; } },
+      { t: 1400, do: function (s) { s.players[4].decision = 'hit'; s.players[1].decision = 'hit'; } },
+      { t: 2600, do: function (s) { s.wave = 2; s.phaseEndsAt = s.now + 8000; s.players.forEach(function (p) { p.decision = null; });
+        s.players[5].hands = [hand([card('9', 'c'), card('3', 's'), card('K', 'd')])]; s.players[5].hands[0].done = true;
+        s.players[4].hands = [hand([card('5', 'h'), card('6', 'd'), card('10', 's')])];
+        s.players[1].hands = [hand([card('A', 'd'), card('6', 'c'), card('4', 'h')])]; } },
+      { t: 4200, do: function (s) { s.players[4].decision = 'stand'; s.players[4].hands[0].done = true; s.players[1].decision = 'stand'; s.players[1].hands[0].done = true; s.players[3].decision = 'stand'; s.players[3].hands[0].done = true; s.players[2].decision = 'hit'; } },
+      { t: 5400, do: function (s) { s.wave = 3; s.players.forEach(function (p) { p.decision = null; }); s.players[2].hands = [hand([card('8', 's'), card('8', 'h'), card('9', 'd')])]; s.players[2].hands[0].done = true; } }
+    ];
+    run(s, steps);
+  };
+  SC.twentyone = function () {
+    var s = base(4, { phase: 'deciding', phaseEndsAt: 12000, wave: 1 });
+    [[card('7', 'h'), card('4', 's')], [card('A', 'd'), card('6', 'c')], [card('10', 's'), card('5', 'h')], [card('K', 'c'), card('Q', 'd')]].forEach(function (h, i) { s.players[i].bet = [60, 100, 40, 20][i]; s.players[i].stack -= s.players[i].bet; s.players[i].hands = [hand(h)]; });
+    s.dealer.up = card('8', 'd'); s.dealer.cards = [card('8', 'd')]; s.dealer.value = 8;
+    run(s, [
+      { t: 700, do: function (s) { s.players[0].decision = 'double'; s.players[1].decision = 'hit'; s.players[2].decision = 'hit'; } },
+      { t: 1800, do: function (s) { s.wave = 2; s.players.forEach(function (p) { p.decision = null; });
+        s.players[0].hands = [hand([card('7', 'h'), card('4', 's'), card('10', 'c')], { doubled: true, done: true })];
+        s.players[1].hands = [hand([card('A', 'd'), card('6', 'c'), card('4', 'h')])];
+        s.players[2].hands = [hand([card('10', 's'), card('5', 'h'), card('6', 'd')])]; } }
+    ]);
+  };
+  SC.playerbj = function () {
+    var H = [[card('A', 's'), card('K', 'h')], [card('9', 'd'), card('7', 'c')], [card('6', 'h'), card('5', 's')], [card('Q', 'c'), card('A', 'd')]];
+    var d = dealScenario(4, H, card('7', 'd'), card('9', 'h'), [120, 40, 60, 20]);
+    run(d.s, d.steps);
+  };
+  SC.split = function () {
+    var s = base(4, { phase: 'deciding', phaseEndsAt: 12000, wave: 1 });
+    [[card('8', 's'), card('8', 'h')], [card('A', 'd'), card('A', 'c')], [card('10', 's'), card('5', 'h')], [card('9', 'c'), card('9', 'd')]].forEach(function (h, i) { s.players[i].bet = [60, 100, 40, 20][i]; s.players[i].stack -= s.players[i].bet; s.players[i].hands = [hand(h)]; });
+    s.dealer.up = card('6', 'd'); s.dealer.cards = [card('6', 'd')]; s.dealer.value = 6;
+    run(s, [
+      { t: 700, do: function (s) { s.players[0].decision = 'split'; s.players[1].decision = 'split'; s.players[2].decision = 'stand'; s.players[2].hands[0].done = true; } },
+      { t: 1500, do: function (s) { s.players[0].stack -= 60; s.players[0].hands = [hand([card('8', 's')], { fromSplit: true }), hand([card('8', 'h')], { fromSplit: true })]; s.players[1].stack -= 100; s.players[1].hands = [hand([card('A', 'd')], { fromSplit: true }), hand([card('A', 'c')], { fromSplit: true })]; } },
+      { t: 2100, do: function (s) { s.players[0].hands[0] = hand([card('8', 's'), card('3', 'c')], { fromSplit: true }); } },
+      { t: 2500, do: function (s) { s.players[0].hands[1] = hand([card('8', 'h'), card('K', 'd')], { fromSplit: true }); } },
+      { t: 2900, do: function (s) { s.players[1].hands[0] = hand([card('A', 'd'), card('9', 's')], { fromSplit: true, done: true }); } },
+      { t: 3300, do: function (s) { s.players[1].hands[1] = hand([card('A', 'c'), card('K', 'h')], { fromSplit: true, done: true }); s.wave = 2; s.players.forEach(function (p) { p.decision = null; }); } },
+      { t: 4200, do: function (s) { s.players[0].decision = 'double'; } }
+    ]);
+  };
+  SC.double = function () {
+    var s = base(3, { phase: 'deciding', phaseEndsAt: 12000, wave: 1 });
+    [[card('6', 's'), card('5', 'h')], [card('9', 'd'), card('2', 'c')], [card('10', 's'), card('7', 'h')]].forEach(function (h, i) { s.players[i].bet = [80, 200, 40][i]; s.players[i].stack -= s.players[i].bet; s.players[i].hands = [hand(h)]; });
+    s.dealer.up = card('6', 'd'); s.dealer.cards = [card('6', 'd')]; s.dealer.value = 6;
+    run(s, [
+      { t: 700, do: function (s) { s.players[0].decision = 'double'; s.players[2].decision = 'stand'; s.players[2].hands[0].done = true; } },
+      { t: 1400, do: function (s) { s.players[1].decision = 'double'; } },
+      { t: 2200, do: function (s) { s.wave = 2; s.players.forEach(function (p) { p.decision = null; }); s.players[0].stack -= 80; s.players[0].hands = [hand([card('6', 's'), card('5', 'h'), card('K', 'c')], { doubled: true, done: true })]; } },
+      { t: 2600, do: function (s) { s.players[1].stack -= 200; s.players[1].hands = [hand([card('9', 'd'), card('2', 'c'), card('9', 'h')], { doubled: true, done: true })]; } }
+    ]);
+  };
+  SC.insurance = function () {
+    var H = [[card('10', 'h'), card('7', 's')], [card('A', 'd'), card('K', 'c')], [card('8', 's'), card('8', 'h')], [card('K', 'c'), card('Q', 'd')]];
+    var d = dealScenario(4, H, card('A', 'd'), card('7', 'h'), [40, 100, 20, 250]);
+    d.steps.push({ t: d.t + 1200, do: function (s) { s.players[0].insurance = 20; s.players[0].stack -= 20; s.players[1].evenMoney = true; s.events.push({ t: s.now, type: 'peek' }); } });
+    d.steps.push({ t: d.t + 5200, do: function (s) { s.phase = 'deciding'; s.wave = 1; s.phaseEndsAt = s.now + 12000; } });
+    run(d.s, d.steps);
+  };
+  // дилер: общий конструктор сюжета
+  function plotScenario(plot) {
+    var s = base(5, { phase: 'deciding', phaseEndsAt: 0, wave: 2 });
+    var hands = [[card('10', 'h'), card('9', 's')], [card('A', 'd'), card('7', 'c')], [card('K', 's'), card('Q', 'h')], [card('7', 'c'), card('6', 'd'), card('5', 'h')], [card('9', 'c'), card('4', 's'), card('K', 'd')]];
+    var bets = [60, 100, 40, 250, 20];
+    if (plot === 'allin') { bets[3] = 1000; }
+    if (plot === 'rescue') { s.players[4].stack = 20; bets[4] = 20; hands[4] = [card('10', 'c'), card('9', 's')]; }
+    if (plot === 'jackpot') { hands[2] = [card('A', 's'), card('K', 's')]; bets[2] = 200; }
+    hands.forEach(function (h, i) { s.players[i].bet = bets[i]; s.players[i].stack -= bets[i]; s.players[i].hands = [hand(h, { done: true })]; });
+    var up = card('10', 'd'), hole, draws = [];
+    switch (plot) {
+      case 'longflip': hole = card('9', 'h'); break;
+      case 'cardbycard': up = card('6', 'd'); hole = card('5', 'c'); draws = [card('2', 's'), card('4', 'h'), card('3', 'd')]; break;
+      case 'dealerbust': up = card('6', 'd'); hole = card('10', 'c'); draws = [card('9', 's')]; break;
+      case 'allin': hole = card('7', 'h'); break;
+      case 'rescue': up = card('8', 'd'); hole = card('9', 'h'); break;
+      case 'jackpot': hole = card('7', 'h'); break;
+      case 'dealerbj': up = card('A', 'd'); hole = card('K', 'h'); break;
+      default: up = card('7', 'd'); hole = card('6', 'h'); draws = [card('5', 'c')];
+    }
+    s.dealer.up = up; s.dealer.cards = [up]; s.dealer.value = val([up]).value;
+    if (plot === 'allin') s.players[3].allin = true;
+    // как движок: карты дилера, расписание И итоги приходят в начале фазы «Дилер» — рендерер обязан держать их до последнего revealAt
+    var steps = [
+      { t: 900, do: function (s) { dealerPhase(s, [up, hole].concat(draws), plot); settle(s); s.phase = 'dealer'; } }
+    ];
+    run(s, steps);
+    var wait = (plot === 'longflip' ? 2200 : plot === 'allin' ? 2800 : plot === 'dealerbj' ? 400 : 900) + draws.reduce(function (a, c, i) { return a + (plot === 'cardbycard' ? 1500 + (i + 2) * 400 : 900); }, 0) + 900 + 900;
+    runTimers.push(setTimeout(function () {
+      cur.now = Date.now();
+      cur.phase = 'payout';
+      if (plot === 'rescue') { cur.players[4].rescued = true; }
+      table.render(clone(cur));
+    }, wait));
+    if (plot === 'rescue') { /* спасение ставится флагом rescued после выплаты */ }
+  }
+  ['normal', 'longflip', 'cardbycard', 'dealerbust', 'allin', 'rescue', 'jackpot', 'dealerbj'].forEach(function (p) { SC['plot_' + p] = function () { plotScenario(p); }; });
+  SC.payouts = function () {
+    var s = base(6, { phase: 'dealer', phaseEndsAt: 0 });
+    var hands = [[card('10', 'h'), card('9', 's')], [card('A', 'd'), card('K', 'c')], [card('8', 's'), card('8', 'h'), card('9', 'd')], [card('K', 'c'), card('8', 'd')], [card('5', 'h'), card('6', 'd'), card('10', 'c')], [card('9', 'c'), card('3', 's'), card('6', 'h')]];
+    [40, 100, 20, 250, 60, 20].forEach(function (b, i) { s.players[i].bet = b; s.players[i].stack -= b; s.players[i].hands = [hand(hands[i], { done: true, doubled: i === 4 })]; if (i === 4) s.players[i].stack -= b; });
+    s.dealer.up = card('10', 'd'); s.dealer.hole = card('8', 'h'); s.dealer.cards = [card('10', 'd'), card('8', 'h')]; s.dealer.value = 18; s.dealer.plot = 'normal'; s.dealer.revealAt = [0];
+    run(s, [{ t: 600, do: function (s) { settle(s); } }, { t: 6500, do: function (s) { s.phase = 'betting'; s.hand += 1; s.phaseEndsAt = s.now + 20000; s.players.forEach(function (p) { p.bet = 0; p.hands = []; p.net = 0; }); s.dealer = base(0).dealer; } }]);
+  };
+  SC.sidejackpot = function () {
+    var H = [[card('7', 'h'), card('7', 'h')], [card('9', 'd'), card('7', 'c')], [card('6', 'h'), card('5', 's')]];
+    var s = base(3, { phaseEndsAt: 7000 });
+    var b = bettingSteps([100, 40, 60], 500);
+    var steps = b.steps;
+    steps.push({ t: b.t, do: function (s) { s.players[0].side.pp = 20; s.players[0].stack -= 20; s.players[2].side.tp = 10; s.players[2].stack -= 10; } });
+    steps.push({ t: b.t + 500, do: function (s) { s.phase = 'closing'; s.phaseEndsAt = 0; } });
+    steps.push({ t: b.t + 1500, do: function (s) { s.phase = 'dealing'; } });
+    var d = dealSteps(b.t + 1800, H, card('7', 'h'), card('9', 'c'));
+    steps = steps.concat(d.steps);
+    steps.push({ t: d.t + 300, do: function (s) { s.players[0].sideResults.pp = { kind: 'perfect', mult: 25 }; s.players[0].stack += 500; s.players[2].sideResults.tp = { kind: 'flush', mult: 5 }; s.players[2].stack += 50; } });
+    run(s, steps);
+  };
+  SC.shuffle = function () {
+    var s = base(6, { phase: 'betting', phaseEndsAt: 20000 });
+    s.shoe.left = 0.24;
+    run(s, [{ t: 800, do: function (s) { s.shoe.reshuffle = true; } }, { t: 4200, do: function (s) { s.shoe.reshuffle = false; s.shoe.left = 1; } }]);
+  };
+  SC.levelup = function () {
+    var s = base(6, { phase: 'payout', phaseEndsAt: 0, level: 1, minBet: 20 });
+    run(s, [{ t: 800, do: function (s) { s.level = 2; s.minBet = 30; s.phase = 'betting'; s.hand += 1; s.phaseEndsAt = s.now + 20000; } }]);
+  };
+  SC.out = function () {
+    var s = base(6, { phase: 'payout', phaseEndsAt: 0 });
+    s.players[2].stack = 0; s.players[2].bet = 40; s.players[2].hands = [hand([card('10', 's'), card('6', 'h'), card('9', 'c')], { done: true })];
+    s.dealer.up = card('10', 'd'); s.dealer.hole = card('8', 'h'); s.dealer.cards = [card('10', 'd'), card('8', 'h')]; s.dealer.value = 18; s.dealer.revealAt = [0];
+    run(s, [{ t: 600, do: function (s) { settle(s); s.players[2].stack = 0; } }, { t: 2600, do: function (s) { s.players[2].out = true; } }]);
+  };
+  SC.final = function () {
+    var s = base(6, { phase: 'finished', phaseEndsAt: 0, hand: 23 });
+    [3400, 0, 0, 1200, 0, 1400].forEach(function (st, i) { s.players[i].stack = st; s.players[i].out = st === 0; });
+    s.winnerId = 'p0';
+    // объект, как отдаёт движок (docs/blackjack-protocol.md)
+    s.stats = { biggestWin: { playerId: 'p0', amount: 750 }, biggestBust: { playerId: 'p3', amount: 500 }, blackjacks: { p0: 4, p5: 3 }, cruelCard: { by: 'p2', target: 'p0', card: 'swap', amount: 240 }, lastBreath: { p5: 6, p1: 2 }, exact21: 11, dealerBusts: 5, sideJackpot: { playerId: 'p0', kind: 'perfect', amount: 500 } };
+    run(s, []);
+  };
+  SC.finaltourney = function () {
+    var s = base(12, { phase: 'finished', phaseEndsAt: 0, hand: 21, settings: { format: 'tournament' } });
+    // выбывшие первыми — меньшие стеки-остатки, но place большой; победитель p7 с малым стеком (как в плейтесте)
+    s.players.forEach(function (p, i) { p.stack = i === 7 ? 58 : 950 - i * 10; p.out = i !== 7; p.place = i === 7 ? 1 : (i < 7 ? 12 - i : 12 - i + 1); });
+    s.winnerId = 'p7';
+    run(s, []);
+  };
+  SC.solosplit = function () {
+    var s = base(1, { phase: 'deciding', phaseEndsAt: 12000, wave: 2, level: 0, minBet: 10, settings: { solo: true } });
+    var c = card; var p0 = s.players[0]; p0.name = 'Вы'; p0.bet = 50; p0.stack = 800;
+    p0.hands = [hand([c('8','s'), c('3','c'), c('K','d')], { fromSplit: true }), hand([c('8','h'), c('A','d'), c('4','h')], { fromSplit: true })];
+    var dc = [c('6','d'), c('2','c'), c('3','h'), c('4','s'), c('2','d'), c('5','c')];
+    s.dealer.up = dc[0]; s.dealer.cards = dc; s.dealer.hole = dc[1]; s.dealer.value = 22; s.dealer.bust = true; s.dealer.revealAt = [Date.now() - 9000, Date.now() - 8000, Date.now() - 7000, Date.now() - 6000, Date.now() - 5000]; s.dealer.plot = 'normal';
+    s.phase = 'dealer';
+    run(s, []);
+    setTimeout(function () { table.say('Длинная реплика Марго про ситуацию за столом'); }, 600);
+  };
+  SC.solofinal = function () {
+    var s = base(1, { phase: 'finished', phaseEndsAt: 0, hand: 23, level: 5, minBet: 80, settings: { solo: true } });
+    s.players[0].name = 'Вы'; s.players[0].stack = 0; s.players[0].out = true;
+    s.stats = [{ key: 'biggestWin', value: '+450' }, { key: 'bjs', value: 3 }, { label: 'Лучший стек', value: '2 450' }];
+    run(s, []);
+  };
+  SC.paused = function () {
+    var s = base(6, { phase: 'deciding', phaseEndsAt: 12000, wave: 1 });
+    H6.forEach(function (h, i) { s.players[i].bet = 40; s.players[i].stack -= 40; s.players[i].hands = [hand(h)]; });
+    s.dealer.up = card('9', 'd'); s.dealer.cards = [card('9', 'd')]; s.dealer.value = 9;
+    run(s, [{ t: 800, do: function (s) { s.phase = 'paused'; s.phaseEndsAt = 0; } }]);
+  };
+  SC.solo = function () {
+    var s = base(1, { phaseEndsAt: 0, level: 0, minBet: 10, settings: { solo: true } });
+    s.players[0].name = 'Вы';
+    var steps = [
+      { t: 500, do: function (s) { s.players[0].bet = 50; s.players[0].stack -= 50; } },
+      { t: 1200, do: function (s) { s.phase = 'dealing'; } }
+    ];
+    var d = dealSteps(1500, [[card('8', 'h'), card('3', 's')]], card('6', 'd'), card('10', 'c'));
+    steps = steps.concat(d.steps);
+    steps.push({ t: d.t + 900, do: function (s) { s.players[0].decision = 'double'; } });
+    steps.push({ t: d.t + 1600, do: function (s) { s.players[0].stack -= 50; s.players[0].hands = [hand([card('8', 'h'), card('3', 's'), card('10', 'd')], { doubled: true, done: true })]; s.players[0].decision = null; } });
+    steps.push({ t: d.t + 2800, do: function (s) { dealerPhase(s, [card('6', 'd'), card('10', 'c'), card('9', 's')], 'dealerbust'); } });
+    steps.push({ t: d.t + 7200, do: function (s) { settle(s); } });
+    run(s, steps);
+  };
+
+  // ---------- панель стенда ----------
+  var lab = document.getElementById('lab');
+  document.getElementById('labBtn').addEventListener('click', function () { lab.classList.toggle('on'); });
+  function btn(parent, label, fn, i18nKey) {
+    var b = document.createElement('button'); b.type = 'button'; b.textContent = label; if (i18nKey) b.setAttribute('data-i18n', i18nKey);
+    b.addEventListener('click', function () { fn(); var all = parent.querySelectorAll('button'); for (var i = 0; i < all.length; i++) all[i].classList.remove('on'); b.classList.add('on'); });
+    parent.appendChild(b); return b;
+  }
+  var scWrap = document.getElementById('scenarios'), plWrap = document.getElementById('plots');
+  ['lobby', 'deal6', 'deal12', 'hitbust', 'twentyone', 'playerbj', 'split', 'double', 'insurance', 'payouts', 'sidejackpot', 'shuffle', 'levelup', 'out', 'final', 'paused', 'solo', 'solofinal', 'finaltourney', 'solosplit'].forEach(function (k) { btn(scWrap, T('sc_' + k), function () { SC[k](); }, 'sc_' + k); });
+  ['normal', 'longflip', 'cardbycard', 'dealerbust', 'allin', 'rescue', 'jackpot', 'dealerbj'].forEach(function (k) { btn(plWrap, T('pl_' + k), function () { SC['plot_' + k](); }, 'pl_' + k); });
+  var ms = document.getElementById('mstates');
+  BJMargot.STATES.forEach(function (st) { btn(ms, st, function () { table.margot(st); }); });
+  btn(ms, 'brow', function () { table.brow(); });
+  btn(ms, 'look ←', function () { table.lookAt(-1); });
+  btn(ms, 'look →', function () { table.lookAt(1); });
+  var ml = document.getElementById('mlines');
+  Object.keys(BJMargot.LINES.ru).forEach(function (cat) { btn(ml, cat, function () { table.say(BJMargot.pick((window.I18N && I18N.lang) || 'ru', cat)); }); });
+  document.getElementById('sayText').addEventListener('keydown', function (e) { if (e.key === 'Enter') { table.say(e.target.value); e.target.value = ''; } });
+  document.getElementById('tFx').checked = fxOn;
+  document.getElementById('tFx').addEventListener('change', function (e) { fxOn = e.target.checked; table.setFx(fxOn); });
+  document.getElementById('tLayout').value = layout;
+  document.getElementById('tLayout').addEventListener('change', function (e) { layout = e.target.value; stop(); makeTable(); if (layout !== 'board') SC.solo(); else SC.deal6(); });
+  document.getElementById('tAmb').addEventListener('change', function (e) { BJSfx.ambient(e.target.checked); });
+  window.addEventListener('langchange', function (e) { lang = e.detail.lang; if (table) table.setLang(lang); });
+  if (table && !shot) table.setLang(lang);
+
+  // fps
+  setInterval(function () { if (table) document.getElementById('fps').textContent = table.fps().toFixed(0) + ' fps · min ' + table.fpsMin().toFixed(0); }, 1000);
+
+  window.LAB = { SC: SC, names: Object.keys(SC), run: run, base: base, card: card, hand: hand, table: function () { return table; } };
+
+  // ---------- кадр для скриншота ----------
+  if (shot && SC[shot]) {
+    document.getElementById('labBtn').style.display = 'none';
+    document.getElementById('fps').style.display = 'none';
+    document.querySelector('.sound-toggle-btn').style.display = 'none';
+    if (params.get('ui') === '0') { var ls = document.querySelector('.lang-switch'); if (ls) ls.style.display = 'none'; }
+    var origRun = run;
+    run = function (initial, steps) { origRun(initial, steps, shotT); };
+    document.fonts.ready.then(function () { SC[shot](); window.LAB_READY = true; });
+  } else if (layout !== 'board') SC.solo(); else SC.deal6();
+})();
+</script>
+</body>
+</html>

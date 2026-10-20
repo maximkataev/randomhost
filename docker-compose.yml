@@ -42,6 +42,7 @@ services:
       - oneword
       - pond
       - ifeel
+      - blackjack
       - bets
 
   # сервер онлайн-аукциона (WebSocket + API); nginx проксирует в него /auction/ws и /auction/api/
@@ -519,6 +520,40 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # сервер «Блэкджека» (blackjack, WebSocket + API); nginx проксирует в него /blackjack/ws и /blackjack/api/.
+  # Устроен как oneword. В дампе — закрытая карта и добор дилера, карты-пакости на руках: снимки отдают их только тем, кому положено.
+  blackjack:
+    build:
+      context: .
+      dockerfile: blackjack/Dockerfile
+    image: randomhostblackjack:latest
+    container_name: randomhost-blackjack
+    cpuset: "2-5"
+    restart: always
+    mem_limit: 128m
+    environment:
+      - GHOST_TTL_MS=${GHOST_TTL_MS:-120000}
+      - CLAIM_WAIT_MS=${CLAIM_WAIT_MS:-120000}
+      - ANON_TTL_MS=${ANON_TTL_MS:-30000}
+      - PONG_MISSES=${PONG_MISSES:-3}
+      - OFFLINE_GRACE_MS=${OFFLINE_GRACE_MS:-8000}
+      - PING_MS=${PING_MS:-8000}
+      - GAME_PONG_MISSES=${GAME_PONG_MISSES:-2}
+      - GAME_DEAD_MS=${GAME_DEAD_MS:-20000}
+    volumes:
+      - blackjack-state:/app/state
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4100/blackjack/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # сервер «Кувшинок» (WebSocket, события с метками времени + снимок раз в секунду); nginx проксирует /pond/ws и /pond/api/.
   # Устроен как floe: в дампе только комнаты с людьми и токенами, идущая партия после рестарта отменяется.
   pond:
@@ -595,4 +630,5 @@ volumes:
   oneword-state:
   pond-state:
   ifeel-state:
+  blackjack-state:
   bets-state:

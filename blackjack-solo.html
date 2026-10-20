@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#06080f">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f0cf.svg" type="image/svg+xml">
+<title>Блэкджек соло — один на один с дилером Марго</title>
+<meta name="robots" content="index,follow">
+<meta name="description" content="🃏 Блэкджек один на один с дилером Марго: стек 1 000 виртуальных фишек, минимум растёт, побочные ставки до 100:1, подсказки по базовой стратегии и рекорды. Без регистрации, всё в браузере." data-i18n-meta="_meta">
+<link rel="canonical" href="https://randomhost.online/blackjack-solo.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Блэкджек соло — один на один с дилером Марго">
+<meta property="og:description" content="Стек 1 000 виртуальных фишек, минимум растёт, побочные ставки до 100:1, подсказки Марго и рекорды. Всё в браузере.">
+<meta property="og:url" content="https://randomhost.online/blackjack-solo.html">
+<meta property="og:site_name" content="Рандомайзер Онлайн">
+<meta property="og:locale" content="ru_RU">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- неблокирующий шрифт: без ответа Google Fonts стол рисуется системным шрифтом, а не остаётся пустым -->
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800;900&family=Bodoni+Moda:opsz,wght@6..96,500;6..96,600&family=EB+Garamond:wght@600&display=swap" rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800;900&family=Bodoni+Moda:opsz,wght@6..96,500;6..96,600&family=EB+Garamond:wght@600&display=swap" rel="stylesheet"></noscript>
+<link rel="stylesheet" href="blackjack-table.css">
+<style>
+  /* Соло-страница: сверху сцена BJTable (layout solo, 420×760 логических, масштабируется сама), снизу пульт.
+     Пульт — плоские панели в палитре стола (чернильный фон, золотой кант, Inter Tight), без стекла и неона.
+     Высота пульта фиксирована на телефоне, чтобы сцена не прыгала между фазами (правило владельца: без скачков). */
+  :root {
+    --bg: #070304; --panel: #120708; --panel-2: #1d0b0e; --line: rgba(212, 175, 55, .28); --line-soft: rgba(255, 255, 255, .08);
+    --gold: #d4af37; --gold-hi: #f3dd8a; --ivory: #f3efe4; --muted: #b9aea0; --red: #c8102e; --win: #5ad28b; --lose: #ff6b6b; --neon: #f2fff8;
+    --cond: var(--bj-ui);
+    --num: var(--bj-num);
+    --text: var(--bj-text);
+    --serif: var(--bj-display);
+    --top: 44px; --pult-h: 248px;
+    --lang-switch-bg: #120708; --lang-switch-border: rgba(212, 175, 55, .35); --lang-switch-fg: #a9b0c2;
+    --lang-switch-active-bg: #d4af37; --lang-switch-active-fg: #0a0d16; --lang-switch-active-border: transparent;
+    --lang-switch-font: "Inter Tight", Arial, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ivory); font: 500 16px/1.3 var(--text); }
+  body { height: 100vh; height: 100dvh; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  a { color: var(--gold-hi); }
+  .lang-switch { top: calc(4px + env(safe-area-inset-top)) !important; right: 8px !important; }
+
+  /* ---------- верхняя полоса ---------- */
+  #top { position: fixed; left: 0; right: 0; top: 0; z-index: 30; height: calc(var(--top) + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 8px 0; display: flex; align-items: center; gap: 6px; background: var(--bg); }
+  .tb { width: 40px; height: 40px; border: 1px solid var(--line); background: var(--panel); color: var(--gold); display: grid; place-items: center; padding: 0; }
+  .tb svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .sound-toggle-btn { width: 40px; height: 40px; border: 1px solid var(--line); background: var(--panel); color: var(--gold); display: grid; place-items: center; padding: 0; }
+  .top-title { margin-left: 6px; font: 700 15px/1 var(--cond); letter-spacing: .22em; text-transform: uppercase; color: var(--gold-hi); white-space: nowrap; }
+  .top-friends { margin-left: auto; margin-right: 128px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; text-decoration: none; color: var(--muted); white-space: nowrap; }
+  .top-friends:hover { color: var(--gold-hi); }
+  @media (max-width: 640px) { .top-friends { display: none; } }
+  @media (max-width: 400px) { .top-title { display: none; } }
+
+  /* меню разделов — тот же гамбургер, что на страницах рандомайзеров, в тёмной палитре стола */
+  .menu-wrap { position: relative; }
+  .menu-btn { width: 40px; height: 40px; border: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0; }
+  .menu-btn span { width: 18px; height: 2px; background: var(--gold); transition: transform .2s, opacity .2s; }
+  .menu-btn.open span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+  .menu-btn.open span:nth-child(2) { opacity: 0; }
+  .menu-btn.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+  .menu-drop { position: absolute; top: 46px; left: 0; min-width: 260px; max-height: calc(100vh - 80px); overflow-y: auto; padding: 6px 0; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, .6); display: flex; flex-direction: column; opacity: 0; visibility: hidden; transition: opacity .12s, visibility .12s; }
+  .menu-drop.open { opacity: 1; visibility: visible; }
+  .menu-drop::before { content: attr(data-heading); display: block; padding: 4px 16px 6px; color: var(--muted); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; }
+  .menu-drop a { color: var(--ivory); font-size: 15px; padding: 7px 16px; white-space: nowrap; text-decoration: none; }
+  .menu-drop a:hover { background: rgba(212, 175, 55, .12); }
+  @media (max-width: 520px) { .menu-drop { min-width: calc(100vw - 20px); } }
+
+  /* ---------- сцена и пульт ---------- */
+  #main { position: fixed; left: 0; right: 0; top: calc(var(--top) + env(safe-area-inset-top)); bottom: 0; }
+  #col { height: 100%; display: flex; flex-direction: column; }
+  #scene { flex: 1 1 auto; min-height: 0; position: relative; }
+  #scene .bj-margot-wrap { cursor: pointer; }
+  /* пузырь в портрете: стоит на x≈260 из 420 — ограничиваем ширину, чтобы реплика не уходила за рамку */
+  #scene .bj[data-layout="solo"] .bj-bubble { max-width: 176px; font-size: 25px; padding: 5px 12px 6px; }
+  /* разорение — единственная фаза, где пульт растёт по содержимому (таблица рекордов), сцена ужимается */
+  #pult[data-phase="finished"] { flex: 0 0 auto; height: auto; max-height: 62%; }
+  #pult { flex: 0 0 var(--pult-h); height: var(--pult-h); padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; justify-content: flex-end; gap: 5px; border-top: 1px solid var(--line); background: var(--panel); }
+  @media (max-height: 660px) { :root { --pult-h: 224px; } #pult { gap: 4px; } }
+  /* десктоп: колонка 760 px по центру, сцена solo-wide (760×440) сверху, пульт под боксом */
+  @media (min-width: 820px) and (min-height: 560px) {
+    #col { max-width: 760px; margin: 0 auto; justify-content: center; }
+    #scene { flex: 1 1 auto; max-height: 440px; }
+    #pult { flex: 0 0 auto; height: auto; padding: 10px 16px 18px; gap: 8px; }
+    :root { --pult-h: 0px; }
+  }
+  /* телефон в ландшафте: сцена solo-wide слева во всю высоту, пульт 320 px справа, прижат к низу */
+  @media (min-width: 700px) and (max-height: 559px) {
+    #col { flex-direction: row; }
+    #pult { flex: 0 0 320px; height: auto; border-top: 0; border-left: 1px solid var(--line); padding: 10px 14px 12px; gap: 6px; justify-content: flex-end; }
+    :root { --pult-h: 0px; }
+  }
+
+  /* ---------- кнопки пульта ---------- */
+  .btn { min-height: 56px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ivory); font: 700 18px/1 var(--cond); letter-spacing: .06em; text-transform: uppercase; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 6px 8px; flex: 1 1 0; min-width: 0; }
+  .btn small { display: block; font: 500 13px/1.15 var(--cond); letter-spacing: .01em; text-transform: none; color: var(--muted); text-align: center; max-width: 100%; }
+  .btn.gold { background: var(--gold); color: #0a0d16; border-color: var(--gold-hi); }
+  .btn.gold small { color: rgba(10, 13, 22, .75); }
+  .btn.wide { flex: 2 1 0; }
+  #pult > .btn { flex: 0 0 auto; min-height: 60px; }
+  .btn:disabled { opacity: .42; cursor: default; }
+  .btn:not(:disabled):active { transform: translateY(1px); }
+  .btn.picked { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+  .row { display: flex; gap: 6px; }
+  .row .btn { font-size: 16px; letter-spacing: .03em; }
+  .row .btn small { white-space: normal; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .grid2 .btn { min-height: 60px; }
+  @media (max-height: 660px) { .grid2 .btn { min-height: 56px; } }
+
+  /* ставки */
+  .stats { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .stats span { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+  .stats b { font-size: 20px; letter-spacing: 0; color: var(--ivory); font-variant-numeric: tabular-nums; }
+  .stats b.gold { color: var(--gold-hi); }
+  .stats b.neon { color: var(--neon); }
+  .boxes { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 6px; }
+  .box { height: 44px; border: 1px solid var(--line-soft); background: #1a0a0d; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; -webkit-user-select: none; user-select: none; padding: 0; color: var(--ivory); }
+  .box .k { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .box .v { font-size: 18px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .box.on { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+  .box .q { position: absolute; right: 5px; top: 4px; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--muted); color: var(--muted); font: 700 9px/12px var(--cond); text-align: center; }
+  .chips { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+  .chip.all { background: transparent; color: var(--gold-hi); box-shadow: inset 0 0 0 2px var(--gold), 0 2px 0 rgba(0, 0, 0, .5); font-size: 13px; text-transform: uppercase; letter-spacing: 0; }
+  .chip { width: 44px; height: 44px; margin: 0 auto; border-radius: 50%; border: 0; padding: 0; background: var(--c); color: var(--ct); font: 800 16px/1 var(--num); letter-spacing: -.02em; box-shadow: inset 0 0 0 3px rgba(0, 0, 0, .25), inset 0 0 0 5px var(--c), inset 0 0 0 6px rgba(255, 255, 255, .55), 0 2px 0 rgba(0, 0, 0, .5); font-variant-numeric: tabular-nums; }
+  .chip:disabled { opacity: .35; cursor: default; }
+  .chip:not(:disabled):active { transform: scale(.94); }
+  .foot { font-size: 11px; line-height: 1.2; color: var(--muted); text-align: center; letter-spacing: .02em; min-height: 13px; }
+  .foot b { color: var(--gold-hi); font-weight: 600; }
+
+  /* решения */
+  .mhint { flex: none; width: 100%; }
+  .mhint .mh-t { font-size: 16px; }
+  .hands { display: flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; }
+  .hands .h { display: flex; align-items: baseline; gap: 5px; padding: 2px 8px; border: 1px solid transparent; }
+  .hands .h.on { border-color: var(--gold); color: var(--ivory); }
+  .hands .h.done { opacity: .6; }
+  .hands b { font-size: 18px; letter-spacing: 0; color: var(--neon); font-variant-numeric: tabular-nums; }
+  .hands b.bad { color: var(--lose); }
+  .hands b.bj { color: var(--gold-hi); }
+  .hands .vs { margin-left: auto; }
+  .hands .vs b { color: var(--ivory); }
+  .note { font-size: 13px; color: var(--muted); text-align: center; line-height: 1.25; }
+
+  /* страховка и прочие листы в пульте */
+  .ins { border: 1px solid var(--gold); background: #1a0a0d; padding: 7px 10px; }
+  .ins .t { font: 700 17px/1.1 var(--serif); color: var(--gold-hi); }
+  .ins .x { margin-top: 3px; font-size: 13px; line-height: 1.25; color: var(--ivory); }
+  .ins .x.m { color: var(--muted); }
+
+  /* итог раздачи */
+  .res { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+  .res .ln { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .res .ln span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .res .amt { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .res .amt.w { color: var(--win); } .res .amt.l { color: var(--lose); } .res .amt.p { color: var(--muted); }
+  .res .tot { border-top: 1px solid var(--line-soft); margin-top: 3px; padding-top: 4px; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .res .tot .amt { font-size: 24px; }
+
+  /* разорение: эта партия против рекорда — строки пульта, без карточек */
+  .rec { display: grid; grid-template-columns: 1fr auto auto; column-gap: 14px; align-items: baseline; font-size: 13px; }
+  .rec > span { padding: 2px 0; border-bottom: 1px solid var(--line-soft); white-space: nowrap; line-height: 1.25; }
+  .rec .hd { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); padding-bottom: 2px; }
+  .rec .k { color: var(--ivory); }
+  .rec .v { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+  .rec .v.r { color: var(--muted); font-weight: 600; }
+  .rec .v.new { color: var(--gold-hi); }
+  .rec .v.new i { font: 600 12px/1 var(--cond); letter-spacing: .08em; text-transform: uppercase; font-style: normal; margin-right: 6px; vertical-align: 2px; }
+  .rec .ft { grid-column: 1 / -1; border-bottom: 0; font-size: 12px; color: var(--muted); padding-top: 4px; }
+
+  /* пошаговая первая раздача */
+  .tut { border: 1px solid var(--gold); background: #1a0a0d; padding: 6px 10px 7px; display: flex; flex-direction: column; gap: 3px; }
+  .tut .who { font: 700 12px/1 var(--cond); letter-spacing: .2em; text-transform: uppercase; color: var(--gold-hi); display: flex; justify-content: space-between; }
+  .tut .who i { font-style: normal; color: var(--muted); }
+  .tut .txt { font: normal 600 18px/1.25 var(--bj-voice); color: var(--ivory); }
+  .tut.big .txt { font-size: 19px; }
+  .btn.sm { min-height: 44px; font-size: 15px; }
+
+  /* ---------- нижний лист (Спроси Марго, правила, настройки, побочные) ---------- */
+  #sheetbg { position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, .62); opacity: 0; visibility: hidden; transition: opacity .2s, visibility .2s; z-index: 40; }
+  #sheetbg.on { opacity: 1; visibility: visible; }
+  #sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 86%; overflow-y: auto; -webkit-overflow-scrolling: touch; background: var(--panel); border-top: 1px solid var(--gold); padding: 14px 14px calc(16px + env(safe-area-inset-bottom)); transform: translateY(102%); transition: transform .25s; z-index: 41; }
+  #sheet.on { transform: none; }
+  @media (min-width: 820px) and (min-height: 560px) { #sheet { left: 50%; right: auto; bottom: 50%; width: 460px; max-height: 80%; transform: translate(-50%, 50%) scale(.96); opacity: 0; border: 1px solid var(--gold); transition: transform .2s, opacity .2s; } #sheet.on { transform: translate(-50%, 50%); opacity: 1; } }
+  #sheet h3 { margin: 0 0 8px; font: 700 22px/1.1 var(--serif); color: var(--gold-hi); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  #sheet h3 .x { width: 36px; height: 36px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ivory); font: 700 18px/1 var(--cond); padding: 0; }
+  #sheet p { margin: 0 0 8px; font-size: 15px; line-height: 1.35; }
+  #sheet p.m { color: var(--muted); font-size: 13px; }
+  #sheet .say { font: normal 600 20px/1.3 var(--bj-voice); border-left: 3px solid var(--gold); padding: 4px 10px; margin: 0 0 12px; }
+  #sheet .list { margin: 0 0 10px; padding: 0; list-style: none; font-size: 14px; }
+  #sheet .list li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line-soft); }
+  #sheet .list li b { color: var(--gold-hi); white-space: nowrap; }
+  #sheet .cards { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin: 0 -14px; padding: 2px 14px 6px; }
+  #sheet .cards::-webkit-scrollbar { display: none; }
+  #sheet .card { flex: 0 0 100%; scroll-snap-align: center; border: 1px solid var(--line); background: #1a0a0d; padding: 10px 12px 12px; min-height: 150px; }
+  #sheet .card .n { font: 700 12px/1 var(--cond); letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+  #sheet .card .t { margin: 4px 0 6px; font: 700 20px/1.1 var(--serif); color: var(--gold-hi); }
+  #sheet .card .b { font-size: 14px; line-height: 1.35; }
+  #sheet .dots { display: flex; justify-content: center; gap: 6px; margin: 4px 0 8px; }
+  #sheet .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+  #sheet .dots i.on { background: var(--gold); }
+  #sheet .tg { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 52px; border-bottom: 1px solid var(--line-soft); cursor: pointer; }
+  #sheet .tg .l { font-size: 16px; } #sheet .tg .l small { display: block; font-size: 12px; color: var(--muted); }
+  #sheet .sw { flex: 0 0 46px; width: 46px; height: 26px; border-radius: 13px; background: #3a2a28; position: relative; transition: background .2s; }
+  #sheet .sw.on { background: var(--gold); }
+  #sheet .sw i { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: left .2s; }
+  #sheet .sw.on i { left: 23px; }
+  #sheet table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0 10px; }
+  #sheet th, #sheet td { padding: 5px 4px; text-align: right; border-bottom: 1px solid var(--line-soft); font-variant-numeric: tabular-nums; }
+  #sheet th { color: var(--muted); font-weight: 600; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  #sheet td:first-child, #sheet th:first-child { text-align: left; }
+  #sheet .act { margin-top: 10px; }
+  #sheet .act .btn { min-height: 50px; }
+  #sheet a.btn { text-decoration: none; }
+  #toast { position: fixed; left: 50%; bottom: calc(var(--pult-h) + 10px); transform: translate(-50%, 8px); background: var(--ivory); color: #1a1410; border: 1px solid var(--gold); padding: 8px 14px; font: 600 16px/1.2 var(--cond); opacity: 0; transition: opacity .2s, transform .2s; z-index: 35; pointer-events: none; white-space: nowrap; }
+  #toast.on { opacity: 1; transform: translate(-50%, 0); }
+  @media (min-width: 820px) and (min-height: 560px), (min-width: 700px) and (max-height: 559px) { #toast { bottom: 40px; } }
+</style>
+</head>
+<body>
+<div id="top">
+  <div class="menu-wrap">
+    <button class="menu-btn" id="menuBtn" type="button" aria-label="Меню" aria-expanded="false" data-i18n-attr="aria-label:menu"><span></span><span></span><span></span></button>
+    <nav class="menu-drop" id="menuDrop" data-heading="Другие рандомайзеры" data-i18n-attr="data-heading:menu_heading">
+      <a href="index.html" data-i18n="nav_home">🏠 Главная</a>
+      <a href="racing.html" data-i18n="nav_racing">🏁 Гонки</a>
+      <a href="marble-race.html" data-i18n="nav_marbles">🎢 Гонка шариков</a>
+      <a href="duck-race.html" data-i18n="nav_ducks">🦆 Утиные бега</a>
+      <a href="penguin-floe.html" data-i18n="nav_penguins">🐧 Пингвины на льдине</a>
+      <a href="elections.html" data-i18n="nav_elections">🗳️ Выборы</a>
+      <a href="ai-judge.html" data-i18n="nav_ai">🤖 LLM-рандомайзер</a>
+      <a href="slack-roulette.html" data-i18n="nav_slack">🚨 Slack Рулетка</a>
+      <a href="thunder.html" data-i18n="nav_thunder">⚡ Гром</a>
+      <a href="bitcoin-random.html" data-i18n="nav_btc">🪙 Биткоин-рандом</a>
+      <a href="trading.html" data-i18n="nav_trading">📈 Трейдинг</a>
+      <a href="plinko.html" data-i18n="nav_plinko">🎯 Плинко</a>
+      <a href="wheel-of-fortune.html" data-i18n="nav_wheel">🎡 Колесо Фортуны</a>
+      <a href="gitlab-blame.html" data-i18n="nav_gitlab">🦊 GitLab Blame</a>
+      <a href="el-credito.html" data-i18n="nav_bank">🇲🇽 Банк</a>
+      <a href="bingo.html" data-i18n="nav_bingo">🎲 Бинго</a>
+      <a href="daisy.html" data-i18n="nav_daisy">🌼 Ромашка</a>
+      <a href="time-randomizer.html" data-i18n="nav_pseudo">⏱️ Псевдорандом</a>
+    </nav>
+  </div>
+  <button class="tb" id="settingsBtn" type="button" aria-label="Настройки" data-i18n-attr="aria-label:set_title"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  <button class="sound-toggle-btn" type="button"></button>
+  <span class="top-title" data-i18n="top_title">Блэкджек · соло</span>
+  <a class="top-friends" href="blackjack.html" data-i18n="friends">Играть с друзьями →</a>
+</div>
+<div id="main"><div id="col">
+  <div id="scene"></div>
+  <div id="pult"></div>
+</div></div>
+<div id="sheetbg"></div>
+<div id="sheet" role="dialog"></div>
+<div id="toast" aria-live="polite"></div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: 'Блэкджек соло — один на один с дилером Марго',
+    _meta: '🃏 Блэкджек один на один с дилером Марго: стек 1 000 виртуальных фишек, минимум растёт, побочные ставки до 100:1, подсказки по базовой стратегии и рекорды. Без регистрации, всё в браузере.',
+    menu: 'Меню', menu_heading: 'Другие рандомайзеры',
+    nav_home: '🏠 Главная', nav_ducks: '🦆 Утиные бега', nav_penguins: '🐧 Пингвины на льдине', nav_elections: '🗳️ Выборы', nav_marbles: '🎢 Гонка шариков', nav_ai: '🤖 LLM-рандомайзер', nav_gitlab: '🦊 GitLab Blame', nav_slack: '🚨 Slack Рулетка', nav_racing: '🏁 Гонки', nav_wheel: '🎡 Колесо Фортуны', nav_bingo: '🎲 Бинго', nav_bank: '🇲🇽 Банк', nav_plinko: '🎯 Плинко', nav_trading: '📈 Трейдинг', nav_pseudo: '⏱️ Псевдорандом', nav_daisy: '🌼 Ромашка', nav_btc: '🪙 Биткоин-рандом', nav_thunder: '⚡ Гром',
+    sound_off: 'Выключить звук', sound_on: 'Включить звук',
+    top_title: 'Блэкджек · соло', cont_title: 'С возвращением', cont_text: 'Партия не закончена: раздача {hand}, стек {stack}.', cont_new: 'Новая игра', cont_go: 'Продолжить', friends: 'Играть с друзьями →', you: 'Вы', margot: 'Марго', close: 'Закрыть',
+    virtual: 'Фишки виртуальные, на деньги не играем',
+    st_stack: 'Стек', st_min: 'Минимум', st_level: 'Уровень', st_raise: 'До повышения', hands_pl: ['раздача', 'раздачи', 'раздач'],
+    rec_line: 'Рекорд: {hands} · стек {stack}', rec_line_h: 'Рекорд с подсказками: {hands} · стек {stack}',
+    box_main: 'Основная', box_pp: 'Пара', box_tp: '21+3',
+    chip_all: 'Всё', btn_repeat: 'Повторить', repeat_sub: 'прошлая ставка', repeat_na: 'прошлой ставки нет', btn_clear: 'Очистить', clear_sub: 'снять всё',
+    btn_deal: 'Сдавай', deal_sub: 'минимум {min} — основная ставка', deal_low: 'меньше минимума — штраф {n}', deal_none: 'сначала ставка',
+    btn_hit: 'Ещё', hit_sub: '+1 карта', btn_stand: 'Хватит', stand_sub: 'остаюсь на {v}', btn_double: 'Удвоить', double_sub: '×2 и одна карта', double_na_two: 'нужны 2 карты', double_na_money: 'мало фишек',
+    btn_split: 'Сплит', split_sub: 'две руки', split_na_pair: 'нужна пара', split_na_once: 'один сплит', split_na_money: 'мало фишек',
+    flying: 'карты летят…', hand_n: 'Рука {n}', soft_note: 'туз как 1 или 11', bust_w: 'перебор', bj_w: 'блэкджек', hints_off: 'Без подсказок. Тап по Марго — спросить', dealing: 'Раздаю…', closing: 'Ставок больше нет',
+    ins_title: 'У Марго туз', ins_text: 'Ставка {n} на блэкджек Марго. Платит 2:1, обычно мимо.', ins_text_bj: 'Блэкджек у тебя. «Ровно 1:1» — деньги сразу, без риска ничьей.',
+    btn_ins: 'Страховка {n}?', ins_sub: 'платит 2:1', btn_even: 'Ровно 1:1?', even_sub: 'без риска ничьей', btn_no: 'Нет', no_sub: 'играем как есть', ins_na: 'мало фишек', peeking: 'Марго смотрит под закрытую карту…',
+    dealer_turn: 'Ход Марго', dealer_sub: 'открывает карту и берёт до 17',
+    r_bj: 'Блэкджек! Ставка {bet} — выигрыш {win}', r_even: 'Ровно 1:1 — по ставке {bet}', r_dbust: 'У Марго перебор — ты в плюсе', r_win: 'Выше, чем у Марго — выигрыш', r_push: 'Ничья — ставка назад', r_bust: 'Перебор — больше 21', r_dbj: 'У Марго блэкджек', r_lose: 'У Марго больше',
+    r_ins_win: 'Страховка 2:1', r_ins_lose: 'Страховка сгорела', r_pen: 'Штраф: меньше минимума', r_side_win: '{box}: {kind} {mult}:1', r_side_lose: '{box}: нет',
+    total: 'Итог раздачи', btn_next: 'Дальше', next_sub: 'или через пару секунд само',
+    over_text: 'Продержались {hands}, лучший стек {stack}', col_this: 'Эта партия', col_rec: 'Рекорд', new_short: 'новый', over_first: 'Первая партия — рекорды пошли', btn_again: 'Ещё раз', again_sub: 'новая партия, стек 1 000',
+    tut_step: 'Шаг {n} из 6', tut_next: 'Дальше', tut_skip: 'Пропустить', tut_wait: 'смотрите на стол…',
+    tut_1: 'Тапни фишку — она ляжет в бокс. Минимум {min}, потолок — весь стек.',
+    tut_2: 'У тебя {you}, у меня {up}. Туз сам считается за 1 или 11 — как выгоднее.',
+    tut_2_bj: 'Блэкджек с раздачи! Туз и десятка платят 3:2.',
+    tut_2_dbj: 'У меня блэкджек — раздача кончилась, не начавшись. Бывает.',
+    tut_3: 'Ещё — карта, хватит — стоп. Удвоить даёт ×2 за одну карту; серые кнопки скажут, почему нельзя.',
+    tut_4: 'Теперь я: беру до 17 и на 17 стою — даже на мягких.',
+    tut_5: 'Выше меня — 1:1, блэкджек — 3:2. Перебор проигрывает всегда — даже если я тоже перебрала.',
+    tut_6: 'Дальше без поводка. Над кнопками — мои подсказки, а минимум растёт каждые две раздачи.',
+    tut_ins: 'Страховка — обычно мимо. Смело жми «Нет».',
+    ask_title: 'Спроси Марго', ask_all: 'Все правила', ask_back: 'К вопросу',
+    ask_betting: 'Ставь фишки в бокс: минимум {min}, больше можно. «Пара» и «21+3» по желанию, не больше основной. Готово — «Сдавай».',
+    ask_insurance: 'У меня туз. Страховка — {n} на мой блэкджек, платит 2:1. С блэкджеком у тебя — «ровно 1:1» без риска.',
+    ask_deciding: 'У тебя {you}, у меня {up}. Я бы сказала: {hint}',
+    ask_dealer: 'Открываю карту и беру до 17. На 17 стою, даже на мягких. Тут я ничего не решаю.',
+    ask_payout: 'Выше меня — 1:1. Ровно — ставка назад. Блэкджек — 3:2. Перебор проигрывает всегда. Побочные — сразу после раздачи.',
+    ask_finished: 'Фишки кончились. «Ещё раз» — новая партия со стеком 1 000. Рекорды — в настройках.',
+    rules_title: 'Правила за минуту',
+    rule_1_t: 'Цель', rule_1: 'Ближе к 21, чем Марго, но не больше. Перебор — проигрыш сразу, что бы ни было у неё.',
+    rule_2_t: 'Очки', rule_2: 'Картинки — 10, туз — 1 или 11. «7/17» — мягкая рука: туз пока за 11. Блэкджек — туз и десятка с раздачи.',
+    rule_3_t: 'Кнопки', rule_3: 'Ещё — карта, хватит — стоп. Удвоить — ×2 и одна карта (только на первых двух). Сплит — пара на две руки.',
+    rule_4_t: 'Выплаты', rule_4: 'Выигрыш 1:1, блэкджек 3:2, ничья — ставка назад. На туз Марго — страховка: полставки, платит 2:1.',
+    rule_5_t: 'Побочные ставки', rule_5: 'Не больше основной. Пара: твои две одинаковые — 5:1, 10:1 или 25:1. 21+3: твои две и карта Марго — до 100:1.',
+    rule_6_t: 'Уровни и минимум', rule_6: 'Минимум растёт каждые две раздачи: 10, 20, 30, 50, 80… Недобор по ставке уходит Марго штрафом.',
+    set_title: 'Настройки', set_hints: 'Подсказки Марго', set_hints_sub: 'короткая реплика над кнопками', set_fx: 'Спецэффекты', set_fx_sub: 'частицы, конфетти, медленные перевороты', set_tut: 'Показать первую раздачу ещё раз', set_tut_sub: 'пошагово — начнёт новую партию',
+    set_records: 'Рекорды', rec_h_stack: 'Стек', rec_h_hands: 'Раздач', rec_h_streak: 'Серия', rec_h_bj: 'Блэкджеков', rec_h_side: 'Побочная', rec_row_plain: 'Сам', rec_row_hints: 'С подсказками Марго', rec_empty: 'Рекордов пока нет — сыграйте партию до конца.',
+    set_friends: 'Играть с друзьями', set_friends_sub: 'общий экран + телефоны, карты-пакости', set_new: 'Новая партия', set_new_sub: 'текущая не считается',
+    side_pp_title: 'Пара — Perfect Pairs', side_pp_text: 'Ставка, что первые две твои карты одинаковые. Не больше основной, решается сразу.',
+    pp_mixed: 'Пара разных мастей и цветов', pp_colored: 'Пара одного цвета', pp_perfect: 'Пара одной масти',
+    side_tp_title: '21+3', side_tp_text: 'Твои две карты и карта Марго — как покерная тройка. Не больше основной, решается сразу.',
+    tp_flush: 'Флеш — одна масть', tp_straight: 'Стрит — по порядку', tp_trips: 'Тройка', tp_sf: 'Стрит-флеш', tp_strips: 'Тройка одной масти',
+    k_mixed: 'пара разных мастей', k_colored: 'пара одного цвета', k_perfect: 'пара одной масти', k_flush: 'флеш', k_straight: 'стрит', k_trips: 'тройка', k_straightFlush: 'стрит-флеш', k_suitedTrips: 'тройка одной масти',
+    err_no_money: 'Не хватает фишек', err_over_main: 'Побочная не больше основной', err_closed: 'Сейчас нельзя', err_no_last: 'Прошлой ставки нет', long_hint: 'Удерживайте бокс — что это за ставка'
+  },
+  en: {
+    _title: 'Blackjack solo — one on one with dealer Margot',
+    _meta: '🃏 Blackjack one on one with dealer Margot: 1,000 virtual chips, rising minimum, side bets up to 100:1, basic-strategy hints and records. No sign-up, runs in the browser.',
+    menu: 'Menu', menu_heading: 'Other randomizers',
+    nav_home: '🏠 Home', nav_ducks: '🦆 Duck Race', nav_penguins: '🐧 Penguin Floe', nav_elections: '🗳️ Elections', nav_marbles: '🎢 Marble Race', nav_ai: '🤖 LLM Randomizer', nav_gitlab: '🦊 GitLab Blame', nav_slack: '🚨 Slack Roulette', nav_racing: '🏁 Racing', nav_wheel: '🎡 Wheel of Fortune', nav_bingo: '🎲 Bingo', nav_bank: '🇲🇽 The Bank', nav_plinko: '🎯 Plinko', nav_trading: '📈 Trading', nav_pseudo: '⏱️ Pseudorandom', nav_daisy: '🌼 Daisy', nav_btc: '🪙 Bitcoin Random', nav_thunder: '⚡ Thunder',
+    sound_off: 'Mute', sound_on: 'Unmute',
+    top_title: 'Blackjack · solo', cont_title: 'Welcome back', cont_text: 'Game in progress: hand {hand}, stack {stack}.', cont_new: 'New game', cont_go: 'Continue', friends: 'Play with friends →', you: 'You', margot: 'Margot', close: 'Close',
+    virtual: 'Chips are virtual, no real money',
+    st_stack: 'Stack', st_min: 'Minimum', st_level: 'Level', st_raise: 'Raise in', hands_pl: ['hand', 'hands'],
+    rec_line: 'Record: {hands} · stack {stack}', rec_line_h: 'Record with hints: {hands} · stack {stack}',
+    box_main: 'Main', box_pp: 'Pair', box_tp: '21+3',
+    chip_all: 'All', btn_repeat: 'Repeat', repeat_sub: 'last bet', repeat_na: 'no last bet', btn_clear: 'Clear', clear_sub: 'take it all back',
+    btn_deal: 'Deal', deal_sub: 'minimum {min} is the main bet', deal_low: 'under the minimum: penalty {n}', deal_none: 'bet first',
+    btn_hit: 'Hit', hit_sub: 'one more card', btn_stand: 'Stand', stand_sub: 'stay on {v}', btn_double: 'Double', double_sub: '×2 and one card', double_na_two: 'needs 2 cards', double_na_money: 'not enough chips',
+    btn_split: 'Split', split_sub: 'two hands', split_na_pair: 'needs a pair', split_na_once: 'one split only', split_na_money: 'not enough chips',
+    flying: 'cards in the air…', hand_n: 'Hand {n}', soft_note: 'ace as 1 or 11', bust_w: 'bust', bj_w: 'blackjack', hints_off: 'No hints. Tap here to ask Margot', dealing: 'Dealing…', closing: 'No more bets',
+    ins_title: 'Margot shows an ace', ins_text: 'A {n} bet on her blackjack. Pays 2:1, usually a miss.', ins_text_bj: 'You have blackjack. «Even money» pays now, with no push risk.',
+    btn_ins: 'Insurance {n}?', ins_sub: 'pays 2:1', btn_even: 'Even money?', even_sub: 'no push risk', btn_no: 'No', no_sub: 'play it out', ins_na: 'not enough chips', peeking: 'Margot peeks at her hole card…',
+    dealer_turn: "Margot's turn", dealer_sub: 'flips the card, draws to 17',
+    r_bj: 'Blackjack! Bet {bet} — win {win}', r_even: 'Even money on {bet}', r_dbust: 'Margot busts — you\'re up', r_win: 'Higher than Margot — you win', r_push: 'Push — bet back', r_bust: 'Bust — over 21', r_dbj: 'Margot has blackjack', r_lose: 'Margot is higher',
+    r_ins_win: 'Insurance 2:1', r_ins_lose: 'Insurance lost', r_pen: 'Penalty: under the minimum', r_side_win: '{box}: {kind} {mult}:1', r_side_lose: '{box}: no',
+    total: 'Hand result', btn_next: 'Next', next_sub: 'or it moves on by itself',
+    over_text: 'You lasted {hands}, best stack {stack}', col_this: 'This game', col_rec: 'Record', new_short: 'new', over_first: 'First game — records start now', btn_again: 'Again', again_sub: 'new game, 1,000 chips',
+    tut_step: 'Step {n} of 6', tut_next: 'Next', tut_skip: 'Skip', tut_wait: 'watch the table…',
+    tut_1: 'Tap a chip and it lands in the box. Minimum {min}, ceiling is your whole stack.',
+    tut_2: 'You have {you}, I show {up}. An ace counts as 1 or 11, whichever helps.',
+    tut_2_bj: 'Blackjack off the deal! Ace and ten pay 3:2.',
+    tut_2_dbj: 'I have blackjack — the hand ended before it began. It happens.',
+    tut_3: 'Hit takes a card, stand stops. Double gets ×2 for one card; grey buttons say why not.',
+    tut_4: 'My turn: I draw to 17 and stand on 17 — even soft.',
+    tut_5: 'Beat me for 1:1, blackjack pays 3:2. A bust always loses — even if I bust too.',
+    tut_6: 'Off the leash now. My hints sit above the buttons, and the minimum rises every two hands.',
+    tut_ins: 'Insurance is usually a miss. Press “No” freely.',
+    ask_title: 'Ask Margot', ask_all: 'All the rules', ask_back: 'Back',
+    ask_betting: 'Put chips in the box: minimum {min}, more is fine. «Pair» and «21+3» are optional, capped at the main bet. Set? «Deal».',
+    ask_insurance: 'I show an ace. Insurance is {n} on my blackjack, pays 2:1. With your own blackjack, «even money» is risk-free.',
+    ask_deciding: 'You have {you}, I show {up}. I\'d say: {hint}',
+    ask_dealer: 'I flip my card and draw to 17. I stand on 17, even soft. No decisions on my side.',
+    ask_payout: 'Beat me: 1:1. Tie: bet back. Blackjack: 3:2. Bust always loses. Side bets settle right after the deal.',
+    ask_finished: 'Out of chips. «Again» starts a new game with 1,000. Records are in settings.',
+    rules_title: 'Rules in a minute',
+    rule_1_t: 'Goal', rule_1: 'Get closer to 21 than Margot without going over. A bust loses at once, whatever she has.',
+    rule_2_t: 'Points', rule_2: 'Faces are 10, an ace is 1 or 11. «7/17» is soft: the ace still counts 11. Blackjack is an ace and a ten off the deal.',
+    rule_3_t: 'Buttons', rule_3: 'Hit — a card, stand — stop. Double — ×2 and one card (first two cards only). Split — a pair becomes two hands.',
+    rule_4_t: 'Payouts', rule_4: 'Win 1:1, blackjack 3:2, a tie returns the bet. Against Margot\'s ace: insurance, half a bet, pays 2:1.',
+    rule_5_t: 'Side bets', rule_5: 'Never more than the main bet. Pair: your two match — 5:1, 10:1 or 25:1. 21+3: your two plus Margot\'s card — up to 100:1.',
+    rule_6_t: 'Levels and minimum', rule_6: 'The minimum rises every two hands: 10, 20, 30, 50, 80… A short bet costs you a penalty to Margot.',
+    set_title: 'Settings', set_hints: 'Margot’s hints', set_hints_sub: 'a short line above the buttons', set_fx: 'Effects', set_fx_sub: 'particles, confetti, slow flips', set_tut: 'Show the first hand again', set_tut_sub: 'step by step — starts a new game',
+    set_records: 'Records', rec_h_stack: 'Stack', rec_h_hands: 'Hands', rec_h_streak: 'Streak', rec_h_bj: 'Blackjacks', rec_h_side: 'Side bet', rec_row_plain: 'On your own', rec_row_hints: 'With Margot’s hints', rec_empty: 'No records yet — play a game to the end.',
+    set_friends: 'Play with friends', set_friends_sub: 'shared screen + phones, prank cards', set_new: 'New game', set_new_sub: 'the current one won’t count',
+    side_pp_title: 'Pair — Perfect Pairs', side_pp_text: 'A bet that your first two cards match. Never more than the main bet, settled at once.',
+    pp_mixed: 'Pair, different suits and colours', pp_colored: 'Pair, same colour', pp_perfect: 'Pair, same suit',
+    side_tp_title: '21+3', side_tp_text: 'Your two cards plus Margot\'s up card, as a poker hand. Never more than the main bet, settled at once.',
+    tp_flush: 'Flush — one suit', tp_straight: 'Straight — in a row', tp_trips: 'Three of a kind', tp_sf: 'Straight flush', tp_strips: 'Suited three of a kind',
+    k_mixed: 'mixed pair', k_colored: 'coloured pair', k_perfect: 'perfect pair', k_flush: 'flush', k_straight: 'straight', k_trips: 'three of a kind', k_straightFlush: 'straight flush', k_suitedTrips: 'suited trips',
+    err_no_money: 'Not enough chips', err_over_main: 'Side bet can’t exceed the main', err_closed: 'Not now', err_no_last: 'No last bet', long_hint: 'Hold a box to see what the bet is'
+  },
+  el: {
+    _title: 'Μπλακτζάκ σόλο — ένας εναντίον της ντίλερ Μαργκό',
+    _meta: '🃏 Μπλακτζάκ ένας εναντίον της ντίλερ Μαργκό: 1.000 εικονικές μάρκες, ελάχιστο που ανεβαίνει, πλαϊνά στοιχήματα έως 100:1, συμβουλές βασικής στρατηγικής και ρεκόρ. Χωρίς εγγραφή, όλα στον browser.',
+    menu: 'Μενού', menu_heading: 'Άλλες κληρώσεις',
+    nav_home: '🏠 Αρχική', nav_ducks: '🦆 Αγώνας Παπιών', nav_penguins: '🐧 Πιγκουίνοι στον πάγο', nav_elections: '🗳️ Εκλογές', nav_marbles: '🎢 Αγώνας βόλων', nav_ai: '🤖 LLM Randomizer', nav_gitlab: '🦊 GitLab Blame', nav_slack: '🚨 Slack Ρουλέτα', nav_racing: '🏁 Αγώνες', nav_wheel: '🎡 Τροχός της Τύχης', nav_bingo: '🎲 Bingo', nav_bank: '🇲🇽 Η Τράπεζα', nav_plinko: '🎯 Plinko', nav_trading: '📈 Trading', nav_pseudo: '⏱️ Ψευδοτυχαίο', nav_daisy: '🌼 Μαργαρίτα', nav_btc: '🪙 Bitcoin κλήρωση', nav_thunder: '⚡ Βροντή',
+    sound_off: 'Σίγαση', sound_on: 'Ήχος',
+    top_title: 'Μπλακτζάκ · σόλο', cont_title: 'Καλώς ήρθατε πάλι', cont_text: 'Παιχνίδι σε εξέλιξη: μοιρασιά {hand}, στοίβα {stack}.', cont_new: 'Νέο παιχνίδι', cont_go: 'Συνέχεια', friends: 'Παίξε με φίλους →', you: 'Εσείς', margot: 'Μαργκό', close: 'Κλείσιμο',
+    virtual: 'Οι μάρκες είναι εικονικές, χωρίς χρήματα',
+    st_stack: 'Στοίβα', st_min: 'Ελάχιστο', st_level: 'Επίπεδο', st_raise: 'Άνοδος σε', hands_pl: ['μοιρασιά', 'μοιρασιές'],
+    rec_line: 'Ρεκόρ: {hands} · στοίβα {stack}', rec_line_h: 'Ρεκόρ με συμβουλές: {hands} · στοίβα {stack}',
+    box_main: 'Κύριο', box_pp: 'Ζευγάρι', box_tp: '21+3',
+    chip_all: 'Όλα', btn_repeat: 'Επανάληψη', repeat_sub: 'προηγούμενο στοίχημα', repeat_na: 'δεν υπάρχει προηγούμενο', btn_clear: 'Καθαρισμός', clear_sub: 'όλα πίσω',
+    btn_deal: 'Μοίρασε', deal_sub: 'ελάχιστο {min} — το κύριο ποντάρισμα', deal_low: 'κάτω από το ελάχιστο: ποινή {n}', deal_none: 'πρώτα ποντάρισμα',
+    btn_hit: 'Κι άλλο', hit_sub: 'ένα φύλλο ακόμα', btn_stand: 'Στοπ', stand_sub: 'μένω στο {v}', btn_double: 'Διπλό', double_sub: '×2 και ένα φύλλο', double_na_two: 'θέλει 2 φύλλα', double_na_money: 'λίγες μάρκες',
+    btn_split: 'Σπλιτ', split_sub: 'δύο χέρια', split_na_pair: 'θέλει ζευγάρι', split_na_once: 'μόνο ένα σπλιτ', split_na_money: 'λίγες μάρκες',
+    flying: 'τα φύλλα πετούν…', hand_n: 'Χέρι {n}', soft_note: 'άσος ως 1 ή 11', bust_w: 'κάψιμο', bj_w: 'μπλακτζάκ', hints_off: 'Χωρίς υποδείξεις. Πάτα εδώ να ρωτήσεις', dealing: 'Μοιράζω…', closing: 'Τέλος στοιχημάτων',
+    ins_title: 'Η Μαργκό δείχνει άσο', ins_text: 'Ποντάρισμα {n} στο μπλακτζάκ της. Πληρώνει 2:1, συνήθως άστοχο.', ins_text_bj: 'Έχεις μπλακτζάκ. Το «ακριβώς 1:1» πληρώνει τώρα, χωρίς ρίσκο ισοπαλίας.',
+    btn_ins: 'Ασφάλεια {n};', ins_sub: 'πληρώνει 2:1', btn_even: 'Ακριβώς 1:1;', even_sub: 'χωρίς ρίσκο ισοπαλίας', btn_no: 'Όχι', no_sub: 'παίζουμε ως έχει', ins_na: 'λίγες μάρκες', peeking: 'Η Μαργκό κοιτάζει το κλειστό φύλλο…',
+    dealer_turn: 'Σειρά της Μαργκό', dealer_sub: 'γυρίζει το φύλλο, τραβάει ως το 17',
+    r_bj: 'Μπλακτζάκ! Ποντάρισμα {bet} — κέρδος {win}', r_even: 'Ακριβώς 1:1 στα {bet}', r_dbust: 'Η Μαργκό κάηκε — κερδίζεις', r_win: 'Πάνω από τη Μαργκό — κερδίζεις', r_push: 'Ισοπαλία — πίσω το ποντάρισμα', r_bust: 'Κάηκες — πάνω από 21', r_dbj: 'Η Μαργκό έχει μπλακτζάκ', r_lose: 'Η Μαργκό είναι ψηλότερα',
+    r_ins_win: 'Ασφάλεια 2:1', r_ins_lose: 'Η ασφάλεια χάθηκε', r_pen: 'Ποινή: κάτω από το ελάχιστο', r_side_win: '{box}: {kind} {mult}:1', r_side_lose: '{box}: όχι',
+    total: 'Αποτέλεσμα', btn_next: 'Επόμενο', next_sub: 'ή προχωράει μόνο του',
+    over_text: 'Αντέξατε {hands}, καλύτερη στοίβα {stack}', col_this: 'Αυτό το παιχνίδι', col_rec: 'Ρεκόρ', new_short: 'νέο', over_first: 'Πρώτο παιχνίδι — τα ρεκόρ ξεκινούν', btn_again: 'Ξανά', again_sub: 'νέο παιχνίδι, 1.000 μάρκες',
+    tut_step: 'Βήμα {n} από 6', tut_next: 'Επόμενο', tut_skip: 'Παράλειψη', tut_wait: 'κοιτάξτε το τραπέζι…',
+    tut_1: 'Πάτα μια μάρκα και πέφτει στο κουτί. Ελάχιστο {min}, ταβάνι όλη η στοίβα.',
+    tut_2: 'Έχεις {you}, δείχνω {up}. Ο άσος μετράει 1 ή 11, ό,τι συμφέρει.',
+    tut_2_bj: 'Μπλακτζάκ από τη μοιρασιά! Άσος και δεκάρι πληρώνουν 3:2.',
+    tut_2_dbj: 'Έχω μπλακτζάκ — η μοιρασιά τελείωσε πριν αρχίσει. Συμβαίνει.',
+    tut_3: 'Κι άλλο παίρνει φύλλο, Στοπ σταματά. Το Διπλό δίνει ×2 για ένα φύλλο· τα γκρι λένε γιατί όχι.',
+    tut_4: 'Τώρα εγώ: τραβάω ως το 17 και στο 17 στέκομαι — και στα μαλακά.',
+    tut_5: 'Με νικάς: 1:1, μπλακτζάκ 3:2. Το κάψιμο χάνει πάντα — κι αν καώ κι εγώ.',
+    tut_6: 'Τώρα χωρίς λουρί. Οι υποδείξεις μου είναι πάνω από τα κουμπιά και το ελάχιστο ανεβαίνει κάθε δύο μοιρασιές.',
+    tut_ins: 'Η ασφάλεια συνήθως είναι άστοχη. Πάτα «Όχι» άφοβα.',
+    ask_title: 'Ρώτα τη Μαργκό', ask_all: 'Όλοι οι κανόνες', ask_back: 'Πίσω',
+    ask_betting: 'Βάλε μάρκες στο κουτί: ελάχιστο {min}, περισσότερο επιτρέπεται. «Ζευγάρι» και «21+3» προαιρετικά, όχι πάνω από το κύριο. Έτοιμο; «Μοίρασε».',
+    ask_insurance: 'Δείχνω άσο. Η ασφάλεια είναι {n} στο μπλακτζάκ μου, πληρώνει 2:1. Με μπλακτζάκ δικό σου, το «ακριβώς 1:1» είναι χωρίς ρίσκο.',
+    ask_deciding: 'Έχεις {you}, δείχνω {up}. Εγώ θα έλεγα: {hint}',
+    ask_dealer: 'Γυρίζω το φύλλο και τραβάω ως το 17. Στο 17 στέκομαι, κι αν είναι μαλακό. Δεν αποφασίζω τίποτα.',
+    ask_payout: 'Με νικάς: 1:1. Ισοπαλία: πίσω το ποντάρισμα. Μπλακτζάκ: 3:2. Το κάψιμο χάνει πάντα. Τα πλαϊνά κρίνονται αμέσως.',
+    ask_finished: 'Τέλος οι μάρκες. «Ξανά» — νέο παιχνίδι με 1.000. Τα ρεκόρ είναι στις ρυθμίσεις.',
+    rules_title: 'Κανόνες σε ένα λεπτό',
+    rule_1_t: 'Στόχος', rule_1: 'Πιο κοντά στο 21 από τη Μαργκό, χωρίς να το περάσεις. Το κάψιμο χάνει αμέσως, ό,τι κι αν έχει εκείνη.',
+    rule_2_t: 'Πόντοι', rule_2: 'Οι φιγούρες 10, ο άσος 1 ή 11. «7/17» είναι μαλακό: ο άσος μετράει ακόμα 11. Μπλακτζάκ: άσος και δεκάρι από τη μοιρασιά.',
+    rule_3_t: 'Κουμπιά', rule_3: 'Κι άλλο — φύλλο, Στοπ — σταματάς. Διπλό — ×2 και ένα φύλλο (μόνο στα δύο πρώτα). Σπλιτ — το ζευγάρι γίνεται δύο χέρια.',
+    rule_4_t: 'Πληρωμές', rule_4: 'Κέρδος 1:1, μπλακτζάκ 3:2, ισοπαλία — πίσω το ποντάρισμα. Με άσο της Μαργκό: ασφάλεια, μισό ποντάρισμα, 2:1.',
+    rule_5_t: 'Πλαϊνά στοιχήματα', rule_5: 'Ποτέ πάνω από το κύριο. Ζευγάρι: τα δύο σου ίδια — 5:1, 10:1 ή 25:1. 21+3: τα δύο σου και της Μαργκό — ως 100:1.',
+    rule_6_t: 'Επίπεδα και ελάχιστο', rule_6: 'Το ελάχιστο ανεβαίνει κάθε δύο μοιρασιές: 10, 20, 30, 50, 80… Το έλλειμμα πάει στη Μαργκό ως ποινή.',
+    set_title: 'Ρυθμίσεις', set_hints: 'Συμβουλές της Μαργκό', set_hints_sub: 'σύντομη ατάκα πάνω από τα κουμπιά', set_fx: 'Εφέ', set_fx_sub: 'σωματίδια, κομφετί, αργά γυρίσματα', set_tut: 'Δείξε ξανά την πρώτη μοιρασιά', set_tut_sub: 'βήμα-βήμα — ξεκινά νέο παιχνίδι',
+    set_records: 'Ρεκόρ', rec_h_stack: 'Στοίβα', rec_h_hands: 'Μοιρασιές', rec_h_streak: 'Σερί', rec_h_bj: 'Μπλακτζάκ', rec_h_side: 'Πλαϊνό', rec_row_plain: 'Μόνοι', rec_row_hints: 'Με συμβουλές της Μαργκό', rec_empty: 'Δεν υπάρχουν ρεκόρ ακόμα — παίξτε ένα παιχνίδι ως το τέλος.',
+    set_friends: 'Παίξε με φίλους', set_friends_sub: 'κοινή οθόνη + κινητά, κάρτες-φάρσες', set_new: 'Νέο παιχνίδι', set_new_sub: 'το τρέχον δεν μετράει',
+    side_pp_title: 'Ζευγάρι — Perfect Pairs', side_pp_text: 'Ποντάρισμα ότι τα δύο πρώτα φύλλα σου είναι ίδια. Όχι πάνω από το κύριο, κρίνεται αμέσως.',
+    pp_mixed: 'Ζευγάρι διαφορετικών χρωμάτων', pp_colored: 'Ζευγάρι ίδιου χρώματος', pp_perfect: 'Ζευγάρι ίδιου συμβόλου',
+    side_tp_title: '21+3', side_tp_text: 'Τα δύο σου φύλλα και της Μαργκό — σαν χέρι πόκερ. Όχι πάνω από το κύριο, κρίνεται αμέσως.',
+    tp_flush: 'Φλος — ένα σύμβολο', tp_straight: 'Κέντα — στη σειρά', tp_trips: 'Τρία όμοια', tp_sf: 'Κέντα φλος', tp_strips: 'Τρία όμοια ίδιου συμβόλου',
+    k_mixed: 'μικτό ζευγάρι', k_colored: 'ζευγάρι ίδιου χρώματος', k_perfect: 'τέλειο ζευγάρι', k_flush: 'φλος', k_straight: 'κέντα', k_trips: 'τρία όμοια', k_straightFlush: 'κέντα φλος', k_suitedTrips: 'τρία όμοια ίδιου συμβόλου',
+    err_no_money: 'Δεν φτάνουν οι μάρκες', err_over_main: 'Το πλαϊνό όχι πάνω από το κύριο', err_closed: 'Όχι τώρα', err_no_last: 'Δεν υπάρχει προηγούμενο στοίχημα', long_hint: 'Κρατήστε ένα κουτί για να δείτε τι είναι'
+  }
+};
+</script>
+<script src="blackjack-cards.js"></script>
+<script src="blackjack-margot.js"></script>
+<script src="blackjack-sfx.js"></script>
+<script src="blackjack-table.js"></script>
+<script src="blackjack/game.js"></script>
+<script src="blackjack/strategy.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script>
+(function () {
+  'use strict';
+  // Соло: движок blackjack/game.js работает прямо в браузере (settings.solo), страница сама зовёт ready/insure/decide,
+  // tick(now) двигает фазы с таймингами (раздача, ход дилера, выплаты). Таймеров на игрока нет.
+  var G = window.BlackjackGame, Strategy = window.BlackjackStrategy;
+  var KEY = 'blackjack_solo_v1', HKEY = 'blackjack_hints_v1', ME = 'me';
+  var REC_KEYS = ['bestStack', 'bestHands', 'bestStreak', 'blackjacks', 'bestSide'];
+
+  // ---------- хранилище ----------
+  function load(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+  function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  var store = load(KEY) || {};
+  if (!store.records) store.records = {};
+  if (!store.withHints) store.withHints = {};
+  var hintsOn = (function () { var h = load(HKEY); return !(h && h.on === false); })();
+  function setHints(on) { hintsOn = !!on; save(HKEY, { on: hintsOn }); }
+  var reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var fxOn = reduced ? false : store.fx !== false;
+
+  // ---------- язык ----------
+  var lang = (window.I18N && window.I18N.lang) || 'ru';
+  function T(k) {
+    var d = window.I18N_DICT, v = (d[lang] || d.ru)[k];
+    if (v === undefined) v = d.ru[k];
+    return v === undefined ? k : v;
+  }
+  function F(k, vars) { var s = T(k); for (var x in vars) s = s.split('{' + x + '}').join(String(vars[x])); return s; }
+  function plural(n, key) {
+    var f = T(key);
+    if (typeof f === 'string') return n + ' ' + f;
+    var i;
+    if (lang === 'ru') { var m10 = n % 10, m100 = n % 100; i = (m10 === 1 && m100 !== 11) ? 0 : (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) ? 1 : 2; }
+    else i = n === 1 ? 0 : 1;
+    return n + ' ' + f[Math.min(i, f.length - 1)];
+  }
+  function fmt(n) {
+    n = Math.round(n || 0);
+    var s = String(Math.abs(n)), out = '';
+    while (s.length > 3) { out = ' ' + s.slice(-3) + out; s = s.slice(0, -3); }
+    return (n < 0 ? '−' : '') + s + out;
+  }
+  function signed(n) { return n > 0 ? '+' + fmt(n) : n < 0 ? fmt(n) : '0'; }
+  function esc(s) { return String(s === undefined || s === null ? '' : s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
+  function now() { return Date.now(); }
+
+  // crypto-рандом без смещения по модулю (§3: Фишер–Йейтс на getRandomValues)
+  var rndBuf = new Uint32Array(1);
+  function rnd(n) {
+    n = Math.floor(n);
+    if (!(n > 1)) return 0;
+    var lim = 4294967296 - (4294967296 % n), v;
+    do { crypto.getRandomValues(rndBuf); v = rndBuf[0]; } while (v >= lim);
+    return v % n;
+  }
+
+  // ---------- DOM ----------
+  var sceneEl = document.getElementById('scene'), pultEl = document.getElementById('pult');
+  var sheetEl = document.getElementById('sheet'), sheetBg = document.getElementById('sheetbg'), toastEl = document.getElementById('toast');
+  // портрет — solo (420×760); десктоп и ландшафт телефона — solo-wide (760×440). Рендерер раскладку на лету не меняет:
+  // при смене пересоздаём сцену и отдаём ей текущий снимок.
+  function wantLayout() { var w = window.innerWidth, h = window.innerHeight; return (w >= 820 && h >= 560) || (w >= 700 && h < 560) ? 'solo-wide' : 'solo'; }
+  var table = null, curLayout = null;
+  function createTable() {
+    curLayout = wantLayout();
+    table = BJTable.create(sceneEl, { fx: fxOn, lang: lang, layout: curLayout, levelBase: 0, instantGapMs: Infinity, onMargotTap: function () { openAsk(); } });
+  }
+  createTable();
+  var resizeTimer = 0;
+  function onResize() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      if (wantLayout() === curLayout) return;
+      table.destroy(); createTable();
+      if (cur) table.render(cur.b);
+    }, 150);
+  }
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', onResize);
+
+  // ---------- состояние страницы ----------
+  var game = null, cur = null, session = null, recAtStart = null;
+  var tut = { on: false, step: 0, acting: false };
+  var lastAction = now(), nudged = false, hintCache = {}, pendingTimer = 0, target = 'main', lastHandSeen = 0, saveLocked = false, modal = false;
+
+  function newGame() {
+    game = G.Game.create({ settings: { solo: true, stack: 1000, pace: 'normal', format: 'last', cards: false, chat: false, lang: lang }, rnd: rnd });
+    game.addPlayer({ id: ME, name: T('you') });
+    session = { hands: 0, bestStack: 1000, streak: 0, bestStreak: 0, blackjacks: 0, bestSide: 0, hinted: false, over: false, newRec: {} };
+    recAtStart = { records: copy(store.records), withHints: copy(store.withHints) };
+    tut.on = !store.tutorialDone; tut.step = tut.on ? 1 : 0; tut.acting = false;
+    hintCache = {}; target = 'main'; nudged = false; lastAction = now();
+    var r = game.start(now());
+    afterEvents(r.events || []);
+    table.say(BJMargot.pick(lang, 'hello'));
+  }
+  function copy(o) { var c = {}; for (var k in o) c[k] = o[k]; return c; }
+
+  // снимки: сцене — полный (она сама ведёт переворот по revealAt и рисует соло-финал), пульту — свой (options, итог по времени)
+  function snaps() { var t = now(); return { b: game.snapshot(t, null), m: game.snapshot(t, ME), t: t }; }
+  function render() {
+    cur = snaps();
+    table.render(cur.b);
+    renderPult(cur);
+    saveNow();
+  }
+  // Сохранение между раздачами: снимок движка в начале ставок (до первой фишки). Перезагрузка посреди раздачи откатывает
+  // её к этому снимку — ставка возвращается в стек, стек не теряется.
+  var savedHand = 0;
+  function saveNow() {
+    if (saveLocked || tut.on || !game) return;
+    var st = game.s, pl = game.player(ME);
+    if (st.phase === 'finished') { if (store.save) { store.save = null; save(KEY, store); } return; }
+    if (st.phase !== 'betting' || pl.bet > 0 || pl.side.pp > 0 || pl.side.tp > 0 || st.hand < 2 || savedHand === st.hand) return;
+    savedHand = st.hand;
+    store.save = { s: JSON.parse(JSON.stringify(st)), session: session, recAtStart: recAtStart };
+    save(KEY, store);
+  }
+  function validSave(sv) { return !!(sv && sv.s && sv.s.phase === 'betting' && sv.s.players && sv.s.players.length === 1 && sv.s.settings && sv.s.settings.solo && sv.session && sv.recAtStart); }
+  function resumeGame() {
+    var sv = store.save;
+    game = G.Game.from(JSON.parse(JSON.stringify(sv.s)), rnd);
+    session = sv.session; recAtStart = sv.recAtStart;
+    tut.on = false; tut.step = 0; tut.acting = false;
+    hintCache = {}; target = 'main'; nudged = false; lastAction = now(); savedHand = game.s.hand; lastHandSeen = 0;
+    saveLocked = false; modal = false; closeSheet();
+    render();
+    table.say(BJMargot.pick(lang, 'hello'));
+  }
+  function freshGame() { store.save = null; save(KEY, store); savedHand = 0; saveLocked = false; newGame(); }
+  function afterEvents(ev) {
+    track(ev || []);
+    lastAction = now();
+    render();
+  }
+
+  // ---------- такт ----------
+  function held() {
+    if (!tut.on) return false;
+    var ph = game.s.phase;
+    if (ph === 'dealer') return tut.step < 5;
+    if (ph === 'payout') return tut.step < 7;
+    return false;
+  }
+  function pump() {
+    if (!game) return;
+    var s = game.s;
+    if (!held() && s.deadline != null && now() >= s.deadline) { afterEvents(game.tick(now())); return; }
+    // «Не торопитесь» — один раз за волну, без давления
+    if (s.phase === 'deciding' && !nudged && !held() && now() - lastAction > 20000) {
+      nudged = true;
+      table.say(BJMargot.pick(lang, 'solo'));
+      table.margot('think', 3000);
+    }
+  }
+  setInterval(pump, 100);
+
+  // ---------- учёт сессии и рекордов ----------
+  function track(ev) {
+    ev.forEach(function (e) {
+      if (e.type === 'blackjack' && e.playerId === ME) session.blackjacks++;
+      if (e.type === 'side_win' && e.playerId === ME) { var net = e.win - Math.round(e.win / (e.mult + 1)); if (net > session.bestSide) session.bestSide = net; }
+      if (e.type === 'payout') {
+        var p = game.player(ME);
+        session.hands = game.s.hand;
+        if (p.stack > session.bestStack) session.bestStack = p.stack;
+        if (p.net > 0) { session.streak++; if (session.streak > session.bestStreak) session.bestStreak = session.streak; }
+        else if (p.net < 0) session.streak = 0;
+        updateRecords();
+      }
+      if (e.type === 'final' || e.type === 'finished') { if (game.s.phase === 'finished') onGameOver(); }
+    });
+    if (game.s.phase === 'finished' && !session.over) onGameOver();
+  }
+  function sessionVals() { return { bestStack: session.bestStack, bestHands: session.hands, bestStreak: session.bestStreak, blackjacks: session.blackjacks, bestSide: session.bestSide }; }
+  function updateRecords() {
+    var row = session.hinted ? store.withHints : store.records, v = sessionVals();
+    REC_KEYS.forEach(function (k) { if ((v[k] || 0) > (row[k] || 0)) row[k] = v[k]; });
+    store.games = (store.games || 0);
+    save(KEY, store);
+  }
+  function onGameOver() {
+    session.over = true;
+    var base = session.hinted ? recAtStart.withHints : recAtStart.records, v = sessionVals();
+    REC_KEYS.forEach(function (k) { if ((v[k] || 0) > (base[k] || 0) && (base[k] || 0) > 0) session.newRec[k] = true; });
+    session.firstGame = !(base.bestHands > 0);
+    store.games = (store.games || 0) + 1;
+    updateRecords();
+    table.margot('sweep', 2600);
+    table.say(BJMargot.pick(lang, 'out'));
+  }
+
+  // ---------- подсказки Марго ----------
+  // подсказка по частям {action, key, lead, rest, prefix, text}; кэш на руку и язык
+  function hintParts(h, hi, up) {
+    var key = game.s.hand + ':' + game.s.wave + ':' + hi + ':' + h.cards.length;
+    if (hintCache[key] && hintCache[key].lang === lang) return hintCache[key].parts;
+    var last = null; for (var k in hintCache) if (k.indexOf(game.s.hand + ':') === 0) last = hintCache[k].parts && hintCache[k].parts.body;
+    var parts = null;
+    try {
+      parts = Strategy.hintParts({ cards: h.cards, canDouble: !!(h.options && h.options.double), canSplit: !!(h.options && h.options.split), fromSplit: !!h.fromSplit, handIdx: hi, lastHint: last }, up, lang, rnd);
+    } catch (e) { parts = null; }
+    hintCache[key] = { parts: parts, lang: lang };
+    return parts;
+  }
+  function hintFor(h, hi, up) { var p = hintParts(h, hi, up); return p ? p.text : ''; }
+  // сколько раздач игрок видел подсказки: снимок на раздачу, чтобы подача не менялась посреди хода
+  var seenSnap = { key: '', n: 0 };
+  function hintSeen() {
+    var hk = String(game.s.hand);
+    if (seenSnap.key !== hk) {
+      var n = 0;
+      try { n = Number(localStorage.getItem('blackjack_hints_seen_v1')) || 0; localStorage.setItem('blackjack_hints_seen_v1', String(n + 1)); } catch (e) {}
+      seenSnap = { key: hk, n: n };
+    }
+    return seenSnap.n;
+  }
+  function hintHtml(parts, mode, two) {
+    var t = (two && parts.prefix ? '<i class="mh-pre">' + esc(parts.prefix) + '</i>' : '') + '<b class="mh-w">' + esc(parts.lead) + '</b>' + (mode === 'full' ? esc(parts.rest) : '');
+    return '<div class="mhint a-' + parts.action + ' ' + mode + '" data-act="ask" role="button"><span class="mh-badge">' + esc(T('margot').charAt(0)) + '</span><span class="mh-t">' + t + '</span></div>';
+  }
+  function valText(h) {
+    if (h.value > 21) return h.value + ' · ' + T('bust_w');
+    if (h.blackjack) return T('bj_w');
+    return h.soft && h.value !== 21 ? (h.value - 10) + ' / ' + h.value : String(h.value);
+  }
+  function upName(up) { try { return Strategy.upName(up, lang); } catch (e) { return up ? up.r : ''; } }
+
+  // ---------- пульт ----------
+  function btn(opts) {
+    var cls = 'btn' + (opts.cls ? ' ' + opts.cls : '');
+    return '<button type="button" class="' + cls + '" data-act="' + opts.act + '"' + (opts.arg !== undefined ? ' data-arg="' + esc(opts.arg) + '"' : '') + (opts.disabled ? ' disabled' : '') + '>' + esc(opts.label) + (opts.sub ? '<small>' + esc(opts.sub) + '</small>' : '') + '</button>';
+  }
+  function tutCard(step, text, opts) {
+    opts = opts || {};
+    var html = '<div class="tut' + (opts.big ? ' big' : '') + '"><div class="who"><span>' + esc(T('margot')) + '</span><i>' + esc(F('tut_step', { n: step })) + '</i></div><div class="txt">' + esc(text) + '</div></div>';
+    if (!opts.noButtons) html += '<div class="row">' + btn({ act: 'tut_skip', label: T('tut_skip'), cls: 'sm' }) + btn({ act: 'tut_next', label: opts.nextLabel || T('tut_next'), cls: 'sm gold wide', disabled: !!opts.nextDisabled, sub: opts.nextSub }) + '</div>';
+    return html;
+  }
+  function recordsLine() {
+    var row = hintsOn || tut.on ? store.withHints : store.records, key = hintsOn || tut.on ? 'rec_line_h' : 'rec_line';
+    if (!(row.bestHands > 0)) { row = hintsOn || tut.on ? store.records : store.withHints; key = hintsOn || tut.on ? 'rec_line' : 'rec_line_h'; }
+    if (!(row.bestHands > 0)) return '';
+    return F(key, { hands: plural(row.bestHands, 'hands_pl'), stack: fmt(row.bestStack) });
+  }
+
+  function renderPult(s) {
+    var m = s.m, b = s.b, p = m.players[0], ph = b.phase, html = '';
+    var min = b.minBet;
+    var tutStep = 0;
+    if (tut.on) {
+      if (ph === 'betting') tutStep = 1;
+      else if (ph === 'deciding' || ph === 'dealer' || ph === 'payout' || ph === 'finished') {
+        if (tut.step < 2) tut.step = 2; // карты и счёт — всегда первым делом, даже если решать нечего (блэкджек)
+        if (ph === 'dealer' && tut.step === 3) tut.step = 4;
+        if (ph === 'payout' && tut.step < 5) tut.step = 5;
+        tutStep = tut.step;
+      }
+    }
+    pultEl.setAttribute('data-phase', ph);
+    if (ph === 'betting' && lastHandSeen !== b.hand) { lastHandSeen = b.hand; target = 'main'; } // новая раздача — фишки снова на основную
+
+    if (ph === 'betting') {
+      var free = p.free, n = (b.handsToLevel || 0) + 1;
+      html += '<div class="stats"><span>' + esc(T('st_stack')) + ' <b>' + fmt(p.stack) + '</b></span><span>' + esc(T('st_min')) + ' <b class="gold">' + fmt(min) + '</b></span><span>' + esc(T('st_level')) + ' <b>' + (b.level + 1) + '</b></span><span>' + esc(T('st_raise')) + ' <b>' + n + '</b></span></div>';
+      if (tutStep === 1) html += '<div class="tut"><div class="who"><span>' + esc(T('margot')) + '</span><i>' + esc(F('tut_step', { n: 1 })) + '</i></div><div class="txt">' + esc(F('tut_1', { min: fmt(min) })) + '</div></div>';
+      else {
+        html += '<div class="boxes">' +
+          '<button type="button" class="box' + (target === 'main' ? ' on' : '') + '" data-box="main"><span class="k">' + esc(T('box_main')) + '</span><span class="v">' + fmt(p.bet) + '</span></button>' +
+          '<button type="button" class="box' + (target === 'pp' ? ' on' : '') + '" data-box="pp"><span class="k">' + esc(T('box_pp')) + '</span><span class="v">' + fmt(p.side.pp) + '</span><span class="q">?</span></button>' +
+          '<button type="button" class="box' + (target === 'tp' ? ' on' : '') + '" data-box="tp"><span class="k">' + esc(T('box_tp')) + '</span><span class="v">' + fmt(p.side.tp) + '</span><span class="q">?</span></button></div>';
+      }
+      var colors = [['#e8e8e8', '#1b1d26'], ['#c8102e', '#fff6e2'], ['#2c6fd6', '#fff6e2'], ['#1f8f4e', '#fff6e2'], ['#1b1d26', '#f6f1e4']];
+      html += '<div class="chips">' + [1, 2, 5, 10, 25].map(function (k, i) {
+        var amt = min * k, ok = amt <= free && (target === 'main' || p.side[target] + amt <= p.bet);
+        return '<button type="button" class="chip" style="--c:' + colors[i][0] + ';--ct:' + colors[i][1] + '" data-chip="' + amt + '"' + (ok ? '' : ' disabled') + '>' + fmt(amt) + '</button>';
+      }).join('') + '<button type="button" class="chip all" data-act="allin"' + (free <= 0 || (target !== 'main' && p.side[target] >= p.bet) ? ' disabled' : '') + '>' + esc(T('chip_all')) + '</button></div>';
+      var dealSub = p.bet <= 0 ? T('deal_none') : p.bet < Math.min(min, p.stack) ? F('deal_low', { n: fmt(Math.min(min - p.bet, free)) }) : F('deal_sub', { min: fmt(min) });
+      if (tutStep === 1) html += '<div class="row">' + btn({ act: 'tut_skip', label: T('tut_skip'), cls: 'sm' }) + btn({ act: 'tut_deal', label: T('tut_next'), cls: 'gold wide', sub: p.bet > 0 ? T('btn_deal') : F('deal_sub', { min: fmt(min) }) }) + '</div>';
+      else html += '<div class="row">' + btn({ act: 'repeat', label: T('btn_repeat'), sub: m.me && m.me.lastBet && m.me.lastBet.main ? T('repeat_sub') : T('repeat_na'), disabled: !(m.me && m.me.lastBet && m.me.lastBet.main) }) + btn({ act: 'clear', label: T('btn_clear'), sub: T('clear_sub'), disabled: p.bet + p.side.pp + p.side.tp <= 0 }) + btn({ act: 'deal', label: T('btn_deal'), cls: 'gold wide', sub: dealSub, disabled: p.bet <= 0 }) + '</div>';
+      var rec = b.hand === 1 ? recordsLine() : '';
+      html += '<div class="foot">' + esc(T('virtual')) + (rec ? ' · <b>' + esc(rec) + '</b>' : '') + '</div>';
+    } else if (ph === 'closing' || ph === 'dealing') {
+      html += handsBar(m, b) + '<div class="note">' + esc(ph === 'closing' ? T('closing') : T('dealing')) + '</div>';
+    } else if (ph === 'insurance') {
+      if (b.dealer && b.dealer.insurance && !p.insDecided) {
+        var half = Math.floor(p.bet / 2), bj = p.hands[0] && p.hands[0].blackjack, canIns = half >= 1 && p.free >= half;
+        html += '<div class="ins"><div class="t">' + esc(T('ins_title')) + '</div><div class="x">' + esc(bj ? T('ins_text_bj') : F('ins_text', { n: fmt(half) })) + '</div>' + (tut.on ? '<div class="x m">' + esc(T('tut_ins')) + '</div>' : '') + '</div>';
+        html += '<div class="row">' + (bj ? btn({ act: 'ins', arg: 'evenMoney', label: T('btn_even'), sub: T('even_sub'), cls: 'gold' }) : btn({ act: 'ins', arg: 'yes', label: F('btn_ins', { n: fmt(half) }), sub: canIns ? T('ins_sub') : T('ins_na'), disabled: !canIns })) + btn({ act: 'ins', arg: 'no', label: T('btn_no'), sub: T('no_sub'), cls: bj ? '' : 'gold' }) + '</div>';
+      } else html += handsBar(m, b) + '<div class="note">' + esc(T('peeking')) + '</div>';
+    } else if (ph === 'deciding') {
+      if (tutStep === 2) html += tutCard(2, tutText2(p, b));
+      else if (tutStep === 3 && !tut.acting) html += tutCard(3, T('tut_3'), { nextLabel: T('tut_next') });
+      else {
+        var ai = -1, i;
+        for (i = 0; i < p.hands.length; i++) if (!p.hands[i].done && !p.hands[i].decision) { ai = i; break; }
+        var flying = typeof b.waveStart === 'number' && b.waveStart > s.t + 30;
+        var h = ai >= 0 ? p.hands[ai] : null, opt = h ? h.options || {} : {};
+        var showHint = (hintsOn || tut.on) && h;
+        if (showHint) session.hinted = true;
+        var hp = h && showHint ? hintParts(h, ai, b.dealer.up) : null, hmode = hp ? Strategy.hintMode(hp.key, tut.on ? 0 : hintSeen()) : '';
+        if (hp) html += hintHtml(hp, hmode, p.hands.length > 1);
+        else html += '<div class="mhint off" data-act="ask" role="button"><span class="mh-t">' + esc(T('hints_off')) + '</span></div>';
+        var recA = hp && hmode !== 'quiet' && opt[hp.action] ? hp.action : '';
+        html += handsBar(m, b, ai);
+        var two = h && h.cards.length === 2;
+        var dSub = !h ? '' : opt.double ? T('double_sub') : !two ? T('double_na_two') : T('double_na_money');
+        var sSub = !h ? '' : opt.split ? F('split_sub', { pair: pairName(h.cards) }) : !isPair(h.cards) || !two ? T('split_na_pair') : p.hands.length > 1 ? T('split_na_once') : T('split_na_money');
+        var dis = !h || flying;
+        html += '<div class="grid2">' +
+          btn({ act: 'decide', arg: 'hit', label: T('btn_hit'), sub: flying ? T('flying') : T('hit_sub'), disabled: dis || !opt.hit, cls: recA === 'hit' ? 'advised' : '' }) +
+          btn({ act: 'decide', arg: 'stand', label: T('btn_stand'), sub: h ? F('stand_sub', { v: valText(h) }) : '', disabled: dis || !opt.stand, cls: recA === 'stand' ? 'advised' : '' }) +
+          btn({ act: 'decide', arg: 'double', label: T('btn_double'), sub: dSub, disabled: dis || !opt.double, cls: recA === 'double' ? 'advised' : '' }) +
+          btn({ act: 'decide', arg: 'split', label: T('btn_split'), sub: sSub, disabled: dis || !opt.split, cls: recA === 'split' ? 'advised' : '' }) + '</div>';
+        if (flying && !pendingTimer) pendingTimer = setTimeout(function () { pendingTimer = 0; render(); }, b.waveStart - s.t + 60);
+      }
+    } else if (ph === 'dealer') {
+      if (tutStep === 2) html += tutCard(2, tutText2(p, b));
+      else if (tut.on && tutStep === 4) {
+        var ready = game.s.deadline != null && s.t >= game.s.deadline;
+        html += tutCard(4, T('tut_4'), { nextDisabled: !ready, nextSub: ready ? '' : T('tut_wait') });
+        if (!ready && !pendingTimer) pendingTimer = setTimeout(function () { pendingTimer = 0; render(); }, Math.max(100, game.s.deadline - s.t + 50));
+      } else {
+        var fin = b.dealer && b.dealer.revealAt && b.dealer.revealAt.length ? b.dealer.revealAt[b.dealer.revealAt.length - 1] : 0;
+        if (fin > s.t && !pendingTimer) pendingTimer = setTimeout(function () { pendingTimer = 0; render(); }, fin - s.t + 60);
+        html += handsBar(m, b) + '<div class="note"><b>' + esc(T('dealer_turn')) + '</b><br>' + esc(T('dealer_sub')) + '</div>';
+      }
+    } else if (ph === 'payout') {
+      if (tut.on && tutStep === 5) html += tutCard(5, T('tut_5'));
+      else if (tut.on && tutStep === 6) html += tutCard(6, T('tut_6'), { big: true });
+      else {
+        html += resultBlock(m, b);
+        html += btn({ act: 'next', label: T('btn_next'), cls: 'gold', sub: T('next_sub') });
+      }
+    } else if (ph === 'finished') {
+      var v = sessionVals(), base = session.hinted ? recAtStart.withHints : recAtStart.records;
+      html += '<div class="rec"><span class="hd">' + esc(session.hinted ? T('rec_row_hints') : T('rec_row_plain')) + '</span><span class="hd">' + esc(T('col_this')) + '</span><span class="hd">' + esc(T('col_rec')) + '</span>';
+      [['bestHands', 'rec_h_hands'], ['bestStack', 'rec_h_stack'], ['bestStreak', 'rec_h_streak'], ['blackjacks', 'rec_h_bj'], ['bestSide', 'rec_h_side']].forEach(function (x) {
+        var k = x[0], mine = v[k] || 0, rec = base[k] || 0, isNew = !!session.newRec[k];
+        var show = function (n) { return k === 'bestSide' ? (n ? '+' + fmt(n) : '—') : fmt(n); };
+        html += '<span class="k">' + esc(T(x[1])) + '</span><span class="v' + (isNew ? ' new' : '') + '">' + (isNew ? '<i>' + esc(T('new_short')) + '</i>' : '') + show(mine) + '</span><span class="v r">' + (rec ? show(rec) : '—') + '</span>';
+      });
+      html += '<span class="ft">' + esc(session.firstGame ? T('over_first') : F('over_text', { hands: plural(v.bestHands, 'hands_pl'), stack: fmt(v.bestStack) })) + '</span></div>';
+      html += btn({ act: 'again', label: T('btn_again'), cls: 'gold', sub: T('again_sub') });
+    }
+    pultEl.innerHTML = html;
+  }
+  function tutText2(p, b) {
+    var h = p.hands[0];
+    if (b.dealer && b.dealer.blackjack) return T('tut_2_dbj');
+    if (h && h.blackjack) return T('tut_2_bj');
+    return F('tut_2', { you: h ? valText(h) : '', up: b.dealer && b.dealer.up ? upName(b.dealer.up) : '' });
+  }
+  function handsBar(m, b, active) {
+    var p = m.players[0], html = '<div class="hands">';
+    p.hands.forEach(function (h, i) {
+      var cls = 'h' + (i === active ? ' on' : '') + (h.done ? ' done' : '');
+      var vc = h.value > 21 ? ' bad' : h.blackjack || h.value === 21 ? ' bj' : '';
+      html += '<span class="' + cls + '">' + esc(p.hands.length > 1 ? F('hand_n', { n: i + 1 }) : T('you')) + ' <b class="' + vc.trim() + '">' + esc(valText(h)) + '</b></span>';
+    });
+    var dm = m.dealer; // телефонный снимок: до последнего revealAt там только открытая карта
+    if (dm && dm.up) html += '<span class="h vs">' + esc(T('margot')) + ' <b>' + esc(dm.cards.length > 1 ? valText({ value: dm.value, soft: dm.soft, blackjack: dm.blackjack }) : dm.value + (b.phase === 'dealer' ? '…' : '')) + '</b></span>';
+    return html + '</div>';
+  }
+  function isPair(cards) { try { return G.isPair(cards); } catch (e) { return false; } }
+  function pairName(cards) { try { return Strategy.pairName(cards, lang); } catch (e) { return ''; } }
+  function amtCls(n) { return n > 0 ? 'w' : n < 0 ? 'l' : 'p'; }
+  function resultBlock(m, b) {
+    var p = m.players[0], d = b.dealer, lines = [];
+    p.hands.forEach(function (h) {
+      var text, net;
+      if (h.result === 'bj') { net = h.payout - h.bet; text = F('r_bj', { bet: fmt(h.bet), win: fmt(net) }); }
+      else if (h.result === 'win' && h.evenMoney) { net = h.bet; text = F('r_even', { bet: fmt(h.bet) }); }
+      else if (h.result === 'win') { net = h.bet; text = T(d && d.bust ? 'r_dbust' : 'r_win'); }
+      else if (h.result === 'push') { net = 0; text = T('r_push'); }
+      else { net = -h.bet; text = T(h.value > 21 ? 'r_bust' : d && d.blackjack ? 'r_dbj' : 'r_lose'); }
+      lines.push({ t: (p.hands.length > 1 ? F('hand_n', { n: lines.length + 1 }) + ': ' : '') + text, n: net });
+    });
+    if (p.insurance > 0) lines.push(d && d.blackjack ? { t: T('r_ins_win'), n: p.insurance * 2 } : { t: T('r_ins_lose'), n: -p.insurance });
+    ['pp', 'tp'].forEach(function (box) {
+      if (!p.side[box]) return;
+      var r = p.sideResults[box], name = T(box === 'pp' ? 'box_pp' : 'box_tp');
+      if (r) lines.push({ t: F('r_side_win', { box: name, kind: T('k_' + r.kind), mult: r.mult }), n: r.win - p.side[box] });
+      else lines.push({ t: F('r_side_lose', { box: name }), n: -p.side[box] });
+    });
+    if (p.penalty > 0) lines.push({ t: T('r_pen'), n: -p.penalty });
+    var html = '<div class="res">' + lines.map(function (l) { return '<div class="ln"><span>' + esc(l.t) + '</span><span class="amt ' + amtCls(l.n) + '">' + signed(l.n) + '</span></div>'; }).join('');
+    var net = typeof p.net === 'number' ? p.net : 0;
+    html += '<div class="ln tot"><span>' + esc(T('total')) + ' · ' + esc(T('st_stack')) + ' ' + fmt(p.stack) + '</span><span class="amt ' + amtCls(net) + '">' + signed(net) + '</span></div></div>';
+    return html;
+  }
+
+  // ---------- действия ----------
+  function fail(r) { if (r && !r.ok) toast(T('err_' + r.reason) === 'err_' + r.reason ? T('err_closed') : T('err_' + r.reason)); return r && r.ok; }
+  function act(name, arg) {
+    var r, t = now();
+    lastAction = t;
+    switch (name) {
+      case 'chip':
+        r = target === 'main' ? game.bet(ME, arg) : game.sideBet(ME, target, arg);
+        if (fail(r)) { BJSfx.play('chip'); render(); }
+        break;
+      case 'allin':
+        if (target === 'main') r = game.allIn(ME);
+        else { var q = game.player(ME); r = game.sideBet(ME, target, Math.min(q.bet - q.side[target], game.freeOf(q))); }
+        if (fail(r)) { BJSfx.play('stack', 3); render(); }
+        break;
+      case 'repeat': r = game.repeatBet(ME); if (fail(r)) { BJSfx.play('stack', 3); render(); } break;
+      case 'clear': r = game.clearBets(ME); if (fail(r)) { target = 'main'; render(); } break;
+      case 'deal': case 'tut_deal':
+        if (name === 'tut_deal' && game.player(ME).bet <= 0) game.setBets(ME, { main: Math.min(game.player(ME).stack, game.levelNeed() * 5), pp: 0, tp: 0 });
+        r = game.ready(ME, true, t);
+        if (fail(r)) { nudged = false; afterEvents(r.events); }
+        break;
+      case 'ins':
+        r = game.insure(ME, arg === 'yes' ? true : arg === 'evenMoney' ? 'evenMoney' : false, t);
+        if (fail(r)) { if (arg !== 'no') BJSfx.play('chip'); afterEvents(r.events); }
+        break;
+      case 'decide':
+        var p = game.player(ME), hi = -1;
+        for (var i = 0; i < p.hands.length; i++) if (!p.hands[i].done && !p.hands[i].decision) { hi = i; break; }
+        if (hi < 0) return;
+        r = game.decide(ME, hi, arg, t);
+        if (fail(r)) { nudged = false; if (arg === 'double' || arg === 'split') BJSfx.play('chip'); afterEvents(r.events); }
+        break;
+      case 'next': if (game.s.phase === 'payout') { game.s.deadline = t; pump(); } break;
+      case 'again': freshGame(); break;
+      case 'ask': openAsk(); break;
+      case 'tut_skip': finishTut(); render(); break;
+      case 'tut_next': tutNext(); break;
+    }
+  }
+  function tutNext() {
+    var ph = game.s.phase;
+    if (tut.step === 2) {
+      if (ph === 'deciding' && game.pending().length) tut.step = 3;
+      else if (ph === 'dealer') tut.step = 4;
+      else tut.step = 5;
+      render();
+    } else if (tut.step === 3) { tut.acting = true; render(); }
+    else if (tut.step === 4) { tut.step = 5; pump(); render(); }
+    else if (tut.step === 5) { tut.step = 6; render(); }
+    else if (tut.step === 6) { finishTut(); pump(); render(); }
+  }
+  function finishTut() { tut.on = false; tut.step = 0; tut.acting = false; store.tutorialDone = true; save(KEY, store); }
+
+  pultEl.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-act]');
+    if (el) { if (el.disabled) return; act(el.getAttribute('data-act'), el.getAttribute('data-arg')); return; }
+    var chip = e.target.closest('[data-chip]');
+    if (chip && !chip.disabled) { act('chip', parseInt(chip.getAttribute('data-chip'), 10)); return; }
+    var box = e.target.closest('[data-box]');
+    if (box) {
+      if (longFired) { longFired = false; return; }
+      var k = box.getAttribute('data-box');
+      if (e.target.classList.contains('q')) { openSide(k); return; }
+      if (k !== 'main' && game.player(ME).bet <= 0) { toast(T('err_over_main')); return; }
+      target = k; render();
+    }
+  });
+  // долгое нажатие на бокс — пояснение ставки
+  var longTimer = 0, longFired = false;
+  pultEl.addEventListener('pointerdown', function (e) {
+    longFired = false;
+    var box = e.target.closest('[data-box]');
+    if (!box) return;
+    var k = box.getAttribute('data-box');
+    clearTimeout(longTimer);
+    longTimer = setTimeout(function () { longFired = true; openSide(k); }, 450);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (n) { pultEl.addEventListener(n, function () { clearTimeout(longTimer); }); });
+  pultEl.addEventListener('contextmenu', function (e) { if (e.target.closest('[data-box]')) e.preventDefault(); });
+
+  // ---------- листы ----------
+  var toastTimer = 0;
+  function toast(text) { toastEl.textContent = text; toastEl.classList.add('on'); clearTimeout(toastTimer); toastTimer = setTimeout(function () { toastEl.classList.remove('on'); }, 1800); }
+  function openSheet(html) { sheetEl.innerHTML = html; sheetEl.classList.add('on'); sheetBg.classList.add('on'); sheetEl.scrollTop = 0; }
+  function closeSheet() { if (modal) return; sheetEl.classList.remove('on'); sheetBg.classList.remove('on'); }
+  sheetBg.addEventListener('click', closeSheet);
+  function head(title) { return '<h3><span>' + esc(title) + '</span><button type="button" class="x" data-sh="close" aria-label="' + esc(T('close')) + '">×</button></h3>'; }
+  sheetEl.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-sh]');
+    if (!el) return;
+    var k = el.getAttribute('data-sh');
+    if (k === 'close') closeSheet();
+    else if (k === 'rules') openRules();
+    else if (k === 'ask') openAsk();
+    else if (k === 'hints') { setHints(!hintsOn); openSettings(); if (game && game.s.phase === 'deciding') render(); }
+    else if (k === 'fx') { fxOn = !fxOn; store.fx = fxOn; save(KEY, store); table.setFx(fxOn); openSettings(); }
+    else if (k === 'tut') { store.tutorialDone = false; save(KEY, store); closeSheet(); freshGame(); }
+    else if (k === 'new') { closeSheet(); freshGame(); }
+    else if (k === 'resume') resumeGame();
+    else if (k === 'fresh') { modal = false; closeSheet(); freshGame(); }
+  });
+  function openAsk() {
+    if (!game) return;
+    var s = snaps(), p = s.m.players[0], b = s.b, ph = b.phase, text;
+    if (ph === 'betting') text = F('ask_betting', { min: fmt(b.minBet) });
+    else if (ph === 'insurance') text = F('ask_insurance', { n: fmt(Math.floor(p.bet / 2)) });
+    else if (ph === 'deciding') {
+      var ai = -1; for (var i = 0; i < p.hands.length; i++) if (!p.hands[i].done && !p.hands[i].decision) { ai = i; break; }
+      var h = ai >= 0 ? p.hands[ai] : p.hands[0];
+      text = F('ask_deciding', { you: h ? valText(h) : '', up: upName(b.dealer.up), hint: h ? hintFor(h, Math.max(0, ai), b.dealer.up) : '' });
+    } else if (ph === 'dealer' || ph === 'dealing' || ph === 'closing') text = T('ask_dealer');
+    else if (ph === 'payout') text = T('ask_payout');
+    else text = T('ask_finished');
+    openSheet(head(T('ask_title')) + '<p class="say">' + esc(text) + '</p><div class="row act">' + '<button type="button" class="btn gold" data-sh="rules">' + esc(T('ask_all')) + '</button></div>');
+    table.margot('think', 1500);
+  }
+  function openRules() {
+    var cards = '';
+    for (var i = 1; i <= 6; i++) cards += '<div class="card"><div class="n">' + i + ' / 6</div><div class="t">' + esc(T('rule_' + i + '_t')) + '</div><div class="b">' + esc(T('rule_' + i)) + '</div></div>';
+    openSheet(head(T('rules_title')) + '<div class="cards" id="ruleCards">' + cards + '</div><div class="dots" id="ruleDots">' + '<i class="on"></i><i></i><i></i><i></i><i></i><i></i>' + '</div><div class="row act"><button type="button" class="btn" data-sh="ask">' + esc(T('ask_back')) + '</button><button type="button" class="btn gold" data-sh="close">' + esc(T('close')) + '</button></div>');
+    var wrap = document.getElementById('ruleCards'), dots = document.getElementById('ruleDots');
+    wrap.addEventListener('scroll', function () {
+      var idx = Math.round(wrap.scrollLeft / Math.max(1, wrap.clientWidth));
+      for (var j = 0; j < dots.children.length; j++) dots.children[j].className = j === idx ? 'on' : '';
+    });
+  }
+  function tg(key, on, title, sub) { return '<div class="tg" data-sh="' + key + '"><div class="l">' + esc(title) + '<small>' + esc(sub) + '</small></div><div class="sw' + (on ? ' on' : '') + '"><i></i></div></div>'; }
+  function recRow(label, row) {
+    if (!(row.bestHands > 0)) return '';
+    return '<tr><td>' + esc(label) + '</td><td>' + fmt(row.bestStack) + '</td><td>' + (row.bestHands || 0) + '</td><td>' + (row.bestStreak || 0) + '</td><td>' + (row.blackjacks || 0) + '</td><td>' + (row.bestSide ? '+' + fmt(row.bestSide) : '—') + '</td></tr>';
+  }
+  function openSettings() {
+    var rows = recRow(T('rec_row_plain'), store.records) + recRow(T('rec_row_hints'), store.withHints);
+    var rec = rows ? '<table><tr><th></th><th>' + esc(T('rec_h_stack')) + '</th><th>' + esc(T('rec_h_hands')) + '</th><th>' + esc(T('rec_h_streak')) + '</th><th>' + esc(T('rec_h_bj')) + '</th><th>' + esc(T('rec_h_side')) + '</th></tr>' + rows + '</table>' : '<p class="m">' + esc(T('rec_empty')) + '</p>';
+    openSheet(head(T('set_title')) +
+      tg('hints', hintsOn, T('set_hints'), T('set_hints_sub')) +
+      tg('fx', fxOn, T('set_fx'), T('set_fx_sub')) +
+      '<div class="tg" data-sh="tut"><div class="l">' + esc(T('set_tut')) + '<small>' + esc(T('set_tut_sub')) + '</small></div><span style="color:var(--gold-hi)">→</span></div>' +
+      '<h3 style="margin-top:14px">' + esc(T('set_records')) + '</h3>' + rec +
+      '<div class="row act"><button type="button" class="btn" data-sh="new">' + esc(T('set_new')) + '<small>' + esc(T('set_new_sub')) + '</small></button><a class="btn gold" href="blackjack.html">' + esc(T('set_friends')) + '<small>' + esc(T('set_friends_sub')) + '</small></a></div>');
+  }
+  function openSide(box) {
+    var html;
+    if (box === 'pp') html = head(T('side_pp_title')) + '<p>' + esc(T('side_pp_text')) + '</p><ul class="list"><li>' + esc(T('pp_mixed')) + '<b>5:1</b></li><li>' + esc(T('pp_colored')) + '<b>10:1</b></li><li>' + esc(T('pp_perfect')) + '<b>25:1</b></li></ul>';
+    else if (box === 'tp') html = head(T('side_tp_title')) + '<p>' + esc(T('side_tp_text')) + '</p><ul class="list"><li>' + esc(T('tp_flush')) + '<b>5:1</b></li><li>' + esc(T('tp_straight')) + '<b>10:1</b></li><li>' + esc(T('tp_trips')) + '<b>30:1</b></li><li>' + esc(T('tp_sf')) + '<b>40:1</b></li><li>' + esc(T('tp_strips')) + '<b>100:1</b></li></ul>';
+    else html = head(T('box_main')) + '<p>' + esc(F('ask_betting', { min: fmt(game ? game.levelNeed() : 10) })) + '</p>';
+    openSheet(html + '<div class="row act"><button type="button" class="btn gold" data-sh="close">' + esc(T('close')) + '</button></div>');
+  }
+  document.getElementById('settingsBtn').addEventListener('click', openSettings);
+
+  // меню разделов
+  var menuBtn = document.getElementById('menuBtn'), menuDrop = document.getElementById('menuDrop');
+  function setMenu(open) { menuBtn.classList.toggle('open', open); menuDrop.classList.toggle('open', open); menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+  menuBtn.addEventListener('click', function (e) { e.stopPropagation(); setMenu(!menuDrop.classList.contains('open')); });
+  document.addEventListener('click', function (e) { if (!menuDrop.contains(e.target)) setMenu(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { setMenu(false); closeSheet(); } });
+
+  // язык
+  window.addEventListener('langchange', function (e) {
+    lang = e.detail.lang;
+    table.setLang(lang);
+    if (game) { game.player(ME).name = T('you'); hintCache = {}; render(); }
+    if (sheetEl.classList.contains('on')) closeSheet();
+  });
+
+  // ---------- отладочный хук (стенд, Playwright) ----------
+  window.BJSOLO = {
+    game: function () { return game; }, table: function () { return table; }, render: render, snaps: snaps, tut: tut, store: store,
+    debug: {
+      // rig(['10s','Ac','6h',…]) — следующие карты шуза в порядке сдачи: игрок, дилер открытая, игрок, дилер закрытая, добор…
+      rig: function (cards) { cards.slice().reverse().forEach(function (c) { game.s.shoe.push(c); }); },
+      stack: function (n) { game.player(ME).stack = n; render(); },
+      skip: function () { if (game.s.deadline != null) { game.s.deadline = now(); } pump(); },
+      state: function () { return game.s; },
+      session: function () { return session; },
+      act: act, newGame: newGame, finishTut: finishTut
+    }
+  };
+
+  if (validSave(store.save)) {
+    saveLocked = true; modal = true;
+    newGame();
+    var sv = store.save, pl = sv.s.players[0];
+    openSheet('<h3><span>' + esc(T('cont_title')) + '</span></h3><p>' + esc(F('cont_text', { hand: sv.s.hand, stack: fmt(pl.stack) })) + '</p><div class="row act"><button type="button" class="btn" data-sh="fresh">' + esc(T('cont_new')) + '</button><button type="button" class="btn gold" data-sh="resume">' + esc(T('cont_go')) + '</button></div>');
+  } else newGame();
+})();
+</script>
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){
+    m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {
+      if (document.scripts[j].src === r) { return; }
+    }
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+  ym(104849796, 'init', { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/104849796" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+</body>
+</html>
