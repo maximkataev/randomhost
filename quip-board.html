@@ -229,6 +229,34 @@
   .start:not(:disabled):active { transform: translateY(6px); box-shadow: 0 2px 0 var(--bulb-edge); }
   .start:disabled { background: #b98c7d; box-shadow: 0 8px 0 #7c5146; opacity: 1; color: var(--deep); }
   .fine { color: var(--muted); font-size: clamp(18px, 2.1vh, 24px); font-weight: 600; }
+  /* лобби на низком экране (проектор 720 минус панели браузера, 2K/4K с увеличением): fitLobby ужимает по шагам, пока
+     кнопка «Начать» и все 16 мест не влезут. f1 — без подсказок; f2 — QR и шрифты меньше, места в строку; f3 — без пояснений */
+  .lobby { grid-template-rows: minmax(0, 1fr); }
+  .lobby.f1 .howwrap { display: none; }
+  .lobby.f2 .panel { padding: 14px 18px 16px; gap: 10px; }
+  .lobby.f2 .panel.cast h2 { font-size: 24px; }
+  .lobby.f2 .panel.cast h2 span { padding: 5px 12px; }
+  .lobby.f2 .seats { gap: 9px; }
+  .lobby.f2 .seat { min-height: 40px; }
+  .lobby.f2 .seat:not(.empty) { flex-direction: row; justify-content: flex-start; gap: 10px; padding: 9px 10px 5px; text-align: left; font-size: clamp(17px, 2.4vh, 22px); }
+  .lobby.f2 .seat:not(.empty) .puck { font-size: clamp(20px, 3.2vh, 28px); }
+  .lobby.f2 .seat:not(.empty) b { flex: 1; }
+  .lobby.f2 .seat.empty.next { flex-direction: row; font-size: 18px; }
+  .lobby.f2 .seat.empty.next::before { width: 28px; height: 28px; font-size: 18px; }
+  .lobby.f2 .join { gap: 18px; padding: 4px 0 6px 6px; }
+  .lobby.f2 #qr { width: clamp(120px, 24vh, 180px); height: clamp(120px, 24vh, 180px); padding: 8px; box-shadow: 0 0 0 6px var(--bulb), 0 6px 0 6px var(--bulb-edge); }
+  .lobby.f2 .url, .lobby.f2 .scan { font-size: 18px; }
+  .lobby.f2 #opts { gap: 8px !important; }
+  .lobby.f2 .opt-row .lbl b { font-size: 19px; }
+  .lobby.f2 .opt-row .lbl span, .lobby.f2 .fine { font-size: 17px; }
+  .lobby.f2 .seg button { min-height: 40px; padding: 6px 12px; font-size: 18px; }
+  .lobby.f2 .startbox { gap: 6px; }
+  .lobby.f2 .start { font-size: 26px; padding: 13px; box-shadow: 0 6px 0 var(--bulb-edge); }
+  .lobby.f2 .start:disabled { box-shadow: 0 6px 0 #7c5146; }
+  .lobby.f3 .scan, .lobby.f3 .opt-row .lbl span { display: none; }
+  .lobby.f3 #qr { width: clamp(110px, 20vh, 150px); height: clamp(110px, 20vh, 150px); }
+  .lobby.f3 .seats { gap: 7px; }
+  .lobby.f3 .seat { min-height: 34px; padding-top: 7px; padding-bottom: 3px; }
 
   /* ---------- заставка раунда ---------- */
   .intro { justify-content: center; align-items: center; text-align: center; gap: 12px; }
@@ -513,13 +541,12 @@
     .step .col { font-size: 44px; padding-top: 10px; }
     .step b { margin-top: 8px; font-size: 22px; }
   }
-  /* проектор 720–900 по высоте: QR, настройки, подсказки и кнопка вместе не помещались и наезжали друг на друга — подсказки убираем */
-  @media (max-height: 900px) { .howwrap { display: none; } }
   @media (max-width: 1000px) {
     body { overflow: auto; }
     .screen { position: static; }
     main { padding: 20px 16px 16px; }
     .lobby, .final { grid-template-columns: minmax(0, 1fr); }
+    .lobby { grid-template-rows: none; }
     .intro .sign { font-size: 56px; }
     .top .sign { display: none; }
     /* страница прокручивается: у родителей нет высоты, проценты не работают — таблички по содержимому, ведущему — своя высота */
@@ -923,6 +950,24 @@ if (document.fonts) {
   document.fonts.ready.then(fitCode);
   document.fonts.addEventListener && document.fonts.addEventListener("loadingdone", fitCode);
 }
+// лобби целиком в экран: ступени f1–f3 включаются по одной, пока панели не перестанут вылезать (до 1000px страница прокручивается)
+function fitLobby() {
+  const lob = main.querySelector(".lobby");
+  if (!lob) return;
+  const steps = ["f1", "f2", "f3"];
+  lob.classList.remove(...steps);
+  if (window.innerWidth <= 1000) return;
+  // панели и их блоки: сжатый флексом блок (подсказки на 2K/4K с zoom) панель не переполняет, а наезжает на соседей
+  const over = () => [...lob.children, ...lob.querySelectorAll(".panel > *")].some((n) => n.scrollHeight > n.clientHeight + 1);
+  for (const f of steps) {
+    if (!over()) return;
+    lob.classList.add(f);
+  }
+}
+if (document.fonts) {
+  document.fonts.ready.then(fitLobby);
+  document.fonts.addEventListener && document.fonts.addEventListener("loadingdone", fitLobby);
+}
 let qrDrawn = false;
 const seen = new Set();
 function drawLobby() {
@@ -975,6 +1020,7 @@ function drawLobby() {
   $("startbtn").disabled = !isHost || need > 0;
   $("startbtn").classList.toggle("hidden", !isHost);
   $("starthint").textContent = !isHost ? T("viewer") : need ? tpl(state.ghostOut && ps.length >= state.minPlayers ? "need_online" : "need_more", { n: need }) : T("ready");
+  fitLobby();
 }
 
 function drawOpts() {
