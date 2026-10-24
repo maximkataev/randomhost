@@ -1261,7 +1261,8 @@ const PLACES = [["ES","e",1,"Atapuerca Mountains","Atapuerca","Σιέρα δε �
 
       prepare(p);
       const text = nameOf(p);
-      const spans = prepareName(text);
+      prepareName(text);
+      const finalSize = destName.style.fontSize;
 
       if (reduceMotion) {
         nameInner.textContent = text;
@@ -1272,10 +1273,56 @@ const PLACES = [["ES","e",1,"Atapuerca Mountains","Atapuerca","Σιέρα δε �
       }
 
       pass.classList.add('searching');
-      const rolling = spans.filter(s => !s.dataset.fixed);
-      const step = Math.max(24, Math.min(70, Math.round(900 / Math.max(rolling.length, 1))));
-      const lockAt = rolling.map((_, i) => SEARCH_MS + i * step);
+      // Пока идёт поиск, длина названия неизвестна: показываем одинаковую «заглушку»
+      // из пяти знаков нейтрального кегля, а буквы выкладываем слева направо
+      // и только по мере того, как они «щёлкают». Заранее слотов под них нет.
+      const isLetter = (ch) => /[\p{L}\p{N}]/u.test(ch);
+      const chars = Array.from(text);
+      const total_letters = chars.filter(isLetter).length;
+      const neutralSize = Math.round(cssPx('--name-max')) + 'px';
+      let fillers = [];
+      let shown = -1;
+
+      const render = (n) => {
+        if (n === shown) return;
+        shown = n;
+        nameInner.textContent = '';
+        fillers = [];
+        const addFiller = (parent) => {
+          const el = document.createElement('span');
+          el.className = 'ch rolling';
+          el.textContent = randChar();
+          parent.appendChild(el);
+          fillers.push(el);
+        };
+        if (n === 0) {
+          destName.style.fontSize = neutralSize;
+          for (let i = 0; i < 5; i++) addFiller(nameInner);
+          return;
+        }
+        destName.style.fontSize = finalSize;
+        let seen = 0, cut = chars.length;
+        for (let i = 0; i < chars.length; i++) {
+          if (isLetter(chars[i]) && ++seen === n) { cut = i + 1; break; }
+        }
+        let li = 0;
+        nameInner.appendChild(wordsFragment(chars.slice(0, cut).join(''), (ch) => {
+          const el = document.createElement('span');
+          el.className = 'ch';
+          el.textContent = ch;
+          if (isLetter(ch) && ++li === n && n < total_letters) el.classList.add('locked');
+          return el;
+        }));
+        if (n < total_letters) {
+          const last = nameInner.lastElementChild;
+          addFiller(last); addFiller(last);
+        }
+      };
+
+      const step = Math.max(24, Math.min(70, Math.round(900 / Math.max(total_letters, 1))));
+      const lockAt = Array.from({ length: total_letters }, (_, i) => SEARCH_MS + i * step);
       const total = lockAt.length ? lockAt[lockAt.length - 1] : SEARCH_MS;
+      render(0);
 
       const start = performance.now();
       const spin = setInterval(() => {
@@ -1285,28 +1332,16 @@ const PLACES = [["ES","e",1,"Atapuerca Mountains","Atapuerca","Σιέρα δε �
           serialEl.textContent = 'RH-' + String(Math.floor(Math.random() * 9000) + 1000);
           toCode.textContent = latinChar() + latinChar() + latinChar();
         }
-        rolling.forEach((s, i) => {
-          if (s.dataset.done) return;
-          if (t >= lockAt[i]) {
-            s.textContent = s.dataset.final;
-            s.classList.remove('rolling');
-            s.classList.add('locked');
-            s.style.width = '';
-            s.dataset.done = '1';
-          } else {
-            s.textContent = randChar();
-          }
-        });
+        let n = 0;
+        while (n < lockAt.length && t >= lockAt[n]) n++;
+        render(n);
+        fillers.forEach(f => { f.textContent = randChar(); });
       }, TICK_MS);
 
       timers.push(setTimeout(() => {
         clearInterval(spin);
-        rolling.forEach(s => {
-          s.textContent = s.dataset.final;
-          s.classList.remove('rolling');
-          s.style.width = '';
-          s.dataset.done = '1';
-        });
+        shown = -1;
+        render(total_letters);
         pass.classList.remove('searching');
         reveal(p);
         // после того как последняя буква «щёлкнула», отдаём строку целиком:
