@@ -69,9 +69,7 @@ h1 { margin: 0; font: 700 clamp(30px, 4.4vw, 48px)/1 var(--disp); text-transform
 .option-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .option-wrapper { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .option-wrapper label { display: flex; align-items: center; gap: 8px; color: var(--muted); font: 700 12px/1 var(--disp); letter-spacing: .14em; text-transform: uppercase; }
-.option-wrapper label::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--cream); flex: none; }
-.option-wrapper:first-child label::before { background: var(--coral); }
-.option-wrapper:first-child .option-input { border-bottom-color: var(--coral); }
+.option-wrapper label::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: #e2b756; flex: none; }
 .option-input.error { border-bottom-color: #ffd166; }
 .char-counter { align-self: flex-end; font: 400 12px/1 var(--body); color: var(--muted); font-variant-numeric: tabular-nums; }
 .char-counter.error { color: #ffd166; }
@@ -87,48 +85,71 @@ h1 { margin: 0; font: 700 clamp(30px, 4.4vw, 48px)/1 var(--disp); text-transform
 
 /* ---------- монета ---------- */
 .coin-column { min-width: 0; display: flex; flex-direction: column; align-items: center; }
+/* Настоящая монета: две грани, толщина ~8% диаметра из 16 дисков, лежит на столе под углом камеры.
+   Слои: .coin (подъём) → .tilt (камера сверху) → .spin (переворот вокруг горизонтальной оси). */
 .coin-container {
-  --coin: clamp(140px, min(28vw, 34vh), 300px);
-  position: relative; z-index: 5; width: var(--coin); height: var(--coin); margin-top: calc(var(--coin) * .6); margin-bottom: calc(var(--coin) * .18);
-  perspective: 1000px;
+  --coin: clamp(150px, min(26vw, 30vh), 270px);
+  --t: calc(var(--coin) * .085);
+  position: relative; z-index: 5; width: var(--coin); height: var(--coin);
+  margin-top: calc(var(--coin) * .95); margin-bottom: calc(var(--coin) * .22);
+  perspective: 1100px;
 }
-/* единственная «тень» — плоский овал на полу; в полёте сжимается и светлеет */
-.coin-shadow {
-  z-index: 1; position: absolute; left: 12%; bottom: -12%; width: 76%; height: 11%; border-radius: 50%; background: var(--bg-dk);
+.coin, .tilt, .spin { position: absolute; inset: 0; transform-style: preserve-3d; }
+.coin { z-index: 2; }
+.tilt { transform: rotateX(32deg); }
+.spin { transform: rotateX(0deg); }
+.face, .edge { position: absolute; inset: 0; border-radius: 50%; }
+.edge {
+  transform: translateZ(calc((var(--i) - 7.5) * var(--t) / 15));
+  background: conic-gradient(from 20deg, #b78a2e, #8c6218, #d1a345, #8c6218, #b78a2e, #8c6218, #d1a345, #8c6218, #b78a2e);
 }
-.coin { position: absolute; inset: 0; z-index: 2; transform-style: preserve-3d; transform: translateY(0) rotateX(0deg); }
-.coin-side {
-  position: absolute; inset: 0; border-radius: 50%; display: grid; place-items: center; padding: 0 17%;
-  backface-visibility: hidden; -webkit-backface-visibility: hidden; text-align: center; overflow: hidden; white-space: nowrap;
-  font: 700 calc(var(--coin) * .17)/1 var(--disp);
+.face {
+  display: grid; place-items: center; padding: 0 19%; overflow: hidden; white-space: nowrap; text-align: center;
+  backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  background: radial-gradient(circle at 34% 28%, #fbe7a6 0%, #e2b756 32%, #c28f33 62%, #94681b 100%);
+  color: #6e4a0f; font: 700 calc(var(--coin) * .17)/1 var(--disp);
+  text-shadow: 0 1px 0 rgba(255, 240, 190, .75), 0 -1px 0 rgba(70, 42, 5, .45);
 }
-.coin-side::before { content: ""; position: absolute; inset: 7%; border-radius: 50%; border: 3px solid currentColor; opacity: .4; }
-.coin-front { background: var(--coral); color: var(--cream); }
-.coin-back { background: var(--cream); color: var(--ink); transform: rotateX(180deg); }
+.coin-front { transform: translateZ(calc(var(--t) / 2)); }
+.coin-back { transform: rotateX(180deg) translateZ(calc(var(--t) / 2)); }
+/* поднятый ободок и бусины по краю */
+.face::before { content: ""; position: absolute; inset: 0; border-radius: 50%;
+  box-shadow: inset 0 0 0 calc(var(--coin) * .035) #d7a944, inset 0 0 0 calc(var(--coin) * .045) rgba(80, 50, 8, .35), inset 0 0 0 calc(var(--coin) * .05) rgba(255, 236, 170, .55); }
+.face::after { content: ""; position: absolute; inset: calc(var(--coin) * .062); border-radius: 50%;
+  background: repeating-conic-gradient(rgba(80, 50, 8, .38) 0 2.4deg, transparent 2.4deg 7.2deg);
+  -webkit-mask: radial-gradient(circle, transparent calc(100% - var(--coin) * .035), #000 calc(100% - var(--coin) * .035 + 1px));
+  mask: radial-gradient(circle, transparent calc(100% - var(--coin) * .035), #000 calc(100% - var(--coin) * .035 + 1px)); }
+.face > span { position: relative; z-index: 1; }
 
-.coin.flipping-front { animation: toss-front 2s cubic-bezier(.3, .1, .3, 1) both; }
-.coin.flipping-back { animation: toss-back 2s cubic-bezier(.3, .1, .3, 1) both; }
-.coin.flipping-front + .coin-shadow, .coin.flipping-back + .coin-shadow { animation: toss-shadow 2s cubic-bezier(.3, .1, .3, 1) both; }
-@keyframes toss-front {
-  0%   { transform: translateY(0) rotateX(0deg); }
-  42%  { transform: translateY(-85%) rotateX(1000deg); }
-  78%  { transform: translateY(0) rotateX(1700deg); }
-  86%  { transform: translateY(-12%) rotateX(1760deg); }
-  93%  { transform: translateY(0) rotateX(1790deg); }
-  100% { transform: translateY(0) rotateX(1800deg); }
+/* Бросок 2 с: подъём (замедляется) → падение (ускоряется) → два отскока; переворот с постоянной скоростью,
+   у земли затухающее «дребезжание». Старт — из той стороны, что лежит сейчас: ничего не сбрасывается и не прыгает. */
+.coin.flipping-front, .coin.flipping-back { animation: lift 2s both; }
+.coin.flipping-front .spin, .coin.flipping-back .spin { animation: roll 2s both; }
+.coin.flipping-front + .coin-shadow, .coin.flipping-back + .coin-shadow { animation: shade 2s both; }
+@keyframes lift {
+  0%   { transform: translateY(0);     animation-timing-function: cubic-bezier(.25, .46, .45, .94); }
+  36%  { transform: translateY(-105%); animation-timing-function: cubic-bezier(.55, .085, .68, .53); }
+  74%  { transform: translateY(0);     animation-timing-function: cubic-bezier(.25, .46, .45, .94); }
+  82%  { transform: translateY(-13%);  animation-timing-function: cubic-bezier(.55, .085, .68, .53); }
+  89%  { transform: translateY(0);     animation-timing-function: cubic-bezier(.25, .46, .45, .94); }
+  93%  { transform: translateY(-3.5%); animation-timing-function: cubic-bezier(.55, .085, .68, .53); }
+  97%, 100% { transform: translateY(0); }
 }
-@keyframes toss-back {
-  0%   { transform: translateY(0) rotateX(0deg); }
-  42%  { transform: translateY(-85%) rotateX(1000deg); }
-  78%  { transform: translateY(0) rotateX(1880deg); }
-  86%  { transform: translateY(-12%) rotateX(1940deg); }
-  93%  { transform: translateY(0) rotateX(1970deg); }
-  100% { transform: translateY(0) rotateX(1980deg); }
+@keyframes roll {
+  0%   { transform: rotateZ(0deg) rotateX(var(--a0)); animation-timing-function: linear; }
+  74%  { transform: rotateZ(0deg) rotateX(calc(var(--a1) - 14deg)); animation-timing-function: ease-out; }
+  80%  { transform: rotateZ(-2deg) rotateX(calc(var(--a1) + 9deg)); animation-timing-function: ease-in-out; }
+  87%  { transform: rotateZ(1.5deg) rotateX(calc(var(--a1) - 5deg)); animation-timing-function: ease-in-out; }
+  93%  { transform: rotateZ(0deg) rotateX(calc(var(--a1) + 2deg)); animation-timing-function: ease-in-out; }
+  100% { transform: rotateZ(0deg) rotateX(var(--a1)); }
 }
-@keyframes toss-shadow {
-  0%, 78%, 93%, 100% { transform: scale(1); opacity: 1; }
-  42% { transform: scale(.55); opacity: .35; }
-  86% { transform: scale(.85); opacity: .7; }
+/* тень на столе: далеко от земли — меньше и светлее */
+.coin-shadow { position: absolute; z-index: 1; left: 9%; bottom: -9%; width: 82%; height: 15%; border-radius: 50%; background: var(--bg-dk); opacity: .9; }
+@keyframes shade {
+  0%, 74%, 89%, 97%, 100% { transform: scale(1); opacity: .9; animation-timing-function: ease-out; }
+  36% { transform: scale(.55); opacity: .35; animation-timing-function: ease-in; }
+  82% { transform: scale(.9); opacity: .75; }
+  93% { transform: scale(.97); opacity: .85; }
 }
 
 /* строка результата: ожидание → «в воздухе» → крупное слово; высота одна, ничего не прыгает */
@@ -136,9 +157,10 @@ h1 { margin: 0; font: 700 clamp(30px, 4.4vw, 48px)/1 var(--disp); text-transform
   width: 100%; min-height: clamp(52px, 9vw, 96px); display: flex; align-items: center; justify-content: center; text-align: center;
   font: 700 16px/1.1 var(--disp); letter-spacing: .22em; text-transform: uppercase; color: var(--muted);
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  transition: opacity .22s ease, transform .22s ease;
 }
+.coin-result.fading { opacity: 0; transform: translateY(8px); }
 .coin-result.show { font-size: clamp(34px, 7vw, 76px); letter-spacing: .02em; color: var(--cream); }
-.coin-column[data-win="1"] .coin-result.show { color: var(--coral); }
 
 @media (max-width: 760px) {
   .container { padding: 80px 18px 24px; align-items: flex-start; }
@@ -148,7 +170,7 @@ h1 { margin: 0; font: 700 clamp(30px, 4.4vw, 48px)/1 var(--disp); text-transform
   .input-group { gap: 12px; }
   .question-input, .option-input { font-size: 18px; }
   .flip-button { min-height: 56px; }
-  .coin-container { --coin: clamp(110px, 34vw, 170px); margin-top: calc(var(--coin) * .3); }
+  .coin-container { --coin: clamp(110px, min(38vw, 21vh), 190px); margin-top: calc(var(--coin) * .7); }
 }
 @media (max-width: 760px) and (max-height: 660px) {
   .container { padding-top: 72px; }
@@ -157,6 +179,8 @@ h1 { margin: 0; font: 700 clamp(30px, 4.4vw, 48px)/1 var(--disp); text-transform
   .input-group { gap: 8px; }
   .flip-button { min-height: 50px; font-size: 20px; }
   .error-message { min-height: 1.4em; margin-top: 0; }
+  .coin-container { --coin: clamp(96px, 30vw, 120px); margin-top: calc(var(--coin) * .22); margin-bottom: calc(var(--coin) * .14); }
+  .coin-result { min-height: 44px; }
 }
 @media (max-width: 380px) {
   .option-inputs { gap: 14px; }
@@ -170,13 +194,15 @@ h1 { margin: 0; font: 700 clamp(30px, 4.4vw, 48px)/1 var(--disp); text-transform
   .question-input, .option-input { font-size: 16px; padding: 6px 0; }
   .flip-button { min-height: 46px; font-size: 18px; }
   .error-message { min-height: 1.2em; margin: 0; }
-  .coin-container { --coin: clamp(90px, 26vh, 150px); margin-top: calc(var(--coin) * .4); }
+  .coin-container { --coin: clamp(90px, 24vh, 140px); margin-top: calc(var(--coin) * .6); }
   .coin-result.show { font-size: clamp(28px, 6vh, 44px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .coin.flipping-front, .coin.flipping-back { animation: calm 2s linear both; }
+  .coin.flipping-front .spin, .coin.flipping-back .spin { animation: none; transform: rotateX(var(--a1)); }
   .coin.flipping-front + .coin-shadow, .coin.flipping-back + .coin-shadow { animation: none; }
   @keyframes calm { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+  .coin-result { transition: none; }
 }
 </style>
 
@@ -226,8 +252,12 @@ h1 { margin: 0; font: 700 clamp(30px, 4.4vw, 48px)/1 var(--disp); text-transform
       <div class="coin-column" id="scene">
         <div class="coin-container">
           <div class="coin" id="coin">
-            <div class="coin-side coin-front" id="coinFront">Да</div>
-            <div class="coin-side coin-back" id="coinBack">Нет</div>
+            <div class="tilt">
+              <div class="spin" id="spin">
+                <div class="face coin-front" id="coinFront">Да</div>
+                <div class="face coin-back" id="coinBack">Нет</div>
+              </div>
+            </div>
           </div>
           <div class="coin-shadow" aria-hidden="true"></div>
         </div>
@@ -247,6 +277,7 @@ h1 { margin: 0; font: 700 clamp(30px, 4.4vw, 48px)/1 var(--disp); text-transform
   const coinFront = document.getElementById('coinFront');
   const coinBack = document.getElementById('coinBack');
   const coinResult = document.getElementById('coinResult');
+  const spin = document.getElementById('spin');
   const sceneEl = document.getElementById('scene');
 
   // 🔹 Только оформление: строка результата (ожидание → «в воздухе» → результат) и подгонка текста на сторонах монеты
@@ -274,6 +305,16 @@ h1 { margin: 0; font: 700 clamp(30px, 4.4vw, 48px)/1 var(--disp); text-transform
       fitText(coinBack);
     }
   }
+  // 🔹 Толщина монеты: 16 дисков между гранями (только вид)
+  for (let i = 0; i < 16; i++) { const e = document.createElement('div'); e.className = 'edge'; e.style.setProperty('--i', i); spin.insertBefore(e, coinFront); }
+  // 🔹 Плавная смена надписи под монетой: гаснет, меняется, появляется (без скачка размера)
+  let swapTimer = 0;
+  function swapStrip(apply) {
+    coinResult.classList.add('fading');
+    clearTimeout(swapTimer);
+    swapTimer = setTimeout(() => { apply(); coinResult.classList.remove('fading'); }, 220);
+  }
+  let restAngle = 0; // 0 — лежит первая сторона, 180 — вторая
   option1Input.addEventListener('input', syncWords);
   option2Input.addEventListener('input', syncWords);
   window.addEventListener('resize', syncWords);
@@ -435,16 +476,18 @@ h1 { margin: 0; font: 700 clamp(30px, 4.4vw, 48px)/1 var(--disp); text-transform
     coinFront.textContent = opt1;
     coinBack.textContent = opt2;
 
-    coinResult.classList.remove('show');
-    sceneEl.removeAttribute('data-win');
-    stripState = 'air';
-    renderStrip();
+    swapStrip(() => { coinResult.classList.remove('show'); stripState = 'air'; renderStrip(); });
 
     // сбрасываем анимацию и положение
     coin.classList.remove('flipping-front', 'flipping-back');
-    coin.style.transform = 'translateY(0) rotateX(0deg)';
 
     const result = Math.random() < 0.5 ? 'front' : 'back';
+    // из текущего положения до нужной стороны: 5 полных оборотов + доворот (ничего не сбрасывается)
+    const target = result === 'front' ? 0 : 180;
+    const delta = (((target - restAngle) % 360) + 360) % 360;
+    spin.style.setProperty('--a0', restAngle + 'deg');
+    spin.style.setProperty('--a1', (restAngle + 5 * 360 + delta) + 'deg');
+    void coin.offsetWidth;
 
     // даём браузеру кадр, чтобы применить сброс
     setTimeout(() => {
@@ -457,21 +500,13 @@ h1 { margin: 0; font: 700 clamp(30px, 4.4vw, 48px)/1 var(--disp); text-transform
 
       // после окончания анимации
       setTimeout(() => {
+        // фиксируем финальный угол: он равен последнему кадру анимации, рывка нет
+        spin.style.transform = 'rotateX(' + target + 'deg)';
+        restAngle = target;
         coin.classList.remove('flipping-front', 'flipping-back');
 
-        // фиксируем финальный угол (без рывка)
-        if (result === 'front') {
-          coin.style.transform = 'translateY(0) rotateX(0deg)';
-          lastResultOpt = opt1; stripState = 'result'; renderStrip(); sceneEl.dataset.win = '1';
-        } else {
-          coin.style.transform = 'translateY(0) rotateX(180deg)';
-          lastResultOpt = opt2; stripState = 'result'; renderStrip(); sceneEl.dataset.win = '2';
-        }
-
-        setTimeout(() => {
-          coinResult.classList.add('show');
-          fitText(coinResult);
-        }, 200);
+        lastResultOpt = result === 'front' ? opt1 : opt2;
+        swapStrip(() => { stripState = 'result'; coinResult.classList.add('show'); renderStrip(); sceneEl.dataset.win = result === 'front' ? '1' : '2'; });
 
         isFlipping = false;
         flipButton.disabled = false;
