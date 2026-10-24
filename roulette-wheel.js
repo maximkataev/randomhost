@@ -2180,6 +2180,7 @@ function create3D(container, opts) {
     const [dx, dz] = cellCenter(number);
     dolly.visible = true;
     pay.dolly = { x: dx, z: dz, t0: now + 250 };
+    pay.dollyLifts = [];
     const players = data.players || [];
     const order = new Map(players.map((p, i) => [p.id, i]));
     const losers = [], winners = [];
@@ -2218,6 +2219,18 @@ function create3D(container, opts) {
     strokes.forEach((s, k) => {
       const t = 350 + k * STROKE;
       s.t0 = rake0 + t;
+      // маркер стоит на выигравшем номере: пока лопатка (и фишки перед ней) идёт мимо, он приподнимается, а не торчит сквозь неё
+      if (Math.abs(s.x - dx) < s.w / 2 + 0.035) {
+        let qa = null, qb = null;
+        for (let q = STROKE * 0.18; q <= STROKE * 0.82; q += 8) {
+          const hz = headZ(q);
+          if (qa == null && hz <= dz + 0.1) qa = q;
+          if (hz <= dz - 0.08) { qb = q; break; }
+        }
+        if (qa == null) qa = STROKE * 0.18;
+        if (qb == null) qb = STROKE * 0.82;
+        pay.dollyLifts.push([s.t0 + qa, s.t0 + qb]);
+      }
       rakeKeys.push(
         { t: t, p: [s.x, 0.09, zNear + 0.02], r: [0, 0, 0] },
         { t: t + STROKE * 0.18, p: [s.x, 0.004, zNear], r: [0, 0, 0] },
@@ -2602,7 +2615,10 @@ function create3D(container, opts) {
       const d = st.pay.dolly;
       const k = clamp((nl - d.t0) / 450, 0, 1);
       const yb = k < 0.75 ? lerp(0.3, 0, (k / 0.75) ** 2) : Math.sin(((k - 0.75) / 0.25) * Math.PI) * 0.008;
-      dolly.position.set(d.x, 0.0008 + yb, d.z);
+      // приподнимается над проходящей лопаткой: низ маркера выше её кромки
+      let up = 0;
+      for (const [la, lb] of st.pay.dollyLifts || []) up = Math.max(up, clamp((nl - la) / 140, 0, 1) * clamp((lb + 140 - nl) / 140, 0, 1));
+      dolly.position.set(d.x, 0.0008 + yb + up * 0.04, d.z);
       dolly.visible = nl >= d.t0;
       if (!d.clinked && k >= 0.75) { d.clinked = true; if (!dbg.silent) sound.clink(1, 0, 0.2); }
     }
