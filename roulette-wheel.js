@@ -1156,15 +1156,17 @@ class Dealer {
       { t: 1500, p: [cx + 0.5, y + 0.12, zA], r: [0.2, -0.2, 0] },
     ], now);
   }
-  // Бросок: рука подходит к борту колеса с дальней стороны, щелчок вдоль трека, уходит
-  launch(now, launchWorld, dir) {
-    const [x, y, z] = launchWorld;
-    const back = [x, y + 0.16, z - 0.5];
+  // Бросок: рука заходит над бортом чаши (кисть выше кромки, кончики пальцев над треком),
+  // щелчок вдоль трека, уходит. handY — высота кисти над бортом: ниже пальцы прошли бы сквозь дерево.
+  launch(now, launchWorld, dir, handY) {
+    const [x, , z] = launchWorld;
+    const y = handY;
+    const back = [x, y + 0.1, z - 0.55];
     this.play(this.thrower, [
       { t: 0, p: back, r: [0.3, 0, 0] },
-      { t: 700, p: [x - 0.012, y + 0.018, z - 0.078], r: [0.25, 0.3, 0] },
-      { t: 1250, p: [x - 0.012, y + 0.018, z - 0.078], r: [0.25, 0.3, 0] },
-      { t: 1450, p: [x + dir * 0.09, y + 0.03, z - 0.07], r: [0.2, -0.5 * dir, 0] },
+      { t: 700, p: [x - 0.012, y, z - 0.08], r: [0.25, 0.3, 0] },
+      { t: 1250, p: [x - 0.012, y, z - 0.08], r: [0.25, 0.3, 0] },
+      { t: 1450, p: [x + dir * 0.09, y, z - 0.07], r: [0.2, -0.5 * dir, 0] },
       { t: 2100, p: back, r: [0.3, 0, 0] },
     ], now);
   }
@@ -2145,7 +2147,7 @@ function create3D(container, opts) {
     st.mode = "spin";
     if (tCall < 700) {
       const lp = WHEEL_POS.clone().add(new THREE.Vector3(0, traj.sample(0).y, -GEOM.trackR));
-      dealer.launch(nowL() + (-650 - tCall), [lp.x, lp.y, lp.z], 1);
+      dealer.launch(nowL() + (-650 - tCall), [lp.x, lp.y, lp.z], 1, WHEEL_POS.y + GEOM.bowlTopY + 0.025);
     }
   }
 
