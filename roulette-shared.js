@@ -484,6 +484,25 @@ function rlChipVars(color) {
   const light = rlLum(color) > 0.55;
   return `--c:${color};--cd:${rlShade(color, 0.55)};--cs:${light ? "#2b2118" : "#fff6e2"}`;
 }
+// Номиналы фишек на столе: ставка раскладывается на них жадно (100 — одна, 200 — две по 100, 40 — две по 20), цвет — по номиналу
+const RL_CHIP_LADDER = [
+  [1e6, "#7a5230"], [5e5, "#8a8f99"], [1e5, "#8a8f99"], [5e4, "#7a5230"], [1e4, "#29b6c4"], [5000, "#e86aa0"], [1000, "#e6b422"],
+  [500, "#8e4fc4"], [100, "#1d1b22"], [50, "#e8872b"], [20, "#2f9e5c"], [10, "#3a78d6"], [5, "#d94a3f"], [1, "#e8e4da"],
+];
+function rlChipBreakdown(amount, maxChips) {
+  const out = [];
+  let left = Math.max(0, Math.floor(amount));
+  for (const [v, color] of RL_CHIP_LADDER) {
+    while (left >= v) { out.push({ v, color }); left -= v; if (out.length > 400) return out; }
+  }
+  const cap = maxChips || 8;
+  // старшие внизу, мелочь сверху; в столбике не больше cap фишек — лишние мелкие не рисуем
+  return out.slice(0, cap);
+}
+function rlChipColor(v) {
+  const b = rlChipBreakdown(v, 1);
+  return b.length ? b[0].color : "#e8e4da";
+}
 // высота столбика: чем больше ставка относительно минимума, тем больше фишек в столбике
 function rlStackLayers(amount, min) {
   const k = amount / Math.max(1, min);

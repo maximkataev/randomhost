@@ -255,7 +255,7 @@
     position: absolute; inset: 5px; border-radius: 15px;
     background: radial-gradient(100% 70% at 50% 30%, var(--felt-hi), var(--felt) 55%, var(--felt-lo));
     display: grid; grid-template-columns: 40px 40px 1fr 1fr 1fr; /* roulette-032: дюжины и равные шансы ≥40 px в ширину (было 30) */ grid-template-rows: minmax(26px, 1fr) repeat(12, minmax(22px, 1fr)) minmax(24px, 1fr);
-    overflow: hidden; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+    overflow: hidden; touch-action: pan-y; user-select: none; -webkit-user-select: none;
   }
   .cell { position: relative; border-right: 1px solid rgba(255, 255, 255, .13); border-bottom: 1px solid rgba(255, 255, 255, .13); display: grid; place-items: center; font: 700 15px/1 var(--cond); min-width: 0; min-height: 0; }
   .num span { position: relative; z-index: 1; width: 34px; height: min(24px, 82%); display: grid; place-items: center; border-radius: 7px; font: 800 15px/1 var(--cond); letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: #fff; }
@@ -1708,9 +1708,28 @@ function buildFelt() {
   bubbles.id = "bubbles";
   f.replaceChildren(...cells, ghost, hit, chips, bubbles);
   // внешние клетки — обычный тап
+  // свайп влево по позиции — ставка на ней снимается целиком
+  let swipedAt = 0;
+  const swipeOff = (key) => {
+    if (!key || !canBet() || !myBets[key]) return false;
+    const next = Object.assign({}, myBets);
+    delete next[key];
+    swipedAt = Date.now();
+    return pushBets(next);
+  };
+  const isSwipe = (dx, dy) => dx < -40 && Math.abs(dx) > Math.abs(dy) * 1.5;
+  let cellSw = null;
+  f.addEventListener("pointerdown", (e) => {
+    const k = e.target.closest("[data-key]");
+    cellSw = k && !hit.contains(e.target) ? { key: k.dataset.key, x: e.clientX, y: e.clientY } : null;
+  });
+  f.addEventListener("pointermove", (e) => {
+    if (cellSw && isSwipe(e.clientX - cellSw.x, e.clientY - cellSw.y)) { const k = cellSw.key; cellSw = null; swipeOff(k); }
+  });
+  f.addEventListener("pointercancel", () => { cellSw = null; });
   f.addEventListener("click", (e) => {
     const k = e.target.closest("[data-key]");
-    if (k && !hit.contains(e.target)) addChip(k.dataset.key);
+    if (k && Date.now() - swipedAt > 400 && !hit.contains(e.target)) addChip(k.dataset.key);
   });
   // зона чисел: тап по координате, долгое нажатие — список всех ставок с этим числом
   let press = null;
@@ -1723,6 +1742,7 @@ function buildFelt() {
     while (k < 12 && y >= edges[k + 1]) k++;
     const rh = Math.max(1, edges[k + 1] - edges[k]);
     press = { x: e.clientX, y: e.clientY, fx: (e.clientX - r.left) / r.width, fy: (k + Math.max(0, Math.min(0.9999, (y - edges[k]) / rh))) / 13, w: r.width, h: rh * 13, long: false };
+    press.key = hitKey(Math.max(0, Math.min(0.9999, press.fx)), Math.max(0, Math.min(0.9999, press.fy)), press.w, press.h);
     press.timer = setTimeout(() => {
       if (!press) return;
       press.long = true;
@@ -1731,7 +1751,10 @@ function buildFelt() {
     }, 450);
   });
   const cancel = () => { if (press) { clearTimeout(press.timer); press = null; } };
-  hit.addEventListener("pointermove", (e) => { if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 12) cancel(); });
+  hit.addEventListener("pointermove", (e) => {
+    if (press && isSwipe(e.clientX - press.x, e.clientY - press.y)) { const k = press.key; cancel(); swipeOff(k); return; }
+    if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 12) cancel();
+  });
   hit.addEventListener("pointerup", () => {
     if (!press) return;
     clearTimeout(press.timer);
@@ -1831,15 +1854,16 @@ function drawChips(animate) {
     // на выплате: сыгравшие фишки светятся, мимо — тускнеют
     const resN = (state.phase === "payout" || state.phase === "finished") && state.result && state.result.number != null ? state.result.number : null;
     const wl = resN == null || !RL_BETS[key] ? "" : RL_BETS[key].numbers.includes(resN) ? " won" : " lost";
-    const d = el("div", "chip rchip" + wl + (animate && key === lastAdded ? " pop" : ""), fmtChip(amount));
     const color = my ? my.color : "#f2c14e";
-    // столбик: копии фишки ниже, через одну темнее — видно высоту ставки
-    const layers = rlStackLayers(amount, state.minBet);
-    let sh = "inset 0 0 0 1.5px var(--cd)";
-    for (let i = 1; i < layers; i++) sh += `, 0 ${i * 3}px 0 ${i % 2 ? "var(--cd)" : "var(--c)"}`;
-    sh += `, 0 ${layers * 3}px 0 rgba(0,0,0,.5), 0 ${layers * 3 + 3}px 6px rgba(0,0,0,.5)`;
-    d.style.cssText = rlChipVars(color) + `;box-shadow:${sh};left:${at.x}px;top:${at.y - (layers - 1) * 3}px`;
-    out.push(d);
+    // столбик из фишек номиналов: старшие внизу; сумма написана на верхней
+    const parts = rlChipBreakdown(amount);
+    parts.forEach((pc, i) => {
+      const top = i === parts.length - 1;
+      const d = el("div", "chip rchip" + wl + (top && animate && key === lastAdded ? " pop" : ""), top ? fmtChip(amount) : "");
+      const sh = "inset 0 0 0 1.5px var(--cd), 0 2px 0 var(--cd)" + (i === 0 ? ", 0 5px 6px rgba(0,0,0,.5)" : "");
+      d.style.cssText = rlChipVars(pc.color) + `;box-shadow:${sh};left:${at.x}px;top:${at.y - i * 3}px`;
+      out.push(d);
+    });
   }
   lastAdded = null;
   layer.replaceChildren(...out);
@@ -1899,7 +1923,7 @@ function buildRack() {
   const buttons = dens.map((v, i) => {
     const b = el("button", "den rchip" + (i === chipIdx ? " sel" : ""), fmtChip(v));
     b.dataset.v = String(v);
-    b.style.cssText = rlChipVars(color);
+    b.style.cssText = rlChipVars(rlChipColor(v));
     b.setAttribute("aria-pressed", i === chipIdx ? "true" : "false");
     b.onclick = () => pick(i);
     return b;
