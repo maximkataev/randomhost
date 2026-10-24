@@ -1,5 +1,8 @@
 "use strict";
 
+// Один файл для сервера (module.exports) и для соло-режима в браузере (window.RouletteGame): тело обёрнуто, чтобы const не стали глобальными
+(function () {
+
 /*
  * Движок рулетки: чистая логика без сети и таймеров (roulette-spec.md).
  * Всё состояние лежит в plain-объекте `this.s`, чтобы его можно было дампить в JSON и поднимать обратно.
@@ -151,9 +154,11 @@ class Game {
     this.rnd = rnd;
   }
 
-  static create({ settings, rnd = defaultRnd } = {}) {
+  static create({ settings, rnd = defaultRnd, solo = false, flat = false } = {}) {
     return new Game({
       settings: clampSettings(settings),
+      solo: !!solo, // один игрок против казино (roulette-solo.html): без таймера ставок и «последнего за столом»; сервер этот флаг не ставит
+      flat: !!solo && !!flat, // «свободная игра»: минимум не растёт
       phase: "lobby", // lobby | betting | closing | spinning | payout | finished
       players: [],
       spin: 0, // номер текущего спина с 1
@@ -288,13 +293,14 @@ class Game {
   }
 
   levelFor(spin) {
+    if (this.s.flat) return 0;
     return Math.min(TOP_LEVEL, Math.floor((spin - 1) / PACE[this.s.settings.pace]));
   }
 
   start(now) {
     const s = this.s;
     if (s.phase !== "lobby") return { ok: false, reason: "started" };
-    if (this.alive().length < MIN_PLAYERS) return { ok: false, reason: "few_players" };
+    if (!s.solo && this.alive().length < MIN_PLAYERS) return { ok: false, reason: "few_players" };
     s.deck = [];
     for (const p of this.alive()) {
       p.stack = s.settings.stack;
@@ -364,7 +370,9 @@ class Game {
       p.frozen = !!p.freezeNext && !p.out;
       p.freezeNext = false;
     }
-    if (s.pauseNext) {
+    if (s.solo) {
+      s.deadline = null; // ставки закрывает сам игрок кнопкой «Крутить»
+    } else if (s.pauseNext) {
       s.pauseNext = false;
       s.paused = { remaining: s.settings.betTime };
       s.deadline = null;
@@ -660,7 +668,8 @@ class Game {
     s.phase = "payout";
     s.deadline = now + (r.story.jackpot ? T.payoutJackpot : T.payout);
     const left = this.alive();
-    if (left.length === 1) ev.push(...this.finish("last", now));
+    if (s.solo) { if (!left.length) ev.push(...this.finish("all_out", now, busted)); }
+    else if (left.length === 1) ev.push(...this.finish("last", now));
     else if (left.length === 0) ev.push(...this.finish("all_out", now, busted));
     return ev;
   }
@@ -906,4 +915,8 @@ class Game {
   }
 }
 
-module.exports = { Game, BETS, WHEEL, RED, PAYOUT, LEVELS, OVERTIME, TOP_LEVEL, PACE, DEFAULTS, T, REACTIONS, COLORS, CARD_TYPES, MAX_PLAYERS, MIN_PLAYERS, colorOf, clampSettings, cleanName, cleanText };
+const API = { Game, BETS, WHEEL, RED, PAYOUT, LEVELS, OVERTIME, TOP_LEVEL, PACE, DEFAULTS, T, REACTIONS, COLORS, CARD_TYPES, MAX_PLAYERS, MIN_PLAYERS, colorOf, clampSettings, cleanName, cleanText };
+if (typeof module !== "undefined" && module.exports) module.exports = API;
+else window.RouletteGame = API;
+
+})();

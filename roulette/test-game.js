@@ -557,3 +557,51 @@ test("пока игрока нет на связи, штраф копится в
   g.ackAway("A");
   assert.strictEqual(g.snapshot(0, "A").me.away, null);
 });
+
+// ---------- соло: один игрок против казино (roulette-solo.html) ----------
+test("соло: старт без второго игрока, без таймера ставок, партия не кончается на первом спине", () => {
+  let seed = 7;
+  const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+  const g = Game.create({ settings: { cards: false }, solo: true, rnd });
+  g.addPlayer({ id: "a", name: "Я" });
+  assert.equal(g.start(0).ok, true);
+  assert.equal(g.s.phase, "betting");
+  assert.equal(g.s.deadline, null);
+  assert.equal(g.tick(10 ** 9).length, 0, "таймер не закрывает ставки сам");
+  g.bet("a", "red", 50);
+  g.setReady("a", true, 1000);
+  assert.equal(g.s.phase, "closing");
+  g.tick(g.s.deadline);
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "payout");
+  assert.notEqual(g.s.phase, "finished");
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "betting");
+  assert.equal(g.s.spin, 2);
+});
+
+test("соло: обнулился — партия окончена; «свободная игра» держит минимум", () => {
+  const g = Game.create({ settings: { cards: false }, solo: true, rnd: () => 0 });
+  g.addPlayer({ id: "a", name: "Я" });
+  g.start(0);
+  g.bet("a", "n:5", 1000); // выпадет 0
+  g.setReady("a", true, 0);
+  g.tick(g.s.deadline); g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "payout"); // выплата дошоуется, потом финал
+  assert.equal(g.s.finishAfterPayout, true);
+  g.tick(g.s.deadline);
+  assert.equal(g.s.phase, "finished");
+  assert.equal(g.s.finishedReason, "all_out");
+  const f = Game.create({ settings: { cards: false, pace: "fast" }, solo: true, flat: true, rnd: () => 0 });
+  f.addPlayer({ id: "a", name: "Я" });
+  f.start(0);
+  for (let i = 0; i < 12; i++) { f.s.level = f.levelFor(f.s.spin); }
+  assert.equal(f.levelFor(40), 0);
+  assert.equal(f.levelNeed(), 10);
+});
+
+test("мультиплеер не принимает solo из настроек", () => {
+  const g = Game.create({ settings: { solo: true, flat: true } });
+  assert.equal(g.s.solo, false);
+  assert.equal(g.s.flat, false);
+});
