@@ -2453,7 +2453,7 @@ function create3D(container, opts) {
       case "hopOut": if (loud) sound.tuk(0.7, 0, pitch); setGlow(-1, 0); break;
       case "settle":
         if (loud) sound.settle(1);
-        setGlow(sp.traj.target, 0.5);
+        // ячейка не светится, пока шарик ещё дрожит в ней: подсветка — при объявлении выигрыша (reveal)
         if (!sp.landed) { sp.landed = true; emit("land", { number: Number(sp.res.number), at: sp.spinAt + e.t }); }
         break;
     }
