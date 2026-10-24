@@ -123,6 +123,9 @@
 
     .home-button:hover { background: rgba(255, 255, 255, 0.14); color: #fff; transform: translateY(-1px); }
 
+    html.boot .wrap { opacity: 0; }
+    .wrap { transition: opacity 0.25s ease; }
+
     .wrap {
       position: relative;
       z-index: 2;
@@ -513,6 +516,10 @@
 
     .dest-name .fill { position: absolute; white-space: nowrap; }
 
+    .dest-name .fresh { animation: freshIn 0.26s ease-out; }
+
+    @keyframes freshIn { from { color: var(--amber-deep); } }
+
     .dest-name .ch.locked { animation: flapIn 0.26s ease-out; }
 
     @keyframes flapIn {
@@ -818,6 +825,12 @@
       .kind-btn { font-size: 12px; }
     }
   </style>
+  <script>
+    // Пока не подгрузились шрифты и перевод, страница прозрачна: иначе подписи
+    // и кнопки перестраиваются на глазах (смена шрифта, затем языка).
+    document.documentElement.classList.add('boot');
+    setTimeout(function () { document.documentElement.classList.remove('boot'); }, 2500);
+  </script>
 </head>
 <body>
   <div class="bg"></div>
@@ -1318,14 +1331,17 @@ const PLACES = [["ES","e",1,"Atapuerca Mountains","Atapuerca","Σιέρα δε �
         for (let i = 0; i < chars.length; i++) {
           if (isLetter(chars[i]) && ++seen === n) { cut = i + 1; break; }
         }
-        let li = 0;
-        nameInner.appendChild(wordsFragment(chars.slice(0, cut).join(''), (ch) => {
-          const el = document.createElement('span');
-          el.className = 'ch';
-          el.textContent = ch;
-          if (isLetter(ch) && ++li === n && n < total_letters) el.classList.add('locked');
-          return el;
-        }));
+        // слова — цельным текстом, а не набором inline-блоков: иначе пропадает кернинг
+        // и после финальной замены на чистый текст буквы меняют начертание
+        const prefix = chars.slice(0, cut);
+        nameInner.appendChild(wordsFragment(prefix.join(''), null));
+        const lastBox = nameInner.lastElementChild;
+        const body = lastBox.firstChild;
+        const tail = document.createElement('span');
+        tail.textContent = prefix[prefix.length - 1];
+        body.textContent = Array.from(body.textContent).slice(0, -1).join('');
+        if (n < total_letters) tail.className = 'fresh';
+        lastBox.appendChild(tail);
         if (n < total_letters) {
           const last = nameInner.lastElementChild;
           addFillers(last, 2);
@@ -1439,6 +1455,24 @@ const PLACES = [["ES","e",1,"Atapuerca Mountains","Atapuerca","Σιέρα δε �
 
     updateCounts();
     showIdle();
+
+    // показываем страницу, когда готовы шрифты и применён перевод (i18n.js — defer)
+    (function () {
+      const fontsReady = (document.fonts && document.fonts.load)
+        ? Promise.all([
+            document.fonts.load('700 20px "Roboto Condensed"'),
+            document.fonts.load('400 14px "JetBrains Mono"'),
+            document.fonts.load('400 14px "Roboto"')
+          ]).catch(() => {})
+        : Promise.resolve();
+      const domReady = document.readyState === 'complete'
+        ? Promise.resolve()
+        : new Promise(res => window.addEventListener('load', res, { once: true }));
+      Promise.all([fontsReady, domReady]).then(() => {
+        // после загрузки шрифтов кегль названия подбирался по запасным — пересчитаем
+        requestAnimationFrame(() => document.documentElement.classList.remove('boot'));
+      });
+    })();
   </script>
 
   <!-- Yandex.Metrika counter -->
