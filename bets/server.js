@@ -166,9 +166,9 @@ function pruneTokens(room) {
   for (const id of room.dropCounts.keys()) if (!ids.has(id)) room.dropCounts.delete(id);
 }
 
-function newGame(state) {
+function newGame(state, solo) {
   const opts = { intro: process.env.BETS_INTRO_MS !== undefined ? () => Math.max(0, Number(process.env.BETS_INTRO_MS) || 0) : undefined, prepareLive, whyLive, liveTypes: () => (feed ? (typeof feed.enabled === "function" ? feed.enabled() : require("./registry").REAL) : []) };
-  return state ? Game.restore(state, rnd, opts) : new Game(rnd, opts);
+  return state ? Game.restore(state, rnd, opts) : new Game(rnd, { ...opts, solo: !!solo });
 }
 
 function newRoom({ code, ip = "", hostToken, game, tokens = {}, touched = Date.now(), speed = TIME_SCALE, left = [] }) {
@@ -197,14 +197,14 @@ function newRoom({ code, ip = "", hostToken, game, tokens = {}, touched = Date.n
   };
 }
 
-function createRoom({ settings = {}, speed, ip = "" } = {}) {
+function createRoom({ settings = {}, speed, ip = "", solo = false } = {}) {
   if (ip) {
     let mine = 0;
     for (const r of rooms.values()) if (r.ip === ip) mine++;
     if (mine >= MAX_ROOMS_PER_IP && !evictOldestEmpty(ip)) throw new Error("too many rooms from this address");
   }
   if (rooms.size >= MAX_ROOMS && !evictOldestEmpty()) throw new Error("too many rooms");
-  const game = newGame();
+  const game = newGame(undefined, solo);
   game.setSettings({ pace: process.env.BETS_PACE || "host", ...(settings && typeof settings === "object" ? settings : {}) });
   game.s.settings.chat = settings && settings.chat === false ? false : true;
   const room = newRoom({
@@ -624,7 +624,7 @@ async function route(req, res) {
   if (url.pathname === "/bets/api/rooms" && req.method === "POST") {
     const body = await readJson(req);
     try {
-      const room = createRoom({ settings: body.settings, speed: body.speed, ip: clientIp(req) });
+      const room = createRoom({ settings: body.settings, speed: body.speed, ip: clientIp(req), solo: body.solo === true });
       return json(200, { code: room.code, hostToken: room.hostToken });
     } catch (err) {
       return json(400, { error: err.message });
@@ -716,6 +716,7 @@ function handle(room, client, msg) {
   room.touched = now();
   const reply = (obj) => send(client.ws, obj);
   const me = client.playerId && g.s.players[client.playerId] ? client.playerId : null;
+  const ctl = client.host || (g.s.solo && !!me); // кнопки ведущего; в соло ведущий — сам игрок
   // ответ на действие игрока: отказ — только ему, успех — всем (или только ему, если меняется один черновик)
   const act = (action, events, why, only) => {
     if (!events.length) return reply({ type: "rejected", action, reason: why() });
@@ -820,7 +821,8 @@ function handle(room, client, msg) {
       cancelOffline(room, playerId);
       presence.setOnline(g.s.players[playerId], true, now());
       const joinEvents = viaName ? [{ type: "rejoin", playerId }] : [];
-      return afterChange(room, [{ type: "online", playerId }, ...joinEvents]);
+      const soloStart = g.s.solo && g.s.phase === "lobby" && g.s.order.length === 1 ? g.start(t) : []; // соло: лобби нет, партия идёт сразу
+      return afterChange(room, [{ type: "online", playerId }, ...joinEvents, ...soloStart]);
     }
     case "leave": {
       if (!me) return;
@@ -874,11 +876,11 @@ function handle(room, client, msg) {
       if (g.s.order.length < 2) return reply({ type: "rejected", action: "start", reason: "need_players" });
       return afterChange(room, g.start(t));
     }
-    case "end": return client.host ? afterChange(room, g.endNow(t)) : undefined;
-    // кнопки ведущего в темпе «по кнопке»: открыть ставки, закрыть ставки, дальше
-    case "open": return client.host ? afterChange(room, g.openBets(t)) : undefined;
-    case "lock": return client.host ? afterChange(room, g.lockNow(t)) : undefined;
-    case "next": return client.host ? afterChange(room, g.afterPayout(t)) : undefined;
+    case "end": return ctl ? afterChange(room, g.endNow(t)) : undefined;
+    // кнопки ведущего в темпе «по кнопке»: открыть ставки, закрыть ставки, дальше (в соло их жмёт сам игрок)
+    case "open": return ctl ? afterChange(room, g.openBets(t)) : undefined;
+    case "lock": return ctl ? afterChange(room, g.lockNow(t)) : undefined;
+    case "next": return ctl ? afterChange(room, g.afterPayout(t)) : undefined;
     case "kick": {
       if (!client.host) return;
       const id = String(msg.playerId || "");
@@ -891,7 +893,7 @@ function handle(room, client, msg) {
       return afterChange(room, [...events, ...earlyLock(room)]);
     }
     case "next_game": {
-      if (!client.host) return;
+      if (!ctl) return;
       if (g.s.phase !== "done") return reply({ type: "rejected", action: "next_game", reason: "not_done" });
       // офлайн без сокета и не бот не переходят в новую партию (U-07)
       const old = g.s;
@@ -899,7 +901,7 @@ function handle(room, client, msg) {
       presence.pruneOfflineForNewGame(humans, { now: now(), graceMs: OFFLINE_GRACE_MS });
       const keep = old.order.map((id) => old.players[id]).filter((p) => !room.left.has(p.id) && !p.left);
       cancelLive(room);
-      const ng = newGame();
+      const ng = newGame(undefined, old.solo);
       ng.s.settings = { ...old.settings };
       for (const p of keep) {
         ng.addPlayer(p.id, p.name);
@@ -913,7 +915,9 @@ function handle(room, client, msg) {
       for (const id of [...room.closedAt.keys()]) if (!ng.s.players[id]) room.closedAt.delete(id);
       for (const c of room.sockets) if (c.playerId && !ng.s.players[c.playerId]) c.playerId = null;
       pruneTokens(room);
-      return afterChange(room, [{ type: "new_game" }]);
+      const evs = [{ type: "new_game" }];
+      if (ng.s.solo) evs.push(...ng.start(t)); // соло: без лобби, сразу новая партия
+      return afterChange(room, evs);
     }
     case "bots": {
       if (!client.host || !DEV) return;

@@ -740,3 +740,34 @@ test("темп «по кнопке»: знакомство ждёт «open» о�
     await a.wait(statePred((s) => s.phase === "locked" || s.phase === "scene"));
   });
 });
+
+test("соло: комната создаётся с solo, игрок сам стартует партию и жмёт кнопки ведущего без доски", async () => {
+  await withServer({ BETS_PACE: "host", BETS_INTRO_MS: "0" }, async (srv) => {
+    const r = await (await fetch(`${srv.base}/api/rooms`, { method: "POST", body: JSON.stringify({ solo: true, settings: { events: 8, mode: "scenic" } }) })).json();
+    const a = await player(srv, r.code, "Аня");
+    const first = await a.wait(statePred((s) => s.phase === "bets"));
+    assert.equal(first.state.solo, true, "партия стартовала сразу после входа, лобби нет");
+    // игрок открывает ставки сам, как ведущий
+    const gate = first.state.gate;
+    if (gate === "open") { a.send({ type: "open" }); await a.wait(statePred((s) => s.phase === "bets" && !s.intro)); }
+    const st = [...a.msgs].reverse().find((m) => m.type === "state").state;
+    a.send({ type: "bet", marketId: st.ev.markets[0].id, stake: 100 });
+    a.send({ type: "submit" });
+    const pay = await a.wait(statePred((s) => s.phase === "payout"), 20000);
+    assert.equal(pay.state.gate, "next");
+    a.send({ type: "next" });
+    const nxt = await a.wait(statePred((s) => s.phase === "bets" && s.idx === 1));
+    assert.equal(nxt.state.players.length, 1);
+    // чужой (без места) кнопки не нажмёт
+    const spy = srv.client(r.code); await spy.open;
+    spy.send({ type: "end" });
+    await sleep(300);
+    assert.notEqual([...a.msgs].reverse().find((m) => m.type === "state").state.phase, "done");
+    a.send({ type: "end" });
+    const done = await a.wait(statePred((s) => s.phase === "done"));
+    assert.equal(done.state.winner, a.id);
+    a.send({ type: "next_game" });
+    const again = await a.wait(statePred((s) => s.phase === "bets" && s.idx <= 0 && s.solo));
+    assert.equal(again.state.players[0].stack, 1000, "новая партия соло стартует сразу");
+  });
+});

@@ -40,6 +40,7 @@ class Game {
     this.liveTypes = opts.liveTypes || (() => R.REAL);
     this.cur = null; // собранное событие с функциями test (в дамп не идёт)
     this.s = {
+      solo: !!opts.solo, // игра одному: старт от 1 игрока, конец по лимиту событий или банкротству, победа = уйти в плюс
       phase: "lobby",
       settings: { ...DEFAULTS },
       players: {},
@@ -98,7 +99,7 @@ class Game {
 
   start(now) {
     const s = this.s;
-    if (s.phase !== "lobby" || s.order.length < 2) return [];
+    if (s.phase !== "lobby" || s.order.length < (s.solo ? 1 : 2)) return [];
     const n = s.settings.events || 40; // «без лимита»: расписание на запас, конец — по выжившим
     s.schedule = R.makeSchedule(n, this.rnd, s.settings.mode, this.liveTypes().filter((t) => R.REAL.includes(t)));
     for (const p of Object.values(s.players)) { p.stack = s.settings.stack; p.alive = true; }
@@ -385,7 +386,7 @@ class Game {
     const s = this.s;
     if (s.phase !== "payout") return [];
     const aliveN = this.alive().length, limit = s.settings.events;
-    if (aliveN <= 1 || (limit && s.idx + 1 >= limit) || s.idx + 1 >= s.schedule.length) return this.finish(now);
+    if (aliveN <= (s.solo ? 0 : 1) || (limit && s.idx + 1 >= limit) || s.idx + 1 >= s.schedule.length) return this.finish(now);
     return this.nextEvent(now);
   }
 
@@ -444,6 +445,7 @@ class Game {
       };
     });
     return {
+      solo: s.solo || undefined,
       intro: intro || undefined, introMs: s.introMs || undefined,
       // какую кнопку ждёт ведущий в темпе «по кнопке»: open — открыть ставки, lock — закрыть ставки, next — дальше
       gate: s.settings.pace === "host" ? (intro ? "open" : phase === "bets" ? "lock" : phase === "payout" ? "next" : undefined) : undefined, liveN: this.liveTypes().length, me: board ? undefined : forPlayer, phase: phase, settings: s.settings, now, deadline: s.deadline, idx: s.idx, total: s.settings.events || null,

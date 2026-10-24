@@ -427,3 +427,38 @@ test("темп «по кнопке ведущего»: без таймеров; 
   assert.equal(g.afterPayout(now + 1).some((e) => e.type === "event"), true, "«дальше» запускает следующее событие");
   assert.equal(g.s.phase, "intro");
 });
+
+test("соло: старт от одного игрока, партия не кончается при единственном живом", () => {
+  const g = new Game(mulberry(3), { intro: () => 0, solo: true });
+  g.setSettings({ mode: "scenic", events: 8 });
+  g.addPlayer("a", "Аня");
+  assert.ok(g.start(0).length, "соло стартует с одним игроком");
+  assert.equal(g.snapshot(0, "a").solo, true);
+  let now = 0;
+  for (let n = 1; n <= 3; n++) {
+    assert.equal(g.s.phase, "bets");
+    g.bet("a", g.cur.markets[0].id, 10);
+    g.submit("a", now);
+    now = advance(g, now, "payout");
+    assert.equal(g.s.phase, "payout");
+    if (n < 3) { g.afterPayout(now); assert.equal(g.s.idx, n, "единственный живой игрок продолжает играть"); }
+  }
+});
+
+test("соло: банкротство завершает партию, лимит событий тоже; обычная игра от одного не стартует", () => {
+  const g = new Game(mulberry(4), { intro: () => 0, solo: true });
+  g.setSettings({ mode: "scenic", events: 8 });
+  g.addPlayer("a", "Аня");
+  g.start(0);
+  g.s.players.a.stack = 5;
+  g.bet("a", g.cur.markets[0].id, 5);
+  g.submit("a", 0);
+  advance(g, 0, "payout");
+  if (g.s.players.a.alive) { g.s.players.a.stack = 0; g.s.players.a.alive = false; } // ставка выиграла — принудительно обнуляем
+  g.afterPayout(1e9);
+  assert.equal(g.s.phase, "done");
+  assert.equal(g.s.winner, "a");
+  const h = new Game(mulberry(5), { intro: () => 0 });
+  h.addPlayer("a", "Аня");
+  assert.deepEqual(h.start(0), [], "без флага solo нужно двое");
+});
