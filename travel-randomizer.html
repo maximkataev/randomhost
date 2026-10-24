@@ -511,6 +511,8 @@
       font-family: 'JetBrains Mono', monospace;
     }
 
+    .dest-name .fill { position: absolute; white-space: nowrap; }
+
     .dest-name .ch.locked { animation: flapIn 0.26s ease-out; }
 
     @keyframes flapIn {
@@ -1288,16 +1290,27 @@ const PLACES = [["ES","e",1,"Atapuerca Mountains","Atapuerca","Σιέρα δε �
         shown = n;
         nameInner.textContent = '';
         fillers = [];
-        const addFiller = (parent) => {
-          const el = document.createElement('span');
-          el.className = 'ch rolling';
-          el.textContent = randChar();
-          parent.appendChild(el);
-          fillers.push(el);
+        // знаки-«заглушки» висят абсолютно позади набранного текста: они не двигают
+        // перенос слов и не меняют высоту строки, поэтому в конце ничего не прыгает
+        const addFillers = (parent, count) => {
+          const wrap = document.createElement('span');
+          wrap.className = 'fill';
+          for (let i = 0; i < count; i++) {
+            const el = document.createElement('span');
+            el.className = 'ch rolling';
+            el.textContent = randChar();
+            wrap.appendChild(el);
+            fillers.push(el);
+          }
+          parent.appendChild(wrap);
         };
         if (n === 0) {
           destName.style.fontSize = neutralSize;
-          for (let i = 0; i < 5; i++) addFiller(nameInner);
+          const holder = document.createElement('span');
+          holder.className = 'w';
+          holder.textContent = '\u200b';
+          nameInner.appendChild(holder);
+          addFillers(holder, 5);
           return;
         }
         destName.style.fontSize = finalSize;
@@ -1315,7 +1328,7 @@ const PLACES = [["ES","e",1,"Atapuerca Mountains","Atapuerca","Σιέρα δε �
         }));
         if (n < total_letters) {
           const last = nameInner.lastElementChild;
-          addFiller(last); addFiller(last);
+          addFillers(last, 2);
         }
       };
 
