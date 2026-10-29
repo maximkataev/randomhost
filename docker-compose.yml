@@ -35,6 +35,7 @@ services:
       - lastq
       - quip
       - wave
+      - callsign
       - crowd
       - floe
       - rapids
@@ -345,6 +346,46 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # сервер «Позывного» (WebSocket + API); nginx проксирует в него /callsign/ws и /callsign/api/.
+  # Устроен как wave. В дампе — раскладка поля: снимки отдают её только капитанам.
+  callsign:
+    build:
+      context: .
+      dockerfile: callsign/Dockerfile
+    image: randomhostcallsign:latest
+    container_name: randomhost-callsign
+    cpuset: "2-5"
+    restart: always
+    mem_limit: 128m
+    # добавка (с) ко времени на ответ в раундах; 0 — прежние таймеры. Задаётся в .env, по умолчанию 15
+    # Политики мультиплеера (T-W2-01): значения = то, что сервер использует без env; сменить без пересборки кода можно в .env.
+    # Флаги правил класса B (RULE_U01_CLAIM_IN_GAME, RULE_U08_GHOST_OUT, RULE_U26_BOMB_ONLINE, RULE_U47_CROWD_DECIDER,
+    # RULE_U51_COUNTDOWN_LEAVE, RULE_U28_SERVER_DRAFT, RULE_U03_HOST_QR, OFFLINE_FALL_GRACE) здесь НЕ прописаны:
+    # по умолчанию «как сейчас»; включать только по решению владельца, значением «1» (floe: OFFLINE_FALL_GRACE=1.5).
+    environment:
+      - GHOST_TTL_MS=${GHOST_TTL_MS:-120000}
+      - CLAIM_WAIT_MS=${CLAIM_WAIT_MS:-120000}
+      - ANON_TTL_MS=${ANON_TTL_MS:-30000}
+      - PONG_MISSES=${PONG_MISSES:-3}
+      - OFFLINE_GRACE_MS=${OFFLINE_GRACE_MS:-8000}
+      - PING_MS=${PING_MS:-8000}
+      - GAME_PONG_MISSES=${GAME_PONG_MISSES:-2}
+      - GAME_DEAD_MS=${GAME_DEAD_MS:-20000}
+      - ROUND_EXTRA_SEC=${ROUND_EXTRA_SEC:-15}
+    volumes:
+      - callsign-state:/app/state
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4400/callsign/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # сервер «Как все» (WebSocket + API); nginx проксирует в него /crowd/ws и /crowd/api/.
   # Устроен как wave. В дампе — голоса, ва-банк и мнения до раскрытия: снимки их не отдают.
   # Рядом лежит анонимная статистика вопросов (qstats.json) для калибровки колоды.
@@ -624,6 +665,7 @@ volumes:
   lastq-state:
   quip-state:
   wave-state:
+  callsign-state:
   crowd-state:
   floe-state:
   rapids-state:

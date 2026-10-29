@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#ff4a3d">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f575.svg" type="image/svg+xml">
+<title>Позывной — игра для компании, как Codenames</title>
+<meta name="robots" content="index,follow">
+<meta name="description" content="🕵️ Командная игра: два капитана знают, какие слова чьи, и дают подсказки одним словом, а команды угадывают со своих телефонов. Как Codenames, только бесплатно и в браузере." data-i18n-meta="_meta">
+<link rel="canonical" href="https://randomhost.online/callsign.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Позывной — игра для компании">
+<meta property="og:description" content="Поле из 25 слов или картинок, два капитана и подсказки в одно слово. Бесплатно, в браузере, с телефонов.">
+<meta property="og:url" content="https://randomhost.online/callsign.html">
+<meta property="og:site_name" content="Рандомайзер Онлайн">
+<meta property="og:locale" content="ru_RU">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,400..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="callsign-theme.css">
+<style>
+  /* Пульт: всё под большой палец. Заливка — цвет ходящей команды; поле на всю ширину, плитки тапаются сразу.
+     Слова на узких плитках — сжатой гарнитурой (wdth 70), иначе длинные не читаются. */
+  body { min-height: 100vh; min-height: 100dvh; overflow-x: hidden; }
+  .grid { --ws: 72%; --wd: 72; --gap: 5px; --bw: 3px; --tile-ar: 1.05 / 1; --band: 7px; }
+  .util { display: flex; align-items: center; gap: 12px; height: calc(var(--lsc, 30px) * 2); padding: 0 var(--lsw, 150px) 0 14px; position: relative; z-index: 3; }
+  .util a { color: var(--ink); text-decoration: none; font-weight: 800; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; }
+  @media (max-width: 380px) { .util a { font-size: 0; } .util a::before { content: "←"; font-size: 24px; } }
+  .sound-toggle-btn { flex: none; margin-left: auto; width: calc(var(--lsh, 44px) * 1.25); height: var(--lsh, 44px); border: 3px solid var(--ink); border-radius: 0; background: var(--paper); font-size: 17px; display: grid; place-items: center; padding: 0; }
+  html .lang-switch { position: absolute !important; }
+  html.kb .lang-switch, html.kb .util { display: none !important; }
+  .conn { top: calc(var(--lsc, 30px) * 2 + 4px); bottom: auto; font-size: 14px; padding: 8px 12px; z-index: 30; }
+  .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; background: var(--ink); color: var(--paper); font-weight: 800; font-size: 15px; padding: 12px 16px; width: max-content; max-width: calc(100% - 32px); visibility: hidden; }
+  .toast.on { visibility: visible; animation: pop .35s var(--press); }
+  @keyframes pop { from { transform: translateX(-50%) scale(.7); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
+  .codeform { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .codeform input { min-width: 0; border: 4px solid var(--ink); background: var(--paper); font-weight: 800; font-size: 20px; padding: 10px 12px; border-radius: 0; text-transform: uppercase; }
+  .codeform button { border: 4px solid var(--ink); background: var(--ink); color: var(--paper); font-weight: 900; padding: 0 16px; min-height: 48px; }
+
+  #app { position: relative; z-index: 2; max-width: 560px; margin: 0 auto; padding: 4px 14px calc(22px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 12px; min-height: calc(100dvh - var(--lsc, 30px) * 2); overflow-x: clip; }
+  #app.mid { justify-content: center; }
+  #app > * { min-width: 0; }
+  h1.shout { font-size: clamp(34px, 13vw, 66px); }
+  h2.shout { font-size: clamp(26px, 8.4vw, 40px); }
+  .lede { font-size: 18px; font-weight: 600; margin: 0; text-wrap: pretty; overflow-wrap: anywhere; }
+  .fine { font-size: 14px; font-weight: 600; opacity: .8; margin: 0; }
+  .center { text-align: center; }
+  .link { background: none; border: 0; padding: 8px 12px 0; min-height: 44px; font-weight: 800; text-decoration: underline; text-underline-offset: 4px; display: block; margin: 0 auto; }
+  input.field { width: 100%; border: 4px solid var(--ink); background: var(--paper); font-weight: 800; font-size: 22px; padding: 14px; border-radius: 0; outline: none; }
+  input.field:focus { box-shadow: 0 0 0 4px var(--paper), 0 0 0 8px var(--ink); }
+  .err { min-height: 22px; font-weight: 900; font-size: 16px; }
+  .err:not(:empty)::before { content: "✋ "; }
+  .room { font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; font-size: 28px; letter-spacing: .04em; }
+  .card { background: var(--paper); border: 4px solid var(--ink); padding: 12px 14px; }
+
+  /* лендинг */
+  .rules { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; counter-reset: r; }
+  .rules li { counter-increment: r; position: relative; display: block; min-height: 36px; font-weight: 700; font-size: 16px; line-height: 1.3; background: var(--paper); border: 4px solid var(--ink); padding: 10px 12px 10px 58px; text-wrap: pretty; }
+  .rules li::before { content: counter(r); position: absolute; left: 12px; top: 10px; font-weight: 1000; font-size: 20px; background: var(--ink); color: var(--paper); width: 36px; height: 36px; display: grid; place-items: center; }
+  .minirow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+  .minirow .tile { --tile-ar: 1.1 / 1; }
+  .minirow .tile .w { --wfs: clamp(9px, 2.6vw, 15px); }
+
+  /* лобби: выбор команды */
+  .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tbtn { border: 5px solid var(--ink); background: var(--paper); padding: 12px 8px 10px; display: grid; gap: 4px; text-align: center; font-weight: 1000; font-stretch: 130%; font-variation-settings: "wdth" 130; text-transform: uppercase; font-size: 21px; min-height: 96px; align-content: center; box-shadow: 0 6px 0 rgba(0, 0, 0, .28); transition: transform .08s, box-shadow .08s; }
+  .tbtn i { font-style: normal; font-size: 30px; line-height: 1; }
+  .tbtn small { font-size: 13px; letter-spacing: .06em; opacity: .75; font-stretch: 100%; }
+  .tbtn.red { --tc: var(--red); } .tbtn.blue { --tc: var(--blue); }
+  .tbtn[aria-pressed="true"] { background: var(--tc); transform: translateY(4px); box-shadow: 0 2px 0 rgba(0, 0, 0, .28); }
+  .tbtn:disabled { opacity: .5; }
+  .capbtn { border: 4px solid var(--ink); background: var(--paper); font-weight: 900; font-size: 17px; min-height: 52px; padding: 8px 12px; width: 100%; }
+  .capbtn[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .roster { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .roster > div { background: var(--paper); border: 4px solid var(--ink); padding: 8px 10px; display: grid; gap: 6px; align-content: start; min-height: 80px; }
+  .roster h3 { margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: .08em; }
+  .roster .r h3 { color: var(--ink); background: var(--red); margin: -8px -10px 0; padding: 4px 10px; border-bottom: 4px solid var(--ink); }
+  .roster .b h3 { background: var(--blue); margin: -8px -10px 0; padding: 4px 10px; border-bottom: 4px solid var(--ink); }
+  .mem { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 16px; min-width: 0; }
+  .mem .av { font-size: 14px; }
+  .mem b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .mem.me b { text-decoration: underline; text-underline-offset: 3px; }
+  .mem.off { opacity: .5; }
+  .avbtn { border: 4px solid var(--ink); background: var(--paper); font-size: 30px; width: 56px; height: 56px; padding: 0; display: grid; place-items: center; }
+  .avgrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  .avgrid button { border: 3px solid var(--ink); background: var(--paper); font-size: 26px; height: 48px; padding: 0; }
+  .avgrid button:disabled { opacity: .3; }
+  .mehead { display: flex; align-items: center; gap: 12px; }
+  .mehead b { font-size: 22px; font-weight: 1000; overflow: hidden; text-overflow: ellipsis; }
+
+  /* игра */
+  .chips { display: flex; gap: 8px; align-items: stretch; }
+  .cnt { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 6px; border: 4px solid var(--ink); background: var(--tc); padding: 2px 12px; font-weight: 1000; min-height: 50px; }
+  .cnt.red { --tc: var(--red); } .cnt.blue { --tc: var(--blue); }
+  .cnt b { font-size: 34px; line-height: 1; font-stretch: 130%; font-variation-settings: "wdth" 130; font-variant-numeric: tabular-nums; }
+  .cnt i { font-style: normal; font-size: 24px; }
+  .cnt.active { box-shadow: 0 0 0 4px var(--ink); }
+  .plate { position: relative; background: var(--ink); color: var(--paper); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; min-height: 72px; }
+  .plate .tag { width: 52px; display: grid; place-items: center; background: var(--tc, #888); color: var(--ink); font-weight: 1000; font-size: 26px; border-right: 4px solid var(--paper); }
+  .plate .txt { min-width: 0; display: flex; align-items: center; padding: 8px 12px; overflow: hidden; }
+  .plate q { font-weight: 1000; font-stretch: 120%; font-variation-settings: "wdth" 120; text-transform: uppercase; font-size: var(--cfs, 30px); line-height: 1; quotes: none; white-space: nowrap; }
+  .plate .msg { font-weight: 900; font-size: 17px; line-height: 1.15; text-transform: uppercase; text-wrap: balance; }
+  .plate .rt { display: grid; place-items: center; align-content: center; padding: 0 12px; border-left: 4px solid var(--paper); min-width: 62px; text-align: center; }
+  .plate .rt small { font-weight: 900; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .7; }
+  .plate .rt b { font-weight: 1000; font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .plate .rt b.hot { color: var(--hot); }
+  .timer { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: rgba(255, 255, 255, .22); }
+  .timer i { display: block; height: 100%; background: var(--paper); transform-origin: 0 50%; }
+  .timer.hot i { background: var(--hot); }
+  .plate.slam q { animation: slam .45s var(--press); }
+  @keyframes slam { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+  .gridwrap { width: 100%; }
+  .grid .tile { min-height: 44px; }
+  .grid.live .tile[data-o="0"] .face { cursor: pointer; }
+  .dock { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .dock .btn { font-size: 20px; }
+  .hint { font-weight: 800; font-size: 15px; text-align: center; text-wrap: balance; }
+  .hint.big { font-size: 17px; background: var(--paper); border: 4px solid var(--ink); padding: 10px 12px; }
+  .clueform { display: grid; gap: 10px; }
+  .nums { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+  .nums button { border: 3px solid var(--ink); background: var(--paper); font-weight: 1000; font-size: 20px; height: 48px; padding: 0; }
+  .nums button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .nums button:disabled { opacity: .25; }
+  .sendrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
+  .sendrow .btn { width: auto; padding: 0 18px; }
+  .over-title { background: var(--ink); color: var(--paper); padding: 12px 14px; animation: slam .5s var(--press); }
+  .over-title .shout { font-size: clamp(26px, 8vw, 40px); }
+  .over-title small { display: block; margin-top: 6px; font-weight: 800; font-size: 14px; opacity: .85; text-transform: none; letter-spacing: 0; }
+  .awards { display: grid; gap: 8px; }
+  .awards .aw { background: var(--paper); border: 3px solid var(--ink); padding: 6px 10px; font-weight: 900; font-size: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .awards small { font-weight: 700; opacity: .75; }
+  .glyph { display: inline-block; width: 1em; text-align: center; font-weight: 1000; }
+  .glyph.red { color: var(--red); -webkit-text-stroke: 1px var(--ink); }
+  .glyph.blue { color: var(--blue); -webkit-text-stroke: 1px var(--ink); }
+  @media (max-height: 640px) { .nums button { height: 44px; } .tbtn { min-height: 78px; } }
+  @media (max-width: 400px) { .nums { gap: 3px; } }
+
+  /* заметные состояния: пауза, объявление о смене капитана, ожидание */
+  .toast.alert { background: #ffd400; color: var(--ink); border: 4px solid var(--ink); font-weight: 1000; font-size: 16px; line-height: 1.2; text-align: center; animation-name: popalert; }
+  .toast.alert::before { content: "★ "; }
+  @keyframes popalert { from { transform: translateX(-50%) scale(.7); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
+  .plate.paused { background: #ffd400; color: var(--ink); box-shadow: 0 0 0 4px var(--ink); }
+  .plate.paused .tag { background: var(--ink) !important; color: #ffd400; border-right-color: var(--ink); }
+  .pausebox { background: #ffd400; border: 4px solid var(--ink); padding: 14px; display: grid; gap: 12px; text-align: center; }
+  .pausebox .hint.big { background: transparent; border: 0; padding: 0; font-size: 18px; }
+  .pausebox .btn { font-size: 26px; padding: 18px 14px; animation: beat 1s ease-in-out infinite; }
+  @keyframes beat { 50% { transform: scale(1.04); } }
+  .dots { display: inline-block; white-space: nowrap; }
+  .dots i { font-style: normal; animation: dot 1.2s infinite; opacity: .2; }
+  .dots i:nth-child(2) { animation-delay: .2s; } .dots i:nth-child(3) { animation-delay: .4s; }
+  @keyframes dot { 0%, 60%, 100% { opacity: .2; } 30% { opacity: 1; } }
+  .plate.waiting .tag { animation: tagpulse 1.3s ease-in-out infinite; }
+  @keyframes tagpulse { 0%, 100% { box-shadow: inset 0 0 0 0 var(--paper); } 50% { box-shadow: inset 0 0 0 6px var(--paper); } }
+  @media (prefers-reduced-motion: reduce) { .pausebox .btn, .dots i, .plate.waiting .tag, .toast.alert { animation: none !important; } .dots i { opacity: .7; } }
+
+  /* телефон на боку (844×390, 667×375): поле слева на всю высоту, счёт, плашка и док справа — всё в один экран */
+  @media (orientation: landscape) and (max-height: 520px) {
+    #app[data-screen="game"] { max-width: none; height: calc(100dvh - var(--lsc, 30px) * 2); min-height: 0; padding: 0 max(14px, env(safe-area-inset-right)) 8px max(14px, env(safe-area-inset-left)); display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); column-gap: 14px; row-gap: 8px; align-content: stretch; }
+    #app[data-screen="game"] .gridwrap { grid-column: 1; grid-row: 1 / 4; height: 100%; min-height: 0; }
+    #app[data-screen="game"] .grid { height: 100%; grid-template-rows: repeat(5, minmax(0, 1fr)); --tile-ar: auto; }
+    #app[data-screen="game"] .grid .tile { aspect-ratio: auto; height: 100%; min-height: 0; }
+    #app[data-screen="game"] .chips { grid-column: 2; grid-row: 1; padding-right: 0; }
+    #app[data-screen="game"] .cnt { min-height: 40px; }
+    #app[data-screen="game"] .cnt b { font-size: 28px; }
+    #app[data-screen="game"] .plate { grid-column: 2; grid-row: 2; min-height: 56px; }
+    #app[data-screen="game"] .plate .msg { font-size: 15px; }
+    #app[data-screen="game"] .dock { grid-column: 2; grid-row: 3; min-height: 0; overflow-y: auto; align-content: start; gap: 8px; }
+    #app[data-screen="game"] .dock .btn { font-size: 18px; padding: 10px 12px; }
+    #app[data-screen="game"] .dock .fine { display: none; }
+    #app[data-screen="game"] .hint.big { padding: 6px 10px; font-size: 15px; }
+    #app[data-screen="game"] .nums button { height: 44px; }
+    #app[data-screen="game"] .err { min-height: 16px; font-size: 14px; }
+    #app[data-screen="game"] input.field { padding: 8px 12px; font-size: 20px; }
+    #app[data-screen="game"] .capbtn { min-height: 44px; padding: 4px 10px; }
+    #app[data-screen="game"] .sendrow .btn { padding: 0 12px; font-size: 16px; }
+    #app[data-screen="game"] .pausebox { padding: 8px; gap: 8px; }
+    #app[data-screen="game"] .pausebox .btn { font-size: 20px; padding: 10px; }
+  }
+</style>
+<script src="legacy-compat.js"></script>
+</head>
+<body class="home">
+<div class="util"><a href="index.html" data-i18n="nav_all_games">← Все игры</a><button class="sound-toggle-btn" type="button"></button></div>
+<div class="conn" id="conn"></div>
+<div id="app"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Позывной — игра для компании, как Codenames`,
+    _meta: `🕵️ Командная игра: два капитана знают, какие слова чьи, и дают подсказки одним словом, а команды угадывают со своих телефонов. Как Codenames, только бесплатно и в браузере.`,
+    nav_all_games: `← Все игры`,
+    kicker: `Игра для компании · телефоны + общий экран`,
+    lede: `Две команды, поле из 25 слов или картинок. Капитаны знают, что чьё, и подсказывают <b>одним словом и числом</b>. Остальные открывают карточки тапом. Не попадись на ловушку.`,
+    btn_create: `Открыть экран игры`, btn_creating: `Открываем…`, cta_sub: `Откроется общий экран: на ТВ, ноутбуке или в Zoom. Игроки заходят по QR.`, have_code: `У меня есть код`,
+    rule1: `Капитан даёт подсказку: <b>одно слово и число</b> — сколько карточек с ним связано.`,
+    rule2: `Команда тапает карточки: свои открываются дальше, чужая или пустая — ход переходит.`,
+    rule3: `Кто первым откроет все свои — победил. <b>Ловушка</b> — проигрыш на месте.`,
+    demo_words: `ЛИСА|ШАХТА|КЛЮЧ|ЛОВУШКА|МОРЕ`,
+    prompt_code: `Код комнаты`, btn_go: `Перейти`,
+    noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код — в нём слово и две цифры`,
+    expired_title: `Комната закрылась`, expired_text: `Её убрали по таймеру. Открой новую на общем экране.`,
+    enter_title: `Как тебя зовут?`, enter_ph: `Имя`, btn_join: `Войти`, err_name: `Напиши имя`, err_room_full: `Комната заполнена`, err_bad_name: `Напиши имя`,
+    err_name_taken: `Такое имя уже есть — возьми другое`, err_name_taken_online: `Это имя занято: игрок на связи. Возьми другое`, err_name_taken_offline: `Игрок с таким именем сейчас вне игры. В партии в чужое место войти нельзя — возьми другое имя`,
+    err_token_gone: `Твоё место убрали — войди заново`,
+    wait_title: `Заходим…`,
+    kicked_title: `Тебя убрали из комнаты`, replaced_title: `Ты зашёл с другого экрана`, replaced_text: `Здесь игра остановилась.`, btn_back_here: `Играть здесь`,
+    lobby_title: `Выбери команду`, lobby_wait: `Ждём, пока ведущий нажмёт «Поехали»`,
+    pick_red: `Красные`, pick_blue: `Синие`, pick_n: `{n} в команде`,
+    btn_cap: `Хочу быть капитаном`, btn_cap_off: `Я капитан · отказаться`, cap_taken: `Капитан уже есть`, cap_need_team: `Сначала выбери команду`,
+    av_pick: `Сменить аватар`, loose_hint: `Не выберешь — кинем в команду случайно`,
+    role_cap: `Ты капитан`, role_op: `Ты оперативник`,
+    draw_title: `Жребий…`,
+    st_clue_me: `Подсказка: одно слово и число`, st_clue_team: `Капитан придумывает подсказку — ждём`, st_clue_foe: `Думают: {team}`,
+    st_guess_op: `Тапни слово — оно откроется сразу`, st_guess_cap: `Ты капитан: молчи и смотри`, st_guess_foe: `Ходят: {team}. Не подсказывай`,
+    clue_ph: `Одно слово`, btn_send: `Отправить`, btn_stop: `Хватит — передать ход`, key_show: `Показать ключ`, key_hide: `Спрятать ключ`, key_warn: `Не показывай экран другим`,
+    left_to_open: `ещё`, of_n: `из {n}`, secs: `сек`, cnt_n: `{n}`,
+    over_wait: `Ждём, пока ведущий начнёт новую партию`, over_team: `Можно сменить команду`,
+    ce_empty: `Напиши слово`, ce_digits: `Без цифр — только слово`, ce_one_word: `Только одно слово, без пробелов и дефисов`, ce_bad_chars: `Только буквы`,
+    ce_short: `Слишком короткое слово`, ce_long: `Слишком длинное слово`, ce_mixed: `Буквы из разных алфавитов в одном слове`,
+    ce_bad_number: `Выбери число от 1 до 9`, ce_too_many: `Столько слов у вас не осталось`, ce_on_board: `Нельзя: «{word}» есть на поле`, ce_used: `Это слово уже звучало в партии`,
+    rj_not_captain: `Подсказывает только капитан`, rj_bad_phase: `Сейчас так нельзя`, rj_not_your_turn: `Сейчас ходит другая команда`,
+    rj_captain: `Капитан не открывает карточки — он подсказывает`, rj_already_open: `Уже открыта`, rj_none_yet: `«Хватит» — после первого слова`,
+    rj_slow_down: `Не так быстро`, rj_too_soon: `Секунду — прочитай подсказку`, conn_tap: `Нет связи — тап уйдёт, когда она вернётся`, rj_captain_taken: `Капитан уже есть`, rj_no_team: `Сначала выбери команду`, rj_game_started: `Партия уже идёт`,
+    rj_avatar_taken: `Этот аватар занят`, rj_not_player: `Ты не в игре`,
+    dropped: `Не дошло: связь пропала`, you_are: `Тебя записали как «{name}»`,
+    lang_hint: `Язык комнаты: {l}. Переключить?`, lang_yes: `Да`, lang_no: `Нет`,
+  },
+  en: {
+    _title: `Callsign — party game like Codenames`,
+    _meta: `🕵️ A team game: two captains know which words belong to whom and give one-word clues, while the teams guess from their phones. Like Codenames, only free and in the browser.`,
+    nav_all_games: `← All games`,
+    kicker: `Party game · phones + a shared screen`,
+    lede: `Two teams, a field of 25 words or pictures. The captains know who owns what and give <b>a one-word clue and a number</b>. Everyone else opens cards with a tap. Don't hit the trap.`,
+    btn_create: `Open the game screen`, btn_creating: `Opening…`, cta_sub: `A shared screen opens: on a TV, laptop or in Zoom. Players join by QR.`, have_code: `I have a code`,
+    rule1: `The captain gives a clue: <b>one word and a number</b> — how many cards it connects.`,
+    rule2: `The team taps cards: its own keep the turn going, a rival's or a blank ends it.`,
+    rule3: `First to open all their cards wins. <b>The trap</b> loses on the spot.`,
+    demo_words: `FOX|MINE|KEY|TRAP|SEA`,
+    prompt_code: `Room code`, btn_go: `Go`,
+    noroom_title: `There is no such room`, noroom_text: `Check the code: a word and two digits`,
+    expired_title: `The room has closed`, expired_text: `It was removed by the timer. Open a new one on the shared screen.`,
+    enter_title: `What's your name?`, enter_ph: `Name`, btn_join: `Join`, err_name: `Type a name`, err_room_full: `The room is full`, err_bad_name: `Type a name`,
+    err_name_taken: `That name is taken — pick another`, err_name_taken_online: `That name is taken by a player who is online. Pick another`, err_name_taken_offline: `A player with that name is away right now. You can't take over a seat mid-game — pick another name`,
+    err_token_gone: `Your seat was removed — join again`,
+    wait_title: `Joining…`,
+    kicked_title: `You were removed from the room`, replaced_title: `You joined from another screen`, replaced_text: `The game stopped here.`, btn_back_here: `Play here`,
+    lobby_title: `Pick a team`, lobby_wait: `Waiting for the host to press “Let's go”`,
+    pick_red: `Red`, pick_blue: `Blue`, pick_n: `{n} on the team`,
+    btn_cap: `I want to be captain`, btn_cap_off: `I'm captain · step down`, cap_taken: `There is a captain already`, cap_need_team: `Pick a team first`,
+    av_pick: `Change avatar`, loose_hint: `If you don't pick, we'll drop you into a team at random`,
+    role_cap: `You are the captain`, role_op: `You are an operative`,
+    draw_title: `The draw…`,
+    st_clue_me: `Your clue: one word and a number`, st_clue_team: `The captain is thinking of a clue — wait`, st_clue_foe: `Thinking: {team}`,
+    st_guess_op: `Tap a card — it opens right away`, st_guess_cap: `You're the captain: stay quiet and watch`, st_guess_foe: `{team} are guessing. Don't hint`,
+    clue_ph: `One word`, btn_send: `Send`, btn_stop: `Enough — pass the turn`, key_show: `Show the key`, key_hide: `Hide the key`, key_warn: `Don't show your screen`,
+    left_to_open: `left`, of_n: `of {n}`, secs: `s`, cnt_n: `{n}`,
+    over_wait: `Waiting for the host to start a new game`, over_team: `You can switch teams`,
+    ce_empty: `Type a word`, ce_digits: `No digits — just a word`, ce_one_word: `One word only, no spaces or hyphens`, ce_bad_chars: `Letters only`,
+    ce_short: `That word is too short`, ce_long: `That word is too long`, ce_mixed: `Mixed alphabets in one word`,
+    ce_bad_number: `Pick a number from 1 to 9`, ce_too_many: `You don't have that many words left`, ce_on_board: `Not allowed: “{word}” is on the board`, ce_used: `That word was already used this game`,
+    rj_not_captain: `Only the captain gives clues`, rj_bad_phase: `Not right now`, rj_not_your_turn: `The other team is playing`,
+    rj_captain: `The captain doesn't open cards — they give clues`, rj_already_open: `Already open`, rj_none_yet: `“Enough” works after the first word`,
+    rj_slow_down: `Not so fast`, rj_too_soon: `One second — read the clue first`, conn_tap: `No signal — your tap will go through when it's back`, rj_captain_taken: `There is a captain already`, rj_no_team: `Pick a team first`, rj_game_started: `The game is already on`,
+    rj_avatar_taken: `That avatar is taken`, rj_not_player: `You're not in the game`,
+    dropped: `Didn't go through: connection lost`, you_are: `You were added as “{name}”`,
+    lang_hint: `Room language: {l}. Switch?`, lang_yes: `Yes`, lang_no: `No`,
+  },
+  el: {
+    _title: `Σήμα — παιχνίδι παρέας σαν το Codenames`,
+    _meta: `🕵️ Ομαδικό παιχνίδι: δύο αρχηγοί ξέρουν ποιες λέξεις ανήκουν σε ποιον και δίνουν υποδείξεις μιας λέξης, ενώ οι ομάδες μαντεύουν από τα κινητά. Σαν το Codenames, δωρεάν και στον browser.`,
+    nav_all_games: `← Όλα τα παιχνίδια`,
+    kicker: `Παιχνίδι παρέας · κινητά + κοινή οθόνη`,
+    lede: `Δύο ομάδες, ταμπλό με 25 λέξεις ή εικόνες. Οι αρχηγοί ξέρουν τι ανήκει σε ποιον και δίνουν <b>μία λέξη και έναν αριθμό</b>. Οι υπόλοιποι ανοίγουν κάρτες με ένα άγγιγμα. Πρόσεχε την παγίδα.`,
+    btn_create: `Άνοιγμα οθόνης παιχνιδιού`, btn_creating: `Άνοιγμα…`, cta_sub: `Ανοίγει κοινή οθόνη: σε τηλεόραση, laptop ή Zoom. Οι παίκτες μπαίνουν με QR.`, have_code: `Έχω κωδικό`,
+    rule1: `Ο αρχηγός δίνει υπόδειξη: <b>μία λέξη και έναν αριθμό</b> — πόσες κάρτες συνδέονται.`,
+    rule2: `Η ομάδα αγγίζει κάρτες: οι δικές της συνεχίζουν τη σειρά, του αντιπάλου ή κενή τη λήγουν.`,
+    rule3: `Κερδίζει όποιος ανοίξει πρώτος όλες τις δικές του. <b>Η παγίδα</b> χάνει επί τόπου.`,
+    demo_words: `ΑΛΕΠΟΥ|ΟΡΥΧΕΙΟ|ΚΛΕΙΔΙ|ΠΑΓΙΔΑ|ΘΑΛΑΣΣΑ`,
+    prompt_code: `Κωδικός δωματίου`, btn_go: `Πήγαινε`,
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό: μια λέξη και δύο ψηφία`,
+    expired_title: `Το δωμάτιο έκλεισε`, expired_text: `Αφαιρέθηκε από το χρονόμετρο. Άνοιξε νέο στην κοινή οθόνη.`,
+    enter_title: `Πώς σε λένε;`, enter_ph: `Όνομα`, btn_join: `Μπες`, err_name: `Γράψε όνομα`, err_room_full: `Το δωμάτιο είναι γεμάτο`, err_bad_name: `Γράψε όνομα`,
+    err_name_taken: `Το όνομα υπάρχει — διάλεξε άλλο`, err_name_taken_online: `Το όνομα το έχει παίκτης που είναι συνδεδεμένος. Διάλεξε άλλο`, err_name_taken_offline: `Ο παίκτης με αυτό το όνομα είναι προσωρινά εκτός. Στη μέση της παρτίδας δεν παίρνεις θέση άλλου — διάλεξε άλλο όνομα`,
+    err_token_gone: `Η θέση σου αφαιρέθηκε — μπες ξανά`,
+    wait_title: `Μπαίνουμε…`,
+    kicked_title: `Σε αφαίρεσαν από το δωμάτιο`, replaced_title: `Μπήκες από άλλη οθόνη`, replaced_text: `Το παιχνίδι εδώ σταμάτησε.`, btn_back_here: `Παίζω εδώ`,
+    lobby_title: `Διάλεξε ομάδα`, lobby_wait: `Περιμένουμε τον οικοδεσπότη να πατήσει «Πάμε»`,
+    pick_red: `Κόκκινοι`, pick_blue: `Μπλε`, pick_n: `{n} στην ομάδα`,
+    btn_cap: `Θέλω να γίνω αρχηγός`, btn_cap_off: `Είμαι αρχηγός · παραίτηση`, cap_taken: `Υπάρχει ήδη αρχηγός`, cap_need_team: `Πρώτα διάλεξε ομάδα`,
+    av_pick: `Αλλαγή avatar`, loose_hint: `Αν δεν διαλέξεις, θα σε βάλουμε τυχαία σε ομάδα`,
+    role_cap: `Είσαι ο αρχηγός`, role_op: `Είσαι πράκτορας`,
+    draw_title: `Κλήρωση…`,
+    st_clue_me: `Η υπόδειξή σου: μία λέξη και ένας αριθμός`, st_clue_team: `Ο αρχηγός σκέφτεται υπόδειξη — περίμενε`, st_clue_foe: `Σκέφτονται: {team}`,
+    st_guess_op: `Άγγιξε μια κάρτα — ανοίγει αμέσως`, st_guess_cap: `Είσαι ο αρχηγός: σιωπή και παρακολούθηση`, st_guess_foe: `Παίζουν: {team}. Μην υποδεικνύεις`,
+    clue_ph: `Μία λέξη`, btn_send: `Αποστολή`, btn_stop: `Αρκετά — πέρασε τη σειρά`, key_show: `Δείξε το κλειδί`, key_hide: `Κρύψε το κλειδί`, key_warn: `Μην δείχνεις την οθόνη σου`,
+    left_to_open: `ακόμα`, of_n: `από {n}`, secs: `δ`, cnt_n: `{n}`,
+    over_wait: `Περιμένουμε τον οικοδεσπότη να ξεκινήσει νέα παρτίδα`, over_team: `Μπορείς να αλλάξεις ομάδα`,
+    ce_empty: `Γράψε μια λέξη`, ce_digits: `Χωρίς ψηφία — μόνο λέξη`, ce_one_word: `Μόνο μία λέξη, χωρίς κενά ή παύλες`, ce_bad_chars: `Μόνο γράμματα`,
+    ce_short: `Πολύ μικρή λέξη`, ce_long: `Πολύ μεγάλη λέξη`, ce_mixed: `Γράμματα από διαφορετικά αλφάβητα στην ίδια λέξη`,
+    ce_bad_number: `Διάλεξε αριθμό από 1 έως 9`, ce_too_many: `Δεν σας έμειναν τόσες λέξεις`, ce_on_board: `Δεν επιτρέπεται: το «{word}» είναι στο ταμπλό`, ce_used: `Αυτή η λέξη έχει ήδη χρησιμοποιηθεί`,
+    rj_not_captain: `Υποδείξεις δίνει μόνο ο αρχηγός`, rj_bad_phase: `Όχι τώρα`, rj_not_your_turn: `Παίζει η άλλη ομάδα`,
+    rj_captain: `Ο αρχηγός δεν ανοίγει κάρτες — δίνει υποδείξεις`, rj_already_open: `Ήδη ανοιχτή`, rj_none_yet: `Το «Αρκετά» μετά την πρώτη λέξη`,
+    rj_slow_down: `Όχι τόσο γρήγορα`, rj_too_soon: `Ένα δευτερόλεπτο — διάβασε πρώτα την υπόδειξη`, conn_tap: `Χωρίς σήμα — το άγγιγμα θα σταλεί όταν επανέλθει`, rj_captain_taken: `Υπάρχει ήδη αρχηγός`, rj_no_team: `Πρώτα διάλεξε ομάδα`, rj_game_started: `Η παρτίδα έχει ξεκινήσει`,
+    rj_avatar_taken: `Αυτό το avatar το έχουν πάρει`, rj_not_player: `Δεν είσαι στο παιχνίδι`,
+    dropped: `Δεν πέρασε: χάθηκε η σύνδεση`, you_are: `Σε γράψαμε ως «{name}»`,
+    lang_hint: `Γλώσσα δωματίου: {l}. Αλλαγή;`, lang_yes: `Ναι`, lang_no: `Όχι`,
+  },
+};
+</script>
+<script src="mp-common.js"></script>
+<script src="callsign-shared.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script>
+"use strict";
+const params = new URLSearchParams(location.search);
+// код идёт в разметку — только алфавит кодов, иначе ?r=<img onerror> даёт XSS
+const CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const app = document.getElementById("app");
+const T = (k) => csT(k);
+const tpl = (k, v) => csTpl(k, v);
+
+let conn = null, state = null, me = null, token = null, dead = false;
+let screen = null, screenKey = "";
+let joinErr = null, lastJoinName = null;
+let autoJoining = false, autoJoinTried = false, waitJoin = true;
+let needJoin = true, pendingFlush = false, prevPhase = null, prevLog = -1;
+let avOpen = false, keyHidden = false;
+let clueWord = "", clueNum = 0, clueErr = null, clueErrWord = "";
+const tokenKey = () => "callsign-token-" + CODE;
+const savedName = () => { try { return (localStorage.getItem("callsign-name") || "").trim(); } catch (e) { return ""; } };
+try { token = localStorage.getItem(tokenKey()); } catch (e) {}
+
+const player = (id) => state && state.players.find((p) => p.id === id);
+const mine = () => (state && me ? player(me) : null);
+const avHtml = (p) => `<i class="av" style="--pc:${p.color}">${escapeHtml(p.avatar)}</i>`;
+const turnKey = () => (state ? state.game + ":" + state.log.length + ":" + state.team : "");
+const GLYPH = { red: "▲", blue: "●", n: "◼", x: "✕" };
+
+// отправка с привязкой к ходу: после обрыва связи тап по старой карточке в очереди не отправляем
+const sendCtx = new WeakMap();
+let netLostNow = false;
+function csend(m) { sendCtx.set(m, { t: turnKey() }); if (netLostNow && m.type !== "join") toast(T("conn_tap")); conn.send(m); }
+function queuedWanted(q) {
+  const c = sendCtx.get(q);
+  return !!(state && c && c.t === turnKey() && (state.phase === "guess" || state.phase === "clue"));
+}
+function flushQueued() { conn.flush(queuedWanted, onDropped); }
+function onDropped() { toast(T("dropped")); }
+
+let lastCapSeq = null;
+// «Капитан сменился»: объясняем причину, иначе игроки видят нового капитана без объяснений
+function capNotice() {
+  const cc = state.capChange;
+  const seq = cc ? cc.seq : 0;
+  if (lastCapSeq === null) { lastCapSeq = seq; return; }
+  if (!cc || seq === lastCapSeq) return;
+  lastCapSeq = seq;
+  toast(csCapText(cc, (id) => (player(id) || { name: "?" }).name), 6000, "alert");
+}
+function toast(text, ms, kind) {
+  const t = document.getElementById("toast");
+  t.textContent = text;
+  t.classList.toggle("alert", kind === "alert");
+  t.classList.remove("on"); void t.offsetWidth; t.classList.add("on");
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove("on"), ms || 2400);
+}
+function show(html, key, mid) {
+  screenKey = key;
+  app.classList.toggle("mid", !!mid);
+  app.dataset.screen = key.split(":")[0];
+  app.innerHTML = html;
+  fitShouts();
+}
+function fitShouts() {
+  app.querySelectorAll(".shout").forEach((h) => {
+    h.style.fontSize = "";
+    let fs = parseFloat(getComputedStyle(h).fontSize), guard = 0;
+    while (fs > 22 && h.scrollWidth > h.clientWidth + 1 && guard++ < 60) { fs -= 2; h.style.fontSize = fs + "px"; }
+  });
+}
+async function keepAwake() {
+  try { if (navigator.wakeLock) await navigator.wakeLock.request("screen"); } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && me) keepAwake(); });
+
+// ---------- цвет экрана ----------
+let curColor;
+function paint(color) {
+  if (color === curColor) return;
+  const first = curColor === undefined;
+  curColor = color;
+  if (color == null) {
+    document.querySelectorAll(".wipe").forEach((w) => w.remove());
+    document.body.style.background = "";
+    document.body.classList.add("home");
+    return;
+  }
+  document.body.classList.remove("home");
+  if (first || matchMedia("(prefers-reduced-motion: reduce)").matches) { document.body.style.background = color; return; }
+  const w = el("div", "wipe");
+  w.style.background = color;
+  document.body.append(w);
+  setTimeout(() => { document.body.style.background = color; w.remove(); }, 560);
+}
+function phaseColor() {
+  if (!state) return null;
+  switch (state.phase) {
+    case "draw": case "clue": case "guess": case "swap": return csTeamColor(state.team);
+    case "finished": return state.winner ? csTeamColor(state.winner) : "#cfcfcf";
+    default: return null;
+  }
+}
+
+// ---------- лендинг / код / вход ----------
+let demoTimer = null;
+function renderLanding() {
+  screen = "landing";
+  paint(null);
+  const demoWords = T("demo_words").split("|");
+  const demo = ["red", "n", "blue", "x", "blue"].map((t, i) => `<div class="tile" data-o="1" data-t="${t}" style="--i:${i}"><span class="face"><span class="w">${escapeHtml(demoWords[i] || "")}</span></span></div>`).join("");
+  show(`<div><div class="eyebrow">${T("kicker")}</div><h1 class="shout" style="margin-top:8px">${escapeHtml(T("game_name"))}</h1></div>
+    <p class="lede">${T("lede")}</p>
+    <div class="minirow grid" aria-hidden="true">${demo}</div>
+    <div><button class="btn" id="create" type="button">${T("btn_create")}</button>
+      <p class="fine center" style="margin-top:10px;text-wrap:balance">${T("cta_sub")}</p><button class="link" id="havecode" type="button">${T("have_code")}</button></div>
+    <ol class="rules"><li><span>${T("rule1")}</span></li><li><span>${T("rule2")}</span></li><li><span>${T("rule3")}</span></li></ol>`, "landing");
+  document.getElementById("create").onclick = async () => {
+    const btn = document.getElementById("create");
+    btn.disabled = true;
+    btn.textContent = T("btn_creating");
+    try {
+      const res = await fetch("/callsign/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: csLang(), mode: "words" } }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "error");
+      try { localStorage.setItem("callsign-host-" + data.code, data.hostToken); } catch (e) {}
+      location.href = `callsign-board.html?r=${data.code}`;
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = T("btn_create");
+      toast(String(err.message || err));
+    }
+  };
+  document.getElementById("havecode").onclick = () => {
+    const b = document.getElementById("havecode");
+    b.outerHTML = codeFormHtml("");
+    bindCodeForm();
+    document.getElementById("codein").focus();
+  };
+}
+function normCode(raw) {
+  if (window.MP && MP.roomGone) return MP.roomGone.normalize(raw);
+  return String(raw || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+}
+function codeFormHtml(value) {
+  return `<form class="codeform" id="codeform" autocomplete="off"><input id="codein" maxlength="24" value="${escapeHtml(value)}" placeholder="${escapeHtml(T("prompt_code"))}" aria-label="${escapeHtml(T("prompt_code"))}" autocapitalize="characters" enterkeyhint="go"><button type="submit">${T("btn_go")}</button></form>`;
+}
+function bindCodeForm() {
+  document.getElementById("codeform").onsubmit = (e) => {
+    e.preventDefault();
+    const c = normCode(document.getElementById("codein").value);
+    if (c) location.href = `callsign.html?r=${encodeURIComponent(c)}`;
+  };
+}
+function renderEnter() {
+  screen = "enter";
+  paint(null);
+  let saved = "";
+  try { saved = localStorage.getItem("callsign-name") || ""; } catch (e) {}
+  show(`<form id="enterform" autocomplete="off" style="display:grid;gap:14px">
+    <div class="room">${escapeHtml(CODE)}</div>
+    <h2 class="shout">${T("enter_title")}</h2>
+    <input class="field" id="name" maxlength="16" placeholder="${escapeHtml(T("enter_ph"))}" value="${escapeHtml(saved)}" enterkeyhint="go" aria-label="${escapeHtml(T("enter_ph"))}">
+    <div class="err" id="err">${joinErr ? escapeHtml(T(joinErr)) : ""}</div>
+    <button class="btn" type="submit">${T("btn_join")}</button>
+  </form>`, "enter", true);
+  const input = document.getElementById("name");
+  document.getElementById("enterform").onsubmit = (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    if (!name) { document.getElementById("err").textContent = T("err_name"); return; }
+    try { localStorage.setItem("callsign-name", name); } catch (e2) {}
+    joinErr = null;
+    lastJoinName = name;
+    conn.send({ type: "join", name });
+    keepAwake();
+  };
+}
+function renderCenter(titleKey, textKey, extra, key) {
+  show(`<div class="center" style="display:grid;gap:14px"><h2 class="shout">${T(titleKey)}</h2>${textKey ? `<p class="lede">${T(textKey)}</p>` : ""}${extra || ""}</div>`, key || "c:" + titleKey, true);
+}
+function renderNoRoom() {
+  dead = true;
+  screen = "noroom";
+  paint(null);
+  renderCenter("noroom_title", "noroom_text", codeFormHtml(CODE || (params.get("r") || "").slice(0, 24)));
+  bindCodeForm();
+}
+function renderExpired() {
+  dead = true;
+  screen = "expired";
+  paint(null);
+  renderCenter("expired_title", "expired_text", `<a class="btn" href="callsign.html">${T("btn_create")}</a>`);
+}
+const goneFlow = window.MP && MP.roomGone ? MP.roomGone({ showForm: renderNoRoom, onClosed: () => renderExpired() }) : null;
+function onRoomGone() { if (goneFlow) goneFlow.gone(); else renderExpired(); }
+
+// ---------- лобби и итоги: команда, капитан, аватар ----------
+function memHtml(p) { return `<div class="mem${p.id === me ? " me" : ""}${p.online === false ? " off" : ""}">${avHtml(p)}<b>${escapeHtml(p.name)}</b>${state.claim && (state.claim.red === p.id || state.claim.blue === p.id) ? "<em>★</em>" : ""}</div>`; }
+function teamPickerHtml() {
+  const m = mine();
+  const cnt = (t) => state.players.filter((p) => !p.left && p.team === t).length;
+  const btn = (t) => `<button class="tbtn ${t}" type="button" data-team="${t}" aria-pressed="${m && m.team === t}"><i>${GLYPH[t]}</i>${escapeHtml(csTeamName(t))}<small>${escapeHtml(tpl("pick_n", { n: cnt(t) }))}</small></button>`;
+  const claimed = state.me && state.me.claim;
+  const capLabel = claimed ? T("btn_cap_off") : T("btn_cap");
+  const roster = ["red", "blue"].map((t) => `<div class="${t === "red" ? "r" : "b"}"><h3>${escapeHtml(csTeamName(t))}</h3>${state.players.filter((p) => !p.left && p.team === t).map(memHtml).join("")}</div>`).join("");
+  const loose = state.players.filter((p) => !p.left && !p.team);
+  return `<div class="teams">${btn("red")}${btn("blue")}</div>
+    <button class="capbtn" id="capbtn" type="button" aria-pressed="${!!claimed}"${m && m.team ? "" : " disabled"}>★ ${escapeHtml(capLabel)}</button>
+    <div class="roster">${roster}</div>
+    ${loose.length ? `<p class="fine center">${escapeHtml(T("loose_hint"))}: ${loose.map((p) => escapeHtml(p.name)).join(", ")}</p>` : ""}`;
+}
+function avPickHtml() {
+  if (!avOpen || !state.avatarChoices) return "";
+  const taken = new Set(state.players.filter((p) => !p.left && p.id !== me).map((p) => p.avatar));
+  return `<div class="avgrid">${state.avatarChoices.map((a) => `<button type="button" data-av="${escapeHtml(a)}"${taken.has(a) ? " disabled" : ""}>${escapeHtml(a)}</button>`).join("")}</div>`;
+}
+function bindTeamPicker() {
+  app.querySelectorAll("[data-team]").forEach((b) => (b.onclick = () => { csSfx.tap(); csend({ type: "team", team: b.dataset.team }); }));
+  const cb = document.getElementById("capbtn");
+  if (cb) cb.onclick = () => csend({ type: "captain" });
+  const ab = document.getElementById("avbtn");
+  if (ab) ab.onclick = () => { avOpen = !avOpen; screenKey = ""; render(); };
+  app.querySelectorAll("[data-av]").forEach((b) => (b.onclick = () => { avOpen = false; screenKey = ""; csend({ type: "avatar", avatar: b.dataset.av }); }));
+}
+function renderLobby() {
+  const m = mine();
+  const key = "lobby:" + csLang() + avOpen + state.players.map((p) => p.id + p.team + p.avatar + p.online).join(",") + JSON.stringify(state.claim);
+  if (screenKey === key) return;
+  show(`<div class="mehead"><button class="avbtn" id="avbtn" type="button" aria-label="${escapeHtml(T("av_pick"))}" aria-expanded="${avOpen}">${escapeHtml(m.avatar)}</button><div style="min-width:0"><div class="eyebrow">${escapeHtml(CODE)}</div><b>${escapeHtml(m.name)}</b></div></div>
+    ${avPickHtml()}
+    <h2 class="shout">${T("lobby_title")}</h2>${teamPickerHtml()}
+    <p class="fine center">${T("lobby_wait")}</p>`, key);
+  bindTeamPicker();
+}
+
+// ---------- игра ----------
+const cntHtml = (t) => `<div class="cnt ${t}" id="cnt-${t}"><i>${GLYPH[t]}</i><b id="cn-${t}">0</b></div>`;
+let lastGameKey = "", prevOpen = new Set(), lastDockKey = "", lastPlateKey = "";
+function roleOf() {
+  const m = mine();
+  if (!m || !state.me) return "none";
+  return state.me.captain ? "cap" : m.team ? "op" : "none";
+}
+function fitTiles() {
+  const g = document.getElementById("grid");
+  if (!g) return;
+  const tiles = g.querySelectorAll(".tile");
+  if (!tiles.length) return;
+  const h = tiles[0].clientHeight;
+  g.style.setProperty("--mfs", Math.max(9, Math.round(h * 0.2)) + "px");
+  tiles.forEach((t) => {
+    const w = t.querySelector(".w");
+    if (!w) return;
+    const face = t.querySelector(".face");
+    csFitWord(w, face, Math.min(Math.round(h * 0.3), 18), 9, 72);
+  });
+}
+function fitPlate() {
+  const q = document.querySelector("#plate q");
+  if (!q) return;
+  const box = q.parentNode;
+  let fs = 34;
+  q.style.setProperty("--cfs", fs + "px");
+  let guard = 0;
+  const cs = getComputedStyle(box), avail = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  while (fs > 14 && q.scrollWidth > avail && guard++ < 40) { fs -= 1; q.style.setProperty("--cfs", fs + "px"); }
+}
+function renderGame() {
+  const role = roleOf();
+  const skey = [state.game, state.settings.mode, state.board.length, role].join(":");
+  if (screenKey !== "game:" + skey || !document.getElementById("grid")) {
+    show(`<div class="chips">${cntHtml("red")}${cntHtml("blue")}</div>
+      <div class="plate" id="plate"></div>
+      <div class="gridwrap"><div class="grid${state.settings.mode === "pics" ? " pics" : ""}" id="grid">${state.board.map((c, i) => csTileHtml(c, i, "button")).join("")}</div></div>
+      <div class="dock" id="dock"></div>`, "game:" + skey);
+    lastDockKey = "";
+    lastPlateKey = "";
+    document.querySelectorAll("#grid .tile").forEach((t, i) => t.style.setProperty("--d", ((i % 5) + Math.floor(i / 5)) * 120 + "ms")); // финал: ключ проявляется волной по диагонали
+    prevOpen = new Set(state.board.map((c, i) => (c.o ? i : -1)).filter((i) => i >= 0));
+    document.getElementById("grid").addEventListener("click", onTileClick);
+    // подсказки капитану не нужно видеть и ключ: свёрнуто, пока сам не откроет (метро, соседи по столу)
+  }
+  const g = document.getElementById("grid");
+  const live = state.phase === "guess" && state.me && state.me.canOpen;
+  g.classList.toggle("live", !!live);
+  const showKey = (role === "cap" && !keyHidden) || state.phase === "finished";
+  g.classList.toggle("key", (role === "cap" && !keyHidden) || state.phase === "finished");
+  g.classList.toggle("over", state.phase === "finished");
+  const tiles = g.querySelectorAll(".tile");
+  state.board.forEach((c, i) => {
+    const t = tiles[i];
+    t.dataset.o = c.o ? "1" : "0";
+    // капитан со спрятанным ключом видит поле, как все
+    if (c.t && (c.o || showKey)) t.dataset.t = c.t; else t.removeAttribute("data-t");
+    const isNew = c.o && !prevOpen.has(i);
+    t.classList.toggle("fresh", isNew);
+    t.classList.toggle("live", !!live && !c.o);
+    t.classList.toggle("last", !!(state.lastOpen && state.lastOpen.i === i && c.o && state.phase !== "finished"));
+    if (c.o) prevOpen.add(i); else prevOpen.delete(i);
+  });
+  for (const t of ["red", "blue"]) {
+    const n = state.counts[t].left;
+    const b = document.getElementById("cn-" + t);
+    if (b.textContent !== String(n)) b.textContent = n;
+    document.getElementById("cnt-" + t).classList.toggle("active", state.team === t && state.phase !== "finished");
+  }
+  renderPlate();
+  renderDock(role);
+  fitTiles();
+}
+function renderPlate() {
+  const p = document.getElementById("plate");
+  const s = state;
+  const tag = (t) => `<div class="tag" style="--tc:${csTeamColor(t)}">${GLYPH[t]}</div>`;
+  let key, html;
+  p.classList.toggle("paused", s.phase === "paused");
+  p.classList.toggle("waiting", s.phase === "clue");
+  if (s.phase === "finished") {
+    key = "f:" + s.game + csLang();
+    html = `<div class="tag" style="--tc:${s.winner ? csTeamColor(s.winner) : "#bbb"}">${s.winner ? GLYPH[s.winner] : "■"}</div><div class="txt"><span class="msg">${escapeHtml(s.winner ? tpl("win_of", { team: csTeamName(s.winner) }) : T("end_host"))}</span></div>`;
+  } else if (s.phase === "guess" && s.clue) {
+    const left = s.clue.n - s.opened;
+    key = "g:" + s.clue.word + s.clue.n + ":" + left;
+    html = `${tag(s.clue.team)}<div class="txt"><q>${escapeHtml(s.clue.word)}</q></div><div class="rt"><small>${escapeHtml(T("left_to_open"))}</small><b>${left}</b><small>${escapeHtml(tpl("of_n", { n: s.clue.n }))}</small></div><div class="timer" id="timer"><i></i></div>`;
+  } else if (s.phase === "clue") {
+    key = "c:" + s.team + csLang();
+    html = `${tag(s.team)}<div class="txt"><span class="msg">${escapeHtml(csT("clue_wait"))}<span class="dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></span></div><div class="rt"><small>${escapeHtml(T("secs"))}</small><b id="secs"></b></div><div class="timer" id="timer"><i></i></div>`;
+  } else if (s.phase === "paused") {
+    key = "p:" + csLang();
+    html = `<div class="tag" style="--tc:#bbb">❚❚</div><div class="txt"><span class="msg">${escapeHtml(csT("pause_t"))}</span></div>`;
+  } else if (s.phase === "draw") {
+    key = "d:" + s.starter + csLang();
+    html = `${tag(s.starter)}<div class="txt"><span class="msg">${escapeHtml(tpl("starts", { team: csTeamName(s.starter) }))}</span></div>`;
+  } else {
+    key = "o:" + s.team + csLang();
+    html = `${tag(s.team)}<div class="txt"><span class="msg">${escapeHtml(tpl("turn_of", { team: csTeamName(s.team) }))}</span></div>`;
+  }
+  if (lastPlateKey === key) return;
+  lastPlateKey = key;
+  p.innerHTML = html;
+  p.style.setProperty("--tc", csTeamColor(s.phase === "guess" && s.clue ? s.clue.team : s.team));
+  if (s.phase === "guess") { p.classList.add("slam"); setTimeout(() => p.classList.remove("slam"), 600); }
+  fitPlate();
+}
+function clueErrText() {
+  if (!clueErr) return "";
+  const k = "ce_" + clueErr;
+  return T(k) === k ? "" : tpl(k, { word: clueErrWord });
+}
+function renderDock(role) {
+  const d = document.getElementById("dock");
+  const s = state;
+  const mineTurn = state.me && state.me.team === s.team;
+  const left = state.counts[s.team] ? state.counts[s.team].left : 9;
+  let key, html;
+  if (s.phase === "finished") {
+    key = "fin:" + csLang() + JSON.stringify(s.awards) + s.players.map((p) => p.team).join("");
+    html = awardsHtml() + `<div class="hint">${escapeHtml(T("over_wait"))}</div><h3 class="eyebrow center" style="margin:6px 0 0">${escapeHtml(T("over_team"))}</h3>` + teamPickerHtml();
+  } else if (s.phase === "paused") {
+    key = "pause:" + csLang();
+    html = `<div class="pausebox"><div class="hint big">${escapeHtml(csT("pause_d"))}</div><button class="btn" id="resumebtn" type="button">${escapeHtml(csT("btn_resume"))}</button></div>`;
+  } else if (s.phase === "clue" && role === "cap" && mineTurn) {
+    key = "cf:" + turnKey() + clueErr + clueErrWord + csLang() + left + keyHidden;
+    const nums = Array.from({ length: 9 }, (_, i) => `<button type="button" data-n="${i + 1}" aria-pressed="${clueNum === i + 1}"${i + 1 > left ? " disabled" : ""}>${i + 1}</button>`).join("");
+    html = `<div class="clueform"><div class="hint big">${escapeHtml(T("st_clue_me"))}</div>
+      <div class="sendrow"><input class="field" id="clueword" maxlength="24" autocomplete="off" autocapitalize="none" enterkeyhint="send" placeholder="${escapeHtml(T("clue_ph"))}" value="${escapeHtml(clueWord)}"><button class="btn" id="sendbtn" type="button">${T("btn_send")}</button></div>
+      <div class="nums">${nums}</div><div class="err" id="clueerr">${escapeHtml(clueErrText())}</div></div>${keyToggleHtml()}`;
+  } else if (s.phase === "guess" && state.me && state.me.canOpen) {
+    key = "go:" + turnKey() + (s.opened > 0) + csLang();
+    html = `<div class="hint">${escapeHtml(T("st_guess_op"))}</div><button class="btn ghost" id="stopbtn" type="button"${s.opened > 0 ? "" : " disabled"}>${escapeHtml(T("btn_stop"))}</button>`;
+  } else if (role === "cap") {
+    key = "cw:" + s.phase + s.team + csLang() + keyHidden;
+    const txt = s.phase === "guess" && mineTurn ? T("st_guess_cap") : mineTurn ? T("st_clue_team") : tpl("st_clue_foe", { team: csTeamName(s.team) });
+    html = `<div class="hint">${escapeHtml(txt)}</div>${keyToggleHtml()}`;
+  } else {
+    key = "w:" + s.phase + s.team + mineTurn + csLang();
+    const txt = s.phase === "draw" ? tpl("starts", { team: csTeamName(s.starter) })
+      : s.phase === "clue" ? (mineTurn ? T("st_clue_team") : tpl("st_clue_foe", { team: csTeamName(s.team) }))
+      : mineTurn ? T("st_guess_op") : tpl("st_guess_foe", { team: csTeamName(s.team) });
+    html = `<div class="hint">${escapeHtml(txt)}</div>`;
+  }
+  if (lastDockKey === key) return;
+  lastDockKey = key;
+  d.innerHTML = html;
+  bindDock();
+}
+const keyToggleHtml = () => `<button class="capbtn" id="keybtn" type="button">${escapeHtml(keyHidden ? T("key_show") : T("key_hide"))}</button><p class="fine center">${escapeHtml(T("key_warn"))}</p>`;
+function awardsHtml() {
+  if (!state.awards || !state.awards.length) return "";
+  const rows = state.awards.map((a) => {
+    const p = a.playerId ? player(a.playerId) : null;
+    const who = p ? `${avHtml(p)}${escapeHtml(p.name)}${p.id === me ? " · " + escapeHtml(T("pts_you")) : ""}` : `<span class="glyph ${a.team}">${GLYPH[a.team]}</span>`;
+    let d = "";
+    if (a.key === "clue") d = tpl("aw_clue_d", { word: a.word, n: a.value, w: csWords(a.value) });
+    else if (a.key === "sniper") d = tpl("aw_sniper_d", { n: a.value });
+    else if (a.key === "oops") d = tpl("aw_oops_d", { n: a.value });
+    return `<div class="aw">${who}<b>${escapeHtml(csT("aw_" + a.key))}</b>${d ? `<small>${escapeHtml(d)}</small>` : ""}</div>`;
+  }).join("");
+  return `<div class="awards">${rows}</div>`;
+}
+function bindDock() {
+  const d = document.getElementById("dock");
+  const cb = document.getElementById("keybtn");
+  if (cb) cb.onclick = () => { keyHidden = !keyHidden; lastDockKey = ""; screenKey = ""; render(); };
+  const rb = document.getElementById("resumebtn");
+  if (rb) rb.onclick = () => csend({ type: "resume" });
+  const stop = document.getElementById("stopbtn");
+  if (stop) stop.onclick = () => csend({ type: "stop" });
+  const input = document.getElementById("clueword");
+  if (input) {
+    input.oninput = () => { clueWord = input.value; if (clueErr) { clueErr = null; document.getElementById("clueerr").textContent = ""; } };
+    input.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); sendClue(); } };
+    d.querySelectorAll("[data-n]").forEach((b) => (b.onclick = () => {
+      clueNum = Number(b.dataset.n);
+      d.querySelectorAll("[data-n]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+      csSfx.tap();
+    }));
+    document.getElementById("sendbtn").onclick = sendClue;
+  }
+  if (d.querySelector("[data-team]")) bindTeamPicker();
+}
+function sendClue() {
+  const w = (clueWord || "").trim();
+  if (!w) { clueErr = "empty"; document.getElementById("clueerr").textContent = clueErrText(); return; }
+  if (!clueNum) { clueErr = "bad_number"; document.getElementById("clueerr").textContent = clueErrText(); return; }
+  document.getElementById("sendbtn").disabled = true;
+  csSfx.send();
+  csend({ type: "clue", text: w, n: clueNum });
+  // отказ вернёт кнопку; без ответа — через 3 с
+  setTimeout(() => { const b = document.getElementById("sendbtn"); if (b) b.disabled = false; }, 3000);
+}
+function onTileClick(e) {
+  const t = e.target.closest ? e.target.closest(".tile") : null;
+  if (!t || !state || state.phase !== "guess" || !state.me || !state.me.canOpen) return;
+  if (t.dataset.o === "1") return;
+  csSfx.tap();
+  csend({ type: "open", i: Number(t.dataset.i) });
+}
+
+// ---------- кадр ----------
+let lastTickSec = null;
+function frame() {
+  requestAnimationFrame(frame);
+  if (!state || dead || !state.phaseEnd) return;
+  const left = state.phaseEnd - csNow();
+  const total = Math.max(1, state.phaseEnd - state.phaseStart);
+  const live = state.phase === "clue" || state.phase === "guess";
+  const bar = document.getElementById("timer");
+  if (bar && live) {
+    bar.firstChild.style.transform = `scaleX(${Math.max(0, Math.min(1, left / total))})`;
+    bar.classList.toggle("hot", left < 5000);
+  }
+  const secs = document.getElementById("secs");
+  if (secs && live) {
+    secs.textContent = String(Math.max(0, Math.ceil(left / 1000)));
+    secs.classList.toggle("hot", left < 5000);
+  }
+  if (live && left < 5000 && left > 0 && state.me && (state.me.team === state.team)) {
+    const sec = Math.ceil(left / 1000);
+    if (sec !== lastTickSec) { lastTickSec = sec; csSfx.tick(true); }
+  }
+}
+
+function render() {
+  if (dead || !state) return;
+  if (!me) {
+    if (screen === "kicked" || screen === "replaced" || screen === "enter") return;
+    if ((waitJoin && token) || autoJoining) return renderCenter("wait_title");
+    return renderEnter();
+  }
+  if (!mine()) return renderEnter();
+  if (!state.me && state.phase !== "lobby") return;
+  screen = "game";
+  paint(phaseColor());
+  if (state.phase === "lobby") return renderLobby();
+  if (!state.board) return;
+  renderGame();
+}
+
+// ---------- связь ----------
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+    case "state":
+      state = m.state;
+      if (m.type === "hello" && goneFlow) goneFlow.hello();
+      if (m.type === "hello" && token && needJoin) { needJoin = false; conn.send({ type: "join", token }); }
+      if (langFollow) langFollow.check(state.settings && state.settings.lang);
+      if (state.phase !== prevPhase) {
+        if (state.phase === "clue" && state.me && state.me.captain && state.me.team === state.team) { csVibrate(30); csSfx.turn(); }
+        prevPhase = state.phase;
+      }
+      capNotice();
+      if (state.log.length !== prevLog) { prevLog = state.log.length; clueWord = ""; clueNum = 0; clueErr = null; }
+      render();
+      if (pendingFlush && state.me) { pendingFlush = false; flushQueued(); }
+      break;
+    case "joined": {
+      const was = me;
+      me = m.playerId;
+      token = m.token;
+      joinErr = null;
+      autoJoining = false;
+      if (lastJoinName && m.name && m.name !== lastJoinName.replace(/\s+/g, " ")) toast(tpl("you_are", { name: m.name }));
+      lastJoinName = null;
+      try { localStorage.setItem(tokenKey(), token); } catch (e) {}
+      keepAwake();
+      if (was !== me) { screen = null; screenKey = ""; }
+      render();
+      pendingFlush = true;
+      setTimeout(() => { if (pendingFlush) { pendingFlush = false; flushQueued(); } }, 2000);
+      break;
+    }
+    case "rejected":
+      if (m.action === "clue") {
+        clueErr = m.reason;
+        clueErrWord = typeof m.word === "string" ? m.word : "";
+        csSfx.buzz();
+        csVibrate([60, 40, 60]);
+        lastDockKey = "";
+        render();
+        break;
+      }
+      if (T("rj_" + m.reason) !== "rj_" + m.reason) toast(T("rj_" + m.reason));
+      lastDockKey = "";
+      break;
+    case "event": {
+      const e = m.event;
+      if (e.type === "clue") { csSfx.clue(); if (state && state.me && state.me.canOpen) csVibrate(20); }
+      if (e.type === "open") { if (e.t === "x") { csSfx.boom(); csVibrate([80, 40, 160]); } else if (e.t === e.team) csSfx.good(); else if (e.t === "n") csSfx.neutral(); else csSfx.foe(); }
+      if (e.type === "final" && e.winner) setTimeout(() => csSfx.fanfare(), 600);
+      break;
+    }
+    case "error":
+      conn.flush(() => false);
+      if (m.error === "room_expired") return onRoomGone();
+      if (m.error === "token_gone") {
+        try { localStorage.removeItem(tokenKey()); } catch (e) {}
+        token = null;
+        const nm = savedName();
+        if (nm && !autoJoinTried && state && (state.phase === "lobby" || state.phase === "finished")) {
+          autoJoinTried = true; autoJoining = true; me = null; lastJoinName = nm;
+          conn.send({ type: "join", name: nm });
+          setTimeout(() => { if (autoJoining) { autoJoining = false; waitJoin = false; if (!me && !dead) render(); } }, 4000);
+          break;
+        }
+      }
+      if (["room_full", "token_gone", "bad_name", "name_taken"].includes(m.error)) {
+        autoJoining = false;
+        joinErr = m.error === "bad_name" ? "err_name"
+          : m.error === "name_taken" && typeof m.online === "boolean" ? (m.online ? "err_name_taken_online" : "err_name_taken_offline")
+          : "err_" + m.error;
+        me = null; waitJoin = false; lastJoinName = null;
+        renderEnter();
+      }
+      break;
+    case "kicked":
+      conn.flush(() => false);
+      me = null;
+      try { localStorage.removeItem(tokenKey()); } catch (e) {}
+      token = null;
+      screen = "kicked";
+      renderCenter("kicked_title");
+      break;
+    case "replaced":
+      me = null;
+      screen = "replaced";
+      renderCenter("replaced_title", "replaced_text", `<button class="btn" id="here" type="button">${T("btn_back_here")}</button>`);
+      document.getElementById("here").onclick = () => { conn.send({ type: "join", token }); };
+      break;
+  }
+}
+
+const LANG_NAMES = { ru: "Русский", en: "English", el: "Ελληνικά" };
+function showLangHint(o) {
+  const old = document.getElementById("langhint");
+  if (old) old.remove();
+  const d = el("div", "langhint");
+  d.id = "langhint";
+  d.setAttribute("role", "status");
+  d.style.cssText = "position:fixed;left:8px;right:8px;top:calc(var(--lsc,30px)*2 + 4px);z-index:29;max-width:544px;margin:0 auto;background:#fff;border:4px solid #111;padding:8px 10px;display:grid;gap:8px;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;font-weight:800;font-size:15px";
+  const done = (fn) => () => { d.remove(); fn(); };
+  const mk = (txt, dark) => { const b = el("button", null, txt); b.type = "button"; b.style.cssText = "min-height:44px;min-width:44px;border:3px solid #111;font-weight:900;padding:4px 12px;background:" + (dark ? "#111" : "#fff") + ";color:" + (dark ? "#fff" : "#111"); return b; };
+  const yes = mk(T("lang_yes"), true), no = mk(T("lang_no"), false);
+  yes.onclick = done(o.accept);
+  no.onclick = done(o.decline);
+  d.append(el("span", null, tpl("lang_hint", { l: LANG_NAMES[o.lang] || o.lang.toUpperCase() })), yes, no);
+  document.body.append(d);
+}
+const langFollow = window.MP && MP.followRoomLang ? MP.followRoomLang({
+  enabled: true,
+  auto: !!(MP.rules && MP.rules.RULE_U17_LANG_FOLLOW),
+  getRoomLang: () => (state && state.settings && state.settings.lang) || null,
+  onSuggest: showLangHint,
+}) : null;
+window.addEventListener("langchange", () => { screenKey = ""; lastDockKey = ""; lastPlateKey = ""; if (state) render(); });
+window.addEventListener("resize", () => { if (screen === "game" && state && state.board) fitTiles(); });
+const refitFonts = () => { fitShouts(); fitTiles(); fitPlate(); };
+if (document.fonts) {
+  if (document.fonts.ready) document.fonts.ready.then(refitFonts);
+  if ("onloadingdone" in document.fonts) document.fonts.onloadingdone = refitFonts;
+}
+
+function start() {
+  if (!CODE && (params.get("r") || "").trim()) return renderNoRoom();
+  if (!CODE) return renderLanding();
+  renderCenter("wait_title");
+  if (token) setTimeout(() => { waitJoin = false; if (!me && !dead) render(); }, 4000);
+  else waitJoin = false;
+  const banner = document.getElementById("conn");
+  let netLost = false, netQuiet = false;
+  const showNet = () => {
+    banner.textContent = T(netLost ? "err_connect" : "conn_lost");
+    banner.classList.toggle("on", netLost || netQuiet);
+  };
+  window.addEventListener("langchange", showNet);
+  conn = csConnect({
+    code: CODE,
+    onMessage,
+    onDrop: onDropped,
+    onGone: onRoomGone,
+    onOpen: () => {
+      needJoin = true;
+      if (token) {
+        conn.gated = true;
+        setTimeout(() => { if (conn.gated) flushQueued(); }, 4000);
+      }
+    },
+    onState: (st) => { netLost = st === "lost"; netLostNow = netLost; if (st === "open") netQuiet = false; showNet(); },
+    onQuiet: (q) => { netQuiet = !!q; showNet(); },
+  });
+  requestAnimationFrame(frame);
+  window.csPhone = { send: (msg) => csend(msg), get state() { return state; }, get me() { return me; } };
+}
+start();
+</script>
+</body>
+</html>

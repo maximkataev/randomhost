@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#ff4a3d">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f575.svg" type="image/svg+xml">
+<title>Позывной — общий экран</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,400..1000&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="callsign-theme.css">
+<style>
+  /* Общий экран — ТВ или демонстрация в Zoom: всё видно с трёх метров. Заливка — цвет ходящей команды; поле по центру,
+     по краям счёт и составы команд. Правило «без скачков»: панели и плитки остаются на месте, анимируется только содержимое. */
+  html, body { height: 100%; }
+  body { overflow: hidden; display: flex; flex-direction: column; }
+
+  .top { flex: none; display: flex; align-items: center; gap: 14px; height: calc(var(--lsc, 32px) * 2); padding: 0 var(--lsw, 160px) 0 26px; position: relative; z-index: 3; }
+  .brand { font-weight: 1000; font-size: 22px; text-transform: uppercase; white-space: nowrap; display: flex; align-items: center; gap: 10px; }
+  .brand i { width: 18px; height: 18px; background: var(--red); border: 3px solid var(--ink); display: block; }
+  .brand i + i { background: var(--blue); border-radius: 50%; margin-left: -6px; }
+  .chip { font-weight: 1000; font-size: 18px; padding: 7px 12px; background: var(--ink); color: var(--paper); white-space: nowrap; letter-spacing: .04em; }
+  .top .grow { flex: 1; }
+  .sound-toggle-btn { flex: none; width: calc(var(--lsh, 44px) * 1.25); height: var(--lsh, 44px); border: 3px solid var(--ink); border-radius: 0; background: var(--paper); font-size: 17px; display: grid; place-items: center; padding: 0; }
+  .endbtn { flex: none; width: var(--lsh, 44px); height: var(--lsh, 44px); min-height: 44px; border: 3px solid var(--ink); background: transparent; padding: 0; font-size: 16px; display: grid; place-items: center; }
+  .endbtn:hover { background: var(--ink); color: var(--paper); }
+  .endbtn.skipbtn { width: auto; min-width: var(--lsh, 44px); padding: 0 14px; font-weight: 900; font-size: 17px; white-space: nowrap; }
+  .endbtn[data-armed], .kickx[data-armed] { background: var(--hot); border-color: var(--hot); color: #fff; width: auto; padding: 0 12px; font-weight: 900; white-space: nowrap; }
+  .kickx { flex: none; min-width: 44px; min-height: 44px; border: 3px solid var(--ink); background: var(--paper); color: var(--ink); font-weight: 1000; font-size: 18px; line-height: 1; padding: 0 8px; }
+  small.offn { flex: none; font-size: .5em; font-weight: 800; opacity: .75; white-space: nowrap; }
+  .hostbar { display: flex; gap: 8px; align-items: center; min-width: 0; }
+  .hostbar button { border: 3px solid var(--ink); background: var(--paper); font-weight: 900; padding: 0 12px; min-height: 44px; min-width: 44px; font-size: 16px; white-space: nowrap; }
+  .hostbar input { font: 700 16px/1 var(--f); border: 3px solid var(--ink); background: #fff; color: var(--ink); padding: 6px 8px; min-height: 44px; width: 190px; min-width: 0; border-radius: 0; }
+  .hostbar .note { font-size: 14px; font-weight: 800; max-width: 240px; }
+  @media (max-width: 760px) { .hostbar .lt, .hostbar .note { display: none; } }
+  @media (max-width: 1100px) { .hostbar .lt { display: none; } }
+  .banner { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 50; background: var(--ink); color: var(--paper); padding: 8px 14px; font-weight: 800; }
+  /* заметное объявление («капитан сменился»): жёлтая плашка с чёрным контуром над подвалом поля */
+  .banner.notice { top: auto; bottom: 1.4vh; width: max-content; max-width: min(92vw, 1200px); text-align: center; background: #ffd400; color: var(--ink); border: 5px solid var(--ink); padding: .9vh 1.6vw; font-weight: 1000; font-size: clamp(16px, 3vh, 36px); line-height: 1.15; text-wrap: balance; animation: noticein .5s var(--press); }
+  .banner.notice::before { content: "★ "; }
+  @keyframes noticein { from { transform: translateX(-50%) scale(.7); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
+  .gonebox { display: grid; gap: 10px; justify-items: center; }
+  .gonebox .t { font-size: 28px; font-weight: 1000; }
+  .gonebox form { display: flex; gap: 8px; }
+  .gonebox input { font: 700 22px/1 var(--f); border: 4px solid var(--ink); background: #fff; color: var(--ink); padding: 8px 10px; min-height: 44px; width: 180px; text-transform: uppercase; border-radius: 0; }
+  .gonebox button { border: 4px solid var(--ink); background: var(--paper); font-weight: 900; padding: 6px 14px; min-height: 44px; font-size: 18px; }
+
+  main { flex: 1; min-height: 0; position: relative; z-index: 1; }
+
+  /* ---------- лобби: поле пополам, составы по краям, в центре — вход ---------- */
+  .lobbyscr { position: absolute; top: 4px; right: 26px; bottom: 3vh; left: 26px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); gap: 2vw; min-height: 0; }
+  .lcol { background: var(--paper); border: 5px solid var(--ink); display: flex; flex-direction: column; min-height: 0; container-type: inline-size; }
+  .lcol .lhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: .5vh 1.2vw; border-bottom: 5px solid var(--ink); font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; text-transform: uppercase; font-size: clamp(18px, 4.6vh, 56px); font-size: clamp(18px, min(4.6vh, 11cqw), 56px); line-height: 1; padding-top: calc(.5vh + .1em); }
+  .lcol.red .lhead { background: var(--red); }
+  .lcol.blue .lhead { background: var(--blue); }
+  .lhead span { font-size: .6em; font-variant-numeric: tabular-nums; }
+  .seats { flex: 1; min-height: 0; overflow: hidden; padding: 1.2vh 1.2vw; display: flex; flex-direction: column; gap: 1.2vh; }
+  .seat { position: relative; display: flex; align-items: center; gap: 14px; min-width: 0; font-size: clamp(22px, 3.6vh, 42px); animation: slam .45s var(--press); }
+  .seat .av { font-size: .8em; }
+  .seat b { font-weight: 1000; line-height: 1.05; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; padding-bottom: .1em; }
+  .seat em { font-style: normal; font-weight: 1000; flex: none; }
+  .seat .kickx { visibility: hidden; margin-left: auto; }
+  .host .seat:hover .kickx, .host .seat:focus-within .kickx, .host .seat.off .kickx { visibility: visible; }
+  .seat.off { opacity: .5; }
+  .empty { font-weight: 800; font-size: clamp(15px, 2.2vh, 24px); opacity: .6; padding: 1vh 0; text-wrap: balance; }
+  .loose { padding: .8vh 1.2vw; border-top: 4px solid var(--ink); font-weight: 800; font-size: clamp(14px, 2.1vh, 22px); }
+  .loose .eyebrow { margin-bottom: 4px; }
+  .loose .lp { display: inline-flex; align-items: center; gap: 6px; margin: 0 12px 4px 0; }
+  .lmid { display: flex; flex-direction: column; gap: 1.8vh; min-width: 0; min-height: 0; justify-content: center; }
+  .lmid .shout { font-size: clamp(36px, 10vh, 120px); text-align: center; text-shadow: none; }
+  .joinbox { background: var(--paper); border: 5px solid var(--ink); padding: 1.6vh 1.2vw; display: flex; gap: 1.4vw; align-items: center; }
+  #qr { flex: none; width: clamp(130px, 24vh, 250px); height: clamp(130px, 24vh, 250px); background: #fff; }
+  #qr img, #qr canvas { width: 100% !important; height: 100% !important; display: block; image-rendering: pixelated; }
+  .bigcode { font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; text-transform: uppercase; font-size: var(--code-fs, 56px); line-height: 1; padding-bottom: .16em; letter-spacing: .02em; white-space: nowrap; overflow: hidden; }
+  .url { font-weight: 800; font-size: clamp(12px, 1.8vh, 20px); margin-top: .6vh; overflow-wrap: anywhere; }
+  .scan { font-weight: 700; font-size: clamp(13px, 1.9vh, 22px); margin-top: .8vh; opacity: .8; text-wrap: balance; }
+  .opt { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 14px; background: var(--paper); border: 5px solid var(--ink); padding: 1vh 1.2vw; }
+  .opt b { font-size: clamp(16px, 2.6vh, 28px); display: block; }
+  .opt span { font-size: clamp(12px, 1.8vh, 20px); font-weight: 700; opacity: .7; }
+  .seg { display: flex; border: 4px solid var(--ink); }
+  .seg button { border: 0; background: var(--paper); font-weight: 900; font-size: clamp(14px, 2.2vh, 24px); padding: 0 16px; min-height: 48px; text-transform: uppercase; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .seg button + button { border-left: 4px solid var(--ink); }
+  .start { width: 100%; border: 5px solid var(--ink); background: var(--ink); color: var(--paper); font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; text-transform: uppercase; font-size: clamp(22px, 4.6vh, 52px); padding: 1.2vh 12px; box-shadow: 0 8px 0 rgba(0, 0, 0, .3); transition: transform .08s, box-shadow .08s; }
+  .start:active:not(:disabled) { transform: translateY(6px); box-shadow: 0 2px 0 rgba(0, 0, 0, .3); }
+  .start:disabled { opacity: .5; box-shadow: none; }
+  .fine { font-weight: 800; font-size: clamp(14px, 2.1vh, 24px); min-height: 1.3em; text-align: center; }
+  @keyframes slam { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* ---------- игра: панели команд по краям, по центру подсказка и поле ---------- */
+  .stage { position: absolute; top: 4px; right: 26px; bottom: 3vh; left: 26px; display: grid; grid-template-columns: minmax(150px, 17%) minmax(0, 1fr) minmax(150px, 17%); gap: 1.8vw; min-height: 0; }
+  .panel { display: flex; flex-direction: column; gap: 1.4vh; min-height: 0; }
+  .score { background: var(--paper); border: 5px solid var(--ink); display: flex; flex-direction: column; flex: none; container-type: inline-size; }
+  .score .tn { background: var(--tc); border-bottom: 5px solid var(--ink); font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; text-transform: uppercase; font-size: clamp(13px, 2.5vh, 32px); font-size: clamp(13px, min(2.5vh, 8.2cqw), 32px); padding: .5vh .6vw; padding-top: calc(.5vh + .1em); line-height: 1; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .score .tn span { min-width: 0; overflow: hidden; white-space: nowrap; }
+  .score .tn i { font-style: normal; font-size: .85em; flex: none; }
+  .score .num { font-weight: 1000; font-stretch: 151%; font-variation-settings: "wdth" 151; font-size: clamp(60px, 15vh, 190px); line-height: .95; text-align: center; padding: .6vh 0 .2vh; font-variant-numeric: tabular-nums; }
+  .score .of { text-align: center; font-weight: 800; font-size: clamp(12px, 1.8vh, 20px); padding-bottom: .8vh; opacity: .7; text-transform: uppercase; letter-spacing: .08em; }
+  .panel.red { --tc: var(--red); }
+  .panel.blue { --tc: var(--blue); }
+  .panel.active .score { box-shadow: 0 0 0 6px var(--ink); }
+  .panel.active .score .tn::before { content: "▶"; margin-right: 6px; }
+  .roster { flex: 1; min-height: 0; overflow: hidden; background: var(--paper); border: 5px solid var(--ink); padding: 1vh .8vw; display: flex; flex-direction: column; gap: .9vh; }
+  .roster .eyebrow { opacity: .7; }
+  .mem { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: clamp(15px, 2.5vh, 30px); font-weight: 900; }
+  .mem .av { font-size: .75em; }
+  .mem b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; line-height: 1.1; padding-bottom: .1em; }
+  .mem em { font-style: normal; flex: none; }
+  .mem small { margin-left: auto; font-weight: 900; opacity: .7; flex: none; font-size: .75em; }
+  .mem.off { opacity: .5; }
+  .mem .kickx { margin-left: auto; }
+  .mem.cap { padding-bottom: .9vh; border-bottom: 3px solid var(--ink); margin-bottom: .2vh; }
+
+  .center { display: flex; flex-direction: column; gap: 1.6vh; min-width: 0; min-height: 0; position: relative; }
+  .plate { flex: none; background: var(--ink); color: var(--paper); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: stretch; position: relative; min-height: 13vh; }
+  .plate .tag { width: clamp(70px, 12vh, 150px); display: grid; place-items: center; background: var(--tc, #888); color: var(--ink); font-weight: 1000; font-size: clamp(30px, 6vh, 70px); border-right: 5px solid var(--paper); }
+  .plate .txt { min-width: 0; display: flex; align-items: center; padding: 0 1.6vw; height: var(--plate-h, 13vh); overflow: hidden; }
+  .plate q { font-weight: 1000; font-stretch: 130%; font-variation-settings: "wdth" 130; text-transform: uppercase; font-size: var(--cfs, 70px); line-height: 1; quotes: none; white-space: nowrap; }
+  .plate .msg { font-weight: 900; font-size: clamp(15px, 3.1vh, 44px); text-transform: uppercase; line-height: 1.05; text-wrap: balance; }
+  .plate .rt { display: grid; place-items: center; align-content: center; padding: 0 1.6vw; border-left: 5px solid var(--paper); min-width: clamp(80px, 12vh, 160px); text-align: center; white-space: nowrap; }
+  .plate .rt small { font-weight: 900; font-size: clamp(11px, 1.5vh, 16px); letter-spacing: .1em; text-transform: uppercase; opacity: .7; }
+  .plate .rt b { font-weight: 1000; font-size: clamp(30px, 6vh, 72px); line-height: 1; font-variant-numeric: tabular-nums; }
+  .plate .rt b.hot { color: var(--hot); }
+  .plate.slam q, .plate.slam .msg { animation: slam .45s var(--press); }
+  .resumebtn { border: 4px solid var(--ink); background: var(--ink); color: #ffd400; font-weight: 1000; font-stretch: 130%; font-variation-settings: "wdth" 130; text-transform: uppercase; font-size: clamp(18px, 3.4vh, 40px); padding: 1vh 1.8vw; min-height: 48px; animation: beat 1s ease-in-out infinite; }
+  @keyframes beat { 50% { transform: scale(1.08); } }
+  /* пауза: жёлтая плашка вместо чёрной, кнопка пульсирует */
+  .plate.paused { background: #ffd400; color: var(--ink); box-shadow: 0 0 0 5px var(--ink); }
+  .plate.paused .tag { background: var(--ink) !important; color: #ffd400; border-right-color: var(--ink); }
+  .plate.paused .rt { border-left-color: var(--ink); }
+  body[data-phase="paused"] .field { opacity: .5; }
+  /* ожидание подсказки: бегущее многоточие и пульсирующая метка команды (размеры не меняются) */
+  .dots { display: inline-block; white-space: nowrap; }
+  .dots i { font-style: normal; animation: dot 1.2s infinite; opacity: .2; }
+  .dots i:nth-child(2) { animation-delay: .2s; } .dots i:nth-child(3) { animation-delay: .4s; }
+  @keyframes dot { 0%, 60%, 100% { opacity: .2; } 30% { opacity: 1; } }
+  .plate.waiting .tag { animation: tagpulse 1.3s ease-in-out infinite; }
+  @keyframes tagpulse { 0%, 100% { box-shadow: inset 0 0 0 0 var(--paper); } 50% { box-shadow: inset 0 0 0 .14em var(--paper); } }
+  .foot .lastturn small { font-weight: 900; font-size: .78em; text-transform: uppercase; letter-spacing: .04em; background: var(--ink); color: var(--paper); padding: .15em .55em; opacity: 1; white-space: nowrap; }
+  .timer { position: absolute; left: 0; right: 0; bottom: 0; height: .9vh; background: rgba(255, 255, 255, .22); }
+  .timer i { display: block; height: 100%; background: var(--paper); transform-origin: 0 50%; }
+  .timer.hot i { background: var(--hot); }
+  .field { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  .gridbox { height: 100%; aspect-ratio: 1.55 / 1; max-width: 100%; }
+  .gridbox .grid { height: 100%; grid-template-rows: repeat(5, minmax(0, 1fr)); --gap: clamp(5px, 1vh, 12px); --bw: clamp(3px, .55vh, 6px); --band: clamp(8px, 1.7vh, 18px); }
+  .gridbox .tile { aspect-ratio: auto; height: 100%; }
+  .tile .by { position: absolute; left: 4%; top: 6%; font-style: normal; font-size: clamp(10px, 1.9vh, 22px); line-height: 1; background: var(--paper); border: 2px solid var(--ink); border-radius: 50%; width: 1.7em; height: 1.7em; display: grid; place-items: center; z-index: 2; }
+  .foot { flex: none; min-height: 3.6vh; display: flex; gap: 1.2vw; align-items: center; font-weight: 800; font-size: clamp(14px, 2.2vh, 24px); }
+  .foot .eyebrow { white-space: nowrap; flex: none; }
+  .foot .lastturn { display: inline-flex; align-items: center; gap: 8px; background: var(--paper); border: 3px solid var(--ink); padding: 2px 10px; min-width: 0; overflow: hidden; white-space: nowrap; }
+  .foot .lastturn q { quotes: none; text-transform: uppercase; font-weight: 1000; }
+  .glyph { display: inline-block; width: 1em; text-align: center; }
+  .glyph.red { color: var(--red); -webkit-text-stroke: 1.5px var(--ink); }
+  .glyph.blue { color: var(--blue); -webkit-text-stroke: 1.5px var(--ink); }
+  .glyph.n { color: var(--sand); -webkit-text-stroke: 1.5px var(--ink); }
+  .glyph.x { color: var(--ink); }
+
+  /* жребий: плакат поверх поля — поле открывается, когда названа команда */
+  .poster { position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 5; background: var(--tc); border: 6px solid var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2vh; text-align: center; padding: 3vh 3vw; animation: slam .5s var(--press); }
+  .poster .shout { font-size: clamp(34px, 11vh, 150px); text-wrap: balance; }
+  .poster .caps { font-weight: 900; font-size: clamp(16px, 3vh, 36px); display: flex; gap: 2vw; flex-wrap: wrap; justify-content: center; }
+  .poster .caps span { display: inline-flex; align-items: center; gap: 8px; background: var(--paper); border: 4px solid var(--ink); padding: .4vh 1vw; }
+
+  /* итоги */
+  .victory { flex: none; background: var(--ink); color: var(--paper); padding: 1.4vh 2vw; display: flex; align-items: center; justify-content: space-between; gap: 2vw; min-height: 12vh; box-shadow: inset 0 0 0 .9vh var(--wc, transparent); animation: win .9s .5s cubic-bezier(.2, 1.4, .4, 1) both; }
+  .victory.w-red { --wc: var(--red); } .victory.w-blue { --wc: var(--blue); }
+  .victory.w-red .shout { color: var(--red); } .victory.w-blue .shout { color: var(--blue); }
+  @keyframes win { from { transform: scale(.6) translateY(4vh); opacity: 0; } 35% { opacity: 1; } to { transform: none; opacity: 1; } }
+  .victory .shout { font-size: clamp(24px, 6.2vh, 78px); }
+  .victory small { display: block; font-weight: 800; font-size: clamp(14px, 2.2vh, 26px); opacity: .85; margin-top: .6vh; text-transform: none; letter-spacing: 0; }
+  .victory .wins { font-weight: 1000; font-size: clamp(24px, 5vh, 56px); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .victory .wins .r { color: var(--red); } .victory .wins .b { color: var(--blue); }
+  .awards { display: flex; flex-wrap: wrap; gap: .8vh 1vw; flex: 1; min-width: 0; }
+  .awards .aw { background: var(--paper); border: 4px solid var(--ink); padding: .4vh 1vw; font-size: clamp(14px, 2.2vh, 26px); font-weight: 900; display: inline-flex; align-items: center; gap: 8px; }
+  .awards .aw small { font-weight: 700; opacity: .75; font-size: .8em; }
+  .actions { display: flex; gap: 1vw; margin-left: auto; }
+  .actions button, .actions a { border: 4px solid var(--ink); background: var(--ink); color: var(--paper); font-weight: 1000; text-transform: uppercase; font-size: clamp(14px, 2.4vh, 28px); padding: 0 1.4vw; min-height: 48px; text-decoration: none; display: inline-flex; align-items: center; box-shadow: 0 5px 0 rgba(0, 0, 0, .3); }
+  .actions .g { background: var(--paper); color: var(--ink); }
+  .actions button:disabled { opacity: .45; box-shadow: none; }
+
+  .shake { animation: shake .6s; }
+  @keyframes shake { 10%, 90% { transform: translate(-3px, 1px); } 20%, 80% { transform: translate(5px, -2px); } 30%, 50%, 70% { transform: translate(-8px, 3px); } 40%, 60% { transform: translate(8px, -3px); } }
+  @media (max-width: 900px) { .stage { grid-template-columns: minmax(110px, 19%) minmax(0, 1fr) minmax(110px, 19%); gap: 1vw; } .roster { display: none; } }
+  /* узкие ландшафты и ТВ в 1024: подпись «нет связи» не помещается рядом с ✕ — остаётся приглушение строки и кнопка */
+  @media (max-width: 1500px) { .mem small.offn { display: none; } }
+  @media (max-width: 1100px) { .seat small.offn { display: none; } }
+  /* узкая шапка (окно 640 или масштаб 200%): название игры сворачивается в значок, «Дальше» — компактнее */
+  @media (max-width: 860px) { .brand span { display: none; } .top { gap: 8px; padding-left: 14px; } .chip { font-size: 15px; padding: 6px 9px; } .endbtn.skipbtn { padding: 0 8px; font-size: 15px; } }
+  @media (prefers-reduced-motion: reduce) { .victory, .resumebtn, .dots i, .plate.waiting .tag, .banner.notice { animation: none !important; } .dots i { opacity: .7; } body[data-phase="paused"] .field { opacity: .5; } }
+
+  /* ---------- портрет (планшет/монитор на ребро, ТВ вертикально): всё в одну колонку ---------- */
+  @media (max-aspect-ratio: 1/1) {
+    .brand span { display: none; }
+    .top { gap: 10px; padding-left: 16px; }
+    /* лобби: название, вход/QR, составы двумя колонками, режим, «Поехали» */
+    .lobbyscr { left: 16px; right: 16px; bottom: 2vh; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto auto; gap: 1.4vh 2.4vw; }
+    .lmid { display: contents; }
+    .lmid .shout { grid-column: 1 / -1; grid-row: 1; font-size: clamp(34px, 6.4vh, 90px); }
+    .joinbox { grid-column: 1 / -1; grid-row: 2; padding: 1.2vh 2vw; gap: 3vw; }
+    #qr { width: clamp(110px, 17vh, 240px); height: clamp(110px, 17vh, 240px); }
+    .url { font-size: clamp(12px, 1.6vh, 20px); }
+    .scan { font-size: clamp(13px, 1.7vh, 22px); }
+    .lcol.red { grid-column: 1; grid-row: 3; } .lcol.blue { grid-column: 2; grid-row: 3; }
+    .opt { grid-column: 1 / -1; grid-row: 4; padding: .8vh 2vw; }
+    .lmid > div:last-child { grid-column: 1 / -1; grid-row: 5; }
+    .lcol .lhead { padding: .4vh 2vw; font-size: clamp(18px, 3.4vh, 44px); font-size: clamp(18px, min(3.4vh, 11cqw), 44px); padding-top: calc(.4vh + .1em); }
+    .seats { padding: 1vh 2vw; gap: .8vh; }
+    .seat { font-size: clamp(16px, 2.5vh, 32px); gap: 10px; }
+    .start { font-size: clamp(22px, 3.8vh, 52px); padding: 1vh 12px; }
+    /* игра: счёт двумя плашками сверху, затем подсказка и поле на всю ширину */
+    .stage { left: 16px; right: 16px; bottom: 2vh; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 1.2vh 2.4vw; }
+    #pr { grid-column: 1; grid-row: 1; } #pb { grid-column: 2; grid-row: 1; }
+    .center { grid-column: 1 / -1; grid-row: 2; gap: 1.2vh; }
+    .panel { gap: .8vh; }
+    .score { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+    .score .tn { grid-column: 1 / -1; font-size: clamp(14px, 2.3vh, 28px); font-size: clamp(14px, min(2.3vh, 7.4cqw), 28px); }
+    .score .num { font-size: clamp(44px, 8vh, 110px); padding: .3vh 3vw .1vh; }
+    .score .of { text-align: left; padding: 0 1vw 0 0; font-size: clamp(11px, 1.5vh, 20px); letter-spacing: .04em; line-height: 1.15; }
+    .roster { display: flex; flex: none; flex-direction: row; flex-wrap: wrap; align-content: flex-start; gap: .4vh 1vw; padding: .7vh 1.4vw; border-width: 4px; max-height: 9vh; }
+    .roster .eyebrow, .mem b, .mem small { display: none; }
+    .mem { font-size: clamp(16px, 2.4vh, 30px); gap: 2px; }
+    .mem.cap { padding: 0; margin: 0; border: 0; }
+    .mem .kickx { margin-left: 0; min-width: 44px; }
+    .plate { min-height: 8vh; }
+    .plate .txt { height: var(--plate-h, 9vh); }
+    .plate .tag { width: clamp(56px, 8vh, 110px); font-size: clamp(26px, 4.4vh, 60px); }
+    .plate .rt b { font-size: clamp(28px, 4.6vh, 64px); }
+    .gridbox { width: 100%; height: 100%; max-height: calc((100vw - 32px) * .98); aspect-ratio: auto; }
+    .victory { min-height: 9vh; flex-wrap: wrap; }
+    .victory .shout { font-size: clamp(22px, 4.6vh, 60px); }
+    .awards .aw { font-size: clamp(13px, 1.8vh, 22px); }
+    .actions { flex-wrap: wrap; }
+    .foot { flex-wrap: wrap; font-size: clamp(13px, 1.8vh, 22px); }
+  }
+</style>
+<script src="legacy-compat.js"></script>
+</head>
+<body class="home">
+<div class="top">
+  <div class="brand"><i></i><i></i><span id="brand" data-i18n="game_name">Позывной</span></div>
+  <span class="chip hidden" id="codechip"></span>
+  <span class="grow"></span>
+  <div class="hostbar" id="hostbar"></div>
+  <button class="endbtn skipbtn hidden" id="skipbtn" type="button"></button>
+  <button class="endbtn hidden" id="endbtn" type="button">■</button>
+  <button class="sound-toggle-btn" type="button"></button>
+</div>
+<div class="banner hidden" id="banner"></div>
+<div class="conn" id="conn"></div>
+<main id="main"></main>
+
+<script>
+window.I18N_DICT = {
+  ru: {
+    _title: `Позывной — общий экран`,
+    creating: `Открываем комнату…`, expired: `Комната закрылась — открой новую`,
+    lobby_scan: `Наведи камеру телефона на QR или открой ссылку, введи имя и выбери команду.`,
+    lobby_n: `Игроков: {n} из 12`,
+    team_empty: `Пока никого — выбери «{team}» на телефоне`, loose_t: `Без команды — раскидаем случайно`,
+    opt_mode: `Что на карточках`, opt_mode_words: `Слова`, opt_mode_pics: `Картинки`,
+    btn_start: `Поехали!`, viewer: `Начать может только ведущий — тот, кто открыл этот экран`,
+    need_more: `Нужно ещё {n}`, team_small: `В каждой команде нужно хотя бы {m}: сейчас {r} и {b}`,
+    kick: `Убрать`, btn_end: `Закончить партию`,
+    clue_num: `слов`, left_to_open: `ещё`, of_n: `из {n}`, secs: `секунд`, caps_t: `Капитаны`,
+    draw_t: `Жребий`, last_turn: `Прошлый ход`,
+    final_title: `Финиш!`, btn_again: `Ещё партия`, btn_lobby: `В лобби`, btn_home: `Главная`, wins_t: `Серия`,
+    end_label: `■`, end_sure: `Точно закончить?`, btn_skip: `Дальше ▶`, skip_sure: `Точно дальше?`, kick_sure: `Точно убрать?`,
+    host_link: `Ссылка ведущего`, link_copied: `Ссылка скопирована. Не показывай её игрокам`, link_shared: `Ссылка отправлена. Не показывай её игрокам`, link_none: `На этом экране нет ключа ведущего`,
+    link_prompt_hint: `Скопируй ссылку и не показывай её игрокам`,
+    btn_im_host: `Я ведущий`, host_paste_ph: `Вставь ссылку ведущего`, btn_ok: `OK`, host_bad: `Это не ссылка ведущего`, btn_take: `Забрать управление`, host_lost_msg: `Управление перешло к другому экрану`,
+    noroom_title: `Такой комнаты нет`, noroom_text: `Проверь код — в нём слово и две цифры`, btn_go: `Перейти`, code_ph: `Код комнаты`,
+  },
+  en: {
+    _title: `Callsign — shared screen`,
+    creating: `Opening a room…`, expired: `The room has closed — open a new one`,
+    lobby_scan: `Point your phone camera at the QR or open the link, type your name and pick a team.`,
+    lobby_n: `Players: {n} of 12`,
+    team_empty: `Nobody yet — pick “{team}” on your phone`, loose_t: `No team yet — we'll assign randomly`,
+    opt_mode: `On the cards`, opt_mode_words: `Words`, opt_mode_pics: `Pictures`,
+    btn_start: `Let's go!`, viewer: `Only the host — whoever opened this screen — can start`,
+    need_more: `{n} more needed`, team_small: `Each team needs at least {m}: now {r} and {b}`,
+    kick: `Remove`, btn_end: `End the game`,
+    clue_num: `words`, left_to_open: `left`, of_n: `of {n}`, secs: `seconds`, caps_t: `Captains`,
+    draw_t: `The draw`, last_turn: `Last turn`,
+    final_title: `Finish!`, btn_again: `Play again`, btn_lobby: `To lobby`, btn_home: `Home`, wins_t: `Series`,
+    end_label: `■`, end_sure: `Really end?`, btn_skip: `Next ▶`, skip_sure: `Skip for real?`, kick_sure: `Really remove?`,
+    host_link: `Host link`, link_copied: `Link copied. Don't show it to players`, link_shared: `Link sent. Don't show it to players`, link_none: `This screen has no host key`,
+    link_prompt_hint: `Copy the link and keep it from the players`,
+    btn_im_host: `I'm the host`, host_paste_ph: `Paste the host link`, btn_ok: `OK`, host_bad: `That is not a host link`, btn_take: `Take control`, host_lost_msg: `Another screen took control`,
+    noroom_title: `There is no such room`, noroom_text: `Check the code: a word and two digits`, btn_go: `Go`, code_ph: `Room code`,
+  },
+  el: {
+    _title: `Σήμα — κοινή οθόνη`,
+    creating: `Άνοιγμα δωματίου…`, expired: `Το δωμάτιο έκλεισε — άνοιξε νέο`,
+    lobby_scan: `Στρέψε την κάμερα του κινητού στο QR ή άνοιξε τον σύνδεσμο, γράψε το όνομά σου και διάλεξε ομάδα.`,
+    lobby_n: `Παίκτες: {n} από 12`,
+    team_empty: `Κανείς ακόμα — διάλεξε «{team}» στο κινητό`, loose_t: `Χωρίς ομάδα — θα μοιραστούν τυχαία`,
+    opt_mode: `Στις κάρτες`, opt_mode_words: `Λέξεις`, opt_mode_pics: `Εικόνες`,
+    btn_start: `Πάμε!`, viewer: `Ξεκινά μόνο ο οικοδεσπότης — όποιος άνοιξε αυτή την οθόνη`,
+    need_more: `Χρειάζονται ακόμα {n}`, team_small: `Κάθε ομάδα χρειάζεται τουλάχιστον {m}: τώρα {r} και {b}`,
+    kick: `Αφαίρεση`, btn_end: `Τέλος παρτίδας`,
+    clue_num: `λέξεις`, left_to_open: `ακόμα`, of_n: `από {n}`, secs: `δευτερόλεπτα`, caps_t: `Αρχηγοί`,
+    draw_t: `Κλήρωση`, last_turn: `Προηγούμενη σειρά`,
+    final_title: `Τέλος!`, btn_again: `Νέα παρτίδα`, btn_lobby: `Στο λόμπι`, btn_home: `Αρχική`, wins_t: `Σειρά`,
+    end_label: `■`, end_sure: `Σίγουρα τέλος;`, btn_skip: `Επόμενο ▶`, skip_sure: `Σίγουρα επόμενο;`, kick_sure: `Σίγουρα αφαίρεση;`,
+    host_link: `Σύνδεσμος οικοδεσπότη`, link_copied: `Ο σύνδεσμος αντιγράφηκε. Μην τον δείχνεις στους παίκτες`, link_shared: `Ο σύνδεσμος στάλθηκε. Μην τον δείχνεις στους παίκτες`, link_none: `Αυτή η οθόνη δεν έχει κλειδί οικοδεσπότη`,
+    link_prompt_hint: `Αντίγραψε τον σύνδεσμο και μην τον δείχνεις στους παίκτες`,
+    btn_im_host: `Είμαι ο οικοδεσπότης`, host_paste_ph: `Επικόλλησε τον σύνδεσμο οικοδεσπότη`, btn_ok: `OK`, host_bad: `Αυτός δεν είναι σύνδεσμος οικοδεσπότη`, btn_take: `Πάρε τον έλεγχο`, host_lost_msg: `Τον έλεγχο πήρε άλλη οθόνη`,
+    noroom_title: `Δεν υπάρχει τέτοιο δωμάτιο`, noroom_text: `Έλεγξε τον κωδικό: μια λέξη και δύο ψηφία`, btn_go: `Πήγαινε`, code_ph: `Κωδικός δωματίου`,
+  },
+};
+</script>
+<script src="mp-common.js"></script>
+<script src="callsign-shared.js"></script>
+<script src="i18n.js"></script>
+<script src="sound-toggle.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+"use strict";
+const T = (k) => csT(k);
+const tpl = (k, v) => csTpl(k, v);
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+let CODE = (params.get("r") || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 12);
+const hostKey = () => "callsign-host-" + CODE;
+const main = $("main");
+
+let conn = null, state = null, isHost = false, dead = false;
+let viewKey = "", stageKey = "";
+let prevOpen = null; // индексы плиток, открытых к прошлой отрисовке: новые «переворачиваются»
+let lastPhase = null, lastCapSeq = null;
+let startNote = ""; // отказ сервера на «Поехали» (команда из одного)
+const timers = [];
+const later = (ms, fn) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
+const clearLater = () => { while (timers.length) clearTimeout(timers.pop()); };
+
+const player = (id) => state && state.players.find((p) => p.id === id);
+const present = () => state.players.filter((p) => !p.left);
+const members = (team) => present().filter((p) => p.team === team);
+const avHtml = (p) => `<i class="av" style="--pc:${p.color}">${escapeHtml(p.avatar)}</i>`;
+const GLYPH = { red: "▲", blue: "●", n: "◼", x: "✕" };
+
+// ---------- команды ведущего: двухтактные (MP.twoTap) ----------
+let hostTap = null;
+function makeHostTap() {
+  const mk = window.MP && MP.twoTap && MP.twoTap.create ? MP.twoTap.create : null;
+  return (mk || (() => ({ tap: () => true, armed: () => null, isArmed: () => false, disarm() {} })))({ armedMs: 3000, onChange: () => syncHostBtns() });
+}
+hostTap = makeHostTap();
+function kickBtnHtml(p) {
+  if (!isHost || p.left) return "";
+  const on = hostTap.isArmed("kick:" + p.id);
+  return `<button class="kickx" type="button" data-kick="${escapeHtml(p.id)}"${on ? ` data-armed="1"` : ""} title="${escapeHtml(T("kick"))}" aria-label="${escapeHtml(T("kick"))}">${on ? escapeHtml(T("kick_sure")) : "✕"}</button>`;
+}
+function syncHostBtns() {
+  const set = (id, key, label, sure) => {
+    const b = $(id);
+    if (!b) return;
+    const on = hostTap.isArmed(key);
+    b.textContent = on ? T(sure) : T(label);
+    if (on) b.setAttribute("data-armed", "1"); else b.removeAttribute("data-armed");
+  };
+  set("endbtn", "end", "end_label", "end_sure");
+  set("skipbtn", "skip", "btn_skip", "skip_sure");
+  for (const b of main.querySelectorAll("[data-kick]")) {
+    const on = hostTap.isArmed("kick:" + b.dataset.kick);
+    b.textContent = on ? T("kick_sure") : "✕";
+    if (on) b.setAttribute("data-armed", "1"); else b.removeAttribute("data-armed");
+  }
+}
+
+// ---------- создание комнаты, если доску открыли без кода ----------
+async function ensureRoom() {
+  if (CODE) return true;
+  showBanner(T("creating"));
+  try {
+    const res = await fetch("/callsign/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { lang: csLang(), mode: "words" } }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "error");
+    CODE = data.code;
+    try { localStorage.setItem(hostKey(), data.hostToken); } catch (e) {}
+    history.replaceState(null, "", `?r=${CODE}`);
+    showBanner(null);
+    return true;
+  } catch (err) {
+    showBanner(String(err.message || err));
+    return false;
+  }
+}
+function showBanner(text, kind) {
+  const b = $("banner");
+  b.classList.toggle("hidden", !text);
+  b.classList.toggle("notice", !!text && kind === "notice");
+  b.textContent = text || "";
+}
+
+// подогнать шрифт под коробку: уменьшаем, пока текст не влезет (коробка не растёт — правило «без скачков»)
+function fit(box, holder, varName, max, min) {
+  let fs = max;
+  holder.style.setProperty(varName, fs + "px");
+  let guard = 0;
+  while (fs > min && (box.scrollHeight > box.clientHeight + 1 || box.scrollWidth > box.clientWidth + 1) && guard++ < 80) {
+    fs -= 2;
+    holder.style.setProperty(varName, fs + "px");
+  }
+}
+const vh = (k) => Math.round(window.innerHeight * k);
+const codeMax = () => Math.max(24, Math.min(vh(0.1), 96));
+
+// ---------- цвет экрана ----------
+let curColor;
+let paintT = 0;
+function paint(color, delay) {
+  if (color === curColor) return;
+  clearTimeout(paintT);
+  if (delay) { paintT = setTimeout(() => paint(color), delay); return; }
+  const first = curColor === undefined;
+  curColor = color;
+  if (color == null) {
+    document.querySelectorAll(".wipe").forEach((w) => w.remove());
+    document.body.style.background = "";
+    document.body.classList.add("home");
+    return;
+  }
+  document.body.classList.remove("home");
+  document.documentElement.style.setProperty("--card", color);
+  if (first || matchMedia("(prefers-reduced-motion: reduce)").matches) { document.body.style.background = color; return; }
+  const w = el("div", "wipe");
+  w.style.background = color;
+  document.body.append(w);
+  csSfx.whoosh();
+  setTimeout(() => { document.body.style.background = color; w.remove(); }, 560);
+}
+function phaseColor() {
+  switch (state.phase) {
+    case "draw": case "clue": case "guess": case "swap": return csTeamColor(state.team);
+    case "finished": return state.winner ? csTeamColor(state.winner) : "#cfcfcf";
+    default: return null;
+  }
+}
+
+// ---------- лобби ----------
+let qrDrawn = false;
+function seatHtml(p) {
+  return `<div class="seat${p.online ? "" : " off"}">${avHtml(p)}<b>${escapeHtml(p.name)}</b>${state.claim && (state.claim.red === p.id || state.claim.blue === p.id) ? "<em>★</em>" : ""}${p.online ? "" : `<small class="offn">${escapeHtml(T("off_note"))}</small>`}${kickBtnHtml(p)}</div>`;
+}
+function drawLobby() {
+  const url = `${location.origin}/callsign.html?r=${CODE}`;
+  const ps = present();
+  const key = "lobby:" + csLang() + isHost + ":" + ps.map((p) => p.id + p.online + p.team).join(",") + JSON.stringify(state.settings) + JSON.stringify(state.claim) + startNote;
+  if (viewKey === key) return;
+  const fresh = viewKey.indexOf("lobby:") !== 0;
+  viewKey = key;
+  if (fresh) {
+    qrDrawn = false;
+    main.innerHTML = `<div class="screen lobbyscr">
+      <div class="lcol red"><div class="lhead"><div>${escapeHtml(csTeamName("red"))}</div><span id="nr"></span></div><div class="seats" id="seatsR"></div></div>
+      <div class="lmid">
+        <h1 class="shout">${escapeHtml(T("game_name"))}</h1>
+        <div class="joinbox"><div id="qr"></div><div style="min-width:0;flex:1"><div class="bigcode" id="bigcode">${escapeHtml(CODE)}</div><div class="url">${escapeHtml(url.replace(/^https?:\/\//, "")).replace("?r=", "<wbr>?r=")}</div><div class="scan">${T("lobby_scan")}</div></div></div>
+        <div class="opt"><div><b>${T("opt_mode")}</b><span id="free"></span></div><div class="seg" role="group"><button type="button" id="mw">${T("opt_mode_words")}</button><button type="button" id="mp">${T("opt_mode_pics")}</button></div></div>
+        <div><div class="fine" id="starthint"></div><button class="start" id="startbtn" type="button">${T("btn_start")}</button></div>
+      </div>
+      <div class="lcol blue"><div class="lhead"><div>${escapeHtml(csTeamName("blue"))}</div><span id="nb"></span></div><div class="seats" id="seatsB"></div><div class="loose hidden" id="loose"></div></div></div>`;
+    $("startbtn").onclick = () => { startNote = ""; conn.send({ type: "start" }); };
+    $("mw").onclick = () => { if (isHost) conn.send({ type: "settings", settings: { mode: "words" } }); };
+    $("mp").onclick = () => { if (isHost) conn.send({ type: "settings", settings: { mode: "pics" } }); };
+    const bc = $("bigcode");
+    fit(bc, bc.parentNode, "--code-fs", codeMax(), 16);
+    fitShout(main.querySelector(".lmid .shout"));
+  }
+  if (!qrDrawn && window.QRCode) {
+    qrDrawn = true;
+    $("qr").replaceChildren();
+    new QRCode($("qr"), { text: url, width: 240, height: 240, colorDark: "#111111", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+  }
+  const red = members("red"), blue = members("blue"), loose = ps.filter((p) => !p.team);
+  const fill = (id, list, team) => { $(id).innerHTML = list.length ? list.map(seatHtml).join("") : `<div class="empty">${escapeHtml(tpl("team_empty", { team: csTeamName(team) }))}</div>`; };
+  fill("seatsR", red, "red");
+  fill("seatsB", blue, "blue");
+  $("nr").textContent = red.length;
+  $("nb").textContent = blue.length;
+  const lo = $("loose");
+  lo.classList.toggle("hidden", !loose.length);
+  lo.innerHTML = loose.length ? `<div class="eyebrow">${escapeHtml(T("loose_t"))}</div>` + loose.map((p) => `<span class="lp">${avHtml(p)}<b>${escapeHtml(p.name)}</b>${kickBtnHtml(p)}</span>`).join("") : "";
+  $("free").textContent = tpl("lobby_n", { n: ps.length });
+  $("mw").setAttribute("aria-pressed", String(state.settings.mode === "words"));
+  $("mp").setAttribute("aria-pressed", String(state.settings.mode === "pics"));
+  $("mw").disabled = $("mp").disabled = !isHost;
+  const need = Math.max(0, state.minPlayers - ps.length);
+  $("startbtn").disabled = !isHost || need > 0;
+  $("starthint").textContent = !isHost ? T("viewer") : need > 0 ? tpl("need_more", { n: need }) : startNote;
+}
+
+// ---------- поле: игра и итоги ----------
+function buildStage() {
+  main.innerHTML = `<div class="stage" id="stage">
+    <div class="panel red" id="pr"><div class="score"><div class="tn"><span>${escapeHtml(csTeamName("red"))}</span><i>${GLYPH.red}</i></div><div class="num" id="nr">9</div><div class="of" id="lr"></div></div><div class="roster" id="rr"></div></div>
+    <div class="center" id="center"><div class="plate" id="plate"></div><div class="field"><div class="gridbox" id="gridbox"><div class="grid${state.settings.mode === "pics" ? " pics" : ""}" id="grid"></div></div></div><div class="foot" id="foot"></div></div>
+    <div class="panel blue" id="pb"><div class="score"><div class="tn"><span>${escapeHtml(csTeamName("blue"))}</span><i>${GLYPH.blue}</i></div><div class="num" id="nb">8</div><div class="of" id="lb"></div></div><div class="roster" id="rb"></div></div>
+  </div>`;
+  const g = $("grid");
+  g.innerHTML = state.board.map((c, i) => csTileHtml(c, i, "div")).join("");
+  g.querySelectorAll(".tile").forEach((t, i) => t.style.setProperty("--d", ((i % 5) + Math.floor(i / 5)) * 120 + "ms")); // финал: раскладка проявляется волной по диагонали
+  prevOpen = new Set(state.board.map((c, i) => (c.o ? i : -1)).filter((i) => i >= 0));
+  fitGrid();
+}
+// aspect-ratio появился в Chrome 88: в старом движке проектора у .gridbox нет ширины — считаем сами
+const NO_AR = !(window.CSS && CSS.supports && CSS.supports("aspect-ratio", "1 / 1"));
+function fixGrid() {
+  if (!NO_AR) return;
+  const b = $("gridbox");
+  if (!b) return;
+  const p = b.parentNode;
+  b.style.width = ""; b.style.height = "";
+  const pw = p.clientWidth, ph = p.clientHeight;
+  if (!pw || !ph) return;
+  const w = Math.floor(Math.min(pw, ph * 1.55));
+  b.style.width = w + "px";
+  b.style.height = Math.floor(w / 1.55) + "px";
+}
+// слово вписывается в плитку: кегль от высоты плитки, дальше — пока не влезет по ширине
+function fitGrid() {
+  fixGrid();
+  const g = $("grid");
+  if (!g || !state || !state.board) return;
+  const tiles = g.querySelectorAll(".tile");
+  if (!tiles.length) return;
+  const h = tiles[0].clientHeight;
+  g.style.setProperty("--mfs", Math.max(10, Math.round(h * 0.2)) + "px");
+  tiles.forEach((t) => {
+    const w = t.querySelector(".w");
+    if (!w) return;
+    const face = t.querySelector(".face");
+    csFitWord(w, face, Math.min(Math.round(h * 0.3), 64), 9, 100);
+  });
+}
+function fitPlate() {
+  const q = $("plate") && $("plate").querySelector("q");
+  if (!q) return;
+  const box = q.parentNode;
+  let fs = Math.round(Math.min(vh(0.095), 120));
+  q.style.setProperty("--cfs", fs + "px");
+  let guard = 0;
+  const cs = getComputedStyle(box), avail = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  while (fs > 18 && q.scrollWidth > avail && guard++ < 80) { fs -= 2; q.style.setProperty("--cfs", fs + "px"); }
+}
+
+function rosterHtml(team) {
+  const list = members(team);
+  const capId = state.caps[team];
+  list.sort((a, b) => (b.id === capId) - (a.id === capId));
+  const fin = state.phase === "finished";
+  return list.map((p) => `<div class="mem${p.id === capId ? " cap" : ""}${p.online === false ? " off" : ""}">${avHtml(p)}<b>${escapeHtml(p.name)}</b>${p.id === capId ? "<em>★</em>" : ""}${fin && !(p.id === capId) && (p.hits || p.misses) ? `<small>▲${p.hits || 0} ✕${p.misses || 0}</small>` : ""}${p.online === false ? `<small class="offn">${escapeHtml(T("off_note"))}</small>` : ""}${state.phase !== "finished" && p.online === false ? kickBtnHtml(p) : ""}</div>`).join("");
+}
+let lastRoster = "";
+function syncPanels() {
+  const c = state.counts;
+  for (const t of ["red", "blue"]) {
+    const k = t === "red" ? "r" : "b";
+    const num = $("n" + k);
+    if (String(c[t].left) !== num.textContent) num.textContent = c[t].left;
+    $("l" + k).textContent = tpl("left_n", { n: c[t].left }) + " / " + c[t].total;
+    $("p" + k).classList.toggle("active", state.team === t && state.phase !== "finished");
+  }
+  const rk = [csLang(), isHost, JSON.stringify(state.caps), state.phase === "finished", state.players.map((p) => p.id + p.team + p.online + (p.hits || 0) + (p.misses || 0) + p.left).join(",")].join("|");
+  if (rk !== lastRoster) {
+    lastRoster = rk;
+    $("rr").innerHTML = `<div class="eyebrow">${escapeHtml(T("caps_t"))} · ${escapeHtml(csT("ops"))}</div>` + rosterHtml("red");
+    $("rb").innerHTML = `<div class="eyebrow">${escapeHtml(T("caps_t"))} · ${escapeHtml(csT("ops"))}</div>` + rosterHtml("blue");
+  }
+}
+function syncGrid() {
+  const g = $("grid");
+  const tiles = g.querySelectorAll(".tile");
+  let freshN = 0;
+  state.board.forEach((c, i) => {
+    const t = tiles[i];
+    if (!t) return;
+    const was = t.dataset.o === "1";
+    t.dataset.o = c.o ? "1" : "0";
+    if (c.t) t.dataset.t = c.t; else t.removeAttribute("data-t");
+    const isNew = c.o && !prevOpen.has(i) && !was;
+    t.classList.toggle("fresh", isNew);
+    if (isNew) freshN++;
+    t.classList.toggle("last", !!(state.lastOpen && state.lastOpen.i === i && c.o && state.phase !== "finished"));
+    const by = t.querySelector(".by");
+    if (c.o && c.by && !by) { const p = player(c.by); if (p) t.insertAdjacentHTML("beforeend", `<i class="by">${escapeHtml(p.avatar)}</i>`); }
+    if (!c.o && by) by.remove();
+    if (c.o) prevOpen.add(i); else prevOpen.delete(i);
+  });
+  g.classList.toggle("over", state.phase === "finished");
+  g.classList.toggle("key", state.phase === "finished");
+  return freshN;
+}
+function glyphs(hits) {
+  return hits.map((h) => `<span class="glyph ${h.t}">${GLYPH[h.t] || "?"}</span>`).join("");
+}
+function syncPlate() {
+  const p = $("plate");
+  const s = state;
+  let html, key;
+  const tag = (t) => `<div class="tag" style="--tc:${csTeamColor(t)}">${GLYPH[t]}</div>`;
+  p.style.removeProperty("--tc");
+  if (s.phase === "finished") {
+    return syncVictory();
+  }
+  p.className = "plate" + (s.phase === "clue" ? " waiting" : s.phase === "paused" ? " paused" : "");
+  if (s.phase === "guess" && s.clue) {
+    const left = s.clue.n - s.opened;
+    key = "g:" + s.clue.word + s.clue.n + ":" + left + ":" + csLang();
+    html = `${tag(s.clue.team)}<div class="txt"><q>${escapeHtml(s.clue.word)}</q></div><div class="rt"><small>${escapeHtml(T("left_to_open"))}</small><b>${left}</b><small>${escapeHtml(tpl("of_n", { n: s.clue.n }))}</small></div>`;
+  } else if (s.phase === "paused") {
+    key = "p:" + csLang() + isHost;
+    html = `<div class="tag" style="--tc:#bbb">❚❚</div><div class="txt"><span class="msg">${escapeHtml(csT("pause_t"))}: ${escapeHtml(csT("pause_d"))}</span></div><div class="rt"><button class="resumebtn" id="resumebtn" type="button">${escapeHtml(csT("btn_resume"))}</button></div>`;
+  } else if (s.phase === "clue") {
+    key = "c:" + s.team + csLang();
+    html = `${tag(s.team)}<div class="txt"><span class="msg">${escapeHtml(csT("clue_wait"))}<span class="dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></span></div><div class="rt"><small>${escapeHtml(T("secs"))}</small><b id="secs"></b></div>`;
+  } else {
+    key = "o:" + s.phase + s.team + csLang();
+    html = `${tag(s.team)}<div class="txt"><span class="msg">${escapeHtml(tpl("turn_of", { team: csTeamName(s.team) }))}</span></div>`;
+  }
+  if (p.dataset.key !== key) {
+    p.dataset.key = key;
+    p.innerHTML = html + `<div class="timer" id="timer"><i></i></div>`;
+    const rb = $("resumebtn");
+    if (rb) rb.onclick = () => conn.send({ type: "resume" });
+    p.style.setProperty("--tc", csTeamColor(s.phase === "guess" && s.clue ? s.clue.team : s.team));
+    if (s.phase === "guess") { p.classList.add("slam"); later(600, () => p.classList.remove("slam")); }
+    fitPlate();
+  }
+}
+function syncVictory() {
+  const p = $("plate");
+  const s = state;
+  const key = "f:" + s.game + csLang() + JSON.stringify(s.wins) + s.winner;
+  p.className = "victory" + (s.winner ? " w-" + s.winner : "");
+  if (p.dataset.key === key) return;
+  p.dataset.key = key;
+  const title = s.winner ? tpl("win_of", { team: csTeamName(s.winner) }) : T("final_title");
+  const reason = csT("end_" + s.finishedReason);
+  p.innerHTML = `<div><div class="shout">${escapeHtml(title)}</div><small>${escapeHtml(reason)}</small></div>
+    <div class="wins" title="${escapeHtml(T("wins_t"))}"><span class="r">${s.wins.red}</span> : <span class="b">${s.wins.blue}</span></div>`;
+}
+function syncFoot() {
+  const f = $("foot");
+  const s = state;
+  let key, html = "";
+  if (s.phase === "finished") {
+    key = "fin:" + s.game + isHost + csLang() + JSON.stringify(s.awards);
+    if (f.dataset.key === key) return;
+    f.dataset.key = key;
+    const aw = (s.awards || []).map((a) => {
+      const p = a.playerId ? player(a.playerId) : null;
+      const who = p ? `${avHtml(p)}${escapeHtml(p.name)}` : `<span class="glyph ${a.team}">${GLYPH[a.team]}</span>`;
+      let d = "";
+      if (a.key === "clue") d = tpl("aw_clue_d", { word: a.word, n: a.value, w: csWords(a.value) });
+      else if (a.key === "sniper") d = tpl("aw_sniper_d", { n: a.value });
+      else if (a.key === "oops") d = tpl("aw_oops_d", { n: a.value });
+      return `<span class="aw">${who}<span>${escapeHtml(csT("aw_" + a.key))}${d ? ` <small>${escapeHtml(d)}</small>` : ""}</span></span>`;
+    }).join("");
+    html = `<div class="awards">${aw}</div><div class="actions"><button type="button" id="again"${isHost ? "" : " disabled"}>${escapeHtml(T("btn_again"))}</button><button type="button" class="g" id="tolobby"${isHost ? "" : " disabled"}>${escapeHtml(T("btn_lobby"))}</button><a class="g" href="index.html">${escapeHtml(T("btn_home"))}</a></div>`;
+    f.innerHTML = html;
+    $("again").onclick = () => { startNote = ""; conn.send({ type: "start" }); };
+    $("tolobby").onclick = () => conn.send({ type: "lobby" });
+    return;
+  }
+  const last = s.log[s.log.length - 1];
+  key = "live:" + (last ? s.log.length : 0) + csLang();
+  if (f.dataset.key === key) return;
+  f.dataset.key = key;
+  if (!last) { f.innerHTML = ""; return; }
+  const body = last.word ? `<span class="glyph ${last.team}">${GLYPH[last.team]}</span><q>${escapeHtml(last.word)}</q> ${last.n} ${glyphs(last.hits)} <small>${escapeHtml(csEndText(last.end))}</small>` : `<span class="glyph ${last.team}">${GLYPH[last.team]}</span>${escapeHtml(csEndText(last.end))}`;
+  f.innerHTML = `<span class="eyebrow">${escapeHtml(T("last_turn"))}</span><span class="lastturn">${body}</span>`;
+}
+function syncPoster() {
+  const old = $("poster");
+  if (state.phase !== "draw") { if (old) old.remove(); return; }
+  if (old) return;
+  const capsHtml = ["red", "blue"].map((t) => { const p = player(state.caps[t]); return p ? `<span>${GLYPH[t]} ${avHtml(p)}${escapeHtml(p.name)}</span>` : ""; }).join("");
+  $("center").insertAdjacentHTML("beforeend", `<div class="poster" id="poster" style="--tc:${csTeamColor(state.starter)}"><div class="eyebrow">${escapeHtml(T("draw_t"))}</div><h1 class="shout">${escapeHtml(tpl("starts", { team: csTeamName(state.starter) }))}</h1><div class="eyebrow">${escapeHtml(T("caps_t"))}</div><div class="caps">${capsHtml}</div></div>`);
+  fitShout($("poster").querySelector(".shout"));
+}
+function fitShout(h) {
+  if (!h) return;
+  let fs = parseFloat(getComputedStyle(h).fontSize), guard = 0;
+  const ph = () => h.parentNode.clientHeight || main.clientHeight; // у display:contents (портретное лобби) своей высоты нет
+  while (fs > 22 && (h.scrollWidth > h.clientWidth + 1 || h.scrollHeight > ph() * 0.5) && guard++ < 80) { fs -= 2; h.style.fontSize = fs + "px"; }
+}
+
+function drawStage() {
+  const key = [state.game, state.settings.mode, state.board.length].join(":");
+  if (stageKey !== key || !$("stage")) {
+    stageKey = key;
+    lastRoster = "";
+    viewKey = "stage:" + key;
+    buildStage();
+  }
+  const freshN = syncGrid();
+  syncPanels();
+  syncPlate();
+  syncFoot();
+  syncPoster();
+  return freshN;
+}
+
+// ---------- кадр ----------
+let lastTickSec = null;
+function frame() {
+  requestAnimationFrame(frame);
+  if (!state || dead || !state.phaseEnd) return;
+  const left = state.phaseEnd - csNow();
+  const total = Math.max(1, state.phaseEnd - state.phaseStart);
+  const live = state.phase === "clue" || state.phase === "guess";
+  const bar = $("timer");
+  if (bar && live) {
+    bar.firstChild.style.transform = `scaleX(${Math.max(0, Math.min(1, left / total))})`;
+    bar.classList.toggle("hot", left < 5000);
+  }
+  const secs = $("secs");
+  if (secs && live) {
+    secs.textContent = String(Math.max(0, Math.ceil(left / 1000)));
+    secs.classList.toggle("hot", left < 5000);
+  }
+  if (live && left < 5000 && left > 0) {
+    const sec = Math.ceil(left / 1000);
+    if (sec !== lastTickSec) { lastTickSec = sec; csSfx.tick(true); }
+  }
+}
+
+// «Капитан сменился»: табло объясняет причину (иначе игроки видят нового капитана без объяснений)
+function capNotice() {
+  const cc = state.capChange;
+  const seq = cc ? cc.seq : 0;
+  if (lastCapSeq === null) { lastCapSeq = seq; return; }
+  if (!cc || seq === lastCapSeq) return;
+  lastCapSeq = seq;
+  showBanner(csCapText(cc, (id) => (player(id) || { name: "?" }).name), "notice");
+  clearTimeout(capNotice.t);
+  capNotice.t = setTimeout(() => showBanner(null), 7000);
+}
+
+function render() {
+  if (!state || dead) return;
+  document.body.dataset.phase = state.phase;
+  $("brand").textContent = T("game_name");
+  $("codechip").textContent = CODE;
+  $("codechip").classList.toggle("hidden", state.phase === "lobby");
+  const inGame = !["lobby", "finished"].includes(state.phase);
+  $("endbtn").classList.toggle("hidden", !(isHost && inGame));
+  $("endbtn").title = T("btn_end");
+  $("endbtn").setAttribute("aria-label", T("btn_end"));
+  const canSkip = isHost && ["clue", "guess", "swap", "draw"].includes(state.phase);
+  if (state.phase !== lastPhase) { hostTap.disarm(); lastPhase = state.phase; } // взведённое «Точно дальше?» не переживает смену фазы
+  $("skipbtn").classList.toggle("hidden", !canSkip);
+  $("skipbtn").title = T("btn_skip");
+  if (!canSkip || !inGame) hostTap.disarm();
+  syncHostBtns();
+  drawHostbar();
+  capNotice();
+  let fresh = 0;
+  if (state.phase === "lobby") drawLobby(); else fresh = drawStage();
+  // карточка переворачивается раньше, чем экран сменит цвет: ход соперника начинается после того, как все увидели результат
+  paint(phaseColor(), fresh && curColor !== undefined ? 900 : 0);
+  fitGrid();
+  fitPlate();
+}
+$("endbtn").onclick = () => { if (hostTap.tap("end")) conn.send({ type: "end" }); };
+$("skipbtn").onclick = () => { if (hostTap.tap("skip")) conn.send({ type: "skip" }); };
+main.addEventListener("click", (e) => {
+  const b = e.target && e.target.closest ? e.target.closest("[data-kick]") : null;
+  if (b && isHost && hostTap.tap("kick:" + b.dataset.kick)) conn.send({ type: "kick", playerId: b.dataset.kick });
+});
+
+let lastW = window.innerWidth;
+window.addEventListener("resize", () => {
+  const sameW = window.innerWidth === lastW;
+  lastW = window.innerWidth;
+  if (sameW && state && state.phase === "lobby") return;
+  viewKey = "";
+  if (state) render();
+});
+window.addEventListener("langchange", () => {
+  viewKey = "";
+  stageKey = "";
+  const p = $("plate"); if (p) p.dataset.key = "";
+  const f = $("foot"); if (f) f.dataset.key = "";
+  if (isHost && state && (state.phase === "lobby" || state.phase === "finished") && state.settings.lang !== csLang()) conn.send({ type: "settings", settings: { lang: csLang() } });
+  render();
+});
+
+// ---------- «🔑 Ссылка ведущего» (MP.hostLink) ----------
+let hostNote = "", hostNoteT = 0, pasteOpen = false, hostLost = false, hostBarKey = "";
+const HL = window.MP && MP.hostLink ? MP.hostLink({
+  hostKeyFn: hostKey,
+  boardPath: "callsign-board.html",
+  getRoom: () => CODE,
+  sendHost: (t) => { if (conn) conn.send({ type: "host", token: t }); },
+  onToast: (kind) => {
+    if (kind === "copied") setHostNote(T("link_copied"));
+    else if (kind === "shared") setHostNote(T("link_shared"));
+    else if (kind === "none") setHostNote(T("link_none"));
+  },
+  prompt: (m, v) => window.prompt(T("link_prompt_hint"), v),
+}) : null;
+function setHostNote(text) {
+  hostNote = text;
+  clearTimeout(hostNoteT);
+  if (text) hostNoteT = setTimeout(() => { hostNote = ""; drawHostbar(); }, 5000);
+  drawHostbar();
+}
+function hasHostToken() {
+  try { return !!localStorage.getItem(hostKey()); } catch (e) { return false; }
+}
+function drawHostbar() {
+  const bar = $("hostbar");
+  if (dead || !state || !HL) { bar.innerHTML = ""; hostBarKey = ""; return; }
+  const claim = !isHost && (hostLost || !hasHostToken());
+  const key = [isHost, hostLost, claim, pasteOpen, hostNote, csLang()].join("|");
+  if (key === hostBarKey) return;
+  hostBarKey = key;
+  bar.innerHTML = "";
+  if (isHost) {
+    const lb = el("button", "linkbtn");
+    lb.type = "button";
+    lb.title = T("host_link");
+    lb.setAttribute("aria-label", T("host_link"));
+    lb.append("🔑", el("span", "lt", " " + T("host_link")));
+    lb.onclick = () => { HL.copy(); };
+    bar.append(lb);
+  }
+  if (claim && hostLost && hasHostToken()) {
+    const note = el("span", "note", T("host_lost_msg"));
+    const tk = el("button", "linkbtn", T("btn_take"));
+    tk.type = "button";
+    tk.onclick = () => { HL.take(); };
+    bar.append(note, tk);
+  } else if (claim) {
+    if (pasteOpen) {
+      const inp = el("input");
+      inp.type = "text";
+      inp.placeholder = T("host_paste_ph");
+      inp.autocomplete = "off";
+      const ok = el("button", "linkbtn", T("btn_ok"));
+      ok.type = "button";
+      const submit = () => {
+        if (!MP.hostLink.parseToken(inp.value)) { setHostNote(T("host_bad")); return; }
+        HL.take(Date.now(), inp.value);
+        pasteOpen = false;
+      };
+      ok.onclick = submit;
+      inp.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+      bar.append(inp, ok);
+      setTimeout(() => inp.focus(), 0);
+    } else {
+      const im = el("button", "linkbtn", T("btn_im_host"));
+      im.type = "button";
+      im.onclick = () => { pasteOpen = true; drawHostbar(); };
+      bar.append(im);
+    }
+  }
+  if (hostNote) bar.append(el("span", "note", hostNote));
+}
+
+// ---------- связь ----------
+function shake() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const s = $("stage");
+  if (!s) return;
+  s.classList.remove("shake"); void s.offsetWidth; s.classList.add("shake");
+}
+function onEvent(e) {
+  switch (e.type) {
+    case "clue": csSfx.clue(); break;
+    case "open":
+      if (e.t === "x") { csSfx.boom(); shake(); }
+      else if (e.t === e.team) csSfx.good();
+      else if (e.t === "n") csSfx.neutral();
+      else csSfx.foe();
+      break;
+    case "final": if (e.winner) later(900, () => csSfx.fanfare()); break;
+    case "paused": csSfx.buzz(); break;
+    case "resumed": csSfx.whoosh(); break;
+  }
+}
+function onMessage(m) {
+  switch (m.type) {
+    case "hello":
+      state = m.state;
+      if (gone$) gone$.hello();
+      if (!isHost) {
+        let token = null;
+        try { token = localStorage.getItem(hostKey()); } catch (e) {}
+        if (token) conn.send({ type: "host", token });
+      }
+      render();
+      break;
+    case "state":
+      state = m.state;
+      render();
+      break;
+    case "host_ok":
+      isHost = true;
+      hostLost = false;
+      pasteOpen = false;
+      document.body.classList.add("host");
+      // команды ведущего, нажатые в обрыв связи, ждут в очереди транспорта: после признания доски отправляем только настройки
+      // (старый «Поехали» или «■» уйти не должны — решение уже устарело)
+      if (conn && conn.flush) conn.flush((m) => m && m.type === "settings", () => {});
+      viewKey = "";
+      if (state && state.phase === "lobby" && state.settings.lang !== csLang()) conn.send({ type: "settings", settings: { lang: csLang() } });
+      render();
+      break;
+    case "host_lost":
+      isHost = false;
+      hostLost = true;
+      document.body.classList.remove("host");
+      viewKey = "";
+      render();
+      break;
+    case "rejected":
+      if (m.action === "start") {
+        startNote = m.reason === "team_small" ? tpl("team_small", { m: state ? state.minTeam : 2, r: m.red, b: m.blue }) : m.reason === "few_players" ? tpl("need_more", { n: m.need || 1 }) : "";
+        viewKey = "";
+        render();
+      }
+      break;
+    case "event": onEvent(m.event); break;
+    case "error":
+      if (m.error === "room_expired") gone();
+      if (m.error === "bad host token") {
+        hostLost = false;
+        try { localStorage.removeItem(hostKey()); } catch (e) {}
+        pasteOpen = true;
+        setHostNote(T("host_bad"));
+      }
+      break;
+  }
+}
+
+const gone$ = window.MP && MP.roomGone ? MP.roomGone({ showForm: noRoom, onClosed: closed }) : null;
+function gone() {
+  if (gone$) gone$.gone(); else closed();
+}
+function endScreen() {
+  dead = true;
+  main.innerHTML = "";
+  $("hostbar").innerHTML = "";
+  for (const id of ["endbtn", "skipbtn"]) $(id).classList.add("hidden");
+}
+function closed() {
+  endScreen();
+  showBanner(T("expired"));
+}
+function noRoom() {
+  endScreen();
+  const b = $("banner");
+  b.classList.remove("hidden");
+  b.innerHTML = `<div class="gonebox"><div class="t">${escapeHtml(T("noroom_title"))}</div><div>${escapeHtml(T("noroom_text"))}</div>
+    <form id="goneform" autocomplete="off"><input id="gonecode" maxlength="24" placeholder="${escapeHtml(T("code_ph"))}" aria-label="${escapeHtml(T("code_ph"))}" value="${escapeHtml(CODE)}"><button type="submit">${escapeHtml(T("btn_go"))}</button></form></div>`;
+  $("goneform").onsubmit = (e) => {
+    e.preventDefault();
+    const c = MP.roomGone.normalize($("gonecode").value);
+    if (c) location.href = `callsign-board.html?r=${encodeURIComponent(c)}`;
+  };
+}
+
+// Холодная загрузка: слова и заголовки подгоняются по запасному шрифту, а Roboto Flex шире — после загрузки пересчитываем
+function refitAll() {
+  if (!state || dead) return;
+  fitGrid();
+  fitPlate();
+  fitShout(document.querySelector("#poster .shout"));
+  fitShout(document.querySelector(".lmid .shout"));
+  const bc = $("bigcode");
+  if (bc) fit(bc, bc.parentNode, "--code-fs", codeMax(), 16);
+}
+if (document.fonts) {
+  if (document.fonts.ready) document.fonts.ready.then(refitAll);
+  if ("onloadingdone" in document.fonts) document.fonts.onloadingdone = refitAll;
+}
+
+async function boot() {
+  // ?h=токен — ссылка ведущего на другое устройство: токен кладём в хранилище и убираем из адреса
+  const h = params.get("h");
+  if (h && CODE) {
+    try { localStorage.setItem(hostKey(), h); } catch (e) {}
+    history.replaceState(null, "", `?r=${CODE}`);
+  }
+  paint(null);
+  if (!(await ensureRoom())) return;
+  const banner = $("conn");
+  let netLost = false, netQuiet = false;
+  const showNet = () => {
+    banner.textContent = T(netLost ? "err_connect" : "conn_lost");
+    banner.classList.toggle("on", netLost || netQuiet);
+  };
+  window.addEventListener("langchange", showNet);
+  conn = csConnect({
+    code: CODE,
+    onMessage,
+    onGone: gone,
+    onOpen: () => { isHost = false; },
+    onState: (st) => { netLost = st === "lost"; if (st === "open") netQuiet = false; showNet(); },
+    onQuiet: (q) => { netQuiet = !!q; showNet(); },
+  });
+  requestAnimationFrame(frame);
+  // ручка для отладки и стенда: те же сообщения, что шлют кнопки доски
+  window.csBoard = { send: (m) => conn.send(m), get state() { return state; }, get code() { return CODE; } };
+}
+// имена на доске: целиком, где помещаются; не влезло — кегль мельче (не ниже 70%)
+const FIT_SEL = ".seat b, .mem b, .lp b";
+function fitNameEl(b) {
+  b.style.fontSize = "";
+  if (b.clientWidth < 8) return;
+  b.title = b.textContent;
+  if (b.scrollWidth <= b.clientWidth + 1) return;
+  const base = parseFloat(getComputedStyle(b).fontSize) || 20;
+  let fs = base;
+  while (b.scrollWidth > b.clientWidth + 1 && fs > base * 0.7) { fs -= 1; b.style.fontSize = fs + "px"; }
+}
+let fitQueued = false;
+function fitAllNames() {
+  fitQueued = false;
+  const bs = document.querySelectorAll(FIT_SEL);
+  for (let i = 0; i < bs.length; i++) fitNameEl(bs[i]);
+}
+function queueFit() { if (!fitQueued) { fitQueued = true; requestAnimationFrame(fitAllNames); } }
+if (window.MutationObserver) new MutationObserver(queueFit).observe(document.body, { childList: true, subtree: true, characterData: true });
+window.addEventListener("resize", queueFit);
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,801 @@
+"use strict";
+
+/*
+ * Сервер «Позывного»: HTTP (создание комнаты, health, long-poll) + WebSocket (игра). callsign-spec.md §8.
+ * Скелет перенесён из wave/server.js: комнаты, токены, грация офлайна, лимиты, дамп, poll-транспорт.
+ * Тайна сервера — раскладка поля: она живёт только в состоянии комнаты и в дампе на диске;
+ * снимки для клиентов собирает game.snapshot, который отдаёт её только капитанам (и всем — после конца партии).
+ *
+ * Запуск:  node server.js            (порт PORT, по умолчанию 4400)
+ * Разработка: NODE_ENV=development STATIC=.. node server.js — статика сайта с того же origin.
+ */
+
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const zlib = require("zlib");
+const { WebSocketServer } = require("ws");
+const { roomCode } = require("../lib/codes");
+const { clientIp, createGuessLimiter, rateOk: netRateOk, send } = require("../lib/net");
+const presence = require("../lib/presence");
+const { Game, clampSettings, cleanName, nameKey } = require("./game");
+const CONTENT = require("./content");
+
+const PORT = Number(process.env.PORT || 4400);
+const STATIC = process.env.STATIC ? path.resolve(process.env.STATIC) : null;
+const DEV = process.env.NODE_ENV === "development";
+const DUMP = process.env.DUMP_FILE || path.join(__dirname, "state", "rooms.json");
+const ROOM_TTL = Number(process.env.ROOM_TTL_MS || 30 * 60 * 1000);
+const SWEEP = Math.min(25000, Math.max(1000, Math.floor(ROOM_TTL / 4)));
+const MAX_ROOMS = Number(process.env.MAX_ROOMS || 200);
+const MAX_ROOMS_PER_IP = Number(process.env.MAX_ROOMS_PER_IP || 20);
+const MAX_SOCKETS_PER_ROOM = Number(process.env.MAX_SOCKETS_PER_ROOM || 100);
+const MAX_TOTAL_SOCKETS = Number(process.env.MAX_TOTAL_SOCKETS || 3000);
+// с одного адреса — не больше этого во всех комнатах: доска в своей комнате (по hostToken) не анонимна и не истекает,
+// и один адрес сотней «досок» в двадцати своих комнатах занимал весь MAX_TOTAL_SOCKETS — сервер вставал для всех
+const MAX_SOCKETS_PER_IP = Number(process.env.MAX_SOCKETS_PER_IP || 300);
+const EVICT_GRACE_MS = Number(process.env.EVICT_GRACE_MS || 10000);
+const OFFLINE_GRACE_MS = Number(process.env.OFFLINE_GRACE_MS || 8000);
+const PONG_MISSES = Number(process.env.PONG_MISSES || 3);
+// Быстрый пинг только для комнат «в игре» (T-W2-03, wave-014): общий цикл SWEEP — 25 с × 3 промаха, тихий обрыв
+// виден через 25–100 с. Свой цикл: PING_MS (8 с), GAME_PONG_MISSES промахов подряд И не меньше GAME_DEAD_MS тишины
+// (≥ 20 с: ложный офлайн стоил бы игроку раунда). Лобби и итоги этот цикл не трогает; SWEEP не тронут.
+const PING_MS = Math.max(1000, Number(process.env.PING_MS || 8000));
+const GAME_PONG_MISSES = Math.max(1, Number(process.env.GAME_PONG_MISSES || 2));
+const GAME_DEAD_MS = Math.max(20000, Number(process.env.GAME_DEAD_MS || 20000));
+// Офлайн-место в лобби/итогах живёт столько (U-07, wave P1-5); в игре не освобождается никогда
+const GHOST_TTL_MS = presence.ghostTtlMs();
+// Токенов на игрока — не больше этого: каждый подхват по имени выдаёт новый (см. fibs/server.js)
+const TOKENS_PER_PLAYER = 3;
+const SEND_BUFFER_LIMIT = Number(process.env.SEND_BUFFER_LIMIT || 1048576);
+const MSG_RATE = Number(process.env.MSG_RATE || 40);
+const MAX_ANON_PER_ROOM = Number(process.env.MAX_ANON_PER_ROOM || 30);
+// вся компания за одним роутером открывает страницу разом: 10 анонимных сокетов с адреса запирали остальных на ANON_TTL_MS
+const MAX_ANON_PER_IP = Number(process.env.MAX_ANON_PER_IP || 30);
+const ANON_TTL_MS = Number(process.env.ANON_TTL_MS || 30000);
+const POLL_GAP_MS = Number(process.env.POLL_GAP_MS || 12000);
+const MAX_MSG_BYTES = 8192;
+const LOG = "[callsign]";
+
+// случайность — криптографическая: порядок ответов на экране не должен выдавать авторов
+const rnd = (n) => crypto.randomInt(n);
+
+// ---------- комнаты ----------
+
+const rooms = new Map(); // code → room
+
+// Код комнаты — слово с двумя цифрами: читается вслух и не перебирается (см. guessBlocked)
+
+const newCode = () => roomCode((c) => rooms.has(c));
+
+// Перебор кодов: адрес, промахнувшийся GUESS_LIMIT раз за окно, до конца окна не получает ни одной комнаты
+const { blocked: guessBlocked, missed: guessMissed } = createGuessLimiter(Number(process.env.GUESS_LIMIT || 60));
+function roomFor(req, url) {
+  const ip = clientIp(req);
+  if (guessBlocked(ip)) return null;
+  const room = rooms.get((url.searchParams.get("r") || "").toUpperCase());
+  if (!room) guessMissed(ip);
+  return room || null;
+}
+
+function socketsFrom(ip) {
+  let n = 0;
+  for (const r of rooms.values()) for (const c of r.sockets) if (c.ip === ip) n++;
+  return n;
+}
+
+function totalSockets() {
+  let n = 0;
+  for (const r of rooms.values()) n += r.sockets.size;
+  return n;
+}
+
+function destroyRoom(room) {
+  clearTimeout(room.timer);
+  for (const t of room.offlineTimers.values()) clearTimeout(t);
+  room.offlineTimers.clear();
+  for (const c of room.sockets) {
+    try {
+      if (c.poll || c.ws.readyState !== 1) { send(c.ws, { type: "error", error: "room_expired" }); c.ws.terminate(); continue; }
+      const ws = c.ws;
+      const kill = setTimeout(() => { try { ws.terminate(); } catch {} }, 1000);
+      ws.send(JSON.stringify({ type: "error", error: "room_expired" }), () => { clearTimeout(kill); try { ws.close(4000, "room_expired"); } catch {} setTimeout(() => { try { ws.terminate(); } catch {} }, 1000).unref(); });
+    } catch {}
+  }
+  for (const [sid, c] of pollClients) if (c.room === room) pollClients.delete(sid);
+  rooms.delete(room.code);
+}
+
+function evictOldestEmpty(ip) {
+  let victim = null;
+  const cutoff = now() - EVICT_GRACE_MS;
+  for (const r of rooms.values()) {
+    if (ip && r.ip !== ip) continue;
+    if (![...r.sockets].some((c) => !isAnon(c)) && r.touched < cutoff && (r.game.s.phase === "lobby" || r.game.s.phase === "finished")) {
+      if (!victim || r.touched < victim.touched) victim = r;
+    }
+  }
+  if (!victim) return false;
+  destroyRoom(victim);
+  return true;
+}
+
+function revokeOtherTokens(room, playerId, keep) {
+  for (const [t, id] of Object.entries(room.tokens)) if (id === playerId && t !== keep) delete room.tokens[t];
+}
+
+function issueToken(room, playerId) {
+  const token = crypto.randomBytes(12).toString("base64url");
+  const mine = Object.keys(room.tokens).filter((t) => room.tokens[t] === playerId);
+  for (const t of mine.slice(0, Math.max(0, mine.length - TOKENS_PER_PLAYER + 1))) delete room.tokens[t];
+  room.tokens[token] = playerId;
+  return token;
+}
+
+function pruneTokens(room) {
+  const ids = new Set(room.game.s.players.map((p) => p.id));
+  for (const [t, id] of Object.entries(room.tokens)) if (!ids.has(id)) delete room.tokens[t];
+  // и счётчики обрывов ушедших: иначе цикл join/leave в лобби копил их без конца
+  for (const id of room.dropCounts.keys()) if (!ids.has(id)) room.dropCounts.delete(id);
+}
+
+function newRoom({ code, ip = "", hostToken, game, tokens = {}, touched = Date.now(), speed = 1 }) {
+  return {
+    code, ip, hostToken, game, tokens,
+    sockets: new Set(), // {ws, playerId?, host?}
+    offlineTimers: new Map(),
+    dropCounts: new Map(),
+    timer: null,
+    touched,
+    speed,
+    skew: 0,
+    // speed < 1 (агенты-игроки в разработке): часы комнаты идут медленнее настоящих, иначе первое же действие
+    // после реального срока закрывало фазу через tick — таймер ждал, а часы в handle шли по-настоящему
+    vBase: Date.now(),
+    rBase: Date.now(),
+  };
+}
+
+const newGame = (g) => g;
+
+function createRoom({ settings = {}, speed = 1, ip = "" } = {}) {
+  if (ip) {
+    let mine = 0;
+    for (const r of rooms.values()) if (r.ip === ip) mine++;
+    if (mine >= MAX_ROOMS_PER_IP && !evictOldestEmpty(ip)) throw new Error("too many rooms from this address");
+  }
+  if (rooms.size >= MAX_ROOMS && !evictOldestEmpty()) throw new Error("too many rooms");
+  const code = newCode();
+  const room = newRoom({
+    code,
+    ip,
+    hostToken: crypto.randomBytes(12).toString("base64url"),
+    game: newGame(Game.create({ settings, code, rnd, content: CONTENT })),
+    speed: DEV ? Math.max(0.05, Math.min(20, Number(speed) || 1)) : 1, // <1 — замедление для агентов-игроков, только в разработке
+  });
+  rooms.set(room.code, room);
+  return room;
+}
+
+const rateOk = (client) => netRateOk(client, MSG_RATE);
+
+// Команды ведущего рассылают снимок всем: человеку хватает нескольких в секунду
+const HOST_RATE = 5;
+const OPEN_RATE = 4;
+function openRateOk(client) {
+  const t = Date.now();
+  if (!client.orl || t - client.orl.ts >= 1000) client.orl = { ts: t, n: 0 };
+  return ++client.orl.n <= OPEN_RATE;
+}
+function hostRateOk(client) {
+  const t = Date.now();
+  if (!client.hrl || t - client.hrl.ts >= 1000) client.hrl = { ts: t, n: 0 };
+  return ++client.hrl.n <= HOST_RATE;
+}
+
+const now = () => Date.now();
+// Часы комнаты: при speed > 1 (только разработка) таймер просыпается раньше и комната «догоняет» дедлайн,
+// при speed < 1 — идут медленнее настоящих (см. newRoom)
+const clock = (room) => (room.speed < 1 ? room.vBase + (now() - room.rBase) * room.speed : now() + (room.skew || 0));
+
+function schedule(room) {
+  clearTimeout(room.timer);
+  const at = room.game.nextDeadline();
+  if (at == null) return;
+  const wait = Math.max(0, (at - clock(room)) / room.speed);
+  room.timer = setTimeout(() => {
+    try {
+      if (room.speed > 1) room.skew += Math.max(0, at - clock(room));
+      afterChange(room, room.game.tick(clock(room)));
+    } catch (err) {
+      console.error(`${LOG} шаг таймера упал:`, err);
+    }
+  }, wait);
+}
+
+let statBlips = 0, statBack = 0, statDrops = 0;
+
+function scheduleOffline(room, playerId, grace = OFFLINE_GRACE_MS) {
+  if (!playerId) return;
+  if ([...room.sockets].some((c) => c.playerId === playerId)) return;
+  if (room.offlineTimers.has(playerId)) return;
+  const name = room.game.player(playerId)?.name || playerId;
+  const nth = (room.dropCounts.get(playerId) || 0) + 1;
+  room.dropCounts.set(playerId, nth);
+  statBlips++;
+  console.log(`${LOG} ${room.code}: ${name} потерял связь (обрыв №${nth} за партию), ждём ${OFFLINE_GRACE_MS} мс`);
+  const t = setTimeout(() => {
+    room.offlineTimers.delete(playerId);
+    if (!rooms.has(room.code)) return;
+    if ([...room.sockets].some((c) => c.playerId === playerId)) return;
+    statDrops++;
+    console.log(`${LOG} ${room.code}: ${name} не вернулся — offline`);
+    // исключение в таймере непойманное — уронило бы процесс со всеми комнатами
+    try {
+      afterChange(room, [{ type: "offline", playerId }, ...room.game.setOnline(playerId, false, clock(room))]);
+    } catch (err) {
+      console.error(`${LOG} офлайн-таймер упал:`, err);
+    }
+  }, grace);
+  if (t.unref) t.unref();
+  room.offlineTimers.set(playerId, t);
+}
+
+function cancelOffline(room, playerId) {
+  const t = room.offlineTimers.get(playerId);
+  if (!t) return;
+  clearTimeout(t);
+  room.offlineTimers.delete(playerId);
+  statBack++;
+}
+
+function afterChange(room, events = []) {
+  room.touched = now();
+  broadcastState(room);
+  for (const e of events) broadcastEvent(room, e);
+  schedule(room);
+}
+
+/*
+ * Снимки: доске — общий вид, телефону — ещё и своя роль; капитану — раскладка поля. Собираем по одному разу на вид, а не на каждый сокет.
+ */
+function stateFor(room, c, cache) {
+  const t = clock(room);
+  if (c.host || c.wasHost) return cache.board || (cache.board = JSON.stringify({ type: "state", state: room.game.snapshot(t, "board") }));
+  const key = c.playerId || "";
+  if (!cache[key]) cache[key] = JSON.stringify({ type: "state", state: room.game.snapshot(t, c.playerId || null) });
+  return cache[key];
+}
+
+function broadcastState(room) {
+  const cache = {};
+  for (const c of room.sockets) {
+    if (c.ws.readyState !== 1) continue;
+    if (!c.poll && c.ws.bufferedAmount > SEND_BUFFER_LIMIT) {
+      console.log(`${LOG} ${room.code}: сокет не читает, буфер ${Math.round(c.ws.bufferedAmount / 1024)} КБ — рвём`);
+      c.ws.terminate();
+      continue;
+    }
+    c.ws.send(stateFor(room, c, cache));
+  }
+}
+
+function broadcastEvent(room, e) {
+  const data = JSON.stringify({ type: "event", event: e });
+  for (const c of room.sockets) if (c.ws.readyState === 1) c.ws.send(data);
+}
+
+function sendHello(room, c) {
+  const hello = { type: "hello", code: room.code, state: room.game.snapshot(clock(room), c.host ? "board" : c.playerId || null) };
+  // MP_OFF=1 — аварийный выключатель клиентского каркаса mp-common.js: страницы возвращаются к прежнему коду
+  if (process.env.MP_OFF === "1") hello.mp = false;
+  send(c.ws, hello);
+}
+
+
+// ---------- HTTP ----------
+
+const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".woff2": "font/woff2" };
+
+function serveStatic(req, res) {
+  const urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
+  const file = path.join(STATIC, urlPath === "/" ? "index.html" : urlPath);
+  // с разделителем: иначе «/../randomhost-old/x» проходил проверку префикса как соседний каталог
+  // каталоги state/ (токены игроков, дампы комнат, журналы пульта) в разработке не отдаём: STATIC=.. раздаёт весь репозиторий
+  if (!file.startsWith(STATIC + path.sep) || path.basename(file).startsWith(".") || /(^|[\\/])state([\\/]|$)/.test(path.relative(STATIC, file))) { res.writeHead(404); return res.end(); }
+  fs.readFile(file, (err, data) => {
+    if (err) { res.writeHead(404); return res.end("not found"); }
+    const type = MIME[path.extname(file)] || "application/octet-stream";
+    if (/text|javascript|json|svg/.test(type) && /\bgzip\b/.test(req.headers["accept-encoding"] || "") && data.length > 1024) {
+      return zlib.gzip(data, (e, gz) => {
+        if (e) { res.writeHead(200, { "Content-Type": type }); return res.end(data); }
+        res.writeHead(200, { "Content-Type": type, "Content-Encoding": "gzip", Vary: "Accept-Encoding" });
+        res.end(gz);
+      });
+    }
+    res.writeHead(200, { "Content-Type": type });
+    res.end(data);
+  });
+}
+
+function readJson(req) {
+  return new Promise((resolve) => {
+    let body = "", done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    req.on("data", (c) => { body += c; if (body.length > 10000) { finish({}); req.destroy(); } });
+    // Только объект: тело `null` превращало `body.sid` в TypeError в async-обработчике —
+    // unhandledRejection и падение процесса со всеми комнатами от одного запроса.
+    req.on("end", () => { try { const v = JSON.parse(body || "{}"); finish(v && typeof v === "object" && !Array.isArray(v) ? v : {}); } catch { finish({}); } });
+    req.on("error", () => finish({}));
+  });
+}
+
+
+
+
+// ---------- запасной транспорт: long-polling ----------
+
+const pollClients = new Map(); // sid → client
+
+function openPoll(room, opts = {}) {
+  const sid = crypto.randomBytes(12).toString("base64url");
+  const shim = {
+    readyState: 1,
+    queue: [],
+    waiter: null,
+    bufferedAmount: 0,
+    send: (data) => { shim.queue.push(data); if (shim.waiter) { const w = shim.waiter; shim.waiter = null; w(); } },
+    ping: () => {},
+    terminate: () => closePoll(sid),
+  };
+  const client = { ws: shim, playerId: null, host: false, poll: true, room, sid, lastSeen: now(), opened: now(), inflight: false, ip: opts.ip || "" };
+  room.sockets.add(client);
+  pollClients.set(sid, client);
+  sendHello(room, client);
+  return client;
+}
+
+function closePoll(sid) {
+  const client = pollClients.get(sid);
+  if (!client) return;
+  const room = client.room;
+  client.ws.readyState = 3;
+  room.sockets.delete(client);
+  pollClients.delete(sid);
+  if (client.ws.waiter) { const w = client.ws.waiter; client.ws.waiter = null; w(); }
+  scheduleOffline(room, client.playerId);
+}
+
+const isAnon = (c) => !c.playerId && !c.host && !c.wasHost;
+function anonCount(room, ip) {
+  let n = 0;
+  for (const c of room.sockets) if (isAnon(c) && (ip === undefined || c.ip === ip)) n++;
+  return n;
+}
+function roomHasSpace(room, ip) {
+  if (room.sockets.size >= MAX_SOCKETS_PER_ROOM || totalSockets() >= MAX_TOTAL_SOCKETS) return false;
+  if (ip && socketsFrom(ip) >= MAX_SOCKETS_PER_IP) return false;
+  if (anonCount(room) >= MAX_ANON_PER_ROOM) return false;
+  return !ip || anonCount(room, ip) < MAX_ANON_PER_IP;
+}
+
+async function route(req, res) {
+  const url = new URL(req.url, "http://x");
+  const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json" }); res.end(JSON.stringify(obj)); };
+  if (url.pathname === "/callsign/api/session") {
+    const room = roomFor(req, url);
+    if (!room) return json(404, { error: "no such room" });
+    const ip = clientIp(req);
+    if (!roomHasSpace(room, ip)) return json(503, { error: "busy" });
+    const client = openPoll(room, { ip });
+    const first = client.ws.queue.splice(0);
+    return json(200, { sid: client.sid, messages: first.map((d) => JSON.parse(d)) });
+  }
+  if (url.pathname === "/callsign/api/poll") {
+    const client = pollClients.get(String(url.searchParams.get("sid") || ""));
+    if (!client) return json(410, { error: "session gone" });
+    if (!rateOk(client)) return json(429, { error: "slow down" });
+    client.lastSeen = now();
+    // один висящий запрос на сессию: новый закрывает прежний (иначе 300 запросов на один sid держали 300 таймеров)
+    if (client.ws.waiter) client.ws.waiter();
+    const flush = () => { client.inflight = false; client.lastSeen = now(); json(200, { messages: client.ws.queue.splice(0).map((d) => JSON.parse(d)) }); };
+    if (client.ws.queue.length) return flush();
+    let done = false;
+    const finish = () => { if (done) return; done = true; clearTimeout(t); client.ws.waiter = null; flush(); };
+    const t = setTimeout(finish, 20000);
+    client.ws.waiter = finish;
+    client.inflight = true;
+    res.on("close", () => {
+      if (done) return;
+      done = true; clearTimeout(t); client.inflight = false; client.lastSeen = now();
+      if (client.ws.waiter === finish) client.ws.waiter = null;
+    });
+    return;
+  }
+  if (url.pathname === "/callsign/api/msg" && req.method === "POST") {
+    const body = await readJson(req);
+    const client = pollClients.get(String(body.sid || ""));
+    if (!client) return json(410, { error: "session gone" });
+    if (!rateOk(client)) return json(429, { error: "slow down" });
+    try { handle(client.room, client, body.msg || {}); } catch (err) { send(client.ws, { type: "error", error: err.message }); }
+    return json(200, { ok: true });
+  }
+  if (url.pathname === "/callsign/api/health") return json(200, { ok: true, rooms: rooms.size });
+  if (url.pathname === "/callsign/api/rooms" && req.method === "POST") {
+    const body = await readJson(req);
+    try {
+      const room = createRoom({ settings: body.settings, speed: body.speed, ip: clientIp(req) });
+      return json(200, { code: room.code, hostToken: room.hostToken });
+    } catch (err) {
+      return json(400, { error: err.message });
+    }
+  }
+  if (STATIC && req.method === "GET") return serveStatic(req, res);
+  res.writeHead(404);
+  res.end();
+}
+
+// Любая ошибка в обработке запроса — 500 этому запросу, а не падение процесса со всеми комнатами
+const server = http.createServer(async (req, res) => {
+  try {
+    await route(req, res);
+  } catch (err) {
+    console.error(`${LOG} запрос ${req.method} ${String(req.url).slice(0, 80)} упал:`, err);
+    try { if (!res.headersSent) res.writeHead(500); res.end(); } catch {}
+  }
+});
+
+// ---------- WebSocket ----------
+
+const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MSG_BYTES, perMessageDeflate: false });
+
+server.on("upgrade", (req, socket, head) => {
+  let url;
+  // кривой адрес («//%5B/../callsign/ws» nginx нормализует и пропускает как есть) — new URL бросает,
+  // а исключение в обработчике upgrade непойманное и роняет процесс со всеми комнатами
+  try { url = new URL(req.url, "http://x"); } catch { return socket.destroy(); }
+  if (url.pathname !== "/callsign/ws") return socket.destroy();
+  const room = roomFor(req, url);
+  if (!room) { socket.write("HTTP/1.1 404 Not Found\r\n\r\n"); return socket.destroy(); }
+  const ip = clientIp(req);
+  if (!roomHasSpace(room, ip)) {
+    socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
+    return socket.destroy();
+  }
+  wss.handleUpgrade(req, socket, head, (ws) => onConnection(room, ws, { ip }));
+});
+
+function onConnection(room, ws, opts = {}) {
+  const client = { ws, playerId: null, host: false, misses: 0, gameMisses: 0, alive: now(), ip: opts.ip || "", opened: now() };
+  room.sockets.add(client);
+  ws.on("pong", () => { client.misses = 0; client.gameMisses = 0; client.alive = now(); });
+  sendHello(room, client);
+  ws.on("message", (raw) => {
+    if (!rateOk(client)) return;
+    client.alive = now(); // клиент, который шлёт, жив: серверный пинг игры его не рвёт
+    let msg;
+    try { msg = JSON.parse(raw); } catch { return; }
+    try { handle(room, client, msg); } catch (err) { send(ws, { type: "error", error: err.message }); }
+  });
+  // Без обработчика ошибка сокета (например, сообщение больше maxPayload) становится непойманной
+  // и роняет процесс со всеми комнатами. Рвём только этот сокет — close ниже уберёт его из комнаты.
+  ws.on("error", (err) => {
+    console.log(`${LOG} ${room.code}: ошибка сокета (${err.message}) — рвём`);
+    try { ws.terminate(); } catch {}
+  });
+  ws.on("close", () => {
+    room.sockets.delete(client);
+    scheduleOffline(room, client.playerId);
+  });
+}
+
+function handle(room, client, msg) {
+  const g = room.game;
+  const t = clock(room);
+  if (!msg || typeof msg !== "object") return;
+  if (msg.type === "ping") return send(client.ws, { type: "pong", t, c: typeof msg.c === "number" ? msg.c : undefined });
+  room.touched = now();
+  const reply = (obj) => send(client.ws, obj);
+  const me = client.playerId;
+  // Срок наступил, а таймер ещё не проснулся: сначала закрываем фазу, потом действие.
+  // Иначе ответ или голос, пришедший после звонка, успел бы проскочить.
+  const due = g.tick(t);
+  if (due.length) afterChange(room, due);
+  // ответ на действие игрока: отказ — только ему, успех — всем
+  const act = (action, r) => {
+    // word — какое слово поля совпало с подсказкой (оно видно на доске всем: секрета в нём нет)
+    if (!r.ok) return reply(r.word ? { type: "rejected", action, reason: r.reason, word: r.word } : { type: "rejected", action, reason: r.reason });
+    return afterChange(room, r.events || []);
+  };
+
+  switch (msg.type) {
+    case "host": {
+      if (msg.token !== room.hostToken) return reply({ type: "error", error: "bad host token" });
+      // одна доска на комнату: прежняя становится зрителем и узнаёт об этом
+      for (const c of room.sockets) if (c.host && c !== client) { c.host = false; c.wasHost = true; send(c.ws, { type: "host_lost" }); }
+      client.host = true;
+      client.wasHost = true;
+      reply({ type: "host_ok" });
+      return sendHello(room, client);
+    }
+    case "join": {
+      if (me && g.player(me) && !g.player(me).left) return reply({ type: "joined", playerId: me, token: client.token, name: g.player(me).name });
+      // Возврат по токену или имени — не чаще раза в секунду с сокета. Два сокета с одним токеном,
+      // перехватывающие игрока друг у друга, иначе гоняли бы полный снимок всей комнате 40 раз в секунду.
+      if (client.joinAt && now() - client.joinAt < 1000) return reply({ type: "error", error: "slow_down" });
+      // hasOwn: токен «__proto__»/«constructor» иначе находил бы свойства Object.prototype
+      let playerId = typeof msg.token === "string" && Object.hasOwn(room.tokens, msg.token) ? room.tokens[msg.token] : null;
+      if (playerId && !g.player(playerId)) {
+        delete room.tokens[msg.token];
+        if (!String(msg.name || "").trim()) return reply({ type: "error", error: "token_gone" });
+        playerId = null;
+      }
+      if (msg.token && !playerId && !String(msg.name || "").trim()) return reply({ type: "error", error: "token_gone" });
+      if (playerId && g.player(playerId)?.left) playerId = null;
+      // потерял localStorage, но игра идёт: то же имя у никем не занятого игрока — продолжаем его партию
+      if (!playerId) {
+        const name = cleanName(msg.name);
+        // Только того, кто уже признан офлайн, и не посреди раунда: иначе любой, зная имя с доски, пока у автора
+        // погас экран, входил за капитана и видел раскладку (как в wave: ревью безопасности 28.09)
+        // вся партия, не только ход: подхваченный капитан видел бы ключ
+        const secret = g.s.phase !== "lobby" && g.s.phase !== "finished";
+        const same = g.s.players.find((p) => !p.left && nameKey(p.name) === nameKey(name));
+        const sameOnline = !!same && [...room.sockets].some((c) => c.playerId === same.id);
+        const ghost = same && !secret && !same.online && !sameOnline ? same : null;
+        // посреди раунда тёзку не заводим: он выглядел бы на доске как тот же человек; в лобби — «Саша 2», как раньше.
+        // online говорит клиенту, что писать: «имя занято, возьми другое» (на связи) или «место ждёт игрока» (нет связи).
+        // Подхват по имени в секретной фазе ЗАПРЕЩЁН (ключ капитана).
+        if (same && !ghost && secret) return reply({ type: "error", error: "name_taken", online: sameOnline });
+        if (ghost) {
+          playerId = ghost.id;
+          msg.token = issueToken(room, playerId);
+          revokeOtherTokens(room, playerId, msg.token);
+        }
+      }
+      if (!playerId) {
+        // новый игрок с одного сокета — не чаще раза в 3 с; отказ (идёт раунд) попытку не тратит
+        if (client.newPlayerAt && now() - client.newPlayerAt < 3000) return;
+        // имена уникальны: тёзке дописываем номер, иначе подхват по имени перепутал бы игроков
+        let name = cleanName(msg.name);
+        if (!name) return reply({ type: "error", error: "bad_name" });
+        const taken = new Set(g.s.players.filter((p) => !p.left).map((p) => nameKey(p.name)));
+        for (let i = 2; taken.has(nameKey(name)); i++) name = `${cleanName(msg.name).slice(0, 13)} ${i}`;
+        playerId = "u_" + crypto.randomBytes(5).toString("hex");
+        const r = g.addPlayer({ id: playerId, name, now: t });
+        if (!r.ok) return reply({ type: "error", error: r.reason });
+        client.newPlayerAt = now();
+        const token = issueToken(room, playerId);
+        client.token = token;
+        // name — под каким именем мы приняты: «Маша 2», если «Маша» уже была; клиент скажет об этом человеку
+        reply({ type: "joined", playerId, token, name });
+      } else {
+        client.token = msg.token;
+        // у игрока один действующий токен: вернулся по своему — выданные за него подхватом по имени больше не работают
+        revokeOtherTokens(room, playerId, msg.token);
+        reply({ type: "joined", playerId, token: msg.token, name: g.player(playerId).name });
+      }
+      for (const c of room.sockets) if (c !== client && c.playerId === playerId) { c.playerId = null; send(c.ws, { type: "replaced" }); }
+      client.playerId = playerId;
+      client.joinAt = now();
+      cancelOffline(room, playerId);
+      return afterChange(room, [{ type: "online", playerId }, ...g.setOnline(playerId, true, t)]);
+    }
+    case "leave": {
+      if (!me) return;
+      const events = g.removePlayer(me, t);
+      client.playerId = null;
+      pruneTokens(room);
+      return afterChange(room, events);
+    }
+    // ---- игрок ----
+    case "avatar": return me ? act("avatar", g.setAvatar(me, String(msg.avatar || ""))) : undefined;
+    case "rename": return me ? act("rename", g.rename(me, String(msg.name || ""))) : undefined;
+    case "team": return me ? act("team", g.setTeam(me, msg.team === "red" || msg.team === "blue" ? msg.team : null)) : undefined;
+    case "captain": return me ? act("captain", g.claimCaptain(me)) : undefined;
+    case "clue": {
+      if (!me) return;
+      // число — именно число: "3", true и null движок раньше приводил к числу через Number()
+      const n = typeof msg.n === "number" ? msg.n : NaN;
+      return act("clue", g.clue(me, typeof msg.text === "string" ? msg.text : "", n, t));
+    }
+    case "open": {
+      if (!me) return;
+      // тап — решение за всю команду: не чаще OPEN_RATE раз в секунду с сокета (двойной тап не открывает две карточки)
+      if (!openRateOk(client)) return reply({ type: "rejected", action: "open", reason: "slow_down" });
+      return act("open", g.open(me, typeof msg.i === "number" ? msg.i : NaN, t));
+    }
+    case "stop": return me ? act("stop", g.stop(me, t)) : undefined;
+    case "react": {
+      if (!me) return;
+      const r = g.react(me, String(msg.emoji || ""), t);
+      if (!r.ok) return;
+      // реакция — только событие, снимок не меняется: не гоняем state всем
+      for (const e of r.events) broadcastEvent(room, e);
+      return;
+    }
+    // ---- ведущий (только доска) ----
+    case "settings": {
+      if (!client.host) return;
+      if (g.s.phase !== "lobby" && g.s.phase !== "finished") return reply({ type: "error", error: "game_started" });
+      g.s.settings = clampSettings({ ...g.s.settings, ...(msg.settings || {}) });
+      return afterChange(room, []);
+    }
+    case "start": {
+      if (!client.host) return;
+      const r = g.start(t);
+      if (!r.ok) return reply({ type: "rejected", action: "start", reason: r.reason, red: r.red, blue: r.blue, need: r.need });
+      pruneTokens(room); // офлайн-призраки в новую партию не перешли: их токены больше ничего не значат
+      return afterChange(room, r.events);
+    }
+    // «Играем!» после паузы (три пустых хода подряд): любой игрок или ведущий
+    case "resume": {
+      if (!client.host && !me) return;
+      const r = g.resume(t);
+      if (!r.ok) return reply({ type: "rejected", action: "resume", reason: r.reason });
+      return afterChange(room, r.events);
+    }
+    case "kick": {
+      if (!client.host || typeof msg.playerId !== "string" || !g.player(msg.playerId)) return;
+      const events = g.removePlayer(String(msg.playerId || ""), t);
+      pruneTokens(room);
+      for (const c of room.sockets) if (c.playerId === msg.playerId) { c.playerId = null; send(c.ws, { type: "kicked" }); }
+      return afterChange(room, events);
+    }
+    // «Дальше» (T-W2-23, wave-025): ведущий закрывает фазу как «время вышло» — без бонусов и без новых правил
+    case "skip": {
+      if (!client.host || !hostRateOk(client)) return;
+      const r = g.skip(t);
+      if (!r.ok) return reply({ type: "rejected", action: "skip", reason: r.reason });
+      return afterChange(room, r.events);
+    }
+    case "end": return client.host ? afterChange(room, g.abort(t)) : undefined;
+    case "lobby": {
+      if (!client.host) return;
+      const events = g.toLobby(t);
+      for (const p of g.s.players) p.online = [...room.sockets].some((c) => c.playerId === p.id);
+      pruneTokens(room);
+      return afterChange(room, events);
+    }
+    default:
+      return reply({ type: "error", error: "unknown message" });
+  }
+}
+
+// ---------- обслуживание: ping, TTL, дамп ----------
+
+setInterval(() => {
+  for (const room of rooms.values()) {
+    for (const c of room.sockets) {
+      if (c.poll) continue;
+      if (c.misses >= PONG_MISSES) { c.ws.terminate(); continue; }
+      c.misses = (c.misses || 0) + 1;
+      c.ws.ping();
+    }
+    const ph = room.game.s.phase;
+    if (room.sockets.size && ph !== "lobby" && ph !== "finished") room.touched = now();
+    if (now() - room.touched > ROOM_TTL) destroyRoom(room);
+  }
+  const rssMb = Math.round(process.memoryUsage().rss / 1048576);
+  if (rooms.size) {
+    const drops = statBlips ? `, обрывов ${statBlips} (вернулись ${statBack}, выпали ${statDrops})` : "";
+    console.log(`${LOG} комнат ${rooms.size}, соединений ${totalSockets()}, RSS ${rssMb} МБ${drops}`);
+  }
+  statBlips = statBack = statDrops = 0;
+  if (rssMb > 100) console.warn(`${LOG} ВНИМАНИЕ: RSS ${rssMb} МБ при лимите контейнера 128 МБ, комнат ${rooms.size}`);
+}, SWEEP);
+
+// Офлайн-место в лобби/итогах живёт GHOST_TTL_MS (U-07); в игре game.purgeGhosts ничего не делает (R1).
+// Свой таймер, не SWEEP: тот привязан к ROOM_TTL.
+setInterval(() => {
+  for (const room of rooms.values()) {
+    try {
+      const ev = room.game.purgeGhosts(clock(room), GHOST_TTL_MS);
+      if (ev.length) { pruneTokens(room); afterChange(room, ev); }
+    } catch (err) {
+      console.error(`${LOG} уборка призраков упала:`, err);
+    }
+  }
+}, Math.max(500, Math.min(10000, Math.floor(GHOST_TTL_MS / 4)))).unref();
+
+// Быстрый пинг комнат «в игре». SWEEP (TTL комнат, RSS-лог, медленный пинг) не трогаем.
+setInterval(() => {
+  const t = now();
+  for (const room of rooms.values()) {
+    const ph = room.game.s.phase;
+    if (ph === "lobby" || ph === "finished" || !room.sockets.size) continue;
+    for (const c of room.sockets) {
+      if (c.poll || !c.ws || c.ws.readyState !== 1) continue;
+      if (c.gameMisses >= GAME_PONG_MISSES && t - (c.alive || t) >= GAME_DEAD_MS) {
+        console.log(`${LOG} ${room.code}: сокет молчит ${Math.round((t - c.alive) / 1000)} с — закрываем`);
+        c.ws.terminate();
+        continue;
+      }
+      c.gameMisses = (c.gameMisses || 0) + 1;
+      try { c.ws.ping(); } catch {}
+    }
+  }
+}, PING_MS).unref();
+
+setInterval(() => {
+  const t = now();
+  for (const c of pollClients.values()) {
+    const idle = !c.inflight && t - c.lastSeen > POLL_GAP_MS;
+    const anon = !c.playerId && !c.host && !c.wasHost && t - c.opened > ANON_TTL_MS;
+    if (idle || anon || t - c.lastSeen > 40000) closePoll(c.sid);
+  }
+  // анонимный WebSocket (не вошёл и не доска) тоже не держит место в комнате дольше ANON_TTL_MS:
+  // 30 таких сокетов запирали комнату для доски и вернувшихся игроков
+  for (const room of rooms.values()) for (const c of room.sockets) if (!c.poll && isAnon(c) && c.opened && t - c.opened > ANON_TTL_MS) { try { c.ws.terminate(); } catch {} }
+}, 2000).unref();
+
+let dumpWasEmpty = false;
+function dump() {
+  try {
+    // раскладку поля пишем: без неё после рестарта партию не продолжить. Файл — только на сервере.
+    const data = [...rooms.values()].map((r) => ({ dumpedAt: now(), code: r.code, ip: r.ip, hostToken: r.hostToken, tokens: r.tokens, touched: r.touched, state: r.game.s }));
+    if (!data.length && dumpWasEmpty) return;
+    dumpWasEmpty = !data.length;
+    fs.mkdirSync(path.dirname(DUMP), { recursive: true });
+    fs.writeFileSync(DUMP + ".tmp", JSON.stringify(data), { mode: 0o600 });
+    fs.renameSync(DUMP + ".tmp", DUMP);
+  } catch (err) {
+    console.warn(`${LOG} дамп не удался:`, err.message);
+  }
+}
+
+/*
+ * После перезапуска сроки фазы сдвигаются на время простоя (dumpedAt), на подсказку и ход — не меньше 20 с:
+ * иначе рестарт в конце угадывания закрывал фазу раньше, чем телефоны успевали переподключиться.
+ */
+function restore() {
+  try {
+    if (!fs.existsSync(DUMP)) return;
+    for (const r of JSON.parse(fs.readFileSync(DUMP, "utf8"))) {
+      if (now() - r.touched > ROOM_TTL) continue;
+      const room = newRoom({ code: r.code, ip: r.ip || "", hostToken: r.hostToken, game: newGame(Game.from(r.state, rnd, CONTENT)), tokens: r.tokens || {}, touched: r.touched });
+      // простой сервера не съедает время фазы: сроки сдвигаем, а на подсказку и ход оставляем хотя бы 20 с
+      const s = room.game.s;
+      if (s.phaseEnd != null && r.dumpedAt) {
+        const down = Math.max(0, now() - r.dumpedAt);
+        s.phaseEnd += down;
+        if (s.phaseStart != null) s.phaseStart += down;
+        if (s.phase === "clue" || s.phase === "guess") s.phaseEnd = Math.max(s.phaseEnd, now() + 20000);
+      }
+      // рестарт — это обрыв у всех: даём 20 с вернуться, иначе первое же действие закрыло бы фазу без остальных
+      pruneTokens(room);
+      // уже офлайн в дампе: отсчёт GHOST_TTL_MS идёт с момента подъёма, а не «давно» — после деплоя лобби не опустеет
+      presence.onRestore(room.game.s.players, now());
+      for (const p of room.game.s.players) if (!p.left && p.online) scheduleOffline(room, p.id, 20000);
+      pruneTokens(room);
+      rooms.set(room.code, room);
+      schedule(room);
+    }
+    console.log(`${LOG} восстановлено комнат: ${rooms.size}`);
+  } catch (err) {
+    console.warn(`${LOG} восстановление не удалось:`, err.message);
+  }
+}
+
+restore();
+setInterval(dump, 5000);
+function fatal(what, err) {
+  try { console.error(`${LOG} ${what}:`, (err && err.stack) || err); } catch {}
+  try { dump(); } catch {}
+  process.exit(1);
+}
+process.on("uncaughtException", (err) => fatal("непойманное исключение", err));
+process.on("unhandledRejection", (err) => fatal("непойманный отказ промиса", err));
+
+process.on("SIGTERM", () => {
+  dump();
+  try { server.close(); } catch {}
+  for (const room of rooms.values()) {
+    for (const c of room.sockets) { try { if (!c.poll) c.ws.close(1012, "restart"); } catch {} }
+  }
+  setTimeout(() => process.exit(0), 500);
+});
+
+server.listen(PORT, () => console.log(`${LOG} порт ${PORT}${STATIC ? ", статика из " + STATIC : ""}${DEV ? ", режим разработки" : ""}`));
+
+module.exports = { rooms, handle, createRoom };
