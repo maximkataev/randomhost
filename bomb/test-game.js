@@ -337,6 +337,20 @@ test("каждое испытание решается своим ответом
   }
 });
 
+test("«не нажимай»: ранний тап по «сейчас» — провал, вовремя — ок (телефон не ждёт minMs)", () => {
+  for (const lvl of [1, 2, 3]) {
+    for (let i = 0; i < 20; i++) {
+      const c = CH.generate({ lvl, rnd: rig([], i + 5), groups: {}, used: {}, only: "nopress" });
+      const w = c.view.wait;
+      assert.strictEqual(CH.check(c, { early: true }, w + 500), "wrong", "большая кнопка");
+      assert.strictEqual(CH.check(c, { early: false }, 0), "wrong", "тап в момент выдачи");
+      assert.strictEqual(CH.check(c, { early: false }, w - 1000), "wrong", "за секунду до света");
+      assert.strictEqual(CH.check(c, { early: false }, w - 100), "ok", "допуск на разбег часов");
+      assert.strictEqual(CH.check(c, { early: false }, w + 10), "ok", "вовремя");
+    }
+  }
+});
+
 test("варианты ответа: правильный ровно один, без повторов", () => {
   for (const type of ["count", "seq", "math", "color", "quiz", "heavy"]) {
     for (let i = 0; i < 300; i++) {

@@ -678,9 +678,13 @@ function handle(room, client, msg) {
     case "start": {
       if (!client.host || !hostRateOk(client)) return;
       // «Ещё партию» из итогов: давно офлайн-места уходят в left (токен остаётся — вернуться по нему можно) (U-07)
-      if (g.s.phase === "finished") presence.pruneOfflineForNewGame(g.s.players, { now: now() });
+      const pruned = g.s.phase === "finished" ? presence.pruneOfflineForNewGame(g.s.players, { now: now() }) : [];
       const r = g.start(t);
-      if (!r.ok) return reply({ type: "rejected", action: "start", reason: r.reason });
+      if (!r.ok) {
+        // партия не началась — места возвращаем: иначе тап по «Ещё партию» молча стирал игроков из списка
+        for (const p of g.s.players) if (pruned.includes(p.id)) delete p.left;
+        return reply({ type: "rejected", action: "start", reason: r.reason });
+      }
       return afterChange(room, r.events);
     }
     case "kick": {

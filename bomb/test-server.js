@@ -756,6 +756,29 @@ test("лобби-призрак уходит через GHOST_TTL_MS, в игр�
   });
 });
 
+test("U-07: «Ещё партию» без второго на связи — rejected few_players, место призрака не стирается", async () => {
+  const { code, hostToken } = await createRoom({ fuse: "short" });
+  const b = await board(code, hostToken);
+  const ps = [await player(code, "Аня"), await player(code, "Петя")];
+  b.send({ type: "start" });
+  await b.wait(statePred((s) => s.phase === "live"), 6000);
+  await b.wait(statePred((s) => s.phase === "finished"), 60000);
+  const ghost = ps[0];
+  ghost.close();
+  await b.wait(statePred((s) => s.players.some((x) => x.id === ghost.id && x.online === false)), 4000);
+  await sleep(8600); // дольше грации pruneOfflineForNewGame (8 с)
+  b.send({ type: "start" });
+  const rej = await b.wait((m) => m.type === "rejected" && m.action === "start");
+  assert.strictEqual(rej.reason, "few_players");
+  // состояние доски после отказа не обновляется — спрашиваем сервер заново
+  const fresh = client(code);
+  await fresh.open;
+  const hello = await fresh.wait((m) => m.type === "hello");
+  assert.ok(hello.state.players.some((x) => x.id === ghost.id && !x.left), "отказ не должен стирать место призрака");
+  assert.strictEqual(hello.state.phase, "finished");
+  for (const x of [b, fresh, ...ps]) x.close();
+});
+
 test("N1: «Выйти» в итогах не стирает запись — проигравший в итогах с именем, без «?»", async () => {
   const { code, hostToken } = await createRoom({ fuse: "short" });
   const b = await board(code, hostToken);

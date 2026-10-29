@@ -1017,7 +1017,8 @@ function submit(ans) {
   userActAt = Date.now();
   lastAns = { cid: c.id, ans };
   const pad = document.getElementById("pad");
-  const wait = Math.max(0, c.at + c.minMs + 60 - bmNow());
+  // «не нажимай» — ответ уходит сразу: иначе ранний тап по «сейчас» доезжал ровно к minMs и считался верным
+  const wait = c.type === "nopress" ? 0 : Math.max(0, c.at + c.minMs + 60 - bmNow());
   setTimeout(() => conn.send({ type: "answer", cid: c.id, ans }), wait);
   if (pad) pad.style.pointerEvents = "none";
   // ответ не дошёл и испытание то же — даём ответить ещё раз
@@ -1609,8 +1610,11 @@ function renderTargets() {
   bodyMode("hot");
   const b = state.bombs.filter((x) => x.alive && x.holder === me).sort((x, y) => x.since - y.since)[0];
   const alive = state.players.filter((p) => !p.left && !p.out);
-  const blockFrom = !state.settings.returnOk && alive.length > 2 && b ? b.from : null;
   const onlineOnly = !!state.onlineOnly; // сервер включил RULE_U26_BOMB_ONLINE: на «нет связи» кидать нельзя
+  // «вернуть нельзя» считаем по тем, кому вообще можно кидать (как active() на сервере), иначе при одном
+  // офлайн-игроке и трёх живых все плитки гаснут и бросок становится невозможным
+  const canGet = onlineOnly ? alive.filter((p) => p.online !== false) : alive;
+  const blockFrom = !state.settings.returnOk && canGet.length > 2 && b ? b.from : null;
   const key = alive.map((p) => p.id + p.online).join() + "|" + blockFrom + "|" + onlineOnly + "|" + bmLang();
   if (screen === "targets" && key === targetsKey) return;
   const fresh = screen !== "targets";

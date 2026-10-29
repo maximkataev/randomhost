@@ -27,6 +27,8 @@ const CHALLENGE_TTL = 12000;
 // Минимальное время ответа: руки и глаза — 400 мс, голова — 800 мс (§5)
 const MIN_FAST = 400;
 const MIN_HEAD = 800;
+// «не нажимай»: тап по «сейчас» раньше времени — провал; допуск на разбег часов и округление анимации
+const NOPRESS_SKEW = 250;
 
 let BANK = null;
 function bank() {
@@ -503,14 +505,15 @@ const sameArr = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b
 function check(ch, ans, elapsed) {
   if (!ch) return "wrong";
   if (ch.type === "nopress" && ans && ans.early === true) return "wrong";
-  if (elapsed < ch.minMs) return ch.type === "nopress" ? "wrong" : "early";
+  // nopress клиент отправляет сразу, без ожидания minMs: ранний тап по «сейчас» — провал, а не «рано»
+  if (ch.type === "nopress") return elapsed < ch.minMs - NOPRESS_SKEW ? "wrong" : "ok";
+  if (elapsed < ch.minMs) return "early";
   const a = ch.answer;
   const v = ans && typeof ans === "object" ? ans.v : undefined;
   switch (ch.type) {
     case "wires": case "catch": return v === a ? "ok" : "wrong";
     case "swipe": case "order": case "chrono": return sameArr(v, a) ? "ok" : "wrong";
     case "hold": return typeof v === "number" && v >= a[0] && v <= a[1] ? "ok" : "wrong";
-    case "nopress": return "ok";
     case "code": case "crowd": return String(v) === a ? "ok" : "wrong";
     case "spark": return ans && ans.late === true ? "wrong" : v === a ? "ok" : "wrong";
     case "coward": return v === a ? "ok" : "wrong";
